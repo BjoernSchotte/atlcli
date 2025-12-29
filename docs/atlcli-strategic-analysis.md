@@ -2,11 +2,26 @@
 
 ## Executive Summary
 
-This document analyzes the existing CLI landscape for Atlassian Jira and Confluence, identifies gaps and opportunities, and proposes differentiation strategies for **atlcli** - a TypeScript/Bun-based monorepo CLI tool.
+This document analyzes the existing CLI landscape for Atlassian Jira and Confluence (Cloud), identifies gaps and opportunities, and proposes differentiation strategies for **atlcli** - a TypeScript/Bun-based monorepo CLI tool.
+
+**Key positioning:** atlcli is a **strictly CLI** product designed to be a **first-class automation interface**, with **AI agent workflows**, **MCP-over-code (agents invoking the CLI)**, and **bidirectional Markdown ↔ Confluence wiki sync** as core differentiators.
+
+**Status note:** This document is current as of **December 29, 2025**. Competitive details should be verified before external use.
+
+---
+
+## Scope & Assumptions
+
+- **Product scope:** CLI only (no web UI, no hosted dashboard). MCP integration is optional and **invokes the CLI**, not a separate hosted service.
+- **Target platform:** Atlassian Cloud products (Jira + Confluence).
+- **Primary differentiators:** CLI-first automation, AI agent usage, and **bidirectional Markdown ↔ Confluence wiki sync**.
+- **Out of scope (v1):** Server/Data Center support, full admin/ITSM parity, or a standalone AI service.
 
 ---
 
 ## Part 1: Competitive Landscape
+
+Market snapshot as of **December 29, 2025**. Validate key facts before external use.
 
 ### 1.1 Existing Jira CLI Tools
 
@@ -14,7 +29,7 @@ This document analyzes the existing CLI landscape for Atlassian Jira and Conflue
 |------|-----------|------|--------------|-------------|
 | **jira-cli** (ankitpokhrel) | Go | Open Source | Interactive TUI, JQL queries, issue CRUD, sprint boards, ~4k GitHub stars | No AI, no Confluence, limited automation |
 | **Appfire JIRA CLI** | Java | Commercial ($) | ~1000 actions, DB integration, bulk ops, run scripts | Expensive, Java dependency, heavyweight |
-| **Atlassian ACLI** (Official) | Proprietary | Official (2025) | Native Atlassian support, parallel scripts | Limited features at launch, Cloud-only |
+| **Atlassian ACLI** (Official) | Proprietary | Official | Native Atlassian support, parallel scripts | Limited features at launch, Cloud-only *(verify current state)* |
 | **jiracli.com** | Node.js | Open Source | Simple issue/project management | Minimal features, unmaintained |
 
 ### 1.2 Existing Confluence CLI Tools
@@ -26,7 +41,9 @@ This document analyzes the existing CLI landscape for Atlassian Jira and Conflue
 | **confluencer** | Python | Open Source | Maintenance tasks, mass updates | Limited feature set |
 | **markdown-confluence** | Node.js | Open Source | Publish markdown to Confluence | One-way sync only |
 
-### 1.3 MCP Servers (AI Integration)
+### 1.3 Adjacent AI Integration Tools (Context Only)
+
+These are adjacent to, but not substitutes for, a CLI product. Mentioned for positioning only.
 
 | Tool | Deployment | Features | Limitations |
 |------|------------|----------|-------------|
@@ -50,9 +67,9 @@ This document analyzes the existing CLI landscape for Atlassian Jira and Conflue
 
 ### 2.2 Feature Gaps
 
-1. **AI-First CLI Missing** - No CLI with natural language commands built into the CLI flow itself (MCP servers are separate services).
+1. **AI-First CLI Missing** - No CLI with natural language commands, agentic workflows, and MCP-over-code integration built into the CLI flow itself.
 
-2. **Documentation-as-Code Workflow** - Bidirectional Confluence ↔ Markdown sync is weak or non-existent.
+2. **Documentation-as-Code Workflow** - **Bidirectional Confluence ↔ Markdown sync** is weak or non-existent.
 
 3. **Git Integration is Add-On** - Smart commits exist, but no CLI integrates Git workflow as first-class citizen.
 
@@ -70,7 +87,9 @@ This document analyzes the existing CLI landscape for Atlassian Jira and Conflue
 
 4. **No Watch/Reactive Mode** - Can't monitor and react to Jira/Confluence changes.
 
-5. **Weak Shell Completion** - Basic or missing autocompletion.
+5. **Weak Automation Surface** - Limited JSON output and composability for scripts/CI.
+
+6. **Weak Shell Completion** - Basic or missing autocompletion.
 
 ---
 
@@ -78,7 +97,7 @@ This document analyzes the existing CLI landscape for Atlassian Jira and Conflue
 
 ### 3.1 Core Differentiators
 
-#### Strategy A: "AI-Native CLI"
+#### Strategy A: "CLI-First Automation + AI Agents (MCP-over-code)"
 
 ```bash
 # Natural language commands directly in the CLI
@@ -93,9 +112,9 @@ atlcli doc --ai     # Updates Confluence from code changes
 ```
 
 **Why This Stands Out:**
-- Atlassian Intelligence is Web UI only
+- Atlassian Intelligence is Web UI centric
 - MCP servers require separate AI client setup
-- No CLI offers inline AI assistance
+- No CLI offers **agentic** multi-step flows with **MCP-over-code** as a first-class CLI experience
 
 #### Strategy B: "Developer Workflow Integration"
 
@@ -114,9 +133,9 @@ atlcli sync                         # Bi-directional git ↔ Jira status sync
 **Why This Stands Out:**
 - jira-cli requires manual branch naming
 - No CLI auto-transitions based on git actions
-- Missing bi-directional sync
+- Missing bidirectional sync
 
-#### Strategy C: "Documentation-as-Code"
+#### Strategy C: "Documentation-as-Code (Bidirectional Wiki Sync)"
 
 ```bash
 # Bidirectional sync
@@ -131,9 +150,9 @@ atlcli docs check                   # Validates doc coverage
 ```
 
 **Why This Stands Out:**
-- markdown-confluence is one-way only
-- No tool offers watch mode
-- No code → doc generation
+- Most tools are **one-way** or require manual export/import
+- **Bidirectional sync** is a first-class feature, not a sidecar script
+- No tool offers CLI-native watch mode + code-aware documentation
 
 ### 3.2 Technical Differentiators
 
@@ -159,7 +178,7 @@ atlcli/
 │   ├── cli-jira/       # @atlcli/jira - Jira commands
 │   ├── cli-confluence/ # @atlcli/confluence - Confluence commands  
 │   ├── cli-ai/         # @atlcli/ai - AI features
-│   ├── mcp-server/     # @atlcli/mcp - MCP server implementation
+│   ├── mcp/            # @atlcli/mcp - MCP-over-code server (invokes CLI)
 │   └── plugins/        # Official plugin examples
 ├── apps/
 │   └── atlcli/         # Main CLI entry point (combines all)
@@ -175,6 +194,18 @@ atlcli/
 ---
 
 ## Part 4: Feature Roadmap Recommendations
+
+### MVP Definition (v1)
+
+Top 5 workflows that must ship to be considered viable:
+
+1. **Jira issue CRUD + search** (JQL, create, update, transition)
+2. **Confluence page CRUD + search** (CQL, create, update)
+3. **Bidirectional Markdown ↔ Confluence sync** (pull/push + conflict handling)
+4. **CLI-first automation hooks** (scriptable commands, stable JSON output, reliable exit codes)
+5. **AI agent flows** (`atlcli ask` + multi-step task orchestration) + **MCP-over-code**
+
+See `docs/mcp-over-code.md` for the MCP-over-code design sketch.
 
 ### Phase 1: Foundation (MVP)
 
@@ -203,25 +234,69 @@ atlcli/
 | Feature | Priority | Differentiation |
 |---------|----------|-----------------|
 | `atlcli ask` natural language | Must Have | **Unique** |
+| AI agent multi-step tasks | Must Have | **Unique** |
 | AI-generated descriptions | Should Have | **Unique** |
-| Built-in MCP server | Should Have | **Unique** |
-| Agentic multi-step tasks | Could Have | **Unique** |
+| MCP-over-code (agent invokes CLI) | Should Have | **Unique** |
 | Voice command support | Won't Have (v1) | Future |
 
 ### Phase 4: Documentation-as-Code
 
 | Feature | Priority | Differentiation |
 |---------|----------|-----------------|
-| Markdown ↔ Confluence sync | Must Have | Improved |
+| Markdown ↔ Confluence sync | Must Have | **Unique** |
 | Watch mode for docs | Should Have | **Unique** |
 | Code comment extraction | Could Have | **Unique** |
 | ADR templates | Could Have | **Unique** |
 
 ---
 
-## Part 5: Unique Feature Ideas
+### Phase Exit Criteria (High-Level)
 
-### 5.1 "Sprint Copilot"
+- **Phase 1 complete:** CRUD + search for Jira/Confluence, auth flows stable, binary install works, and CLI latency acceptable.
+- **Phase 2 complete:** Git workflows are reliable across common repos, and automation outputs are machine-readable.
+- **Phase 3 complete:** AI agent flows handle multi-step tasks with clear confirmations and safe fallbacks; MCP-over-code is stable.
+- **Phase 4 complete:** Bidirectional sync handles conflicts and preserves wiki fidelity.
+
+---
+
+## Constraints & Non-Goals
+
+- **Cloud-only:** No Server/Data Center support in v1.
+- **CLI-only:** No web UI or hosted service required to use core features.
+- **Not a full admin replacement:** Atlassian admin/ITSM parity is out of scope.
+- **No mandatory AI:** All core workflows must be usable without AI.
+
+---
+
+## Telemetry & Privacy
+
+- **Default stance:** Local-first with minimal telemetry.
+- **Opt-in analytics:** Only if explicitly enabled; document what is collected.
+- **AI data handling:** User-configurable providers; clear prompts about data sent off-box.
+
+---
+
+## Distribution & Update Strategy
+
+- **Install:** Single binary (Bun) with a simple install script.
+- **Updates:** Built-in self-update command with rollback to previous version.
+- **Compatibility:** Semantic versioning with clear breaking-change notes.
+
+---
+
+## Part 5: User Journeys (CLI-First)
+
+1. **Developer daily flow:** `workon` → `status` → `done` (branch + transitions + PR summary)
+2. **Documentation sync:** `docs pull` → edit → `docs push` (with conflict resolution)
+3. **Automation in CI:** `issue list --json` → pipeline actions based on state
+4. **AI task orchestration:** `ask "create bug, link to doc, assign to me"`
+5. **Agent integration:** MCP server calls `atlcli` for tool actions
+
+---
+
+## Part 6: Unique Feature Ideas
+
+### 6.1 "Sprint Copilot"
 
 ```bash
 atlcli sprint plan --ai
@@ -234,7 +309,7 @@ atlcli sprint plan --ai
 # Outputs recommended sprint backlog with reasoning
 ```
 
-### 5.2 "Incident Bridge"
+### 6.2 "Incident Bridge"
 
 ```bash
 atlcli incident start "prod database slow"
@@ -252,7 +327,7 @@ atlcli incident resolve --postmortem
 # Generates postmortem doc from timeline
 ```
 
-### 5.3 "Context Switcher"
+### 6.3 "Context Switcher"
 
 ```bash
 atlcli context save "feature-auth"
@@ -266,7 +341,7 @@ atlcli context load "feature-auth"
 # Restores git branch, shows issue summary, opens TUI with context
 ```
 
-### 5.4 "Meeting Notes to Action Items"
+### 6.4 "Meeting Notes to Action Items"
 
 ```bash
 atlcli meeting import ./notes.md
@@ -277,7 +352,7 @@ atlcli meeting import ./notes.md
 # - Assigns based on mentioned names
 ```
 
-### 5.5 "Compliance Reporter"
+### 6.5 "Compliance Reporter"
 
 ```bash
 atlcli compliance audit --standard SOC2
@@ -290,7 +365,7 @@ atlcli compliance audit --standard SOC2
 # Generates Confluence compliance report
 ```
 
-### 5.6 "Time Tracker Integration"
+### 6.6 "Time Tracker Integration"
 
 ```bash
 atlcli track start PROJ-123
@@ -305,7 +380,7 @@ atlcli track report --week
 
 ---
 
-## Part 6: Technical Architecture Recommendations
+## Part 7: Technical Architecture Recommendations
 
 ### 6.1 Core Tech Stack
 
@@ -317,9 +392,11 @@ atlcli track report --week
   "cli-framework": "commander + ink (for TUI)",
   "http-client": "native fetch (Bun built-in)",
   "storage": "bun:sqlite (for local cache)",
-  "ai": "anthropic/openai SDK + ollama local"
+  "ai": "pluggable providers (OpenAI/Anthropic/Ollama), optional"
 }
 ```
+
+AI is **optional** and must never block core CLI workflows.
 
 ### 6.2 Authentication Architecture
 
@@ -388,7 +465,7 @@ const slackPlugin: AtlcliPlugin = {
 ### 6.4 Local-First Architecture
 
 ```typescript
-// SQLite cache for offline support & speed
+// SQLite cache for speed & reduced API calls
 const cache = new Database('~/.atlcli/cache.db');
 
 // Sync strategy
@@ -411,7 +488,7 @@ interface SyncConfig {
 
 ---
 
-## Part 7: Go-to-Market Strategy
+## Part 8: Go-to-Market Strategy
 
 ### 7.1 Target Personas
 
@@ -422,14 +499,14 @@ interface SyncConfig {
 
 ### 7.2 Positioning Statement
 
-> **atlcli** is the AI-native command line interface for Atlassian that integrates directly into your development workflow. Unlike traditional CLIs that just wrap APIs, atlcli understands your git context, speaks natural language, and automates multi-step workflows—all from a single, blazing-fast binary.
+> **atlcli** is the CLI-first automation interface for Atlassian Cloud that integrates directly into developer workflows. Unlike traditional CLIs that just wrap APIs, atlcli understands git context, supports AI agent workflows, and keeps Markdown and Confluence in **bidirectional sync**—all from a single, blazing-fast binary.
 
 ### 7.3 Key Differentiators Summary
 
 | vs. jira-cli | vs. Appfire CLI | vs. Atlassian ACLI |
 |--------------|-----------------|---------------------|
-| + AI native | + Free & OSS | + Works offline |
-| + Confluence | + Fast (Bun) | + Server/DC support |
+| + AI agent workflows | + Free & OSS | + CLI-first automation |
+| + Confluence | + Fast (Bun) | + Bidirectional wiki sync |
 | + Git workflow | + Modern TS | + Extensible plugins |
 | + Docs-as-code | + Single binary | + AI capabilities |
 
@@ -443,7 +520,7 @@ interface SyncConfig {
 
 ---
 
-## Part 8: Risk Assessment
+## Part 9: Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
@@ -451,7 +528,9 @@ interface SyncConfig {
 | Official CLI improves rapidly | Medium | Medium | Focus on AI + workflow, not basic CRUD |
 | Bun ecosystem instability | Low | Medium | Core features work with Node fallback |
 | AI cost concerns | Medium | Low | Local Ollama support, usage caps |
-| Enterprise security concerns | Medium | High | On-prem AI option, audit logging |
+| Enterprise security concerns | Medium | High | Local/offline AI option, audit logging |
+| API rate limits | Medium | Medium | Local cache, backoff, batching |
+| CLI adoption friction | Medium | Medium | Excellent defaults, examples, onboarding flows |
 
 ---
 
@@ -464,13 +543,13 @@ The Atlassian CLI space is ripe for disruption. Existing tools are either:
 
 **atlcli** can carve out a unique position by being:
 
-1. **AI-native** - Natural language as a first-class citizen
-2. **Workflow-integrated** - Git + Jira + Confluence as one flow
-3. **Developer-obsessed** - Fast, typed, extensible
-4. **Modern** - Bun, ESM, single binary
+1. **CLI-first automation** - Scriptable, composable, and reliable in CI
+2. **AI-agent ready** - Natural language and multi-step task flows
+3. **Bidirectional docs sync** - Markdown ↔ Confluence as a single source of truth
+4. **Developer-obsessed** - Fast, typed, extensible, modern (Bun/ESM)
 
 The key is not to compete on feature count (Appfire has ~1000 actions), but on **developer experience** and **intelligent automation**. Make the 20% of actions that developers do 80% of the time feel magical.
 
 ---
 
-*Document generated for atlcli project planning - December 2024*
+*Document generated for atlcli project planning - December 29, 2025*
