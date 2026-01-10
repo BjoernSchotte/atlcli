@@ -3,6 +3,7 @@ import taskLists from "markdown-it-task-lists";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { createHash } from "crypto";
+import { stripFrontmatter } from "./frontmatter.js";
 
 const md = new MarkdownIt({
   html: true,  // Allow HTML passthrough for macro placeholders
@@ -65,11 +66,14 @@ const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
  * Convert ::: macro blocks to placeholders, render markdown, then replace placeholders.
  */
 export function markdownToStorage(markdown: string): string {
+  // Strip frontmatter before processing (defensive - callers should also strip)
+  const content = stripFrontmatter(markdown);
+
   const macros: { placeholder: string; html: string }[] = [];
   let placeholderIndex = 0;
 
   // Handle inline status macros: {status:color}text{status}
-  let processed = markdown.replace(STATUS_REGEX, (_, color, text) => {
+  let processed = content.replace(STATUS_REGEX, (_, color, text) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
     const normalizedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
     const html = `<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">${escapeHtml(normalizedColor)}</ac:parameter><ac:parameter ac:name="title">${escapeHtml(text.trim())}</ac:parameter></ac:structured-macro>`;
