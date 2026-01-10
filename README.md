@@ -5,12 +5,12 @@
  | (_| || |_| | (__| | |
   \__,_| \__|_|\___|_|_|
 
-  Confluence CLI with superpowers
+  Extensible CLI for Atlassian products
 ```
 
 # atlcli
 
-A blazingly fast CLI for Atlassian Confluence with bidirectional markdown sync.
+A blazingly fast, extensible CLI for Atlassian products. Currently supports Confluence with bidirectional markdown sync, with Jira support planned.
 
 ## Features
 
@@ -20,6 +20,7 @@ A blazingly fast CLI for Atlassian Confluence with bidirectional markdown sync.
 - GFM support (tables, task lists, fenced code blocks)
 - Multiple auth profiles
 - Clean filename handling with YAML frontmatter
+- **Plugin system** for extending with custom commands
 
 ## Installation
 
@@ -88,6 +89,16 @@ atlcli docs add <file>                   # Add new file to tracking
 atlcli docs status [dir]                 # Show sync status
 atlcli docs sync <dir>                   # Bidirectional sync daemon
 atlcli docs resolve <file> --accept <mode>
+```
+
+### Plugins
+
+```bash
+atlcli plugin list              # List installed plugins
+atlcli plugin install <path>    # Install from local path
+atlcli plugin remove <name>     # Remove a plugin
+atlcli plugin enable <name>     # Enable a disabled plugin
+atlcli plugin disable <name>    # Disable a plugin
 ```
 
 ## Bidirectional Sync
@@ -310,6 +321,150 @@ ATLCLI_EMAIL=user@example.com
 ATLCLI_API_TOKEN=your-token
 ```
 
+## Plugins
+
+atlcli supports plugins to extend functionality with custom commands and hooks.
+
+### Installing Plugins
+
+```bash
+# Install from local path
+atlcli plugin install ./my-plugin
+
+# List installed plugins
+atlcli plugin list
+
+# Remove a plugin
+atlcli plugin remove my-plugin
+```
+
+### Using Plugin Commands
+
+Once installed, plugin commands appear in the help:
+
+```bash
+atlcli --help
+# Shows built-in commands plus:
+# Plugin commands:
+#   hello        Example hello command
+
+# Run plugin commands like any other
+atlcli hello world
+atlcli hello greet --name "Developer"
+```
+
+### Creating a Plugin
+
+Plugins are Node.js/Bun packages that export a plugin definition.
+
+**1. Create the plugin structure:**
+
+```
+my-plugin/
+├── package.json
+└── src/
+    └── index.ts
+```
+
+**2. Define package.json:**
+
+```json
+{
+  "name": "my-atlcli-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "atlcli": {
+    "plugin": true
+  },
+  "dependencies": {
+    "@atlcli/plugin-api": "^1.0.0"
+  }
+}
+```
+
+**3. Create the plugin (src/index.ts):**
+
+```typescript
+import { definePlugin } from "@atlcli/plugin-api";
+
+export default definePlugin({
+  name: "my-plugin",
+  version: "1.0.0",
+  description: "My custom atlcli plugin",
+
+  // Add new commands
+  commands: [
+    {
+      name: "mycommand",
+      description: "Do something useful",
+      subcommands: [
+        {
+          name: "action",
+          description: "Perform an action",
+          flags: [
+            { name: "verbose", alias: "v", description: "Verbose output" }
+          ],
+          handler: async (ctx) => {
+            if (ctx.flags.verbose) {
+              console.log("Verbose mode enabled");
+            }
+            console.log("Action performed!");
+          }
+        }
+      ]
+    }
+  ],
+
+  // Optional: Hook into command lifecycle
+  hooks: {
+    beforeCommand: async (ctx) => {
+      // Runs before any command
+    },
+    afterCommand: async (ctx) => {
+      // Runs after successful commands
+    },
+    onError: async (ctx, error) => {
+      // Runs when a command fails
+    }
+  }
+});
+```
+
+**4. Install and test:**
+
+```bash
+atlcli plugin install ./my-plugin
+atlcli mycommand action --verbose
+```
+
+### Plugin API
+
+The `@atlcli/plugin-api` package provides TypeScript types and helpers:
+
+```typescript
+import {
+  definePlugin,      // Define a plugin
+  defineCommand,     // Define a command
+  defineSubcommand,  // Define a subcommand
+  defineFlag,        // Define a flag
+  // Types
+  AtlcliPlugin,
+  CommandDefinition,
+  Subcommand,
+  FlagDefinition,
+  CommandContext,
+  PluginHooks
+} from "@atlcli/plugin-api";
+```
+
+### Plugin Storage
+
+- Installed plugins: `~/.atlcli/plugins/`
+- Plugin config: `~/.atlcli/plugins.json`
+
 ## Development
 
 ```bash
@@ -320,10 +475,29 @@ bun install
 bun run build
 
 # Run development version
-bun run apps/atlcli/src/index.ts <command>
+bun run start -- <command>
+# Or directly:
+bun run apps/cli/src/index.ts <command>
+
+# Run tests
+bun test
 
 # Type check
 bun run typecheck
+```
+
+### Project Structure
+
+```
+atlcli/
+├── apps/
+│   └── cli/                 # @atlcli/cli - Main CLI application
+├── packages/
+│   ├── core/                # @atlcli/core - Shared utilities
+│   ├── confluence/          # @atlcli/confluence - Confluence API & sync
+│   └── plugin-api/          # @atlcli/plugin-api - Plugin interfaces
+└── plugins/
+    └── example-plugin/      # Example plugin for reference
 ```
 
 ## License
