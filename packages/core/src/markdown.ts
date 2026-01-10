@@ -111,6 +111,71 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle excerpt macro: :::excerpt name="intro" hidden
+  processed = processed.replace(EXCERPT_MACRO_REGEX, (_, params, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const trimmedContent = (content || "").trim();
+
+    // Parse parameters
+    const nameMatch = params?.match(/name="([^"]*)"/i);
+    const hasHidden = params ? /\bhidden\b/i.test(params) : false;
+
+    let excerptHtml = `<ac:structured-macro ac:name="excerpt">`;
+    if (nameMatch) {
+      excerptHtml += `\n<ac:parameter ac:name="name">${escapeHtml(nameMatch[1])}</ac:parameter>`;
+    }
+    if (hasHidden) {
+      excerptHtml += `\n<ac:parameter ac:name="hidden">true</ac:parameter>`;
+    }
+    excerptHtml += `\n<ac:rich-text-body>\n${md.render(trimmedContent).trim()}\n</ac:rich-text-body>\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html: excerptHtml });
+    return placeholder;
+  });
+
+  // Handle excerpt-include macro: :::excerpt-include page="id" name="name"
+  processed = processed.replace(EXCERPT_INCLUDE_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const pageMatch = params?.match(/page="([^"]*)"/i);
+    const nameMatch = params?.match(/name="([^"]*)"/i);
+    const noPanelMatch = params ? /\bnopanel\b/i.test(params) : false;
+
+    // excerpt-include uses ri:content-id for page reference
+    let html = `<ac:structured-macro ac:name="excerpt-include">`;
+    if (pageMatch) {
+      html += `\n<ac:parameter ac:name=""><ri:page ri:content-id="${escapeHtml(pageMatch[1])}" /></ac:parameter>`;
+    }
+    if (nameMatch) {
+      html += `\n<ac:parameter ac:name="name">${escapeHtml(nameMatch[1])}</ac:parameter>`;
+    }
+    if (noPanelMatch) {
+      html += `\n<ac:parameter ac:name="nopanel">true</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle include macro: :::include page="id"
+  processed = processed.replace(INCLUDE_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const pageMatch = params?.match(/page="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="include">`;
+    if (pageMatch) {
+      html += `\n<ac:parameter ac:name=""><ri:page ri:content-id="${escapeHtml(pageMatch[1])}" /></ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -182,7 +247,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include"];
 
 /**
  * Valid status colors in Confluence
@@ -203,6 +268,21 @@ const ANCHOR_REGEX = /\{#([a-zA-Z][a-zA-Z0-9_-]*)\}/g;
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
  */
 const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
+
+/**
+ * Regex for excerpt macro: :::excerpt name="name" hidden
+ */
+const EXCERPT_MACRO_REGEX = /^:::excerpt(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
+
+/**
+ * Regex for excerpt-include macro: :::excerpt-include page="id" name="name"
+ */
+const EXCERPT_INCLUDE_REGEX = /^:::excerpt-include(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for include macro: :::include page="id"
+ */
+const INCLUDE_MACRO_REGEX = /^:::include(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -296,6 +376,56 @@ function preprocessStorageMacros(storage: string): string {
       const code = bodyMatch ? bodyMatch[1] : "";
 
       return `<pre data-macro="code" data-lang="${escapeHtml(lang)}" data-title="${escapeHtml(title)}" data-collapse="${escapeHtml(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
+    }
+  );
+
+  // Convert excerpt macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="excerpt"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const nameMatch = inner.match(/<ac:parameter\s+ac:name="name"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const hiddenMatch = inner.match(/<ac:parameter\s+ac:name="hidden"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const name = nameMatch ? nameMatch[1] : "";
+      const hidden = hiddenMatch ? hiddenMatch[1].toLowerCase() === "true" : false;
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="excerpt" data-name="${escapeHtml(name)}" data-hidden="${hidden}">${body}</div>`;
+    }
+  );
+
+  // Convert excerpt-include macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="excerpt-include"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Page reference can be ri:content-id or ri:content-title
+      const pageIdMatch = inner.match(/<ri:page[^>]*ri:content-id="([^"]*)"[^>]*\/>/i);
+      const pageTitleMatch = inner.match(/<ri:page[^>]*ri:content-title="([^"]*)"[^>]*\/>/i);
+      const nameMatch = inner.match(/<ac:parameter\s+ac:name="name"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const noPanelMatch = inner.match(/<ac:parameter\s+ac:name="nopanel"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const pageId = pageIdMatch ? pageIdMatch[1] : "";
+      const pageTitle = pageTitleMatch ? pageTitleMatch[1] : "";
+      const name = nameMatch ? nameMatch[1] : "";
+      const noPanel = noPanelMatch ? noPanelMatch[1].toLowerCase() === "true" : false;
+
+      return `<div data-macro="excerpt-include" data-page-id="${escapeHtml(pageId)}" data-page-title="${escapeHtml(pageTitle)}" data-name="${escapeHtml(name)}" data-nopanel="${noPanel}">*[excerpt-include]*</div>`;
+    }
+  );
+
+  // Convert include macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="include"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Page reference can be ri:content-id or ri:content-title
+      const pageIdMatch = inner.match(/<ri:page[^>]*ri:content-id="([^"]*)"[^>]*\/>/i);
+      const pageTitleMatch = inner.match(/<ri:page[^>]*ri:content-title="([^"]*)"[^>]*\/>/i);
+
+      const pageId = pageIdMatch ? pageIdMatch[1] : "";
+      const pageTitle = pageTitleMatch ? pageTitleMatch[1] : "";
+
+      return `<div data-macro="include" data-page-id="${escapeHtml(pageId)}" data-page-title="${escapeHtml(pageTitle)}">*[include]*</div>`;
     }
   );
 
@@ -412,6 +542,48 @@ export function storageToMarkdown(storage: string): string {
         if (borderColor) params += ` borderColor="${borderColor}"`;
 
         return `\n\n:::panel${params}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Excerpt macro
+      if (macroType === "excerpt") {
+        const name = (node as any).getAttribute?.("data-name") || "";
+        const hidden = (node as any).getAttribute?.("data-hidden") === "true";
+
+        let params = "";
+        if (name) params += ` name="${name}"`;
+        if (hidden) params += " hidden";
+
+        return `\n\n:::excerpt${params}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Excerpt-include macro
+      if (macroType === "excerpt-include") {
+        const pageId = (node as any).getAttribute?.("data-page-id") || "";
+        const pageTitle = (node as any).getAttribute?.("data-page-title") || "";
+        const name = (node as any).getAttribute?.("data-name") || "";
+        const noPanel = (node as any).getAttribute?.("data-nopanel") === "true";
+
+        let params = "";
+        // Prefer page ID over title for consistency
+        if (pageId) params += ` page="${pageId}"`;
+        else if (pageTitle) params += ` page="${pageTitle}"`;
+        if (name) params += ` name="${name}"`;
+        if (noPanel) params += " nopanel";
+
+        return `\n\n:::excerpt-include${params}\n:::\n\n`;
+      }
+
+      // Include macro
+      if (macroType === "include") {
+        const pageId = (node as any).getAttribute?.("data-page-id") || "";
+        const pageTitle = (node as any).getAttribute?.("data-page-title") || "";
+
+        let params = "";
+        // Prefer page ID over title for consistency
+        if (pageId) params += ` page="${pageId}"`;
+        else if (pageTitle) params += ` page="${pageTitle}"`;
+
+        return `\n\n:::include${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
