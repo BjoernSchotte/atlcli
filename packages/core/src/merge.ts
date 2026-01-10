@@ -78,117 +78,190 @@ export function threeWayMerge(base: string, local: string, remote: string): Merg
 }
 
 /**
- * Line-based three-way merge implementation.
+ * Line-based three-way merge using diff3 algorithm.
+ * Computes changes from base to local and base to remote,
+ * then merges the changes.
  */
 function mergeLines(base: string[], local: string[], remote: string[]): MergeResult {
   const result: string[] = [];
   const conflicts: ConflictRegion[] = [];
 
-  // Compute diffs
-  const localDiff = computeDiff(base, local);
-  const remoteDiff = computeDiff(base, remote);
+  // Get changes from base to local and remote
+  const localChanges = computeChanges(base, local);
+  const remoteChanges = computeChanges(base, remote);
 
   let baseIdx = 0;
-  let localIdx = 0;
-  let remoteIdx = 0;
   let resultLine = 0;
 
-  while (baseIdx < base.length || localIdx < local.length || remoteIdx < remote.length) {
-    const localOp = localDiff.get(baseIdx);
-    const remoteOp = remoteDiff.get(baseIdx);
+  // Helper to add insertions before current position
+  const addInsertions = (localChange: Change | undefined, remoteChange: Change | undefined): boolean => {
+    const localInserts = localChange?.type === "insert" ? localChange.newLines : [];
+    const remoteInserts = remoteChange?.type === "insert" ? remoteChange.newLines : [];
 
-    // Both unchanged - take the line
-    if (!localOp && !remoteOp && baseIdx < base.length) {
-      result.push(base[baseIdx]);
-      baseIdx++;
-      localIdx++;
-      remoteIdx++;
-      resultLine++;
-      continue;
+    if (localInserts.length === 0 && remoteInserts.length === 0) {
+      return false; // No insertions
     }
 
-    // Only local changed
-    if (localOp && !remoteOp) {
-      if (localOp.type === "delete") {
-        baseIdx++;
-        remoteIdx++;
-      } else if (localOp.type === "insert") {
-        for (const line of localOp.lines) {
-          result.push(line);
-          resultLine++;
-        }
-        localIdx += localOp.lines.length;
-      } else if (localOp.type === "replace") {
-        for (const line of localOp.lines) {
-          result.push(line);
-          resultLine++;
-        }
-        baseIdx++;
-        localIdx += localOp.lines.length;
-        remoteIdx++;
+    if (arraysEqual(localInserts, remoteInserts)) {
+      // Same insertions
+      for (const line of localInserts) {
+        result.push(line);
+        resultLine++;
       }
-      continue;
-    }
-
-    // Only remote changed
-    if (!localOp && remoteOp) {
-      if (remoteOp.type === "delete") {
-        baseIdx++;
-        localIdx++;
-      } else if (remoteOp.type === "insert") {
-        for (const line of remoteOp.lines) {
-          result.push(line);
-          resultLine++;
-        }
-        remoteIdx += remoteOp.lines.length;
-      } else if (remoteOp.type === "replace") {
-        for (const line of remoteOp.lines) {
-          result.push(line);
-          resultLine++;
-        }
-        baseIdx++;
-        localIdx++;
-        remoteIdx += remoteOp.lines.length;
+    } else if (localInserts.length === 0) {
+      for (const line of remoteInserts) {
+        result.push(line);
+        resultLine++;
       }
-      continue;
-    }
-
-    // Both changed - check if same change (no conflict)
-    if (localOp && remoteOp) {
-      const localNewLines = localOp.lines || [];
-      const remoteNewLines = remoteOp.lines || [];
-
-      if (
-        localOp.type === remoteOp.type &&
-        arraysEqual(localNewLines, remoteNewLines)
-      ) {
-        // Same change - no conflict
-        if (localOp.type === "delete") {
-          baseIdx++;
-        } else {
-          for (const line of localNewLines) {
-            result.push(line);
-            resultLine++;
-          }
-          baseIdx++;
-        }
-        localIdx = Math.min(localIdx + localNewLines.length, local.length);
-        remoteIdx = Math.min(remoteIdx + remoteNewLines.length, remote.length);
-        continue;
+    } else if (remoteInserts.length === 0) {
+      for (const line of localInserts) {
+        result.push(line);
+        resultLine++;
       }
-
-      // Different changes - conflict
+    } else {
+      // Different insertions - conflict
       const conflictStart = resultLine;
-
       result.push(CONFLICT_LOCAL);
       resultLine++;
-      for (const line of localNewLines) {
+      for (const line of localInserts) {
         result.push(line);
         resultLine++;
       }
       result.push(CONFLICT_SEPARATOR);
       resultLine++;
-      for (const line of remoteNewLines) {
+      for (const line of remoteInserts) {
+        result.push(line);
+        resultLine++;
+      }
+      result.push(CONFLICT_REMOTE);
+      resultLine++;
+      conflicts.push({
+        startLine: conflictStart,
+        endLine: resultLine - 1,
+        localLines: localInserts,
+        remoteLines: remoteInserts,
+      });
+    }
+    return true;
+  };
+
+  while (baseIdx < base.length) {
+    const localChange = localChanges.get(baseIdx);
+    const remoteChange = remoteChanges.get(baseIdx);
+
+    // Handle insertions before this line
+    if (localChange?.type === "insert" || remoteChange?.type === "insert") {
+      addInsertions(localChange, remoteChange);
+      // If both are just insertions, keep the base line
+      if (localChange?.type === "insert" && remoteChange?.type === "insert") {
+        result.push(base[baseIdx]);
+        resultLine++;
+        baseIdx++;
+        continue;
+      }
+      // If only one is insertion, the other might be modify/delete
+      if (localChange?.type === "insert") {
+        // Remote might have changed the base line
+        if (remoteChange?.type === "modify") {
+          for (const line of remoteChange.newLines) {
+            result.push(line);
+            resultLine++;
+          }
+        } else if (remoteChange?.type === "delete") {
+          // Remote deleted
+        } else {
+          // Remote unchanged
+          result.push(base[baseIdx]);
+          resultLine++;
+        }
+        baseIdx++;
+        continue;
+      }
+      if (remoteChange?.type === "insert") {
+        // Local might have changed the base line
+        if (localChange?.type === "modify") {
+          for (const line of localChange.newLines) {
+            result.push(line);
+            resultLine++;
+          }
+        } else if (localChange?.type === "delete") {
+          // Local deleted
+        } else {
+          // Local unchanged
+          result.push(base[baseIdx]);
+          resultLine++;
+        }
+        baseIdx++;
+        continue;
+      }
+    }
+
+    // Neither changed this line
+    if (!localChange && !remoteChange) {
+      result.push(base[baseIdx]);
+      resultLine++;
+      baseIdx++;
+      continue;
+    }
+
+    // Only local changed (modify or delete)
+    if (localChange && !remoteChange) {
+      if (localChange.type === "delete") {
+        // Local deleted - skip base line
+      } else if (localChange.type === "modify") {
+        for (const line of localChange.newLines) {
+          result.push(line);
+          resultLine++;
+        }
+      }
+      baseIdx++;
+      continue;
+    }
+
+    // Only remote changed (modify or delete)
+    if (!localChange && remoteChange) {
+      if (remoteChange.type === "delete") {
+        // Remote deleted - skip base line
+      } else if (remoteChange.type === "modify") {
+        for (const line of remoteChange.newLines) {
+          result.push(line);
+          resultLine++;
+        }
+      }
+      baseIdx++;
+      continue;
+    }
+
+    // Both changed - check if same change
+    if (localChange && remoteChange) {
+      if (localChange.type === remoteChange.type &&
+          arraysEqual(localChange.newLines, remoteChange.newLines)) {
+        // Same change - no conflict
+        if (localChange.type === "modify") {
+          for (const line of localChange.newLines) {
+            result.push(line);
+            resultLine++;
+          }
+        }
+        // If both delete, nothing to add
+        baseIdx++;
+        continue;
+      }
+
+      // Different changes - conflict
+      const conflictStart = resultLine;
+      const localLines = localChange.type === "delete" ? [] : localChange.newLines;
+      const remoteLines = remoteChange.type === "delete" ? [] : remoteChange.newLines;
+
+      result.push(CONFLICT_LOCAL);
+      resultLine++;
+      for (const line of localLines) {
+        result.push(line);
+        resultLine++;
+      }
+      result.push(CONFLICT_SEPARATOR);
+      resultLine++;
+      for (const line of remoteLines) {
         result.push(line);
         resultLine++;
       }
@@ -198,24 +271,65 @@ function mergeLines(base: string[], local: string[], remote: string[]): MergeRes
       conflicts.push({
         startLine: conflictStart,
         endLine: resultLine - 1,
-        localLines: localNewLines,
-        remoteLines: remoteNewLines,
+        localLines,
+        remoteLines,
       });
 
       baseIdx++;
-      localIdx = Math.min(localIdx + localNewLines.length, local.length);
-      remoteIdx = Math.min(remoteIdx + remoteNewLines.length, remote.length);
       continue;
     }
 
-    // Fallback: advance all indices
-    if (baseIdx < base.length) baseIdx++;
-    if (localIdx < local.length) {
-      result.push(local[localIdx]);
-      localIdx++;
+    baseIdx++;
+  }
+
+  // Handle trailing insertions (content added after base end)
+  const localTrailing = localChanges.get(base.length);
+  const remoteTrailing = remoteChanges.get(base.length);
+
+  if (localTrailing || remoteTrailing) {
+    const localLines = localTrailing?.newLines || [];
+    const remoteLines = remoteTrailing?.newLines || [];
+
+    if (arraysEqual(localLines, remoteLines)) {
+      // Same additions
+      for (const line of localLines) {
+        result.push(line);
+        resultLine++;
+      }
+    } else if (localLines.length === 0) {
+      for (const line of remoteLines) {
+        result.push(line);
+        resultLine++;
+      }
+    } else if (remoteLines.length === 0) {
+      for (const line of localLines) {
+        result.push(line);
+        resultLine++;
+      }
+    } else {
+      // Different trailing additions - conflict
+      const conflictStart = resultLine;
+      result.push(CONFLICT_LOCAL);
       resultLine++;
+      for (const line of localLines) {
+        result.push(line);
+        resultLine++;
+      }
+      result.push(CONFLICT_SEPARATOR);
+      resultLine++;
+      for (const line of remoteLines) {
+        result.push(line);
+        resultLine++;
+      }
+      result.push(CONFLICT_REMOTE);
+      resultLine++;
+      conflicts.push({
+        startLine: conflictStart,
+        endLine: resultLine - 1,
+        localLines,
+        remoteLines,
+      });
     }
-    if (remoteIdx < remote.length) remoteIdx++;
   }
 
   return {
@@ -226,70 +340,84 @@ function mergeLines(base: string[], local: string[], remote: string[]): MergeRes
   };
 }
 
-/** Operation type for diff */
-type DiffOp = {
-  type: "insert" | "delete" | "replace";
-  lines: string[];
-};
+/** Change record for a base line position */
+interface Change {
+  type: "modify" | "delete" | "insert";
+  newLines: string[];
+}
 
 /**
- * Compute a simple line-based diff between base and modified.
- * Returns a map of base line index -> operation.
+ * Compute changes from base to modified using LCS.
+ * Returns a map of base index -> change at that position.
+ * Insertions are recorded at the base index BEFORE which they appear.
  */
-function computeDiff(base: string[], modified: string[]): Map<number, DiffOp> {
-  const ops = new Map<number, DiffOp>();
-
-  // Use LCS-based diff for better results
+function computeChanges(base: string[], modified: string[]): Map<number, Change> {
+  const changes = new Map<number, Change>();
   const lcs = longestCommonSubsequence(base, modified);
+
   let baseIdx = 0;
   let modIdx = 0;
   let lcsIdx = 0;
 
   while (baseIdx < base.length || modIdx < modified.length) {
-    if (lcsIdx < lcs.length && baseIdx < base.length && base[baseIdx] === lcs[lcsIdx]) {
-      if (modIdx < modified.length && modified[modIdx] === lcs[lcsIdx]) {
-        // Match - no change
-        baseIdx++;
+    // Check if current base line is in LCS
+    const baseInLcs = lcsIdx < lcs.length && baseIdx < base.length && base[baseIdx] === lcs[lcsIdx];
+    const modInLcs = lcsIdx < lcs.length && modIdx < modified.length && modified[modIdx] === lcs[lcsIdx];
+
+    if (baseInLcs && modInLcs) {
+      // Both match LCS - no change, advance all
+      baseIdx++;
+      modIdx++;
+      lcsIdx++;
+    } else if (baseInLcs && !modInLcs) {
+      // Base matches LCS but modified has insertions before it
+      const newLines: string[] = [];
+      while (modIdx < modified.length && modified[modIdx] !== lcs[lcsIdx]) {
+        newLines.push(modified[modIdx]);
         modIdx++;
-        lcsIdx++;
-      } else {
-        // Insert before this base line
-        const insertLines: string[] = [];
-        while (modIdx < modified.length && (lcsIdx >= lcs.length || modified[modIdx] !== lcs[lcsIdx])) {
-          insertLines.push(modified[modIdx]);
-          modIdx++;
-        }
-        if (insertLines.length > 0) {
-          ops.set(baseIdx, { type: "insert", lines: insertLines });
+      }
+      if (newLines.length > 0) {
+        // Record as insertion before this base position
+        // Use a special key format: negative index or store separately
+        const existingChange = changes.get(baseIdx);
+        if (existingChange) {
+          existingChange.newLines = [...newLines, ...existingChange.newLines];
+        } else {
+          changes.set(baseIdx, { type: "insert", newLines });
         }
       }
-    } else if (baseIdx < base.length) {
-      // Base line not in LCS - deleted or replaced
-      const replaceLines: string[] = [];
+      // Don't advance base yet - process the match on next iteration
+    } else if (!baseInLcs && baseIdx < base.length) {
+      // Base line not in LCS - deleted or modified
+      // Collect any modified lines until we hit the next LCS match
+      const newLines: string[] = [];
       while (modIdx < modified.length && (lcsIdx >= lcs.length || modified[modIdx] !== lcs[lcsIdx])) {
-        replaceLines.push(modified[modIdx]);
+        newLines.push(modified[modIdx]);
         modIdx++;
       }
-      if (replaceLines.length > 0) {
-        ops.set(baseIdx, { type: "replace", lines: replaceLines });
+
+      if (newLines.length > 0) {
+        changes.set(baseIdx, { type: "modify", newLines });
       } else {
-        ops.set(baseIdx, { type: "delete", lines: [] });
+        changes.set(baseIdx, { type: "delete", newLines: [] });
       }
       baseIdx++;
-    } else {
-      // Only modified lines left - insert at end
-      const insertLines: string[] = [];
+    } else if (modIdx < modified.length) {
+      // Modified has extra lines at the end
+      const newLines: string[] = [];
       while (modIdx < modified.length) {
-        insertLines.push(modified[modIdx]);
+        newLines.push(modified[modIdx]);
         modIdx++;
       }
-      if (insertLines.length > 0) {
-        ops.set(baseIdx, { type: "insert", lines: insertLines });
+      if (newLines.length > 0) {
+        changes.set(base.length, { type: "insert", newLines });
       }
+    } else {
+      break;
     }
   }
 
-  return ops;
+  return changes;
 }
 
 /**
