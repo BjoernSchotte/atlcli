@@ -7,7 +7,8 @@
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
-    "@atlcli/confluence": "workspace:*"
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/plugin-api": "workspace:*"
   },
   "scripts": {
     "start": "bun run src/index.ts",

@@ -19,6 +19,7 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
+        "@atlcli/plugin-api": "workspace:*",
       },
     },
     "packages/confluence": {
@@ -36,6 +37,10 @@
       "name": "@atlcli/core",
       "version": "1.0.0",
     },
+    "packages/plugin-api": {
+      "name": "@atlcli/plugin-api",
+      "version": "1.0.0",
+    },
   },
   "packages": {
     "@atlcli/cli": ["@atlcli/cli@workspace:apps/cli"],
@@ -43,6 +48,8 @@
     "@atlcli/confluence": ["@atlcli/confluence@workspace:packages/confluence"],
 
     "@atlcli/core": ["@atlcli/core@workspace:packages/core"],
+
+    "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
 
