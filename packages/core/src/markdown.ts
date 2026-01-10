@@ -27,6 +27,9 @@ const PANEL_MACROS = ["info", "note", "warning", "tip"];
 // Use [ \t]+ instead of \s+ to avoid matching newlines in the title capture
 const MACRO_REGEX = /^:::(info|note|warning|tip|expand|toc)(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
 
+// Regex for preserved confluence macros (unknown/3rd-party)
+const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
+
 /**
  * Convert ::: macro blocks to placeholders, render markdown, then replace placeholders.
  */
@@ -34,8 +37,24 @@ export function markdownToStorage(markdown: string): string {
   const macros: { placeholder: string; html: string }[] = [];
   let placeholderIndex = 0;
 
+  // First, handle preserved :::confluence blocks (restore raw XML)
+  let processed = markdown.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Extract raw XML from <!--raw ... --> comment
+    const rawMatch = content.match(/<!--raw\n([\s\S]*?)\n-->/);
+    if (rawMatch) {
+      macros.push({ placeholder, html: rawMatch[1] });
+    } else {
+      // No raw content - create empty macro placeholder
+      macros.push({ placeholder, html: `<!-- atlcli: ${macroName} macro content lost -->` });
+    }
+
+    return placeholder;
+  });
+
   // Replace ::: blocks with placeholders
-  const withPlaceholders = markdown.replace(MACRO_REGEX, (_, macro, title, content) => {
+  processed = processed.replace(MACRO_REGEX, (_, macro, title, content) => {
     const trimmedContent = (content || "").trim();
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
 
@@ -73,7 +92,7 @@ ${md.render(trimmedContent).trim()}
   });
 
   // Render markdown
-  let result = md.render(withPlaceholders);
+  let result = md.render(processed);
 
   // Replace placeholders with actual macro HTML
   for (const { placeholder, html } of macros) {
@@ -84,6 +103,12 @@ ${md.render(trimmedContent).trim()}
 
   return result;
 }
+
+/**
+ * Macros we explicitly convert to markdown syntax.
+ * All others will be preserved as :::confluence blocks.
+ */
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc"];
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -120,7 +145,48 @@ function preprocessStorageMacros(storage: string): string {
     () => `<div data-macro="toc">TOC</div>`
   );
 
+  // Preserve all unknown/3rd-party macros (whitelist approach)
+  // IMPORTANT: Handle self-closing macros FIRST to prevent greedy matching
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="([^"]+)"[^>]*\/>/gi,
+    (fullMatch, macroName) => {
+      if (KNOWN_MACROS.includes(macroName.toLowerCase())) {
+        return fullMatch;
+      }
+      const encodedRaw = encodeRawXml(fullMatch);
+      return `<div data-macro="confluence" data-macro-name="${escapeHtml(macroName)}" data-raw="${encodedRaw}">*[${escapeHtml(macroName)} macro]*</div>`;
+    }
+  );
+
+  // Then handle macros with body content
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="([^"]+)"[^>]*(?<!\/)>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (fullMatch, macroName) => {
+      // Skip if it's a known macro (already handled above)
+      if (KNOWN_MACROS.includes(macroName.toLowerCase())) {
+        return fullMatch;
+      }
+      // Preserve unknown macro with raw XML
+      const encodedRaw = encodeRawXml(fullMatch);
+      return `<div data-macro="confluence" data-macro-name="${escapeHtml(macroName)}" data-raw="${encodedRaw}">*[${escapeHtml(macroName)} macro]*</div>`;
+    }
+  );
+
   return storage;
+}
+
+/**
+ * Encode raw XML for safe storage in data attribute.
+ */
+function encodeRawXml(xml: string): string {
+  return Buffer.from(xml, "utf-8").toString("base64");
+}
+
+/**
+ * Decode raw XML from data attribute.
+ */
+function decodeRawXml(encoded: string): string {
+  return Buffer.from(encoded, "base64").toString("utf-8");
 }
 
 export function storageToMarkdown(storage: string): string {
@@ -141,21 +207,34 @@ export function storageToMarkdown(storage: string): string {
       return node.nodeName === "DIV" && (node as any).getAttribute?.("data-macro");
     },
     replacement: (content, node) => {
-      const macroName = (node as any).getAttribute?.("data-macro") || "";
+      const macroType = (node as any).getAttribute?.("data-macro") || "";
       const title = (node as any).getAttribute?.("data-title") || "";
 
-      if (macroName === "toc") {
+      if (macroType === "toc") {
         return "\n\n:::toc\n:::\n\n";
       }
 
-      if (macroName === "expand") {
+      if (macroType === "expand") {
         return `\n\n:::expand ${title}\n${content.trim()}\n:::\n\n`;
       }
 
       // Panel macros
-      if (PANEL_MACROS.includes(macroName)) {
+      if (PANEL_MACROS.includes(macroType)) {
         const titlePart = title ? ` ${title}` : "";
-        return `\n\n:::${macroName}${titlePart}\n${content.trim()}\n:::\n\n`;
+        return `\n\n:::${macroType}${titlePart}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Preserved unknown/3rd-party macros
+      if (macroType === "confluence") {
+        const macroName = (node as any).getAttribute?.("data-macro-name") || "unknown";
+        const rawEncoded = (node as any).getAttribute?.("data-raw") || "";
+
+        if (rawEncoded) {
+          const rawXml = decodeRawXml(rawEncoded);
+          return `\n\n:::confluence ${macroName}\n<!--raw\n${rawXml}\n-->\n*[${macroName} macro]*\n:::\n\n`;
+        }
+
+        return `\n\n:::confluence ${macroName}\n*[${macroName} macro - no content]*\n:::\n\n`;
       }
 
       return content;
