@@ -73,16 +73,18 @@ export async function getGitChanges(dir: string): Promise<FileChange[]> {
   }
 
   const changes: FileChange[] = [];
-  const lines = stdout.trim().split("\n");
+  // Don't use trim() on the full output - it removes leading spaces from status codes
+  const lines = stdout.replace(/\n$/, "").split("\n");
 
   for (const line of lines) {
-    if (!line) continue;
+    if (!line || line.length < 4) continue;
 
     // Git status --porcelain format: XY filename
     // X = index status, Y = work tree status
-    const indexStatus = line[0];
-    const workTreeStatus = line[1];
-    const path = line.slice(3); // Skip "XY "
+    // Format is exactly: "XY " followed by filename (3 chars then filename)
+    const indexStatus = line.charAt(0);
+    const workTreeStatus = line.charAt(1);
+    const path = line.substring(3); // Skip "XY "
 
     // We care about work tree changes (untracked, modified)
     // ? = untracked, M = modified, A = added, D = deleted
@@ -114,14 +116,15 @@ export async function getAllGitChanges(dir: string): Promise<FileChange[]> {
   }
 
   const changes: FileChange[] = [];
-  const lines = stdout.trim().split("\n");
+  // Don't use trim() on the full output - it removes leading spaces from status codes
+  const lines = stdout.replace(/\n$/, "").split("\n");
 
   for (const line of lines) {
-    if (!line) continue;
+    if (!line || line.length < 4) continue;
 
-    const indexStatus = line[0];
-    const workTreeStatus = line[1];
-    const path = line.slice(3);
+    const indexStatus = line.charAt(0);
+    const workTreeStatus = line.charAt(1);
+    const path = line.substring(3);
 
     // Include any file that has changes (staged or unstaged)
     if (indexStatus !== " " || workTreeStatus !== " ") {
