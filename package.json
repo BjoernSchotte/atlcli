@@ -12,7 +12,9 @@
     "build": "bun run --cwd apps/cli build",
     "lint": "echo 'no lint configured'",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "version:core": "npm version --no-git-tag-version -w @atlcli/core -w @atlcli/confluence",
+    "version:cli": "npm version --no-git-tag-version -w @atlcli/cli"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

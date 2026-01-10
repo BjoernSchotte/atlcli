@@ -1,0 +1,119 @@
+name: Release Core Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.1, 1.1.0, 2.0.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run (skip npm publish)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js (for npm publish)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Validate version format
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in semver format (e.g., 1.0.1)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun test
+
+      - name: Update package versions
+        run: |
+          # Update @atlcli/core
+          cd packages/core
+          npm version ${{ inputs.version }} --no-git-tag-version
+          cd ../..
+
+          # Update @atlcli/confluence
+          cd packages/confluence
+          npm version ${{ inputs.version }} --no-git-tag-version
+          cd ../..
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit version bump
+        run: |
+          git add packages/core/package.json packages/confluence/package.json
+          git commit -m "chore: release core packages v${{ inputs.version }}"
+
+      - name: Create git tag
+        run: |
+          git tag -a "core-v${{ inputs.version }}" -m "Core packages v${{ inputs.version }}"
+
+      - name: Push changes
+        run: |
+          git push origin main
+          git push origin "core-v${{ inputs.version }}"
+
+      - name: Publish @atlcli/core to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/core
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @atlcli/confluence to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/confluence
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: core-v${{ inputs.version }}
+          name: Core Packages v${{ inputs.version }}
+          body: |
+            ## Core Packages v${{ inputs.version }}
+
+            This release includes:
+            - `@atlcli/core@${{ inputs.version }}`
+            - `@atlcli/confluence@${{ inputs.version }}`
+
+            ### Installation
+
+            ```bash
+            npm install @atlcli/core@${{ inputs.version }}
+            npm install @atlcli/confluence@${{ inputs.version }}
+            ```
+          draft: false
+          prerelease: false
