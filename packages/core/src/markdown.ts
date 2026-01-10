@@ -37,8 +37,17 @@ export function markdownToStorage(markdown: string): string {
   const macros: { placeholder: string; html: string }[] = [];
   let placeholderIndex = 0;
 
-  // First, handle preserved :::confluence blocks (restore raw XML)
-  let processed = markdown.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
+  // First, handle inline status macros: {status:color}text{status}
+  let processed = markdown.replace(STATUS_REGEX, (_, color, text) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const normalizedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+    const html = `<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">${escapeHtml(normalizedColor)}</ac:parameter><ac:parameter ac:name="title">${escapeHtml(text.trim())}</ac:parameter></ac:structured-macro>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle preserved :::confluence blocks (restore raw XML)
+  processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
 
     // Extract raw XML from <!--raw ... --> comment
@@ -108,7 +117,17 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status"];
+
+/**
+ * Valid status colors in Confluence
+ */
+const STATUS_COLORS = ["grey", "red", "yellow", "green", "blue"];
+
+/**
+ * Regex for inline status macro: {status:color}text{status}
+ */
+const STATUS_REGEX = /\{status:(\w+)\}([^{]*)\{status\}/gi;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -143,6 +162,18 @@ function preprocessStorageMacros(storage: string): string {
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="toc"[^>]*\/?>([\s\S]*?<\/ac:structured-macro>)?/gi,
     () => `<div data-macro="toc">TOC</div>`
+  );
+
+  // Convert status macro (inline lozenge)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="status"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const colorMatch = inner.match(/<ac:parameter\s+ac:name="colou?r"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const titleMatch = inner.match(/<ac:parameter\s+ac:name="title"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const color = colorMatch ? colorMatch[1].toLowerCase() : "grey";
+      const title = titleMatch ? titleMatch[1] : "";
+      return `<span data-macro="status" data-color="${escapeHtml(color)}" data-title="${escapeHtml(title)}">[${escapeHtml(title)}]</span>`;
+    }
   );
 
   // Preserve all unknown/3rd-party macros (whitelist approach)
@@ -200,6 +231,18 @@ export function storageToMarkdown(storage: string): string {
     strongDelimiter: "**",
   });
   service.use(gfm);
+
+  // Handle inline status macro
+  service.addRule("statusMacro", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-macro") === "status";
+    },
+    replacement: (_content, node) => {
+      const color = (node as any).getAttribute?.("data-color") || "grey";
+      const title = (node as any).getAttribute?.("data-title") || "";
+      return `{status:${color}}${title}{status}`;
+    },
+  });
 
   // Handle Confluence macros converted to data-macro divs
   service.addRule("confluenceMacro", {
