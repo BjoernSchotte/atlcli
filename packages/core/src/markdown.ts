@@ -176,6 +176,115 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle gallery macro: :::gallery columns=3
+  processed = processed.replace(GALLERY_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const columnsMatch = params?.match(/columns=(\d+)/i);
+    const includeMatch = params?.match(/include="([^"]*)"/i);
+    const excludeMatch = params?.match(/exclude="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="gallery">`;
+    if (columnsMatch) {
+      html += `\n<ac:parameter ac:name="columns">${escapeHtml(columnsMatch[1])}</ac:parameter>`;
+    }
+    if (includeMatch) {
+      html += `\n<ac:parameter ac:name="include">${escapeHtml(includeMatch[1])}</ac:parameter>`;
+    }
+    if (excludeMatch) {
+      html += `\n<ac:parameter ac:name="exclude">${escapeHtml(excludeMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle attachments macro: :::attachments patterns="*.pdf"
+  processed = processed.replace(ATTACHMENTS_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const patternsMatch = params?.match(/patterns="([^"]*)"/i);
+    const sortMatch = params?.match(/sort="([^"]*)"/i);
+    const oldMatch = params ? /\bold\b/i.test(params) : false;
+
+    let html = `<ac:structured-macro ac:name="attachments">`;
+    if (patternsMatch) {
+      html += `\n<ac:parameter ac:name="patterns">${escapeHtml(patternsMatch[1])}</ac:parameter>`;
+    }
+    if (sortMatch) {
+      html += `\n<ac:parameter ac:name="sort">${escapeHtml(sortMatch[1])}</ac:parameter>`;
+    }
+    if (oldMatch) {
+      html += `\n<ac:parameter ac:name="old">true</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle multimedia macro: :::multimedia file="video.mp4" width="640" height="480"
+  // Multimedia is for ATTACHED files, not external URLs (use widget for external)
+  // Uses ri:attachment with ri:filename
+  processed = processed.replace(MULTIMEDIA_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const fileMatch = params?.match(/file="([^"]*)"/i);
+    const widthMatch = params?.match(/width="([^"]*)"/i);
+    const heightMatch = params?.match(/height="([^"]*)"/i);
+    const autostartMatch = params ? /\bautostart\b/i.test(params) : false;
+
+    let html = `<ac:structured-macro ac:name="multimedia">`;
+    if (fileMatch) {
+      // File parameter uses ri:attachment with ri:filename
+      html += `\n<ac:parameter ac:name="name"><ri:attachment ri:filename="${escapeHtml(fileMatch[1])}" /></ac:parameter>`;
+    }
+    if (widthMatch) {
+      html += `\n<ac:parameter ac:name="width">${escapeHtml(widthMatch[1])}</ac:parameter>`;
+    }
+    if (heightMatch) {
+      html += `\n<ac:parameter ac:name="height">${escapeHtml(heightMatch[1])}</ac:parameter>`;
+    }
+    if (autostartMatch) {
+      html += `\n<ac:parameter ac:name="autostart">true</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle widget macro: :::widget url="..."
+  // URL uses ri:url element with ri:value attribute
+  processed = processed.replace(WIDGET_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse parameters
+    const urlMatch = params?.match(/url="([^"]*)"/i);
+    const widthMatch = params?.match(/width="([^"]*)"/i);
+    const heightMatch = params?.match(/height="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="widget">`;
+    if (heightMatch) {
+      html += `\n<ac:parameter ac:name="height">${escapeHtml(heightMatch[1])}</ac:parameter>`;
+    }
+    if (widthMatch) {
+      html += `\n<ac:parameter ac:name="width">${escapeHtml(widthMatch[1])}</ac:parameter>`;
+    }
+    if (urlMatch) {
+      // URL parameter uses ri:url with ri:value attribute
+      html += `\n<ac:parameter ac:name="url"><ri:url ri:value="${escapeHtml(urlMatch[1])}" /></ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -247,7 +356,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget"];
 
 /**
  * Valid status colors in Confluence
@@ -283,6 +392,26 @@ const EXCERPT_INCLUDE_REGEX = /^:::excerpt-include(?:[ \t]+(.+))?\n?:::\s*$/gm;
  * Regex for include macro: :::include page="id"
  */
 const INCLUDE_MACRO_REGEX = /^:::include(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for gallery macro: :::gallery columns=3
+ */
+const GALLERY_MACRO_REGEX = /^:::gallery(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for attachments macro: :::attachments patterns="*.pdf"
+ */
+const ATTACHMENTS_MACRO_REGEX = /^:::attachments(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for multimedia macro: :::multimedia url="..."
+ */
+const MULTIMEDIA_MACRO_REGEX = /^:::multimedia(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for widget macro: :::widget url="..."
+ */
+const WIDGET_MACRO_REGEX = /^:::widget(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -426,6 +555,89 @@ function preprocessStorageMacros(storage: string): string {
       const pageTitle = pageTitleMatch ? pageTitleMatch[1] : "";
 
       return `<div data-macro="include" data-page-id="${escapeHtml(pageId)}" data-page-title="${escapeHtml(pageTitle)}">*[include]*</div>`;
+    }
+  );
+
+  // Convert gallery macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="gallery"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const columnsMatch = inner.match(/<ac:parameter\s+ac:name="columns"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const includeMatch = inner.match(/<ac:parameter\s+ac:name="include"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const excludeMatch = inner.match(/<ac:parameter\s+ac:name="exclude"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const columns = columnsMatch ? columnsMatch[1] : "";
+      const include = includeMatch ? includeMatch[1] : "";
+      const exclude = excludeMatch ? excludeMatch[1] : "";
+
+      return `<div data-macro="gallery" data-columns="${escapeHtml(columns)}" data-include="${escapeHtml(include)}" data-exclude="${escapeHtml(exclude)}">*[gallery]*</div>`;
+    }
+  );
+
+  // Convert gallery macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="gallery"[^>]*\/>/gi,
+    () => `<div data-macro="gallery" data-columns="" data-include="" data-exclude="">*[gallery]*</div>`
+  );
+
+  // Convert attachments macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="attachments"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const patternsMatch = inner.match(/<ac:parameter\s+ac:name="patterns"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const sortMatch = inner.match(/<ac:parameter\s+ac:name="sort"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const oldMatch = inner.match(/<ac:parameter\s+ac:name="old"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const patterns = patternsMatch ? patternsMatch[1] : "";
+      const sort = sortMatch ? sortMatch[1] : "";
+      const old = oldMatch ? oldMatch[1].toLowerCase() === "true" : false;
+
+      return `<div data-macro="attachments" data-patterns="${escapeHtml(patterns)}" data-sort="${escapeHtml(sort)}" data-old="${old}">*[attachments]*</div>`;
+    }
+  );
+
+  // Convert attachments macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="attachments"[^>]*\/>/gi,
+    () => `<div data-macro="attachments" data-patterns="" data-sort="" data-old="false">*[attachments]*</div>`
+  );
+
+  // Convert multimedia macro
+  // Multimedia is for attached files, uses ri:attachment with ri:filename
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="multimedia"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // File attachment via ri:attachment
+      const fileMatch = inner.match(/<ri:attachment\s+ri:filename="([^"]*)"[^>]*\/>/i);
+      const widthMatch = inner.match(/<ac:parameter\s+ac:name="width"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const heightMatch = inner.match(/<ac:parameter\s+ac:name="height"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const autostartMatch = inner.match(/<ac:parameter\s+ac:name="autostart"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const file = fileMatch ? fileMatch[1] : "";
+      const width = widthMatch ? widthMatch[1] : "";
+      const height = heightMatch ? heightMatch[1] : "";
+      const autostart = autostartMatch ? autostartMatch[1].toLowerCase() === "true" : false;
+
+      return `<div data-macro="multimedia" data-file="${escapeHtml(file)}" data-width="${escapeHtml(width)}" data-height="${escapeHtml(height)}" data-autostart="${autostart}">*[multimedia]*</div>`;
+    }
+  );
+
+  // Convert widget macro
+  // URL can be either plain text or ri:url element with ri:value attribute
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="widget"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Try ri:url format first, then plain text
+      const riUrlMatch = inner.match(/<ac:parameter\s+ac:name="url"[^>]*>\s*<ri:url\s+ri:value="([^"]*)"[^>]*\/>\s*<\/ac:parameter>/i);
+      const plainUrlMatch = inner.match(/<ac:parameter\s+ac:name="url"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const widthMatch = inner.match(/<ac:parameter\s+ac:name="width"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const heightMatch = inner.match(/<ac:parameter\s+ac:name="height"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const url = riUrlMatch ? riUrlMatch[1] : (plainUrlMatch ? plainUrlMatch[1] : "");
+      const width = widthMatch ? widthMatch[1] : "";
+      const height = heightMatch ? heightMatch[1] : "";
+
+      return `<div data-macro="widget" data-url="${escapeHtml(url)}" data-width="${escapeHtml(width)}" data-height="${escapeHtml(height)}">*[widget]*</div>`;
     }
   );
 
@@ -584,6 +796,64 @@ export function storageToMarkdown(storage: string): string {
         else if (pageTitle) params += ` page="${pageTitle}"`;
 
         return `\n\n:::include${params}\n:::\n\n`;
+      }
+
+      // Gallery macro
+      if (macroType === "gallery") {
+        const columns = (node as any).getAttribute?.("data-columns") || "";
+        const include = (node as any).getAttribute?.("data-include") || "";
+        const exclude = (node as any).getAttribute?.("data-exclude") || "";
+
+        let params = "";
+        if (columns) params += ` columns=${columns}`;
+        if (include) params += ` include="${include}"`;
+        if (exclude) params += ` exclude="${exclude}"`;
+
+        return `\n\n:::gallery${params}\n:::\n\n`;
+      }
+
+      // Attachments macro
+      if (macroType === "attachments") {
+        const patterns = (node as any).getAttribute?.("data-patterns") || "";
+        const sort = (node as any).getAttribute?.("data-sort") || "";
+        const old = (node as any).getAttribute?.("data-old") === "true";
+
+        let params = "";
+        if (patterns) params += ` patterns="${patterns}"`;
+        if (sort) params += ` sort="${sort}"`;
+        if (old) params += " old";
+
+        return `\n\n:::attachments${params}\n:::\n\n`;
+      }
+
+      // Multimedia macro (for attached files)
+      if (macroType === "multimedia") {
+        const file = (node as any).getAttribute?.("data-file") || "";
+        const width = (node as any).getAttribute?.("data-width") || "";
+        const height = (node as any).getAttribute?.("data-height") || "";
+        const autostart = (node as any).getAttribute?.("data-autostart") === "true";
+
+        let params = "";
+        if (file) params += ` file="${file}"`;
+        if (width) params += ` width="${width}"`;
+        if (height) params += ` height="${height}"`;
+        if (autostart) params += " autostart";
+
+        return `\n\n:::multimedia${params}\n:::\n\n`;
+      }
+
+      // Widget macro
+      if (macroType === "widget") {
+        const url = (node as any).getAttribute?.("data-url") || "";
+        const width = (node as any).getAttribute?.("data-width") || "";
+        const height = (node as any).getAttribute?.("data-height") || "";
+
+        let params = "";
+        if (url) params += ` url="${url}"`;
+        if (width) params += ` width="${width}"`;
+        if (height) params += ` height="${height}"`;
+
+        return `\n\n:::widget${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
