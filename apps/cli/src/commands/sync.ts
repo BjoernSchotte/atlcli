@@ -2,8 +2,6 @@ import { readdir } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
 import { join, basename, extname } from "node:path";
 import {
-  ConfluenceClient,
-  SyncScope,
   ERROR_CODES,
   OutputOptions,
   ensureDir,
@@ -11,16 +9,20 @@ import {
   getActiveProfile,
   getFlag,
   hasFlag,
-  hashContent,
   loadConfig,
-  markdownToStorage,
-  normalizeMarkdown,
   output,
   readTextFile,
   slugify,
-  storageToMarkdown,
   writeTextFile,
+} from "@atlcli/core";
+import {
+  ConfluenceClient,
+  SyncScope,
   ConfluencePoller,
+  hashContent,
+  markdownToStorage,
+  normalizeMarkdown,
+  storageToMarkdown,
   threeWayMerge,
   hasConflictMarkers,
   resolveConflicts,
@@ -29,7 +31,7 @@ import {
   parseFrontmatter,
   addFrontmatter,
   AtlcliFrontmatter,
-} from "@atlcli/core";
+} from "@atlcli/confluence";
 
 import {
   EnhancedMeta,

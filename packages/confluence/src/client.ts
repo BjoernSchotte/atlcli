@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { Profile } from "./config.js";
+import { Profile } from "@atlcli/core";
 
 export type ConfluencePage = {
   id: string;

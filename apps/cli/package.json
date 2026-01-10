@@ -1,12 +1,13 @@
 {
   "name": "@atlcli/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "bin": {
     "atlcli": "src/index.ts"
   },
   "dependencies": {
-    "@atlcli/core": "workspace:*"
+    "@atlcli/core": "workspace:*",
+    "@atlcli/confluence": "workspace:*"
   },
   "scripts": {
     "start": "bun run src/index.ts",

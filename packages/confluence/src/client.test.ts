@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, afterEach } from "bun:test";
-import { ConfluenceClient } from "./confluence.js";
+import { ConfluenceClient } from "./client.js";
 
 // Mock profile for testing
 const mockProfile = {

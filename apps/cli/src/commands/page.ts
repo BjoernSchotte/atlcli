@@ -1,15 +1,17 @@
 import {
-  ConfluenceClient,
   ERROR_CODES,
   OutputOptions,
   fail,
   getActiveProfile,
   getFlag,
   loadConfig,
-  markdownToStorage,
   output,
   readTextFile,
 } from "@atlcli/core";
+import {
+  ConfluenceClient,
+  markdownToStorage,
+} from "@atlcli/confluence";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const sub = args[0];

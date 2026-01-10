@@ -6,7 +6,7 @@ import {
   createSpacePoller,
   PollChangeEvent,
 } from "./poller.js";
-import { ConfluenceClient, SyncScope, PageChangeInfo } from "./confluence.js";
+import { ConfluenceClient, SyncScope, PageChangeInfo } from "./client.js";
 
 // Mock ConfluenceClient
 function createMockClient(initialPages: PageChangeInfo[] = []): {

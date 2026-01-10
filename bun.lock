@@ -10,29 +10,37 @@
         "bun-types": "^1.3.5",
       },
     },
-    "apps/atlcli": {
+    "apps/cli": {
       "name": "@atlcli/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "atlcli": "src/index.ts",
       },
       "dependencies": {
+        "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
       },
     },
-    "packages/core": {
-      "name": "@atlcli/core",
-      "version": "0.1.0",
+    "packages/confluence": {
+      "name": "@atlcli/confluence",
+      "version": "1.0.0",
       "dependencies": {
+        "@atlcli/core": "workspace:*",
         "markdown-it": "^14.1.0",
         "markdown-it-task-lists": "^2.1.1",
         "turndown": "^7.1.2",
         "turndown-plugin-gfm": "^1.0.2",
       },
     },
+    "packages/core": {
+      "name": "@atlcli/core",
+      "version": "1.0.0",
+    },
   },
   "packages": {
-    "@atlcli/cli": ["@atlcli/cli@workspace:apps/atlcli"],
+    "@atlcli/cli": ["@atlcli/cli@workspace:apps/cli"],
+
+    "@atlcli/confluence": ["@atlcli/confluence@workspace:packages/confluence"],
 
     "@atlcli/core": ["@atlcli/core@workspace:packages/core"],
 

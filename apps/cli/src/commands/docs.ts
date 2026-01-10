@@ -2,7 +2,6 @@ import { readdir } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
 import { join, basename, extname, dirname, relative } from "node:path";
 import {
-  ConfluenceClient,
   ERROR_CODES,
   OutputOptions,
   ensureDir,
@@ -10,17 +9,20 @@ import {
   getActiveProfile,
   getFlag,
   hasFlag,
-  hashContent,
   loadConfig,
-  markdownToStorage,
-  normalizeMarkdown,
   output,
   readTextFile,
-  resolveConflicts,
   slugify,
-  storageToMarkdown,
   writeTextFile,
-  // New imports for local storage
+} from "@atlcli/core";
+import {
+  ConfluenceClient,
+  hashContent,
+  markdownToStorage,
+  normalizeMarkdown,
+  resolveConflicts,
+  storageToMarkdown,
+  // Local storage
   findAtlcliDir,
   initAtlcliDir,
   isInitialized,
@@ -46,7 +48,7 @@ import {
   stripFrontmatter,
   extractTitleFromMarkdown,
   AtlcliFrontmatter,
-} from "@atlcli/core";
+} from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
