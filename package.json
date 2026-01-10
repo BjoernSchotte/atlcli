@@ -1,0 +1,22 @@
+{
+  "name": "atlcli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "bun run --cwd apps/atlcli src/index.ts",
+    "build": "bun run --cwd apps/atlcli build",
+    "lint": "echo 'no lint configured'",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/turndown": "^5.0.6",
+    "bun-types": "^1.3.5"
+  }
+}

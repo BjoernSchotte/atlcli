@@ -1,0 +1,15 @@
+{
+  "name": "@atlcli/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "atlcli": "src/index.ts"
+  },
+  "dependencies": {
+    "@atlcli/core": "workspace:*"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir ../../dist --target bun"
+  }
+}

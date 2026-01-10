@@ -195,12 +195,22 @@ atlcli/
 
 ## Part 4: Feature Roadmap Recommendations
 
+### Base Version (Confluence-first)
+
+Ship a minimal, usable CLI that solves the Confluence documentation workflow end-to-end before expanding to Jira.
+
+1. **Confluence auth + profile setup** (Cloud OAuth or API token)
+2. **Confluence page CRUD + search** (CQL, create, update, get)
+3. **Bidirectional Markdown ↔ Confluence sync** (pull/push + conflict prompts)
+4. **Scriptable output** (stable JSON + reliable exit codes)
+5. **Minimal UX** (help, completion, and clear errors)
+
 ### MVP Definition (v1)
 
 Top 5 workflows that must ship to be considered viable:
 
-1. **Jira issue CRUD + search** (JQL, create, update, transition)
-2. **Confluence page CRUD + search** (CQL, create, update)
+1. **Confluence page CRUD + search** (CQL, create, update)
+2. **Jira issue CRUD + search** (JQL, create, update, transition)
 3. **Bidirectional Markdown ↔ Confluence sync** (pull/push + conflict handling)
 4. **CLI-first automation hooks** (scriptable commands, stable JSON output, reliable exit codes)
 5. **AI agent flows** (`atlcli ask` + multi-step task orchestration) + **MCP-over-code**
@@ -211,18 +221,19 @@ See `docs/mcp-over-code.md` for the MCP-over-code design sketch.
 
 | Feature | Priority | Differentiation |
 |---------|----------|-----------------|
-| Jira issue CRUD | Must Have | Baseline |
 | Confluence page CRUD | Must Have | Baseline |
-| JQL/CQL queries | Must Have | Baseline |
+| CQL queries | Must Have | Baseline |
 | Interactive TUI mode | Must Have | Match jira-cli |
 | OAuth 2.0 + API token auth | Must Have | Support both |
 | Single binary builds | Must Have | **Unique** |
 | TypeScript SDK export | Should Have | **Unique** |
 
-### Phase 2: Developer Workflow
+### Phase 2: Jira + Developer Workflow
 
 | Feature | Priority | Differentiation |
 |---------|----------|-----------------|
+| Jira issue CRUD | Must Have | Baseline |
+| JQL queries | Must Have | Baseline |
 | Git branch integration | Must Have | **Unique** |
 | Smart commit linking | Must Have | Improved |
 | `atlcli workon` flow | Should Have | **Unique** |
@@ -415,18 +426,48 @@ interface AuthConfig {
     email: string;
     token: string;
   };
-  
-  // Personal Access Token (Server/DC)
-  pat?: {
-    token: string;
-  };
-  
-  // Service Account (CI/CD)
-  serviceAccount?: {
-    keyFile: string;
+
+  // Cloud site/profile context
+  site?: {
+    baseUrl: string;
+    cloudId: string;
+    profileName?: string;
   };
 }
 ```
+
+### 6.2.1 CLI Auth Flow (Cloud-first)
+
+Goal: make authentication **fast, explicit, and scriptable**, with clear profile handling for multiple sites.
+
+```bash
+# interactive login (preferred)
+atlcli auth login
+
+# token-based login (for CI or quick setup)
+atlcli auth login --api-token
+
+# manage profiles
+atlcli auth status
+atlcli auth list
+atlcli auth switch <profile>
+atlcli auth logout [<profile>]
+```
+
+Auth flow guidelines:
+
+- **OAuth path**: open a browser, user grants access, CLI stores refreshable credentials in a secure store.
+- **API token path**: prompt for email + token, store securely, allow non-interactive input via env vars.
+- **Profiles**: support multiple Cloud sites and named profiles; commands accept `--profile`.
+- **CI usage**: allow `ATLCLI_AUTH_*` env vars and `--api-token` for headless runs.
+- **Safety**: never print tokens; redact in logs and error output.
+
+#### Auth UX Notes (CLI)
+
+- Show a short summary of what will be accessed before login.
+- Offer OAuth by default with a fallback device/code flow if browser open fails.
+- Confirm active site and profile after login.
+- Provide copy-ready next steps (e.g., `atlcli page list --limit 5`).
 
 ### 6.3 Plugin Architecture
 

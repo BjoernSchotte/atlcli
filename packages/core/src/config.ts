@@ -1,0 +1,73 @@
+import { existsSync } from "node:fs";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import os from "node:os";
+
+export type AuthType = "apiToken" | "oauth";
+
+export type AuthConfig = {
+  type: AuthType;
+  email?: string;
+  token?: string;
+  clientId?: string;
+};
+
+export type Profile = {
+  name: string;
+  baseUrl: string;
+  auth: AuthConfig;
+  cloudId?: string;
+};
+
+export type Config = {
+  currentProfile?: string;
+  profiles: Record<string, Profile>;
+};
+
+const CONFIG_DIR = join(os.homedir(), ".atlcli");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+
+export function getConfigPath(): string {
+  return CONFIG_PATH;
+}
+
+export async function loadConfig(): Promise<Config> {
+  if (!existsSync(CONFIG_PATH)) {
+    return { profiles: {} };
+  }
+  const raw = await readFile(CONFIG_PATH, "utf8");
+  const parsed = JSON.parse(raw) as Config;
+  if (!parsed.profiles) parsed.profiles = {};
+  return parsed;
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  await mkdir(dirname(CONFIG_PATH), { recursive: true });
+  const data = JSON.stringify(config, null, 2);
+  await writeFile(CONFIG_PATH, data, "utf8");
+}
+
+export function getProfile(config: Config, name: string): Profile | undefined {
+  return config.profiles[name];
+}
+
+export function setProfile(config: Config, profile: Profile): void {
+  config.profiles[profile.name] = profile;
+}
+
+export function removeProfile(config: Config, name: string): void {
+  delete config.profiles[name];
+  if (config.currentProfile === name) {
+    config.currentProfile = undefined;
+  }
+}
+
+export function setCurrentProfile(config: Config, name: string): void {
+  config.currentProfile = name;
+}
+
+export function getActiveProfile(config: Config, requested?: string): Profile | undefined {
+  if (requested) return config.profiles[requested];
+  if (config.currentProfile) return config.profiles[config.currentProfile];
+  return undefined;
+}
