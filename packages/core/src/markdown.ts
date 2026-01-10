@@ -322,6 +322,120 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle children macro: :::children depth=2 sort="title" all
+  processed = processed.replace(CHILDREN_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const depthMatch = params?.match(/depth=(\d+)/i);
+    const sortMatch = params?.match(/sort="([^"]*)"/i);
+    const pageMatch = params?.match(/page="([^"]*)"/i);
+    const hasAll = params ? /\ball\b/i.test(params) : false;
+    const hasReverse = params ? /\breverse\b/i.test(params) : false;
+
+    let html = `<ac:structured-macro ac:name="children">`;
+    if (pageMatch) {
+      // Page parameter requires ac:link wrapper with ri:page element
+      html += `\n<ac:parameter ac:name="page"><ac:link><ri:page ri:content-title="${escapeHtml(pageMatch[1])}" /></ac:link></ac:parameter>`;
+    }
+    if (depthMatch) {
+      html += `\n<ac:parameter ac:name="depth">${escapeHtml(depthMatch[1])}</ac:parameter>`;
+    }
+    if (sortMatch) {
+      html += `\n<ac:parameter ac:name="sort">${escapeHtml(sortMatch[1])}</ac:parameter>`;
+    }
+    if (hasAll) {
+      html += `\n<ac:parameter ac:name="all">true</ac:parameter>`;
+    }
+    if (hasReverse) {
+      html += `\n<ac:parameter ac:name="reverse">true</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle content-by-label macro: :::content-by-label labels="label1,label2" spaces="SPACE" max=10
+  processed = processed.replace(CONTENT_BY_LABEL_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const labelsMatch = params?.match(/labels="([^"]*)"/i);
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const maxMatch = params?.match(/max=(\d+)/i);
+    const sortMatch = params?.match(/sort="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="contentbylabel">`;
+    if (labelsMatch) {
+      html += `\n<ac:parameter ac:name="labels">${escapeHtml(labelsMatch[1])}</ac:parameter>`;
+    }
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (maxMatch) {
+      html += `\n<ac:parameter ac:name="max">${escapeHtml(maxMatch[1])}</ac:parameter>`;
+    }
+    if (sortMatch) {
+      html += `\n<ac:parameter ac:name="sort">${escapeHtml(sortMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle recently-updated macro: :::recently-updated max=10 spaces="SPACE"
+  processed = processed.replace(RECENTLY_UPDATED_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const maxMatch = params?.match(/max=(\d+)/i);
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const typesMatch = params?.match(/types="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="recently-updated">`;
+    if (maxMatch) {
+      html += `\n<ac:parameter ac:name="max">${escapeHtml(maxMatch[1])}</ac:parameter>`;
+    }
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (typesMatch) {
+      html += `\n<ac:parameter ac:name="types">${escapeHtml(typesMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle pagetree macro: :::pagetree root="PageName" startDepth=2
+  processed = processed.replace(PAGETREE_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const rootMatch = params?.match(/root="([^"]*)"/i);
+    const startDepthMatch = params?.match(/startDepth=(\d+)/i);
+    const hasExpandCollapseAll = params ? /\bexpandCollapseAll\b/i.test(params) : false;
+    const hasSearchBox = params ? /\bsearchBox\b/i.test(params) : false;
+
+    let html = `<ac:structured-macro ac:name="pagetree">`;
+    if (rootMatch) {
+      // Root parameter requires ac:link wrapper with ri:page element
+      html += `\n<ac:parameter ac:name="root"><ac:link><ri:page ri:content-title="${escapeHtml(rootMatch[1])}" /></ac:link></ac:parameter>`;
+    }
+    if (startDepthMatch) {
+      html += `\n<ac:parameter ac:name="startDepth">${escapeHtml(startDepthMatch[1])}</ac:parameter>`;
+    }
+    if (hasExpandCollapseAll) {
+      html += `\n<ac:parameter ac:name="expandCollapseAll">true</ac:parameter>`;
+    }
+    if (hasSearchBox) {
+      html += `\n<ac:parameter ac:name="searchBox">true</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -393,7 +507,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree"];
 
 /**
  * Valid status colors in Confluence
@@ -460,6 +574,26 @@ const SECTION_MACRO_REGEX = /^:::section(?:[ \t]+(.+))?\n([\s\S]*?)^:::section-e
  * Regex for column macro inside section: :::column width="50%"
  */
 const COLUMN_MACRO_REGEX = /^:::column(?:[ \t]+(.+))?\n([\s\S]*?)^:::column-end\s*$/gm;
+
+/**
+ * Regex for children macro: :::children depth=2 sort="title"
+ */
+const CHILDREN_MACRO_REGEX = /^:::children(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for content-by-label macro: :::content-by-label labels="label1,label2"
+ */
+const CONTENT_BY_LABEL_REGEX = /^:::content-by-label(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for recently-updated macro: :::recently-updated max=10
+ */
+const RECENTLY_UPDATED_REGEX = /^:::recently-updated(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for pagetree macro: :::pagetree root="PageName"
+ */
+const PAGETREE_MACRO_REGEX = /^:::pagetree(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -718,6 +852,106 @@ function preprocessStorageMacros(storage: string): string {
     }
   );
 
+  // Convert children macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="children"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Page parameter can be plain text OR ac:link with ri:page
+      const pageLinkMatch = inner.match(/<ac:parameter\s+ac:name="page"[^>]*>[\s\S]*?<ri:page[^>]*ri:content-title="([^"]*)"[^>]*\/>[\s\S]*?<\/ac:parameter>/i);
+      const pagePlainMatch = inner.match(/<ac:parameter\s+ac:name="page"[^>]*>([^<]+)<\/ac:parameter>/i);
+      const depthMatch = inner.match(/<ac:parameter\s+ac:name="depth"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const sortMatch = inner.match(/<ac:parameter\s+ac:name="sort"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const allMatch = inner.match(/<ac:parameter\s+ac:name="all"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const reverseMatch = inner.match(/<ac:parameter\s+ac:name="reverse"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const page = pageLinkMatch ? pageLinkMatch[1] : (pagePlainMatch ? pagePlainMatch[1] : "");
+      const depth = depthMatch ? depthMatch[1] : "";
+      const sort = sortMatch ? sortMatch[1] : "";
+      const all = allMatch ? allMatch[1].toLowerCase() === "true" : false;
+      const reverse = reverseMatch ? reverseMatch[1].toLowerCase() === "true" : false;
+
+      return `<div data-macro="children" data-page="${escapeHtml(page)}" data-depth="${escapeHtml(depth)}" data-sort="${escapeHtml(sort)}" data-all="${all}" data-reverse="${reverse}">*[children]*</div>`;
+    }
+  );
+
+  // Convert children macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="children"[^>]*\/>/gi,
+    () => `<div data-macro="children" data-page="" data-depth="" data-sort="" data-all="false" data-reverse="false">*[children]*</div>`
+  );
+
+  // Convert contentbylabel macro (note: Confluence uses "contentbylabel" not "content-by-label")
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="contentbylabel"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const labelsMatch = inner.match(/<ac:parameter\s+ac:name="labels"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const maxMatch = inner.match(/<ac:parameter\s+ac:name="max"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const sortMatch = inner.match(/<ac:parameter\s+ac:name="sort"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const labels = labelsMatch ? labelsMatch[1] : "";
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const max = maxMatch ? maxMatch[1] : "";
+      const sort = sortMatch ? sortMatch[1] : "";
+
+      return `<div data-macro="content-by-label" data-labels="${escapeHtml(labels)}" data-spaces="${escapeHtml(spaces)}" data-max="${escapeHtml(max)}" data-sort="${escapeHtml(sort)}">*[content-by-label]*</div>`;
+    }
+  );
+
+  // Convert contentbylabel macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="contentbylabel"[^>]*\/>/gi,
+    () => `<div data-macro="content-by-label" data-labels="" data-spaces="" data-max="" data-sort="">*[content-by-label]*</div>`
+  );
+
+  // Convert recently-updated macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="recently-updated"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const maxMatch = inner.match(/<ac:parameter\s+ac:name="max"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const typesMatch = inner.match(/<ac:parameter\s+ac:name="types"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const max = maxMatch ? maxMatch[1] : "";
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const types = typesMatch ? typesMatch[1] : "";
+
+      return `<div data-macro="recently-updated" data-max="${escapeHtml(max)}" data-spaces="${escapeHtml(spaces)}" data-types="${escapeHtml(types)}">*[recently-updated]*</div>`;
+    }
+  );
+
+  // Convert recently-updated macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="recently-updated"[^>]*\/>/gi,
+    () => `<div data-macro="recently-updated" data-max="" data-spaces="" data-types="">*[recently-updated]*</div>`
+  );
+
+  // Convert pagetree macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="pagetree"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Root parameter can be plain text OR ac:link with ri:page
+      const rootLinkMatch = inner.match(/<ac:parameter\s+ac:name="root"[^>]*>[\s\S]*?<ri:page[^>]*ri:content-title="([^"]*)"[^>]*\/>[\s\S]*?<\/ac:parameter>/i);
+      const rootPlainMatch = inner.match(/<ac:parameter\s+ac:name="root"[^>]*>([^<]+)<\/ac:parameter>/i);
+      const startDepthMatch = inner.match(/<ac:parameter\s+ac:name="startDepth"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const expandCollapseAllMatch = inner.match(/<ac:parameter\s+ac:name="expandCollapseAll"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const searchBoxMatch = inner.match(/<ac:parameter\s+ac:name="searchBox"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const root = rootLinkMatch ? rootLinkMatch[1] : (rootPlainMatch ? rootPlainMatch[1] : "");
+      const startDepth = startDepthMatch ? startDepthMatch[1] : "";
+      const expandCollapseAll = expandCollapseAllMatch ? expandCollapseAllMatch[1].toLowerCase() === "true" : false;
+      const searchBox = searchBoxMatch ? searchBoxMatch[1].toLowerCase() === "true" : false;
+
+      return `<div data-macro="pagetree" data-root="${escapeHtml(root)}" data-startdepth="${escapeHtml(startDepth)}" data-expandcollapseall="${expandCollapseAll}" data-searchbox="${searchBox}">*[pagetree]*</div>`;
+    }
+  );
+
+  // Convert pagetree macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="pagetree"[^>]*\/>/gi,
+    () => `<div data-macro="pagetree" data-root="" data-startdepth="" data-expandcollapseall="false" data-searchbox="false">*[pagetree]*</div>`
+  );
+
   // Preserve all unknown/3rd-party macros (whitelist approach)
   // IMPORTANT: Handle self-closing macros FIRST to prevent greedy matching
   storage = storage.replace(
@@ -953,6 +1187,70 @@ export function storageToMarkdown(storage: string): string {
 
         // Content will contain converted column divs
         return `\n\n:::section${params}\n${content}\n:::section-end\n\n`;
+      }
+
+      // Children macro (list child pages)
+      if (macroType === "children") {
+        const page = (node as any).getAttribute?.("data-page") || "";
+        const depth = (node as any).getAttribute?.("data-depth") || "";
+        const sort = (node as any).getAttribute?.("data-sort") || "";
+        const all = (node as any).getAttribute?.("data-all") === "true";
+        const reverse = (node as any).getAttribute?.("data-reverse") === "true";
+
+        let params = "";
+        if (page) params += ` page="${page}"`;
+        if (depth) params += ` depth=${depth}`;
+        if (sort) params += ` sort="${sort}"`;
+        if (all) params += " all";
+        if (reverse) params += " reverse";
+
+        return `\n\n:::children${params}\n:::\n\n`;
+      }
+
+      // Content-by-label macro
+      if (macroType === "content-by-label") {
+        const labels = (node as any).getAttribute?.("data-labels") || "";
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const max = (node as any).getAttribute?.("data-max") || "";
+        const sort = (node as any).getAttribute?.("data-sort") || "";
+
+        let params = "";
+        if (labels) params += ` labels="${labels}"`;
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (max) params += ` max=${max}`;
+        if (sort) params += ` sort="${sort}"`;
+
+        return `\n\n:::content-by-label${params}\n:::\n\n`;
+      }
+
+      // Recently-updated macro
+      if (macroType === "recently-updated") {
+        const max = (node as any).getAttribute?.("data-max") || "";
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const types = (node as any).getAttribute?.("data-types") || "";
+
+        let params = "";
+        if (max) params += ` max=${max}`;
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (types) params += ` types="${types}"`;
+
+        return `\n\n:::recently-updated${params}\n:::\n\n`;
+      }
+
+      // Pagetree macro
+      if (macroType === "pagetree") {
+        const root = (node as any).getAttribute?.("data-root") || "";
+        const startDepth = (node as any).getAttribute?.("data-startdepth") || "";
+        const expandCollapseAll = (node as any).getAttribute?.("data-expandcollapseall") === "true";
+        const searchBox = (node as any).getAttribute?.("data-searchbox") === "true";
+
+        let params = "";
+        if (root) params += ` root="${root}"`;
+        if (startDepth) params += ` startDepth=${startDepth}`;
+        if (expandCollapseAll) params += " expandCollapseAll";
+        if (searchBox) params += " searchBox";
+
+        return `\n\n:::pagetree${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
