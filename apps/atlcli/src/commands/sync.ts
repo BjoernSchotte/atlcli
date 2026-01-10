@@ -50,6 +50,7 @@ interface SyncOptions {
   noWatch: boolean;
   noPoll: boolean;
   json: boolean;
+  autoCreate: boolean;
   webhookPort?: number;
   webhookUrl?: string;
 }
@@ -95,6 +96,7 @@ export async function handleSync(
     noWatch: hasFlag(flags, "no-watch"),
     noPoll: hasFlag(flags, "no-poll"),
     json: opts.json,
+    autoCreate: hasFlag(flags, "auto-create"),
     webhookPort: webhookPortStr ? Number(webhookPortStr) : undefined,
     webhookUrl: getFlag(flags, "webhook-url"),
   };
@@ -574,6 +576,68 @@ class SyncEngine {
         this.emit({
           type: "push",
           message: `Pushed: ${page.title}`,
+          file: filePath,
+          pageId: page.id,
+        });
+      } else if (this.opts.autoCreate) {
+        // Auto-create new page for untracked file
+        const title = frontmatter?.title || basename(filePath, ".md").replace(/-/g, " ");
+
+        // Get space key from scope
+        let spaceKey: string;
+        if (this.opts.scope.type === "space") {
+          spaceKey = this.opts.scope.spaceKey;
+        } else if (this.opts.scope.type === "tree") {
+          // Get space from ancestor page
+          const ancestor = await this.client.getPage(this.opts.scope.ancestorId);
+          spaceKey = ancestor.spaceKey ?? "";
+        } else {
+          // Single page scope - get space from that page
+          const refPage = await this.client.getPage(this.opts.scope.pageId);
+          spaceKey = refPage.spaceKey ?? "";
+        }
+
+        if (this.opts.dryRun) {
+          this.emit({
+            type: "push",
+            message: `Would create: ${title} in space ${spaceKey}`,
+            file: filePath,
+          });
+          return;
+        }
+
+        // Create the page
+        const parentId = this.opts.scope.type === "tree" ? this.opts.scope.ancestorId : undefined;
+        const page = await this.client.createPage({
+          spaceKey,
+          title,
+          storage,
+          parentId,
+        });
+
+        // Add frontmatter to local file
+        const newFrontmatter: AtlcliFrontmatter = { id: page.id, title: page.title };
+        const contentWithFrontmatter = addFrontmatter(markdownContent, newFrontmatter);
+        await writeTextFile(filePath, contentWithFrontmatter);
+
+        // Create metadata
+        const newMeta = createEnhancedMeta({
+          id: page.id,
+          title: page.title,
+          spaceKey: page.spaceKey ?? spaceKey,
+          version: page.version ?? 1,
+          localContent: markdownContent,
+          remoteContent: markdownContent,
+        });
+
+        await this.writeMeta(filePath, newMeta);
+        await writeBase(filePath, markdownContent);
+        this.fileToMeta.set(filePath, newMeta);
+        this.idToFile.set(page.id, filePath);
+
+        this.emit({
+          type: "push",
+          message: `Created: ${page.title} (ID: ${page.id})`,
           file: filePath,
           pageId: page.id,
         });
