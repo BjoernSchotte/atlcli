@@ -90,6 +90,140 @@ atlcli docs sync <dir>                   # Bidirectional sync daemon
 atlcli docs resolve <file> --accept <mode>
 ```
 
+## Bidirectional Sync
+
+The `docs sync` command starts a daemon that keeps local files and Confluence pages in sync automatically.
+
+### Basic Usage
+
+```bash
+# Sync entire space
+atlcli docs sync ./docs --space DEV
+
+# Sync with faster polling (every 15 seconds)
+atlcli docs sync ./docs --space DEV --poll-interval 15000
+
+# Sync a page tree (parent and all children)
+atlcli docs sync ./docs --ancestor 12345
+
+# Sync a single page
+atlcli docs sync ./page.md --page-id 12345
+```
+
+### Auto-Create New Pages
+
+With `--auto-create`, new markdown files are automatically created as Confluence pages:
+
+```bash
+# Start sync with auto-create enabled
+atlcli docs sync ./docs --space DEV --auto-create
+
+# Now create a new file - it will be pushed to Confluence automatically
+echo "# New Page\n\nContent here." > ./docs/new-page.md
+# The daemon detects the new file, creates a page, and adds frontmatter with the page ID
+```
+
+### Sync Options
+
+```bash
+atlcli docs sync <dir> [options]
+
+Scope options (one required):
+  --page-id <id>        Sync single page by ID
+  --ancestor <id>       Sync page tree under parent ID
+  --space <key>         Sync entire space
+
+Behavior options:
+  --poll-interval <ms>  Polling interval in ms (default: 30000)
+  --no-poll             Disable polling (local watch only)
+  --no-watch            Disable local file watching (poll only)
+  --on-conflict <mode>  Conflict handling: merge|local|remote (default: merge)
+  --auto-create         Auto-create Confluence pages for new local files
+  --dry-run             Show what would sync without changes
+  --json                JSON output for scripting
+  --profile <name>      Use specific auth profile
+
+Webhook options (optional, for real-time updates):
+  --webhook-port <port> Start webhook server on port
+  --webhook-url <url>   Public URL to register with Confluence
+```
+
+### How Sync Works
+
+1. **Initial sync**: Pulls all pages in scope and creates local files with frontmatter
+2. **Local changes**: File watcher detects edits and pushes to Confluence
+3. **Remote changes**: Poller checks for Confluence edits and pulls updates
+4. **Conflicts**: Three-way merge automatically resolves non-overlapping changes
+
+### Conflict Resolution
+
+When both local and remote change the same lines, conflicts are marked with git-style markers:
+
+```markdown
+<<<<<<< LOCAL
+Your local changes
+=======
+Remote changes from Confluence
+>>>>>>> REMOTE
+```
+
+Resolve conflicts manually or use:
+
+```bash
+# Accept local version
+atlcli docs resolve ./docs/page.md --accept local
+
+# Accept remote version
+atlcli docs resolve ./docs/page.md --accept remote
+```
+
+### Checking Sync Status
+
+```bash
+atlcli docs status ./docs
+
+# Output:
+#   synced:          15 files
+#   local-modified:   2 files
+#   remote-modified:  1 file
+#   conflict:         1 file
+```
+
+### Example Workflows
+
+**Team documentation workflow:**
+```bash
+# Initial setup
+atlcli docs init ./team-docs --space TEAM
+atlcli docs pull ./team-docs
+
+# Start sync daemon (runs in background)
+atlcli docs sync ./team-docs --space TEAM --poll-interval 30000 &
+
+# Edit files locally - changes sync automatically
+vim ./team-docs/architecture.md
+```
+
+**CI/CD documentation publish:**
+```bash
+# One-time push (no daemon)
+atlcli docs push ./docs --space DOCS
+
+# Or pull latest, merge, and push
+atlcli docs pull ./docs --space DOCS
+# ... make changes ...
+atlcli docs push ./docs
+```
+
+**Watch mode for development:**
+```bash
+# Watch local changes only (no polling)
+atlcli docs sync ./docs --space DEV --no-poll
+
+# Poll only (no file watching)
+atlcli docs sync ./docs --space DEV --no-watch --poll-interval 10000
+```
+
 ## File Format
 
 Files use YAML frontmatter for page tracking:
