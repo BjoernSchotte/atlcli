@@ -15,9 +15,40 @@ const md = new MarkdownIt({
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
   const info = (token.info || "").trim();
+  const content = token.content;
+
+  // Parse extended syntax: ```lang{title="..." collapse}
+  const extendedMatch = info.match(/^(\w*)\{(.+)\}$/);
+  if (extendedMatch) {
+    const lang = extendedMatch[1] || "";
+    const attrsStr = extendedMatch[2];
+
+    // Parse attributes
+    const titleMatch = attrsStr.match(/title="([^"]*)"/);
+    const hasCollapse = /\bcollapse\b/.test(attrsStr);
+
+    const title = titleMatch ? titleMatch[1] : "";
+
+    // Build Confluence code macro
+    let macroHtml = `<ac:structured-macro ac:name="code">`;
+    if (lang) {
+      macroHtml += `\n<ac:parameter ac:name="language">${escapeHtml(lang)}</ac:parameter>`;
+    }
+    if (title) {
+      macroHtml += `\n<ac:parameter ac:name="title">${escapeHtml(title)}</ac:parameter>`;
+    }
+    if (hasCollapse) {
+      macroHtml += `\n<ac:parameter ac:name="collapse">true</ac:parameter>`;
+    }
+    macroHtml += `\n<ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>\n</ac:structured-macro>`;
+
+    return macroHtml;
+  }
+
+  // Regular code block
   const lang = info ? ` language-${escapeHtml(info)}` : "";
-  const content = escapeHtml(token.content);
-  return `<pre><code class=\"${lang.trim()}\">${content}</code></pre>`;
+  const escapedContent = escapeHtml(content);
+  return `<pre><code class="${lang.trim()}">${escapedContent}</code></pre>`;
 };
 
 /**
@@ -151,7 +182,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code"];
 
 /**
  * Valid status colors in Confluence
@@ -246,6 +277,25 @@ function preprocessStorageMacros(storage: string): string {
       const body = bodyMatch ? bodyMatch[1] : "";
 
       return `<div data-macro="panel" data-title="${escapeHtml(title)}" data-bgcolor="${escapeHtml(bgColor)}" data-bordercolor="${escapeHtml(borderColor)}">${body}</div>`;
+    }
+  );
+
+  // Convert code macro (with language, title, collapse)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="code"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const langMatch = inner.match(/<ac:parameter\s+ac:name="language"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const titleMatch = inner.match(/<ac:parameter\s+ac:name="title"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const collapseMatch = inner.match(/<ac:parameter\s+ac:name="collapse"[^>]*>([^<]*)<\/ac:parameter>/i);
+      // Code is in plain-text-body, possibly wrapped in CDATA
+      const bodyMatch = inner.match(/<ac:plain-text-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-body>/i);
+
+      const lang = langMatch ? langMatch[1] : "";
+      const title = titleMatch ? titleMatch[1] : "";
+      const collapse = collapseMatch ? collapseMatch[1] : "";
+      const code = bodyMatch ? bodyMatch[1] : "";
+
+      return `<pre data-macro="code" data-lang="${escapeHtml(lang)}" data-title="${escapeHtml(title)}" data-collapse="${escapeHtml(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
     }
   );
 
@@ -385,6 +435,29 @@ export function storageToMarkdown(storage: string): string {
     filter: (node) => node.nodeName === "PRE" && node.firstChild?.nodeName === "CODE",
     replacement: (_content, node) => {
       const codeNode = (node.firstChild as any) ?? null;
+
+      // Check if this is a Confluence code macro
+      const isMacro = (node as any).getAttribute?.("data-macro") === "code";
+      if (isMacro) {
+        const lang = (node as any).getAttribute?.("data-lang") || "";
+        const title = (node as any).getAttribute?.("data-title") || "";
+        const collapse = (node as any).getAttribute?.("data-collapse") || "";
+        const text = codeNode?.textContent ?? "";
+
+        // Build info string with optional title and collapse
+        let infoString = lang;
+        if (title || collapse === "true") {
+          // Use extended syntax: ```lang {title="..." collapse}
+          let attrs = "";
+          if (title) attrs += ` title="${title}"`;
+          if (collapse === "true") attrs += " collapse";
+          infoString = `${lang}{${attrs.trim()}}`;
+        }
+
+        return `\n\n\`\`\`${infoString}\n${text}\n\`\`\`\n\n`;
+      }
+
+      // Regular code block
       const className = codeNode?.getAttribute?.("class") ?? "";
       const lang = className.replace(/^language-/, "").trim();
       const text = codeNode?.textContent ?? "";
