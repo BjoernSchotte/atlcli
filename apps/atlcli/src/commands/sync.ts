@@ -26,6 +26,9 @@ import {
   resolveConflicts,
   WebhookServer,
   WebhookPayload,
+  parseFrontmatter,
+  addFrontmatter,
+  AtlcliFrontmatter,
 } from "@atlcli/core";
 
 import {
@@ -159,13 +162,41 @@ class SyncEngine {
     const pages = await this.client.getAllPages({ scope: this.opts.scope });
     this.emit({ type: "status", message: `Found ${pages.length} pages in scope` });
 
-    // Load existing local files
+    // Load existing local files - check both .meta.json and frontmatter
     const existingFiles = await this.collectMarkdownFiles(this.opts.dir);
     for (const filePath of existingFiles) {
-      const meta = await this.readMeta(filePath);
-      if (meta?.id) {
+      // First try .meta.json
+      let meta = await this.readMeta(filePath);
+      let pageId = meta?.id;
+
+      // If no meta, check frontmatter
+      if (!pageId) {
+        try {
+          const content = await readTextFile(filePath);
+          const { frontmatter } = parseFrontmatter(content);
+          if (frontmatter?.id) {
+            pageId = frontmatter.id;
+            // Create a minimal meta from frontmatter
+            meta = {
+              id: frontmatter.id,
+              title: frontmatter.title || basename(filePath, ".md"),
+              spaceKey: "",
+              version: 0, // Unknown version - will check remote
+              lastSyncedAt: "",
+              localHash: "",
+              remoteHash: "",
+              baseHash: "",
+              syncState: "synced",
+            };
+          }
+        } catch {
+          // File read error, skip
+        }
+      }
+
+      if (pageId && meta) {
         this.fileToMeta.set(filePath, meta as EnhancedMeta);
-        this.idToFile.set(meta.id, filePath);
+        this.idToFile.set(pageId, filePath);
       }
     }
 
@@ -363,7 +394,7 @@ class SyncEngine {
 
       const filePath = existingFile ?? join(
         this.opts.dir,
-        `${page.id}__${slugify(page.title) || "page"}.md`
+        `${slugify(page.title) || "page"}.md`
       );
 
       if (this.opts.dryRun) {
@@ -376,7 +407,13 @@ class SyncEngine {
         return;
       }
 
-      await writeTextFile(filePath, markdown);
+      // Add frontmatter with page ID and title
+      const frontmatter: AtlcliFrontmatter = {
+        id: page.id,
+        title: page.title,
+      };
+      const contentWithFrontmatter = addFrontmatter(markdown, frontmatter);
+      await writeTextFile(filePath, contentWithFrontmatter);
 
       // Create enhanced metadata
       const meta = createEnhancedMeta({
@@ -428,11 +465,17 @@ class SyncEngine {
   /** Push a local file to Confluence */
   private async pushFile(filePath: string): Promise<void> {
     try {
-      const meta = await this.readMeta(filePath);
+      let meta = await this.readMeta(filePath);
       const localContent = await readTextFile(filePath);
 
+      // Parse frontmatter to get page ID and clean content
+      const { frontmatter, content: markdownContent } = parseFrontmatter(localContent);
+
+      // Get page ID from meta or frontmatter
+      const pageId = meta?.id || frontmatter?.id;
+
       // Check for conflict markers
-      if (hasConflictMarkers(localContent)) {
+      if (hasConflictMarkers(markdownContent)) {
         this.emit({
           type: "conflict",
           message: `File has unresolved conflicts: ${filePath}`,
@@ -441,16 +484,31 @@ class SyncEngine {
         return;
       }
 
-      const storage = markdownToStorage(localContent);
+      // Convert markdown (without frontmatter) to storage format
+      const storage = markdownToStorage(markdownContent);
 
-      if (meta?.id) {
+      if (pageId) {
+        // Create minimal meta if we only have frontmatter
+        if (!meta && frontmatter) {
+          meta = {
+            id: frontmatter.id!,
+            title: frontmatter.title || basename(filePath, ".md"),
+            spaceKey: "",
+            version: 0,
+            lastSyncedAt: "",
+            localHash: "",
+            remoteHash: "",
+            baseHash: "",
+            syncState: "synced",
+          };
+        }
         // Update existing page
-        const current = await this.client.getPage(meta.id);
+        const current = await this.client.getPage(pageId);
 
         // Check if remote changed since last sync
-        if (meta.version && current.version && current.version > meta.version) {
+        if (meta!.version && current.version && current.version > meta!.version) {
           // Remote changed - need merge
-          await this.mergeChanges(meta.id, filePath, localContent, meta as EnhancedMeta);
+          await this.mergeChanges(pageId, filePath, markdownContent, meta as EnhancedMeta);
           return;
         }
 
@@ -459,15 +517,15 @@ class SyncEngine {
             type: "push",
             message: `Would push: ${filePath}`,
             file: filePath,
-            pageId: meta.id,
+            pageId,
           });
           return;
         }
 
         const version = (current.version ?? 1) + 1;
         const page = await this.client.updatePage({
-          id: meta.id,
-          title: meta.title ?? current.title,
+          id: pageId,
+          title: meta!.title ?? current.title,
           storage,
           version,
         });
@@ -478,12 +536,12 @@ class SyncEngine {
           title: page.title,
           spaceKey: page.spaceKey ?? (meta as any).spaceKey ?? "",
           version: page.version ?? version,
-          localContent,
-          remoteContent: localContent,
+          localContent: markdownContent,
+          remoteContent: markdownContent,
         });
 
         await this.writeMeta(filePath, newMeta);
-        await writeBase(filePath, localContent);
+        await writeBase(filePath, markdownContent);
         this.fileToMeta.set(filePath, newMeta);
 
         this.emit({
