@@ -285,6 +285,43 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle section macro with nested columns
+  // Section contains column macros inside
+  processed = processed.replace(SECTION_MACRO_REGEX, (_, params, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    // Parse section parameters
+    const hasBorder = params ? /\bborder\b/i.test(params) : false;
+
+    // Process columns inside the section
+    let columnsHtml = "";
+    const columnRegex = /:::column(?:[ \t]+(.+))?\n([\s\S]*?):::column-end/gm;
+    let columnMatch;
+
+    while ((columnMatch = columnRegex.exec(content)) !== null) {
+      const columnParams = columnMatch[1] || "";
+      const columnContent = columnMatch[2].trim();
+
+      const widthMatch = columnParams.match(/width="([^"]*)"/i);
+
+      let columnHtml = `<ac:structured-macro ac:name="column">`;
+      if (widthMatch) {
+        columnHtml += `\n<ac:parameter ac:name="width">${escapeHtml(widthMatch[1])}</ac:parameter>`;
+      }
+      columnHtml += `\n<ac:rich-text-body>\n${md.render(columnContent).trim()}\n</ac:rich-text-body>\n</ac:structured-macro>`;
+      columnsHtml += columnHtml + "\n";
+    }
+
+    let sectionHtml = `<ac:structured-macro ac:name="section">`;
+    if (hasBorder) {
+      sectionHtml += `\n<ac:parameter ac:name="border">true</ac:parameter>`;
+    }
+    sectionHtml += `\n<ac:rich-text-body>\n${columnsHtml}</ac:rich-text-body>\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html: sectionHtml });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -356,7 +393,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column"];
 
 /**
  * Valid status colors in Confluence
@@ -412,6 +449,17 @@ const MULTIMEDIA_MACRO_REGEX = /^:::multimedia(?:[ \t]+(.+))?\n?:::\s*$/gm;
  * Regex for widget macro: :::widget url="..."
  */
 const WIDGET_MACRO_REGEX = /^:::widget(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for section macro with nested columns: :::section ... :::column ... ::: ... :::
+ * Uses a special delimiter :::section-end to avoid ambiguity with nested ::: blocks
+ */
+const SECTION_MACRO_REGEX = /^:::section(?:[ \t]+(.+))?\n([\s\S]*?)^:::section-end\s*$/gm;
+
+/**
+ * Regex for column macro inside section: :::column width="50%"
+ */
+const COLUMN_MACRO_REGEX = /^:::column(?:[ \t]+(.+))?\n([\s\S]*?)^:::column-end\s*$/gm;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -641,6 +689,35 @@ function preprocessStorageMacros(storage: string): string {
     }
   );
 
+  // Convert column macros FIRST (before section) to avoid nested regex issues
+  // Column must be processed before section because section's body contains columns
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="column"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const widthMatch = inner.match(/<ac:parameter\s+ac:name="width"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const width = widthMatch ? widthMatch[1] : "";
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="column" data-width="${escapeHtml(width)}">${body}</div>`;
+    }
+  );
+
+  // Convert section macro (columns already converted to divs above)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="section"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const borderMatch = inner.match(/<ac:parameter\s+ac:name="border"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const border = borderMatch ? borderMatch[1].toLowerCase() === "true" : false;
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="section" data-border="${border}">${body}</div>`;
+    }
+  );
+
   // Preserve all unknown/3rd-party macros (whitelist approach)
   // IMPORTANT: Handle self-closing macros FIRST to prevent greedy matching
   storage = storage.replace(
@@ -854,6 +931,28 @@ export function storageToMarkdown(storage: string): string {
         if (height) params += ` height="${height}"`;
 
         return `\n\n:::widget${params}\n:::\n\n`;
+      }
+
+      // Column macro (inside section) - must be processed BEFORE section
+      // to ensure nested content is converted first
+      if (macroType === "column") {
+        const width = (node as any).getAttribute?.("data-width") || "";
+
+        let params = "";
+        if (width) params += ` width="${width}"`;
+
+        return `\n:::column${params}\n${content.trim()}\n:::column-end\n`;
+      }
+
+      // Section macro (contains column macros)
+      if (macroType === "section") {
+        const border = (node as any).getAttribute?.("data-border") === "true";
+
+        let params = "";
+        if (border) params += " border";
+
+        // Content will contain converted column divs
+        return `\n\n:::section${params}\n${content}\n:::section-end\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
