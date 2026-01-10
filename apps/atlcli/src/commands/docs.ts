@@ -51,7 +51,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
   const sub = args[0];
   switch (sub) {
     case "pull":
-      await handlePull(flags, opts);
+      await handlePull(args.slice(1), flags, opts);
       return;
     case "push":
       await handlePush(args.slice(1), flags, opts);
@@ -84,12 +84,12 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
   return new ConfluenceClient(profile);
 }
 
-async function handlePull(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handlePull(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const space = getFlag(flags, "space");
   if (!space) {
     fail(opts, 1, ERROR_CODES.USAGE, "--space is required.");
   }
-  const outDir = getFlag(flags, "out") ?? "./docs";
+  const outDir = args[0] || getFlag(flags, "out") || "./docs";
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const cql = getFlag(flags, "cql") ?? `space=${space} and type=page`;
 
