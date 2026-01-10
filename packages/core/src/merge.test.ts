@@ -275,3 +275,223 @@ Line 2`;
     expect(resolved).toContain("Line 2");
   });
 });
+
+describe("threeWayMerge - additional edge cases", () => {
+  describe("deletion scenarios", () => {
+    test("local deletes line, remote unchanged", () => {
+      const base = "Line 1\nLine 2\nLine 3\n";
+      const local = "Line 1\nLine 3\n";
+      const remote = "Line 1\nLine 2\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain("Line 2");
+    });
+
+    test("remote deletes line, local unchanged", () => {
+      const base = "Line 1\nLine 2\nLine 3\n";
+      const local = "Line 1\nLine 2\nLine 3\n";
+      const remote = "Line 1\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain("Line 2");
+    });
+
+    test("both delete same line", () => {
+      const base = "Line 1\nLine 2\nLine 3\n";
+      const local = "Line 1\nLine 3\n";
+      const remote = "Line 1\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain("Line 2");
+    });
+
+    test("conflict: local deletes, remote modifies", () => {
+      const base = "Line 1\nLine 2\nLine 3\n";
+      const local = "Line 1\nLine 3\n";
+      const remote = "Line 1\nLine 2 modified\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(false);
+      expect(result.conflictCount).toBeGreaterThan(0);
+    });
+
+    test("conflict: local modifies, remote deletes", () => {
+      const base = "Line 1\nLine 2\nLine 3\n";
+      const local = "Line 1\nLine 2 modified\nLine 3\n";
+      const remote = "Line 1\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(false);
+      expect(result.conflictCount).toBeGreaterThan(0);
+    });
+  });
+
+  describe("insertion scenarios", () => {
+    test("local adds lines at beginning", () => {
+      const base = "Line 1\nLine 2\n";
+      const local = "New first\nLine 1\nLine 2\n";
+      const remote = "Line 1\nLine 2\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("New first");
+    });
+
+    test("remote adds lines at end", () => {
+      const base = "Line 1\nLine 2\n";
+      const local = "Line 1\nLine 2\n";
+      const remote = "Line 1\nLine 2\nNew last\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("New last");
+    });
+
+    test("both add same lines at same location", () => {
+      const base = "Line 1\nLine 2\n";
+      const local = "Line 1\nNew middle\nLine 2\n";
+      const remote = "Line 1\nNew middle\nLine 2\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      // Should only have one copy of "New middle"
+      const count = (result.content.match(/New middle/g) || []).length;
+      expect(count).toBe(1);
+    });
+
+    test("conflict: both add different lines at same location", () => {
+      const base = "Line 1\nLine 3\n";
+      const local = "Line 1\nLocal insert\nLine 3\n";
+      const remote = "Line 1\nRemote insert\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(false);
+      expect(result.content).toContain("Local insert");
+      expect(result.content).toContain("Remote insert");
+    });
+  });
+
+  describe("real-world markdown scenarios", () => {
+    test("merges heading changes with body changes", () => {
+      const base = "# Title\n\nParagraph 1\n\nParagraph 2\n";
+      const local = "# Updated Title\n\nParagraph 1\n\nParagraph 2\n";
+      const remote = "# Title\n\nParagraph 1\n\nParagraph 2 with edits\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Updated Title");
+      expect(result.content).toContain("Paragraph 2 with edits");
+    });
+
+    test("merges list item additions", () => {
+      const base = "- Item 1\n- Item 2\n";
+      const local = "- Item 1\n- Item 1.5\n- Item 2\n";
+      const remote = "- Item 1\n- Item 2\n- Item 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Item 1.5");
+      expect(result.content).toContain("Item 3");
+    });
+
+    test("handles code block changes independently", () => {
+      const base = "Text before\n\n```js\ncode();\n```\n\nText after\n";
+      const local = "Text before updated\n\n```js\ncode();\n```\n\nText after\n";
+      const remote = "Text before\n\n```js\nupdatedCode();\n```\n\nText after\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Text before updated");
+      expect(result.content).toContain("updatedCode()");
+    });
+  });
+
+  describe("complex scenarios", () => {
+    test("handles multiple non-overlapping changes", () => {
+      const base = "A\nB\nC\nD\nE\n";
+      const local = "A modified\nB\nC\nD\nE modified\n";
+      const remote = "A\nB modified\nC\nD modified\nE\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("A modified");
+      expect(result.content).toContain("B modified");
+      expect(result.content).toContain("D modified");
+      expect(result.content).toContain("E modified");
+    });
+
+    test("handles complete content replacement on both sides", () => {
+      const base = "Old content\n";
+      const local = "Completely new local\n";
+      const remote = "Completely new remote\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(false);
+      expect(result.conflictCount).toBeGreaterThan(0);
+    });
+
+    test("handles empty lines correctly", () => {
+      const base = "Line 1\n\nLine 3\n";
+      const local = "Line 1\n\nLine 3 modified\n";
+      const remote = "Line 1\n\nLine 3\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Line 3 modified");
+    });
+
+    test("handles trailing newlines consistently", () => {
+      const base = "Content";
+      const local = "Content\n";
+      const remote = "Content";
+
+      const result = threeWayMerge(base, local, remote);
+      // Should succeed since normalization handles this
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("empty content edge cases", () => {
+    test("both change empty base to same content", () => {
+      const base = "";
+      const local = "Same new content\n";
+      const remote = "Same new content\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+    });
+
+    test("conflict: both change empty base to different content", () => {
+      const base = "";
+      const local = "Local new content\n";
+      const remote = "Remote new content\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(false);
+    });
+
+    test("local empties content, remote unchanged", () => {
+      const base = "Original content\n";
+      const local = "";
+      const remote = "Original content\n";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      // Local deleted everything, remote unchanged, so local wins
+      expect(result.content.trim()).toBe("");
+    });
+
+    test("remote empties content, local unchanged", () => {
+      const base = "Original content\n";
+      const local = "Original content\n";
+      const remote = "";
+
+      const result = threeWayMerge(base, local, remote);
+      expect(result.success).toBe(true);
+      expect(result.content.trim()).toBe("");
+    });
+  });
+});
