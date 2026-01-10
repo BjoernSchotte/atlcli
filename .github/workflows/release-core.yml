@@ -59,6 +59,11 @@ jobs:
           npm version ${{ inputs.version }} --no-git-tag-version
           cd ../..
 
+          # Update @atlcli/plugin-api
+          cd packages/plugin-api
+          npm version ${{ inputs.version }} --no-git-tag-version
+          cd ../..
+
       - name: Build packages
         run: bun run build
 
@@ -69,7 +74,7 @@ jobs:
 
       - name: Commit version bump
         run: |
-          git add packages/core/package.json packages/confluence/package.json
+          git add packages/core/package.json packages/confluence/package.json packages/plugin-api/package.json
           git commit -m "chore: release core packages v${{ inputs.version }}"
 
       - name: Create git tag
@@ -97,6 +102,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Publish @atlcli/plugin-api to npm
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cd packages/plugin-api
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -108,12 +121,14 @@ jobs:
             This release includes:
             - `@atlcli/core@${{ inputs.version }}`
             - `@atlcli/confluence@${{ inputs.version }}`
+            - `@atlcli/plugin-api@${{ inputs.version }}`
 
             ### Installation
 
             ```bash
             npm install @atlcli/core@${{ inputs.version }}
             npm install @atlcli/confluence@${{ inputs.version }}
+            npm install @atlcli/plugin-api@${{ inputs.version }}
             ```
           draft: false
           prerelease: false
