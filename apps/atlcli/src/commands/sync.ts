@@ -69,6 +69,12 @@ export async function handleSync(
   flags: Record<string, string | boolean>,
   opts: OutputOptions
 ): Promise<void> {
+  // Show help if requested
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(syncHelp(), opts);
+    return;
+  }
+
   // Parse scope
   const pageId = getFlag(flags, "page-id");
   const ancestorId = getFlag(flags, "ancestor");
@@ -859,7 +865,7 @@ Behavior options:
   --no-poll             Disable polling (local watch only)
   --no-watch            Disable local file watching (poll only)
   --on-conflict <mode>  Conflict handling: merge|local|remote (default: merge)
-  --flat                Flat file structure (no subdirs)
+  --auto-create         Auto-create Confluence pages for new local files
   --dry-run             Show what would sync without changes
   --json                JSON output for scripting
   --profile <name>      Use specific auth profile
@@ -870,6 +876,7 @@ Webhook options (optional, for real-time updates):
 
 Examples:
   atlcli docs sync ./docs --space DEV
+  atlcli docs sync ./docs --space DEV --auto-create
   atlcli docs sync ./docs --ancestor 12345 --poll-interval 10000
   atlcli docs sync ./page.md --page-id 12345
   atlcli docs sync ./docs --space DEV --webhook-port 3000 --webhook-url https://example.com/webhook
