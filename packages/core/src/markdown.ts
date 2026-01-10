@@ -37,11 +37,19 @@ export function markdownToStorage(markdown: string): string {
   const macros: { placeholder: string; html: string }[] = [];
   let placeholderIndex = 0;
 
-  // First, handle inline status macros: {status:color}text{status}
+  // Handle inline status macros: {status:color}text{status}
   let processed = markdown.replace(STATUS_REGEX, (_, color, text) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
     const normalizedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
     const html = `<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">${escapeHtml(normalizedColor)}</ac:parameter><ac:parameter ac:name="title">${escapeHtml(text.trim())}</ac:parameter></ac:structured-macro>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle anchor macros: {#anchor-name}
+  processed = processed.replace(ANCHOR_REGEX, (_, anchorName) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:structured-macro ac:name="anchor"><ac:parameter ac:name="">${escapeHtml(anchorName)}</ac:parameter></ac:structured-macro>`;
     macros.push({ placeholder, html });
     return placeholder;
   });
@@ -117,7 +125,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor"];
 
 /**
  * Valid status colors in Confluence
@@ -128,6 +136,11 @@ const STATUS_COLORS = ["grey", "red", "yellow", "green", "blue"];
  * Regex for inline status macro: {status:color}text{status}
  */
 const STATUS_REGEX = /\{status:(\w+)\}([^{]*)\{status\}/gi;
+
+/**
+ * Regex for anchor macro: {#anchor-name}
+ */
+const ANCHOR_REGEX = /\{#([a-zA-Z][a-zA-Z0-9_-]*)\}/g;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -173,6 +186,17 @@ function preprocessStorageMacros(storage: string): string {
       const color = colorMatch ? colorMatch[1].toLowerCase() : "grey";
       const title = titleMatch ? titleMatch[1] : "";
       return `<span data-macro="status" data-color="${escapeHtml(color)}" data-title="${escapeHtml(title)}">[${escapeHtml(title)}]</span>`;
+    }
+  );
+
+  // Convert anchor macro (use a zero-width space so turndown doesn't drop it)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="anchor"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Anchor name can be in parameter with name="" or name="0"
+      const nameMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const anchorName = nameMatch ? nameMatch[1] : "";
+      return `<span data-macro="anchor" data-name="${escapeHtml(anchorName)}">\u200B</span>`;
     }
   );
 
@@ -241,6 +265,17 @@ export function storageToMarkdown(storage: string): string {
       const color = (node as any).getAttribute?.("data-color") || "grey";
       const title = (node as any).getAttribute?.("data-title") || "";
       return `{status:${color}}${title}{status}`;
+    },
+  });
+
+  // Handle anchor macro
+  service.addRule("anchorMacro", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-macro") === "anchor";
+    },
+    replacement: (_content, node) => {
+      const name = (node as any).getAttribute?.("data-name") || "";
+      return name ? `{#${name}}` : "";
     },
   });
 
