@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
-import { join, basename, extname } from "node:path";
+import { join, basename, extname, dirname, relative } from "node:path";
 import {
   ConfluenceClient,
   ERROR_CODES,
@@ -20,6 +20,32 @@ import {
   slugify,
   storageToMarkdown,
   writeTextFile,
+  // New imports for local storage
+  findAtlcliDir,
+  initAtlcliDir,
+  isInitialized,
+  readConfig,
+  readState,
+  writeState,
+  updatePageState,
+  getPageByPath,
+  getPageById,
+  computeSyncState as computeSyncStateFromHashes,
+  readBaseContent,
+  writeBaseContent,
+  slugifyTitle,
+  generateUniqueFilename,
+  getRelativePath,
+  AtlcliConfig,
+  AtlcliState,
+  PageState,
+  SyncState as CoreSyncState,
+  // Frontmatter
+  parseFrontmatter,
+  addFrontmatter,
+  stripFrontmatter,
+  extractTitleFromMarkdown,
+  AtlcliFrontmatter,
 } from "@atlcli/core";
 import { handleSync, syncHelp } from "./sync.js";
 
@@ -50,11 +76,17 @@ interface LegacyMeta {
 export async function handleDocs(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
   switch (sub) {
+    case "init":
+      await handleInit(args.slice(1), flags, opts);
+      return;
     case "pull":
       await handlePull(args.slice(1), flags, opts);
       return;
     case "push":
       await handlePush(args.slice(1), flags, opts);
+      return;
+    case "add":
+      await handleAdd(args.slice(1), flags, opts);
       return;
     case "watch":
       await handleWatch(args.slice(1), flags, opts);
@@ -84,71 +116,320 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
   return new ConfluenceClient(profile);
 }
 
-async function handlePull(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+/**
+ * Initialize a directory for Confluence sync.
+ * Creates .atlcli/ with config.json, state.json, and cache/ directory.
+ */
+async function handleInit(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const dir = args[0] || ".";
   const space = getFlag(flags, "space");
+
   if (!space) {
     fail(opts, 1, ERROR_CODES.USAGE, "--space is required.");
   }
-  const outDir = args[0] || getFlag(flags, "out") || "./docs";
-  const limit = Number(getFlag(flags, "limit") ?? 50);
-  const cql = getFlag(flags, "cql") ?? `space=${space} and type=page`;
 
+  if (isInitialized(dir)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Directory already initialized: ${dir}/.atlcli/`);
+  }
+
+  // Get profile info for baseUrl
+  const appConfig = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(appConfig, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+
+  await ensureDir(dir);
+  await initAtlcliDir(dir, {
+    space,
+    baseUrl: profile.baseUrl,
+    profile: profile.name,
+    settings: {
+      autoCreatePages: false,
+      preserveHierarchy: true,
+      defaultParentId: null,
+    },
+  });
+
+  output(
+    opts.json
+      ? { schemaVersion: "1", initialized: true, dir, space }
+      : `Initialized ${dir}/.atlcli/ for space ${space}`,
+    opts
+  );
+}
+
+async function handlePull(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const outDir = args[0] || getFlag(flags, "out") || ".";
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const force = hasFlag(flags, "force");
+
+  // Check if directory is initialized
+  let space = getFlag(flags, "space");
+  let atlcliDir = findAtlcliDir(outDir);
+
+  if (atlcliDir) {
+    // Use config from .atlcli/
+    const dirConfig = await readConfig(atlcliDir);
+    space = space || dirConfig.space;
+  } else if (!space) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or run 'docs init' first).");
+  }
+
+  const cql = getFlag(flags, "cql") ?? `space=${space} and type=page`;
   const client = await getClient(flags, opts);
   const pages = await client.searchPages(cql, Number.isNaN(limit) ? 50 : limit);
+
+  // If not initialized, auto-init
+  if (!atlcliDir) {
+    const appConfig = await loadConfig();
+    const profileName = getFlag(flags, "profile");
+    const profile = getActiveProfile(appConfig, profileName);
+    if (profile) {
+      await ensureDir(outDir);
+      await initAtlcliDir(outDir, {
+        space: space!,
+        baseUrl: profile.baseUrl,
+        profile: profile.name,
+      });
+      atlcliDir = outDir;
+    }
+  }
+
   await ensureDir(outDir);
+  const state = atlcliDir ? await readState(atlcliDir) : null;
+  const existingPaths = state ? new Set(Object.keys(state.pathIndex)) : new Set<string>();
 
   let pulled = 0;
+  let skipped = 0;
+
   for (const page of pages) {
     const detail = await client.getPage(page.id);
     const markdown = storageToMarkdown(detail.storage);
-    const fileName = `${detail.id}__${slugify(detail.title) || "page"}.md`;
-    const filePath = join(outDir, fileName);
-    await writeTextFile(filePath, markdown);
-    await writeMeta(filePath, {
+    const normalizedMd = normalizeMarkdown(markdown);
+    const contentHash = hashContent(normalizedMd);
+
+    // Check if we already have this page
+    const existingState = state?.pages[detail.id];
+    if (existingState && !force) {
+      // Check if local has modifications
+      const localPath = join(atlcliDir!, existingState.path);
+      try {
+        const localContent = await readTextFile(localPath);
+        const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
+        const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
+
+        if (localHash !== existingState.baseHash) {
+          // Local has modifications, skip unless --force
+          output(`Skipping ${existingState.path} (local modifications, use --force)`, opts);
+          skipped++;
+          continue;
+        }
+      } catch {
+        // File doesn't exist, will be re-created
+      }
+    }
+
+    // Generate clean filename
+    const baseName = slugifyTitle(detail.title) || "page";
+    let fileName: string;
+    let relativePath: string;
+
+    if (existingState) {
+      // Keep existing path
+      relativePath = existingState.path;
+      fileName = basename(relativePath);
+    } else {
+      // Generate new unique filename
+      fileName = generateUniqueFilename(outDir, baseName, existingPaths);
+      relativePath = fileName;
+      existingPaths.add(relativePath);
+    }
+
+    const filePath = join(outDir, relativePath);
+
+    // Add frontmatter with page ID
+    const frontmatter: AtlcliFrontmatter = {
       id: detail.id,
       title: detail.title,
-      spaceKey: detail.spaceKey ?? space,
-      version: detail.version ?? 1,
-    });
-    pulled += 1;
+    };
+    const contentWithFrontmatter = addFrontmatter(markdown, frontmatter);
+
+    await ensureDir(dirname(filePath));
+    await writeTextFile(filePath, contentWithFrontmatter);
+
+    // Update state and cache
+    if (state && atlcliDir) {
+      updatePageState(state, detail.id, {
+        path: relativePath,
+        title: detail.title,
+        spaceKey: detail.spaceKey ?? space!,
+        version: detail.version ?? 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: null,
+      });
+
+      // Write base content for 3-way merge (without frontmatter)
+      await writeBaseContent(atlcliDir, detail.id, normalizedMd);
+    }
+
+    pulled++;
+  }
+
+  // Save state
+  if (state && atlcliDir) {
+    state.lastSync = new Date().toISOString();
+    await writeState(atlcliDir, state);
   }
 
   output(
     {
       schemaVersion: "1",
-      results: {
-        pulled,
-        outDir,
-      },
-      note: "Markdown conversion supports GFM (tables, task lists, code). Confluence macros may not round-trip.",
+      results: { pulled, skipped, outDir },
+      note: "Files now use frontmatter for page ID. State saved to .atlcli/",
     },
     opts
   );
 }
 
 async function handlePush(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
-  const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
-  const space = getFlag(flags, "space");
+  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
   const client = await getClient(flags, opts);
   const files = await collectMarkdownFiles(dir);
+
+  // Check for .atlcli directory
+  const atlcliDir = findAtlcliDir(dir);
+  let space = getFlag(flags, "space");
+  let state: AtlcliState | undefined;
+
+  if (atlcliDir) {
+    const dirConfig = await readConfig(atlcliDir);
+    space = space || dirConfig.space;
+    state = await readState(atlcliDir);
+  }
 
   let updated = 0;
   let created = 0;
   let skipped = 0;
 
   for (const filePath of files) {
-    const result = await pushFile({ client, filePath, space, opts });
+    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state });
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
     else skipped += 1;
+  }
+
+  // Save state if we have one
+  if (state && atlcliDir) {
+    state.lastSync = new Date().toISOString();
+    await writeState(atlcliDir, state);
   }
 
   output(
     {
       schemaVersion: "1",
       results: { updated, created, skipped },
-      note: "Markdown conversion supports GFM (tables, task lists, code). Confluence macros may not round-trip.",
+      note: "Frontmatter stripped before push. State saved to .atlcli/",
     },
+    opts
+  );
+}
+
+/**
+ * Add a local file to Confluence tracking.
+ * Creates the page in Confluence and adds frontmatter to the local file.
+ */
+async function handleAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const filePath = args[0];
+  if (!filePath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "File path is required.");
+  }
+
+  // Find .atlcli directory
+  const atlcliDir = findAtlcliDir(dirname(filePath));
+  if (!atlcliDir) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Not in an initialized directory. Run 'docs init' first.");
+  }
+
+  const dirConfig = await readConfig(atlcliDir);
+  const state = await readState(atlcliDir);
+  const client = await getClient(flags, opts);
+
+  // Read file content
+  const content = await readTextFile(filePath);
+  const { frontmatter: existingFrontmatter, content: markdownContent } = parseFrontmatter(content);
+
+  // Check if already tracked
+  if (existingFrontmatter?.id) {
+    fail(opts, 1, ERROR_CODES.USAGE, `File already tracked with page ID: ${existingFrontmatter.id}`);
+  }
+
+  // Get title: --title flag > H1 heading > filename
+  let title = getFlag(flags, "title");
+  if (!title) {
+    title = extractTitleFromMarkdown(markdownContent);
+  }
+  if (!title) {
+    title = titleFromFilename(filePath);
+  }
+
+  // Get parent page ID if specified
+  const parentId = getFlag(flags, "parent");
+
+  // Get space (from flag or config)
+  const space = getFlag(flags, "space") || dirConfig.space;
+
+  // Convert to storage format (strip frontmatter if any)
+  const storage = markdownToStorage(markdownContent);
+
+  // Create page in Confluence
+  const page = await client.createPage({
+    spaceKey: space,
+    title,
+    storage,
+    parentId: parentId || dirConfig.settings?.defaultParentId || undefined,
+  });
+
+  // Add frontmatter to file
+  const frontmatter: AtlcliFrontmatter = {
+    id: page.id,
+    title: page.title,
+  };
+  const contentWithFrontmatter = addFrontmatter(markdownContent, frontmatter);
+  await writeTextFile(filePath, contentWithFrontmatter);
+
+  // Update state
+  const relativePath = getRelativePath(atlcliDir, filePath);
+  const normalizedMd = normalizeMarkdown(markdownContent);
+  const contentHash = hashContent(normalizedMd);
+
+  updatePageState(state, page.id, {
+    path: relativePath,
+    title: page.title,
+    spaceKey: page.spaceKey ?? space,
+    version: page.version ?? 1,
+    lastSyncedAt: new Date().toISOString(),
+    localHash: contentHash,
+    remoteHash: contentHash,
+    baseHash: contentHash,
+    syncState: "synced",
+    parentId: parentId || null,
+  });
+
+  await writeState(atlcliDir, state);
+
+  // Write base content for 3-way merge
+  await writeBaseContent(atlcliDir, page.id, normalizedMd);
+
+  output(
+    opts.json
+      ? { schemaVersion: "1", added: true, pageId: page.id, title: page.title, path: relativePath }
+      : `Added ${relativePath} as page "${page.title}" (ID: ${page.id})`,
     opts
   );
 }
@@ -218,39 +499,103 @@ async function pushFile(params: {
   filePath: string;
   space?: string;
   opts: OutputOptions;
+  atlcliDir?: string;
+  state?: AtlcliState;
 }): Promise<PushResult> {
-  const { client, filePath, space, opts } = params;
-  const meta = await readMeta(filePath);
-  const markdown = await readTextFile(filePath);
-  const storage = markdownToStorage(markdown);
+  const { client, filePath, space, opts, atlcliDir, state } = params;
 
-  if (meta?.id) {
-    const current = await client.getPage(meta.id);
-    const title = meta.title || current.title;
+  // Read file and parse frontmatter
+  const rawContent = await readTextFile(filePath);
+  const { frontmatter, content: markdownContent } = parseFrontmatter(rawContent);
+
+  // Also check legacy .meta.json
+  const legacyMeta = await readMeta(filePath);
+
+  // Get page ID from frontmatter or legacy meta
+  const pageId = frontmatter?.id || legacyMeta?.id;
+
+  // Strip frontmatter before converting to storage format
+  const storage = markdownToStorage(markdownContent);
+
+  if (pageId) {
+    // Update existing page
+    const current = await client.getPage(pageId);
+    const title = frontmatter?.title || legacyMeta?.title || current.title;
     const version = (current.version ?? 1) + 1;
-    const page = await client.updatePage({ id: meta.id, title, storage, version });
-    await writeMeta(filePath, {
-      id: page.id,
-      title: page.title,
-      spaceKey: page.spaceKey ?? meta.spaceKey ?? space,
-      version: page.version ?? version,
-    });
+    const page = await client.updatePage({ id: pageId, title, storage, version });
+
+    // Update state if available
+    if (atlcliDir && state) {
+      const relativePath = getRelativePath(atlcliDir, filePath);
+      const normalizedMd = normalizeMarkdown(markdownContent);
+      const contentHash = hashContent(normalizedMd);
+
+      updatePageState(state, page.id, {
+        path: relativePath,
+        title: page.title,
+        spaceKey: page.spaceKey ?? space ?? "",
+        version: page.version ?? version,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: null,
+      });
+
+      await writeBaseContent(atlcliDir, page.id, normalizedMd);
+    } else {
+      // Fall back to legacy meta
+      await writeMeta(filePath, {
+        id: page.id,
+        title: page.title,
+        spaceKey: page.spaceKey ?? legacyMeta?.spaceKey ?? space,
+        version: page.version ?? version,
+      });
+    }
     return "updated";
   }
 
-  const targetSpace = meta?.spaceKey ?? space;
+  // No page ID - skip (use 'docs add' to create new pages)
+  const targetSpace = legacyMeta?.spaceKey ?? space;
   if (!targetSpace) {
     return "skipped";
   }
 
-  const title = meta?.title ?? titleFromFilename(filePath);
+  // For backwards compatibility, still create if legacy meta exists with space
+  const title = legacyMeta?.title ?? titleFromFilename(filePath);
   const page = await client.createPage({ spaceKey: targetSpace, title, storage });
-  await writeMeta(filePath, {
+
+  // Add frontmatter to file
+  const newFrontmatter: AtlcliFrontmatter = {
     id: page.id,
     title: page.title,
-    spaceKey: page.spaceKey ?? targetSpace,
-    version: page.version ?? 1,
-  });
+  };
+  const contentWithFrontmatter = addFrontmatter(markdownContent, newFrontmatter);
+  await writeTextFile(filePath, contentWithFrontmatter);
+
+  // Update state if available
+  if (atlcliDir && state) {
+    const relativePath = getRelativePath(atlcliDir, filePath);
+    const normalizedMd = normalizeMarkdown(markdownContent);
+    const contentHash = hashContent(normalizedMd);
+
+    updatePageState(state, page.id, {
+      path: relativePath,
+      title: page.title,
+      spaceKey: page.spaceKey ?? targetSpace,
+      version: page.version ?? 1,
+      lastSyncedAt: new Date().toISOString(),
+      localHash: contentHash,
+      remoteHash: contentHash,
+      baseHash: contentHash,
+      syncState: "synced",
+      parentId: null,
+    });
+
+    await writeBaseContent(atlcliDir, page.id, normalizedMd);
+  }
+
   return "created";
 }
 
@@ -372,6 +717,10 @@ async function collectMarkdownFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
 
   for (const entry of entries) {
+    // Skip .atlcli directory and other hidden directories
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...(await collectMarkdownFiles(fullPath)));
@@ -425,8 +774,12 @@ function titleFromFilename(path: string): string {
  * Show sync status of all tracked files.
  */
 async function handleStatus(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
-  const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
+  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
   const files = await collectMarkdownFiles(dir);
+
+  // Check for .atlcli directory
+  const atlcliDir = findAtlcliDir(dir);
+  const state = atlcliDir ? await readState(atlcliDir) : null;
 
   const stats = {
     synced: 0,
@@ -437,32 +790,68 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
   };
 
   const conflicts: { file: string; id?: string }[] = [];
+  const modified: { file: string; type: string }[] = [];
+  const untracked: string[] = [];
 
   for (const filePath of files) {
-    const meta = await readMeta(filePath);
-    if (!meta) {
+    const relativePath = atlcliDir ? getRelativePath(atlcliDir, filePath) : filePath;
+
+    // Check frontmatter first
+    const content = await readTextFile(filePath);
+    const { frontmatter, content: markdownContent } = parseFrontmatter(content);
+
+    // Get page state from state.json or legacy meta
+    let pageState: PageState | null = null;
+    if (state && frontmatter?.id) {
+      pageState = getPageById(state, frontmatter.id);
+    }
+
+    if (!frontmatter?.id && !pageState) {
+      // Check legacy meta
+      const legacyMeta = await readMeta(filePath);
+      if (legacyMeta?.id) {
+        // Legacy tracked file
+        stats.synced++;
+        continue;
+      }
       stats.untracked++;
+      untracked.push(relativePath);
       continue;
     }
 
-    if (isEnhancedMeta(meta)) {
-      switch (meta.syncState) {
+    if (pageState) {
+      // Compute current sync state by comparing hashes
+      const normalizedMd = normalizeMarkdown(markdownContent);
+      const currentLocalHash = hashContent(normalizedMd);
+
+      let currentState: CoreSyncState;
+      if (pageState.syncState === "conflict") {
+        currentState = "conflict";
+      } else if (currentLocalHash !== pageState.baseHash) {
+        currentState = "local-modified";
+      } else {
+        currentState = pageState.syncState;
+      }
+
+      switch (currentState) {
         case "synced":
           stats.synced++;
           break;
         case "local-modified":
           stats.localModified++;
+          modified.push({ file: relativePath, type: "local changes" });
           break;
         case "remote-modified":
           stats.remoteModified++;
+          modified.push({ file: relativePath, type: "remote changes" });
           break;
         case "conflict":
           stats.conflict++;
-          conflicts.push({ file: filePath, id: meta.id });
+          conflicts.push({ file: relativePath, id: frontmatter?.id });
           break;
       }
-    } else {
-      // Legacy metadata - assume synced
+    } else if (frontmatter?.id) {
+      // Has frontmatter but no state - assume synced
       stats.synced++;
     }
   }
@@ -473,6 +862,9 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       dir,
       stats,
       conflicts,
+      modified,
+      untracked,
+      lastSync: state?.lastSync,
     }, opts);
   } else {
     output(`Sync status for ${dir}:\n`, opts);
@@ -482,11 +874,31 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     output(`  conflict:        ${stats.conflict} files`, opts);
     output(`  untracked:       ${stats.untracked} files`, opts);
 
+    if (state?.lastSync) {
+      output(`\nLast sync: ${state.lastSync}`, opts);
+    }
+
+    if (modified.length > 0) {
+      output(`\nModified:`, opts);
+      for (const m of modified) {
+        output(`  ${m.file} (${m.type})`, opts);
+      }
+    }
+
     if (conflicts.length > 0) {
       output(`\nConflicts:`, opts);
       for (const c of conflicts) {
         output(`  ${c.file}`, opts);
       }
+    }
+
+    if (untracked.length > 0 && untracked.length <= 10) {
+      output(`\nUntracked:`, opts);
+      for (const u of untracked) {
+        output(`  ${u}`, opts);
+      }
+    } else if (untracked.length > 10) {
+      output(`\nUntracked: ${untracked.length} files (use --json for full list)`, opts);
     }
   }
 }
@@ -555,16 +967,20 @@ function docsHelp(): string {
   return `atlcli docs <command>
 
 Commands:
-  pull --space <key> [--out <dir>] [--limit <n>] [--cql <query>]
-  push <dir> [--space <key>]
+  init <dir> --space <key>                          Initialize directory for sync
+  pull [dir] [--space <key>] [--limit <n>] [--cql] [--force]
+  push [dir] [--space <key>]
+  add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
-  sync <dir> --space <key> [--poll-interval <ms>]  (bidirectional)
-  status [dir]                                      (show sync state)
-  resolve <file> --accept local|remote|merged       (resolve conflicts)
+  sync <dir> --space <key> [--poll-interval <ms>]   Bidirectional sync
+  status [dir]                                       Show sync state
+  resolve <file> --accept local|remote|merged        Resolve conflicts
 
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output (watch/sync emit JSON lines)
+
+Files use YAML frontmatter for page ID. State is stored in .atlcli/ directory.
 
 For sync command options: atlcli docs sync --help
 `;

@@ -1,5 +1,7 @@
+export * from "./atlcli-dir.js";
 export * from "./config.js";
 export * from "./confluence.js";
+export * from "./frontmatter.js";
 export * from "./markdown.js";
 export * from "./merge.js";
 export * from "./poller.js";
