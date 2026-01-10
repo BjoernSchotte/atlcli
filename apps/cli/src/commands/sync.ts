@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile, unlink } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
 import { join, basename, extname } from "node:path";
 import {
@@ -147,8 +147,10 @@ class SyncEngine {
   private pushQueue: Set<string> = new Set();
   private pushTimer: NodeJS.Timeout | null = null;
   private debounceMs = 500;
+  private lockFilePath: string;
 
   constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions) {
+    this.lockFilePath = join(opts.dir, ".atlcli", ".sync.lock");
     this.client = client;
     this.opts = opts;
     this.outputOpts = outputOpts;
@@ -232,6 +234,10 @@ class SyncEngine {
 
   /** Start the sync daemon */
   async start(): Promise<void> {
+    // Create lockfile to signal sync daemon is running
+    // This is used by plugin-git to skip auto-push when sync is active
+    await this.createLockFile();
+
     const webhookEnabled = !!this.opts.webhookPort;
     this.emit({
       type: "status",
@@ -353,6 +359,9 @@ class SyncEngine {
   stop(): void {
     this.emit({ type: "status", message: "Stopping sync daemon..." });
 
+    // Remove lockfile
+    this.removeLockFile();
+
     if (this.webhookServer) {
       this.webhookServer.stop();
     }
@@ -370,6 +379,30 @@ class SyncEngine {
     }
 
     process.exit(0);
+  }
+
+  /** Create lockfile to signal sync daemon is running */
+  private async createLockFile(): Promise<void> {
+    try {
+      const lockData = JSON.stringify({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+      });
+      await writeFile(this.lockFilePath, lockData);
+    } catch {
+      // Ignore errors - lockfile is optional
+    }
+  }
+
+  /** Remove lockfile on shutdown */
+  private removeLockFile(): void {
+    try {
+      // Use sync version to ensure it runs during process exit
+      const { unlinkSync } = require("node:fs");
+      unlinkSync(this.lockFilePath);
+    } catch {
+      // Ignore errors - file may not exist
+    }
   }
 
   /** Handle a remote change detected by polling */

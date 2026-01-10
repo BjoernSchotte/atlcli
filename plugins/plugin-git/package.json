@@ -1,0 +1,20 @@
+{
+  "name": "atlcli-plugin-git",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Git integration for atlcli Confluence sync",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "atlcli": {
+    "plugin": true
+  },
+  "keywords": [
+    "atlcli",
+    "plugin",
+    "git",
+    "confluence"
+  ],
+  "author": "",
+  "license": "MIT"
+}
