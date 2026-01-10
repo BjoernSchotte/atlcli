@@ -54,6 +54,32 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
+  processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const trimmedContent = (content || "").trim();
+
+    // Parse parameters
+    const titleMatch = params?.match(/title="([^"]*)"/i);
+    const bgColorMatch = params?.match(/bgColor="([^"]*)"/i);
+    const borderColorMatch = params?.match(/borderColor="([^"]*)"/i);
+
+    let panelHtml = `<ac:structured-macro ac:name="panel">`;
+    if (titleMatch) {
+      panelHtml += `\n<ac:parameter ac:name="title">${escapeHtml(titleMatch[1])}</ac:parameter>`;
+    }
+    if (bgColorMatch) {
+      panelHtml += `\n<ac:parameter ac:name="bgColor">${escapeHtml(bgColorMatch[1])}</ac:parameter>`;
+    }
+    if (borderColorMatch) {
+      panelHtml += `\n<ac:parameter ac:name="borderColor">${escapeHtml(borderColorMatch[1])}</ac:parameter>`;
+    }
+    panelHtml += `\n<ac:rich-text-body>\n${md.render(trimmedContent).trim()}\n</ac:rich-text-body>\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html: panelHtml });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -125,7 +151,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel"];
 
 /**
  * Valid status colors in Confluence
@@ -141,6 +167,11 @@ const STATUS_REGEX = /\{status:(\w+)\}([^{]*)\{status\}/gi;
  * Regex for anchor macro: {#anchor-name}
  */
 const ANCHOR_REGEX = /\{#([a-zA-Z][a-zA-Z0-9_-]*)\}/g;
+
+/**
+ * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
+ */
+const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -197,6 +228,24 @@ function preprocessStorageMacros(storage: string): string {
       const nameMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
       const anchorName = nameMatch ? nameMatch[1] : "";
       return `<span data-macro="anchor" data-name="${escapeHtml(anchorName)}">\u200B</span>`;
+    }
+  );
+
+  // Convert generic panel macro (with custom colors)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="panel"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const titleMatch = inner.match(/<ac:parameter\s+ac:name="title"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bgColorMatch = inner.match(/<ac:parameter\s+ac:name="bgColor"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const borderColorMatch = inner.match(/<ac:parameter\s+ac:name="borderColor"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const title = titleMatch ? titleMatch[1] : "";
+      const bgColor = bgColorMatch ? bgColorMatch[1] : "";
+      const borderColor = borderColorMatch ? borderColorMatch[1] : "";
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="panel" data-title="${escapeHtml(title)}" data-bgcolor="${escapeHtml(bgColor)}" data-bordercolor="${escapeHtml(borderColor)}">${body}</div>`;
     }
   );
 
@@ -296,10 +345,23 @@ export function storageToMarkdown(storage: string): string {
         return `\n\n:::expand ${title}\n${content.trim()}\n:::\n\n`;
       }
 
-      // Panel macros
+      // Panel macros (info, note, warning, tip)
       if (PANEL_MACROS.includes(macroType)) {
         const titlePart = title ? ` ${title}` : "";
         return `\n\n:::${macroType}${titlePart}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Generic panel macro with custom colors
+      if (macroType === "panel") {
+        const bgColor = (node as any).getAttribute?.("data-bgcolor") || "";
+        const borderColor = (node as any).getAttribute?.("data-bordercolor") || "";
+
+        let params = "";
+        if (title) params += ` title="${title}"`;
+        if (bgColor) params += ` bgColor="${bgColor}"`;
+        if (borderColor) params += ` borderColor="${borderColor}"`;
+
+        return `\n\n:::panel${params}\n${content.trim()}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
