@@ -9,6 +9,14 @@ export type ConfluencePage = {
   spaceKey?: string;
 };
 
+export type ConfluenceSpace = {
+  id: string;
+  key: string;
+  name: string;
+  type: "global" | "personal";
+  url?: string;
+};
+
 export type ConfluenceSearchResult = {
   id: string;
   title: string;
@@ -208,6 +216,71 @@ export class ConfluenceClient {
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
       spaceKey: data.space?.key,
+    };
+  }
+
+  // ============ Space Operations ============
+
+  /**
+   * Create a new Confluence space.
+   */
+  async createSpace(params: {
+    key: string;
+    name: string;
+    description?: string;
+  }): Promise<ConfluenceSpace> {
+    const data = (await this.request("/space", {
+      method: "POST",
+      body: {
+        key: params.key,
+        name: params.name,
+        description: params.description
+          ? {
+              plain: {
+                value: params.description,
+                representation: "plain",
+              },
+            }
+          : undefined,
+      },
+    })) as any;
+    return {
+      id: data.id,
+      key: data.key,
+      name: data.name,
+      type: data.type ?? "global",
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+    };
+  }
+
+  /**
+   * List all spaces.
+   */
+  async listSpaces(limit = 25): Promise<ConfluenceSpace[]> {
+    const data = (await this.request("/space", {
+      query: { limit },
+    })) as any;
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => ({
+      id: item.id,
+      key: item.key,
+      name: item.name,
+      type: item.type ?? "global",
+      url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
+    }));
+  }
+
+  /**
+   * Get a space by key.
+   */
+  async getSpace(key: string): Promise<ConfluenceSpace> {
+    const data = (await this.request(`/space/${key}`, {})) as any;
+    return {
+      id: data.id,
+      key: data.key,
+      name: data.name,
+      type: data.type ?? "global",
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
     };
   }
 

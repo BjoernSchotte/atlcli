@@ -1,6 +1,7 @@
 import { hasFlag, output, parseArgs } from "@atlcli/core";
 import { handleAuth } from "./commands/auth.js";
 import { handlePage } from "./commands/page.js";
+import { handleSpace } from "./commands/space.js";
 import { handleDocs } from "./commands/docs.js";
 
 async function main(): Promise<void> {
@@ -21,6 +22,9 @@ async function main(): Promise<void> {
     case "page":
       await handlePage(rest, parsed.flags, opts);
       return;
+    case "space":
+      await handleSpace(rest, parsed.flags, opts);
+      return;
     case "docs":
       await handleDocs(rest, parsed.flags, opts);
       return;
@@ -37,6 +41,7 @@ function rootHelp(): string {
 
 Commands:
   auth        Authenticate and manage profiles
+  space       Confluence space operations
   page        Confluence page operations
   docs        Confluence docs sync (pull/push)
   version     Show version
