@@ -137,6 +137,9 @@ class SyncEngine {
   private pushQueue: Set<string> = new Set();
   private pushTimer: NodeJS.Timeout | null = null;
   private debounceMs = 500;
+  // Track recently synced files to prevent feedback loops
+  private recentlySyncedFiles: Map<string, number> = new Map();
+  private syncCooldownMs = 5000; // Ignore watcher events for 5s after sync
 
   constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions) {
     this.client = client;
@@ -197,6 +200,7 @@ class SyncEngine {
       if (pageId && meta) {
         this.fileToMeta.set(filePath, meta as EnhancedMeta);
         this.idToFile.set(pageId, filePath);
+        this.markAsSynced(filePath); // Mark as synced to prevent watcher triggering
       }
     }
 
@@ -325,6 +329,8 @@ class SyncEngine {
       this.watchers = await this.createWatchers(this.opts.dir, (filePath) => {
         if (extname(filePath).toLowerCase() !== ".md") return;
         if (filePath.endsWith(".base")) return;
+        // Skip if file was recently synced (prevent feedback loop)
+        if (this.isRecentlySynced(filePath)) return;
         this.schedulePush(filePath);
       });
     }
@@ -430,6 +436,7 @@ class SyncEngine {
 
       this.fileToMeta.set(filePath, meta);
       this.idToFile.set(page.id, filePath);
+      this.markAsSynced(filePath); // Prevent watcher feedback loop
 
       this.emit({
         type: "pull",
@@ -444,6 +451,22 @@ class SyncEngine {
         pageId,
       });
     }
+  }
+
+  /** Mark a file as recently synced (to prevent feedback loops) */
+  private markAsSynced(filePath: string): void {
+    this.recentlySyncedFiles.set(filePath, Date.now());
+  }
+
+  /** Check if a file was recently synced (within cooldown period) */
+  private isRecentlySynced(filePath: string): boolean {
+    const syncTime = this.recentlySyncedFiles.get(filePath);
+    if (!syncTime) return false;
+    if (Date.now() - syncTime > this.syncCooldownMs) {
+      this.recentlySyncedFiles.delete(filePath);
+      return false;
+    }
+    return true;
   }
 
   /** Schedule a push (debounced) */
@@ -543,6 +566,7 @@ class SyncEngine {
         await this.writeMeta(filePath, newMeta);
         await writeBase(filePath, markdownContent);
         this.fileToMeta.set(filePath, newMeta);
+        this.markAsSynced(filePath); // Prevent watcher feedback loop
 
         this.emit({
           type: "push",
@@ -632,6 +656,7 @@ class SyncEngine {
         await this.writeMeta(filePath, newMeta);
         await writeBase(filePath, result.content);
         this.fileToMeta.set(filePath, newMeta);
+        this.markAsSynced(filePath); // Prevent watcher feedback loop
 
         this.emit({
           type: "push",
