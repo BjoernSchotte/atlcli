@@ -338,6 +338,32 @@ atlcli plugin list
 atlcli plugin remove my-plugin
 ```
 
+### Core Plugins
+
+#### plugin-git
+
+Git integration for bidirectional Confluence sync. Automatically commits pulled changes and pushes on commit.
+
+```bash
+# Install the plugin
+atlcli plugin install ./plugins/plugin-git
+
+# Install git hook for auto-push on commit
+atlcli git hook install ./my-docs
+
+# Check hook status
+atlcli git hook status ./my-docs
+
+# Remove hook
+atlcli git hook remove ./my-docs
+```
+
+**Features:**
+- **Auto-commit on pull**: After `docs pull`, changes are automatically committed with message `sync(confluence): pull N page(s) from Confluence`
+- **Auto-push on commit**: Post-commit hook runs `docs push` automatically (skipped if sync daemon is running)
+
+See [plugin-git README](./plugins/plugin-git/README.md) for full documentation.
+
 ### Using Plugin Commands
 
 Once installed, plugin commands appear in the help:
