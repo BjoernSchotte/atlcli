@@ -180,13 +180,29 @@ atlcli space export <key> --format pdf  # entire space
 
 ## 12. Ignore Patterns
 
+**Status**: COMPLETE ✅
+
 `.atlcliignore` file to exclude files from sync.
 
-```
-# .atlcliignore
+**Implemented Features:**
+- Create `.atlcliignore` with gitignore-style patterns
+- Patterns from `.gitignore` are automatically merged (lower precedence)
+- `.atlcliignore` patterns can negate `.gitignore` with `!pattern`
+- Applied to: `docs push`, `docs status`, `docs sync`, file watchers
+- Default ignores: `.atlcli/`, `.git/`, `node_modules/`, `*.meta.json`, `*.base`
+
+**Example .atlcliignore:**
+```gitignore
+# Drafts not ready for Confluence
 drafts/
 *.draft.md
+
+# Internal documentation
 internal-*.md
+private/
+
+# Keep this despite matching internal-*
+!internal-api-docs.md
 ```
 
 ---
@@ -237,7 +253,7 @@ atlcli docs push --validate
 2. ~~**Attachments** - Essential for real-world docs~~ ✅ COMPLETE
 3. ~~**Labels** - Common organizational need~~ ✅ COMPLETE
 4. ~~**Page History & Diff** - Safety and review~~ ✅ COMPLETE
-5. **Ignore Patterns** - Quality of life
+5. ~~**Ignore Patterns** - Quality of life~~ ✅ COMPLETE
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
 7. **Search** - Discovery
 8. **Comments** - Collaboration
