@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile, readFile, mkdir, stat } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
 import { join, basename, extname, dirname, relative, resolve } from "node:path";
 import {
@@ -22,6 +22,9 @@ import {
   normalizeMarkdown,
   resolveConflicts,
   storageToMarkdown,
+  replaceAttachmentPaths,
+  extractAttachmentRefs,
+  isImageFile,
   // Local storage
   findAtlcliDir,
   initAtlcliDir,
@@ -42,6 +45,14 @@ import {
   AtlcliState,
   PageState,
   SyncState as CoreSyncState,
+  // Attachments
+  getAttachmentsDirName,
+  updateAttachmentState,
+  getPageAttachments,
+  writeAttachmentBase,
+  computeAttachmentSyncState,
+  AttachmentState,
+  AttachmentInfo,
   // Frontmatter
   parseFrontmatter,
   addFrontmatter,
@@ -368,10 +379,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   let skipped = 0;
   let moved = 0;
 
+  // Check if attachments are enabled (default: true)
+  const pullAttachments = !hasFlag(flags, "no-attachments");
+  let attachmentsPulled = 0;
+
   for (const detail of pageDetails) {
-    const markdown = storageToMarkdown(detail.storage);
-    const normalizedMd = normalizeMarkdown(markdown);
-    const contentHash = hashContent(normalizedMd);
+    // Convert storage to markdown, then apply page-specific attachment paths
+    const rawMarkdown = storageToMarkdown(detail.storage);
     const ancestorIds = detail.ancestors.map((a) => a.id);
 
     // Get computed path for this page
@@ -428,6 +442,49 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
 
     const filePath = join(outDir, relativePath);
+    const pageFilename = basename(relativePath);
+    const pageDir = dirname(filePath);
+
+    // Fetch and download attachments if enabled
+    let attachments: AttachmentInfo[] = [];
+    if (pullAttachments) {
+      try {
+        attachments = await client.listAttachments(detail.id);
+      } catch (err) {
+        // Log warning but don't fail the pull
+        if (!opts.json) {
+          output(`Warning: Could not fetch attachments for ${relativePath}`, opts);
+        }
+      }
+
+      if (attachments.length > 0) {
+        // Create attachments directory
+        const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
+        await mkdir(attachmentsDir, { recursive: true });
+
+        for (const attachment of attachments) {
+          // Skip attachments with empty or invalid filenames
+          if (!attachment.filename) {
+            continue;
+          }
+          try {
+            const data = await client.downloadAttachment(attachment);
+            const attachmentPath = join(attachmentsDir, attachment.filename);
+            await writeFile(attachmentPath, data);
+            attachmentsPulled++;
+          } catch (err) {
+            if (!opts.json) {
+              output(`Warning: Could not download attachment ${attachment.filename}`, opts);
+            }
+          }
+        }
+      }
+    }
+
+    // Apply page-specific attachment paths to markdown
+    const markdown = replaceAttachmentPaths(rawMarkdown, pageFilename);
+    const normalizedMd = normalizeMarkdown(markdown);
+    const contentHash = hashContent(normalizedMd);
 
     // Add frontmatter with page ID
     const frontmatter: AtlcliFrontmatter = {
@@ -436,7 +493,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     };
     const contentWithFrontmatter = addFrontmatter(markdown, frontmatter);
 
-    await ensureDir(dirname(filePath));
+    await ensureDir(pageDir);
     await writeTextFile(filePath, contentWithFrontmatter);
 
     // Update state and cache
@@ -453,7 +510,42 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
         syncState: "synced",
         parentId: detail.parentId,
         ancestors: ancestorIds,
+        hasAttachments: attachments.length > 0,
       });
+
+      // Update attachment state
+      for (const attachment of attachments) {
+        try {
+          const attachmentPath = join(pageDir, getAttachmentsDirName(pageFilename), attachment.filename);
+          const attachmentData = await readFile(attachmentPath);
+          const attachmentHash = hashContent(attachmentData.toString("base64"));
+
+          updateAttachmentState(state, detail.id, attachment.id, {
+            attachmentId: attachment.id,
+            filename: attachment.filename,
+            localPath: join(getAttachmentsDirName(pageFilename), attachment.filename),
+            mediaType: attachment.mediaType,
+            fileSize: attachment.fileSize,
+            version: attachment.version,
+            localHash: attachmentHash,
+            remoteHash: attachmentHash,
+            baseHash: attachmentHash,
+            lastSyncedAt: new Date().toISOString(),
+            syncState: "synced",
+          });
+
+          // Write base content for conflict detection
+          await writeAttachmentBase(
+            atlcliDir,
+            detail.id,
+            attachment.id,
+            extname(attachment.filename),
+            attachmentData
+          );
+        } catch (err) {
+          // Attachment state update failed, continue
+        }
+      }
 
       // Write base content for 3-way merge (without frontmatter)
       await writeBaseContent(atlcliDir, detail.id, normalizedMd);
@@ -468,10 +560,15 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     await writeState(atlcliDir, state);
   }
 
+  const pullResults: Record<string, unknown> = { pulled, skipped, moved, outDir };
+  if (pullAttachments && attachmentsPulled > 0) {
+    pullResults.attachments = attachmentsPulled;
+  }
+
   output(
     {
       schemaVersion: "1",
-      results: { pulled, skipped, moved, outDir },
+      results: pullResults,
       note: "Files use nested directory structure matching Confluence hierarchy.",
     },
     opts
@@ -740,7 +837,53 @@ async function pushFile(params: {
   // Strip frontmatter before converting to storage format
   const storage = markdownToStorage(markdownContent);
 
+  // Check for attachment references and upload them
+  const pageFilename = basename(filePath);
+  const pageDir = dirname(filePath);
+  const attachmentRefs = extractAttachmentRefs(markdownContent);
+  const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
+
   if (pageId) {
+    // Upload attachments before updating the page
+    if (attachmentRefs.length > 0) {
+      // Get existing attachments from Confluence
+      let existingAttachments: AttachmentInfo[] = [];
+      try {
+        existingAttachments = await client.listAttachments(pageId);
+      } catch {
+        // Page might not have any attachments yet
+      }
+      const existingByName = new Map(existingAttachments.map((a) => [a.filename, a]));
+
+      for (const filename of attachmentRefs) {
+        const localPath = join(attachmentsDir, filename);
+        try {
+          const data = await readFile(localPath);
+          const existing = existingByName.get(filename);
+
+          if (existing) {
+            // Update existing attachment
+            await client.updateAttachment({
+              attachmentId: existing.id,
+              pageId,
+              data,
+            });
+          } else {
+            // Upload new attachment
+            await client.uploadAttachment({
+              pageId,
+              filename,
+              data,
+            });
+          }
+        } catch (err) {
+          if (!opts.json) {
+            output(`Warning: Could not upload attachment ${filename}`, opts);
+          }
+        }
+      }
+    }
+
     // Update existing page
     const current = await client.getPage(pageId);
     const title = frontmatter?.title || legacyMeta?.title || current.title;
@@ -793,6 +936,25 @@ async function pushFile(params: {
   // For backwards compatibility, still create if legacy meta exists with space
   const title = legacyMeta?.title ?? titleFromFilename(filePath);
   const page = await client.createPage({ spaceKey: targetSpace, title, storage });
+
+  // Upload attachments after creating the page
+  if (attachmentRefs.length > 0) {
+    for (const filename of attachmentRefs) {
+      const localPath = join(attachmentsDir, filename);
+      try {
+        const data = await readFile(localPath);
+        await client.uploadAttachment({
+          pageId: page.id,
+          filename,
+          data,
+        });
+      } catch (err) {
+        if (!opts.json) {
+          output(`Warning: Could not upload attachment ${filename}`, opts);
+        }
+      }
+    }
+  }
 
   // Add frontmatter to file
   const newFrontmatter: AtlcliFrontmatter = {

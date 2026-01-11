@@ -4,6 +4,9 @@ import {
   storageToMarkdown,
   normalizeMarkdown,
   hashContent,
+  isImageFile,
+  replaceAttachmentPaths,
+  extractAttachmentRefs,
 } from "./markdown.js";
 
 describe("markdownToStorage", () => {
@@ -410,5 +413,347 @@ describe("jira macro", () => {
     const html = markdownToStorage(md);
     // The regex is case insensitive, so it should match
     expect(html).toContain('<ac:structured-macro ac:name="jira">');
+  });
+});
+
+describe("attachment images", () => {
+  test("converts basic image attachment to Confluence storage", () => {
+    const md = "See the diagram:\n\n![Architecture](./page.attachments/diagram.png)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:image><ri:attachment ri:filename="diagram.png" ac:alt="Architecture"/></ac:image>');
+  });
+
+  test("converts image attachment with size to Confluence storage", () => {
+    const md = "![Screenshot](./page.attachments/screen.png){width=800}";
+    const html = markdownToStorage(md);
+    expect(html).toContain('ac:width="800"');
+    expect(html).toContain('ri:filename="screen.png"');
+  });
+
+  test("converts image attachment with width and height to Confluence storage", () => {
+    const md = "![Logo](./page.attachments/logo.svg){width=200 height=100}";
+    const html = markdownToStorage(md);
+    expect(html).toContain('ac:width="200"');
+    expect(html).toContain('ac:height="100"');
+    expect(html).toContain('ri:filename="logo.svg"');
+  });
+
+  test("converts Confluence image attachment to markdown", () => {
+    const storage = '<p>See <ac:image><ri:attachment ri:filename="diagram.png" ac:alt="Architecture"/></ac:image></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("![Architecture](./attachments/diagram.png)");
+  });
+
+  test("converts Confluence image with size to markdown", () => {
+    const storage = '<ac:image ac:width="800"><ri:attachment ri:filename="screen.png"/></ac:image>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("![](./attachments/screen.png){width=800}");
+  });
+
+  test("converts Confluence image with width and height to markdown", () => {
+    const storage = '<ac:image ac:width="200" ac:height="100"><ri:attachment ri:filename="logo.svg"/></ac:image>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("![](./attachments/logo.svg){width=200 height=100}");
+  });
+
+  test("handles multiple image attachments", () => {
+    const md = "![A](./docs.attachments/a.png) and ![B](./docs.attachments/b.jpg)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('ri:filename="a.png"');
+    expect(html).toContain('ri:filename="b.jpg"');
+  });
+
+  test("handles various image extensions", () => {
+    const extensions = ["png", "jpg", "jpeg", "gif", "svg", "webp"];
+    for (const ext of extensions) {
+      const md = `![Test](./page.attachments/image.${ext})`;
+      const html = markdownToStorage(md);
+      expect(html).toContain(`ri:filename="image.${ext}"`);
+      expect(html).toContain('<ac:image>');
+    }
+  });
+
+  test("does not convert attachment syntax inside inline code", () => {
+    const md = "Example: `![alt](./page.attachments/example.png)` syntax";
+    const html = markdownToStorage(md);
+    // Should NOT convert to ac:image because it's in backticks
+    expect(html).not.toContain('<ac:image>');
+    expect(html).not.toContain('ri:attachment');
+    // Should preserve the code content
+    expect(html).toContain('<code>');
+    expect(html).toContain('![alt]');
+  });
+
+  test("converts real attachments but preserves inline code examples", () => {
+    const md = `
+Real image: ![Photo](./page.attachments/photo.png)
+
+Example syntax: \`![alt](./page.attachments/example.png)\`
+`;
+    const html = markdownToStorage(md);
+    // Real attachment should be converted
+    expect(html).toContain('ri:filename="photo.png"');
+    expect(html).toContain('<ac:image>');
+    // Example in code should NOT be converted
+    expect(html).toContain('<code>');
+    // Should only have one ac:image (for the real one)
+    const acImageCount = (html.match(/<ac:image>/g) || []).length;
+    expect(acImageCount).toBe(1);
+  });
+});
+
+describe("attachment file links", () => {
+  test("converts PDF attachment link to Confluence storage", () => {
+    const md = "Download the [Report](./page.attachments/report.pdf)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:link>');
+    expect(html).toContain('<ri:attachment ri:filename="report.pdf"/>');
+    expect(html).toContain('<ac:plain-text-link-body><![CDATA[Report]]></ac:plain-text-link-body>');
+  });
+
+  test("converts Excel attachment link to Confluence storage", () => {
+    const md = "[Spreadsheet](./data.attachments/data.xlsx)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ri:attachment ri:filename="data.xlsx"/>');
+    expect(html).toContain('<![CDATA[Spreadsheet]]>');
+  });
+
+  test("converts Word document attachment link to Confluence storage", () => {
+    const md = "[Document](./page.attachments/spec.docx)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ri:attachment ri:filename="spec.docx"/>');
+  });
+
+  test("converts Confluence file attachment link to markdown", () => {
+    const storage = '<p>Download the <ac:link><ri:attachment ri:filename="report.pdf"/><ac:plain-text-link-body><![CDATA[Report]]></ac:plain-text-link-body></ac:link></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("[Report](./attachments/report.pdf)");
+  });
+
+  test("converts Confluence attachment link without CDATA to markdown", () => {
+    const storage = '<ac:link><ri:attachment ri:filename="spec.docx"/><ac:plain-text-link-body>Specification</ac:plain-text-link-body></ac:link>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("[Specification](./attachments/spec.docx)");
+  });
+
+  test("converts Confluence attachment link without link body to markdown", () => {
+    const storage = '<ac:link><ri:attachment ri:filename="data.xlsx"/></ac:link>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("[data.xlsx](./attachments/data.xlsx)");
+  });
+
+  test("does not convert image extensions as file links", () => {
+    // Image extensions should use ac:image, not ac:link
+    const md = "![Image](./page.attachments/photo.png)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:image>');
+    expect(html).not.toContain('<ac:link>');
+  });
+
+  test("handles various file extensions", () => {
+    const files = [
+      { ext: "pdf", name: "PDF" },
+      { ext: "xlsx", name: "Excel" },
+      { ext: "docx", name: "Word" },
+      { ext: "pptx", name: "PowerPoint" },
+      { ext: "zip", name: "Archive" },
+      { ext: "txt", name: "Text" },
+      { ext: "json", name: "JSON" },
+      { ext: "csv", name: "CSV" },
+    ];
+    for (const { ext, name } of files) {
+      const md = `[${name}](./page.attachments/file.${ext})`;
+      const html = markdownToStorage(md);
+      expect(html).toContain(`ri:filename="file.${ext}"`);
+      expect(html).toContain('<ac:link>');
+    }
+  });
+});
+
+describe("attachment mixed content", () => {
+  test("handles mixed images and file attachments in same content", () => {
+    const md = `
+# Documentation
+
+![Diagram](./docs.attachments/arch.png)
+
+Download the [Specification](./docs.attachments/spec.pdf) for details.
+
+See also ![Screenshot](./docs.attachments/screen.jpg){width=600}
+`;
+    const html = markdownToStorage(md);
+
+    // Should have 2 images and 1 file link
+    expect(html).toContain('ri:filename="arch.png"');
+    expect(html).toContain('ri:filename="screen.jpg"');
+    expect(html).toContain('ac:width="600"');
+    expect(html).toContain('ri:filename="spec.pdf"');
+    expect(html).toContain('<ac:link>');
+  });
+
+  test("preserves non-attachment images", () => {
+    const md = "![External](https://example.com/image.png)";
+    const html = markdownToStorage(md);
+    // Should NOT convert to ac:image (no .attachments/ path)
+    expect(html).not.toContain('<ac:image>');
+    expect(html).toContain('<img');
+  });
+
+  test("preserves non-attachment links", () => {
+    const md = "[External PDF](https://example.com/doc.pdf)";
+    const html = markdownToStorage(md);
+    // Should NOT convert to ac:link (no .attachments/ path)
+    expect(html).not.toContain('<ac:link>');
+    expect(html).toContain('<a');
+  });
+});
+
+describe("isImageFile", () => {
+  test("returns true for common image extensions", () => {
+    expect(isImageFile("photo.png")).toBe(true);
+    expect(isImageFile("photo.PNG")).toBe(true);
+    expect(isImageFile("photo.jpg")).toBe(true);
+    expect(isImageFile("photo.jpeg")).toBe(true);
+    expect(isImageFile("icon.gif")).toBe(true);
+    expect(isImageFile("logo.svg")).toBe(true);
+    expect(isImageFile("image.webp")).toBe(true);
+    expect(isImageFile("favicon.ico")).toBe(true);
+    expect(isImageFile("image.bmp")).toBe(true);
+  });
+
+  test("returns false for non-image extensions", () => {
+    expect(isImageFile("doc.pdf")).toBe(false);
+    expect(isImageFile("data.xlsx")).toBe(false);
+    expect(isImageFile("report.docx")).toBe(false);
+    expect(isImageFile("archive.zip")).toBe(false);
+    expect(isImageFile("code.js")).toBe(false);
+    expect(isImageFile("readme.md")).toBe(false);
+  });
+
+  test("handles edge cases", () => {
+    expect(isImageFile(".png")).toBe(true); // just extension
+    expect(isImageFile("no-extension")).toBe(false);
+    expect(isImageFile("")).toBe(false);
+  });
+});
+
+describe("replaceAttachmentPaths", () => {
+  test("replaces image attachment paths", () => {
+    const md = "![Diagram](./attachments/arch.png)";
+    const result = replaceAttachmentPaths(md, "architecture.md");
+    expect(result).toBe("![Diagram](./architecture.attachments/arch.png)");
+  });
+
+  test("replaces file attachment paths", () => {
+    const md = "[Report](./attachments/report.pdf)";
+    const result = replaceAttachmentPaths(md, "docs.md");
+    expect(result).toBe("[Report](./docs.attachments/report.pdf)");
+  });
+
+  test("replaces multiple attachments", () => {
+    const md = `
+![Image](./attachments/photo.png)
+
+[PDF](./attachments/doc.pdf)
+
+![Another](./attachments/logo.svg)
+`;
+    const result = replaceAttachmentPaths(md, "page.md");
+    expect(result).toContain("./page.attachments/photo.png");
+    expect(result).toContain("./page.attachments/doc.pdf");
+    expect(result).toContain("./page.attachments/logo.svg");
+  });
+
+  test("preserves size attributes in images", () => {
+    const md = "![Photo](./attachments/screen.png){width=800}";
+    const result = replaceAttachmentPaths(md, "test.md");
+    expect(result).toBe("![Photo](./test.attachments/screen.png){width=800}");
+  });
+
+  test("preserves alt text", () => {
+    const md = "![Architecture Overview](./attachments/diagram.png)";
+    const result = replaceAttachmentPaths(md, "overview.md");
+    expect(result).toBe("![Architecture Overview](./overview.attachments/diagram.png)");
+  });
+
+  test("handles page filename without .md extension", () => {
+    const md = "![Image](./attachments/img.png)";
+    const result = replaceAttachmentPaths(md, "page");
+    expect(result).toBe("![Image](./page.attachments/img.png)");
+  });
+});
+
+describe("extractAttachmentRefs", () => {
+  test("extracts image attachment references", () => {
+    const md = "![Diagram](./docs.attachments/arch.png)";
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toContain("arch.png");
+  });
+
+  test("extracts file attachment references", () => {
+    const md = "[Report](./docs.attachments/report.pdf)";
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toContain("report.pdf");
+  });
+
+  test("extracts multiple attachment references", () => {
+    const md = `
+![Image](./page.attachments/photo.png)
+[PDF](./page.attachments/doc.pdf)
+![Logo](./page.attachments/logo.svg){width=100}
+`;
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(3);
+    expect(refs).toContain("photo.png");
+    expect(refs).toContain("doc.pdf");
+    expect(refs).toContain("logo.svg");
+  });
+
+  test("returns unique references only", () => {
+    const md = `
+![Image](./page.attachments/photo.png)
+![Same](./page.attachments/photo.png)
+`;
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(1);
+    expect(refs).toContain("photo.png");
+  });
+
+  test("returns empty array for no attachments", () => {
+    const md = "# Title\n\nSome text without attachments.";
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(0);
+  });
+
+  test("ignores external URLs", () => {
+    const md = "![External](https://example.com/image.png)";
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(0);
+  });
+
+  test("ignores references inside inline code", () => {
+    const md = `
+Real image: ![Test](./page.attachments/real.png)
+
+Example: \`![alt](./page.attachments/example.png)\` syntax
+`;
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(1);
+    expect(refs).toContain("real.png");
+    expect(refs).not.toContain("example.png");
+  });
+
+  test("ignores references inside code blocks", () => {
+    const md = `
+![Real](./page.attachments/real.png)
+
+\`\`\`markdown
+![Example](./page.attachments/example.png)
+\`\`\`
+`;
+    const refs = extractAttachmentRefs(md);
+    expect(refs).toHaveLength(1);
+    expect(refs).toContain("real.png");
+    expect(refs).not.toContain("example.png");
   });
 });

@@ -55,6 +55,32 @@ export interface AtlcliConfigV2 {
 /** Configuration for a directory synced with Confluence */
 export type AtlcliConfig = AtlcliConfigV1 | AtlcliConfigV2;
 
+/** Sync state for a single attachment */
+export interface AttachmentState {
+  /** Attachment ID from Confluence */
+  attachmentId: string;
+  /** Original filename (as stored in Confluence) */
+  filename: string;
+  /** Local path relative to page's attachment directory */
+  localPath: string;
+  /** Media type (e.g., "image/png", "application/pdf") */
+  mediaType: string;
+  /** File size in bytes */
+  fileSize: number;
+  /** Confluence attachment version number */
+  version: number;
+  /** SHA-256 hash of local file content */
+  localHash: string;
+  /** SHA-256 hash of remote file content at last sync */
+  remoteHash: string;
+  /** SHA-256 hash of base version (for conflict detection) */
+  baseHash: string;
+  /** ISO timestamp of last sync */
+  lastSyncedAt: string;
+  /** Current sync state */
+  syncState: SyncState;
+}
+
 /** Sync state for a single page */
 export interface PageState {
   path: string;
@@ -69,6 +95,10 @@ export interface PageState {
   parentId: string | null;
   /** Ancestor IDs from root to parent (for hierarchy tracking) */
   ancestors: string[];
+  /** Attachment metadata for this page (keyed by attachmentId) */
+  attachments?: Record<string, AttachmentState>;
+  /** Flag if page has any attachments (for quick filtering) */
+  hasAttachments?: boolean;
 }
 
 /** Possible sync states for a page */
@@ -461,4 +491,180 @@ export function generateUniqueFilename(
  */
 export function getRelativePath(rootDir: string, filePath: string): string {
   return relative(rootDir, filePath);
+}
+
+// ============ Attachment State Functions ============
+
+/**
+ * Update attachment state for a page.
+ */
+export function updateAttachmentState(
+  state: AtlcliState,
+  pageId: string,
+  attachmentId: string,
+  update: Partial<AttachmentState>
+): void {
+  const page = state.pages[pageId];
+  if (!page) return;
+
+  if (!page.attachments) {
+    page.attachments = {};
+  }
+
+  page.attachments[attachmentId] = {
+    ...page.attachments[attachmentId],
+    ...update,
+  } as AttachmentState;
+
+  page.hasAttachments = Object.keys(page.attachments).length > 0;
+}
+
+/**
+ * Remove attachment from state.
+ */
+export function removeAttachmentState(
+  state: AtlcliState,
+  pageId: string,
+  attachmentId: string
+): void {
+  const page = state.pages[pageId];
+  if (!page?.attachments) return;
+
+  delete page.attachments[attachmentId];
+  page.hasAttachments = Object.keys(page.attachments).length > 0;
+}
+
+/**
+ * Get attachment state by ID.
+ */
+export function getAttachmentById(
+  state: AtlcliState,
+  pageId: string,
+  attachmentId: string
+): AttachmentState | null {
+  return state.pages[pageId]?.attachments?.[attachmentId] ?? null;
+}
+
+/**
+ * Get all attachments for a page.
+ */
+export function getPageAttachments(
+  state: AtlcliState,
+  pageId: string
+): AttachmentState[] {
+  const attachments = state.pages[pageId]?.attachments;
+  return attachments ? Object.values(attachments) : [];
+}
+
+/**
+ * Compute sync state for an attachment based on hashes.
+ * Works the same as page sync state computation.
+ */
+export function computeAttachmentSyncState(
+  localHash: string | null,
+  remoteHash: string | null,
+  baseHash: string
+): SyncState {
+  // Handle deletion cases
+  if (localHash === null && remoteHash === null) {
+    return "synced"; // Both deleted
+  }
+  if (localHash === null) {
+    return "remote-modified"; // Deleted locally, exists remotely
+  }
+  if (remoteHash === null) {
+    return "local-modified"; // Deleted remotely, exists locally
+  }
+
+  // Normal comparison (same as page sync state)
+  return computeSyncState(localHash, remoteHash, baseHash);
+}
+
+// ============ Attachment Cache Functions ============
+
+const ATTACHMENTS_CACHE_DIR = "attachments";
+
+/**
+ * Read attachment base content from cache.
+ */
+export async function readAttachmentBase(
+  dir: string,
+  pageId: string,
+  attachmentId: string,
+  extension: string
+): Promise<Buffer | null> {
+  const cachePath = join(
+    dir,
+    ATLCLI_DIR,
+    CACHE_DIR,
+    ATTACHMENTS_CACHE_DIR,
+    pageId,
+    `${attachmentId}${extension}`
+  );
+  try {
+    return await readFile(cachePath);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write attachment base content to cache.
+ */
+export async function writeAttachmentBase(
+  dir: string,
+  pageId: string,
+  attachmentId: string,
+  extension: string,
+  content: Buffer
+): Promise<void> {
+  const cacheDir = join(
+    dir,
+    ATLCLI_DIR,
+    CACHE_DIR,
+    ATTACHMENTS_CACHE_DIR,
+    pageId
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(join(cacheDir, `${attachmentId}${extension}`), content);
+}
+
+/**
+ * Delete attachment base content from cache.
+ */
+export async function deleteAttachmentBase(
+  dir: string,
+  pageId: string,
+  attachmentId: string,
+  extension: string
+): Promise<void> {
+  const cachePath = join(
+    dir,
+    ATLCLI_DIR,
+    CACHE_DIR,
+    ATTACHMENTS_CACHE_DIR,
+    pageId,
+    `${attachmentId}${extension}`
+  );
+  try {
+    await unlink(cachePath);
+  } catch {
+    // Ignore if file doesn't exist
+  }
+}
+
+/**
+ * Get the attachments directory name for a page file.
+ * For "page.md", returns "page.attachments"
+ */
+export function getAttachmentsDirName(pageFilename: string): string {
+  const baseName = pageFilename.replace(/\.md$/, "");
+  return `${baseName}.attachments`;
+}
+
+/**
+ * Compute the attachments directory path for a page.
+ */
+export function getAttachmentsDir(pageDir: string, pageFilename: string): string {
+  return join(pageDir, getAttachmentsDirName(pageFilename));
 }

@@ -43,6 +43,28 @@ export interface PageChangeInfo {
   spaceKey?: string;
 }
 
+/** Attachment metadata from Confluence API */
+export interface AttachmentInfo {
+  /** Attachment ID (content ID) */
+  id: string;
+  /** Filename as stored in Confluence */
+  filename: string;
+  /** MIME type (e.g., "image/png", "application/pdf") */
+  mediaType: string;
+  /** File size in bytes */
+  fileSize: number;
+  /** Version number */
+  version: number;
+  /** Page ID this attachment belongs to */
+  pageId: string;
+  /** Download URL (relative to wiki base) */
+  downloadUrl: string;
+  /** Full webui URL for viewing */
+  url?: string;
+  /** Comment/description for this version */
+  comment?: string;
+}
+
 export class ConfluenceClient {
   private baseUrl: string;
   private authHeader: string;
@@ -437,6 +459,291 @@ export class ConfluenceClient {
     }
 
     return results;
+  }
+
+  // ============ Attachment Operations ============
+
+  /**
+   * List attachments for a page.
+   *
+   * GET /content/{id}/child/attachment
+   */
+  async listAttachments(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<AttachmentInfo[]> {
+    const data = (await this.request(`/content/${pageId}/child/attachment`, {
+      query: {
+        expand: "version,metadata.mediaType",
+        limit: options.limit ?? 100,
+      },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => this.parseAttachmentResponse(item, pageId));
+  }
+
+  /**
+   * Get a single attachment by ID.
+   *
+   * GET /content/{attachmentId}
+   */
+  async getAttachment(attachmentId: string): Promise<AttachmentInfo> {
+    const data = (await this.request(`/content/${attachmentId}`, {
+      query: { expand: "version,container,metadata.mediaType" },
+    })) as any;
+
+    return this.parseAttachmentResponse(data, data.container?.id ?? "");
+  }
+
+  /**
+   * Upload a new attachment to a page.
+   *
+   * POST /content/{id}/child/attachment
+   * Requires multipart/form-data with X-Atlassian-Token: nocheck header.
+   */
+  async uploadAttachment(params: {
+    pageId: string;
+    filename: string;
+    data: Buffer | Uint8Array;
+    mimeType?: string;
+    comment?: string;
+  }): Promise<AttachmentInfo> {
+    const { pageId, filename, data, mimeType, comment } = params;
+
+    const formData = new FormData();
+    const blob = new Blob([data], {
+      type: mimeType ?? this.detectMimeType(filename),
+    });
+    formData.append("file", blob, filename);
+
+    if (comment) {
+      formData.append("comment", comment);
+    }
+
+    const result = await this.requestMultipart(
+      `/content/${pageId}/child/attachment`,
+      formData
+    );
+
+    return this.parseAttachmentResponse(result, pageId);
+  }
+
+  /**
+   * Update an existing attachment with new data.
+   *
+   * POST /content/{pageId}/child/attachment/{attachmentId}/data
+   */
+  async updateAttachment(params: {
+    attachmentId: string;
+    pageId: string;
+    data: Buffer | Uint8Array;
+    mimeType?: string;
+    comment?: string;
+  }): Promise<AttachmentInfo> {
+    const { attachmentId, pageId, data, mimeType, comment } = params;
+
+    const formData = new FormData();
+    const blob = new Blob([data], {
+      type: mimeType ?? "application/octet-stream",
+    });
+    formData.append("file", blob);
+
+    if (comment) {
+      formData.append("comment", comment);
+    }
+
+    const result = await this.requestMultipart(
+      `/content/${pageId}/child/attachment/${attachmentId}/data`,
+      formData
+    );
+
+    return this.parseAttachmentResponse(result, pageId);
+  }
+
+  /**
+   * Delete an attachment.
+   *
+   * DELETE /content/{attachmentId}
+   */
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    await this.request(`/content/${attachmentId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Download attachment binary data.
+   *
+   * GET {downloadUrl} (relative to wiki base)
+   */
+  async downloadAttachment(
+    attachment: AttachmentInfo | { downloadUrl: string }
+  ): Promise<Buffer> {
+    return this.requestBinary(attachment.downloadUrl);
+  }
+
+  /**
+   * Request helper for multipart form data uploads.
+   */
+  private async requestMultipart(
+    path: string,
+    formData: FormData
+  ): Promise<any> {
+    const url = new URL(`${this.baseUrl}/wiki/rest/api${path}`);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          Authorization: this.authHeader,
+          Accept: "application/json",
+          "X-Atlassian-Token": "nocheck",
+          // Note: Do NOT set Content-Type - fetch will set it with boundary
+        },
+        body: formData,
+      });
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After");
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : this.baseDelayMs * Math.pow(2, attempt);
+
+        if (attempt < this.maxRetries) {
+          await this.sleep(delayMs);
+          continue;
+        }
+        throw new Error(`Rate limited after ${this.maxRetries} retries`);
+      }
+
+      const text = await res.text();
+      let data: unknown = text;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+
+      if (!res.ok) {
+        const message = typeof data === "string" ? data : JSON.stringify(data);
+        lastError = new Error(`Attachment upload error (${res.status}): ${message}`);
+
+        if (res.status >= 500 && attempt < this.maxRetries) {
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+        throw lastError;
+      }
+
+      return data;
+    }
+
+    throw lastError ?? new Error("Upload failed after retries");
+  }
+
+  /**
+   * Request helper for binary downloads.
+   */
+  private async requestBinary(downloadPath: string): Promise<Buffer> {
+    const url = new URL(`${this.baseUrl}/wiki${downloadPath}`);
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: this.authHeader,
+        },
+      });
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After");
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : this.baseDelayMs * Math.pow(2, attempt);
+
+        if (attempt < this.maxRetries) {
+          await this.sleep(delayMs);
+          continue;
+        }
+        throw new Error(`Rate limited after ${this.maxRetries} retries`);
+      }
+
+      if (!res.ok) {
+        lastError = new Error(`Download error (${res.status})`);
+
+        if (res.status >= 500 && attempt < this.maxRetries) {
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+        throw lastError;
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+
+    throw lastError ?? new Error("Download failed after retries");
+  }
+
+  /**
+   * Parse Confluence attachment API response to AttachmentInfo.
+   */
+  private parseAttachmentResponse(data: any, pageId: string): AttachmentInfo {
+    // Handle both single result and array response (POST returns array)
+    const item = Array.isArray(data.results) ? data.results[0] : data;
+
+    return {
+      id: item.id,
+      filename: item.title,
+      mediaType: item.metadata?.mediaType || item.extensions?.mediaType || "application/octet-stream",
+      fileSize: item.extensions?.fileSize ?? 0,
+      version: item.version?.number ?? 1,
+      pageId,
+      downloadUrl: item._links?.download ?? "",
+      url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
+      comment: item.metadata?.comment,
+    };
+  }
+
+  /**
+   * Detect MIME type from filename extension.
+   */
+  private detectMimeType(filename: string): string {
+    const ext = filename.toLowerCase().split(".").pop();
+    const mimeTypes: Record<string, string> = {
+      // Images
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      svg: "image/svg+xml",
+      webp: "image/webp",
+      // Documents
+      pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      // Text
+      txt: "text/plain",
+      md: "text/markdown",
+      json: "application/json",
+      xml: "application/xml",
+      yaml: "application/x-yaml",
+      yml: "application/x-yaml",
+      // Archives
+      zip: "application/zip",
+      tar: "application/x-tar",
+      gz: "application/gzip",
+    };
+    return mimeTypes[ext ?? ""] ?? "application/octet-stream";
   }
 
   // ============ Webhook Management ============

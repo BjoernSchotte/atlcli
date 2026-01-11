@@ -522,6 +522,66 @@ ${md.render(trimmedContent).trim()}
     return placeholder;
   });
 
+  // Protect inline code from attachment processing
+  // Replace `...` with placeholders to prevent matching attachment patterns inside code
+  const inlineCodeBlocks: string[] = [];
+  processed = processed.replace(/`[^`]+`/g, (match) => {
+    const idx = inlineCodeBlocks.length;
+    inlineCodeBlocks.push(match);
+    return `<!--INLINE_CODE_${idx}-->`;
+  });
+
+  // Handle image attachments with size syntax: ![alt](./page.attachments/img.png){width=600}
+  processed = processed.replace(
+    /!\[([^\]]*)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)\{([^}]+)\}/g,
+    (_, alt, _attachDir, filename, sizeAttrs) => {
+      const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+      // Parse size attributes
+      const widthMatch = sizeAttrs.match(/width=(\d+)/);
+      const heightMatch = sizeAttrs.match(/height=(\d+)/);
+
+      let html = `<ac:image`;
+      if (widthMatch) html += ` ac:width="${widthMatch[1]}"`;
+      if (heightMatch) html += ` ac:height="${heightMatch[1]}"`;
+      html += `><ri:attachment ri:filename="${escapeHtml(filename)}"`;
+      if (alt) html += ` ac:alt="${escapeHtml(alt)}"`;
+      html += `/></ac:image>`;
+
+      macros.push({ placeholder, html });
+      return placeholder;
+    }
+  );
+
+  // Handle image attachments: ![alt](./page.attachments/image.png)
+  processed = processed.replace(LOCAL_IMAGE_REGEX, (_, alt, _attachDir, filename) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    let html = `<ac:image><ri:attachment ri:filename="${escapeHtml(filename)}"`;
+    if (alt) html += ` ac:alt="${escapeHtml(alt)}"`;
+    html += `/></ac:image>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle non-image attachment links: [text](./page.attachments/file.pdf)
+  // Only match if not already matched as an image (check extension)
+  processed = processed.replace(LOCAL_ATTACHMENT_LINK_REGEX, (match, text, _attachDir, filename) => {
+    // Skip if it's an image (already handled above)
+    if (isImageFile(filename)) {
+      return match;
+    }
+
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body><![CDATA[${text}]]></ac:plain-text-link-body></ac:link>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Restore inline code blocks before markdown rendering
+  for (let i = 0; i < inlineCodeBlocks.length; i++) {
+    processed = processed.replace(`<!--INLINE_CODE_${i}-->`, inlineCodeBlocks[i]);
+  }
+
   // Render markdown
   let result = md.render(processed);
 
@@ -632,6 +692,99 @@ const RECENTLY_UPDATED_REGEX = /^:::recently-updated(?:[ \t]+(.+))?\n?:::\s*$/gm
  * Regex for pagetree macro: :::pagetree root="PageName"
  */
 const PAGETREE_MACRO_REGEX = /^:::pagetree(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for local attachment image references: ![alt](./path.attachments/image.png)
+ * Matches images from .attachments/ directories
+ */
+const LOCAL_IMAGE_REGEX = /!\[([^\]]*)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/g;
+
+/**
+ * Regex for local non-image attachment links: [text](./path.attachments/file.pdf)
+ * Matches file links from .attachments/ directories (but not images)
+ */
+const LOCAL_ATTACHMENT_LINK_REGEX = /\[([^\]]+)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/g;
+
+/**
+ * Regex for image size syntax: {width=600} or {width=600 height=400}
+ * Applied after the image markdown
+ */
+const IMAGE_SIZE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)\{([^}]+)\}/g;
+
+/**
+ * Image file extensions (case-insensitive check)
+ */
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"];
+
+/**
+ * Check if a filename is an image based on extension
+ */
+export function isImageFile(filename: string): boolean {
+  const ext = filename.toLowerCase().slice(filename.lastIndexOf("."));
+  return IMAGE_EXTENSIONS.includes(ext);
+}
+
+/**
+ * Replace generic attachment paths with page-specific paths.
+ * Converts ./attachments/file.ext to ./page.attachments/file.ext
+ * @param markdown The markdown content with generic attachment paths
+ * @param pageFilename The page filename (e.g., "architecture.md")
+ * @returns Markdown with page-specific attachment paths
+ */
+export function replaceAttachmentPaths(markdown: string, pageFilename: string): string {
+  // Get the base name without extension
+  const baseName = pageFilename.replace(/\.md$/i, "");
+  const attachmentsDir = `${baseName}.attachments`;
+
+  // Replace image references: ![alt](./attachments/file) -> ![alt](./page.attachments/file)
+  let result = markdown.replace(
+    /!\[([^\]]*)\]\(\.\/attachments\/([^)]+)\)/g,
+    `![$1](./${attachmentsDir}/$2)`
+  );
+
+  // Replace link references: [text](./attachments/file) -> [text](./page.attachments/file)
+  result = result.replace(
+    /\[([^\]]+)\]\(\.\/attachments\/([^)]+)\)/g,
+    `[$1](./${attachmentsDir}/$2)`
+  );
+
+  return result;
+}
+
+/**
+ * Extract all attachment references from markdown content.
+ * Returns filenames referenced in the markdown (for sync comparison).
+ * Excludes references inside code blocks and inline code.
+ */
+export function extractAttachmentRefs(markdown: string): string[] {
+  const refs: Set<string> = new Set();
+
+  // Remove code blocks and inline code to avoid matching examples
+  const withoutCode = markdown
+    .replace(/```[\s\S]*?```/g, "") // Remove fenced code blocks
+    .replace(/`[^`]+`/g, ""); // Remove inline code
+
+  // Match images: ![alt](./page.attachments/file.ext)
+  const imageMatches = withoutCode.matchAll(/!\[[^\]]*\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/g);
+  for (const match of imageMatches) {
+    refs.add(match[2]);
+  }
+
+  // Match images with size: ![alt](./page.attachments/file.ext){...}
+  const imageSizeMatches = withoutCode.matchAll(/!\[[^\]]*\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)\{[^}]+\}/g);
+  for (const match of imageSizeMatches) {
+    refs.add(match[2]);
+  }
+
+  // Match links: [text](./page.attachments/file.ext)
+  const linkMatches = withoutCode.matchAll(/\[[^\]]+\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)/g);
+  for (const match of linkMatches) {
+    // Exclude images (which start with !)
+    refs.add(match[2]);
+  }
+
+  return Array.from(refs);
+}
 
 /**
  * Preprocess Confluence storage to convert macros to placeholder HTML
@@ -1008,6 +1161,55 @@ function preprocessStorageMacros(storage: string): string {
     () => `<div data-macro="pagetree" data-root="" data-startdepth="" data-expandcollapseall="false" data-searchbox="false">*[pagetree]*</div>`
   );
 
+  // Convert ac:image with ri:attachment (image attachments)
+  // Handles: <ac:image ac:width="600"><ri:attachment ri:filename="img.png" ac:alt="Alt text"/></ac:image>
+  storage = storage.replace(
+    /<ac:image(?:\s+ac:width="(\d+)")?(?:\s+ac:height="(\d+)")?[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"(?:\s+ac:alt="([^"]*)")?[^>]*\/>\s*<\/ac:image>/gi,
+    (_, width, height, filename, alt) => {
+      let attrs = `data-attachment="true" data-filename="${escapeHtml(filename)}"`;
+      if (alt) attrs += ` alt="${escapeHtml(alt)}"`;
+      if (width) attrs += ` data-width="${width}"`;
+      if (height) attrs += ` data-height="${height}"`;
+      return `<img ${attrs} src="./${escapeHtml(filename)}">`;
+    }
+  );
+
+  // Also handle alternative attribute order and self-closing variations
+  storage = storage.replace(
+    /<ac:image[^>]*>\s*<ri:attachment[^>]*ri:filename="([^"]+)"[^>]*(?:ac:alt="([^"]*)")?[^>]*\/>\s*<\/ac:image>/gi,
+    (match, filename, alt) => {
+      // Skip if already processed
+      if (match.includes("data-attachment")) return match;
+
+      // Extract width/height from the ac:image tag
+      const widthMatch = match.match(/ac:width="(\d+)"/);
+      const heightMatch = match.match(/ac:height="(\d+)"/);
+
+      let attrs = `data-attachment="true" data-filename="${escapeHtml(filename)}"`;
+      if (alt) attrs += ` alt="${escapeHtml(alt)}"`;
+      if (widthMatch) attrs += ` data-width="${widthMatch[1]}"`;
+      if (heightMatch) attrs += ` data-height="${heightMatch[1]}"`;
+      return `<img ${attrs} src="./${escapeHtml(filename)}">`;
+    }
+  );
+
+  // Convert ac:link with ri:attachment (file attachment links)
+  // Handles: <ac:link><ri:attachment ri:filename="doc.pdf"/><ac:plain-text-link-body><![CDATA[Document]]></ac:plain-text-link-body></ac:link>
+  storage = storage.replace(
+    /<ac:link[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
+    (_, filename, linkText) => {
+      return `<a data-attachment="true" data-filename="${escapeHtml(filename)}" href="./${escapeHtml(filename)}">${escapeHtml(linkText.trim())}</a>`;
+    }
+  );
+
+  // Handle ac:link with ri:attachment but without plain-text-link-body (just use filename as text)
+  storage = storage.replace(
+    /<ac:link[^>]*>\s*<ri:attachment\s+ri:filename="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
+    (_, filename) => {
+      return `<a data-attachment="true" data-filename="${escapeHtml(filename)}" href="./${escapeHtml(filename)}">${escapeHtml(filename)}</a>`;
+    }
+  );
+
   // Preserve all unknown/3rd-party macros (whitelist approach)
   // IMPORTANT: Handle self-closing macros FIRST to prevent greedy matching
   storage = storage.replace(
@@ -1110,6 +1312,44 @@ export function storageToMarkdown(storage: string): string {
         return `{jira:${key}|${opts.join(",")}}`;
       }
       return `{jira:${key}}`;
+    },
+  });
+
+  // Handle attachment images: <img data-attachment="true" data-filename="..." ...>
+  service.addRule("attachmentImage", {
+    filter: (node) => {
+      return node.nodeName === "IMG" && (node as any).getAttribute?.("data-attachment") === "true";
+    },
+    replacement: (_content, node) => {
+      const filename = (node as any).getAttribute?.("data-filename") || "";
+      const alt = (node as any).getAttribute?.("alt") || "";
+      const width = (node as any).getAttribute?.("data-width") || "";
+      const height = (node as any).getAttribute?.("data-height") || "";
+
+      // Build markdown image with optional size syntax
+      let result = `![${alt}](./attachments/${filename})`;
+
+      // Add size attributes if present
+      if (width || height) {
+        const attrs: string[] = [];
+        if (width) attrs.push(`width=${width}`);
+        if (height) attrs.push(`height=${height}`);
+        result += `{${attrs.join(" ")}}`;
+      }
+
+      return result;
+    },
+  });
+
+  // Handle attachment links: <a data-attachment="true" data-filename="..." ...>text</a>
+  service.addRule("attachmentLink", {
+    filter: (node) => {
+      return node.nodeName === "A" && (node as any).getAttribute?.("data-attachment") === "true";
+    },
+    replacement: (content, node) => {
+      const filename = (node as any).getAttribute?.("data-filename") || "";
+      const linkText = content.trim() || filename;
+      return `[${linkText}](./attachments/${filename})`;
     },
   });
 
