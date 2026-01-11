@@ -1405,6 +1405,140 @@ export class ConfluenceClient {
       textSelectionMatchIndex: props.textSelectionMatchIndex,
     };
   }
+
+  // ============ Comment Creation (v2 API) ============
+
+  /**
+   * Create a footer (page-level) comment.
+   *
+   * POST /wiki/api/v2/footer-comments
+   */
+  async createFooterComment(params: {
+    pageId: string;
+    body: string;
+    parentCommentId?: string;
+  }): Promise<FooterComment> {
+    const { pageId, body, parentCommentId } = params;
+
+    // API requires exactly ONE of pageId or parentCommentId, not both
+    const requestBody: Record<string, unknown> = {
+      body: {
+        representation: "storage",
+        value: body,
+      },
+    };
+
+    if (parentCommentId) {
+      requestBody.parentCommentId = parentCommentId;
+    } else {
+      requestBody.pageId = pageId;
+    }
+
+    const data = (await this.requestV2("/footer-comments", {
+      method: "POST",
+      body: requestBody,
+    })) as any;
+
+    return this.parseFooterComment(data);
+  }
+
+  /**
+   * Create an inline comment on specific text.
+   *
+   * POST /wiki/api/v2/inline-comments
+   */
+  async createInlineComment(params: {
+    pageId: string;
+    body: string;
+    textSelection: string;
+    textSelectionMatchCount?: number;
+    textSelectionMatchIndex?: number;
+    parentCommentId?: string;
+  }): Promise<InlineComment> {
+    const {
+      pageId,
+      body,
+      textSelection,
+      textSelectionMatchCount = 1,
+      textSelectionMatchIndex = 0,
+      parentCommentId,
+    } = params;
+
+    // API requires exactly ONE of pageId or parentCommentId, not both
+    const requestBody: Record<string, unknown> = {
+      body: {
+        representation: "storage",
+        value: body,
+      },
+      inlineCommentProperties: {
+        textSelection,
+        textSelectionMatchCount,
+        textSelectionMatchIndex,
+      },
+    };
+
+    if (parentCommentId) {
+      requestBody.parentCommentId = parentCommentId;
+    } else {
+      requestBody.pageId = pageId;
+    }
+
+    const data = (await this.requestV2("/inline-comments", {
+      method: "POST",
+      body: requestBody,
+    })) as any;
+
+    return this.parseInlineComment(data);
+  }
+
+  /**
+   * Resolve a comment (mark as resolved).
+   *
+   * PUT /wiki/api/v2/{type}-comments/{id}
+   */
+  async resolveComment(
+    commentId: string,
+    type: "footer" | "inline"
+  ): Promise<void> {
+    const endpoint = type === "footer" ? "footer-comments" : "inline-comments";
+
+    // First fetch the comment to get its current body and version
+    const current = (await this.requestV2(
+      `/${endpoint}/${commentId}?body-format=storage`,
+      { method: "GET" }
+    )) as any;
+
+    const version = current.version?.number ?? 1;
+    const body = current.body?.storage?.value ?? "";
+
+    await this.requestV2(`/${endpoint}/${commentId}`, {
+      method: "PUT",
+      body: {
+        version: { number: version + 1 },
+        body: {
+          representation: "storage",
+          value: body,
+        },
+        resolutionStatus: "resolved",
+      },
+    });
+  }
+
+  /**
+   * Delete a comment.
+   *
+   * DELETE /wiki/api/v2/{type}-comments/{id}
+   */
+  async deleteComment(
+    commentId: string,
+    type: "footer" | "inline"
+  ): Promise<void> {
+    const endpoint = type === "footer" ? "footer-comments" : "inline-comments";
+
+    await this.requestV2(`/${endpoint}/${commentId}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 /** Webhook registration info */

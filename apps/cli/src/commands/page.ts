@@ -49,7 +49,7 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       await handleRestore(flags, opts);
       return;
     case "comments":
-      await handleComments(flags, opts);
+      await handleComments(args.slice(1), flags, opts);
       return;
     default:
       output(pageHelp(), opts);
@@ -379,7 +379,34 @@ async function handleRestore(flags: Record<string, string | boolean>, opts: Outp
 
 // ============ Comments Operations ============
 
-async function handleComments(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleComments(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const subcommand = args[0];
+
+  switch (subcommand) {
+    case "add":
+      await handleCommentsAdd(args.slice(1), flags, opts);
+      return;
+    case "reply":
+      await handleCommentsReply(args.slice(1), flags, opts);
+      return;
+    case "add-inline":
+      await handleCommentsAddInline(args.slice(1), flags, opts);
+      return;
+    case "resolve":
+      await handleCommentsResolve(flags, opts);
+      return;
+    case "delete":
+      await handleCommentsDelete(flags, opts);
+      return;
+    case "list":
+    default:
+      // Default to list if no subcommand or "list"
+      await handleCommentsList(flags, opts);
+      return;
+  }
+}
+
+async function handleCommentsList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -400,6 +427,7 @@ async function handleComments(flags: Record<string, string | boolean>, opts: Out
 
   if (footerCount === 0 && inlineCount === 0) {
     output(`No comments on "${page.title}"`, opts);
+    output(commentsHelp(), opts);
     return;
   }
 
@@ -421,6 +449,183 @@ async function handleComments(flags: Record<string, string | boolean>, opts: Out
       formatInlineCommentForDisplay(comment, opts, 0);
     }
   }
+}
+
+async function handleCommentsAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  // Get comment text from args or --file
+  const filePath = getFlag(flags, "file");
+  let commentText: string;
+
+  if (filePath) {
+    commentText = await readTextFile(filePath);
+  } else if (args.length > 0) {
+    commentText = args.join(" ");
+  } else {
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli page comments add --id <id> <text>");
+  }
+
+  if (!commentText.trim()) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text cannot be empty.");
+  }
+
+  // Convert markdown to storage format
+  const storageBody = markdownToStorage(commentText);
+
+  const client = await getClient(flags, opts);
+  const comment = await client.createFooterComment({
+    pageId: id,
+    body: storageBody,
+  });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", comment }, opts);
+    return;
+  }
+
+  output(`Created comment ${comment.id}`, opts);
+}
+
+async function handleCommentsReply(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const parentId = getFlag(flags, "parent");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (!parentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--parent <commentId> is required.");
+  }
+
+  // Get reply text from args or --file
+  const filePath = getFlag(flags, "file");
+  let replyText: string;
+
+  if (filePath) {
+    replyText = await readTextFile(filePath);
+  } else if (args.length > 0) {
+    replyText = args.join(" ");
+  } else {
+    fail(opts, 1, ERROR_CODES.USAGE, "Reply text is required. Usage: atlcli page comments reply --id <id> --parent <commentId> <text>");
+  }
+
+  if (!replyText.trim()) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Reply text cannot be empty.");
+  }
+
+  // Convert markdown to storage format
+  const storageBody = markdownToStorage(replyText);
+
+  const client = await getClient(flags, opts);
+  const comment = await client.createFooterComment({
+    pageId: id,
+    body: storageBody,
+    parentCommentId: parentId,
+  });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", comment }, opts);
+    return;
+  }
+
+  output(`Created reply ${comment.id} to comment ${parentId}`, opts);
+}
+
+async function handleCommentsAddInline(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const selection = getFlag(flags, "selection");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (!selection) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--selection <text> is required.");
+  }
+
+  // Get comment text from args or --file
+  const filePath = getFlag(flags, "file");
+  let commentText: string;
+
+  if (filePath) {
+    commentText = await readTextFile(filePath);
+  } else if (args.length > 0) {
+    commentText = args.join(" ");
+  } else {
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli page comments add-inline --id <id> --selection <text> <comment>");
+  }
+
+  if (!commentText.trim()) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text cannot be empty.");
+  }
+
+  // Parse match index if provided
+  const matchIndexStr = getFlag(flags, "match-index");
+  const matchIndex = matchIndexStr ? parseInt(matchIndexStr, 10) : 0;
+
+  // Convert markdown to storage format
+  const storageBody = markdownToStorage(commentText);
+
+  const client = await getClient(flags, opts);
+  const comment = await client.createInlineComment({
+    pageId: id,
+    body: storageBody,
+    textSelection: selection,
+    textSelectionMatchIndex: matchIndex,
+  });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", comment }, opts);
+    return;
+  }
+
+  output(`Created inline comment ${comment.id} on "${selection}"`, opts);
+}
+
+async function handleCommentsResolve(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const commentId = getFlag(flags, "comment");
+  const type = (getFlag(flags, "type") || "footer") as "footer" | "inline";
+
+  if (!commentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--comment <id> is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.resolveComment(commentId, type);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", resolved: commentId, type }, opts);
+    return;
+  }
+
+  output(`Resolved ${type} comment ${commentId}`, opts);
+}
+
+async function handleCommentsDelete(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const commentId = getFlag(flags, "comment");
+  const type = (getFlag(flags, "type") || "footer") as "footer" | "inline";
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!commentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--comment <id> is required.");
+  }
+
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a comment.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteComment(commentId, type);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", deleted: commentId, type }, opts);
+    return;
+  }
+
+  output(`Deleted ${type} comment ${commentId}`, opts);
 }
 
 function formatCommentForDisplay(
@@ -464,6 +669,34 @@ function formatInlineCommentForDisplay(
   }
 }
 
+function commentsHelp(): string {
+  return `
+atlcli page comments <command>
+
+Commands:
+  list --id <id>                         List all comments (default)
+  add --id <id> <text>                   Add a footer comment
+  reply --id <id> --parent <cid> <text>  Reply to a comment
+  add-inline --id <id> --selection <s>   Add inline comment on text
+  resolve --comment <id> [--type <t>]    Mark comment as resolved
+  delete --comment <id> --confirm        Delete a comment
+
+Options:
+  --file <path>        Read comment text from file (supports markdown)
+  --type <t>           Comment type: footer or inline (default: footer)
+  --match-index <n>    For inline: which occurrence of selection (default: 0)
+
+Examples:
+  atlcli page comments --id 12345
+  atlcli page comments add --id 12345 "Looks good!"
+  atlcli page comments add --id 12345 --file comment.md
+  atlcli page comments reply --id 12345 --parent 67890 "Thanks!"
+  atlcli page comments add-inline --id 12345 --selection "important text" "Please clarify this"
+  atlcli page comments resolve --comment 67890
+  atlcli page comments delete --comment 67890 --confirm
+`;
+}
+
 function labelHelp(): string {
   return `atlcli page label <command>
 
@@ -491,7 +724,7 @@ Commands:
   history --id <id> [--limit <n>]      Show version history
   diff --id <id> [--version <n>]       Compare versions
   restore --id <id> --version <n> --confirm  Restore to version
-  comments --id <id>                   List page comments
+  comments <list|add|reply|...>        Manage page comments
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -503,7 +736,8 @@ Examples:
   atlcli page diff --id 12345 --version 3
   atlcli page restore --id 12345 --version 3 --confirm
   atlcli page comments --id 12345
+  atlcli page comments add --id 12345 "Great work!"
 
-Run 'atlcli page label' for label subcommand help.
+Run 'atlcli page label' or 'atlcli page comments' for subcommand help.
 `;
 }
