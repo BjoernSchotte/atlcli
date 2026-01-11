@@ -79,7 +79,12 @@ import {
   generateDiff,
   formatDiffWithColors,
   formatDiffSummary,
+  // Ignore
+  loadIgnorePatterns,
+  shouldIgnore,
+  IgnoreResult,
 } from "@atlcli/confluence";
+import type { Ignore } from "ignore";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -640,9 +645,13 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     atlcliDir = findAtlcliDir(dirname(pathArg));
     isSingleFile = true;
   } else {
-    // Directory push - collect all markdown files
-    files = await collectMarkdownFiles(pathArg);
+    // Directory push - collect all markdown files, respecting ignore patterns
     atlcliDir = findAtlcliDir(pathArg);
+    const ignoreResult = await loadIgnorePatterns(atlcliDir ?? pathArg);
+    files = await collectMarkdownFiles(pathArg, {
+      ignore: ignoreResult.ignore,
+      rootDir: atlcliDir ?? pathArg,
+    });
   }
 
   let space = getFlag(flags, "space");
@@ -1142,9 +1151,13 @@ export function computeSyncState(params: {
   return "synced";
 }
 
-async function collectMarkdownFiles(dir: string): Promise<string[]> {
+async function collectMarkdownFiles(
+  dir: string,
+  options?: { ignore?: Ignore; rootDir?: string }
+): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const results: string[] = [];
+  const { ignore: ig, rootDir = dir } = options ?? {};
 
   for (const entry of entries) {
     // Skip .atlcli directory and other hidden directories
@@ -1152,8 +1165,17 @@ async function collectMarkdownFiles(dir: string): Promise<string[]> {
       continue;
     }
     const fullPath = join(dir, entry.name);
+
+    // Check if path should be ignored
+    if (ig) {
+      const relativePath = relative(rootDir, fullPath);
+      if (shouldIgnore(ig, relativePath)) {
+        continue;
+      }
+    }
+
     if (entry.isDirectory()) {
-      results.push(...(await collectMarkdownFiles(fullPath)));
+      results.push(...(await collectMarkdownFiles(fullPath, { ignore: ig, rootDir })));
       continue;
     }
     if (entry.isFile() && extname(entry.name).toLowerCase() === ".md") {
@@ -1205,11 +1227,17 @@ function titleFromFilename(path: string): string {
  */
 async function handleStatus(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
-  const files = await collectMarkdownFiles(dir);
 
   // Check for .atlcli directory
   const atlcliDir = findAtlcliDir(dir);
   const state = atlcliDir ? await readState(atlcliDir) : null;
+
+  // Load ignore patterns and collect files
+  const ignoreResult = await loadIgnorePatterns(atlcliDir ?? dir);
+  const files = await collectMarkdownFiles(dir, {
+    ignore: ignoreResult.ignore,
+    rootDir: atlcliDir ?? dir,
+  });
 
   const stats = {
     synced: 0,
@@ -1295,6 +1323,10 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       modified,
       untracked,
       lastSync: state?.lastSync,
+      ignorePatterns: {
+        hasAtlcliIgnore: ignoreResult.hasAtlcliIgnore,
+        hasGitIgnore: ignoreResult.hasGitIgnore,
+      },
     }, opts);
   } else {
     output(`Sync status for ${dir}:\n`, opts);
@@ -1482,6 +1514,10 @@ Options:
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.
+
+Ignore patterns:
+  Create .atlcliignore (gitignore syntax) to exclude files from push/status.
+  Patterns from .gitignore are also respected (merged with .atlcliignore).
 
 Examples:
   atlcli docs init ./docs --space TEAM              Initialize for entire space
