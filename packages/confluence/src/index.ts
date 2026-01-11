@@ -3,6 +3,7 @@ export * from "./client.js";
 export * from "./diff.js";
 export * from "./frontmatter.js";
 export * from "./hierarchy.js";
+export * from "./ignore.js";
 export * from "./markdown.js";
 export * from "./merge.js";
 export * from "./poller.js";
