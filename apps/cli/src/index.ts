@@ -5,6 +5,7 @@ import { handlePage } from "./commands/page.js";
 import { handleSpace } from "./commands/space.js";
 import { handleDocs } from "./commands/docs.js";
 import { handlePlugin } from "./commands/plugin.js";
+import { handleSearch } from "./commands/search.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = "0.2.0";
@@ -58,6 +59,9 @@ async function main(): Promise<void> {
         break;
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
+        break;
+      case "search":
+        await handleSearch(rest, parsed.flags, opts);
         break;
       case "version":
         output({ version: VERSION }, opts);
@@ -147,6 +151,7 @@ Commands:
   space       Confluence space operations
   page        Confluence page operations
   docs        Confluence docs sync (pull/push)
+  search      Search Confluence content
   plugin      Manage plugins
   version     Show version
 ${pluginSection}

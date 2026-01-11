@@ -101,11 +101,32 @@ Filter sync by labels, manage labels.
 
 ## 7. Search
 
-Full-text search across Confluence.
+**Status**: COMPLETE ✅
 
+Full-text search across Confluence with CQL support.
+
+**Implemented Features:**
+- `atlcli search <query>` - Text search in page content
+- `atlcli search --space <key>` - Filter by space (comma-separated for multiple)
+- `atlcli search --label <name>` - Filter by label (comma-separated for multiple)
+- `atlcli search --title <text>` - Filter by title containing text
+- `atlcli search --creator <user>` - Filter by creator (use "me" for current user)
+- `atlcli search --type <type>` - Content type: page, blogpost, comment, all
+- `atlcli search --ancestor <pageId>` - Pages under a specific parent
+- `atlcli search --modified-since <date>` - Modified after date (7d, 30d, today, thisWeek, YYYY-MM-DD)
+- `atlcli search --created-since <date>` - Created after date
+- `atlcli search --cql <query>` - Raw CQL query for advanced searches
+- Output formats: table (default), compact, json
+- Pagination with `--limit` and `--start`
+- `--verbose` to show the generated CQL query
+
+**Examples:**
 ```bash
-atlcli search "API documentation" [--space KEY]
-atlcli search --cql "label=architecture and lastModified > now('-7d')"
+atlcli search "API documentation"
+atlcli search --space DEV,DOCS --modified-since 7d
+atlcli search --label architecture --label api
+atlcli search --creator me --created-since thisMonth
+atlcli search --cql "type=page AND space=DEV AND lastModified >= startOfWeek()"
 ```
 
 ---
@@ -255,6 +276,6 @@ atlcli docs push --validate
 4. ~~**Page History & Diff** - Safety and review~~ ✅ COMPLETE
 5. ~~**Ignore Patterns** - Quality of life~~ ✅ COMPLETE
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
-7. **Search** - Discovery
+7. ~~**Search** - Discovery~~ ✅ COMPLETE
 8. **Comments** - Collaboration
 9. **Others** - As needed

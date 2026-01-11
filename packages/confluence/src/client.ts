@@ -24,8 +24,14 @@ export type ConfluenceSearchResult = {
   title: string;
   url?: string;
   spaceKey?: string;
+  spaceName?: string;
   version?: number;
   lastModified?: string;
+  excerpt?: string;
+  type?: string;
+  labels?: string[];
+  creator?: string;
+  created?: string;
 };
 
 /** Sync scope type for polling */
@@ -196,17 +202,99 @@ export class ConfluenceClient {
       : [];
   }
 
-  async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
+  /**
+   * Search Confluence content using CQL.
+   *
+   * GET /content/search
+   *
+   * @param cql - Confluence Query Language query string
+   * @param options - Search options
+   * @returns Search results with pagination info
+   */
+  async search(
+    cql: string,
+    options: {
+      limit?: number;
+      start?: number;
+      excerpt?: boolean;
+      /** Optimization: "minimal" only fetches id/title/space, "standard" adds version/dates/labels, "full" adds excerpt */
+      detail?: "minimal" | "standard" | "full";
+    } = {}
+  ): Promise<SearchResults> {
+    const { limit = 25, start = 0, detail = "standard" } = options;
+    const excerpt = options.excerpt ?? (detail === "full");
+
+    // Build expand parameter based on detail level
+    const expandParts: string[] = [];
+
+    // Minimal: just space (for spaceKey)
+    if (detail !== "minimal") {
+      expandParts.push("version", "space");
+    } else {
+      expandParts.push("space");
+    }
+
+    // Standard: add history and labels
+    if (detail === "standard" || detail === "full") {
+      expandParts.push("history.lastUpdated", "history.createdBy", "history.createdDate", "metadata.labels");
+    }
+
     const data = (await this.request("/content/search", {
-      query: { cql, limit },
+      query: {
+        cql,
+        limit,
+        start,
+        expand: expandParts.join(","),
+        excerpt: excerpt ? "indexed" : undefined,
+      },
     })) as any;
+
     const results = Array.isArray(data.results) ? data.results : [];
-    return results.map((item: any) => ({
+
+    return {
+      results: results.map((item: any) => this.parseSearchResult(item)),
+      start: data.start ?? start,
+      limit: data.limit ?? limit,
+      size: data.size ?? results.length,
+      totalSize: data.totalSize,
+      hasMore: (data.start ?? 0) + (data.size ?? results.length) < (data.totalSize ?? 0),
+    };
+  }
+
+  /**
+   * Legacy method - use search() for full features.
+   */
+  async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
+    const result = await this.search(cql, { limit });
+    return result.results;
+  }
+
+  /**
+   * Parse search result from API response.
+   */
+  private parseSearchResult(item: any): ConfluenceSearchResult {
+    // Extract labels from metadata
+    const labels: string[] = [];
+    if (item.metadata?.labels?.results) {
+      for (const label of item.metadata.labels.results) {
+        labels.push(label.name);
+      }
+    }
+
+    return {
       id: item.id,
       title: item.title,
       url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
       spaceKey: item.space?.key,
-    }));
+      spaceName: item.space?.name,
+      version: item.version?.number,
+      lastModified: item.history?.lastUpdated?.when,
+      excerpt: item.excerpt,
+      type: item.type,
+      labels,
+      creator: item.history?.createdBy?.displayName,
+      created: item.history?.createdDate,
+    };
   }
 
   async createPage(params: {
@@ -1116,4 +1204,20 @@ export interface PageHistory {
   versions: PageVersion[];
   /** Latest version number */
   latest: number;
+}
+
+/** Search results with pagination info */
+export interface SearchResults {
+  /** Search results */
+  results: ConfluenceSearchResult[];
+  /** Start index */
+  start: number;
+  /** Requested limit */
+  limit: number;
+  /** Number of results returned */
+  size: number;
+  /** Total number of results (if available) */
+  totalSize?: number;
+  /** Whether there are more results */
+  hasMore: boolean;
 }
