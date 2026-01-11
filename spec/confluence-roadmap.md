@@ -18,18 +18,19 @@ See: [partial-sync.md](./partial-sync.md)
 
 ## 2. Attachments Support
 
+**Status**: COMPLETE ✅
+
 Sync images and file attachments with pages.
 
-**Features:**
-- Download attachments to `./attachments/` or alongside markdown
-- Upload local images referenced in markdown
-- Embed images using `![alt](./image.png)` syntax
-- Handle attachment versioning
-
-**Considerations:**
-- Large file handling
-- Binary diff for attachments?
-- Naming conflicts
+**Implemented Features:**
+- Download attachments to `{page}.attachments/` alongside markdown
+- Upload local images and files referenced in markdown
+- Image embedding: `![alt](./page.attachments/image.png)` syntax
+- Image sizing: `![alt](./page.attachments/img.png){width=600}` syntax
+- File attachments: `[Report](./page.attachments/report.pdf)` for PDFs, Excel, etc.
+- Automatic conversion between markdown and Confluence `ac:image`/`ac:link` macros
+- Attachment versioning and state tracking
+- Use `--no-attachments` flag to skip attachment sync
 
 ---
 
@@ -226,12 +227,12 @@ atlcli docs push --validate
 
 ## Priority Order
 
-1. **Partial Sync** - Core functionality, day-0 requirement
-2. **Attachments** - Essential for real-world docs
+1. ~~**Partial Sync** - Core functionality, day-0 requirement~~ ✅ COMPLETE
+2. ~~**Attachments** - Essential for real-world docs~~ ✅ COMPLETE
 3. **Labels** - Common organizational need
 4. **Page History & Diff** - Safety and review
 5. **Ignore Patterns** - Quality of life
-6. **Additional Macros** - Expanded compatibility
+6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
 7. **Search** - Discovery
 8. **Comments** - Collaboration
 9. **Others** - As needed
