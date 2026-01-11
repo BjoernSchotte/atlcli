@@ -51,6 +51,15 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "comments":
       await handleComments(args.slice(1), flags, opts);
       return;
+    case "move":
+      await handleMove(flags, opts);
+      return;
+    case "copy":
+      await handleCopy(flags, opts);
+      return;
+    case "children":
+      await handleChildren(flags, opts);
+      return;
     default:
       output(pageHelp(), opts);
       return;
@@ -669,6 +678,83 @@ function formatInlineCommentForDisplay(
   }
 }
 
+// ============ Page Tree Operations ============
+
+async function handleMove(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const parentId = getFlag(flags, "parent");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (!parentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--parent is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const page = await client.movePage(id, parentId);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", moved: true, page }, opts);
+    return;
+  }
+
+  output(`Moved "${page.title}" to new parent ${parentId}`, opts);
+}
+
+async function handleCopy(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const space = getFlag(flags, "space");
+  const title = getFlag(flags, "title");
+  const parentId = getFlag(flags, "parent");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const page = await client.copyPage({
+    sourceId: id,
+    targetSpaceKey: space,
+    newTitle: title,
+    parentId,
+  });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", copied: true, page }, opts);
+    return;
+  }
+
+  output(`Created copy "${page.title}" (id: ${page.id})`, opts);
+}
+
+async function handleChildren(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const limit = Number(getFlag(flags, "limit") ?? 100);
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const children = await client.getChildren(id, { limit: Number.isNaN(limit) ? 100 : limit });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", parentId: id, children }, opts);
+    return;
+  }
+
+  if (children.length === 0) {
+    output("No child pages found.", opts);
+    return;
+  }
+
+  output(`Child pages (${children.length}):`, opts);
+  for (const child of children) {
+    output(`  ${child.id}  ${child.title}`, opts);
+  }
+}
+
 function commentsHelp(): string {
   return `
 atlcli page comments <command>
@@ -720,6 +806,9 @@ Commands:
   list [--cql <query>] [--limit <n>] [--label <label>] [--space <key>]
   create --space <key> --title <title> --body <file>
   update --id <id> --body <file> [--title <title>]
+  move --id <id> --parent <parent-id>  Move page to new parent
+  copy --id <id> [--space <key>] [--title <t>] [--parent <p>]  Copy page
+  children --id <id> [--limit <n>]     List child pages
   label <add|remove|list> ...          Manage page labels
   history --id <id> [--limit <n>]      Show version history
   diff --id <id> [--version <n>]       Compare versions
@@ -732,6 +821,9 @@ Options:
 
 Examples:
   atlcli page list --label architecture
+  atlcli page move --id 12345 --parent 67890
+  atlcli page copy --id 12345 --title "Copy of Page"
+  atlcli page children --id 12345
   atlcli page history --id 12345 --limit 5
   atlcli page diff --id 12345 --version 3
   atlcli page restore --id 12345 --version 3 --confirm

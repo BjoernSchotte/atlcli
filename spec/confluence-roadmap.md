@@ -155,13 +155,17 @@ atlcli search --cql "type=page AND space=DEV AND lastModified >= startOfWeek()"
 
 ## 8. Page Tree Management
 
-Move, copy, reorder pages.
+**Status**: COMPLETE ✅ (move, copy, children)
 
-```bash
-atlcli page move <id> --parent <parent-id>
-atlcli page copy <id> --space TARGET [--title "Copy of..."]
-atlcli page reorder <id> --after <sibling-id>
-```
+Move, copy, and list child pages.
+
+**Implemented Features:**
+- `atlcli page move --id <id> --parent <parent-id>` - Move page to new parent
+- `atlcli page copy --id <id> [--space <key>] [--title <t>] [--parent <p>]` - Copy/duplicate page
+- `atlcli page children --id <id> [--limit <n>]` - List direct child pages
+
+**Planned:**
+- Sibling reordering (requires design - Confluence API doesn't support it natively)
 
 ---
 
@@ -300,4 +304,5 @@ atlcli docs push --validate
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
 7. ~~**Search** - Discovery~~ ✅ COMPLETE
 8. ~~**Comments** - Collaboration~~ ✅ COMPLETE
-9. **Others** - As needed
+9. ~~**Page Tree Management** - Move, copy, children~~ ✅ COMPLETE
+10. **Others** - As needed

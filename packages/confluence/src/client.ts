@@ -445,6 +445,80 @@ export class ConfluenceClient {
     };
   }
 
+  /**
+   * Move a page to a new parent.
+   *
+   * PUT /content/{id} with new ancestors array
+   */
+  async movePage(pageId: string, newParentId: string): Promise<ConfluencePage> {
+    // Get current page to preserve title and get version
+    const current = await this.getPage(pageId);
+
+    const data = (await this.request(`/content/${pageId}`, {
+      method: "PUT",
+      body: {
+        id: pageId,
+        type: "page",
+        title: current.title,
+        version: { number: (current.version ?? 1) + 1 },
+        ancestors: [{ id: newParentId }],
+      },
+    })) as any;
+
+    // Parse response like updatePage
+    const ancestors = Array.isArray(data.ancestors)
+      ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
+    const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+
+    return {
+      id: data.id,
+      title: data.title,
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+      version: data.version?.number,
+      spaceKey: data.space?.key,
+      parentId,
+      ancestors,
+    };
+  }
+
+  /**
+   * Copy/duplicate a page.
+   *
+   * Fetches source page and creates a new page with same content.
+   */
+  async copyPage(params: {
+    sourceId: string;
+    targetSpaceKey?: string;
+    newTitle?: string;
+    parentId?: string;
+  }): Promise<ConfluencePage> {
+    // Fetch source page with full content
+    const source = await this.getPage(params.sourceId);
+
+    // Create new page with same content
+    return this.createPage({
+      spaceKey: params.targetSpaceKey ?? source.spaceKey!,
+      title: params.newTitle ?? `Copy of ${source.title}`,
+      storage: source.storage!,
+      parentId: params.parentId ?? source.parentId ?? undefined,
+    });
+  }
+
+  /**
+   * Get direct child pages of a parent page.
+   *
+   * Uses CQL parent= for direct children only (not recursive).
+   */
+  async getChildren(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<ConfluenceSearchResult[]> {
+    const { limit = 100 } = options;
+    const cql = `parent=${pageId} AND type=page`;
+    return this.searchPages(cql, limit);
+  }
+
   // ============ Space Operations ============
 
   /**
