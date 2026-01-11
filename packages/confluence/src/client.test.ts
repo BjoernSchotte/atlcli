@@ -316,4 +316,166 @@ describe("ConfluenceClient", () => {
       expect(capturedBody.title).toBe("Updated");
     });
   });
+
+  describe("label operations", () => {
+    test("getLabels fetches labels for a page", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                { id: "1", name: "architecture", prefix: "global" },
+                { id: "2", name: "api-docs", prefix: "global" },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const labels = await client.getLabels("123");
+
+      expect(capturedUrl).toContain("/content/123/label");
+      expect(labels.length).toBe(2);
+      expect(labels[0].name).toBe("architecture");
+      expect(labels[1].name).toBe("api-docs");
+    });
+
+    test("addLabels sends correct payload", async () => {
+      let capturedBody: any;
+      let capturedUrl = "";
+      let capturedMethod = "";
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        capturedUrl = url;
+        capturedMethod = options.method ?? "GET";
+        if (options.body) {
+          capturedBody = JSON.parse(options.body as string);
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                { id: "1", name: "new-label", prefix: "global" },
+                { id: "2", name: "another-label", prefix: "global" },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const result = await client.addLabels("123", ["new-label", "another-label"]);
+
+      expect(capturedUrl).toContain("/content/123/label");
+      expect(capturedMethod).toBe("POST");
+      expect(capturedBody).toEqual([
+        { prefix: "global", name: "new-label" },
+        { prefix: "global", name: "another-label" },
+      ]);
+      expect(result.length).toBe(2);
+      expect(result[0].name).toBe("new-label");
+    });
+
+    test("removeLabel sends DELETE request", async () => {
+      let capturedUrl = "";
+      let capturedMethod = "";
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        capturedUrl = url;
+        capturedMethod = options.method ?? "GET";
+        return Promise.resolve(
+          new Response("", { status: 204 })
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.removeLabel("123", "old-label");
+
+      expect(capturedUrl).toContain("/content/123/label/old-label");
+      expect(capturedMethod).toBe("DELETE");
+    });
+
+    test("removeLabel encodes special characters in label name", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response("", { status: 204 })
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.removeLabel("123", "label with spaces");
+
+      expect(capturedUrl).toContain("label%20with%20spaces");
+    });
+
+    test("getPagesByLabel uses CQL with label filter", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  id: "1",
+                  title: "Page 1",
+                  version: { number: 1 },
+                  space: { key: "TEST" },
+                },
+                {
+                  id: "2",
+                  title: "Page 2",
+                  version: { number: 2 },
+                  space: { key: "TEST" },
+                },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const pages = await client.getPagesByLabel("architecture");
+
+      // URL encoding: spaces become + in query strings
+      expect(capturedUrl).toContain('label');
+      expect(capturedUrl).toContain('architecture');
+      expect(capturedUrl).toContain('type');
+      expect(capturedUrl).toContain('page');
+      expect(pages.length).toBe(2);
+      expect(pages[0].title).toBe("Page 1");
+    });
+
+    test("getPagesByLabel filters by space when provided", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ results: [] }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.getPagesByLabel("architecture", { spaceKey: "DEV" });
+
+      // URL encoding: spaces become + in query strings
+      expect(capturedUrl).toContain('space');
+      expect(capturedUrl).toContain('DEV');
+    });
+  });
 });
