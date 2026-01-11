@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
-import { join, basename, extname, dirname, relative } from "node:path";
+import { join, basename, extname, dirname, relative, resolve } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -48,6 +48,22 @@ import {
   stripFrontmatter,
   extractTitleFromMarkdown,
   AtlcliFrontmatter,
+  // Hierarchy
+  computeFilePath,
+  buildPathMap,
+  moveFile,
+  hasPageMoved,
+  PageHierarchyInfo,
+  // Scope
+  parseScope,
+  buildCqlFromScope,
+  scopeToString,
+  SyncScope,
+  // Config v2
+  initAtlcliDirV2,
+  getConfigScope,
+  isConfigV2,
+  ConfigScope,
 } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
 
@@ -124,11 +140,6 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
  */
 async function handleInit(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const dir = args[0] || ".";
-  const space = getFlag(flags, "space");
-
-  if (!space) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space is required.");
-  }
 
   if (isInitialized(dir)) {
     fail(opts, 1, ERROR_CODES.USAGE, `Directory already initialized: ${dir}/.atlcli/`);
@@ -142,8 +153,50 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
 
+  // Parse scope from flags
+  const parsedScope = parseScope(flags);
+  let scope: ConfigScope;
+  let space: string | undefined = getFlag(flags, "space");
+
+  if (parsedScope) {
+    // Convert SyncScope to ConfigScope
+    switch (parsedScope.scope.type) {
+      case "page":
+        scope = { type: "page", pageId: parsedScope.scope.pageId };
+        break;
+      case "tree":
+        scope = { type: "tree", ancestorId: parsedScope.scope.ancestorId };
+        break;
+      case "space":
+        scope = { type: "space" };
+        space = parsedScope.scope.spaceKey;
+        break;
+    }
+  } else if (space) {
+    // Only --space provided
+    scope = { type: "space" };
+  } else {
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required.");
+  }
+
+  // Auto-detect space from page/ancestor if not provided
+  if (!space && (scope.type === "page" || scope.type === "tree")) {
+    const client = await getClient(flags, opts);
+    const pageId = scope.type === "page" ? scope.pageId : scope.ancestorId;
+    const pageInfo = await client.getPage(pageId);
+    space = pageInfo.spaceKey;
+    if (!opts.json) {
+      output(`Auto-detected space: ${space}`, opts);
+    }
+  }
+
+  if (!space) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Could not determine space. Specify --space explicitly.");
+  }
+
   await ensureDir(dir);
-  await initAtlcliDir(dir, {
+  await initAtlcliDirV2(dir, {
+    scope,
     space,
     baseUrl: profile.baseUrl,
     profile: profile.name,
@@ -154,10 +207,24 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
     },
   });
 
+  // Build scope description for output
+  let scopeDesc: string;
+  switch (scope.type) {
+    case "page":
+      scopeDesc = `page ${scope.pageId}`;
+      break;
+    case "tree":
+      scopeDesc = `tree under ${scope.ancestorId}`;
+      break;
+    case "space":
+      scopeDesc = `space ${space}`;
+      break;
+  }
+
   output(
     opts.json
-      ? { schemaVersion: "1", initialized: true, dir, space }
-      : `Initialized ${dir}/.atlcli/ for space ${space}`,
+      ? { schemaVersion: "2", initialized: true, dir, scope, space }
+      : `Initialized ${dir}/.atlcli/ for ${scopeDesc}`,
     opts
   );
 }
@@ -168,30 +235,80 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const force = hasFlag(flags, "force");
 
   // Check if directory is initialized
-  let space = getFlag(flags, "space");
   let atlcliDir = findAtlcliDir(outDir);
+  let dirConfig: AtlcliConfig | null = null;
 
   if (atlcliDir) {
-    // Use config from .atlcli/
-    const dirConfig = await readConfig(atlcliDir);
-    space = space || dirConfig.space;
-  } else if (!space) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or run 'docs init' first).");
+    dirConfig = await readConfig(atlcliDir);
   }
 
-  const cql = getFlag(flags, "cql") ?? `space=${space} and type=page`;
+  // Parse scope from flags
+  const parsedScope = parseScope(flags);
+  let scope: SyncScope;
+  let space: string | undefined;
+
+  if (parsedScope) {
+    scope = parsedScope.scope;
+    space = parsedScope.spaceKey;
+  } else if (dirConfig) {
+    // Use scope from config
+    const configScope = getConfigScope(dirConfig);
+    space = dirConfig.space;
+
+    // Convert ConfigScope to SyncScope
+    switch (configScope.type) {
+      case "page":
+        scope = { type: "page", pageId: configScope.pageId };
+        break;
+      case "tree":
+        scope = { type: "tree", ancestorId: configScope.ancestorId };
+        break;
+      case "space":
+        scope = { type: "space", spaceKey: space };
+        break;
+    }
+  } else {
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or run 'docs init' first).");
+  }
+
   const client = await getClient(flags, opts);
-  const pages = await client.searchPages(cql, Number.isNaN(limit) ? 50 : limit);
+
+  // For single page or tree scope without space, auto-detect space from page
+  if (!space && (scope.type === "page" || scope.type === "tree")) {
+    const pageId = scope.type === "page" ? scope.pageId : scope.ancestorId;
+    const pageInfo = await client.getPage(pageId);
+    space = pageInfo.spaceKey;
+    if (!opts.json) {
+      output(`Auto-detected space: ${space}`, opts);
+    }
+  }
+
+  // Fetch pages based on scope
+  let pages: { id: string; title: string }[];
+  const cql = buildCqlFromScope(scope);
+
+  if (cql) {
+    // Tree or space scope: use CQL search
+    pages = await client.searchPages(cql, Number.isNaN(limit) ? 50 : limit);
+  } else {
+    // Single page scope: direct fetch
+    const page = await client.getPage((scope as { type: "page"; pageId: string }).pageId);
+    pages = [{ id: page.id, title: page.title }];
+  }
+
+  if (!opts.json) {
+    output(`Pulling ${pages.length} page(s) from ${scopeToString(scope)}...`, opts);
+  }
 
   // If not initialized, auto-init
-  if (!atlcliDir) {
+  if (!atlcliDir && space) {
     const appConfig = await loadConfig();
     const profileName = getFlag(flags, "profile");
     const profile = getActiveProfile(appConfig, profileName);
     if (profile) {
       await ensureDir(outDir);
       await initAtlcliDir(outDir, {
-        space: space!,
+        space,
         baseUrl: profile.baseUrl,
         profile: profile.name,
       });
@@ -203,50 +320,111 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const state = atlcliDir ? await readState(atlcliDir) : null;
   const existingPaths = state ? new Set(Object.keys(state.pathIndex)) : new Set<string>();
 
-  let pulled = 0;
-  let skipped = 0;
+  // Fetch full page details with ancestors
+  const pageDetails: Array<{
+    id: string;
+    title: string;
+    storage: string;
+    version: number;
+    spaceKey: string;
+    parentId: string | null;
+    ancestors: { id: string; title: string }[];
+  }> = [];
 
   for (const page of pages) {
     const detail = await client.getPage(page.id);
+    pageDetails.push({
+      id: detail.id,
+      title: detail.title,
+      storage: detail.storage,
+      version: detail.version ?? 1,
+      spaceKey: detail.spaceKey ?? space!,
+      parentId: detail.parentId ?? null,
+      ancestors: detail.ancestors ?? [],
+    });
+  }
+
+  // Build hierarchy info for path computation
+  const hierarchyPages: PageHierarchyInfo[] = pageDetails.map((p) => ({
+    id: p.id,
+    title: p.title,
+    parentId: p.parentId,
+    ancestors: p.ancestors.map((a) => a.id),
+  }));
+
+  // Build ancestor title map (include all ancestors)
+  const ancestorTitles = new Map<string, string>();
+  for (const page of pageDetails) {
+    ancestorTitles.set(page.id, page.title);
+    for (const ancestor of page.ancestors) {
+      ancestorTitles.set(ancestor.id, ancestor.title);
+    }
+  }
+
+  // Compute nested paths
+  const pathMap = buildPathMap(hierarchyPages, existingPaths);
+
+  let pulled = 0;
+  let skipped = 0;
+  let moved = 0;
+
+  for (const detail of pageDetails) {
     const markdown = storageToMarkdown(detail.storage);
     const normalizedMd = normalizeMarkdown(markdown);
     const contentHash = hashContent(normalizedMd);
+    const ancestorIds = detail.ancestors.map((a) => a.id);
+
+    // Get computed path for this page
+    const computed = pathMap.get(detail.id);
+    if (!computed) {
+      output(`Warning: Could not compute path for page ${detail.id}`, opts);
+      skipped++;
+      continue;
+    }
 
     // Check if we already have this page
     const existingState = state?.pages[detail.id];
-    if (existingState && !force) {
-      // Check if local has modifications
-      const localPath = join(atlcliDir!, existingState.path);
-      try {
-        const localContent = await readTextFile(localPath);
-        const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
-        const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
-
-        if (localHash !== existingState.baseHash) {
-          // Local has modifications, skip unless --force
-          output(`Skipping ${existingState.path} (local modifications, use --force)`, opts);
-          skipped++;
-          continue;
-        }
-      } catch {
-        // File doesn't exist, will be re-created
-      }
-    }
-
-    // Generate clean filename
-    const baseName = slugifyTitle(detail.title) || "page";
-    let fileName: string;
-    let relativePath: string;
+    let relativePath = computed.relativePath;
 
     if (existingState) {
-      // Keep existing path
-      relativePath = existingState.path;
-      fileName = basename(relativePath);
-    } else {
-      // Generate new unique filename
-      fileName = generateUniqueFilename(outDir, baseName, existingPaths);
-      relativePath = fileName;
-      existingPaths.add(relativePath);
+      // Check if page has moved in Confluence
+      const oldAncestors = existingState.ancestors ?? [];
+      if (hasPageMoved(oldAncestors, ancestorIds)) {
+        // Page has moved - move the local file
+        if (atlcliDir) {
+          try {
+            await moveFile(atlcliDir, existingState.path, relativePath);
+            if (!opts.json) {
+              output(`Moved ${existingState.path} -> ${relativePath}`, opts);
+            }
+            moved++;
+          } catch (err) {
+            // File might not exist, just use new path
+          }
+        }
+      } else {
+        // Keep existing path if not moved
+        relativePath = existingState.path;
+      }
+
+      // Check if local has modifications
+      if (!force) {
+        const localPath = join(atlcliDir!, relativePath);
+        try {
+          const localContent = await readTextFile(localPath);
+          const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
+          const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
+
+          if (localHash !== existingState.baseHash) {
+            // Local has modifications, skip unless --force
+            output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
+            skipped++;
+            continue;
+          }
+        } catch {
+          // File doesn't exist, will be re-created
+        }
+      }
     }
 
     const filePath = join(outDir, relativePath);
@@ -266,14 +444,15 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       updatePageState(state, detail.id, {
         path: relativePath,
         title: detail.title,
-        spaceKey: detail.spaceKey ?? space!,
-        version: detail.version ?? 1,
+        spaceKey: detail.spaceKey,
+        version: detail.version,
         lastSyncedAt: new Date().toISOString(),
         localHash: contentHash,
         remoteHash: contentHash,
         baseHash: contentHash,
         syncState: "synced",
-        parentId: null,
+        parentId: detail.parentId,
+        ancestors: ancestorIds,
       });
 
       // Write base content for 3-way merge (without frontmatter)
@@ -292,20 +471,47 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   output(
     {
       schemaVersion: "1",
-      results: { pulled, skipped, outDir },
-      note: "Files now use frontmatter for page ID. State saved to .atlcli/",
+      results: { pulled, skipped, moved, outDir },
+      note: "Files use nested directory structure matching Confluence hierarchy.",
     },
     opts
   );
 }
 
 async function handlePush(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
-  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
+  const pathArg = args[0] ?? getFlag(flags, "dir") ?? ".";
+  const pageIdFlag = getFlag(flags, "page-id");
   const client = await getClient(flags, opts);
-  const files = await collectMarkdownFiles(dir);
 
-  // Check for .atlcli directory
-  const atlcliDir = findAtlcliDir(dir);
+  // Determine if pushing single file, by page ID, or directory
+  let files: string[];
+  let atlcliDir: string | null;
+  let isSingleFile = false;
+
+  if (pageIdFlag) {
+    // Push by page ID - find the file in state
+    atlcliDir = findAtlcliDir(pathArg);
+    if (!atlcliDir) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Not in an initialized directory. Run 'docs init' first.");
+    }
+    const state = await readState(atlcliDir);
+    const pageState = state.pages[pageIdFlag];
+    if (!pageState) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Page ${pageIdFlag} not found in state. Pull it first or use file path.`);
+    }
+    files = [join(atlcliDir, pageState.path)];
+    isSingleFile = true;
+  } else if (pathArg.endsWith(".md")) {
+    // Single file push
+    files = [resolve(pathArg)];
+    atlcliDir = findAtlcliDir(dirname(pathArg));
+    isSingleFile = true;
+  } else {
+    // Directory push - collect all markdown files
+    files = await collectMarkdownFiles(pathArg);
+    atlcliDir = findAtlcliDir(pathArg);
+  }
+
   let space = getFlag(flags, "space");
   let state: AtlcliState | undefined;
 
@@ -332,14 +538,25 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     await writeState(atlcliDir, state);
   }
 
-  output(
-    {
-      schemaVersion: "1",
-      results: { updated, created, skipped },
-      note: "Frontmatter stripped before push. State saved to .atlcli/",
-    },
-    opts
-  );
+  if (isSingleFile && files.length === 1) {
+    // Single file output
+    const result = updated > 0 ? "updated" : created > 0 ? "created" : "skipped";
+    output(
+      opts.json
+        ? { schemaVersion: "1", file: files[0], result }
+        : `${basename(files[0])}: ${result}`,
+      opts
+    );
+  } else {
+    output(
+      {
+        schemaVersion: "1",
+        results: { updated, created, skipped },
+        note: "Frontmatter stripped before push. State saved to .atlcli/",
+      },
+      opts
+    );
+  }
 }
 
 /**
@@ -374,7 +591,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   // Get title: --title flag > H1 heading > filename
   let title = getFlag(flags, "title");
   if (!title) {
-    title = extractTitleFromMarkdown(markdownContent);
+    title = extractTitleFromMarkdown(markdownContent) ?? undefined;
   }
   if (!title) {
     title = titleFromFilename(filePath);
@@ -410,6 +627,9 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   const normalizedMd = normalizeMarkdown(markdownContent);
   const contentHash = hashContent(normalizedMd);
 
+  // Get ancestors from the created page
+  const ancestorIds = page.ancestors?.map((a) => a.id) ?? [];
+
   updatePageState(state, page.id, {
     path: relativePath,
     title: page.title,
@@ -421,6 +641,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
     baseHash: contentHash,
     syncState: "synced",
     parentId: parentId || null,
+    ancestors: ancestorIds,
   });
 
   await writeState(atlcliDir, state);
@@ -532,6 +753,10 @@ async function pushFile(params: {
       const normalizedMd = normalizeMarkdown(markdownContent);
       const contentHash = hashContent(normalizedMd);
 
+      // Preserve ancestors from existing state
+      const existingPageState = state.pages[page.id];
+      const ancestors = existingPageState?.ancestors ?? [];
+
       updatePageState(state, page.id, {
         path: relativePath,
         title: page.title,
@@ -542,7 +767,8 @@ async function pushFile(params: {
         remoteHash: contentHash,
         baseHash: contentHash,
         syncState: "synced",
-        parentId: null,
+        parentId: existingPageState?.parentId ?? null,
+        ancestors,
       });
 
       await writeBaseContent(atlcliDir, page.id, normalizedMd);
@@ -582,6 +808,9 @@ async function pushFile(params: {
     const normalizedMd = normalizeMarkdown(markdownContent);
     const contentHash = hashContent(normalizedMd);
 
+    // Get ancestors from created page
+    const ancestorIds = page.ancestors?.map((a) => a.id) ?? [];
+
     updatePageState(state, page.id, {
       path: relativePath,
       title: page.title,
@@ -592,7 +821,8 @@ async function pushFile(params: {
       remoteHash: contentHash,
       baseHash: contentHash,
       syncState: "synced",
-      parentId: null,
+      parentId: page.parentId ?? null,
+      ancestors: ancestorIds,
     });
 
     await writeBaseContent(atlcliDir, page.id, normalizedMd);
@@ -969,20 +1199,37 @@ function docsHelp(): string {
   return `atlcli docs <command>
 
 Commands:
-  init <dir> --space <key>                          Initialize directory for sync
-  pull [dir] [--space <key>] [--limit <n>] [--cql] [--force]
-  push [dir] [--space <key>]
+  init <dir> [scope options]                        Initialize directory for sync
+  pull [dir] [scope options] [--limit <n>] [--force]
+  push [dir|file] [--page-id <id>]                  Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
-  sync <dir> --space <key> [--poll-interval <ms>]   Bidirectional sync
+  sync <dir> [scope options] [--poll-interval <ms>] Bidirectional sync
   status [dir]                                       Show sync state
   resolve <file> --accept local|remote|merged        Resolve conflicts
+
+Scope options (one required for init/pull/sync):
+  --page-id <id>     Single page by ID
+  --ancestor <id>    Page tree under parent ID
+  --space <key>      Entire space
 
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output (watch/sync emit JSON lines)
+  --force            Overwrite local modifications
 
-Files use YAML frontmatter for page ID. State is stored in .atlcli/ directory.
+Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
+State is stored in .atlcli/ directory.
+
+Examples:
+  atlcli docs init ./docs --space TEAM              Initialize for entire space
+  atlcli docs init ./docs --ancestor 12345          Initialize for page tree
+  atlcli docs init ./docs --page-id 67890           Initialize for single page
+  atlcli docs pull ./docs                           Pull using saved scope
+  atlcli docs pull ./docs --ancestor 99999          Override scope for this pull
+  atlcli docs push ./docs                           Push all tracked files
+  atlcli docs push ./docs/page.md                   Push single file
+  atlcli docs push --page-id 12345                  Push by page ID
 
 For sync command options: atlcli docs sync --help
 `;

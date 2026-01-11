@@ -4,12 +4,23 @@
 
 Enable granular sync control: single pages, page trees (parent + descendants), or entire spaces.
 
-**Current State:**
-- `docs sync` supports `--page-id`, `--ancestor`, `--space` via `SyncScope`
-- `docs pull` and `docs push` only support `--space` (full space sync)
-- No way to pull/push a single page or page tree
+**Implementation Status: COMPLETE**
 
-**Goal:**
+All phases have been implemented:
+- Phase 1: Hierarchical Directory Structure ✅
+- Phase 2: Scope Options for Pull ✅
+- Phase 3: Scope Options for Init ✅
+- Phase 4: Single File Push ✅
+- Phase 5: Sync & Watch Updates ✅
+
+**Current State (after implementation):**
+- `docs init` supports `--page-id`, `--ancestor`, `--space` scope options
+- `docs pull` and `docs push` support all scope options
+- `docs sync` uses config scope as default, can be overridden with flags
+- Nested directory structure matches Confluence hierarchy
+- Page moves are detected and local files are moved automatically
+
+**Goal (ACHIEVED):**
 - Unify scope options across `pull`, `push`, `sync`, and `watch`
 - Support mixed-scope directories (pages from different spaces/trees)
 - Maintain backwards compatibility
@@ -271,101 +282,100 @@ Need to verify:
 
 ## Implementation Plan
 
-### Phase 1: Hierarchical Directory Structure
+### Phase 1: Hierarchical Directory Structure ✅ COMPLETE
 
 **Goal:** Change from flat to nested directory structure.
 
-1. **Add hierarchy utilities** (`packages/confluence/src/hierarchy.ts`)
+1. **Add hierarchy utilities** (`packages/confluence/src/hierarchy.ts`) ✅
    - `computeFilePath(page, ancestors, rootDir)` → nested path
    - `parseFilePath(filePath, rootDir)` → extract hierarchy info
    - `moveFile(oldPath, newPath)` → move file + update state
+   - `hasPageMoved(oldAncestors, newAncestors)` → detect hierarchy changes
+   - `buildPathMap(pages)` → batch path computation
 
-2. **Update `handlePull`**
+2. **Update `handlePull`** ✅
    - Fetch page ancestors from Confluence API
    - Compute nested path based on hierarchy
    - Create directories as needed
    - Update state with `parentId` and `ancestors`
 
-3. **Update `handlePush`**
+3. **Update `handlePush`** ✅
    - Infer hierarchy from file path
    - Maintain parent relationships on create
 
-4. **Handle page moves**
+4. **Handle page moves** ✅
    - On pull, detect if page's parent changed
    - Move local file to new location
    - Update state
 
-### Phase 2: Scope Options for Pull
+### Phase 2: Scope Options for Pull ✅ COMPLETE
 
 **Goal:** Add `--page-id` and `--ancestor` to `docs pull`.
 
-1. **Parse scope flags in `handlePull`**
-   ```typescript
-   const scope = parseScope(flags); // returns SyncScope
-   ```
+1. **Parse scope flags in `handlePull`** ✅
+   - Created `packages/confluence/src/scope.ts`
+   - `parseScope(flags)` returns SyncScope
 
-2. **Build CQL query from scope**
+2. **Build CQL query from scope** ✅
+   - `buildCqlFromScope(scope)` generates appropriate query
    - `page`: Direct fetch, no CQL
-   - `tree`: `ancestor=${id}` CQL
-   - `space`: `space=${key}` CQL (current behavior)
+   - `tree`: `ancestor=${id} AND type=page` CQL
+   - `space`: `space=${key} AND type=page` CQL
 
-3. **Validate scope matches config**
-   - If dir is initialized, warn if scope differs
-   - Allow override with `--force`
+3. **Auto-detect space from page/ancestor** ✅
+   - Fetches page to get spaceKey
+   - Uses spaceKey for API calls
 
-### Phase 3: Scope Options for Init
+### Phase 3: Scope Options for Init ✅ COMPLETE
 
 **Goal:** Initialize with any scope type.
 
-1. **Add flags to `docs init`**
+1. **Add flags to `docs init`** ✅
    ```bash
    atlcli docs init ./docs --page-id 12345
    atlcli docs init ./docs --ancestor 12345 --space TEAM
    atlcli docs init ./docs --space TEAM
    ```
 
-2. **Update config schema**
-   ```json
-   {
-     "schemaVersion": 2,
-     "scope": { "type": "tree", "ancestorId": "12345" },
-     "space": "TEAM"
-   }
-   ```
+2. **Update config schema** ✅
+   - Created `AtlcliConfigV2` with `scope` field
+   - Backwards compatible with v1 config
+   - `migrateConfigToV2()` for upgrades
 
-3. **Auto-detect space from page/ancestor**
+3. **Auto-detect space from page/ancestor** ✅
    - Fetch page, extract spaceKey
    - Store in config for reference
 
-### Phase 4: Single File Push
+### Phase 4: Single File Push ✅ COMPLETE
 
 **Goal:** Push individual files by path.
 
-1. **Detect file argument**
+1. **Detect file argument** ✅
    ```bash
    atlcli docs push ./docs/page.md  # single file
    atlcli docs push ./docs          # all tracked (current)
    ```
 
-2. **Extract page ID from frontmatter**
+2. **Extract page ID from frontmatter** ✅
    - Read file, parse frontmatter
    - Use `atlcli.id` field
 
-3. **Push regardless of scope**
+3. **Push regardless of scope** ✅
    - Single file push works even if page isn't in configured scope
    - Useful for quick edits
 
-### Phase 5: Sync & Watch Updates
+### Phase 5: Sync & Watch Updates ✅ COMPLETE
 
 **Goal:** Ensure `docs sync` and `docs watch` work with new structure.
 
-1. **Update `SyncEngine`**
-   - Use nested paths
-   - Handle file moves during sync
+1. **Update `SyncEngine`** ✅
+   - Uses nested paths based on page ancestors
+   - Handles file moves during sync
+   - Reads scope from config when no flags provided
 
-2. **Update file watcher**
-   - Watch nested directories
-   - Correctly map paths to page IDs
+2. **Update file watcher** ✅
+   - Already watches nested directories via `collectDirs()`
+   - Correctly maps paths to page IDs
 
 ---
 

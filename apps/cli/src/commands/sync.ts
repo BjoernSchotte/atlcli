@@ -1,6 +1,6 @@
 import { readdir, writeFile, unlink } from "node:fs/promises";
 import { FSWatcher, watch } from "node:fs";
-import { join, basename, extname } from "node:path";
+import { join, basename, extname, dirname } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -31,6 +31,22 @@ import {
   parseFrontmatter,
   addFrontmatter,
   AtlcliFrontmatter,
+  // Config
+  findAtlcliDir,
+  readConfig,
+  getConfigScope,
+  isConfigV2,
+  ConfigScope,
+  // Hierarchy
+  computeFilePath,
+  buildPathMap,
+  hasPageMoved,
+  moveFile,
+  PageHierarchyInfo,
+  slugifyTitle,
+  // Scope
+  parseScope,
+  scopeToString,
 } from "@atlcli/confluence";
 
 import {
@@ -77,26 +93,48 @@ export async function handleSync(
     return;
   }
 
-  // Parse scope
-  const pageId = getFlag(flags, "page-id");
-  const ancestorId = getFlag(flags, "ancestor");
-  const spaceKey = getFlag(flags, "space");
-
+  // Parse scope from flags or config
+  const parsedScope = parseScope(flags);
   let scope: SyncScope;
-  if (pageId) {
-    scope = { type: "page", pageId };
-  } else if (ancestorId) {
-    scope = { type: "tree", ancestorId };
-  } else if (spaceKey) {
-    scope = { type: "space", spaceKey };
+  let resolvedSpaceKey: string | undefined;
+
+  // Get directory path first to check for config
+  const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
+
+  if (parsedScope) {
+    // Use scope from flags
+    scope = parsedScope.scope;
+    resolvedSpaceKey = parsedScope.spaceKey;
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "One of --page-id, --ancestor, or --space is required.");
-    return;
+    // Try to read scope from .atlcli config
+    const atlcliRoot = findAtlcliDir(dir);
+    if (atlcliRoot) {
+      try {
+        const dirConfig = await readConfig(atlcliRoot);
+        const configScope = getConfigScope(dirConfig);
+        resolvedSpaceKey = dirConfig.space;
+
+        // Convert ConfigScope to SyncScope
+        if (configScope.type === "page") {
+          scope = { type: "page", pageId: configScope.pageId };
+        } else if (configScope.type === "tree") {
+          scope = { type: "tree", ancestorId: configScope.ancestorId };
+        } else {
+          scope = { type: "space", spaceKey: resolvedSpaceKey };
+        }
+      } catch {
+        fail(opts, 1, ERROR_CODES.USAGE, "One of --page-id, --ancestor, or --space is required (no valid config found).");
+        return;
+      }
+    } else {
+      fail(opts, 1, ERROR_CODES.USAGE, "One of --page-id, --ancestor, or --space is required.");
+      return;
+    }
   }
 
   const webhookPortStr = getFlag(flags, "webhook-port");
   const syncOpts: SyncOptions = {
-    dir: args[0] ?? getFlag(flags, "dir") ?? "./docs",
+    dir,
     scope,
     pollIntervalMs: Number(getFlag(flags, "poll-interval") ?? 30000),
     onConflict: (getFlag(flags, "on-conflict") as any) ?? "merge",
@@ -434,16 +472,85 @@ class SyncEngine {
     }
   }
 
-  /** Pull a page from Confluence */
+  /** Pull a page from Confluence using nested hierarchy paths */
   private async pullPage(pageId: string, existingFile?: string): Promise<void> {
     try {
       const page = await this.client.getPage(pageId);
       const markdown = storageToMarkdown(page.storage);
 
-      const filePath = existingFile ?? join(
-        this.opts.dir,
-        `${slugify(page.title) || "page"}.md`
-      );
+      // Get page ancestors for hierarchy-based path
+      const ancestors = page.ancestors || [];
+      const ancestorIds = ancestors.map((a) => a.id);
+
+      // Build ancestor title map for path computation
+      const ancestorTitles = new Map<string, string>();
+      for (const ancestor of ancestors) {
+        ancestorTitles.set(ancestor.id, ancestor.title);
+      }
+
+      // Compute nested path based on hierarchy
+      const pageInfo: PageHierarchyInfo = {
+        id: page.id,
+        title: page.title,
+        parentId: page.parentId ?? null,
+        ancestors: ancestorIds,
+      };
+
+      // Get existing paths to avoid collisions
+      const existingPaths = new Set<string>();
+      for (const [file, _meta] of this.fileToMeta) {
+        const relativePath = file.startsWith(this.opts.dir)
+          ? file.slice(this.opts.dir.length + 1)
+          : file;
+        existingPaths.add(relativePath);
+      }
+
+      const computed = computeFilePath(pageInfo, ancestorTitles, existingPaths);
+      let filePath = join(this.opts.dir, computed.relativePath);
+
+      // Check if page has moved (existing file but different path)
+      if (existingFile && existingFile !== filePath) {
+        // Page moved in Confluence - check if ancestors changed
+        const existingMeta = this.fileToMeta.get(existingFile);
+        if (existingMeta && "ancestors" in existingMeta) {
+          const oldAncestors = (existingMeta as any).ancestors || [];
+          if (hasPageMoved(oldAncestors, ancestorIds)) {
+            if (!this.opts.dryRun) {
+              // Get relative paths for moveFile (it expects relative paths)
+              const oldRelPath = existingFile.startsWith(this.opts.dir + "/")
+                ? existingFile.slice(this.opts.dir.length + 1)
+                : existingFile;
+
+              // Move the local file to match new hierarchy
+              await moveFile(this.opts.dir, oldRelPath, computed.relativePath);
+              // Also move .meta.json and .base files
+              await moveFile(this.opts.dir, `${oldRelPath}.meta.json`, `${computed.relativePath}.meta.json`).catch(() => {});
+              await moveFile(this.opts.dir, `${oldRelPath}.base`, `${computed.relativePath}.base`).catch(() => {});
+
+              this.emit({
+                type: "status",
+                message: `Moved: ${existingFile} → ${filePath}`,
+                file: filePath,
+                pageId: page.id,
+              });
+            } else {
+              this.emit({
+                type: "status",
+                message: `Would move: ${existingFile} → ${filePath}`,
+                file: filePath,
+                pageId: page.id,
+              });
+            }
+
+            // Update internal tracking
+            this.fileToMeta.delete(existingFile);
+            this.idToFile.set(page.id, filePath);
+          }
+        }
+      } else if (existingFile) {
+        // Use existing file path if no move detected
+        filePath = existingFile;
+      }
 
       if (this.opts.dryRun) {
         this.emit({
@@ -455,6 +562,10 @@ class SyncEngine {
         return;
       }
 
+      // Ensure directory exists for nested path
+      const dir = dirname(filePath);
+      await ensureDir(dir);
+
       // Add frontmatter with page ID and title
       const frontmatter: AtlcliFrontmatter = {
         id: page.id,
@@ -463,7 +574,7 @@ class SyncEngine {
       const contentWithFrontmatter = addFrontmatter(markdown, frontmatter);
       await writeTextFile(filePath, contentWithFrontmatter);
 
-      // Create enhanced metadata
+      // Create enhanced metadata with ancestors
       const meta = createEnhancedMeta({
         id: page.id,
         title: page.title,
@@ -472,6 +583,9 @@ class SyncEngine {
         localContent: markdown,
         remoteContent: markdown,
       });
+      // Add ancestors to meta for move detection
+      (meta as any).ancestors = ancestorIds;
+      (meta as any).parentId = page.parentId ?? null;
 
       await this.writeMeta(filePath, meta);
       await writeBase(filePath, markdown);
@@ -890,7 +1004,7 @@ export function syncHelp(): string {
 
 Start bidirectional sync daemon for Confluence pages.
 
-Scope options (one required):
+Scope options (uses .atlcli/config.json scope if not specified):
   --page-id <id>        Sync single page by ID
   --ancestor <id>       Sync page tree under parent ID
   --space <key>         Sync entire space
@@ -910,10 +1024,18 @@ Webhook options (optional, for real-time updates):
   --webhook-url <url>   Public URL to register with Confluence
 
 Examples:
+  # Sync using scope from .atlcli/config.json
+  atlcli docs sync ./docs
+
+  # Sync with explicit scope
   atlcli docs sync ./docs --space DEV
-  atlcli docs sync ./docs --space DEV --auto-create
   atlcli docs sync ./docs --ancestor 12345 --poll-interval 10000
-  atlcli docs sync ./page.md --page-id 12345
+  atlcli docs sync ./docs --page-id 12345
+
+  # Sync with auto-create for new local files
+  atlcli docs sync ./docs --space DEV --auto-create
+
+  # Sync with webhook for real-time updates
   atlcli docs sync ./docs --space DEV --webhook-port 3000 --webhook-url https://example.com/webhook
 `;
 }

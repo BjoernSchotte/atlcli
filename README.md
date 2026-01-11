@@ -82,12 +82,15 @@ atlcli page delete <ID>
 ### Documentation Sync
 
 ```bash
-atlcli docs init <dir> --space <KEY>    # Initialize directory
-atlcli docs pull [dir]                   # Pull from Confluence
-atlcli docs push [dir]                   # Push to Confluence
-atlcli docs add <file>                   # Add new file to tracking
-atlcli docs status [dir]                 # Show sync status
-atlcli docs sync <dir>                   # Bidirectional sync daemon
+atlcli docs init <dir> --space <KEY>     # Initialize directory for space sync
+atlcli docs init <dir> --ancestor <ID>   # Initialize for page tree sync
+atlcli docs init <dir> --page-id <ID>    # Initialize for single page sync
+atlcli docs pull [dir]                    # Pull from Confluence
+atlcli docs push [dir]                    # Push to Confluence
+atlcli docs push <file>                   # Push single file
+atlcli docs add <file>                    # Add new file to tracking
+atlcli docs status [dir]                  # Show sync status
+atlcli docs sync <dir>                    # Bidirectional sync daemon
 atlcli docs resolve <file> --accept <mode>
 ```
 
@@ -104,6 +107,47 @@ atlcli plugin disable <name>    # Disable a plugin
 ## Bidirectional Sync
 
 The `docs sync` command starts a daemon that keeps local files and Confluence pages in sync automatically.
+
+### Partial Sync (Scope Options)
+
+You can choose to sync an entire space, a page tree (parent + children), or just a single page:
+
+```bash
+# Full space sync (all pages in the space)
+atlcli docs init ./docs --space TEAM
+atlcli docs sync ./docs --space TEAM
+
+# Page tree sync (parent page and all descendants)
+atlcli docs init ./docs --ancestor 12345
+atlcli docs sync ./docs --ancestor 12345
+
+# Single page sync
+atlcli docs init ./docs --page-id 67890
+atlcli docs sync ./docs --page-id 67890
+```
+
+Once initialized, the scope is stored in `.atlcli/config.json` and you can omit the scope flags:
+
+```bash
+# Uses scope from config
+atlcli docs pull ./docs
+atlcli docs push ./docs
+atlcli docs sync ./docs
+```
+
+You can override the stored scope with command-line flags when needed.
+
+### Single File Operations
+
+Push or pull individual files without affecting others:
+
+```bash
+# Push a single file (uses frontmatter ID)
+atlcli docs push ./docs/my-page.md
+
+# Pull updates for a specific page
+atlcli docs pull ./docs --page-id 12345
+```
 
 ### Basic Usage
 
@@ -139,7 +183,7 @@ echo "# New Page\n\nContent here." > ./docs/new-page.md
 ```bash
 atlcli docs sync <dir> [options]
 
-Scope options (one required):
+Scope options (uses .atlcli/config.json scope if not specified):
   --page-id <id>        Sync single page by ID
   --ancestor <id>       Sync page tree under parent ID
   --space <key>         Sync entire space
@@ -282,17 +326,28 @@ Hidden content here.
 
 ## Directory Structure
 
-After `docs init`, your directory will have:
+After `docs init`, your directory will have a structure matching the Confluence page hierarchy:
 
 ```
 my-docs/
 ├── .atlcli/
-│   ├── config.json      # Space configuration
+│   ├── config.json      # Space/scope configuration
 │   ├── state.json       # Sync state tracking
 │   └── cache/           # Base versions for 3-way merge
-├── page-one.md
-└── page-two.md
+├── architecture.md                     # Root-level page
+├── architecture/                       # Children of "Architecture"
+│   ├── api-design.md
+│   └── database.md
+├── getting-started.md                  # Another root-level page
+└── getting-started/
+    └── installation.md                 # Child of "Getting Started"
 ```
+
+**Hierarchy rules:**
+- Page file: `{slug}.md`
+- Child pages go in: `{parent-slug}/` directory
+- Root pages (no parent in sync scope) go in the sync root
+- When a page moves in Confluence, the local file is moved to match
 
 ## Configuration
 

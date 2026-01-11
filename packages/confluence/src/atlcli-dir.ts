@@ -17,8 +17,14 @@ const CONFIG_FILE = "config.json";
 const STATE_FILE = "state.json";
 const CACHE_DIR = "cache";
 
-/** Configuration for a directory synced with Confluence */
-export interface AtlcliConfig {
+/** Scope configuration for partial sync */
+export type ConfigScope =
+  | { type: "page"; pageId: string }
+  | { type: "tree"; ancestorId: string }
+  | { type: "space" }; // spaceKey is stored in top-level space field
+
+/** Configuration for a directory synced with Confluence (v1 - legacy) */
+export interface AtlcliConfigV1 {
   schemaVersion: 1;
   space: string;
   baseUrl: string;
@@ -29,6 +35,25 @@ export interface AtlcliConfig {
     defaultParentId?: string | null;
   };
 }
+
+/** Configuration for a directory synced with Confluence (v2 - with scope) */
+export interface AtlcliConfigV2 {
+  schemaVersion: 2;
+  /** Sync scope - what to pull/push */
+  scope: ConfigScope;
+  /** Space key (always required, may be auto-detected) */
+  space: string;
+  baseUrl: string;
+  profile?: string;
+  settings?: {
+    autoCreatePages?: boolean;
+    preserveHierarchy?: boolean;
+    defaultParentId?: string | null;
+  };
+}
+
+/** Configuration for a directory synced with Confluence */
+export type AtlcliConfig = AtlcliConfigV1 | AtlcliConfigV2;
 
 /** Sync state for a single page */
 export interface PageState {
@@ -42,6 +67,8 @@ export interface PageState {
   baseHash: string;
   syncState: SyncState;
   parentId: string | null;
+  /** Ancestor IDs from root to parent (for hierarchy tracking) */
+  ancestors: string[];
 }
 
 /** Possible sync states for a page */
@@ -66,21 +93,18 @@ export interface AtlcliState {
  */
 export function findAtlcliDir(startPath: string): string | null {
   let current = resolve(startPath);
-  const root = dirname(current);
 
-  while (current !== root) {
+  while (true) {
     const atlcliPath = join(current, ATLCLI_DIR);
     if (existsSync(atlcliPath)) {
       return current;
     }
     const parent = dirname(current);
-    if (parent === current) break;
+    if (parent === current) {
+      // Reached filesystem root
+      break;
+    }
     current = parent;
-  }
-
-  // Check root
-  if (existsSync(join(current, ATLCLI_DIR))) {
-    return current;
   }
 
   return null;
@@ -93,13 +117,28 @@ export function isInitialized(dir: string): boolean {
   return existsSync(join(dir, ATLCLI_DIR, CONFIG_FILE));
 }
 
+/** Options for initializing a directory */
+export interface InitOptions {
+  scope: ConfigScope;
+  space: string;
+  baseUrl: string;
+  profile?: string;
+  settings?: {
+    autoCreatePages?: boolean;
+    preserveHierarchy?: boolean;
+    defaultParentId?: string | null;
+  };
+}
+
 /**
  * Initialize a directory for Confluence sync.
  * Creates .atlcli/ with config.json, state.json, and cache/ directory.
+ *
+ * @deprecated Use initAtlcliDirV2 for new code
  */
 export async function initAtlcliDir(
   dir: string,
-  config: Omit<AtlcliConfig, "schemaVersion">
+  config: Omit<AtlcliConfigV1, "schemaVersion">
 ): Promise<void> {
   const atlcliPath = join(dir, ATLCLI_DIR);
   const cachePath = join(atlcliPath, CACHE_DIR);
@@ -107,10 +146,51 @@ export async function initAtlcliDir(
   // Create directories
   await mkdir(cachePath, { recursive: true });
 
-  // Write config
-  const fullConfig: AtlcliConfig = {
+  // Write config (v1 for backwards compatibility)
+  const fullConfig: AtlcliConfigV1 = {
     schemaVersion: 1,
     ...config,
+  };
+  await writeFile(
+    join(atlcliPath, CONFIG_FILE),
+    JSON.stringify(fullConfig, null, 2) + "\n"
+  );
+
+  // Write empty state
+  const emptyState: AtlcliState = {
+    schemaVersion: 1,
+    lastSync: null,
+    pages: {},
+    pathIndex: {},
+  };
+  await writeFile(
+    join(atlcliPath, STATE_FILE),
+    JSON.stringify(emptyState, null, 2) + "\n"
+  );
+}
+
+/**
+ * Initialize a directory for Confluence sync with v2 config (scope support).
+ * Creates .atlcli/ with config.json, state.json, and cache/ directory.
+ */
+export async function initAtlcliDirV2(
+  dir: string,
+  options: InitOptions
+): Promise<void> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+  const cachePath = join(atlcliPath, CACHE_DIR);
+
+  // Create directories
+  await mkdir(cachePath, { recursive: true });
+
+  // Write v2 config
+  const fullConfig: AtlcliConfigV2 = {
+    schemaVersion: 2,
+    scope: options.scope,
+    space: options.space,
+    baseUrl: options.baseUrl,
+    profile: options.profile,
+    settings: options.settings,
   };
   await writeFile(
     join(atlcliPath, CONFIG_FILE),
@@ -148,6 +228,38 @@ export async function writeConfig(
 ): Promise<void> {
   const configPath = join(dir, ATLCLI_DIR, CONFIG_FILE);
   await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
+}
+
+/**
+ * Check if config is v2 (has scope field).
+ */
+export function isConfigV2(config: AtlcliConfig): config is AtlcliConfigV2 {
+  return config.schemaVersion === 2;
+}
+
+/**
+ * Get the scope from config, converting v1 to scope format.
+ */
+export function getConfigScope(config: AtlcliConfig): ConfigScope {
+  if (isConfigV2(config)) {
+    return config.scope;
+  }
+  // v1 config: implicit space scope
+  return { type: "space" };
+}
+
+/**
+ * Migrate v1 config to v2 format.
+ */
+export function migrateConfigToV2(config: AtlcliConfigV1): AtlcliConfigV2 {
+  return {
+    schemaVersion: 2,
+    scope: { type: "space" },
+    space: config.space,
+    baseUrl: config.baseUrl,
+    profile: config.profile,
+    settings: config.settings,
+  };
 }
 
 /**

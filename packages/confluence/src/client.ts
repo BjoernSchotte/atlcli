@@ -7,6 +7,8 @@ export type ConfluencePage = {
   url?: string;
   version?: number;
   spaceKey?: string;
+  parentId?: string | null;
+  ancestors?: { id: string; title: string }[];
 };
 
 export type ConfluenceSpace = {
@@ -136,16 +138,40 @@ export class ConfluenceClient {
 
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     const data = (await this.request(`/content/${id}`, {
-      query: { expand: "body.storage,version,space" },
+      query: { expand: "body.storage,version,space,ancestors" },
     })) as any;
+
+    // Extract ancestors (array of {id, title} from root to parent)
+    const ancestors = Array.isArray(data.ancestors)
+      ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
+
+    // Parent is the last ancestor
+    const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+
     return {
       id: data.id,
       title: data.title,
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
       spaceKey: data.space?.key,
+      parentId,
+      ancestors,
       storage: data.body?.storage?.value ?? "",
     };
+  }
+
+  /**
+   * Get ancestors for a page (from root to parent).
+   */
+  async getAncestors(pageId: string): Promise<{ id: string; title: string }[]> {
+    const data = (await this.request(`/content/${pageId}`, {
+      query: { expand: "ancestors" },
+    })) as any;
+
+    return Array.isArray(data.ancestors)
+      ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
   }
 
   async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
@@ -165,27 +191,44 @@ export class ConfluenceClient {
     spaceKey: string;
     title: string;
     storage: string;
+    parentId?: string;
   }): Promise<ConfluencePage> {
-    const data = (await this.request("/content", {
-      method: "POST",
+    const body: any = {
+      type: "page",
+      title: params.title,
+      space: { key: params.spaceKey },
       body: {
-        type: "page",
-        title: params.title,
-        space: { key: params.spaceKey },
-        body: {
-          storage: {
-            value: params.storage,
-            representation: "storage",
-          },
+        storage: {
+          value: params.storage,
+          representation: "storage",
         },
       },
+    };
+
+    // Add parent if specified
+    if (params.parentId) {
+      body.ancestors = [{ id: params.parentId }];
+    }
+
+    const data = (await this.request("/content", {
+      method: "POST",
+      body,
     })) as any;
+
+    // Extract ancestors from response
+    const ancestors = Array.isArray(data.ancestors)
+      ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
+    const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+
     return {
       id: data.id,
       title: data.title,
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
       version: data.version?.number,
       spaceKey: data.space?.key,
+      parentId,
+      ancestors,
     };
   }
 
