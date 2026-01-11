@@ -47,7 +47,11 @@ import {
   // Scope
   parseScope,
   scopeToString,
+  // Ignore
+  loadIgnorePatterns,
+  shouldIgnore,
 } from "@atlcli/confluence";
+import type { Ignore } from "ignore";
 
 import {
   EnhancedMeta,
@@ -189,6 +193,7 @@ class SyncEngine {
   private pushTimer: NodeJS.Timeout | null = null;
   private debounceMs = 500;
   private lockFilePath: string;
+  private ignore: Ignore | null = null;
 
   constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions) {
     this.lockFilePath = join(opts.dir, ".atlcli", ".sync.lock");
@@ -310,6 +315,10 @@ class SyncEngine {
 
   /** Start the sync daemon */
   async start(): Promise<void> {
+    // Load ignore patterns
+    const ignoreResult = await loadIgnorePatterns(this.opts.dir);
+    this.ignore = ignoreResult.ignore;
+
     // Create lockfile to signal sync daemon is running
     // This is used by plugin-git to skip auto-push when sync is active
     await this.createLockFile();
@@ -417,6 +426,12 @@ class SyncEngine {
       this.watchers = await this.createWatchers(this.opts.dir, async (filePath) => {
         if (extname(filePath).toLowerCase() !== ".md") return;
         if (filePath.endsWith(".base")) return;
+
+        // Skip ignored files
+        if (this.ignore) {
+          const relativePath = filePath.replace(this.opts.dir + "/", "");
+          if (shouldIgnore(this.ignore, relativePath)) return;
+        }
 
         // Hash-based detection: only push if content actually changed
         const hasChanged = await this.hasContentChanged(filePath);
@@ -986,6 +1001,15 @@ class SyncEngine {
 
       for (const entry of entries) {
         const fullPath = join(dir, entry.name);
+
+        // Check if path should be ignored
+        if (this.ignore) {
+          const relativePath = fullPath.replace(this.opts.dir + "/", "");
+          if (shouldIgnore(this.ignore, relativePath)) {
+            continue;
+          }
+        }
+
         if (entry.isDirectory()) {
           results.push(...(await this.collectMarkdownFiles(fullPath)));
         } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".md" && !entry.name.endsWith(".base")) {
@@ -1027,6 +1051,13 @@ class SyncEngine {
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const fullPath = join(dir, entry.name);
+
+        // Skip ignored directories
+        if (this.ignore) {
+          const relativePath = fullPath.replace(this.opts.dir + "/", "");
+          if (shouldIgnore(this.ignore, relativePath)) continue;
+        }
+
         results.push(...(await this.collectDirs(fullPath)));
       }
 
