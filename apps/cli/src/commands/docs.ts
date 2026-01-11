@@ -83,6 +83,10 @@ import {
   loadIgnorePatterns,
   shouldIgnore,
   IgnoreResult,
+  // Comments
+  getCommentsFilePath,
+  writeCommentsFile,
+  PageComments,
 } from "@atlcli/confluence";
 import type { Ignore } from "ignore";
 import { handleSync, syncHelp } from "./sync.js";
@@ -424,6 +428,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const pullAttachments = !hasFlag(flags, "no-attachments");
   let attachmentsPulled = 0;
 
+  // Check if comments should be pulled
+  const pullComments = hasFlag(flags, "comments");
+  let commentsPulled = 0;
+
   for (const detail of pageDetails) {
     // Convert storage to markdown, then apply page-specific attachment paths
     const rawMarkdown = storageToMarkdown(detail.storage);
@@ -592,6 +600,27 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       await writeBaseContent(atlcliDir, detail.id, normalizedMd);
     }
 
+    // Pull comments if enabled
+    if (pullComments) {
+      try {
+        const comments = await client.getAllComments(detail.id);
+        if (comments.footerComments.length > 0 || comments.inlineComments.length > 0) {
+          const commentsPath = getCommentsFilePath(filePath);
+          await writeCommentsFile(commentsPath, comments);
+          commentsPulled++;
+          if (!opts.json) {
+            const total = comments.footerComments.length + comments.inlineComments.length;
+            output(`  Saved ${total} comment(s) to ${basename(commentsPath)}`, opts);
+          }
+        }
+      } catch (err) {
+        // Log warning but don't fail the pull
+        if (!opts.json) {
+          output(`Warning: Could not fetch comments for ${relativePath}`, opts);
+        }
+      }
+    }
+
     pulled++;
   }
 
@@ -604,6 +633,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const pullResults: Record<string, unknown> = { pulled, skipped, moved, outDir };
   if (pullAttachments && attachmentsPulled > 0) {
     pullResults.attachments = attachmentsPulled;
+  }
+  if (pullComments && commentsPulled > 0) {
+    pullResults.comments = commentsPulled;
   }
 
   output(
@@ -1492,7 +1524,7 @@ function docsHelp(): string {
 
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
-  pull [dir] [scope options] [--limit <n>] [--force] [--label <label>]
+  pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
   push [dir|file] [--page-id <id>]                  Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
@@ -1511,6 +1543,8 @@ Options:
   --json             JSON output (watch/sync emit JSON lines)
   --force            Overwrite local modifications
   --label <label>    Only sync pages with this label
+  --comments         Pull page comments to .comments.json files
+  --no-attachments   Skip downloading attachments
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.
@@ -1526,6 +1560,7 @@ Examples:
   atlcli docs pull ./docs                           Pull using saved scope
   atlcli docs pull ./docs --ancestor 99999          Override scope for this pull
   atlcli docs pull ./docs --label architecture      Pull only pages with label
+  atlcli docs pull ./docs --comments                Pull pages with comments
   atlcli docs push ./docs                           Push all tracked files
   atlcli docs push ./docs/page.md                   Push single file
   atlcli docs push --page-id 12345                  Push by page ID

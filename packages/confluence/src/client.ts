@@ -164,6 +164,79 @@ export class ConfluenceClient {
     throw lastError ?? new Error("Request failed after retries");
   }
 
+  /**
+   * Request helper for v2 API endpoints.
+   * v2 API uses /wiki/api/v2 instead of /wiki/rest/api
+   */
+  private async requestV2(
+    path: string,
+    options: {
+      method?: string;
+      query?: Record<string, string | number | undefined>;
+      body?: unknown;
+    } = {}
+  ): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}/wiki/api/v2${path}`);
+    if (options.query) {
+      for (const [key, value] of Object.entries(options.query)) {
+        if (value === undefined) continue;
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const res = await fetch(url.toString(), {
+        method: options.method ?? "GET",
+        headers: {
+          Authorization: this.authHeader,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After");
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : this.baseDelayMs * Math.pow(2, attempt);
+
+        if (attempt < this.maxRetries) {
+          await this.sleep(delayMs);
+          continue;
+        }
+        throw new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+      }
+
+      const text = await res.text();
+      let data: unknown = text;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+
+      if (!res.ok) {
+        const message = typeof data === "string" ? data : JSON.stringify(data);
+        lastError = new Error(`Confluence API v2 error (${res.status}): ${message}`);
+
+        if (res.status >= 500 && attempt < this.maxRetries) {
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+        throw lastError;
+      }
+
+      return data;
+    }
+
+    throw lastError ?? new Error("Request failed after retries");
+  }
+
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "body.storage,version,space,ancestors" },
@@ -1158,6 +1231,180 @@ export class ConfluenceClient {
       spaceKey: data.space?.key,
     };
   }
+
+  // ============ Comments Operations (v2 API) ============
+
+  /**
+   * Get footer (page-level) comments for a page.
+   *
+   * GET /wiki/api/v2/pages/{id}/footer-comments
+   */
+  async getFooterComments(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<FooterComment[]> {
+    const { limit = 100 } = options;
+
+    const data = (await this.requestV2(`/pages/${pageId}/footer-comments`, {
+      query: {
+        limit,
+        "body-format": "storage",
+      },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    const comments = results.map((item: any) => this.parseFooterComment(item));
+
+    // Fetch replies for each comment
+    for (const comment of comments) {
+      comment.replies = await this.getFooterCommentReplies(comment.id);
+    }
+
+    return comments;
+  }
+
+  /**
+   * Get replies to a footer comment.
+   *
+   * GET /wiki/api/v2/footer-comments/{id}/children
+   */
+  async getFooterCommentReplies(
+    commentId: string,
+    options: { limit?: number } = {}
+  ): Promise<FooterComment[]> {
+    const { limit = 50 } = options;
+
+    try {
+      const data = (await this.requestV2(`/footer-comments/${commentId}/children`, {
+        query: {
+          limit,
+          "body-format": "storage",
+        },
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      return results.map((item: any) => this.parseFooterComment(item));
+    } catch {
+      // No replies or endpoint not available
+      return [];
+    }
+  }
+
+  /**
+   * Get inline comments for a page.
+   *
+   * GET /wiki/api/v2/pages/{id}/inline-comments
+   */
+  async getInlineComments(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<InlineComment[]> {
+    const { limit = 100 } = options;
+
+    const data = (await this.requestV2(`/pages/${pageId}/inline-comments`, {
+      query: {
+        limit,
+        "body-format": "storage",
+      },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    const comments = results.map((item: any) => this.parseInlineComment(item));
+
+    // Fetch replies for each comment
+    for (const comment of comments) {
+      comment.replies = await this.getInlineCommentReplies(comment.id);
+    }
+
+    return comments;
+  }
+
+  /**
+   * Get replies to an inline comment.
+   *
+   * GET /wiki/api/v2/inline-comments/{id}/children
+   */
+  async getInlineCommentReplies(
+    commentId: string,
+    options: { limit?: number } = {}
+  ): Promise<InlineComment[]> {
+    const { limit = 50 } = options;
+
+    try {
+      const data = (await this.requestV2(`/inline-comments/${commentId}/children`, {
+        query: {
+          limit,
+          "body-format": "storage",
+        },
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      return results.map((item: any) => this.parseInlineComment(item));
+    } catch {
+      // No replies or endpoint not available
+      return [];
+    }
+  }
+
+  /**
+   * Get all comments (footer + inline) for a page.
+   */
+  async getAllComments(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<PageComments> {
+    const [footerComments, inlineComments] = await Promise.all([
+      this.getFooterComments(pageId, options),
+      this.getInlineComments(pageId, options),
+    ]);
+
+    return {
+      pageId,
+      lastSynced: new Date().toISOString(),
+      footerComments,
+      inlineComments,
+    };
+  }
+
+  /**
+   * Parse footer comment from v2 API response.
+   */
+  private parseFooterComment(item: any): FooterComment {
+    return {
+      id: item.id,
+      author: {
+        displayName: item.version?.authorId ?? "Unknown",
+        accountId: item.version?.authorId,
+      },
+      created: item.version?.createdAt ?? item.createdAt,
+      body: item.body?.storage?.value ?? "",
+      status: item.resolutionStatus ?? "open",
+      parentId: item.parentCommentId,
+      replies: [],
+    };
+  }
+
+  /**
+   * Parse inline comment from v2 API response.
+   */
+  private parseInlineComment(item: any): InlineComment {
+    const props = item.inlineCommentProperties ?? {};
+    return {
+      id: item.id,
+      author: {
+        displayName: item.version?.authorId ?? "Unknown",
+        accountId: item.version?.authorId,
+      },
+      created: item.version?.createdAt ?? item.createdAt,
+      body: item.body?.storage?.value ?? "",
+      status: item.resolutionStatus ?? "open",
+      parentId: item.parentCommentId,
+      replies: [],
+      textSelection: props.textSelection ?? "",
+      textSelectionMatchCount: props.textSelectionMatchCount,
+      textSelectionMatchIndex: props.textSelectionMatchIndex,
+    };
+  }
 }
 
 /** Webhook registration info */
@@ -1220,4 +1467,60 @@ export interface SearchResults {
   totalSize?: number;
   /** Whether there are more results */
   hasMore: boolean;
+}
+
+/** Comment author info */
+export interface CommentAuthor {
+  /** Display name */
+  displayName: string;
+  /** Atlassian account ID */
+  accountId?: string;
+  /** Email (if available) */
+  email?: string;
+}
+
+/** Base comment interface */
+export interface BaseComment {
+  /** Comment ID */
+  id: string;
+  /** Comment author */
+  author: CommentAuthor;
+  /** When the comment was created (ISO timestamp) */
+  created: string;
+  /** Comment body (storage format HTML) */
+  body: string;
+  /** Resolution status */
+  status: "open" | "resolved";
+  /** Parent comment ID (for replies) */
+  parentId?: string;
+  /** Reply comments */
+  replies: BaseComment[];
+}
+
+/** Footer (page-level) comment */
+export interface FooterComment extends BaseComment {
+  replies: FooterComment[];
+}
+
+/** Inline comment attached to text selection */
+export interface InlineComment extends BaseComment {
+  /** The selected text this comment is attached to */
+  textSelection: string;
+  /** Number of times the selection appears on the page */
+  textSelectionMatchCount?: number;
+  /** Which occurrence (0-indexed) this comment is attached to */
+  textSelectionMatchIndex?: number;
+  replies: InlineComment[];
+}
+
+/** All comments for a page */
+export interface PageComments {
+  /** Page ID */
+  pageId: string;
+  /** When comments were last synced (ISO timestamp) */
+  lastSynced: string;
+  /** Footer (page-level) comments */
+  footerComments: FooterComment[];
+  /** Inline comments */
+  inlineComments: InlineComment[];
 }

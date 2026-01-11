@@ -53,17 +53,29 @@ atlcli template get <name>
 
 ## 4. Comments Sync
 
-Pull/push page comments.
+**Status**: COMPLETE ✅ (Pull-only)
 
-**Options:**
-- As markdown footnotes in the page file
-- As separate `page.comments.md` file
-- As JSON metadata
+Pull page comments to JSON files.
 
-**Features:**
-- Inline comments (highlight-based)
-- Page-level comments
-- Reply threads
+**Implemented Features:**
+- `atlcli docs pull --comments` - Pull comments to `.comments.json` files
+- `atlcli page comments --id <id>` - List comments for a page
+- Footer (page-level) comments with reply threads
+- Inline comments with text selection info
+- JSON output with `--json` flag
+- Uses Confluence API v2 for comments
+
+**Storage format:**
+```json
+{
+  "pageId": "12345",
+  "lastSynced": "2026-01-11T...",
+  "footerComments": [...],
+  "inlineComments": [...]
+}
+```
+
+**Note:** Push support (creating comments from CLI) planned for future.
 
 ---
 
@@ -277,5 +289,5 @@ atlcli docs push --validate
 5. ~~**Ignore Patterns** - Quality of life~~ ✅ COMPLETE
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
 7. ~~**Search** - Discovery~~ ✅ COMPLETE
-8. **Comments** - Collaboration
+8. ~~**Comments** - Collaboration~~ ✅ COMPLETE (pull-only)
 9. **Others** - As needed

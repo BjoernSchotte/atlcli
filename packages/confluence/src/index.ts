@@ -1,5 +1,6 @@
 export * from "./atlcli-dir.js";
 export * from "./client.js";
+export * from "./comments.js";
 export * from "./diff.js";
 export * from "./frontmatter.js";
 export * from "./hierarchy.js";

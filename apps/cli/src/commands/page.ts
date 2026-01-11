@@ -16,6 +16,9 @@ import {
   generateDiff,
   formatDiffWithColors,
   formatDiffSummary,
+  commentBodyToText,
+  FooterComment,
+  InlineComment,
 } from "@atlcli/confluence";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
@@ -44,6 +47,9 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       return;
     case "restore":
       await handleRestore(flags, opts);
+      return;
+    case "comments":
+      await handleComments(flags, opts);
       return;
     default:
       output(pageHelp(), opts);
@@ -371,6 +377,93 @@ async function handleRestore(flags: Record<string, string | boolean>, opts: Outp
   output(`New version: ${result.version}`, opts);
 }
 
+// ============ Comments Operations ============
+
+async function handleComments(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const comments = await client.getAllComments(id);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", ...comments }, opts);
+    return;
+  }
+
+  // Get page title for display
+  const page = await client.getPage(id);
+  const footerCount = comments.footerComments.length;
+  const inlineCount = comments.inlineComments.length;
+
+  if (footerCount === 0 && inlineCount === 0) {
+    output(`No comments on "${page.title}"`, opts);
+    return;
+  }
+
+  output(`\nComments on "${page.title}"`, opts);
+  output("─".repeat(60), opts);
+
+  // Footer comments
+  if (footerCount > 0) {
+    output(`\nPage Comments (${footerCount}):`, opts);
+    for (const comment of comments.footerComments) {
+      formatCommentForDisplay(comment, opts, 0);
+    }
+  }
+
+  // Inline comments
+  if (inlineCount > 0) {
+    output(`\nInline Comments (${inlineCount}):`, opts);
+    for (const comment of comments.inlineComments) {
+      formatInlineCommentForDisplay(comment, opts, 0);
+    }
+  }
+}
+
+function formatCommentForDisplay(
+  comment: FooterComment,
+  opts: OutputOptions,
+  indent: number
+): void {
+  const prefix = "  ".repeat(indent);
+  const author = comment.author.displayName;
+  const date = new Date(comment.created).toLocaleDateString();
+  const status = comment.status === "resolved" ? " [resolved]" : "";
+  const body = commentBodyToText(comment.body);
+
+  output(`${prefix}• ${author} (${date})${status}`, opts);
+  output(`${prefix}  ${body}`, opts);
+
+  for (const reply of comment.replies) {
+    formatCommentForDisplay(reply, opts, indent + 1);
+  }
+}
+
+function formatInlineCommentForDisplay(
+  comment: InlineComment,
+  opts: OutputOptions,
+  indent: number
+): void {
+  const prefix = "  ".repeat(indent);
+  const author = comment.author.displayName;
+  const date = new Date(comment.created).toLocaleDateString();
+  const status = comment.status === "resolved" ? " [resolved]" : "";
+  const body = commentBodyToText(comment.body);
+  const selection = comment.textSelection ? `"${comment.textSelection}"` : "(no selection)";
+
+  if (indent === 0) {
+    output(`${prefix}• On: ${selection}`, opts);
+  }
+  output(`${prefix}  ${author} (${date})${status}: ${body}`, opts);
+
+  for (const reply of comment.replies) {
+    formatInlineCommentForDisplay(reply, opts, indent + 1);
+  }
+}
+
 function labelHelp(): string {
   return `atlcli page label <command>
 
@@ -398,6 +491,7 @@ Commands:
   history --id <id> [--limit <n>]      Show version history
   diff --id <id> [--version <n>]       Compare versions
   restore --id <id> --version <n> --confirm  Restore to version
+  comments --id <id>                   List page comments
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -408,6 +502,7 @@ Examples:
   atlcli page history --id 12345 --limit 5
   atlcli page diff --id 12345 --version 3
   atlcli page restore --id 12345 --version 3 --confirm
+  atlcli page comments --id 12345
 
 Run 'atlcli page label' for label subcommand help.
 `;
