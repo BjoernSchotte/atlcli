@@ -269,12 +269,37 @@ atlcli docs check ./docs
 
 ## 14. Bulk Operations
 
-Batch operations on pages.
+**Status**: COMPLETE ✅
 
+Batch operations on pages using CQL queries.
+
+**Implemented Features:**
+- `atlcli page delete --id <id> --confirm` - Delete a single page
+- `atlcli page delete --cql <query> --confirm` - Delete pages matching CQL
+- `atlcli page archive --id <id> --confirm` - Archive a single page
+- `atlcli page archive --cql <query> --confirm` - Archive pages matching CQL
+- `atlcli page label add --cql <query> <label> --confirm` - Add labels to pages matching CQL
+- `atlcli page label remove --cql <query> <label> --confirm` - Remove label from pages matching CQL
+- `--dry-run` flag to preview affected pages without executing
+- Progress indicator during bulk operations
+- Error collection with partial success support
+
+**Examples:**
 ```bash
-atlcli page archive --cql "lastModified < now('-1y')"
-atlcli page label add --cql "space=OLD" archived
+# Preview what would be deleted
+atlcli page delete --cql "label=to-delete" --dry-run
+
+# Delete pages matching CQL
 atlcli page delete --cql "label=to-delete" --confirm
+
+# Archive old pages
+atlcli page archive --cql "lastModified < now('-1y')" --confirm
+
+# Bulk add labels
+atlcli page label add archived --cql "space=OLD" --confirm
+
+# Bulk remove labels
+atlcli page label remove draft --cql "space=DEV" --confirm
 ```
 
 ---
@@ -305,4 +330,5 @@ atlcli docs push --validate
 7. ~~**Search** - Discovery~~ ✅ COMPLETE
 8. ~~**Comments** - Collaboration~~ ✅ COMPLETE
 9. ~~**Page Tree Management** - Move, copy, children~~ ✅ COMPLETE
-10. **Others** - As needed
+10. ~~**Bulk Operations** - Delete, archive, label via CQL~~ ✅ COMPLETE
+11. **Others** - As needed

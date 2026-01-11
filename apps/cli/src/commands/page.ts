@@ -60,6 +60,12 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "children":
       await handleChildren(flags, opts);
       return;
+    case "delete":
+      await handleDelete(flags, opts);
+      return;
+    case "archive":
+      await handleArchive(flags, opts);
+      return;
     default:
       output(pageHelp(), opts);
       return;
@@ -169,8 +175,12 @@ async function handleLabel(args: string[], flags: Record<string, string | boolea
 
 async function handleLabelAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
-  if (!id) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  const cql = getFlag(flags, "cql");
+  const confirm = hasFlag(flags, "confirm");
+  const dryRun = hasFlag(flags, "dry-run");
+
+  if (!id && !cql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id or --cql is required.");
   }
 
   // Labels can be passed as positional args or comma-separated
@@ -183,37 +193,186 @@ async function handleLabelAdd(args: string[], flags: Record<string, string | boo
   }
 
   const client = await getClient(flags, opts);
-  const result = await client.addLabels(id, labels);
-  output({
-    schemaVersion: "1",
-    pageId: id,
-    added: labels,
-    labels: result.map((l) => l.name),
-  }, opts);
+
+  // Single page add (existing behavior)
+  if (id) {
+    const result = await client.addLabels(id, labels);
+    output({
+      schemaVersion: "1",
+      pageId: id,
+      added: labels,
+      labels: result.map((l) => l.name),
+    }, opts);
+    return;
+  }
+
+  // Bulk add via CQL
+  if (!confirm && !dryRun) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run required for bulk operations.");
+  }
+
+  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+
+  if (results.results.length === 0) {
+    output("No pages match the CQL query.", opts);
+    return;
+  }
+
+  if (dryRun) {
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        dryRun: true,
+        labels,
+        count: results.results.length,
+        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+      }, opts);
+      return;
+    }
+
+    output(`Would add labels [${labels.join(", ")}] to ${results.results.length} pages:`, opts);
+    for (const page of results.results.slice(0, 10)) {
+      output(`  - ${page.title} (${page.id})`, opts);
+    }
+    if (results.results.length > 10) {
+      output(`  ... and ${results.results.length - 10} more`, opts);
+    }
+    return;
+  }
+
+  // Execute bulk label add
+  const pageIds = results.results.map((p) => p.id);
+  const result = await client.bulkOperation(pageIds, (pageId) => client.addLabels(pageId, labels), {
+    onProgress: (done, total) => {
+      if (!opts.json) {
+        process.stderr.write(`\rAdding labels... ${done}/${total}`);
+      }
+    },
+  });
+
+  if (!opts.json) {
+    process.stderr.write("\r" + " ".repeat(40) + "\r"); // Clear progress line
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      labels,
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      errors: result.errors,
+    }, opts);
+    return;
+  }
+
+  output(`Added labels [${labels.join(", ")}]: ${result.successful}/${result.total}`, opts);
+  if (result.failed > 0) {
+    output(`Failed: ${result.failed}`, opts);
+    for (const err of result.errors.slice(0, 5)) {
+      output(`  - ${err.pageId}: ${err.error}`, opts);
+    }
+  }
 }
 
 async function handleLabelRemove(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
+  const cql = getFlag(flags, "cql");
+  const confirm = hasFlag(flags, "confirm");
+  const dryRun = hasFlag(flags, "dry-run");
   const label = args[0];
 
-  if (!id) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  if (!id && !cql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id or --cql is required.");
   }
   if (!label) {
     fail(opts, 1, ERROR_CODES.USAGE, "Label name is required. Usage: atlcli page label remove <label> --id <id>");
   }
 
   const client = await getClient(flags, opts);
-  await client.removeLabel(id, label);
 
-  // Fetch remaining labels
-  const remaining = await client.getLabels(id);
-  output({
-    schemaVersion: "1",
-    pageId: id,
-    removed: label,
-    labels: remaining.map((l) => l.name),
-  }, opts);
+  // Single page remove (existing behavior)
+  if (id) {
+    await client.removeLabel(id, label);
+
+    // Fetch remaining labels
+    const remaining = await client.getLabels(id);
+    output({
+      schemaVersion: "1",
+      pageId: id,
+      removed: label,
+      labels: remaining.map((l) => l.name),
+    }, opts);
+    return;
+  }
+
+  // Bulk remove via CQL
+  if (!confirm && !dryRun) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run required for bulk operations.");
+  }
+
+  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+
+  if (results.results.length === 0) {
+    output("No pages match the CQL query.", opts);
+    return;
+  }
+
+  if (dryRun) {
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        dryRun: true,
+        label,
+        count: results.results.length,
+        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+      }, opts);
+      return;
+    }
+
+    output(`Would remove label "${label}" from ${results.results.length} pages:`, opts);
+    for (const page of results.results.slice(0, 10)) {
+      output(`  - ${page.title} (${page.id})`, opts);
+    }
+    if (results.results.length > 10) {
+      output(`  ... and ${results.results.length - 10} more`, opts);
+    }
+    return;
+  }
+
+  // Execute bulk label remove
+  const pageIds = results.results.map((p) => p.id);
+  const result = await client.bulkOperation(pageIds, (pageId) => client.removeLabel(pageId, label), {
+    onProgress: (done, total) => {
+      if (!opts.json) {
+        process.stderr.write(`\rRemoving label... ${done}/${total}`);
+      }
+    },
+  });
+
+  if (!opts.json) {
+    process.stderr.write("\r" + " ".repeat(40) + "\r"); // Clear progress line
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      label,
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      errors: result.errors,
+    }, opts);
+    return;
+  }
+
+  output(`Removed label "${label}": ${result.successful}/${result.total}`, opts);
+  if (result.failed > 0) {
+    output(`Failed: ${result.failed}`, opts);
+    for (const err of result.errors.slice(0, 5)) {
+      output(`  - ${err.pageId}: ${err.error}`, opts);
+    }
+  }
 }
 
 async function handleLabelList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
@@ -755,6 +914,212 @@ async function handleChildren(flags: Record<string, string | boolean>, opts: Out
   }
 }
 
+// ============ Bulk Operations ============
+
+async function handleDelete(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const cql = getFlag(flags, "cql");
+  const confirm = hasFlag(flags, "confirm");
+  const dryRun = hasFlag(flags, "dry-run");
+
+  if (!id && !cql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id or --cql is required.");
+  }
+
+  if (!confirm && !dryRun) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run is required for delete.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Single page delete
+  if (id) {
+    const page = await client.getPage(id);
+
+    if (dryRun) {
+      output(`Would delete: "${page.title}" (${id})`, opts);
+      if (opts.json) {
+        output({ schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] }, opts);
+      }
+      return;
+    }
+
+    await client.deletePage(id);
+
+    if (opts.json) {
+      output({ schemaVersion: "1", deleted: [{ id, title: page.title }] }, opts);
+      return;
+    }
+
+    output(`Deleted page "${page.title}" (${id})`, opts);
+    return;
+  }
+
+  // Bulk delete via CQL
+  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+
+  if (results.results.length === 0) {
+    output("No pages match the CQL query.", opts);
+    return;
+  }
+
+  if (dryRun) {
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        dryRun: true,
+        count: results.results.length,
+        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+      }, opts);
+      return;
+    }
+
+    output(`Would delete ${results.results.length} pages:`, opts);
+    for (const page of results.results.slice(0, 10)) {
+      output(`  - ${page.title} (${page.id})`, opts);
+    }
+    if (results.results.length > 10) {
+      output(`  ... and ${results.results.length - 10} more`, opts);
+    }
+    return;
+  }
+
+  // Execute bulk delete
+  const pageIds = results.results.map((p) => p.id);
+  const result = await client.bulkOperation(pageIds, (pageId) => client.deletePage(pageId), {
+    onProgress: (done, total) => {
+      if (!opts.json) {
+        process.stderr.write(`\rDeleting... ${done}/${total}`);
+      }
+    },
+  });
+
+  if (!opts.json) {
+    process.stderr.write("\r" + " ".repeat(30) + "\r"); // Clear progress line
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      errors: result.errors,
+    }, opts);
+    return;
+  }
+
+  output(`Deleted: ${result.successful}/${result.total}`, opts);
+  if (result.failed > 0) {
+    output(`Failed: ${result.failed}`, opts);
+    for (const err of result.errors.slice(0, 5)) {
+      output(`  - ${err.pageId}: ${err.error}`, opts);
+    }
+  }
+}
+
+async function handleArchive(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const id = getFlag(flags, "id");
+  const cql = getFlag(flags, "cql");
+  const confirm = hasFlag(flags, "confirm");
+  const dryRun = hasFlag(flags, "dry-run");
+
+  if (!id && !cql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id or --cql is required.");
+  }
+
+  if (!confirm && !dryRun) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm or --dry-run is required for archive.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Single page archive
+  if (id) {
+    const page = await client.getPage(id);
+
+    if (dryRun) {
+      output(`Would archive: "${page.title}" (${id})`, opts);
+      if (opts.json) {
+        output({ schemaVersion: "1", dryRun: true, pages: [{ id, title: page.title }] }, opts);
+      }
+      return;
+    }
+
+    const archived = await client.archivePage(id);
+
+    if (opts.json) {
+      output({ schemaVersion: "1", archived: [{ id, title: archived.title }] }, opts);
+      return;
+    }
+
+    output(`Archived page "${archived.title}" (${id})`, opts);
+    return;
+  }
+
+  // Bulk archive via CQL
+  const results = await client.search(cql!, { limit: 1000, detail: "minimal" });
+
+  if (results.results.length === 0) {
+    output("No pages match the CQL query.", opts);
+    return;
+  }
+
+  if (dryRun) {
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        dryRun: true,
+        count: results.results.length,
+        pages: results.results.map((p) => ({ id: p.id, title: p.title })),
+      }, opts);
+      return;
+    }
+
+    output(`Would archive ${results.results.length} pages:`, opts);
+    for (const page of results.results.slice(0, 10)) {
+      output(`  - ${page.title} (${page.id})`, opts);
+    }
+    if (results.results.length > 10) {
+      output(`  ... and ${results.results.length - 10} more`, opts);
+    }
+    return;
+  }
+
+  // Execute bulk archive
+  const pageIds = results.results.map((p) => p.id);
+  const result = await client.bulkOperation(pageIds, (pageId) => client.archivePage(pageId), {
+    onProgress: (done, total) => {
+      if (!opts.json) {
+        process.stderr.write(`\rArchiving... ${done}/${total}`);
+      }
+    },
+  });
+
+  if (!opts.json) {
+    process.stderr.write("\r" + " ".repeat(30) + "\r"); // Clear progress line
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      errors: result.errors,
+    }, opts);
+    return;
+  }
+
+  output(`Archived: ${result.successful}/${result.total}`, opts);
+  if (result.failed > 0) {
+    output(`Failed: ${result.failed}`, opts);
+    for (const err of result.errors.slice(0, 5)) {
+      output(`  - ${err.pageId}: ${err.error}`, opts);
+    }
+  }
+}
+
 function commentsHelp(): string {
   return `
 atlcli page comments <command>
@@ -788,12 +1153,20 @@ function labelHelp(): string {
 
 Commands:
   add <label> [<label>...] --id <id>   Add labels to a page
+  add <label> --cql <query> --confirm  Add label to pages matching CQL
   remove <label> --id <id>             Remove a label from a page
+  remove <label> --cql <query> --confirm  Remove label from pages matching CQL
   list --id <id>                       List labels on a page
+
+Options:
+  --dry-run    Preview what would be affected without making changes
 
 Examples:
   atlcli page label add architecture api-docs --id 12345
+  atlcli page label add archived --cql "space=OLD" --dry-run
+  atlcli page label add archived --cql "space=OLD" --confirm
   atlcli page label remove draft --id 12345
+  atlcli page label remove draft --cql "label=draft AND space=DEV" --confirm
   atlcli page label list --id 12345
 `;
 }
@@ -809,6 +1182,10 @@ Commands:
   move --id <id> --parent <parent-id>  Move page to new parent
   copy --id <id> [--space <key>] [--title <t>] [--parent <p>]  Copy page
   children --id <id> [--limit <n>]     List child pages
+  delete --id <id> --confirm           Delete a page
+  delete --cql <query> --confirm       Delete pages matching CQL (bulk)
+  archive --id <id> --confirm          Archive a page
+  archive --cql <query> --confirm      Archive pages matching CQL (bulk)
   label <add|remove|list> ...          Manage page labels
   history --id <id> [--limit <n>]      Show version history
   diff --id <id> [--version <n>]       Compare versions
@@ -818,12 +1195,18 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
+  --dry-run          Preview bulk operations without executing
 
 Examples:
   atlcli page list --label architecture
   atlcli page move --id 12345 --parent 67890
   atlcli page copy --id 12345 --title "Copy of Page"
   atlcli page children --id 12345
+  atlcli page delete --id 12345 --confirm
+  atlcli page delete --cql "label=to-delete" --dry-run
+  atlcli page delete --cql "label=to-delete" --confirm
+  atlcli page archive --cql "lastModified < now('-1y')" --dry-run
+  atlcli page archive --cql "lastModified < now('-1y')" --confirm
   atlcli page history --id 12345 --limit 5
   atlcli page diff --id 12345 --version 3
   atlcli page restore --id 12345 --version 3 --confirm

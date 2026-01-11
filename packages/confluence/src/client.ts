@@ -519,6 +519,96 @@ export class ConfluenceClient {
     return this.searchPages(cql, limit);
   }
 
+  /**
+   * Delete a page.
+   *
+   * DELETE /content/{id}
+   */
+  async deletePage(pageId: string): Promise<void> {
+    await this.request(`/content/${pageId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Archive a page (set status to archived).
+   *
+   * PUT /content/{id} with status: "archived"
+   */
+  async archivePage(pageId: string): Promise<ConfluencePage> {
+    // Get current page to preserve title and get version
+    const current = await this.getPage(pageId);
+
+    const data = (await this.request(`/content/${pageId}`, {
+      method: "PUT",
+      body: {
+        id: pageId,
+        type: "page",
+        title: current.title,
+        version: { number: (current.version ?? 1) + 1 },
+        status: "archived",
+      },
+    })) as any;
+
+    return {
+      id: data.id,
+      title: data.title,
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+      version: data.version?.number,
+      spaceKey: data.space?.key,
+    };
+  }
+
+  /**
+   * Execute a bulk operation on multiple pages with concurrency control.
+   *
+   * @param pageIds - List of page IDs to operate on
+   * @param operation - Function to execute for each page
+   * @param options - Options including concurrency limit and progress callback
+   * @returns Summary of results including successes and failures
+   */
+  async bulkOperation<T>(
+    pageIds: string[],
+    operation: (pageId: string) => Promise<T>,
+    options: {
+      concurrency?: number;
+      onProgress?: (done: number, total: number) => void;
+    } = {}
+  ): Promise<BulkOperationResult> {
+    const { concurrency = 5, onProgress } = options;
+    const result: BulkOperationResult = {
+      total: pageIds.length,
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    let completed = 0;
+
+    for (let i = 0; i < pageIds.length; i += concurrency) {
+      const chunk = pageIds.slice(i, i + concurrency);
+      const promises = chunk.map(async (pageId) => {
+        try {
+          await operation(pageId);
+          result.successful++;
+        } catch (err) {
+          result.failed++;
+          result.errors.push({
+            pageId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          completed++;
+          onProgress?.(completed, pageIds.length);
+        }
+      });
+
+      await Promise.all(promises);
+    }
+
+    return result;
+  }
+
   // ============ Space Operations ============
 
   /**
@@ -1731,4 +1821,20 @@ export interface PageComments {
   footerComments: FooterComment[];
   /** Inline comments */
   inlineComments: InlineComment[];
+}
+
+/** Result of a bulk operation */
+export interface BulkOperationResult {
+  /** Total number of pages */
+  total: number;
+  /** Number of successful operations */
+  successful: number;
+  /** Number of failed operations */
+  failed: number;
+  /** Details of each failure */
+  errors: Array<{
+    pageId: string;
+    title?: string;
+    error: string;
+  }>;
 }
