@@ -69,14 +69,17 @@ Pull/push page comments.
 
 ## 5. Page History & Diff
 
+**Status**: COMPLETE ✅
+
 View and restore page versions.
 
-```bash
-atlcli page history <id> [--limit 10]
-atlcli page diff <id> [--version 5]
-atlcli page restore <id> --version 5
-atlcli docs diff ./page.md  # local vs remote
-```
+**Implemented Features:**
+- `atlcli page history --id <id> [--limit <n>]` - View version history
+- `atlcli page diff --id <id> [--version <n>]` - Compare versions with colored diff
+- `atlcli page restore --id <id> --version <n> --confirm` - Restore to previous version
+- `atlcli docs diff <file>` - Compare local file vs remote Confluence page
+- JSON output support with `--json` flag
+- Unified diff format with line addition/deletion counts
 
 ---
 
@@ -233,7 +236,7 @@ atlcli docs push --validate
 1. ~~**Partial Sync** - Core functionality, day-0 requirement~~ ✅ COMPLETE
 2. ~~**Attachments** - Essential for real-world docs~~ ✅ COMPLETE
 3. ~~**Labels** - Common organizational need~~ ✅ COMPLETE
-4. **Page History & Diff** - Safety and review
+4. ~~**Page History & Diff** - Safety and review~~ ✅ COMPLETE
 5. **Ignore Patterns** - Quality of life
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
 7. **Search** - Discovery
