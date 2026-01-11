@@ -953,6 +953,123 @@ export class ConfluenceClient {
       spaceKey: item.space?.key,
     }));
   }
+
+  // ============ Version History Operations ============
+
+  /**
+   * Get version history for a page.
+   *
+   * GET /content/{id}/version
+   */
+  async getPageHistory(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<PageHistory> {
+    const { limit = 25 } = options;
+
+    const data = (await this.request(`/content/${pageId}/version`, {
+      query: { limit, expand: "content" },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    const versions: PageVersion[] = results.map((item: any) => ({
+      number: item.number,
+      by: {
+        displayName: item.by?.displayName ?? "Unknown",
+        email: item.by?.email,
+      },
+      when: item.when,
+      message: item.message,
+      minorEdit: item.minorEdit ?? false,
+    }));
+
+    return {
+      pageId,
+      versions,
+      latest: versions.length > 0 ? versions[0].number : 1,
+    };
+  }
+
+  /**
+   * Get page content at a specific version.
+   *
+   * GET /content/{id}/version/{versionNumber}
+   */
+  async getPageAtVersion(
+    pageId: string,
+    version: number
+  ): Promise<ConfluencePage & { storage: string }> {
+    const data = (await this.request(`/content/${pageId}/version/${version}`, {
+      query: { expand: "content.body.storage,content.space,content.ancestors" },
+    })) as any;
+
+    // The response structure nests content under 'content' key
+    const content = data.content || data;
+
+    // Extract ancestors
+    const ancestors = Array.isArray(content.ancestors)
+      ? content.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
+    const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+
+    return {
+      id: content.id || pageId,
+      title: content.title || data.title,
+      url: content._links?.base ? `${content._links.base}${content._links.webui}` : undefined,
+      version: data.number || version,
+      spaceKey: content.space?.key,
+      parentId,
+      ancestors,
+      storage: content.body?.storage?.value ?? "",
+    };
+  }
+
+  /**
+   * Restore a page to a previous version.
+   * Creates a new version with the content from the specified version.
+   *
+   * This fetches the old version's content and updates the page.
+   */
+  async restorePageVersion(
+    pageId: string,
+    version: number,
+    message?: string
+  ): Promise<ConfluencePage> {
+    // Get the content at the specified version
+    const oldVersion = await this.getPageAtVersion(pageId, version);
+
+    // Get the current page to get the latest version number
+    const current = await this.getPage(pageId);
+    const newVersion = (current.version ?? 1) + 1;
+
+    // Update the page with the old content
+    const data = (await this.request(`/content/${pageId}`, {
+      method: "PUT",
+      body: {
+        id: pageId,
+        type: "page",
+        title: current.title,
+        version: {
+          number: newVersion,
+          message: message ?? `Restored to version ${version}`,
+        },
+        body: {
+          storage: {
+            value: oldVersion.storage,
+            representation: "storage",
+          },
+        },
+      },
+    })) as any;
+
+    return {
+      id: data.id,
+      title: data.title,
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+      version: data.version?.number,
+      spaceKey: data.space?.key,
+    };
+  }
 }
 
 /** Webhook registration info */
@@ -972,4 +1089,31 @@ export interface LabelInfo {
   name: string;
   /** Label ID */
   id: string;
+}
+
+/** Page version info */
+export interface PageVersion {
+  /** Version number */
+  number: number;
+  /** User who created this version */
+  by: {
+    displayName: string;
+    email?: string;
+  };
+  /** When this version was created (ISO timestamp) */
+  when: string;
+  /** Version message/comment */
+  message?: string;
+  /** Whether this was a minor edit */
+  minorEdit: boolean;
+}
+
+/** Page version history */
+export interface PageHistory {
+  /** Page ID */
+  pageId: string;
+  /** List of versions (newest first) */
+  versions: PageVersion[];
+  /** Latest version number */
+  latest: number;
 }
