@@ -478,4 +478,224 @@ describe("ConfluenceClient", () => {
       expect(capturedUrl).toContain('DEV');
     });
   });
+
+  describe("page history operations", () => {
+    test("getPageHistory fetches version history", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  number: 3,
+                  when: "2024-01-15T10:00:00Z",
+                  message: "Updated content",
+                  by: { displayName: "Alice" },
+                },
+                {
+                  number: 2,
+                  when: "2024-01-14T10:00:00Z",
+                  message: "Initial revision",
+                  by: { displayName: "Bob" },
+                },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const history = await client.getPageHistory("123");
+
+      expect(capturedUrl).toContain("/content/123/version");
+      expect(history.versions.length).toBe(2);
+      expect(history.versions[0].number).toBe(3);
+      expect(history.versions[0].by.displayName).toBe("Alice");
+    });
+
+    test("getPageHistory respects limit option", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ results: [] }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.getPageHistory("123", { limit: 5 });
+
+      expect(capturedUrl).toContain("limit=5");
+    });
+
+    test("getPageAtVersion fetches specific version", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              content: {
+                id: "123",
+                title: "Old Title",
+                body: { storage: { value: "<p>Old content</p>" } },
+                version: { number: 2 },
+                space: { key: "TEST" },
+              },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const page = await client.getPageAtVersion("123", 2);
+
+      expect(capturedUrl).toContain("/content/123/version/2");
+      expect(capturedUrl).toContain("expand=content");
+      expect(page.title).toBe("Old Title");
+      expect(page.storage).toBe("<p>Old content</p>");
+      expect(page.version).toBe(2);
+    });
+
+    test("restorePageVersion creates new version with old content", async () => {
+      let capturedUrls: string[] = [];
+      let capturedBody: any;
+      let callCount = 0;
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        capturedUrls.push(url);
+        callCount++;
+
+        // First call: get page at version
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                content: {
+                  id: "123",
+                  title: "Old Title",
+                  body: { storage: { value: "<p>Old content</p>" } },
+                  version: { number: 2 },
+                  space: { key: "TEST" },
+                },
+              }),
+              { status: 200 }
+            )
+          );
+        }
+
+        // Second call: get current page
+        if (callCount === 2) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: "123",
+                title: "Current Title",
+                body: { storage: { value: "<p>Current</p>" } },
+                version: { number: 5 },
+                space: { key: "TEST" },
+              }),
+              { status: 200 }
+            )
+          );
+        }
+
+        // Third call: update page
+        if (options.body) {
+          capturedBody = JSON.parse(options.body as string);
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Old Title",
+              version: { number: 6 },
+              space: { key: "TEST" },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const result = await client.restorePageVersion("123", 2, "Restored to v2");
+
+      expect(capturedUrls[0]).toContain("/version/2");
+      expect(capturedBody.body.storage.value).toBe("<p>Old content</p>");
+      expect(capturedBody.version.number).toBe(6);
+      expect(capturedBody.version.message).toBe("Restored to v2");
+      expect(result.version).toBe(6);
+    });
+
+    test("restorePageVersion uses default message when not provided", async () => {
+      let capturedBody: any;
+      let callCount = 0;
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        callCount++;
+
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                content: {
+                  id: "123",
+                  title: "Title",
+                  body: { storage: { value: "<p>content</p>" } },
+                  version: { number: 2 },
+                  space: { key: "TEST" },
+                },
+              }),
+              { status: 200 }
+            )
+          );
+        }
+
+        if (callCount === 2) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: "123",
+                title: "Title",
+                body: { storage: { value: "" } },
+                version: { number: 5 },
+                space: { key: "TEST" },
+              }),
+              { status: 200 }
+            )
+          );
+        }
+
+        if (options.body) {
+          capturedBody = JSON.parse(options.body as string);
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Title",
+              version: { number: 6 },
+              space: { key: "TEST" },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.restorePageVersion("123", 2);
+
+      expect(capturedBody.version.message).toContain("Restored to version 2");
+    });
+  });
 });
