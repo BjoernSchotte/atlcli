@@ -81,6 +81,12 @@ Full comments support - pull and create/manage comments from CLI.
 }
 ```
 
+**Known Confluence API v2 Limitations:**
+- Inline comments: `textSelection` not returned on GET requests, only on create. Comments display correctly in Confluence UI but CLI cannot show which text was selected.
+  See: [API doesn't provide enough data to recreate inline comments](https://community.developer.atlassian.com/t/inline-comment-on-both-v-1-and-v-2-doesnt-provide-enough-data-to-recreate-the-inline-comment-using-post/68653)
+- Footer comments: PUT updates require body and version fields; resolution status changes may not reflect immediately.
+  See: [Update footer comment not working](https://community.developer.atlassian.com/t/update-footer-comment-confluence-api-v2-not-working/68485)
+
 ---
 
 ## 5. Page History & Diff
