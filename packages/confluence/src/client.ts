@@ -868,6 +868,91 @@ export class ConfluenceClient {
 
     throw lastError ?? new Error("Request failed after retries");
   }
+
+  // ============ Label Operations ============
+
+  /**
+   * Get labels for a page.
+   *
+   * GET /content/{id}/label
+   */
+  async getLabels(pageId: string): Promise<LabelInfo[]> {
+    const data = (await this.request(`/content/${pageId}/label`, {
+      query: { limit: 200 },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => ({
+      prefix: item.prefix ?? "global",
+      name: item.name,
+      id: item.id,
+    }));
+  }
+
+  /**
+   * Add one or more labels to a page.
+   *
+   * POST /content/{id}/label
+   */
+  async addLabels(pageId: string, labels: string[]): Promise<LabelInfo[]> {
+    const body = labels.map((name) => ({
+      prefix: "global",
+      name,
+    }));
+
+    const data = (await this.request(`/content/${pageId}/label`, {
+      method: "POST",
+      body,
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => ({
+      prefix: item.prefix ?? "global",
+      name: item.name,
+      id: item.id,
+    }));
+  }
+
+  /**
+   * Remove a label from a page.
+   *
+   * DELETE /content/{id}/label/{label}
+   */
+  async removeLabel(pageId: string, label: string): Promise<void> {
+    await this.request(`/content/${pageId}/label/${encodeURIComponent(label)}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Get pages with a specific label.
+   *
+   * Uses CQL: label = "labelname" [AND space = "SPACEKEY"]
+   */
+  async getPagesByLabel(
+    label: string,
+    options: { spaceKey?: string; limit?: number } = {}
+  ): Promise<PageChangeInfo[]> {
+    const { spaceKey, limit = 100 } = options;
+
+    let cql = `label = "${label}" AND type = page`;
+    if (spaceKey) {
+      cql += ` AND space = "${spaceKey}"`;
+    }
+
+    const data = (await this.request("/content/search", {
+      query: { cql, limit, expand: "version,space,history.lastUpdated" },
+    })) as any;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      version: item.version?.number ?? 1,
+      lastModified: item.history?.lastUpdated?.when,
+      spaceKey: item.space?.key,
+    }));
+  }
 }
 
 /** Webhook registration info */
@@ -877,4 +962,14 @@ export interface WebhookRegistration {
   url: string;
   events: string[];
   active: boolean;
+}
+
+/** Label info from Confluence API */
+export interface LabelInfo {
+  /** Label prefix (usually "global" for user-created labels) */
+  prefix: string;
+  /** Label name */
+  name: string;
+  /** Label ID */
+  id: string;
 }
