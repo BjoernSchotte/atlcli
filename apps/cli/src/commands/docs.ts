@@ -244,6 +244,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const outDir = args[0] || getFlag(flags, "out") || ".";
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const force = hasFlag(flags, "force");
+  const labelFilter = getFlag(flags, "label");
 
   // Check if directory is initialized
   let atlcliDir = findAtlcliDir(outDir);
@@ -296,14 +297,42 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
   // Fetch pages based on scope
   let pages: { id: string; title: string }[];
-  const cql = buildCqlFromScope(scope);
+  let cql = buildCqlFromScope(scope);
+
+  // Add label filter if specified
+  if (labelFilter) {
+    if (cql) {
+      cql += ` AND label = "${labelFilter}"`;
+    } else if (scope.type === "page") {
+      // For single page with label filter, we'll check after fetch
+      // and skip if page doesn't have the label
+    }
+  }
 
   if (cql) {
     // Tree or space scope: use CQL search
     pages = await client.searchPages(cql, Number.isNaN(limit) ? 50 : limit);
   } else {
     // Single page scope: direct fetch
-    const page = await client.getPage((scope as { type: "page"; pageId: string }).pageId);
+    const pageId = (scope as { type: "page"; pageId: string }).pageId;
+    const page = await client.getPage(pageId);
+
+    // If label filter is specified for single page, verify it has the label
+    if (labelFilter) {
+      const labels = await client.getLabels(pageId);
+      if (!labels.some((l) => l.name === labelFilter)) {
+        if (!opts.json) {
+          output(`Page ${page.title} does not have label "${labelFilter}", skipping.`, opts);
+        }
+        output({
+          schemaVersion: "1",
+          results: { pulled: 0, skipped: 1, moved: 0, outDir, attachments: 0 },
+          note: `Page does not have label "${labelFilter}".`,
+        }, opts);
+        return;
+      }
+    }
+
     pages = [{ id: page.id, title: page.title }];
   }
 
@@ -1362,11 +1391,11 @@ function docsHelp(): string {
 
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
-  pull [dir] [scope options] [--limit <n>] [--force]
+  pull [dir] [scope options] [--limit <n>] [--force] [--label <label>]
   push [dir|file] [--page-id <id>]                  Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
-  sync <dir> [scope options] [--poll-interval <ms>] Bidirectional sync
+  sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
   status [dir]                                       Show sync state
   resolve <file> --accept local|remote|merged        Resolve conflicts
 
@@ -1379,6 +1408,7 @@ Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output (watch/sync emit JSON lines)
   --force            Overwrite local modifications
+  --label <label>    Only sync pages with this label
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.
@@ -1389,6 +1419,7 @@ Examples:
   atlcli docs init ./docs --page-id 67890           Initialize for single page
   atlcli docs pull ./docs                           Pull using saved scope
   atlcli docs pull ./docs --ancestor 99999          Override scope for this pull
+  atlcli docs pull ./docs --label architecture      Pull only pages with label
   atlcli docs push ./docs                           Push all tracked files
   atlcli docs push ./docs/page.md                   Push single file
   atlcli docs push --page-id 12345                  Push by page ID

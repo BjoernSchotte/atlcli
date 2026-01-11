@@ -71,6 +71,7 @@ interface SyncOptions {
   autoCreate: boolean;
   webhookPort?: number;
   webhookUrl?: string;
+  labelFilter?: string;
 }
 
 /** Sync event for output */
@@ -133,6 +134,7 @@ export async function handleSync(
   }
 
   const webhookPortStr = getFlag(flags, "webhook-port");
+  const labelFilter = getFlag(flags, "label");
   const syncOpts: SyncOptions = {
     dir,
     scope,
@@ -145,6 +147,7 @@ export async function handleSync(
     autoCreate: hasFlag(flags, "auto-create"),
     webhookPort: webhookPortStr ? Number(webhookPortStr) : undefined,
     webhookUrl: getFlag(flags, "webhook-url"),
+    labelFilter,
   };
 
   const config = await loadConfig();
@@ -208,8 +211,43 @@ class SyncEngine {
   async initialSync(): Promise<void> {
     this.emit({ type: "status", message: "Starting initial sync..." });
 
-    // Get all pages in scope
-    const pages = await this.client.getAllPages({ scope: this.opts.scope });
+    // Get all pages in scope, optionally filtered by label
+    let pages: { id: string; title: string; version: number; spaceKey?: string }[];
+
+    if (this.opts.labelFilter) {
+      // Use label-filtered search
+      if (this.opts.scope.type === "space") {
+        pages = await this.client.getPagesByLabel(this.opts.labelFilter, {
+          spaceKey: this.opts.scope.spaceKey,
+        });
+      } else if (this.opts.scope.type === "tree") {
+        // For tree scope with label, get all pages in tree then filter by label
+        const allPages = await this.client.getAllPages({ scope: this.opts.scope });
+        pages = [];
+        for (const page of allPages) {
+          const labels = await this.client.getLabels(page.id);
+          if (labels.some((l) => l.name === this.opts.labelFilter)) {
+            pages.push(page);
+          }
+        }
+      } else {
+        // Single page scope - check if page has the label
+        const pageId = this.opts.scope.pageId;
+        const labels = await this.client.getLabels(pageId);
+        if (labels.some((l) => l.name === this.opts.labelFilter)) {
+          pages = await this.client.getAllPages({ scope: this.opts.scope });
+        } else {
+          this.emit({
+            type: "status",
+            message: `Page does not have label "${this.opts.labelFilter}", skipping.`,
+          });
+          pages = [];
+        }
+      }
+    } else {
+      pages = await this.client.getAllPages({ scope: this.opts.scope });
+    }
+
     this.emit({ type: "status", message: `Found ${pages.length} pages in scope` });
 
     // Load existing local files - check both .meta.json and frontmatter
@@ -1009,6 +1047,9 @@ Scope options (uses .atlcli/config.json scope if not specified):
   --ancestor <id>       Sync page tree under parent ID
   --space <key>         Sync entire space
 
+Filter options:
+  --label <label>       Only sync pages with this label
+
 Behavior options:
   --poll-interval <ms>  Polling interval in ms (default: 30000)
   --no-poll             Disable polling (local watch only)
@@ -1031,6 +1072,9 @@ Examples:
   atlcli docs sync ./docs --space DEV
   atlcli docs sync ./docs --ancestor 12345 --poll-interval 10000
   atlcli docs sync ./docs --page-id 12345
+
+  # Sync only pages with a specific label
+  atlcli docs sync ./docs --space DEV --label architecture
 
   # Sync with auto-create for new local files
   atlcli docs sync ./docs --space DEV --auto-create
