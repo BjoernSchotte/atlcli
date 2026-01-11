@@ -75,6 +75,10 @@ import {
   getConfigScope,
   isConfigV2,
   ConfigScope,
+  // Diff
+  generateDiff,
+  formatDiffWithColors,
+  formatDiffSummary,
 } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
 
@@ -128,6 +132,9 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
       return;
     case "resolve":
       await handleResolve(args.slice(1), flags, opts);
+      return;
+    case "diff":
+      await handleDocsDiff(args.slice(1), flags, opts);
       return;
     default:
       output(docsHelp(), opts);
@@ -1386,6 +1393,68 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
   output("Run 'atlcli docs push' to push the resolved version.", opts);
 }
 
+async function handleDocsDiff(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const filePath = args[0];
+  if (!filePath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "File path is required. Usage: atlcli docs diff <file>");
+  }
+
+  // Check if file exists and read it
+  let localContent: string;
+  try {
+    localContent = await readTextFile(filePath);
+  } catch {
+    fail(opts, 1, ERROR_CODES.USAGE, `File not found: ${filePath}`);
+  }
+
+  // Parse frontmatter to get page ID
+  const { frontmatter, content: localMarkdown } = parseFrontmatter(localContent);
+
+  if (!frontmatter?.id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "File has no page ID in frontmatter. Is it tracked?");
+  }
+
+  const pageId = frontmatter.id;
+  const client = await getClient(flags, opts);
+
+  // Fetch remote page
+  const remotePage = await client.getPage(pageId);
+  const remoteMarkdown = storageToMarkdown(remotePage.storage);
+
+  // Generate diff
+  const diff = generateDiff(remoteMarkdown, localMarkdown, {
+    oldLabel: `Remote (v${remotePage.version})`,
+    newLabel: "Local",
+    context: 3,
+  });
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      file: filePath,
+      pageId,
+      title: remotePage.title,
+      remoteVersion: remotePage.version,
+      hasChanges: diff.hasChanges,
+      additions: diff.additions,
+      deletions: diff.deletions,
+      unified: diff.unified,
+    }, opts);
+    return;
+  }
+
+  if (!diff.hasChanges) {
+    output(`No changes between local file and remote page (v${remotePage.version}).`, opts);
+    return;
+  }
+
+  // Output colored diff
+  output(`\nDiff for "${remotePage.title}"`, opts);
+  output(`Comparing Remote (v${remotePage.version}) ↔ Local`, opts);
+  output(`${formatDiffSummary(diff)}\n`, opts);
+  output(formatDiffWithColors(diff), opts);
+}
+
 function docsHelp(): string {
   return `atlcli docs <command>
 
@@ -1398,6 +1467,7 @@ Commands:
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
   status [dir]                                       Show sync state
   resolve <file> --accept local|remote|merged        Resolve conflicts
+  diff <file>                                        Compare local vs remote
 
 Scope options (one required for init/pull/sync):
   --page-id <id>     Single page by ID
@@ -1423,6 +1493,7 @@ Examples:
   atlcli docs push ./docs                           Push all tracked files
   atlcli docs push ./docs/page.md                   Push single file
   atlcli docs push --page-id 12345                  Push by page ID
+  atlcli docs diff ./docs/page.md                   Show local vs remote diff
 
 For sync command options: atlcli docs sync --help
 `;
