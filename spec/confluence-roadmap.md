@@ -8,7 +8,7 @@ Future enhancements for atlcli Confluence functionality.
 
 ## 1. Partial Sync (Priority: High)
 
-**Status**: Planning
+**Status**: COMPLETE ✅
 
 Granular control over which pages to sync - single pages, page trees, or full spaces.
 
@@ -117,17 +117,26 @@ atlcli page reorder <id> --after <sibling-id>
 
 ## 9. Additional Macros
 
+**Status:** COMPLETE
+
 Expand markdown-to-storage conversion.
 
-**Current:** info, note, warning, tip, expand, toc
-
-**Proposed:**
-- `code` - Code block with syntax highlighting
-- `status` - Status lozenges (RED, YELLOW, GREEN)
-- `jira` - Jira issue embed
-- `children` - Child pages list
-- `recently-updated` - Recent changes
-- `include` - Content transclusion
+**Implemented:**
+- `code` - Code block with syntax highlighting ✅
+- `status` - Status lozenges (`{status:green}Done{status}`) ✅
+- `jira` - Jira issue embed (`{jira:PROJ-123}`) ✅
+- `children` - Child pages list (`:::children`) ✅
+- `recently-updated` - Recent changes (`:::recently-updated`) ✅
+- `include` - Content transclusion (`:::include page="id"`) ✅
+- `panel` - Generic panel with colors ✅
+- `excerpt` / `excerpt-include` - Content excerpts ✅
+- `anchor` - Page anchors (`{#anchor-name}`) ✅
+- `section` / `column` - Multi-column layouts ✅
+- `pagetree` - Page tree navigation ✅
+- `content-by-label` - Filter by labels ✅
+- `gallery` - Image gallery ✅
+- `attachments` - Attachment list ✅
+- `multimedia` / `widget` - Media embeds ✅
 
 ---
 
