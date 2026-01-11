@@ -82,14 +82,17 @@ atlcli docs diff ./page.md  # local vs remote
 
 ## 6. Labels / Tags
 
+**Status**: COMPLETE ✅
+
 Filter sync by labels, manage labels.
 
-```bash
-atlcli docs pull --label architecture
-atlcli page label add <id> my-label
-atlcli page label remove <id> old-label
-atlcli page list --label api-docs
-```
+**Implemented Features:**
+- `atlcli page label add <label>... --id <id>` - Add labels to a page
+- `atlcli page label remove <label> --id <id>` - Remove a label from a page
+- `atlcli page label list --id <id>` - List labels on a page
+- `atlcli page list --label <label> [--space <key>]` - List pages with label
+- `atlcli docs pull --label <label>` - Pull only pages with label
+- `atlcli docs sync --label <label>` - Sync only pages with label
 
 ---
 
@@ -229,7 +232,7 @@ atlcli docs push --validate
 
 1. ~~**Partial Sync** - Core functionality, day-0 requirement~~ ✅ COMPLETE
 2. ~~**Attachments** - Essential for real-world docs~~ ✅ COMPLETE
-3. **Labels** - Common organizational need
+3. ~~**Labels** - Common organizational need~~ ✅ COMPLETE
 4. **Page History & Diff** - Safety and review
 5. **Ignore Patterns** - Quality of life
 6. ~~**Additional Macros** - Expanded compatibility~~ ✅ COMPLETE
