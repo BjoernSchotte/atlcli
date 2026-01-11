@@ -254,15 +254,43 @@ private/
 
 ---
 
-## 13. Link Checker
+## 13. Link Checker & Pre-push Validation
 
-Find broken internal links.
+**Status**: COMPLETE ✅
 
+Find broken internal links and validate content before pushing.
+
+**Implemented Features:**
+- `atlcli docs check [path]` - Validate markdown files for issues
+- `atlcli docs check --strict` - Treat warnings as errors
+- `atlcli docs check --json` - JSON output for CI/agents
+- `atlcli docs push --validate` - Run validation before push
+- `atlcli docs push --validate --strict` - Fail push on warnings
+
+**Validation Checks:**
+| Code | Severity | Description |
+|------|----------|-------------|
+| `LINK_FILE_NOT_FOUND` | Error | Target file `./page.md` does not exist |
+| `LINK_UNTRACKED_PAGE` | Warning | Target exists locally but not synced |
+| `MACRO_UNCLOSED` | Error | `:::info` without closing `:::` |
+| `PAGE_SIZE_EXCEEDED` | Warning | Content exceeds 500KB |
+
+**Examples:**
 ```bash
+# Check all files in directory
 atlcli docs check ./docs
-# Output:
-# page-a.md:15 - broken link to "Missing Page"
-# page-b.md:42 - link to deleted page (id: 12345)
+
+# Check with strict mode (warnings = errors)
+atlcli docs check --strict
+
+# JSON output for CI/agents
+atlcli docs check --json
+
+# Validate before pushing
+atlcli docs push --validate
+
+# Strict validation before push
+atlcli docs push --validate --strict
 ```
 
 ---
@@ -304,21 +332,6 @@ atlcli page label remove draft --cql "space=DEV" --confirm
 
 ---
 
-## 15. Pre-push Validation
-
-Hooks to validate content before pushing.
-
-```bash
-atlcli docs push --validate
-# Checks:
-# - Broken internal links
-# - Invalid macro syntax
-# - Required frontmatter fields
-# - Maximum page size
-```
-
----
-
 ## Priority Order
 
 1. ~~**Partial Sync** - Core functionality, day-0 requirement~~ ✅ COMPLETE
@@ -331,4 +344,5 @@ atlcli docs push --validate
 8. ~~**Comments** - Collaboration~~ ✅ COMPLETE
 9. ~~**Page Tree Management** - Move, copy, children~~ ✅ COMPLETE
 10. ~~**Bulk Operations** - Delete, archive, label via CQL~~ ✅ COMPLETE
-11. **Others** - As needed
+11. ~~**Link Checker & Pre-push Validation** - Content validation~~ ✅ COMPLETE
+12. **Others** - As needed

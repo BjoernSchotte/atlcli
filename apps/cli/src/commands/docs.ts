@@ -87,6 +87,11 @@ import {
   getCommentsFilePath,
   writeCommentsFile,
   PageComments,
+  // Validation
+  validateFile,
+  validateDirectory,
+  formatValidationReport,
+  ValidationResult,
 } from "@atlcli/confluence";
 import type { Ignore } from "ignore";
 import { handleSync, syncHelp } from "./sync.js";
@@ -144,6 +149,9 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
       return;
     case "diff":
       await handleDocsDiff(args.slice(1), flags, opts);
+      return;
+    case "check":
+      await handleCheck(args.slice(1), flags, opts);
       return;
     default:
       output(docsHelp(), opts);
@@ -693,6 +701,32 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     const dirConfig = await readConfig(atlcliDir);
     space = space || dirConfig.space;
     state = await readState(atlcliDir);
+  }
+
+  // Run validation if --validate flag is set
+  if (hasFlag(flags, "validate") && atlcliDir) {
+    const strict = hasFlag(flags, "strict");
+    const result = await validateDirectory(atlcliDir, state ?? null, atlcliDir, {
+      checkBrokenLinks: true,
+      checkMacroSyntax: true,
+      checkPageSize: true,
+      maxPageSizeKb: 500,
+    });
+
+    if (!result.passed) {
+      output(formatValidationReport(result), opts);
+      fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed - push aborted");
+    }
+
+    if (result.totalWarnings > 0) {
+      output(formatValidationReport(result), opts);
+      if (strict) {
+        fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors) - push aborted");
+      }
+      if (!opts.json) {
+        output("Proceeding with push despite warnings...\n", opts);
+      }
+    }
   }
 
   let updated = 0;
@@ -1519,19 +1553,77 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
   output(formatDiffWithColors(diff), opts);
 }
 
+async function handleCheck(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+  const targetPath = args[0] || ".";
+  const strict = hasFlag(flags, "strict");
+
+  // Resolve to absolute path
+  const absPath = resolve(targetPath);
+
+  // Find .atlcli directory if it exists
+  const atlcliDir = findAtlcliDir(absPath);
+  let state: AtlcliState | null = null;
+
+  if (atlcliDir) {
+    try {
+      state = await readState(atlcliDir);
+    } catch {
+      // No state file, continue without it
+    }
+  }
+
+  // Run validation
+  const result = await validateDirectory(absPath, state, atlcliDir, {
+    checkBrokenLinks: true,
+    checkMacroSyntax: true,
+    checkPageSize: true,
+    maxPageSizeKb: 500,
+  });
+
+  // JSON output
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      passed: result.passed,
+      totalErrors: result.totalErrors,
+      totalWarnings: result.totalWarnings,
+      filesChecked: result.filesChecked,
+      filesWithIssues: result.files.filter((f) => f.issues.length > 0).length,
+      files: result.files.filter((f) => f.issues.length > 0).map((f) => ({
+        path: f.path,
+        issues: f.issues,
+      })),
+    }, opts);
+  } else {
+    // Human-readable output
+    output(formatValidationReport(result), opts);
+  }
+
+  // Exit with error if validation failed
+  if (!result.passed) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed");
+  }
+
+  // Exit with error in strict mode if there are warnings
+  if (strict && result.totalWarnings > 0) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors)");
+  }
+}
+
 function docsHelp(): string {
   return `atlcli docs <command>
 
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
   pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
-  push [dir|file] [--page-id <id>]                  Push changes to Confluence
+  push [dir|file] [--page-id <id>] [--validate]     Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
   status [dir]                                       Show sync state
   resolve <file> --accept local|remote|merged        Resolve conflicts
   diff <file>                                        Compare local vs remote
+  check [path] [--strict] [--json]                   Validate markdown files
 
 Scope options (one required for init/pull/sync):
   --page-id <id>     Single page by ID
@@ -1545,6 +1637,8 @@ Options:
   --label <label>    Only sync pages with this label
   --comments         Pull page comments to .comments.json files
   --no-attachments   Skip downloading attachments
+  --validate         Run validation before push (fail on errors)
+  --strict           Treat warnings as errors (for check and --validate)
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.
@@ -1552,6 +1646,12 @@ State is stored in .atlcli/ directory.
 Ignore patterns:
   Create .atlcliignore (gitignore syntax) to exclude files from push/status.
   Patterns from .gitignore are also respected (merged with .atlcliignore).
+
+Validation checks:
+  - Broken links (target file not found)
+  - Links to untracked pages (warning)
+  - Unclosed macros (:::info without :::)
+  - Page size exceeding 500KB (warning)
 
 Examples:
   atlcli docs init ./docs --space TEAM              Initialize for entire space
@@ -1564,7 +1664,12 @@ Examples:
   atlcli docs push ./docs                           Push all tracked files
   atlcli docs push ./docs/page.md                   Push single file
   atlcli docs push --page-id 12345                  Push by page ID
+  atlcli docs push --validate                       Validate before pushing
+  atlcli docs push --validate --strict              Fail on warnings too
   atlcli docs diff ./docs/page.md                   Show local vs remote diff
+  atlcli docs check ./docs                          Check for broken links
+  atlcli docs check ./docs --strict                 Treat warnings as errors
+  atlcli docs check ./docs --json                   JSON output for CI/agents
 
 For sync command options: atlcli docs sync --help
 `;

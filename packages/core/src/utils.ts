@@ -16,6 +16,7 @@ export const ERROR_CODES = {
   API: "ATLCLI_ERR_API",
   IO: "ATLCLI_ERR_IO",
   CONFIG: "ATLCLI_ERR_CONFIG",
+  VALIDATION: "ATLCLI_ERR_VALIDATION",
 } as const;
 
 export function parseArgs(argv: string[]): ParsedArgs {
