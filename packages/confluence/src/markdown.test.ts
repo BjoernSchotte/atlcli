@@ -334,3 +334,81 @@ describe("round-trip conversion", () => {
     expect(result).toContain("Item 2");
   });
 });
+
+describe("jira macro", () => {
+  test("converts basic jira macro to Confluence storage", () => {
+    const md = "See {jira:PROJ-123} for details.";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:structured-macro ac:name="jira">');
+    expect(html).toContain('<ac:parameter ac:name="key">PROJ-123</ac:parameter>');
+  });
+
+  test("converts jira macro with showSummary option", () => {
+    const md = "See {jira:PROJ-456|showSummary} for details.";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:parameter ac:name="key">PROJ-456</ac:parameter>');
+    expect(html).toContain('<ac:parameter ac:name="showSummary">true</ac:parameter>');
+  });
+
+  test("converts jira macro with multiple options", () => {
+    const md = "See {jira:TEST-789|showSummary,count} for details.";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:parameter ac:name="key">TEST-789</ac:parameter>');
+    expect(html).toContain('<ac:parameter ac:name="showSummary">true</ac:parameter>');
+    expect(html).toContain('<ac:parameter ac:name="count">true</ac:parameter>');
+  });
+
+  test("converts jira macro with columns option", () => {
+    const md = "See {jira:DEV-100|columns=key,summary,status} for details.";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:parameter ac:name="key">DEV-100</ac:parameter>');
+    expect(html).toContain('<ac:parameter ac:name="columns">key,summary,status</ac:parameter>');
+  });
+
+  test("converts Confluence jira storage to markdown", () => {
+    const storage = '<p>See <ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">PROJ-123</ac:parameter></ac:structured-macro> for details.</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{jira:PROJ-123}");
+  });
+
+  test("converts Confluence jira storage with showSummary to markdown", () => {
+    const storage = '<p>See <ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">PROJ-456</ac:parameter><ac:parameter ac:name="showSummary">true</ac:parameter></ac:structured-macro> for details.</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{jira:PROJ-456|showSummary}");
+  });
+
+  test("converts Confluence jira storage with multiple options to markdown", () => {
+    const storage = '<p><ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">TEST-789</ac:parameter><ac:parameter ac:name="showSummary">true</ac:parameter><ac:parameter ac:name="count">true</ac:parameter></ac:structured-macro></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{jira:TEST-789|showSummary,count}");
+  });
+
+  test("jira macro survives round-trip", () => {
+    const original = "See {jira:PROJ-123} for details.\n";
+    const html = markdownToStorage(original);
+    const result = storageToMarkdown(html);
+    expect(result).toContain("{jira:PROJ-123}");
+  });
+
+  test("jira macro with options survives round-trip", () => {
+    const original = "See {jira:PROJ-456|showSummary} for details.\n";
+    const html = markdownToStorage(original);
+    const result = storageToMarkdown(html);
+    expect(result).toContain("{jira:PROJ-456|showSummary}");
+  });
+
+  test("handles multiple jira macros in same paragraph", () => {
+    const md = "Related: {jira:PROJ-1} and {jira:PROJ-2}";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:parameter ac:name="key">PROJ-1</ac:parameter>');
+    expect(html).toContain('<ac:parameter ac:name="key">PROJ-2</ac:parameter>');
+  });
+
+  test("case insensitive issue key matching", () => {
+    // Jira keys are uppercase, but we should handle lowercase gracefully
+    const md = "See {jira:proj-123} for details.";
+    const html = markdownToStorage(md);
+    // The regex is case insensitive, so it should match
+    expect(html).toContain('<ac:structured-macro ac:name="jira">');
+  });
+});

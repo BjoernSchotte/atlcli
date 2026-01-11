@@ -89,6 +89,34 @@ export function markdownToStorage(markdown: string): string {
     return placeholder;
   });
 
+  // Handle jira macros: {jira:PROJ-123} or {jira:PROJ-123|showSummary}
+  processed = processed.replace(JIRA_REGEX, (_, issueKey, options) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    let html = `<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">${escapeHtml(issueKey)}</ac:parameter>`;
+    if (options) {
+      // Parse options - handle columns= specially since it can contain commas
+      // First extract columns= if present
+      const columnsMatch = options.match(/columns=([^,]*(?:,[^,=]*)*?)(?:,(?=\w+=)|,(?=showSummary|count)|$)/);
+      let remainingOpts = options;
+      if (columnsMatch) {
+        html += `<ac:parameter ac:name="columns">${escapeHtml(columnsMatch[1])}</ac:parameter>`;
+        remainingOpts = options.replace(columnsMatch[0], "").replace(/^,|,$/g, "");
+      }
+      // Parse remaining simple options
+      const simpleOpts = remainingOpts.split(",").map((o: string) => o.trim()).filter(Boolean);
+      for (const opt of simpleOpts) {
+        if (opt === "showSummary") {
+          html += `<ac:parameter ac:name="showSummary">true</ac:parameter>`;
+        } else if (opt === "count") {
+          html += `<ac:parameter ac:name="count">true</ac:parameter>`;
+        }
+      }
+    }
+    html += `</ac:structured-macro>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -511,7 +539,7 @@ ${md.render(trimmedContent).trim()}
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree"];
 
 /**
  * Valid status colors in Confluence
@@ -527,6 +555,12 @@ const STATUS_REGEX = /\{status:(\w+)\}([^{]*)\{status\}/gi;
  * Regex for anchor macro: {#anchor-name}
  */
 const ANCHOR_REGEX = /\{#([a-zA-Z][a-zA-Z0-9_-]*)\}/g;
+
+/**
+ * Regex for jira macro: {jira:PROJ-123} or {jira:PROJ-123|showSummary}
+ * Supports optional parameters after pipe: showSummary, count, etc.
+ */
+const JIRA_REGEX = /\{jira:([A-Z][A-Z0-9]*-\d+)(?:\|([^}]*))?\}/gi;
 
 /**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
@@ -654,6 +688,24 @@ function preprocessStorageMacros(storage: string): string {
       const nameMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
       const anchorName = nameMatch ? nameMatch[1] : "";
       return `<span data-macro="anchor" data-name="${escapeHtml(anchorName)}">\u200B</span>`;
+    }
+  );
+
+  // Convert jira macro (inline issue link)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="jira"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const keyMatch = inner.match(/<ac:parameter\s+ac:name="key"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const showSummaryMatch = inner.match(/<ac:parameter\s+ac:name="showSummary"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const countMatch = inner.match(/<ac:parameter\s+ac:name="count"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const columnsMatch = inner.match(/<ac:parameter\s+ac:name="columns"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const key = keyMatch ? keyMatch[1] : "";
+      const showSummary = showSummaryMatch ? showSummaryMatch[1].toLowerCase() === "true" : false;
+      const count = countMatch ? countMatch[1].toLowerCase() === "true" : false;
+      const columns = columnsMatch ? columnsMatch[1] : "";
+
+      return `<span data-macro="jira" data-key="${escapeHtml(key)}" data-showsummary="${showSummary}" data-count="${count}" data-columns="${escapeHtml(columns)}">[${escapeHtml(key)}]</span>`;
     }
   );
 
@@ -1032,6 +1084,32 @@ export function storageToMarkdown(storage: string): string {
     replacement: (_content, node) => {
       const name = (node as any).getAttribute?.("data-name") || "";
       return name ? `{#${name}}` : "";
+    },
+  });
+
+  // Handle jira macro
+  service.addRule("jiraMacro", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-macro") === "jira";
+    },
+    replacement: (_content, node) => {
+      const key = (node as any).getAttribute?.("data-key") || "";
+      const showSummary = (node as any).getAttribute?.("data-showsummary") === "true";
+      const count = (node as any).getAttribute?.("data-count") === "true";
+      const columns = (node as any).getAttribute?.("data-columns") || "";
+
+      if (!key) return "";
+
+      // Build options string
+      const opts: string[] = [];
+      if (showSummary) opts.push("showSummary");
+      if (count) opts.push("count");
+      if (columns) opts.push(`columns=${columns}`);
+
+      if (opts.length > 0) {
+        return `{jira:${key}|${opts.join(",")}}`;
+      }
+      return `{jira:${key}}`;
     },
   });
 
