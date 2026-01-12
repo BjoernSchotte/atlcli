@@ -1,3 +1,5 @@
+import { readFile, stat } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -277,6 +279,9 @@ async function handleIssue(
     case "link":
       await handleIssueLink(flags, opts);
       return;
+    case "attach":
+      await handleIssueAttach(args.slice(1), flags, opts);
+      return;
     default:
       output(issueHelp(), opts);
       return;
@@ -509,6 +514,48 @@ async function handleIssueLink(
   output({ schemaVersion: "1", linked: { from, to, type } }, opts);
 }
 
+async function handleIssueAttach(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = getFlag(flags, "key");
+  const [filePath] = args;
+
+  if (!key || !filePath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--key <issue> and <file> are required.");
+    return;
+  }
+
+  // Check if file exists
+  try {
+    await stat(filePath);
+  } catch {
+    fail(opts, 1, ERROR_CODES.USAGE, `File not found: ${filePath}`);
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const data = await readFile(filePath);
+  const filename = basename(filePath);
+
+  const attachments = await client.uploadAttachment(key, filename, data);
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      attached: attachments.map((a) => ({
+        id: a.id,
+        filename: a.filename,
+        size: a.size,
+        mimeType: a.mimeType,
+      })),
+    }, opts);
+  } else {
+    output(`Attached ${filename} (${data.length} bytes) to ${key}`, opts);
+  }
+}
+
 function issueHelp(): string {
   return `atlcli jira issue <command>
 
@@ -522,6 +569,7 @@ Commands:
   assign --key <key> --assignee <accountId>|none
   comment --key <key> <text>
   link --from <key> --to <key> --type <name>
+  attach --key <key> <file>            Attach a file to an issue
 
 Options:
   --profile <name>   Use a specific auth profile
