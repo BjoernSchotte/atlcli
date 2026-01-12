@@ -57,9 +57,14 @@ atlcli docs sync ./my-docs --poll-interval 30000
 ### Authentication
 
 ```bash
-atlcli auth init              # Interactive setup
-atlcli auth status            # Check current auth
-atlcli auth list              # List all profiles
+atlcli auth init                        # Interactive setup (prompts for credentials)
+atlcli auth login                       # Login (uses existing token if available)
+atlcli auth login --profile work        # Login and save as named profile
+atlcli auth status                      # Show active profile
+atlcli auth list                        # List all profiles
+atlcli auth switch <name>               # Switch active profile
+atlcli auth rename <old> <new>          # Rename a profile
+atlcli auth logout [name]               # Remove a profile
 ```
 
 ### Spaces
@@ -470,30 +475,80 @@ my-docs/
 
 ## Configuration
 
-Global config is stored in `~/.config/atlcli/config.json`:
+Global config is stored in `~/.atlcli/config.json`:
 
 ```json
 {
-  "profiles": [
-    {
-      "name": "my-org",
-      "baseUrl": "https://myorg.atlassian.net",
-      "email": "user@example.com"
+  "currentProfile": "work",
+  "profiles": {
+    "work": {
+      "name": "work",
+      "baseUrl": "https://mycompany.atlassian.net",
+      "auth": { "type": "apiToken", "email": "user@company.com", "token": "..." }
+    },
+    "personal": {
+      "name": "personal",
+      "baseUrl": "https://personal.atlassian.net",
+      "auth": { "type": "apiToken", "email": "me@example.com", "token": "..." }
     }
-  ],
-  "activeProfile": "my-org"
+  }
 }
 ```
-
-API tokens are stored securely in `~/.config/atlcli/credentials.json`.
 
 ## Environment Variables
 
 ```bash
-ATLCLI_BASE_URL=https://myorg.atlassian.net
+ATLCLI_SITE=https://myorg.atlassian.net
 ATLCLI_EMAIL=user@example.com
 ATLCLI_API_TOKEN=your-token
 ```
+
+Environment variables override the active profile when set.
+
+## Profile Management
+
+Manage multiple Atlassian accounts with named profiles.
+
+### Setting Up Profiles
+
+```bash
+# Create first profile (auto-named from site hostname)
+atlcli auth init
+
+# Create a named profile
+atlcli auth login --profile work --site https://work.atlassian.net
+
+# Create another profile
+atlcli auth login --profile personal --site https://personal.atlassian.net
+```
+
+### Using Profiles
+
+```bash
+# List all profiles
+atlcli auth list
+
+# Switch default profile
+atlcli auth switch personal
+
+# Use a specific profile for one command
+atlcli page list --space DEV --profile work
+
+# Check which profile is active
+atlcli auth status
+```
+
+### Managing Profiles
+
+```bash
+# Rename a profile
+atlcli auth rename old-name new-name
+
+# Remove a profile
+atlcli auth logout personal
+```
+
+All commands that connect to Confluence accept the `--profile` flag to override the default profile.
 
 ## Plugins
 
