@@ -169,18 +169,18 @@ Log and manage work time on issues.
 
 ## 6. Epic Management (Priority: Medium)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Manage epics and issue hierarchy.
 
 **Features:**
-- `jira epic list --project <key>` - List epics
-- `jira epic get <key>` - Get epic details
-- `jira epic create --project <key> --summary <text>` - Create epic
-- `jira epic issues <key>` - List child issues
-- `jira epic add <issues...> --epic <key>` - Add issues to epic
-- `jira epic remove <issues...>` - Remove from epic
-- `jira epic progress <key>` - Show completion progress
+- `jira epic list [--project <key>] [--board <id>] [--done]` - List epics ✅
+- `jira epic get <key>` - Get epic details with progress ✅
+- `jira epic create --project <key> --summary <text>` - Create epic ✅
+- `jira epic issues <key> [--status]` - List child issues ✅
+- `jira epic add <issues...> --epic <key>` - Add issues to epic ✅
+- `jira epic remove <issues...>` - Remove from epic ✅
+- `jira epic progress <key>` - Show completion progress with bar ✅
 
 **API Endpoints:**
 - `GET /rest/agile/1.0/board/{id}/epic` - List epics
@@ -324,7 +324,7 @@ Optional integration for advanced time tracking.
 | 3 | Project Management | Small | Client | ✅ COMPLETE |
 | 4 | Board & Sprint | Medium | Issues | ✅ COMPLETE |
 | 5 | Time Tracking | Small | Issues | ✅ COMPLETE |
-| 6 | Epic Management | Small | Issues, Agile | Not Started |
+| 6 | Epic Management | Small | Issues, Agile | ✅ COMPLETE |
 | 7 | Sprint Analytics | Large | Sprints | Not Started |
 | 8 | Bulk Operations | Medium | Issues, JQL | Not Started |
 | 9 | Import/Export | Medium | Issues, JQL | Not Started |

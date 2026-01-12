@@ -10,6 +10,7 @@ import type {
   JiraWorklog,
   JiraUser,
   JiraSprint,
+  JiraEpic,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -17,7 +18,7 @@ import type {
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint, JiraWorklog } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -1044,6 +1045,25 @@ export class JiraClient {
       apiBase: this.agilePath,
       method: "POST",
       body: { issues },
+    });
+  }
+
+  /**
+   * List epics for a board.
+   *
+   * GET /rest/agile/1.0/board/{boardId}/epic
+   */
+  async listBoardEpics(
+    boardId: number,
+    options: { startAt?: number; maxResults?: number; done?: boolean } = {}
+  ): Promise<{ values: JiraEpic[]; total: number }> {
+    return this.request(`/board/${boardId}/epic`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        done: options.done,
+      },
     });
   }
 

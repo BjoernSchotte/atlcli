@@ -14,6 +14,7 @@ import {
   JiraTransition,
   JiraSprint,
   JiraWorklog,
+  JiraEpic,
   TimerState,
   parseTimeToSeconds,
   secondsToJiraFormat,
@@ -51,6 +52,9 @@ export async function handleJira(
       return;
     case "worklog":
       await handleWorklog(rest, flags, opts);
+      return;
+    case "epic":
+      await handleEpic(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -1320,6 +1324,381 @@ Examples:
   jira worklog timer start PROJ-123 --comment "Working on feature"
   jira worklog timer status
   jira worklog timer stop --round 15m
+`;
+}
+
+// ============ Epic Operations ============
+
+async function handleEpic(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleEpicList(flags, opts);
+      return;
+    case "get":
+      await handleEpicGet(rest, flags, opts);
+      return;
+    case "create":
+      await handleEpicCreate(flags, opts);
+      return;
+    case "issues":
+      await handleEpicIssues(rest, flags, opts);
+      return;
+    case "add":
+      await handleEpicAdd(rest, flags, opts);
+      return;
+    case "remove":
+      await handleEpicRemove(rest, flags, opts);
+      return;
+    case "progress":
+      await handleEpicProgress(rest, flags, opts);
+      return;
+    default:
+      output(epicHelp(), opts);
+      return;
+  }
+}
+
+async function handleEpicList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const client = await getClient(flags, opts);
+  const project = getFlag(flags, "project");
+  const boardId = getFlag(flags, "board");
+  const includeDone = hasFlag(flags, "done");
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+
+  if (boardId) {
+    // Use Agile API for board-based listing
+    const result = await client.listBoardEpics(Number(boardId), {
+      maxResults: limit,
+      done: includeDone ? undefined : false,
+    });
+    output(
+      {
+        schemaVersion: "1",
+        epics: result.values.map(formatEpic),
+        total: result.total,
+      },
+      opts
+    );
+  } else {
+    // Use JQL search
+    let jql = "issuetype = Epic";
+    if (project) {
+      jql += ` AND project = ${project}`;
+    }
+    if (!includeDone) {
+      jql += " AND resolution IS EMPTY";
+    }
+    jql += " ORDER BY created DESC";
+
+    const result = await client.search(jql, {
+      maxResults: limit,
+      fields: ["*navigable"],
+    });
+    output(
+      {
+        schemaVersion: "1",
+        jql,
+        epics: result.issues.map(formatIssueAsEpic),
+        total: result.total,
+      },
+      opts
+    );
+  }
+}
+
+async function handleEpicGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const epicKey = args[0];
+  if (!epicKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Epic key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issue = await client.getIssue(epicKey);
+
+  // Get child issues for progress
+  const childResult = await client.getEpicIssues(epicKey, { maxResults: 1000 });
+  const children = childResult.issues || [];
+  const done = children.filter(
+    (i) => i.fields.status?.statusCategory?.key === "done"
+  ).length;
+
+  output(
+    {
+      schemaVersion: "1",
+      epic: {
+        key: issue.key,
+        summary: issue.fields.summary,
+        status: issue.fields.status?.name,
+        statusCategory: issue.fields.status?.statusCategory?.key,
+        description: issue.fields.description,
+        assignee: issue.fields.assignee?.displayName,
+        reporter: issue.fields.reporter?.displayName,
+        created: issue.fields.created,
+        updated: issue.fields.updated,
+        childCount: children.length,
+        progress: {
+          done,
+          total: children.length,
+          percent: children.length > 0 ? Math.round((done / children.length) * 100) : 0,
+        },
+      },
+    },
+    opts
+  );
+}
+
+async function handleEpicCreate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const project = getFlag(flags, "project");
+  const summary = getFlag(flags, "summary");
+  const description = getFlag(flags, "description");
+
+  if (!project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+  }
+  if (!summary) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--summary is required.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  const issue = await client.createIssue({
+    fields: {
+      project: { key: project },
+      issuetype: { name: "Epic" },
+      summary,
+      description: description ? client.textToAdf(description) : undefined,
+    },
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      created: {
+        id: issue.id,
+        key: issue.key,
+        summary,
+      },
+    },
+    opts
+  );
+}
+
+async function handleEpicIssues(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const epicKey = args[0];
+  if (!epicKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Epic key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const status = getFlag(flags, "status");
+
+  const result = await client.getEpicIssues(epicKey, { maxResults: limit });
+  let issues = result.issues || [];
+
+  // Filter by status if specified
+  if (status) {
+    issues = issues.filter(
+      (i) => i.fields.status?.name?.toLowerCase() === status.toLowerCase()
+    );
+  }
+
+  output(
+    {
+      schemaVersion: "1",
+      epic: epicKey,
+      issues: issues.map((i) => ({
+        key: i.key,
+        summary: i.fields.summary,
+        status: i.fields.status?.name,
+        statusCategory: i.fields.status?.statusCategory?.key,
+        type: i.fields.issuetype?.name,
+        assignee: i.fields.assignee?.displayName,
+      })),
+      total: issues.length,
+    },
+    opts
+  );
+}
+
+async function handleEpicAdd(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const epicKey = getFlag(flags, "epic");
+  if (!epicKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--epic is required.");
+  }
+  if (args.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one issue key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.moveIssuesToEpic(epicKey, args);
+
+  output(
+    {
+      schemaVersion: "1",
+      added: {
+        epic: epicKey,
+        issues: args,
+      },
+    },
+    opts
+  );
+}
+
+async function handleEpicRemove(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  if (args.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one issue key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.removeIssuesFromEpic(args);
+
+  output(
+    {
+      schemaVersion: "1",
+      removed: {
+        issues: args,
+      },
+    },
+    opts
+  );
+}
+
+async function handleEpicProgress(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const epicKey = args[0];
+  if (!epicKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Epic key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Get epic details
+  const epic = await client.getIssue(epicKey);
+
+  // Get all child issues
+  const result = await client.getEpicIssues(epicKey, { maxResults: 1000 });
+  const issues = result.issues || [];
+
+  // Calculate progress by status category
+  const byCategory: Record<string, number> = {};
+  for (const issue of issues) {
+    const cat = issue.fields.status?.statusCategory?.key || "unknown";
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+  }
+
+  const done = byCategory["done"] || 0;
+  const inProgress = byCategory["indeterminate"] || 0;
+  const todo = byCategory["new"] || 0;
+  const total = issues.length;
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  output(
+    {
+      schemaVersion: "1",
+      epic: {
+        key: epic.key,
+        summary: epic.fields.summary,
+        status: epic.fields.status?.name,
+      },
+      progress: {
+        done,
+        inProgress,
+        todo,
+        total,
+        percent,
+        bar: generateProgressBar(percent),
+      },
+    },
+    opts
+  );
+}
+
+function formatEpic(epic: JiraEpic): Record<string, unknown> {
+  return {
+    id: epic.id,
+    key: epic.key,
+    name: epic.name,
+    summary: epic.summary,
+    done: epic.done,
+    color: epic.color?.key,
+  };
+}
+
+function formatIssueAsEpic(issue: JiraIssue): Record<string, unknown> {
+  return {
+    key: issue.key,
+    summary: issue.fields.summary,
+    status: issue.fields.status?.name,
+    statusCategory: issue.fields.status?.statusCategory?.key,
+    assignee: issue.fields.assignee?.displayName,
+    created: issue.fields.created,
+  };
+}
+
+function generateProgressBar(percent: number): string {
+  const width = 20;
+  const filled = Math.round((percent / 100) * width);
+  const empty = width - filled;
+  return `[${"#".repeat(filled)}${"-".repeat(empty)}] ${percent}%`;
+}
+
+function epicHelp(): string {
+  return `atlcli jira epic <command>
+
+Commands:
+  list [--project <key>] [--board <id>] [--done]   List epics
+  get <key>                                         Get epic details
+  create --project <key> --summary <text> [--description <text>]
+  issues <key> [--status <status>] [--limit <n>]   List child issues
+  add <issues...> --epic <key>                     Add issues to epic
+  remove <issues...>                               Remove issues from epic
+  progress <key>                                   Show completion progress
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+  --done             Include completed epics in list
+
+Examples:
+  jira epic list --project PROJ
+  jira epic list --board 123 --done
+  jira epic get PROJ-1
+  jira epic create --project PROJ --summary "New Feature"
+  jira epic issues PROJ-1
+  jira epic add PROJ-10 PROJ-11 --epic PROJ-1
+  jira epic remove PROJ-10
+  jira epic progress PROJ-1
 `;
 }
 
