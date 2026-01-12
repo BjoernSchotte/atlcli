@@ -245,10 +245,10 @@ async function handleTail(
 ): Promise<void> {
   const follow = hasFlag(flags, "follow") || hasFlag(flags, "f");
   const level = getFlag(flags, "level") as LogLevel | undefined;
-  const globalOnly = hasFlag(flags, "global");
+  const projectOnly = hasFlag(flags, "project");
   const limit = parseInt(getFlag(flags, "limit") || "20", 10);
 
-  const logsDir = globalOnly ? getGlobalLogsDir() : getProjectLogsDir(process.cwd());
+  const logsDir = projectOnly ? getProjectLogsDir(process.cwd()) : getGlobalLogsDir();
   const files = getLogFiles(logsDir);
 
   if (files.length === 0) {
@@ -437,7 +437,7 @@ Tail options:
   -f, --follow      Keep following (like tail -f)
   --level <level>   Filter by level
   --limit <n>       Initial entries to show (default: 20)
-  --global          Tail global logs only
+  --project         Tail project logs instead of global
 
 Clear options:
   --before <date>   Clear logs older than date
