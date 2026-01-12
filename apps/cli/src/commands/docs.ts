@@ -8,6 +8,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getLogger,
   hasFlag,
   loadConfig,
   output,
@@ -474,6 +475,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
               output(`Moved ${existingState.path} -> ${relativePath}`, opts);
             }
             moved++;
+            getLogger().sync({
+              eventType: "status",
+              file: relativePath,
+              pageId: detail.id,
+              title: `Moved from ${existingState.path}`,
+              details: { oldPath: existingState.path, newPath: relativePath },
+            });
           } catch (err) {
             // File might not exist, just use new path
           }
@@ -495,6 +503,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
             // Local has modifications, skip unless --force
             output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
             skipped++;
+            getLogger().sync({
+              eventType: "status",
+              file: relativePath,
+              pageId: detail.id,
+              title: `Skipped: local modifications`,
+            });
             continue;
           }
         } catch {
@@ -635,6 +649,14 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
 
     pulled++;
+
+    // Log sync event
+    getLogger().sync({
+      eventType: "pull",
+      file: relativePath,
+      pageId: detail.id,
+      title: detail.title,
+    });
   }
 
   // Save state
@@ -908,6 +930,15 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   // Write base content for 3-way merge
   await writeBaseContent(atlcliDir, page.id, normalizedMd);
 
+  // Log sync event
+  getLogger().sync({
+    eventType: "push",
+    file: relativePath,
+    pageId: page.id,
+    title: page.title,
+    details: { created: true, viaAdd: true },
+  });
+
   output(
     opts.json
       ? { schemaVersion: "1", added: true, pageId: page.id, title: page.title, path: relativePath }
@@ -1086,6 +1117,15 @@ async function pushFile(params: {
         version: page.version ?? version,
       });
     }
+
+    // Log sync event
+    getLogger().sync({
+      eventType: "push",
+      file: atlcliDir ? getRelativePath(atlcliDir, filePath) : basename(filePath),
+      pageId: page.id,
+      title: page.title,
+    });
+
     return "updated";
   }
 
@@ -1151,6 +1191,15 @@ async function pushFile(params: {
 
     await writeBaseContent(atlcliDir, page.id, normalizedMd);
   }
+
+  // Log sync event
+  getLogger().sync({
+    eventType: "push",
+    file: atlcliDir ? getRelativePath(atlcliDir, filePath) : basename(filePath),
+    pageId: page.id,
+    title: page.title,
+    details: { created: true },
+  });
 
   return "created";
 }
