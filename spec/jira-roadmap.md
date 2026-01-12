@@ -128,18 +128,27 @@ Agile board and sprint operations.
 
 ## 5. Time Tracking (Priority: Medium)
 
-**Status**: Not Started
+**Status**: Phase 1 COMPLETE ✅
 
 Log and manage work time on issues.
 
-**Features:**
-- `jira worklog add <key> <time> [--comment] [--started]` - Log time
-- `jira worklog list <key>` - List worklogs for issue
-- `jira worklog update <id> --time <time>` - Update worklog
-- `jira worklog delete <id> --confirm` - Delete worklog
+**Phase 1 Features (Complete):**
+- `jira worklog add <key> <time> [--comment] [--started] [--round]` - Log time ✅
+- `jira worklog list --issue <key>` - List worklogs for issue ✅
+- `jira worklog update --issue <key> --id <id> [--time] [--comment] [--started]` - Update worklog ✅
+- `jira worklog delete --issue <key> --id <id> --confirm` - Delete worklog ✅
+
+**Phase 2 Features (Pending):**
+- `jira worklog timer start <key>` - Start tracking time
+- `jira worklog timer stop [--round]` - Stop tracking and log
+- `jira worklog timer status` - Show active timer
 - `jira worklog report --user <user> [--since] [--until]` - Time report
 
-**Time Formats:** `1w`, `2d`, `4h`, `30m` (week=5d, day=8h)
+**Time Formats:** `1h30m`, `1.5h`, `90m`, `1:30`, `1d`, `1w` (week=5d, day=8h)
+
+**Started Date Formats:** `today`, `yesterday`, `14:30`, `2026-01-12`, ISO 8601
+
+**Rounding:** `--round 15m`, `--round 30m`, `--round 1h`
 
 **API Endpoints:**
 - `POST /rest/api/3/issue/{key}/worklog` - Create
@@ -309,7 +318,7 @@ Optional integration for advanced time tracking.
 | 2 | JQL Search | Medium | Issues | ✅ COMPLETE |
 | 3 | Project Management | Small | Client | ✅ COMPLETE |
 | 4 | Board & Sprint | Medium | Issues | ✅ COMPLETE |
-| 5 | Time Tracking | Small | Issues | Not Started |
+| 5 | Time Tracking | Small | Issues | Phase 1 ✅ |
 | 6 | Epic Management | Small | Issues, Agile | Not Started |
 | 7 | Sprint Analytics | Large | Sprints | Not Started |
 | 8 | Bulk Operations | Medium | Issues, JQL | Not Started |

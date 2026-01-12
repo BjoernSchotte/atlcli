@@ -7,6 +7,7 @@ import type {
   JiraSearchResults,
   JiraTransition,
   JiraComment,
+  JiraWorklog,
   JiraUser,
   JiraSprint,
   CreateIssueInput,
@@ -16,7 +17,7 @@ import type {
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -545,6 +546,141 @@ export class JiraClient {
     return this.request<JiraComment>(`/issue/${keyOrId}/comment`, {
       method: "POST",
       body: { body: commentBody },
+    });
+  }
+
+  // ============ Worklogs ============
+
+  /**
+   * Get worklogs for an issue.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/worklog
+   */
+  async getWorklogs(
+    keyOrId: string,
+    options: { startAt?: number; maxResults?: number } = {}
+  ): Promise<{ worklogs: JiraWorklog[]; total: number }> {
+    return this.request<{ worklogs: JiraWorklog[]; total: number }>(
+      `/issue/${keyOrId}/worklog`,
+      {
+        query: {
+          startAt: options.startAt,
+          maxResults: options.maxResults ?? 50,
+        },
+      }
+    );
+  }
+
+  /**
+   * Get a specific worklog by ID.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}
+   */
+  async getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog> {
+    return this.request<JiraWorklog>(`/issue/${keyOrId}/worklog/${worklogId}`);
+  }
+
+  /**
+   * Add a worklog to an issue.
+   *
+   * POST /rest/api/3/issue/{issueIdOrKey}/worklog
+   *
+   * @param keyOrId - Issue key or ID
+   * @param timeSpentSeconds - Time spent in seconds
+   * @param options - Optional started date, comment, etc.
+   */
+  async addWorklog(
+    keyOrId: string,
+    timeSpentSeconds: number,
+    options: {
+      started?: string; // ISO 8601 format
+      comment?: string;
+      adjustEstimate?: "auto" | "leave" | "manual" | "new";
+      newEstimate?: string;
+      reduceBy?: string;
+    } = {}
+  ): Promise<JiraWorklog> {
+    const body: Record<string, unknown> = {
+      timeSpentSeconds,
+    };
+
+    if (options.started) {
+      body.started = options.started;
+    }
+
+    if (options.comment) {
+      body.comment = this.textToAdf(options.comment);
+    }
+
+    return this.request<JiraWorklog>(`/issue/${keyOrId}/worklog`, {
+      method: "POST",
+      query: {
+        adjustEstimate: options.adjustEstimate,
+        newEstimate: options.newEstimate,
+        reduceBy: options.reduceBy,
+      },
+      body,
+    });
+  }
+
+  /**
+   * Update a worklog.
+   *
+   * PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}
+   */
+  async updateWorklog(
+    keyOrId: string,
+    worklogId: string,
+    updates: {
+      timeSpentSeconds?: number;
+      started?: string;
+      comment?: string;
+    }
+  ): Promise<JiraWorklog> {
+    const body: Record<string, unknown> = {};
+
+    if (updates.timeSpentSeconds !== undefined) {
+      body.timeSpentSeconds = updates.timeSpentSeconds;
+    }
+
+    if (updates.started) {
+      body.started = updates.started;
+    }
+
+    if (updates.comment) {
+      body.comment = this.textToAdf(updates.comment);
+    }
+
+    return this.request<JiraWorklog>(
+      `/issue/${keyOrId}/worklog/${worklogId}`,
+      {
+        method: "PUT",
+        body,
+      }
+    );
+  }
+
+  /**
+   * Delete a worklog.
+   *
+   * DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{worklogId}
+   */
+  async deleteWorklog(
+    keyOrId: string,
+    worklogId: string,
+    options: {
+      adjustEstimate?: "auto" | "leave" | "manual" | "new";
+      newEstimate?: string;
+      increaseBy?: string;
+    } = {}
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}/worklog/${worklogId}`, {
+      method: "DELETE",
+      query: {
+        adjustEstimate: options.adjustEstimate,
+        newEstimate: options.newEstimate,
+        increaseBy: options.increaseBy,
+      },
     });
   }
 

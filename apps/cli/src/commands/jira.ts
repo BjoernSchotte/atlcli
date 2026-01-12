@@ -8,7 +8,20 @@ import {
   loadConfig,
   output,
 } from "@atlcli/core";
-import { JiraClient, JiraIssue, JiraTransition, JiraSprint } from "@atlcli/jira";
+import {
+  JiraClient,
+  JiraIssue,
+  JiraTransition,
+  JiraSprint,
+  JiraWorklog,
+  parseTimeToSeconds,
+  secondsToJiraFormat,
+  secondsToHuman,
+  roundTime,
+  parseRoundingInterval,
+  parseStartedDate,
+  formatWorklogDate,
+} from "@atlcli/jira";
 
 export async function handleJira(
   args: string[],
@@ -28,6 +41,9 @@ export async function handleJira(
       return;
     case "sprint":
       await handleSprint(rest, flags, opts);
+      return;
+    case "worklog":
+      await handleWorklog(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -849,6 +865,252 @@ Options:
 `;
 }
 
+// ============ Worklog Operations ============
+
+async function handleWorklog(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "add":
+      await handleWorklogAdd(rest, flags, opts);
+      return;
+    case "list":
+      await handleWorklogList(flags, opts);
+      return;
+    case "update":
+      await handleWorklogUpdate(flags, opts);
+      return;
+    case "delete":
+      await handleWorklogDelete(flags, opts);
+      return;
+    default:
+      output(worklogHelp(), opts);
+      return;
+  }
+}
+
+async function handleWorklogAdd(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  // Parse: jira worklog add PROJ-123 1h30m [--comment "..."] [--started "..."]
+  const issueKey = getFlag(flags, "issue") ?? args[0];
+  const timeArg = args.length > 1 ? args.slice(1).join(" ") : getFlag(flags, "time");
+
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required.");
+  }
+  if (!timeArg) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Time is required (e.g., 1h30m, 1.5h, 90m).");
+  }
+
+  // Parse time
+  let timeSeconds: number;
+  try {
+    timeSeconds = parseTimeToSeconds(timeArg);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+
+  // Apply rounding if specified
+  const roundFlag = getFlag(flags, "round");
+  if (roundFlag) {
+    try {
+      const interval = parseRoundingInterval(roundFlag);
+      timeSeconds = roundTime(timeSeconds, interval);
+    } catch (e) {
+      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // Parse started date if provided
+  let started: string | undefined;
+  const startedFlag = getFlag(flags, "started");
+  if (startedFlag) {
+    try {
+      const date = parseStartedDate(startedFlag);
+      started = formatWorklogDate(date);
+    } catch (e) {
+      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const comment = getFlag(flags, "comment");
+  const client = await getClient(flags, opts);
+
+  const worklog = await client.addWorklog(issueKey, timeSeconds, {
+    started,
+    comment,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      worklog: formatWorklog(worklog),
+      logged: secondsToHuman(timeSeconds),
+    },
+    opts
+  );
+}
+
+async function handleWorklogList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const issueKey = getFlag(flags, "issue");
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+
+  const result = await client.getWorklogs(issueKey, {
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      worklogs: result.worklogs.map(formatWorklog),
+      total: result.total,
+    },
+    opts
+  );
+}
+
+async function handleWorklogUpdate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const issueKey = getFlag(flags, "issue");
+  const worklogId = getFlag(flags, "id");
+
+  if (!issueKey || !worklogId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue and --id are required.");
+  }
+
+  const timeArg = getFlag(flags, "time");
+  const comment = getFlag(flags, "comment");
+  const startedFlag = getFlag(flags, "started");
+
+  if (!timeArg && !comment && !startedFlag) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one of --time, --comment, or --started is required.");
+  }
+
+  const updates: {
+    timeSpentSeconds?: number;
+    started?: string;
+    comment?: string;
+  } = {};
+
+  if (timeArg) {
+    try {
+      updates.timeSpentSeconds = parseTimeToSeconds(timeArg);
+    } catch (e) {
+      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (startedFlag) {
+    try {
+      updates.started = formatWorklogDate(parseStartedDate(startedFlag));
+    } catch (e) {
+      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (comment) {
+    updates.comment = comment;
+  }
+
+  const client = await getClient(flags, opts);
+  const worklog = await client.updateWorklog(issueKey, worklogId, updates);
+
+  output({ schemaVersion: "1", worklog: formatWorklog(worklog) }, opts);
+}
+
+async function handleWorklogDelete(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const issueKey = getFlag(flags, "issue");
+  const worklogId = getFlag(flags, "id");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!issueKey || !worklogId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue and --id are required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a worklog.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteWorklog(issueKey, worklogId);
+
+  output({ schemaVersion: "1", deleted: { issue: issueKey, worklogId } }, opts);
+}
+
+function formatWorklog(worklog: JiraWorklog): Record<string, unknown> {
+  return {
+    id: worklog.id,
+    issueId: worklog.issueId,
+    author: worklog.author?.displayName,
+    authorId: worklog.author?.accountId,
+    timeSpent: worklog.timeSpent,
+    timeSpentSeconds: worklog.timeSpentSeconds,
+    timeSpentHuman: secondsToHuman(worklog.timeSpentSeconds),
+    started: worklog.started,
+    created: worklog.created,
+    updated: worklog.updated,
+    comment: worklog.comment,
+  };
+}
+
+function worklogHelp(): string {
+  return `atlcli jira worklog <command>
+
+Commands:
+  add <issue> <time> [--comment <text>] [--started <date>] [--round <interval>]
+  list --issue <key> [--limit <n>]
+  update --issue <key> --id <worklogId> [--time <time>] [--comment <text>] [--started <date>]
+  delete --issue <key> --id <worklogId> --confirm
+
+Time formats:
+  1h30m, 1h 30m      Hours and minutes
+  1.5h, 2.25h        Decimal hours
+  90m, 45m           Minutes only
+  1:30, 2:45         HH:MM format
+  1d, 2d             Days (8h each)
+  1w                 Weeks (5d each)
+
+Started date formats:
+  today, yesterday   Relative dates
+  14:30              Time today
+  2026-01-12         Date (current time)
+  ISO 8601           Full datetime
+
+Rounding:
+  --round 15m        Round to nearest 15 minutes
+  --round 30m        Round to nearest 30 minutes
+  --round 1h         Round to nearest hour
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira worklog add PROJ-123 1h30m --comment "Feature work"
+  jira worklog add PROJ-123 1.5h --started 09:00
+  jira worklog add PROJ-123 2h --round 15m
+  jira worklog list --issue PROJ-123
+`;
+}
+
 // ============ Search (JQL) ============
 
 async function handleSearch(
@@ -936,6 +1198,7 @@ Commands:
   issue       Issue operations (get, create, update, delete, transition, comment, link)
   board       Board operations (list, get, backlog, issues)
   sprint      Sprint operations (list, get, create, start, close, add, remove)
+  worklog     Time tracking (add, list, update, delete)
   search      Search with JQL
   me          Get current user info
 
@@ -946,10 +1209,10 @@ Options:
 Examples:
   atlcli jira project list
   atlcli jira issue create --project PROJ --type Task --summary "My task"
+  atlcli jira worklog add PROJ-123 1h30m --comment "Feature work"
+  atlcli jira worklog add PROJ-123 1.5h --round 15m
   atlcli jira board list --project PROJ
   atlcli jira sprint list --board 123
-  atlcli jira sprint create --board 123 --name "Sprint 1"
-  atlcli jira sprint add PROJ-1 PROJ-2 --sprint 456
   atlcli jira search --project PROJ --assignee me
 `;
 }
