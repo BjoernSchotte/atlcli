@@ -8,6 +8,7 @@ import type {
   JiraTransition,
   JiraComment,
   JiraUser,
+  JiraSprint,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -15,7 +16,7 @@ import type {
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition } from "./types.js";
+export type { JiraTransition, JiraSprint } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -667,6 +668,56 @@ export class JiraClient {
   }
 
   /**
+   * Get backlog issues for a board.
+   *
+   * GET /rest/agile/1.0/board/{boardId}/backlog
+   */
+  async getBoardBacklog(
+    boardId: number,
+    options: {
+      startAt?: number;
+      maxResults?: number;
+      jql?: string;
+      fields?: string[];
+    } = {}
+  ): Promise<JiraSearchResults> {
+    return this.request(`/board/${boardId}/backlog`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        jql: options.jql,
+        fields: options.fields?.join(","),
+      },
+    });
+  }
+
+  /**
+   * Get issues for a board (all issues on the board).
+   *
+   * GET /rest/agile/1.0/board/{boardId}/issue
+   */
+  async getBoardIssues(
+    boardId: number,
+    options: {
+      startAt?: number;
+      maxResults?: number;
+      jql?: string;
+      fields?: string[];
+    } = {}
+  ): Promise<JiraSearchResults> {
+    return this.request(`/board/${boardId}/issue`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        jql: options.jql,
+        fields: options.fields?.join(","),
+      },
+    });
+  }
+
+  /**
    * Create a sprint.
    *
    * POST /rest/agile/1.0/sprint
@@ -677,11 +728,111 @@ export class JiraClient {
     startDate?: string;
     endDate?: string;
     goal?: string;
-  }): Promise<{ id: number; name: string; state: string }> {
+  }): Promise<JiraSprint> {
     return this.request("/sprint", {
       apiBase: this.agilePath,
       method: "POST",
       body: params,
+    });
+  }
+
+  /**
+   * Get a sprint by ID.
+   *
+   * GET /rest/agile/1.0/sprint/{sprintId}
+   */
+  async getSprint(sprintId: number): Promise<JiraSprint> {
+    return this.request(`/sprint/${sprintId}`, { apiBase: this.agilePath });
+  }
+
+  /**
+   * Update a sprint.
+   *
+   * PUT /rest/agile/1.0/sprint/{sprintId}
+   */
+  async updateSprint(
+    sprintId: number,
+    params: {
+      name?: string;
+      state?: "future" | "active" | "closed";
+      startDate?: string;
+      endDate?: string;
+      completeDate?: string;
+      goal?: string;
+    }
+  ): Promise<JiraSprint> {
+    return this.request(`/sprint/${sprintId}`, {
+      apiBase: this.agilePath,
+      method: "PUT",
+      body: params,
+    });
+  }
+
+  /**
+   * Start a sprint (transition from future to active).
+   *
+   * POST /rest/agile/1.0/sprint/{sprintId}
+   */
+  async startSprint(
+    sprintId: number,
+    params: {
+      startDate?: string;
+      endDate?: string;
+      goal?: string;
+    } = {}
+  ): Promise<JiraSprint> {
+    return this.updateSprint(sprintId, {
+      ...params,
+      state: "active",
+    });
+  }
+
+  /**
+   * Close/complete a sprint (transition from active to closed).
+   *
+   * POST /rest/agile/1.0/sprint/{sprintId}
+   */
+  async closeSprint(sprintId: number, completeDate?: string): Promise<JiraSprint> {
+    return this.updateSprint(sprintId, {
+      state: "closed",
+      completeDate: completeDate ?? new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Delete a sprint.
+   *
+   * DELETE /rest/agile/1.0/sprint/{sprintId}
+   */
+  async deleteSprint(sprintId: number): Promise<void> {
+    await this.request(`/sprint/${sprintId}`, {
+      apiBase: this.agilePath,
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Get issues in a sprint.
+   *
+   * GET /rest/agile/1.0/sprint/{sprintId}/issue
+   */
+  async getSprintIssues(
+    sprintId: number,
+    options: {
+      startAt?: number;
+      maxResults?: number;
+      jql?: string;
+      fields?: string[];
+    } = {}
+  ): Promise<JiraSearchResults> {
+    return this.request(`/sprint/${sprintId}/issue`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        jql: options.jql,
+        fields: options.fields?.join(","),
+      },
     });
   }
 

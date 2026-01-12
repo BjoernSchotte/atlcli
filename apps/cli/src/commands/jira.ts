@@ -8,7 +8,7 @@ import {
   loadConfig,
   output,
 } from "@atlcli/core";
-import { JiraClient, JiraIssue, JiraTransition } from "@atlcli/jira";
+import { JiraClient, JiraIssue, JiraTransition, JiraSprint } from "@atlcli/jira";
 
 export async function handleJira(
   args: string[],
@@ -22,6 +22,12 @@ export async function handleJira(
       return;
     case "issue":
       await handleIssue(rest, flags, opts);
+      return;
+    case "board":
+      await handleBoard(rest, flags, opts);
+      return;
+    case "sprint":
+      await handleSprint(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -467,6 +473,382 @@ Options:
 `;
 }
 
+// ============ Board Operations ============
+
+async function handleBoard(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub] = args;
+  switch (sub) {
+    case "list":
+      await handleBoardList(flags, opts);
+      return;
+    case "get":
+      await handleBoardGet(flags, opts);
+      return;
+    case "backlog":
+      await handleBoardBacklog(flags, opts);
+      return;
+    case "issues":
+      await handleBoardIssues(flags, opts);
+      return;
+    default:
+      output(boardHelp(), opts);
+      return;
+  }
+}
+
+async function handleBoardList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const type = getFlag(flags, "type") as "scrum" | "kanban" | "simple" | undefined;
+  const name = getFlag(flags, "name");
+  const project = getFlag(flags, "project");
+
+  const result = await client.listBoards({
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+    type,
+    name,
+    projectKeyOrId: project,
+  });
+
+  output({ schemaVersion: "1", boards: result.values, total: result.total }, opts);
+}
+
+async function handleBoardGet(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const board = await client.getBoard(Number(id));
+  output({ schemaVersion: "1", board }, opts);
+}
+
+async function handleBoardBacklog(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const jql = getFlag(flags, "jql");
+
+  const result = await client.getBoardBacklog(Number(id), {
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+    jql,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      issues: result.issues.map(formatIssue),
+      total: result.total,
+    },
+    opts
+  );
+}
+
+async function handleBoardIssues(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const jql = getFlag(flags, "jql");
+
+  const result = await client.getBoardIssues(Number(id), {
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+    jql,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      issues: result.issues.map(formatIssue),
+      total: result.total,
+    },
+    opts
+  );
+}
+
+function boardHelp(): string {
+  return `atlcli jira board <command>
+
+Commands:
+  list [--limit <n>] [--type scrum|kanban|simple] [--name <text>] [--project <key>]
+  get --id <boardId>
+  backlog --id <boardId> [--limit <n>] [--jql <query>]
+  issues --id <boardId> [--limit <n>] [--jql <query>]
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+`;
+}
+
+// ============ Sprint Operations ============
+
+async function handleSprint(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub] = args;
+  switch (sub) {
+    case "list":
+      await handleSprintList(flags, opts);
+      return;
+    case "get":
+      await handleSprintGet(flags, opts);
+      return;
+    case "create":
+      await handleSprintCreate(flags, opts);
+      return;
+    case "start":
+      await handleSprintStart(flags, opts);
+      return;
+    case "close":
+      await handleSprintClose(flags, opts);
+      return;
+    case "delete":
+      await handleSprintDelete(flags, opts);
+      return;
+    case "issues":
+      await handleSprintIssues(flags, opts);
+      return;
+    case "add":
+      await handleSprintAdd(args.slice(1), flags, opts);
+      return;
+    case "remove":
+      await handleSprintRemove(args.slice(1), flags, opts);
+      return;
+    default:
+      output(sprintHelp(), opts);
+      return;
+  }
+}
+
+async function handleSprintList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const boardId = getFlag(flags, "board");
+  if (!boardId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const state = getFlag(flags, "state") as "future" | "active" | "closed" | undefined;
+
+  const result = await client.listSprints(Number(boardId), {
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+    state,
+  });
+
+  output({ schemaVersion: "1", sprints: result.values, total: result.total }, opts);
+}
+
+async function handleSprintGet(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const sprint = await client.getSprint(Number(id));
+  output({ schemaVersion: "1", sprint }, opts);
+}
+
+async function handleSprintCreate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const boardId = getFlag(flags, "board");
+  const name = getFlag(flags, "name");
+
+  if (!boardId || !name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--board and --name are required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const startDate = getFlag(flags, "start");
+  const endDate = getFlag(flags, "end");
+  const goal = getFlag(flags, "goal");
+
+  const sprint = await client.createSprint({
+    name,
+    originBoardId: Number(boardId),
+    startDate,
+    endDate,
+    goal,
+  });
+
+  output({ schemaVersion: "1", sprint }, opts);
+}
+
+async function handleSprintStart(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const startDate = getFlag(flags, "start");
+  const endDate = getFlag(flags, "end");
+  const goal = getFlag(flags, "goal");
+
+  const sprint = await client.startSprint(Number(id), {
+    startDate,
+    endDate,
+    goal,
+  });
+
+  output({ schemaVersion: "1", sprint }, opts);
+}
+
+async function handleSprintClose(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const sprint = await client.closeSprint(Number(id));
+  output({ schemaVersion: "1", sprint }, opts);
+}
+
+async function handleSprintDelete(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a sprint.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteSprint(Number(id));
+  output({ schemaVersion: "1", deleted: Number(id) }, opts);
+}
+
+async function handleSprintIssues(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const jql = getFlag(flags, "jql");
+
+  const result = await client.getSprintIssues(Number(id), {
+    maxResults: Number.isNaN(limit) ? 50 : limit,
+    jql,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      issues: result.issues.map(formatIssue),
+      total: result.total,
+    },
+    opts
+  );
+}
+
+async function handleSprintAdd(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const sprintId = getFlag(flags, "sprint");
+  const issues = args.length > 0 ? args : getFlag(flags, "issues")?.split(",");
+
+  if (!sprintId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--sprint is required.");
+  }
+  if (!issues || issues.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue keys are required (as args or --issues).");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.moveIssuesToSprint(Number(sprintId), issues);
+  output({ schemaVersion: "1", added: { sprint: Number(sprintId), issues } }, opts);
+}
+
+async function handleSprintRemove(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const issues = args.length > 0 ? args : getFlag(flags, "issues")?.split(",");
+
+  if (!issues || issues.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue keys are required (as args or --issues).");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.moveIssuesToBacklog(issues);
+  output({ schemaVersion: "1", removed: { issues } }, opts);
+}
+
+function sprintHelp(): string {
+  return `atlcli jira sprint <command>
+
+Commands:
+  list --board <id> [--limit <n>] [--state future|active|closed]
+  get --id <sprintId>
+  create --board <id> --name <name> [--start <date>] [--end <date>] [--goal <text>]
+  start --id <sprintId> [--start <date>] [--end <date>] [--goal <text>]
+  close --id <sprintId>
+  delete --id <sprintId> --confirm
+  issues --id <sprintId> [--limit <n>] [--jql <query>]
+  add <issue>... --sprint <id>           Add issues to sprint
+  remove <issue>...                      Move issues to backlog
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+`;
+}
+
 // ============ Search (JQL) ============
 
 async function handleSearch(
@@ -552,6 +934,8 @@ function jiraHelp(): string {
 Commands:
   project     Project operations (list, get, create, types)
   issue       Issue operations (get, create, update, delete, transition, comment, link)
+  board       Board operations (list, get, backlog, issues)
+  sprint      Sprint operations (list, get, create, start, close, add, remove)
   search      Search with JQL
   me          Get current user info
 
@@ -561,9 +945,11 @@ Options:
 
 Examples:
   atlcli jira project list
-  atlcli jira project create --key ATLCLI --name "atlcli" --type software
-  atlcli jira issue create --project ATLCLI --type Task --summary "My first issue"
-  atlcli jira search --project ATLCLI --assignee me
-  atlcli jira search "project = ATLCLI AND status = 'To Do'"
+  atlcli jira issue create --project PROJ --type Task --summary "My task"
+  atlcli jira board list --project PROJ
+  atlcli jira sprint list --board 123
+  atlcli jira sprint create --board 123 --name "Sprint 1"
+  atlcli jira sprint add PROJ-1 PROJ-2 --sprint 456
+  atlcli jira search --project PROJ --assignee me
 `;
 }
