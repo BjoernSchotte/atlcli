@@ -93,6 +93,15 @@ export async function handleJira(
     case "me":
       await handleMe(flags, opts);
       return;
+    case "watch":
+      await handleWatch(rest, flags, opts);
+      return;
+    case "unwatch":
+      await handleUnwatch(rest, flags, opts);
+      return;
+    case "watchers":
+      await handleWatchers(rest, flags, opts);
+      return;
     default:
       output(jiraHelp(), opts);
       return;
@@ -3393,12 +3402,107 @@ Examples:
 `;
 }
 
+// ============ Watch Commands ============
+
+async function handleWatch(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [key] = args;
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Usage: jira watch <issue-key>");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const me = await client.getCurrentUser();
+
+  if (!me.accountId) {
+    fail(opts, 1, ERROR_CODES.AUTH, "Could not determine current user accountId.");
+    return;
+  }
+
+  await client.addWatcher(key, me.accountId);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", watching: key, user: me.displayName }, opts);
+  } else {
+    output(`Now watching ${key}`, opts);
+  }
+}
+
+async function handleUnwatch(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [key] = args;
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Usage: jira unwatch <issue-key>");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const me = await client.getCurrentUser();
+
+  if (!me.accountId) {
+    fail(opts, 1, ERROR_CODES.AUTH, "Could not determine current user accountId.");
+    return;
+  }
+
+  await client.removeWatcher(key, me.accountId);
+
+  if (opts.json) {
+    output({ schemaVersion: "1", unwatched: key, user: me.displayName }, opts);
+  } else {
+    output(`Stopped watching ${key}`, opts);
+  }
+}
+
+async function handleWatchers(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [key] = args;
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Usage: jira watchers <issue-key>");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const result = await client.getWatchers(key);
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      issue: key,
+      watchCount: result.watchCount,
+      isWatching: result.isWatching,
+      watchers: result.watchers.map((w) => ({
+        accountId: w.accountId,
+        displayName: w.displayName,
+        email: w.emailAddress,
+      })),
+    }, opts);
+  } else {
+    output(`Watchers for ${key} (${result.watchCount}):`, opts);
+    if (result.isWatching) {
+      output(`  (You are watching this issue)`, opts);
+    }
+    for (const w of result.watchers) {
+      output(`  - ${w.displayName}${w.emailAddress ? ` <${w.emailAddress}>` : ""}`, opts);
+    }
+  }
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
 Commands:
   project     Project operations (list, get, create, types)
-  issue       Issue operations (get, create, update, delete, transition, comment, link)
+  issue       Issue operations (get, create, update, delete, transition, comment, link, attach)
   board       Board operations (list, get, backlog, issues)
   sprint      Sprint operations (list, get, create, start, close, add, remove, report)
   worklog     Time tracking (add, list, update, delete, timer)
@@ -3410,6 +3514,9 @@ Commands:
   import      Import issues from CSV/JSON file
   search      Search with JQL
   me          Get current user info
+  watch       Start watching an issue (receive notifications)
+  unwatch     Stop watching an issue
+  watchers    List watchers for an issue
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -3423,6 +3530,7 @@ Examples:
   atlcli jira analyze velocity --board 123 --sprints 5
   atlcli jira export --jql "project = PROJ" -o issues.json
   atlcli jira import --file issues.json --project PROJ --dry-run
+  atlcli jira watch PROJ-123
   atlcli jira search --project PROJ --assignee me
 `;
 }

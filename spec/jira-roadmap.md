@@ -320,6 +320,49 @@ Commercial plugin - not implementing.
 
 ---
 
+## 12. Issue Watchers (Priority: Low)
+
+**Status**: COMPLETE ✅
+
+Watch/unwatch issues to receive Jira notifications.
+
+**Features:**
+- `jira watch <key>` - Start watching an issue ✅
+- `jira unwatch <key>` - Stop watching an issue ✅
+- `jira watchers <key>` - List watchers for an issue ✅
+
+**API Endpoints:**
+- `GET /rest/api/3/issue/{key}/watchers` - List watchers
+- `POST /rest/api/3/issue/{key}/watchers` - Add watcher
+- `DELETE /rest/api/3/issue/{key}/watchers?accountId=X` - Remove watcher
+
+---
+
+## 13. Webhook Server (Priority: Low)
+
+**Status**: Not Started
+
+Real-time notifications via local webhook server (like Confluence sync).
+
+**Features:**
+- `jira webhook serve [--port 8080]` - Start local webhook server
+- `jira webhook register --url <url> --events <events>` - Register webhook with Jira
+- `jira webhook list` - List registered webhooks
+- `jira webhook delete <id>` - Delete webhook
+
+**Webhook Events:**
+- `jira:issue_created`, `jira:issue_updated`, `jira:issue_deleted`
+- `comment_created`, `comment_updated`, `comment_deleted`
+- `sprint_started`, `sprint_closed`
+
+**Implementation Notes:**
+- Use Bun's built-in HTTP server
+- Support JQL filtering for targeted notifications
+- Output events to stdout or file
+- Optional: Desktop notifications via system notify
+
+---
+
 ## Priority Order
 
 | Priority | Feature | Effort | Dependencies | Status |
@@ -335,6 +378,8 @@ Commercial plugin - not implementing.
 | 9 | Import/Export | Medium | Issues, JQL | ✅ COMPLETE |
 | 10 | Saved Filters | Small | JQL | ✅ COMPLETE |
 | 11 | Tempo Integration | Medium | Time Tracking | ⏭️ SKIPPED |
+| 12 | Issue Watchers | Small | Issues | ✅ COMPLETE |
+| 13 | Webhook Server | Medium | Watchers | Not Started |
 
 ---
 

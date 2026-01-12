@@ -1390,6 +1390,51 @@ export class JiraClient {
     throw lastError ?? new Error("Attachment upload failed");
   }
 
+  // ============ Watcher Operations ============
+
+  /**
+   * Get watchers for an issue.
+   *
+   * GET /rest/api/3/issue/{keyOrId}/watchers
+   */
+  async getWatchers(keyOrId: string): Promise<{
+    watchers: JiraUser[];
+    watchCount: number;
+    isWatching: boolean;
+  }> {
+    const result = await this.request<{
+      watchers: JiraUser[];
+      watchCount: number;
+      isWatching: boolean;
+    }>(`/issue/${keyOrId}/watchers`);
+    return result;
+  }
+
+  /**
+   * Add a watcher to an issue.
+   *
+   * POST /rest/api/3/issue/{keyOrId}/watchers
+   * Body is just the accountId as a quoted string.
+   */
+  async addWatcher(keyOrId: string, accountId: string): Promise<void> {
+    await this.request(`/issue/${keyOrId}/watchers`, {
+      method: "POST",
+      body: accountId, // Just the accountId string, not an object
+    });
+  }
+
+  /**
+   * Remove a watcher from an issue.
+   *
+   * DELETE /rest/api/3/issue/{keyOrId}/watchers?accountId={accountId}
+   */
+  async removeWatcher(keyOrId: string, accountId: string): Promise<void> {
+    await this.request(`/issue/${keyOrId}/watchers`, {
+      method: "DELETE",
+      query: { accountId },
+    });
+  }
+
   // ============ Helpers ============
 
   /**
