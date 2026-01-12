@@ -1,6 +1,7 @@
 import {
   ERROR_CODES,
   OutputOptions,
+  clearProfileAuth,
   fail,
   getActiveProfile,
   getConfigPath,
@@ -41,6 +42,9 @@ export async function handleAuth(args: string[], flags: Record<string, string | 
       return;
     case "logout":
       await handleLogout(args.slice(1), opts);
+      return;
+    case "delete":
+      await handleDelete(args.slice(1), opts);
       return;
     default:
       output(authHelp(), opts);
@@ -192,9 +196,23 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
   if (!config.profiles[target]) {
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${target}`);
   }
-  removeProfile(config, target);
+  clearProfileAuth(config, target);
   await saveConfig(config);
-  output({ ok: true, profile: target }, opts);
+  output({ ok: true, profile: target, message: "Logged out (credentials cleared)" }, opts);
+}
+
+async function handleDelete(args: string[], opts: OutputOptions): Promise<void> {
+  const name = args[0];
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Profile name is required.");
+  }
+  const config = await loadConfig();
+  if (!config.profiles[name]) {
+    fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${name}`);
+  }
+  removeProfile(config, name);
+  await saveConfig(config);
+  output({ ok: true, profile: name, message: "Profile deleted" }, opts);
 }
 
 function authHelp(): string {
@@ -207,7 +225,8 @@ Commands:
   list                     List profiles
   switch <name>            Switch active profile
   rename <old> <new>       Rename a profile
-  logout [name]            Remove a profile
+  logout [name]            Log out (clear credentials, keep profile)
+  delete <name>            Delete a profile entirely
 
 Options:
   --api-token      Use API token auth (default)

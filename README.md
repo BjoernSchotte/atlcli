@@ -64,7 +64,8 @@ atlcli auth status                      # Show active profile
 atlcli auth list                        # List all profiles
 atlcli auth switch <name>               # Switch active profile
 atlcli auth rename <old> <new>          # Rename a profile
-atlcli auth logout [name]               # Remove a profile
+atlcli auth logout [name]               # Log out (clear credentials, keep profile)
+atlcli auth delete <name>               # Delete a profile entirely
 ```
 
 ### Spaces
@@ -544,8 +545,11 @@ atlcli auth status
 # Rename a profile
 atlcli auth rename old-name new-name
 
-# Remove a profile
-atlcli auth logout personal
+# Log out (clear credentials but keep profile for easy re-login)
+atlcli auth logout work
+
+# Delete a profile entirely
+atlcli auth delete old-profile
 ```
 
 All commands that connect to Confluence accept the `--profile` flag to override the default profile.

@@ -62,6 +62,13 @@ export function removeProfile(config: Config, name: string): void {
   }
 }
 
+export function clearProfileAuth(config: Config, name: string): boolean {
+  const profile = config.profiles[name];
+  if (!profile) return false;
+  profile.auth = { type: profile.auth.type };
+  return true;
+}
+
 export function renameProfile(config: Config, oldName: string, newName: string): boolean {
   const profile = config.profiles[oldName];
   if (!profile) return false;
