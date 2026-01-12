@@ -218,22 +218,23 @@ async function handleCreate(flags: Record<string, string | boolean>, opts: Outpu
   output({ schemaVersion: "1", page }, opts);
 }
 
-function parseVarFlags(flags: Record<string, string | boolean>): Record<string, unknown> {
+function parseVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, unknown> {
   const vars: Record<string, unknown> = {};
 
-  // Check for --var key=value format
+  // Check for --var.name=value format
   for (const [key, value] of Object.entries(flags)) {
     if (key.startsWith("var.") && typeof value === "string") {
       vars[key.slice(4)] = value;
     }
   }
 
-  // Also handle --var key=value as a single flag
+  // Handle --var key=value (supports multiple --var flags)
   const varFlag = flags["var"];
-  if (typeof varFlag === "string") {
-    const eqIdx = varFlag.indexOf("=");
+  const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
+  for (const v of varValues) {
+    const eqIdx = v.indexOf("=");
     if (eqIdx > 0) {
-      vars[varFlag.slice(0, eqIdx)] = varFlag.slice(eqIdx + 1);
+      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
     }
   }
 
