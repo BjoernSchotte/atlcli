@@ -8,6 +8,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getLogger,
   hasFlag,
   loadConfig,
   output,
@@ -204,6 +205,16 @@ class SyncEngine {
 
   /** Emit a sync event to output */
   private emit(event: SyncEvent): void {
+    // Log the sync event
+    const logger = getLogger();
+    logger.sync({
+      eventType: event.type,
+      file: event.file,
+      pageId: event.pageId,
+      title: event.message,
+      details: event.details,
+    });
+
     if (this.outputOpts.json) {
       process.stdout.write(JSON.stringify({ schemaVersion: "1", ...event }) + "\n");
     } else {

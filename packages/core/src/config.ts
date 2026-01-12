@@ -19,9 +19,22 @@ export type Profile = {
   cloudId?: string;
 };
 
+export type LogLevel = "off" | "error" | "warn" | "info" | "debug";
+
+export type LoggingConfig = {
+  /** Log level: off, error, warn, info, debug */
+  level: LogLevel;
+  /** Enable global logs (~/.atlcli/logs/) */
+  global: boolean;
+  /** Enable project-level logs (.atlcli/logs/) */
+  project: boolean;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
+  /** Logging configuration */
+  logging?: LoggingConfig;
 };
 
 const CONFIG_DIR = join(os.homedir(), ".atlcli");

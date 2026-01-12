@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { Profile } from "@atlcli/core";
+import { Profile, getLogger, generateRequestId, redactSensitive } from "@atlcli/core";
 
 export type ConfluencePage = {
   id: string;
@@ -109,11 +109,30 @@ export class ConfluenceClient {
       }
     }
 
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const method = options.method ?? "GET";
+    const startTime = Date.now();
+
+    // Log request
+    logger.api("request", {
+      requestId,
+      method,
+      url: url.toString(),
+      path,
+      headers: redactSensitive({
+        Authorization: this.authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: options.body ? redactSensitive(options.body) : undefined,
+    });
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const res = await fetch(url.toString(), {
-        method: options.method ?? "GET",
+        method,
         headers: {
           Authorization: this.authHeader,
           Accept: "application/json",
@@ -133,7 +152,15 @@ export class ConfluenceClient {
           await this.sleep(delayMs);
           continue;
         }
-        throw new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: "Too Many Requests",
+          durationMs: Date.now() - startTime,
+          error: error.message,
+        });
+        throw error;
       }
 
       const text = await res.text();
@@ -155,8 +182,25 @@ export class ConfluenceClient {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
           continue;
         }
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          body: redactSensitive(data),
+          durationMs: Date.now() - startTime,
+          error: lastError.message,
+        });
         throw lastError;
       }
+
+      // Log successful response
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        body: redactSensitive(data),
+        durationMs: Date.now() - startTime,
+      });
 
       return data;
     }
@@ -184,11 +228,30 @@ export class ConfluenceClient {
       }
     }
 
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const method = options.method ?? "GET";
+    const startTime = Date.now();
+
+    // Log request
+    logger.api("request", {
+      requestId,
+      method,
+      url: url.toString(),
+      path,
+      headers: redactSensitive({
+        Authorization: this.authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: options.body ? redactSensitive(options.body) : undefined,
+    });
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const res = await fetch(url.toString(), {
-        method: options.method ?? "GET",
+        method,
         headers: {
           Authorization: this.authHeader,
           Accept: "application/json",
@@ -207,7 +270,15 @@ export class ConfluenceClient {
           await this.sleep(delayMs);
           continue;
         }
-        throw new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: "Too Many Requests",
+          durationMs: Date.now() - startTime,
+          error: error.message,
+        });
+        throw error;
       }
 
       const text = await res.text();
@@ -228,8 +299,25 @@ export class ConfluenceClient {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
           continue;
         }
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          body: redactSensitive(data),
+          durationMs: Date.now() - startTime,
+          error: lastError.message,
+        });
         throw lastError;
       }
+
+      // Log successful response
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        body: redactSensitive(data),
+        durationMs: Date.now() - startTime,
+      });
 
       return data;
     }
@@ -991,6 +1079,24 @@ export class ConfluenceClient {
   ): Promise<any> {
     const url = new URL(`${this.baseUrl}/wiki/rest/api${path}`);
 
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const startTime = Date.now();
+
+    // Log request (don't log formData body as it may be binary/large)
+    logger.api("request", {
+      requestId,
+      method: "POST",
+      url: url.toString(),
+      path,
+      headers: redactSensitive({
+        Authorization: this.authHeader,
+        Accept: "application/json",
+        "X-Atlassian-Token": "nocheck",
+      }),
+      body: "[multipart/form-data]",
+    });
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -1015,7 +1121,15 @@ export class ConfluenceClient {
           await this.sleep(delayMs);
           continue;
         }
-        throw new Error(`Rate limited after ${this.maxRetries} retries`);
+        const error = new Error(`Rate limited after ${this.maxRetries} retries`);
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: "Too Many Requests",
+          durationMs: Date.now() - startTime,
+          error: error.message,
+        });
+        throw error;
       }
 
       const text = await res.text();
@@ -1036,8 +1150,25 @@ export class ConfluenceClient {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
           continue;
         }
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          body: redactSensitive(data),
+          durationMs: Date.now() - startTime,
+          error: lastError.message,
+        });
         throw lastError;
       }
+
+      // Log successful response
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        body: redactSensitive(data),
+        durationMs: Date.now() - startTime,
+      });
 
       return data;
     }
@@ -1050,6 +1181,21 @@ export class ConfluenceClient {
    */
   private async requestBinary(downloadPath: string): Promise<Buffer> {
     const url = new URL(`${this.baseUrl}/wiki${downloadPath}`);
+
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const startTime = Date.now();
+
+    // Log request
+    logger.api("request", {
+      requestId,
+      method: "GET",
+      url: url.toString(),
+      path: downloadPath,
+      headers: redactSensitive({
+        Authorization: this.authHeader,
+      }),
+    });
 
     let lastError: Error | null = null;
 
@@ -1071,7 +1217,15 @@ export class ConfluenceClient {
           await this.sleep(delayMs);
           continue;
         }
-        throw new Error(`Rate limited after ${this.maxRetries} retries`);
+        const error = new Error(`Rate limited after ${this.maxRetries} retries`);
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: "Too Many Requests",
+          durationMs: Date.now() - startTime,
+          error: error.message,
+        });
+        throw error;
       }
 
       if (!res.ok) {
@@ -1081,11 +1235,29 @@ export class ConfluenceClient {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
           continue;
         }
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          durationMs: Date.now() - startTime,
+          error: lastError.message,
+        });
         throw lastError;
       }
 
       const arrayBuffer = await res.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Log successful response (without binary body, just size)
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        body: `[binary ${buffer.length} bytes]`,
+        durationMs: Date.now() - startTime,
+      });
+
+      return buffer;
     }
 
     throw lastError ?? new Error("Download failed after retries");

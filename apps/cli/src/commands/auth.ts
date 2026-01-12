@@ -6,6 +6,7 @@ import {
   getActiveProfile,
   getConfigPath,
   getFlag,
+  getLogger,
   loadConfig,
   normalizeBaseUrl,
   output,
@@ -115,6 +116,14 @@ async function handleLoginWithMode(
   setCurrentProfile(config, profileName);
   await saveConfig(config);
 
+  // Log auth change
+  getLogger().auth({
+    action: "login",
+    profile: profileName,
+    email,
+    baseUrl,
+  });
+
   output(
     {
       ok: true,
@@ -163,8 +172,17 @@ async function handleSwitch(args: string[], opts: OutputOptions): Promise<void> 
   if (!config.profiles[name]) {
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${name}`);
   }
+  const profile = config.profiles[name];
   setCurrentProfile(config, name);
   await saveConfig(config);
+
+  // Log auth change
+  getLogger().auth({
+    action: "switch",
+    profile: name,
+    baseUrl: profile.baseUrl,
+  });
+
   output({ ok: true, profile: name }, opts);
 }
 
@@ -183,6 +201,14 @@ async function handleRename(args: string[], opts: OutputOptions): Promise<void> 
   }
   renameProfile(config, oldName, newName);
   await saveConfig(config);
+
+  // Log auth change
+  getLogger().auth({
+    action: "rename",
+    profile: newName,
+    details: { oldName, newName },
+  });
+
   output({ ok: true, oldName, newName }, opts);
 }
 
@@ -196,8 +222,17 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
   if (!config.profiles[target]) {
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${target}`);
   }
+  const profile = config.profiles[target];
   clearProfileAuth(config, target);
   await saveConfig(config);
+
+  // Log auth change
+  getLogger().auth({
+    action: "logout",
+    profile: target,
+    baseUrl: profile.baseUrl,
+  });
+
   output({ ok: true, profile: target, message: "Logged out (credentials cleared)" }, opts);
 }
 
@@ -210,8 +245,17 @@ async function handleDelete(args: string[], opts: OutputOptions): Promise<void> 
   if (!config.profiles[name]) {
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${name}`);
   }
+  const profile = config.profiles[name];
   removeProfile(config, name);
   await saveConfig(config);
+
+  // Log auth change
+  getLogger().auth({
+    action: "delete",
+    profile: name,
+    baseUrl: profile.baseUrl,
+  });
+
   output({ ok: true, profile: name, message: "Profile deleted" }, opts);
 }
 

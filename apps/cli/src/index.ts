@@ -1,9 +1,18 @@
-import { hasFlag, output, parseArgs } from "@atlcli/core";
+import {
+  hasFlag,
+  output,
+  parseArgs,
+  loadConfig,
+  configureLogging,
+  getLogger,
+  Logger,
+} from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
 import { handlePage } from "./commands/page.js";
 import { handleSpace } from "./commands/space.js";
 import { handleDocs } from "./commands/docs.js";
+import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleSearch } from "./commands/search.js";
 import { handleTemplate } from "./commands/template.js";
@@ -15,7 +24,34 @@ async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   const [command, ...rest] = parsed._;
   const json = hasFlag(parsed.flags, "json");
+  const noLog = hasFlag(parsed.flags, "no-log");
   const opts = { json };
+  const startTime = Date.now();
+
+  // Initialize logging (unless --no-log is specified)
+  if (!noLog) {
+    try {
+      const config = await loadConfig();
+      configureLogging({
+        level: config.logging?.level ?? "info",
+        enableGlobal: config.logging?.global ?? true,
+        enableProject: config.logging?.project ?? true,
+        projectDir: process.cwd(),
+      });
+    } catch {
+      // Ignore config load errors for logging
+      configureLogging({
+        level: "info",
+        enableGlobal: true,
+        enableProject: true,
+        projectDir: process.cwd(),
+      });
+    }
+  } else {
+    Logger.disable();
+  }
+
+  const logger = getLogger();
 
   // Initialize plugins (gracefully handles errors)
   await initializePlugins();
@@ -25,6 +61,14 @@ async function main(): Promise<void> {
     output(rootHelp(registry), opts);
     return;
   }
+
+  // Log command start
+  logger.command({
+    command: [command, ...rest],
+    args: rest,
+    flags: parsed.flags,
+    cwd: process.cwd(),
+  });
 
   // Build command context for hooks
   const ctx: CommandContext = {
@@ -39,6 +83,9 @@ async function main(): Promise<void> {
     await registry.runBeforeHooks(ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    logger.error(err instanceof Error ? err : new Error(message), {
+      command: [command, ...rest],
+    });
     process.stderr.write(`Hook error: ${message}\n`);
     process.exit(1);
   }
@@ -57,6 +104,9 @@ async function main(): Promise<void> {
         break;
       case "docs":
         await handleDocs(rest, parsed.flags, opts);
+        break;
+      case "log":
+        await handleLog(rest, parsed.flags, opts);
         break;
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
@@ -80,9 +130,26 @@ async function main(): Promise<void> {
         }
     }
 
+    // Log command result
+    logger.result({
+      command: [command, ...rest],
+      exitCode: 0,
+      durationMs: Date.now() - startTime,
+    });
+
     // Run afterCommand hooks
     await registry.runAfterHooks(ctx);
   } catch (err) {
+    // Log error and result
+    logger.error(err instanceof Error ? err : new Error(String(err)), {
+      command: [command, ...rest],
+    });
+    logger.result({
+      command: [command, ...rest],
+      exitCode: 1,
+      durationMs: Date.now() - startTime,
+    });
+
     // Run error hooks
     await registry.runErrorHooks(ctx, err instanceof Error ? err : new Error(String(err)));
     throw err;
@@ -157,11 +224,13 @@ Commands:
   docs        Confluence docs sync (pull/push)
   search      Search Confluence content
   template    Page template management
+  log         Query and manage logs
   plugin      Manage plugins
   version     Show version
 ${pluginSection}
 Global options:
   --json      JSON output
+  --no-log    Disable logging for this command
   --help      Show help
 `;
 }
