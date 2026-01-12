@@ -10,6 +10,7 @@ import {
   output,
   promptInput,
   removeProfile,
+  renameProfile,
   saveConfig,
   setCurrentProfile,
   setProfile,
@@ -34,6 +35,9 @@ export async function handleAuth(args: string[], flags: Record<string, string | 
       return;
     case "switch":
       await handleSwitch(args.slice(1), opts);
+      return;
+    case "rename":
+      await handleRename(args.slice(1), opts);
       return;
     case "logout":
       await handleLogout(args.slice(1), opts);
@@ -160,6 +164,24 @@ async function handleSwitch(args: string[], opts: OutputOptions): Promise<void> 
   output({ ok: true, profile: name }, opts);
 }
 
+async function handleRename(args: string[], opts: OutputOptions): Promise<void> {
+  const oldName = args[0];
+  const newName = args[1];
+  if (!oldName || !newName) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli auth rename <old-name> <new-name>");
+  }
+  const config = await loadConfig();
+  if (!config.profiles[oldName]) {
+    fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${oldName}`);
+  }
+  if (config.profiles[newName]) {
+    fail(opts, 1, ERROR_CODES.AUTH, `Profile already exists: ${newName}`);
+  }
+  renameProfile(config, oldName, newName);
+  await saveConfig(config);
+  output({ ok: true, oldName, newName }, opts);
+}
+
 async function handleLogout(args: string[], opts: OutputOptions): Promise<void> {
   const name = args[0];
   const config = await loadConfig();
@@ -179,12 +201,13 @@ function authHelp(): string {
   return `atlcli auth <command>
 
 Commands:
-  login            Authenticate (default: API token, prompts)
-  init             Initialize auth by pasting an API token
-  status           Show active profile
-  list             List profiles
-  switch <name>    Switch active profile
-  logout [name]    Remove a profile
+  login                    Authenticate (default: API token, prompts)
+  init                     Initialize auth by pasting an API token
+  status                   Show active profile
+  list                     List profiles
+  switch <name>            Switch active profile
+  rename <old> <new>       Rename a profile
+  logout [name]            Remove a profile
 
 Options:
   --api-token      Use API token auth (default)

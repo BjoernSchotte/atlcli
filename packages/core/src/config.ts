@@ -62,6 +62,21 @@ export function removeProfile(config: Config, name: string): void {
   }
 }
 
+export function renameProfile(config: Config, oldName: string, newName: string): boolean {
+  const profile = config.profiles[oldName];
+  if (!profile) return false;
+  if (config.profiles[newName]) return false; // Target name already exists
+
+  profile.name = newName;
+  config.profiles[newName] = profile;
+  delete config.profiles[oldName];
+
+  if (config.currentProfile === oldName) {
+    config.currentProfile = newName;
+  }
+  return true;
+}
+
 export function setCurrentProfile(config: Config, name: string): void {
   config.currentProfile = name;
 }
