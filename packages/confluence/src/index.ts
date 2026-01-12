@@ -9,6 +9,7 @@ export * from "./links.js";
 export * from "./markdown.js";
 export * from "./merge.js";
 export * from "./poller.js";
+export * from "./reorder.js";
 export * from "./scope.js";
 export * from "./templates/index.js";
 export * from "./validation.js";

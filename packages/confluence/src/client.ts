@@ -483,6 +483,80 @@ export class ConfluenceClient {
   }
 
   /**
+   * Move page to position relative to a sibling or parent.
+   *
+   * PUT /content/{id}/move/{position}/{targetId}
+   *
+   * @param position - "before" | "after" (sibling) or "append" (child of target)
+   */
+  async movePageToPosition(
+    pageId: string,
+    position: "before" | "after" | "append",
+    targetId: string
+  ): Promise<ConfluencePage> {
+    // The move endpoint returns a minimal response, so we call it then fetch the page
+    await this.request(
+      `/content/${pageId}/move/${position}/${targetId}`,
+      { method: "PUT" }
+    );
+
+    // Fetch the updated page to get full details
+    return this.getPage(pageId);
+  }
+
+  /**
+   * Get direct child pages with position information for ordering.
+   *
+   * GET /content/{id}/child/page?expand=extensions.position,version
+   */
+  async getChildrenWithPosition(
+    parentId: string,
+    options: { limit?: number } = {}
+  ): Promise<Array<ConfluencePage & { position: number | null }>> {
+    const { limit = 100 } = options;
+    const results: Array<ConfluencePage & { position: number | null }> = [];
+    let start = 0;
+
+    while (true) {
+      const data = (await this.request(
+        `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}&start=${start}`
+      )) as any;
+
+      if (!data.results || data.results.length === 0) break;
+
+      for (const item of data.results) {
+        const ancestors = Array.isArray(item.ancestors)
+          ? item.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+          : [];
+
+        results.push({
+          id: item.id,
+          title: item.title,
+          url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
+          version: item.version?.number,
+          spaceKey: item.space?.key,
+          parentId,
+          ancestors,
+          position: item.extensions?.position ?? null,
+        });
+      }
+
+      if (data.results.length < limit) break;
+      start += limit;
+    }
+
+    // Sort by position (nulls go to end, then alphabetical fallback)
+    return results.sort((a, b) => {
+      if (a.position !== null && b.position !== null) {
+        return a.position - b.position;
+      }
+      if (a.position !== null) return -1;
+      if (b.position !== null) return 1;
+      return a.title.localeCompare(b.title);
+    });
+  }
+
+  /**
    * Copy/duplicate a page.
    *
    * Fetches source page and creates a new page with same content.

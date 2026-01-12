@@ -23,6 +23,13 @@ import {
   renderTemplate,
   createBuiltins,
   findAtlcliDir,
+  moveToFirst,
+  moveToLast,
+  moveToPosition,
+  validateSiblings,
+  sortChildren,
+  parseFrontmatter,
+  SortStrategy,
 } from "@atlcli/confluence";
 import type { TemplateContext } from "@atlcli/confluence";
 
@@ -57,6 +64,10 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       await handleComments(args.slice(1), flags, opts);
       return;
     case "move":
+      // Pass positional arg (file path) to handleMove
+      if (args[1]) {
+        (flags as any)._pageArg = args[1];
+      }
       await handleMove(flags, opts);
       return;
     case "copy":
@@ -64,6 +75,13 @@ export async function handlePage(args: string[], flags: Record<string, string | 
       return;
     case "children":
       await handleChildren(flags, opts);
+      return;
+    case "sort":
+      // Pass positional arg (file path) to handleSort
+      if (args[1]) {
+        (flags as any)._pageArg = args[1];
+      }
+      await handleSort(flags, opts);
       return;
     case "delete":
       await handleDelete(flags, opts);
@@ -943,26 +961,229 @@ function formatInlineCommentForDisplay(
 
 // ============ Page Tree Operations ============
 
-async function handleMove(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
-  const id = getFlag(flags, "id");
-  const parentId = getFlag(flags, "parent");
-
-  if (!id) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
-  }
-  if (!parentId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--parent is required.");
-  }
-
+async function handleMove(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const client = await getClient(flags, opts);
-  const page = await client.movePage(id, parentId);
 
-  if (opts.json) {
-    output({ schemaVersion: "1", moved: true, page }, opts);
+  // Get the page to move (by ID or file path)
+  const idFlag = getFlag(flags, "id");
+  const pageArg = flags._pageArg as string | undefined; // Positional arg for file path
+  const pageId = await resolvePageId(idFlag || pageArg, opts);
+
+  if (!pageId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Page ID or file path is required.");
+  }
+
+  // Check which move operation to perform
+  const parentId = getFlag(flags, "parent");
+  const beforeTarget = getFlag(flags, "before");
+  const afterTarget = getFlag(flags, "after");
+  const first = hasFlag(flags, "first");
+  const last = hasFlag(flags, "last");
+  const positionNum = getFlag(flags, "position");
+
+  const opCount = [parentId, beforeTarget, afterTarget, first, last, positionNum].filter(Boolean).length;
+  if (opCount === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, "One of --parent, --before, --after, --first, --last, or --position is required.");
+  }
+  if (opCount > 1) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Only one of --parent, --before, --after, --first, --last, or --position can be used.");
+  }
+
+  // Move to new parent (existing behavior)
+  if (parentId) {
+    const targetId = await resolvePageId(parentId, opts);
+    if (!targetId) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Invalid parent page reference.");
+    }
+    const page = await client.movePage(pageId, targetId);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved: true, operation: "parent", page }, opts);
+    } else {
+      output(`Moved "${page.title}" to new parent`, opts);
+    }
     return;
   }
 
-  output(`Moved "${page.title}" to new parent ${parentId}`, opts);
+  // Move before sibling
+  if (beforeTarget) {
+    const targetId = await resolvePageId(beforeTarget, opts);
+    if (!targetId) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Invalid target page reference for --before.");
+    }
+    const { areSiblings, page1, page2 } = await validateSiblings(client, pageId, targetId);
+    if (!areSiblings) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Pages must have the same parent for sibling reordering.\n  "${page1.title}" parent: ${page1.parentId}\n  "${page2.title}" parent: ${page2.parentId}`);
+    }
+    const page = await client.movePageToPosition(pageId, "before", targetId);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved: true, operation: "before", page, target: { id: targetId, title: page2.title } }, opts);
+    } else {
+      output(`Moved "${page.title}" before "${page2.title}"`, opts);
+    }
+    return;
+  }
+
+  // Move after sibling
+  if (afterTarget) {
+    const targetId = await resolvePageId(afterTarget, opts);
+    if (!targetId) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Invalid target page reference for --after.");
+    }
+    const { areSiblings, page1, page2 } = await validateSiblings(client, pageId, targetId);
+    if (!areSiblings) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Pages must have the same parent for sibling reordering.\n  "${page1.title}" parent: ${page1.parentId}\n  "${page2.title}" parent: ${page2.parentId}`);
+    }
+    const page = await client.movePageToPosition(pageId, "after", targetId);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved: true, operation: "after", page, target: { id: targetId, title: page2.title } }, opts);
+    } else {
+      output(`Moved "${page.title}" after "${page2.title}"`, opts);
+    }
+    return;
+  }
+
+  // Move to first position
+  if (first) {
+    const { moved, page } = await moveToFirst(client, pageId);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved, operation: "first", page }, opts);
+    } else if (moved) {
+      output(`Moved "${page.title}" to first position`, opts);
+    } else {
+      output(`"${page.title}" is already in first position`, opts);
+    }
+    return;
+  }
+
+  // Move to last position
+  if (last) {
+    const { moved, page } = await moveToLast(client, pageId);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved, operation: "last", page }, opts);
+    } else if (moved) {
+      output(`Moved "${page.title}" to last position`, opts);
+    } else {
+      output(`"${page.title}" is already in last position`, opts);
+    }
+    return;
+  }
+
+  // Move to specific position
+  if (positionNum) {
+    const pos = parseInt(positionNum, 10);
+    if (isNaN(pos) || pos < 1) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--position must be a positive integer.");
+    }
+    const { moved, page } = await moveToPosition(client, pageId, pos);
+    if (opts.json) {
+      output({ schemaVersion: "1", moved, operation: "position", position: pos, page }, opts);
+    } else if (moved) {
+      output(`Moved "${page.title}" to position ${pos}`, opts);
+    } else {
+      output(`"${page.title}" is already at position ${pos}`, opts);
+    }
+    return;
+  }
+}
+
+async function handleSort(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const client = await getClient(flags, opts);
+
+  // Get the parent page whose children to sort
+  const idFlag = getFlag(flags, "id");
+  const pageArg = flags._pageArg as string | undefined;
+  const parentId = await resolvePageId(idFlag || pageArg, opts);
+
+  if (!parentId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Parent page ID or file path is required.");
+  }
+
+  // Determine sort strategy
+  const alphabetical = hasFlag(flags, "alphabetical");
+  const natural = hasFlag(flags, "natural");
+  const byField = getFlag(flags, "by");
+  const reverse = hasFlag(flags, "reverse");
+  const dryRun = hasFlag(flags, "dry-run");
+
+  let strategy: SortStrategy;
+  if (alphabetical) {
+    strategy = { type: "alphabetical", reverse };
+  } else if (natural) {
+    strategy = { type: "natural", reverse };
+  } else if (byField === "created") {
+    strategy = { type: "created", reverse };
+  } else if (byField === "modified") {
+    strategy = { type: "modified", reverse };
+  } else {
+    // Default to alphabetical
+    strategy = { type: "alphabetical", reverse };
+  }
+
+  const result = await sortChildren(client, parentId, strategy, { dryRun });
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      parent: result.parent,
+      strategy: strategy.type,
+      reverse: reverse || false,
+      dryRun: dryRun || false,
+      moved: result.moved,
+      oldOrder: result.oldOrder.map((p, i) => ({ position: i + 1, id: p.id, title: p.title })),
+      newOrder: result.newOrder.map((p, i) => ({ position: i + 1, id: p.id, title: p.title })),
+    }, opts);
+    return;
+  }
+
+  if (result.moved === 0) {
+    output(`Children of "${result.parent.title}" are already in ${strategy.type} order.`, opts);
+    return;
+  }
+
+  if (dryRun) {
+    output(`Would reorder ${result.newOrder.length} children of "${result.parent.title}":\n`, opts);
+    output("Current order:              New order:", opts);
+    for (let i = 0; i < result.oldOrder.length; i++) {
+      const old = result.oldOrder[i];
+      const newP = result.newOrder[i];
+      const changed = old.id !== newP.id ? " *" : "";
+      output(`  ${(i + 1).toString().padStart(2)}. ${old.title.padEnd(20)} →  ${(i + 1).toString().padStart(2)}. ${newP.title}${changed}`, opts);
+    }
+    output(`\nRun without --dry-run to apply changes.`, opts);
+  } else {
+    output(`Sorted ${result.newOrder.length} children of "${result.parent.title}" ${strategy.type}${reverse ? " (reversed)" : ""}:`, opts);
+    for (let i = 0; i < result.newOrder.length; i++) {
+      output(`  ${(i + 1).toString().padStart(2)}. ${result.newOrder[i].title}`, opts);
+    }
+  }
+}
+
+/**
+ * Resolve a page reference to an ID.
+ * Supports: page ID, file path (reads frontmatter), or undefined.
+ */
+async function resolvePageId(ref: string | undefined, opts: OutputOptions): Promise<string | undefined> {
+  if (!ref) return undefined;
+
+  // If it looks like a file path (contains / or ends with .md)
+  if (ref.includes("/") || ref.endsWith(".md")) {
+    try {
+      const content = await readTextFile(ref);
+      const { frontmatter } = parseFrontmatter(content);
+      if (frontmatter?.id) {
+        return frontmatter.id;
+      }
+      fail(opts, 1, ERROR_CODES.USAGE, `File "${ref}" is not tracked (no atlcli.id in frontmatter).\nHint: Run 'atlcli docs add ${ref}' first.`);
+    } catch (err) {
+      if ((err as any).code === "ENOENT") {
+        fail(opts, 1, ERROR_CODES.IO, `File not found: ${ref}`);
+      }
+      throw err;
+    }
+  }
+
+  // Otherwise treat as page ID
+  return ref;
 }
 
 async function handleCopy(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
@@ -1284,6 +1505,14 @@ Commands:
   create --space <key> --title <title> --body <file>
   update --id <id> --body <file> [--title <title>]
   move --id <id> --parent <parent-id>  Move page to new parent
+  move <file> --before <target>        Move page before sibling
+  move <file> --after <target>         Move page after sibling
+  move <file> --first                  Move page to first position
+  move <file> --last                   Move page to last position
+  move <file> --position <n>           Move page to position (1-indexed)
+  sort <file> --alphabetical           Sort children A-Z
+  sort <file> --natural                Sort children (numeric-aware)
+  sort <file> --by <created|modified>  Sort by date
   copy --id <id> [--space <key>] [--title <t>] [--parent <p>]  Copy page
   children --id <id> [--limit <n>]     List child pages
   delete --id <id> --confirm           Delete a page
@@ -1300,10 +1529,20 @@ Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --dry-run          Preview bulk operations without executing
+  --reverse          Reverse sort order (for sort command)
+
+Move/Sort targets can be file paths (./docs/page.md) or page IDs.
 
 Examples:
   atlcli page list --label architecture
   atlcli page move --id 12345 --parent 67890
+  atlcli page move ./docs/setup.md --before ./docs/intro.md
+  atlcli page move ./docs/appendix.md --last
+  atlcli page move --id 12345 --position 3
+  atlcli page sort ./docs/api.md --alphabetical
+  atlcli page sort ./docs/chapters.md --natural
+  atlcli page sort ./docs/changelog.md --by created --reverse
+  atlcli page sort --id 12345 --alphabetical --dry-run
   atlcli page copy --id 12345 --title "Copy of Page"
   atlcli page children --id 12345
   atlcli page delete --id 12345 --confirm
