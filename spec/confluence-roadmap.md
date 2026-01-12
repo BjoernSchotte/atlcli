@@ -36,18 +36,74 @@ Sync images and file attachments with pages.
 
 ## 3. Page Templates
 
-Create pages from predefined templates.
+**Status**: COMPLETE ✅
 
-```bash
-atlcli page create --template meeting-notes --title "2024-01-15 Standup"
-atlcli template list
-atlcli template get <name>
+Create pages from predefined templates with a powerful variable system.
+
+**Implemented Features:**
+- `atlcli template list [--source local|global|all]` - List available templates
+- `atlcli template get --name <name>` - View template details
+- `atlcli template create --name <name> [--from-file <file>]` - Create new template
+- `atlcli template validate --name <name>` - Validate template syntax
+- `atlcli template preview --name <name> [--var key=value]` - Preview rendered template
+- `atlcli template delete --name <name> --confirm` - Delete a template
+- `atlcli page create --template <name> --title <title> [--var key=value]` - Create page from template
+- `atlcli docs add <file> --template <name>` - Add file with template
+
+**Template Syntax:**
+- Handlebars-style variables: `{{variable}}`, `{{user.name}}`
+- Modifier chains: `{{name | upper | trim}}`, `{{date | date:'MMMM D, YYYY'}}`
+- Conditionals: `{{#if condition}}...{{else}}...{{/if}}`, `{{#unless hidden}}...{{/if}}`
+- Loops: `{{#each items}}{{this}}{{/each}}` with `@index`, `@first`, `@last`, etc.
+
+**17 Built-in Variables:**
+- Date/time: `{{NOW}}`, `{{TODAY}}`, `{{YEAR}}`, `{{MONTH}}`, `{{DAY}}`, `{{TIME}}`, `{{WEEKDAY}}`
+- User: `{{USER.displayName}}`, `{{USER.email}}`, `{{USER.accountId}}`
+- Context: `{{SPACE.key}}`, `{{SPACE.name}}`, `{{PARENT.id}}`, `{{PARENT.title}}`, `{{TITLE}}`
+- Utility: `{{UUID}}`, `{{RANDOM:N}}`, `{{ENV.VAR_NAME}}`
+
+**50+ Modifiers:**
+- Date: `date`, `relative`, `add`, `subtract`, `startOf`, `endOf`
+- String: `upper`, `lower`, `capitalize`, `titleCase`, `slug`, `camelCase`, `truncate`, `trim`, `pad`, `replace`, `escape`, `urlEncode`
+- Number: `number`, `currency`, `percent`, `round`, `floor`, `ceil`, `abs`, `ordinal`, `bytes`
+- Array: `join`, `first`, `last`, `sort`, `sortBy`, `unique`, `compact`, `slice`, `pluck`, `where`
+- Conditional: `or`, `and`, `not`, `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between`, `in`, `empty`, `present`
+
+**Template Storage:**
+- Local templates: `.atlcli/templates/` in project
+- Global templates: `~/.config/atlcli/templates/`
+- YAML frontmatter for metadata with variable definitions
+
+**Example Template:**
+```markdown
+---
+template:
+  name: meeting-notes
+  description: Weekly meeting notes template
+  variables:
+    - name: meeting_date
+      prompt: "Meeting date"
+      type: date
+      default: "{{TODAY}}"
+    - name: attendees
+      prompt: "Attendees"
+      type: list
+      required: true
+  target:
+    labels: ["meeting-notes"]
+---
+# {{TITLE}}
+
+**Date:** {{meeting_date | date:'MMMM D, YYYY'}}
+**Attendees:**
+{{#each attendees}}
+- {{this}}
+{{/each}}
+
+## Notes
+
+*Created by {{USER.displayName}} on {{NOW | date:'YYYY-MM-DD HH:mm'}}*
 ```
-
-**Features:**
-- Built-in templates (meeting notes, decision log, runbook)
-- Custom templates from local files or Confluence blueprints
-- Variable substitution (`{{date}}`, `{{author}}`)
 
 ---
 
@@ -345,4 +401,5 @@ atlcli page label remove draft --cql "space=DEV" --confirm
 9. ~~**Page Tree Management** - Move, copy, children~~ ✅ COMPLETE
 10. ~~**Bulk Operations** - Delete, archive, label via CQL~~ ✅ COMPLETE
 11. ~~**Link Checker & Pre-push Validation** - Content validation~~ ✅ COMPLETE
-12. **Others** - As needed
+12. ~~**Page Templates** - Handlebars-style templates with variables~~ ✅ COMPLETE
+13. **Others** - As needed

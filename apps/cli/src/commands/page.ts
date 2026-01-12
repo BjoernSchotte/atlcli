@@ -19,7 +19,12 @@ import {
   commentBodyToText,
   FooterComment,
   InlineComment,
+  getTemplate,
+  renderTemplate,
+  createBuiltins,
+  findAtlcliDir,
 } from "@atlcli/confluence";
+import type { TemplateContext } from "@atlcli/confluence";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
@@ -127,14 +132,112 @@ async function handleCreate(flags: Record<string, string | boolean>, opts: Outpu
   const space = getFlag(flags, "space");
   const title = getFlag(flags, "title");
   const bodyPath = getFlag(flags, "body");
+  const templateName = getFlag(flags, "template");
+  const dryRun = hasFlag(flags, "dry-run");
+  const parentId = getFlag(flags, "parent");
+
+  // Template mode
+  if (templateName) {
+    if (!title) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--title is required when using --template.");
+    }
+
+    const atlcliDir = await findAtlcliDir(process.cwd());
+    const template = getTemplate(templateName, atlcliDir ?? undefined);
+
+    if (!template) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template "${templateName}" not found.`);
+    }
+
+    const spaceKey = space ?? template.metadata.target?.space;
+    if (!spaceKey) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set in template target).");
+    }
+
+    // Parse --var flags
+    const variables = parseVarFlags(flags);
+
+    // Apply defaults
+    for (const v of template.metadata.variables ?? []) {
+      if (!(v.name in variables) && v.default !== undefined) {
+        variables[v.name] = v.default;
+      }
+    }
+
+    const builtins = createBuiltins({
+      title,
+      spaceKey,
+      parentId: parentId ?? template.metadata.target?.parent,
+    });
+
+    const context: TemplateContext = {
+      variables,
+      builtins,
+      spaceKey,
+      parentId: parentId ?? template.metadata.target?.parent,
+      title,
+    };
+
+    const rendered = renderTemplate(template, context);
+
+    if (dryRun) {
+      output({
+        schemaVersion: "1",
+        dryRun: true,
+        rendered,
+      }, opts);
+      return;
+    }
+
+    const client = await getClient(flags, opts);
+    const storage = markdownToStorage(rendered.markdown);
+    const page = await client.createPage({
+      spaceKey: rendered.spaceKey,
+      title: rendered.title,
+      storage,
+      parentId: rendered.parentId,
+    });
+
+    // Add labels if specified
+    if (rendered.labels && rendered.labels.length > 0) {
+      await client.addLabels(page.id, rendered.labels);
+    }
+
+    output({ schemaVersion: "1", page }, opts);
+    return;
+  }
+
+  // Body mode (original behavior)
   if (!space || !title || !bodyPath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required.");
   }
   const client = await getClient(flags, opts);
   const markdown = await readTextFile(bodyPath);
   const storage = markdownToStorage(markdown);
-  const page = await client.createPage({ spaceKey: space, title, storage });
+  const page = await client.createPage({ spaceKey: space, title, storage, parentId });
   output({ schemaVersion: "1", page }, opts);
+}
+
+function parseVarFlags(flags: Record<string, string | boolean>): Record<string, unknown> {
+  const vars: Record<string, unknown> = {};
+
+  // Check for --var key=value format
+  for (const [key, value] of Object.entries(flags)) {
+    if (key.startsWith("var.") && typeof value === "string") {
+      vars[key.slice(4)] = value;
+    }
+  }
+
+  // Also handle --var key=value as a single flag
+  const varFlag = flags["var"];
+  if (typeof varFlag === "string") {
+    const eqIdx = varFlag.indexOf("=");
+    if (eqIdx > 0) {
+      vars[varFlag.slice(0, eqIdx)] = varFlag.slice(eqIdx + 1);
+    }
+  }
+
+  return vars;
 }
 
 async function handleUpdate(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {

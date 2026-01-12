@@ -92,7 +92,12 @@ import {
   validateDirectory,
   formatValidationReport,
   ValidationResult,
+  // Templates
+  getTemplate,
+  renderTemplate,
+  createBuiltins,
 } from "@atlcli/confluence";
+import type { TemplateContext } from "@atlcli/confluence";
 import type { Ignore } from "ignore";
 import { handleSync, syncHelp } from "./sync.js";
 
@@ -773,6 +778,8 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
  */
 async function handleAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const filePath = args[0];
+  const templateName = getFlag(flags, "template");
+
   if (!filePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "File path is required.");
   }
@@ -789,7 +796,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
 
   // Read file content
   const content = await readTextFile(filePath);
-  const { frontmatter: existingFrontmatter, content: markdownContent } = parseFrontmatter(content);
+  const { frontmatter: existingFrontmatter, content: rawMarkdownContent } = parseFrontmatter(content);
 
   // Check if already tracked
   if (existingFrontmatter?.id) {
@@ -799,7 +806,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   // Get title: --title flag > H1 heading > filename
   let title = getFlag(flags, "title");
   if (!title) {
-    title = extractTitleFromMarkdown(markdownContent) ?? undefined;
+    title = extractTitleFromMarkdown(rawMarkdownContent) ?? undefined;
   }
   if (!title) {
     title = titleFromFilename(filePath);
@@ -811,6 +818,45 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   // Get space (from flag or config)
   const space = getFlag(flags, "space") || dirConfig.space;
 
+  // Apply template if specified
+  let markdownContent = rawMarkdownContent;
+  let labels: string[] | undefined;
+
+  if (templateName) {
+    const template = getTemplate(templateName, atlcliDir);
+    if (!template) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template "${templateName}" not found.`);
+    }
+
+    // Parse --var flags
+    const variables = parseVarFlags(flags);
+
+    // Apply defaults
+    for (const v of template.metadata.variables ?? []) {
+      if (!(v.name in variables) && v.default !== undefined) {
+        variables[v.name] = v.default;
+      }
+    }
+
+    const builtins = createBuiltins({
+      title,
+      spaceKey: space,
+      parentId: parentId ?? template.metadata.target?.parent,
+    });
+
+    const context: TemplateContext = {
+      variables,
+      builtins,
+      spaceKey: space,
+      parentId: parentId ?? template.metadata.target?.parent,
+      title,
+    };
+
+    const rendered = renderTemplate(template, context);
+    markdownContent = rendered.markdown;
+    labels = rendered.labels;
+  }
+
   // Convert to storage format (strip frontmatter if any)
   const storage = markdownToStorage(markdownContent);
 
@@ -821,6 +867,11 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
     storage,
     parentId: parentId || dirConfig.settings?.defaultParentId || undefined,
   });
+
+  // Add labels if template specified them
+  if (labels && labels.length > 0) {
+    await client.addLabels(page.id, labels);
+  }
 
   // Add frontmatter to file
   const frontmatter: AtlcliFrontmatter = {
@@ -1280,6 +1331,28 @@ async function collectDirs(dir: string): Promise<string[]> {
   }
 
   return results;
+}
+
+function parseVarFlags(flags: Record<string, string | boolean>): Record<string, unknown> {
+  const vars: Record<string, unknown> = {};
+
+  // Check for --var key=value format
+  for (const [key, value] of Object.entries(flags)) {
+    if (key.startsWith("var.") && typeof value === "string") {
+      vars[key.slice(4)] = value;
+    }
+  }
+
+  // Also handle --var key=value as a single flag
+  const varFlag = flags["var"];
+  if (typeof varFlag === "string") {
+    const eqIdx = varFlag.indexOf("=");
+    if (eqIdx > 0) {
+      vars[varFlag.slice(0, eqIdx)] = varFlag.slice(eqIdx + 1);
+    }
+  }
+
+  return vars;
 }
 
 function titleFromFilename(path: string): string {
