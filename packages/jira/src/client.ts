@@ -11,6 +11,7 @@ import type {
   JiraUser,
   JiraSprint,
   JiraEpic,
+  JiraField,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -18,7 +19,7 @@ import type {
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -301,6 +302,33 @@ export class JiraClient {
       avatarUrls: data.avatarUrls,
       simplified: data.simplified,
     };
+  }
+
+  // ============ Field Operations ============
+
+  /**
+   * Get all fields in the Jira instance.
+   * Useful for detecting custom fields like story points.
+   *
+   * GET /rest/api/3/field
+   */
+  async getFields(): Promise<JiraField[]> {
+    return this.request<JiraField[]>("/field");
+  }
+
+  /**
+   * Detect the story points field by searching field names.
+   * Returns the field ID (e.g., "customfield_10016") or null if not found.
+   */
+  async detectStoryPointsField(): Promise<string | null> {
+    const fields = await this.getFields();
+    const storyPointsField = fields.find(
+      (f) =>
+        f.name.toLowerCase().includes("story point") ||
+        f.name.toLowerCase() === "points" ||
+        f.name.toLowerCase() === "estimation"
+    );
+    return storyPointsField?.id || null;
   }
 
   // ============ Issue Operations ============

@@ -394,6 +394,77 @@ export interface BulkOperationResult {
   status: string;
 }
 
+// ============ Field Types ============
+
+/** Jira field metadata */
+export interface JiraField {
+  id: string;
+  key?: string;
+  name: string;
+  custom: boolean;
+  orderable?: boolean;
+  navigable?: boolean;
+  searchable?: boolean;
+  clauseNames?: string[];
+  schema?: {
+    type: string;
+    system?: string;
+    custom?: string;
+    customId?: number;
+  };
+}
+
+// ============ Analytics Types ============
+
+/** Sprint metrics for analytics */
+export interface SprintMetrics {
+  sprintId: number;
+  sprintName: string;
+  state: string;
+  startDate?: string;
+  endDate?: string;
+  completeDate?: string;
+
+  // Points
+  committedPoints: number;
+  completedPoints: number;
+
+  // Issues
+  totalIssues: number;
+  completedIssues: number;
+  incompleteIssues: number;
+
+  // Scope change
+  addedDuringSprint: number;
+  removedDuringSprint: number;
+  scopeChangePercent: number;
+
+  // Say-do ratio (percentage)
+  sayDoRatio: number;
+}
+
+/** Burndown data point */
+export interface BurndownDataPoint {
+  date: string;
+  remaining: number;
+  ideal: number;
+  completed: number;
+}
+
+/** Velocity trend data */
+export interface VelocityTrend {
+  boardId: number;
+  boardName: string;
+  sprints: Array<{
+    id: number;
+    name: string;
+    velocity: number;
+    completedIssues: number;
+  }>;
+  averageVelocity: number;
+  trend: number; // percentage change
+}
+
 // ============ Error Types ============
 
 /** Jira API error response */

@@ -198,16 +198,16 @@ Epic (Level 1)
 
 ## 7. Sprint Analytics (Priority: Medium)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Calculate velocity, burndown, and sprint health metrics.
 
 **Features:**
-- `jira analyze velocity --board <id> [--sprints <n>]` - Velocity trend
-- `jira analyze burndown --sprint <id>` - Burndown data
-- `jira analyze scope-change --sprint <id>` - Scope stability
-- `jira analyze predictability --board <id>` - Say-do ratio
-- `jira sprint report <id>` - Full sprint report
+- `jira analyze velocity --board <id> [--sprints <n>] [--points-field <field>]` - Velocity trend ✅
+- `jira analyze burndown --sprint <id> [--points-field <field>]` - Burndown data ✅
+- `jira analyze scope-change --sprint <id> [--points-field <field>]` - Scope stability ✅
+- `jira analyze predictability --board <id> [--sprints <n>] [--points-field <field>]` - Say-do ratio ✅
+- `jira sprint report <id> [--points-field <field>]` - Full sprint report ✅
 
 **Metrics:**
 | Metric | Calculation |
@@ -217,11 +217,14 @@ Calculate velocity, burndown, and sprint health metrics.
 | Say-Do Ratio | Completed / Committed × 100 |
 | Scope Stability | 1 - (Added + Removed) / Committed |
 
-**Note:** No official API for velocity/burndown. Must calculate from issue data and changelog.
+**Implementation Notes:**
+- Story points field auto-detected from field metadata (or specify with `--points-field`)
+- Burndown requires fetching changelog for each issue (can be slow for large sprints)
+- Scope change analysis parses Sprint field changes in changelog
 
 **Package Files:**
 - `packages/jira/src/analysis.ts` - Metrics calculation
-- `apps/cli/src/commands/jira/analyze.ts` - CLI commands
+- `apps/cli/src/commands/jira.ts` - CLI commands (under `jira analyze`)
 
 ---
 
@@ -325,7 +328,7 @@ Optional integration for advanced time tracking.
 | 4 | Board & Sprint | Medium | Issues | ✅ COMPLETE |
 | 5 | Time Tracking | Small | Issues | ✅ COMPLETE |
 | 6 | Epic Management | Small | Issues, Agile | ✅ COMPLETE |
-| 7 | Sprint Analytics | Large | Sprints | Not Started |
+| 7 | Sprint Analytics | Large | Sprints | ✅ COMPLETE |
 | 8 | Bulk Operations | Medium | Issues, JQL | Not Started |
 | 9 | Import/Export | Medium | Issues, JQL | Not Started |
 | 10 | Saved Filters | Small | JQL | Not Started |

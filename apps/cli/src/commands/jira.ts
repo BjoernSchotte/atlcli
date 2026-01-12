@@ -16,6 +16,7 @@ import {
   JiraWorklog,
   JiraEpic,
   TimerState,
+  SprintMetrics,
   parseTimeToSeconds,
   secondsToJiraFormat,
   secondsToHuman,
@@ -29,6 +30,11 @@ import {
   cancelTimer,
   loadTimer,
   getElapsedSeconds,
+  calculateSprintMetrics,
+  calculateVelocityTrend,
+  calculateBurndown,
+  getStoryPoints,
+  generateProgressBar as generateAnalyticsProgressBar,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -55,6 +61,9 @@ export async function handleJira(
       return;
     case "epic":
       await handleEpic(rest, flags, opts);
+      return;
+    case "analyze":
+      await handleAnalyze(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -668,6 +677,9 @@ async function handleSprint(
     case "remove":
       await handleSprintRemove(args.slice(1), flags, opts);
       return;
+    case "report":
+      await handleSprintReport(args.slice(1), flags, opts);
+      return;
     default:
       output(sprintHelp(), opts);
       return;
@@ -856,6 +868,96 @@ async function handleSprintRemove(
   output({ schemaVersion: "1", removed: { issues } }, opts);
 }
 
+async function handleSprintReport(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const sprintId = args[0] || getFlag(flags, "id");
+  if (!sprintId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Sprint ID is required.");
+  }
+
+  const pointsFieldOverride = getFlag(flags, "points-field");
+  const client = await getClient(flags, opts);
+
+  // Detect or use specified story points field
+  let pointsField = pointsFieldOverride;
+  if (!pointsField) {
+    pointsField = await client.detectStoryPointsField();
+    if (!pointsField) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "Could not detect story points field. Use --points-field <field_id> to specify it."
+      );
+    }
+  }
+
+  // Get sprint info
+  const sprint = await client.getSprint(Number(sprintId));
+
+  // Get sprint issues
+  const issuesResult = await client.getSprintIssues(Number(sprintId), {
+    maxResults: 200,
+    fields: ["status", "summary", pointsField],
+  });
+
+  // Fetch changelog for scope change analysis
+  const issuesWithChangelog = await Promise.all(
+    issuesResult.issues.map((issue) =>
+      client.getIssue(issue.key, { expand: "changelog" })
+    )
+  );
+
+  // Calculate full metrics
+  const metrics = calculateSprintMetrics(
+    sprint,
+    issuesResult.issues,
+    pointsField,
+    issuesWithChangelog
+  );
+
+  // Format dates
+  const dateRange =
+    metrics.startDate && metrics.endDate
+      ? `${new Date(metrics.startDate).toLocaleDateString()} - ${new Date(metrics.endDate).toLocaleDateString()}`
+      : "N/A";
+
+  output(
+    {
+      schemaVersion: "1",
+      sprint: {
+        id: metrics.sprintId,
+        name: metrics.sprintName,
+        state: metrics.state,
+        dates: dateRange,
+      },
+      pointsField,
+      velocity: metrics.completedPoints,
+      sayDoRatio: metrics.sayDoRatio,
+      scopeChange: metrics.scopeChangePercent,
+      issues: {
+        total: metrics.totalIssues,
+        completed: metrics.completedIssues,
+        incomplete: metrics.incompleteIssues,
+        added: metrics.addedDuringSprint,
+        removed: metrics.removedDuringSprint,
+      },
+      progress: {
+        committed: metrics.committedPoints,
+        completed: metrics.completedPoints,
+        percent: metrics.committedPoints > 0
+          ? Math.round((metrics.completedPoints / metrics.committedPoints) * 100)
+          : 0,
+        bar: generateAnalyticsProgressBar(metrics.completedPoints, metrics.committedPoints),
+      },
+    },
+    opts
+  );
+}
+
 function sprintHelp(): string {
   return `atlcli jira sprint <command>
 
@@ -869,10 +971,15 @@ Commands:
   issues --id <sprintId> [--limit <n>] [--jql <query>]
   add <issue>... --sprint <id>           Add issues to sprint
   remove <issue>...                      Move issues to backlog
+  report <sprintId> [--points-field <id>]   Sprint metrics report
 
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
+
+Examples:
+  jira sprint list --board 123
+  jira sprint report 456 --json
 `;
 }
 
@@ -1702,6 +1809,424 @@ Examples:
 `;
 }
 
+// ============ Analyze (Sprint Analytics) ============
+
+async function handleAnalyze(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub] = args;
+  switch (sub) {
+    case "velocity":
+      await handleAnalyzeVelocity(flags, opts);
+      return;
+    case "burndown":
+      await handleAnalyzeBurndown(flags, opts);
+      return;
+    case "scope-change":
+      await handleAnalyzeScopeChange(flags, opts);
+      return;
+    case "predictability":
+      await handleAnalyzePredictability(flags, opts);
+      return;
+    default:
+      output(analyzeHelp(), opts);
+      return;
+  }
+}
+
+async function handleAnalyzeVelocity(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const boardId = getFlag(flags, "board");
+  if (!boardId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+  }
+
+  const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
+  const pointsFieldOverride = getFlag(flags, "points-field");
+
+  const client = await getClient(flags, opts);
+
+  // Get board info
+  const board = await client.getBoard(Number(boardId));
+
+  // Detect or use specified story points field
+  let pointsField = pointsFieldOverride;
+  if (!pointsField) {
+    pointsField = await client.detectStoryPointsField();
+    if (!pointsField) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "Could not detect story points field. Use --points-field <field_id> to specify it."
+      );
+    }
+  }
+
+  // Get closed sprints
+  const sprintsResult = await client.listSprints(Number(boardId), {
+    state: "closed",
+    maxResults: sprintCount,
+  });
+
+  if (sprintsResult.values.length === 0) {
+    output(
+      {
+        schemaVersion: "1",
+        board: { id: board.id, name: board.name },
+        message: "No closed sprints found for this board.",
+        sprints: [],
+        averageVelocity: 0,
+        trend: 0,
+      },
+      opts
+    );
+    return;
+  }
+
+  // Calculate metrics for each sprint
+  const sprintMetrics: SprintMetrics[] = [];
+
+  for (const sprint of sprintsResult.values) {
+    const issuesResult = await client.getSprintIssues(sprint.id, {
+      maxResults: 200,
+      fields: ["status", "summary", pointsField],
+    });
+
+    const metrics = calculateSprintMetrics(
+      sprint as JiraSprint,
+      issuesResult.issues,
+      pointsField
+    );
+    sprintMetrics.push(metrics);
+  }
+
+  // Calculate velocity trend
+  const trend = calculateVelocityTrend(
+    Number(boardId),
+    board.name,
+    sprintMetrics.reverse() // Chronological order (oldest first)
+  );
+
+  output(
+    {
+      schemaVersion: "1",
+      board: { id: board.id, name: board.name },
+      pointsField,
+      sprints: trend.sprints.map((s) => ({
+        id: s.id,
+        name: s.name,
+        velocity: s.velocity,
+        completedIssues: s.completedIssues,
+      })),
+      averageVelocity: trend.averageVelocity,
+      trend: trend.trend,
+      trendDescription:
+        trend.trend > 0
+          ? `+${trend.trend}% (improving)`
+          : trend.trend < 0
+            ? `${trend.trend}% (declining)`
+            : "stable",
+    },
+    opts
+  );
+}
+
+async function handleAnalyzeBurndown(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const sprintId = getFlag(flags, "sprint");
+  if (!sprintId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--sprint is required.");
+  }
+
+  const pointsFieldOverride = getFlag(flags, "points-field");
+  const client = await getClient(flags, opts);
+
+  // Detect or use specified story points field
+  let pointsField = pointsFieldOverride;
+  if (!pointsField) {
+    pointsField = await client.detectStoryPointsField();
+    if (!pointsField) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "Could not detect story points field. Use --points-field <field_id> to specify it."
+      );
+    }
+  }
+
+  // Get sprint info
+  const sprint = await client.getSprint(Number(sprintId));
+
+  if (!sprint.startDate || !sprint.endDate) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      "Sprint must have start and end dates for burndown calculation."
+    );
+  }
+
+  // Get sprint issues with changelog for accurate burndown
+  const issuesResult = await client.getSprintIssues(Number(sprintId), {
+    maxResults: 200,
+    fields: ["status", "summary", "resolutiondate", pointsField],
+  });
+
+  // Fetch changelog for each issue (needed for accurate burndown)
+  const issuesWithChangelog = await Promise.all(
+    issuesResult.issues.map((issue) =>
+      client.getIssue(issue.key, { expand: "changelog" })
+    )
+  );
+
+  // Calculate burndown
+  const burndown = calculateBurndown(sprint, issuesWithChangelog, pointsField);
+
+  // Calculate totals
+  const totalPoints = issuesWithChangelog.reduce(
+    (sum, issue) => sum + getStoryPoints(issue, pointsField),
+    0
+  );
+
+  output(
+    {
+      schemaVersion: "1",
+      sprint: {
+        id: sprint.id,
+        name: sprint.name,
+        state: sprint.state,
+        startDate: sprint.startDate,
+        endDate: sprint.endDate,
+      },
+      pointsField,
+      totalPoints,
+      burndown,
+    },
+    opts
+  );
+}
+
+async function handleAnalyzeScopeChange(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const sprintId = getFlag(flags, "sprint");
+  if (!sprintId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--sprint is required.");
+  }
+
+  const pointsFieldOverride = getFlag(flags, "points-field");
+  const client = await getClient(flags, opts);
+
+  // Detect or use specified story points field
+  let pointsField = pointsFieldOverride;
+  if (!pointsField) {
+    pointsField = await client.detectStoryPointsField();
+    if (!pointsField) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "Could not detect story points field. Use --points-field <field_id> to specify it."
+      );
+    }
+  }
+
+  // Get sprint info
+  const sprint = await client.getSprint(Number(sprintId));
+
+  // Get sprint issues
+  const issuesResult = await client.getSprintIssues(Number(sprintId), {
+    maxResults: 200,
+    fields: ["status", "summary", pointsField],
+  });
+
+  // Fetch changelog for scope change analysis
+  const issuesWithChangelog = await Promise.all(
+    issuesResult.issues.map((issue) =>
+      client.getIssue(issue.key, { expand: "changelog" })
+    )
+  );
+
+  // Calculate metrics including scope change
+  const metrics = calculateSprintMetrics(
+    sprint,
+    issuesResult.issues,
+    pointsField,
+    issuesWithChangelog
+  );
+
+  output(
+    {
+      schemaVersion: "1",
+      sprint: {
+        id: sprint.id,
+        name: sprint.name,
+        state: sprint.state,
+        startDate: sprint.startDate,
+        endDate: sprint.endDate,
+      },
+      pointsField,
+      scopeChange: {
+        committedPoints: metrics.committedPoints,
+        addedPoints: metrics.addedDuringSprint,
+        removedPoints: metrics.removedDuringSprint,
+        scopeChangePercent: metrics.scopeChangePercent,
+        stability: metrics.scopeChangePercent <= 10 ? "stable" : metrics.scopeChangePercent <= 25 ? "moderate" : "unstable",
+      },
+      issues: {
+        total: metrics.totalIssues,
+        completed: metrics.completedIssues,
+        incomplete: metrics.incompleteIssues,
+      },
+    },
+    opts
+  );
+}
+
+async function handleAnalyzePredictability(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const boardId = getFlag(flags, "board");
+  if (!boardId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+  }
+
+  const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
+  const pointsFieldOverride = getFlag(flags, "points-field");
+
+  const client = await getClient(flags, opts);
+
+  // Get board info
+  const board = await client.getBoard(Number(boardId));
+
+  // Detect or use specified story points field
+  let pointsField = pointsFieldOverride;
+  if (!pointsField) {
+    pointsField = await client.detectStoryPointsField();
+    if (!pointsField) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "Could not detect story points field. Use --points-field <field_id> to specify it."
+      );
+    }
+  }
+
+  // Get closed sprints
+  const sprintsResult = await client.listSprints(Number(boardId), {
+    state: "closed",
+    maxResults: sprintCount,
+  });
+
+  if (sprintsResult.values.length === 0) {
+    output(
+      {
+        schemaVersion: "1",
+        board: { id: board.id, name: board.name },
+        message: "No closed sprints found for this board.",
+        sprints: [],
+        averageSayDoRatio: 0,
+      },
+      opts
+    );
+    return;
+  }
+
+  // Calculate metrics for each sprint
+  const sprintMetrics: SprintMetrics[] = [];
+
+  for (const sprint of sprintsResult.values) {
+    const issuesResult = await client.getSprintIssues(sprint.id, {
+      maxResults: 200,
+      fields: ["status", "summary", pointsField],
+    });
+
+    const metrics = calculateSprintMetrics(
+      sprint as JiraSprint,
+      issuesResult.issues,
+      pointsField
+    );
+    sprintMetrics.push(metrics);
+  }
+
+  // Calculate average say-do ratio
+  const totalSayDo = sprintMetrics.reduce((sum, m) => sum + m.sayDoRatio, 0);
+  const averageSayDo = Math.round(totalSayDo / sprintMetrics.length);
+
+  output(
+    {
+      schemaVersion: "1",
+      board: { id: board.id, name: board.name },
+      pointsField,
+      sprints: sprintMetrics.reverse().map((m) => ({
+        id: m.sprintId,
+        name: m.sprintName,
+        committed: m.committedPoints,
+        completed: m.completedPoints,
+        sayDoRatio: m.sayDoRatio,
+        bar: generateAnalyticsProgressBar(m.completedPoints, m.committedPoints),
+      })),
+      averageSayDoRatio: averageSayDo,
+      predictability:
+        averageSayDo >= 80
+          ? "high"
+          : averageSayDo >= 60
+            ? "moderate"
+            : "low",
+    },
+    opts
+  );
+}
+
+function analyzeHelp(): string {
+  return `atlcli jira analyze <command>
+
+Commands:
+  velocity --board <id> [--sprints <n>] [--points-field <field>]
+      Calculate velocity trend across recent sprints
+
+  burndown --sprint <id> [--points-field <field>]
+      Generate burndown data for a sprint
+
+  scope-change --sprint <id> [--points-field <field>]
+      Analyze scope stability during a sprint
+
+  predictability --board <id> [--sprints <n>] [--points-field <field>]
+      Calculate say-do ratio (predictability) across sprints
+
+Options:
+  --profile <name>     Use a specific auth profile
+  --json               JSON output
+  --board <id>         Board ID for velocity/predictability
+  --sprint <id>        Sprint ID for burndown/scope-change
+  --sprints <n>        Number of sprints to analyze (default: 5)
+  --points-field <id>  Story points field ID (auto-detected if not specified)
+
+Metrics:
+  Velocity       Sum of completed story points per sprint
+  Say-Do Ratio   Completed / Committed × 100 (predictability)
+  Scope Change   (Added + Removed) / Committed × 100 (stability)
+  Burndown       Daily remaining vs ideal work curve
+
+Examples:
+  jira analyze velocity --board 123 --sprints 5
+  jira analyze burndown --sprint 456
+  jira analyze scope-change --sprint 456
+  jira analyze predictability --board 123
+`;
+}
+
 // ============ Search (JQL) ============
 
 async function handleSearch(
@@ -1789,7 +2314,9 @@ Commands:
   issue       Issue operations (get, create, update, delete, transition, comment, link)
   board       Board operations (list, get, backlog, issues)
   sprint      Sprint operations (list, get, create, start, close, add, remove)
-  worklog     Time tracking (add, list, update, delete)
+  worklog     Time tracking (add, list, update, delete, timer)
+  epic        Epic operations (list, get, create, issues, add, remove, progress)
+  analyze     Sprint analytics (velocity, burndown, scope-change, predictability)
   search      Search with JQL
   me          Get current user info
 
@@ -1801,7 +2328,9 @@ Examples:
   atlcli jira project list
   atlcli jira issue create --project PROJ --type Task --summary "My task"
   atlcli jira worklog add PROJ-123 1h30m --comment "Feature work"
-  atlcli jira worklog add PROJ-123 1.5h --round 15m
+  atlcli jira worklog timer start PROJ-123
+  atlcli jira epic list --project PROJ
+  atlcli jira analyze velocity --board 123 --sprints 5
   atlcli jira board list --project PROJ
   atlcli jira sprint list --board 123
   atlcli jira search --project PROJ --assignee me
