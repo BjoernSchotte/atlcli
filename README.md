@@ -23,6 +23,7 @@ A blazingly fast, extensible CLI for Atlassian products. Currently supports Conf
 - **Plugin system** for extending with custom commands
 - **Page templates** with Handlebars-style variables and modifiers
 - **JSONL logging** for observability and enterprise audit
+- **Attachment sync** with smart change detection and conflict resolution
 
 ## Installation
 
@@ -502,6 +503,90 @@ my-docs/
 - Child pages go in: `{parent-slug}/` directory
 - Root pages (no parent in sync scope) go in the sync root
 - When a page moves in Confluence, the local file is moved to match
+
+## Attachments
+
+Attachments are synced automatically alongside pages. Each page's attachments are stored in a sibling folder.
+
+### Storage Layout
+
+```
+my-docs/
+├── architecture.md
+├── architecture.attachments/       # Attachments for architecture.md
+│   ├── diagram.png
+│   └── schema.pdf
+├── getting-started.md
+└── getting-started.attachments/    # Attachments for getting-started.md
+    └── screenshot.png
+```
+
+### Referencing Attachments
+
+Use standard markdown image/link syntax with relative paths:
+
+```markdown
+# My Page
+
+Here's an architecture diagram:
+![Architecture](./architecture.attachments/diagram.png)
+
+Download the [schema PDF](./architecture.attachments/schema.pdf).
+```
+
+Confluence wiki syntax is also supported:
+
+```markdown
+!diagram.png!                    # Image
+!diagram.png|alt text!           # Image with alt text
+!document.pdf!                   # Non-image becomes a link
+```
+
+### Smart Change Detection
+
+Attachments are only uploaded when their content changes. The sync system tracks file hashes to avoid redundant uploads:
+
+- On **pull**: Downloads only new or changed attachments
+- On **push**: Uploads only locally modified attachments
+- Unchanged files are skipped automatically
+
+### Conflict Resolution
+
+When the same attachment is modified both locally and in Confluence:
+
+```bash
+# Remote version is saved with -conflict suffix
+architecture.attachments/diagram.png           # Your local version (preserved)
+architecture.attachments/diagram-conflict.png  # Remote version (downloaded)
+```
+
+Resolve by keeping one version and deleting the other.
+
+### Deletion Mirroring
+
+Deletions are mirrored bidirectionally:
+
+- **Pull**: Attachments deleted in Confluence are deleted locally
+- **Push**: Attachments deleted locally (and removed from page references) are deleted in Confluence
+
+### Large File Warnings
+
+Files over 10MB trigger a warning but are still synced:
+
+```
+Warning: Large attachment video.mp4 (25.3MB)
+```
+
+### Continuous Sync
+
+The `docs sync` daemon watches attachment directories:
+
+```bash
+atlcli docs sync ./docs
+
+# Changes to ./docs/*.attachments/* trigger automatic push
+# Remote attachment changes are pulled on each poll cycle
+```
 
 ## Configuration
 
