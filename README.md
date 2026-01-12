@@ -22,6 +22,7 @@ A blazingly fast, extensible CLI for Atlassian products. Currently supports Conf
 - Clean filename handling with YAML frontmatter
 - **Plugin system** for extending with custom commands
 - **Page templates** with Handlebars-style variables and modifiers
+- **JSONL logging** for observability and enterprise audit
 
 ## Installation
 
@@ -136,6 +137,19 @@ atlcli plugin install <path>    # Install from local path
 atlcli plugin remove <name>     # Remove a plugin
 atlcli plugin enable <name>     # Enable a disabled plugin
 atlcli plugin disable <name>    # Disable a plugin
+```
+
+### Logging
+
+```bash
+atlcli log list                          # List recent log entries
+atlcli log list --since 1h               # Logs from the last hour
+atlcli log list --type api --limit 50    # Filter by type
+atlcli log list --level error            # Filter by level
+atlcli log tail                          # Show recent logs
+atlcli log tail -f                       # Follow new log entries
+atlcli log show <id>                     # Show full entry details
+atlcli log clear --before 7d --confirm   # Clear logs older than 7 days
 ```
 
 ## Bidirectional Sync
@@ -507,9 +521,153 @@ Global config is stored in `~/.atlcli/config.json`:
       "baseUrl": "https://personal.atlassian.net",
       "auth": { "type": "apiToken", "email": "me@example.com", "token": "..." }
     }
+  },
+  "logging": {
+    "level": "info",
+    "global": true,
+    "project": true
   }
 }
 ```
+
+## Logging
+
+atlcli includes comprehensive JSONL logging for observability and enterprise audit requirements.
+
+### Log Locations
+
+- **Global logs**: `~/.atlcli/logs/YYYY-MM-DD.jsonl`
+- **Project logs**: `.atlcli/logs/YYYY-MM-DD.jsonl` (when `.atlcli/` exists)
+
+### Log Entry Types
+
+| Type | Description |
+|------|-------------|
+| `cli.command` | CLI command invocations with args and flags |
+| `cli.result` | Command completion with exit code and duration |
+| `api.request` | Confluence API requests (method, URL, headers) |
+| `api.response` | API responses (status, body, duration) |
+| `sync.event` | Sync events (pull, push, conflict) |
+| `auth.change` | Authentication changes (login, logout, switch) |
+| `error` | Errors with stack traces and context |
+
+### Querying Logs
+
+```bash
+# List recent entries
+atlcli log list --limit 20
+
+# Filter by time range (relative or ISO dates)
+atlcli log list --since 1h
+atlcli log list --since "2025-01-01" --until "2025-01-31"
+
+# Filter by level
+atlcli log list --level error
+atlcli log list --level warn
+
+# Filter by type
+atlcli log list --type api              # All API logs
+atlcli log list --type cli.command      # Just command starts
+atlcli log list --type sync             # Sync events
+
+# Combine filters
+atlcli log list --type api --level error --since 24h
+
+# JSON output for scripting
+atlcli log list --json | jq '.entries[] | select(.data.status >= 400)'
+```
+
+### Following Logs
+
+```bash
+# Show recent logs and follow new entries
+atlcli log tail -f
+
+# Filter while following
+atlcli log tail -f --level error
+```
+
+### Viewing Full Entry Details
+
+```bash
+# Get entry ID from log list
+atlcli log list --limit 5
+
+# Show full details including all data fields
+atlcli log show abc123-uuid-here
+```
+
+### Clearing Old Logs
+
+```bash
+# Clear logs older than 30 days
+atlcli log clear --before 30d --confirm
+
+# Clear only global logs
+atlcli log clear --before 7d --global --confirm
+
+# Clear only project logs
+atlcli log clear --before 7d --project --confirm
+```
+
+### Disabling Logging
+
+```bash
+# Disable logging for a single command
+atlcli page list --space DEV --no-log
+
+# Disable logging globally (in config)
+# Set "level": "off" in ~/.atlcli/config.json
+```
+
+### Log Configuration
+
+Configure logging in `~/.atlcli/config.json`:
+
+```json
+{
+  "logging": {
+    "level": "info",    // off | error | warn | info | debug
+    "global": true,     // Write to ~/.atlcli/logs/
+    "project": true     // Write to .atlcli/logs/ (when present)
+  }
+}
+```
+
+### Sensitive Data Redaction
+
+Sensitive fields are automatically redacted in logs:
+- API tokens and passwords → `[REDACTED]`
+- Authorization headers → `Basic [REDACTED]` or `Bearer [REDACTED]`
+
+Fields like `email`, `title`, and `content` are **not** redacted (needed for audit).
+
+### Log Entry Format
+
+Each log entry is a JSON object on its own line:
+
+```json
+{
+  "id": "5bb8303b-08ce-4c9d-9a2e-657ca2ceaece",
+  "timestamp": "2025-01-12T12:12:20.722Z",
+  "level": "info",
+  "type": "api.request",
+  "pid": 12345,
+  "sessionId": "3ea06a39-52b2-4b18-a74b-8d0e6ee02ddf",
+  "data": {
+    "requestId": "ada26fed-45b8-42f1-881b-2034f6f9b6bd",
+    "method": "GET",
+    "url": "https://example.atlassian.net/wiki/rest/api/content/123",
+    "headers": {
+      "Authorization": "Basic [REDACTED]"
+    }
+  }
+}
+```
+
+- **id**: Unique entry identifier
+- **sessionId**: Correlates all logs from one CLI invocation
+- **requestId**: Correlates API request with its response
 
 ## Environment Variables
 
