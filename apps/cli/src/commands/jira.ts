@@ -14,6 +14,7 @@ import {
   JiraTransition,
   JiraSprint,
   JiraWorklog,
+  TimerState,
   parseTimeToSeconds,
   secondsToJiraFormat,
   secondsToHuman,
@@ -21,6 +22,12 @@ import {
   parseRoundingInterval,
   parseStartedDate,
   formatWorklogDate,
+  formatElapsed,
+  startTimer,
+  stopTimer,
+  cancelTimer,
+  loadTimer,
+  getElapsedSeconds,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -886,6 +893,9 @@ async function handleWorklog(
     case "delete":
       await handleWorklogDelete(flags, opts);
       return;
+    case "timer":
+      await handleWorklogTimer(rest, flags, opts);
+      return;
     default:
       output(worklogHelp(), opts);
       return;
@@ -1071,6 +1081,197 @@ function formatWorklog(worklog: JiraWorklog): Record<string, unknown> {
   };
 }
 
+// ============ Timer Operations ============
+
+async function handleWorklogTimer(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "start":
+      await handleTimerStart(rest, flags, opts);
+      return;
+    case "stop":
+      await handleTimerStop(flags, opts);
+      return;
+    case "status":
+      handleTimerStatus(opts);
+      return;
+    case "cancel":
+      handleTimerCancel(opts);
+      return;
+    default:
+      output(timerHelp(), opts);
+      return;
+  }
+}
+
+async function handleTimerStart(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const issueKey = args[0] || getFlag(flags, "issue");
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required. Usage: jira worklog timer start <issue>");
+  }
+
+  const profileName = getFlag(flags, "profile") || "default";
+  const comment = getFlag(flags, "comment");
+
+  try {
+    const timer = startTimer(issueKey, profileName, comment);
+    output(
+      {
+        schemaVersion: "1",
+        timer: {
+          issueKey: timer.issueKey,
+          startedAt: timer.startedAt,
+          profile: timer.profile,
+          comment: timer.comment,
+        },
+        message: `Timer started for ${issueKey}`,
+      },
+      opts
+    );
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function handleTimerStop(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const roundFlag = getFlag(flags, "round");
+  const commentOverride = getFlag(flags, "comment");
+
+  let result: { timer: TimerState; elapsedSeconds: number };
+  try {
+    result = stopTimer();
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+
+  let { timer, elapsedSeconds } = result;
+
+  // Apply rounding if specified
+  if (roundFlag) {
+    try {
+      const interval = parseRoundingInterval(roundFlag);
+      elapsedSeconds = roundTime(elapsedSeconds, interval);
+    } catch (e) {
+      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // Minimum 1 minute
+  if (elapsedSeconds < 60) {
+    elapsedSeconds = 60;
+  }
+
+  // Use comment from stop command or from timer start
+  const comment = commentOverride || timer.comment;
+
+  // Get client using the profile from when timer was started
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, timer.profile);
+  if (!profile) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      `Profile "${timer.profile}" not found. The timer was started with this profile.`
+    );
+  }
+  const client = new JiraClient(profile);
+
+  // Log the worklog
+  const worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
+    started: timer.startedAt.replace("Z", "+0000"),
+    comment,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      worklog: formatWorklog(worklog),
+      logged: secondsToHuman(elapsedSeconds),
+      elapsed: formatElapsed(elapsedSeconds),
+    },
+    opts
+  );
+}
+
+function handleTimerStatus(opts: OutputOptions): void {
+  const timer = loadTimer();
+  if (!timer) {
+    output({ schemaVersion: "1", running: false, message: "No timer is running" }, opts);
+    return;
+  }
+
+  const elapsed = getElapsedSeconds(timer);
+  output(
+    {
+      schemaVersion: "1",
+      running: true,
+      timer: {
+        issueKey: timer.issueKey,
+        startedAt: timer.startedAt,
+        profile: timer.profile,
+        comment: timer.comment,
+        elapsed: formatElapsed(elapsed),
+        elapsedSeconds: elapsed,
+      },
+    },
+    opts
+  );
+}
+
+function handleTimerCancel(opts: OutputOptions): void {
+  try {
+    const timer = cancelTimer();
+    const elapsed = getElapsedSeconds({ ...timer, startedAt: timer.startedAt });
+    output(
+      {
+        schemaVersion: "1",
+        cancelled: {
+          issueKey: timer.issueKey,
+          elapsed: formatElapsed(elapsed),
+        },
+        message: `Timer cancelled for ${timer.issueKey}`,
+      },
+      opts
+    );
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+}
+
+function timerHelp(): string {
+  return `atlcli jira worklog timer <command>
+
+Commands:
+  start <issue> [--comment <text>]   Start tracking time on an issue
+  stop [--round <interval>] [--comment <text>]   Stop timer and log worklog
+  status                             Show current timer status
+  cancel                             Cancel timer without logging
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --round <interval> Round time when stopping (15m, 30m, 1h)
+  --comment <text>   Comment for the worklog
+
+Examples:
+  jira worklog timer start PROJ-123 --comment "Working on feature"
+  jira worklog timer status
+  jira worklog timer stop --round 15m
+  jira worklog timer cancel
+`;
+}
+
 function worklogHelp(): string {
   return `atlcli jira worklog <command>
 
@@ -1079,6 +1280,12 @@ Commands:
   list --issue <key> [--limit <n>]
   update --issue <key> --id <worklogId> [--time <time>] [--comment <text>] [--started <date>]
   delete --issue <key> --id <worklogId> --confirm
+
+Timer mode (start/stop tracking):
+  timer start <issue> [--comment <text>]   Start tracking time
+  timer stop [--round <interval>]          Stop and log worklog
+  timer status                             Show running timer
+  timer cancel                             Cancel without logging
 
 Time formats:
   1h30m, 1h 30m      Hours and minutes
@@ -1108,6 +1315,11 @@ Examples:
   jira worklog add PROJ-123 1.5h --started 09:00
   jira worklog add PROJ-123 2h --round 15m
   jira worklog list --issue PROJ-123
+
+  # Timer mode
+  jira worklog timer start PROJ-123 --comment "Working on feature"
+  jira worklog timer status
+  jira worklog timer stop --round 15m
 `;
 }
 

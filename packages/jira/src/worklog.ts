@@ -7,7 +7,13 @@
  * - Minutes: 90m, 45m
  * - HH:MM format: 1:30, 2:45
  * - Verbose: "1 hour 30 minutes"
+ *
+ * Also provides timer mode for start/stop tracking.
  */
+
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 
 /** Jira time configuration (can be customized per instance) */
 export interface TimeConfig {
@@ -295,4 +301,147 @@ export function parseStartedDate(input: string): Date {
     `Invalid date format: "${input}". ` +
       `Supported: 2026-01-12, 14:30, today, yesterday, ISO 8601`
   );
+}
+
+// ============ Timer Mode ============
+
+/** Timer state stored in ~/.atlcli/timer.json */
+export interface TimerState {
+  /** Jira issue key (e.g., "PROJ-123") */
+  issueKey: string;
+  /** ISO timestamp when timer was started */
+  startedAt: string;
+  /** Profile name used for this timer */
+  profile: string;
+  /** Optional comment for the worklog */
+  comment?: string;
+}
+
+/** Get path to the timer state file */
+export function getTimerPath(): string {
+  return join(homedir(), ".atlcli", "timer.json");
+}
+
+/** Get path to the atlcli config directory */
+function getAtlcliDir(): string {
+  return join(homedir(), ".atlcli");
+}
+
+/**
+ * Load the current timer state, if any.
+ * Returns null if no timer is running.
+ */
+export function loadTimer(): TimerState | null {
+  const path = getTimerPath();
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const content = readFileSync(path, "utf-8");
+    return JSON.parse(content) as TimerState;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save a new timer state.
+ * Overwrites any existing timer.
+ */
+export function saveTimer(state: TimerState): void {
+  const dir = getAtlcliDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(getTimerPath(), JSON.stringify(state, null, 2));
+}
+
+/**
+ * Clear (delete) the timer state file.
+ */
+export function clearTimer(): void {
+  const path = getTimerPath();
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+}
+
+/**
+ * Get elapsed seconds since timer started.
+ * Returns 0 if no timer is running.
+ */
+export function getElapsedSeconds(timer: TimerState | null): number {
+  if (!timer) return 0;
+  const started = new Date(timer.startedAt);
+  const now = new Date();
+  return Math.floor((now.getTime() - started.getTime()) / 1000);
+}
+
+/**
+ * Start a new timer for an issue.
+ * Throws if a timer is already running.
+ */
+export function startTimer(
+  issueKey: string,
+  profile: string,
+  comment?: string
+): TimerState {
+  const existing = loadTimer();
+  if (existing) {
+    throw new Error(
+      `Timer already running for ${existing.issueKey} (started ${formatElapsed(getElapsedSeconds(existing))} ago). ` +
+        `Use 'jira worklog timer stop' or 'jira worklog timer cancel' first.`
+    );
+  }
+
+  const state: TimerState = {
+    issueKey,
+    startedAt: new Date().toISOString(),
+    profile,
+    comment,
+  };
+  saveTimer(state);
+  return state;
+}
+
+/**
+ * Stop the timer and return the elapsed time.
+ * Throws if no timer is running.
+ */
+export function stopTimer(): { timer: TimerState; elapsedSeconds: number } {
+  const timer = loadTimer();
+  if (!timer) {
+    throw new Error("No timer is running. Use 'jira worklog timer start <issue>' to start one.");
+  }
+  const elapsedSeconds = getElapsedSeconds(timer);
+  clearTimer();
+  return { timer, elapsedSeconds };
+}
+
+/**
+ * Cancel the timer without logging time.
+ * Throws if no timer is running.
+ */
+export function cancelTimer(): TimerState {
+  const timer = loadTimer();
+  if (!timer) {
+    throw new Error("No timer is running.");
+  }
+  clearTimer();
+  return timer;
+}
+
+/**
+ * Format elapsed time for display (e.g., "1h 23m" or "45m").
+ */
+export function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
 }
