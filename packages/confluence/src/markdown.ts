@@ -531,6 +531,27 @@ ${md.render(trimmedContent).trim()}
     return `<!--INLINE_CODE_${idx}-->`;
   });
 
+  // Handle Confluence wiki attachment syntax: !filename.ext! or !filename.ext|alt text!
+  // This allows users to use familiar Confluence syntax in markdown
+  processed = processed.replace(
+    /!([^|!\s]+\.\w+)(?:\|([^!]*))?!/g,
+    (_, filename, alt) => {
+      const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+      // Determine if it's an image or other attachment
+      if (isImageFile(filename)) {
+        let html = `<ac:image><ri:attachment ri:filename="${escapeHtml(filename)}"`;
+        if (alt) html += ` ac:alt="${escapeHtml(alt.trim())}"`;
+        html += `/></ac:image>`;
+        macros.push({ placeholder, html });
+      } else {
+        const linkText = alt?.trim() || filename;
+        const html = `<ac:link><ri:attachment ri:filename="${escapeHtml(filename)}"/><ac:plain-text-link-body><![CDATA[${linkText}]]></ac:plain-text-link-body></ac:link>`;
+        macros.push({ placeholder, html });
+      }
+      return placeholder;
+    }
+  );
+
   // Handle image attachments with size syntax: ![alt](./page.attachments/img.png){width=600}
   processed = processed.replace(
     /!\[([^\]]*)\]\(\.\/([\w.-]+\.attachments)\/([^)]+)\)\{([^}]+)\}/g,
@@ -781,6 +802,13 @@ export function extractAttachmentRefs(markdown: string): string[] {
   for (const match of linkMatches) {
     // Exclude images (which start with !)
     refs.add(match[2]);
+  }
+
+  // Match Confluence wiki syntax: !filename.ext! or !filename.ext|alt!
+  // This allows users to use the familiar Confluence syntax in markdown
+  const wikiMatches = withoutCode.matchAll(/!([^|!\s]+\.\w+)(?:\|[^!]*)!/g);
+  for (const match of wikiMatches) {
+    refs.add(match[1]);
   }
 
   return Array.from(refs);

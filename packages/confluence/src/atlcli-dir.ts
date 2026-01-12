@@ -17,6 +17,41 @@ const CONFIG_FILE = "config.json";
 const STATE_FILE = "state.json";
 const CACHE_DIR = "cache";
 
+/** Threshold for large file warnings (10MB) */
+export const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
+
+/**
+ * Check if a file size exceeds the large file threshold.
+ */
+export function isLargeFile(sizeBytes: number): boolean {
+  return sizeBytes >= LARGE_FILE_THRESHOLD;
+}
+
+/**
+ * Format file size for human-readable output.
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)}KB`;
+  }
+  return `${bytes}B`;
+}
+
+/**
+ * Generate a conflict filename by adding -conflict before the extension.
+ * Example: diagram.png -> diagram-conflict.png
+ */
+export function generateConflictFilename(filename: string): string {
+  const lastDot = filename.lastIndexOf(".");
+  if (lastDot === -1) {
+    return `${filename}-conflict`;
+  }
+  return `${filename.slice(0, lastDot)}-conflict${filename.slice(lastDot)}`;
+}
+
 /** Scope configuration for partial sync */
 export type ConfigScope =
   | { type: "page"; pageId: string }

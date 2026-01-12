@@ -1,5 +1,5 @@
-import { readdir, writeFile, unlink } from "node:fs/promises";
-import { FSWatcher, watch } from "node:fs";
+import { readdir, writeFile, unlink, readFile, mkdir } from "node:fs/promises";
+import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname } from "node:path";
 import {
   ERROR_CODES,
@@ -51,6 +51,10 @@ import {
   // Ignore
   loadIgnorePatterns,
   shouldIgnore,
+  // Attachments
+  extractAttachmentRefs,
+  getAttachmentsDirName,
+  AttachmentInfo,
 } from "@atlcli/confluence";
 import type { Ignore } from "ignore";
 
@@ -435,6 +439,21 @@ class SyncEngine {
     // Start file watcher with hash-based change detection
     if (!this.opts.noWatch) {
       this.watchers = await this.createWatchers(this.opts.dir, async (filePath) => {
+        // Handle attachment file changes
+        if (filePath.includes(".attachments/")) {
+          // Extract the page file path from the attachment path
+          // e.g., ./docs/page.attachments/img.png -> ./docs/page.md
+          const match = filePath.match(/(.+)\.attachments\//);
+          if (match) {
+            const pageFilePath = match[1] + ".md";
+            if (existsSync(pageFilePath)) {
+              this.schedulePush(pageFilePath);
+            }
+          }
+          return;
+        }
+
+        // Handle markdown files
         if (extname(filePath).toLowerCase() !== ".md") return;
         if (filePath.endsWith(".base")) return;
 
@@ -768,6 +787,55 @@ class SyncEngine {
             pageId,
           });
           return;
+        }
+
+        // Upload attachments before updating page
+        const attachmentRefs = extractAttachmentRefs(markdownContent);
+        if (attachmentRefs.length > 0) {
+          const pageFilename = basename(filePath);
+          const pageDir = dirname(filePath);
+          const attachmentsDir = join(pageDir, getAttachmentsDirName(pageFilename));
+
+          if (existsSync(attachmentsDir)) {
+            let existingAttachments: AttachmentInfo[] = [];
+            try {
+              existingAttachments = await this.client.listAttachments(pageId);
+            } catch {
+              // Page might not have any attachments yet
+            }
+            const existingByName = new Map(existingAttachments.map((a) => [a.filename, a]));
+
+            for (const filename of attachmentRefs) {
+              const localPath = join(attachmentsDir, filename);
+              if (!existsSync(localPath)) continue;
+
+              try {
+                const data = await readFile(localPath);
+                const existing = existingByName.get(filename);
+
+                if (existing) {
+                  await this.client.updateAttachment({
+                    attachmentId: existing.id,
+                    pageId,
+                    data,
+                  });
+                } else {
+                  await this.client.uploadAttachment({
+                    pageId,
+                    filename,
+                    data,
+                  });
+                }
+              } catch (err) {
+                this.emit({
+                  type: "error",
+                  message: `Failed to upload attachment ${filename}`,
+                  file: filePath,
+                  pageId,
+                });
+              }
+            }
+          }
         }
 
         const version = (current.version ?? 1) + 1;

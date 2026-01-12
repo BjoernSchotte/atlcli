@@ -1,5 +1,5 @@
-import { readdir, writeFile, readFile, mkdir, stat } from "node:fs/promises";
-import { FSWatcher, watch } from "node:fs";
+import { readdir, writeFile, readFile, mkdir, stat, unlink } from "node:fs/promises";
+import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname, relative, resolve } from "node:path";
 import {
   ERROR_CODES,
@@ -49,11 +49,16 @@ import {
   // Attachments
   getAttachmentsDirName,
   updateAttachmentState,
+  removeAttachmentState,
   getPageAttachments,
   writeAttachmentBase,
+  deleteAttachmentBase,
   computeAttachmentSyncState,
   AttachmentState,
   AttachmentInfo,
+  LARGE_FILE_THRESHOLD,
+  formatFileSize,
+  generateConflictFilename,
   // Frontmatter
   parseFrontmatter,
   addFrontmatter,
@@ -543,14 +548,81 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           if (!attachment.filename) {
             continue;
           }
+
+          // Warn about large files
+          if (attachment.fileSize >= LARGE_FILE_THRESHOLD && !opts.json) {
+            output(`Warning: Large attachment ${attachment.filename} (${formatFileSize(attachment.fileSize)})`, opts);
+          }
+
           try {
             const data = await client.downloadAttachment(attachment);
             const attachmentPath = join(attachmentsDir, attachment.filename);
+            const remoteHash = hashContent(data.toString("base64"));
+
+            // Check for conflict with local changes
+            const existingAttState = state?.pages[detail.id]?.attachments?.[attachment.id];
+            if (existingAttState && existsSync(attachmentPath)) {
+              // Read local file to get current hash
+              const localData = await readFile(attachmentPath);
+              const localHash = hashContent(localData.toString("base64"));
+
+              const syncState = computeAttachmentSyncState(
+                localHash,
+                remoteHash,
+                existingAttState.baseHash
+              );
+
+              if (syncState === "conflict") {
+                // Both local and remote changed - save remote as conflict file
+                const conflictFilename = generateConflictFilename(attachment.filename);
+                const conflictPath = join(attachmentsDir, conflictFilename);
+                await writeFile(conflictPath, data);
+
+                if (!opts.json) {
+                  output(`Conflict: ${attachment.filename} - saved remote as ${conflictFilename}`, opts);
+                }
+
+                // Update state to mark as conflict
+                if (state) {
+                  updateAttachmentState(state, detail.id, attachment.id, {
+                    remoteHash,
+                    syncState: "conflict",
+                    lastSyncedAt: new Date().toISOString(),
+                  });
+                }
+                continue; // Don't overwrite local file
+              }
+            }
+
+            // No conflict - write normally
             await writeFile(attachmentPath, data);
             attachmentsPulled++;
           } catch (err) {
             if (!opts.json) {
               output(`Warning: Could not download attachment ${attachment.filename}`, opts);
+            }
+          }
+        }
+
+        // Check for deleted attachments (were in state but not in remote list)
+        const existingState = state?.pages[detail.id];
+        if (existingState?.attachments && atlcliDir) {
+          const remoteFilenames = new Set(attachments.map((a) => a.filename));
+
+          for (const [attId, attState] of Object.entries(existingState.attachments)) {
+            if (!remoteFilenames.has(attState.filename)) {
+              // Attachment was deleted in Confluence - delete local file
+              const localAttPath = join(attachmentsDir, attState.filename);
+              try {
+                await unlink(localAttPath);
+                removeAttachmentState(state, detail.id, attId);
+                await deleteAttachmentBase(atlcliDir, detail.id, attId, extname(attState.filename));
+                if (!opts.json) {
+                  output(`Deleted ${attState.filename} (removed from Confluence)`, opts);
+                }
+              } catch {
+                // File may not exist, continue
+              }
             }
           }
         }
@@ -1048,11 +1120,31 @@ async function pushFile(params: {
       }
       const existingByName = new Map(existingAttachments.map((a) => [a.filename, a]));
 
+      // Get existing attachment state for change detection
+      const existingPageState = state?.pages[pageId];
+      const attachmentStates = existingPageState?.attachments || {};
+
       for (const filename of attachmentRefs) {
         const localPath = join(attachmentsDir, filename);
         try {
           const data = await readFile(localPath);
+          const localHash = hashContent(data.toString("base64"));
           const existing = existingByName.get(filename);
+
+          // Warn about large files
+          if (data.length >= LARGE_FILE_THRESHOLD && !opts.json) {
+            output(`Warning: Large attachment ${filename} (${formatFileSize(data.length)})`, opts);
+          }
+
+          // Find attachment state by filename
+          const attachmentEntry = Object.values(attachmentStates).find(
+            (a) => a.filename === filename
+          );
+
+          // Skip upload if unchanged (same hash as base)
+          if (attachmentEntry && localHash === attachmentEntry.baseHash) {
+            continue;
+          }
 
           if (existing) {
             // Update existing attachment
@@ -1061,17 +1153,71 @@ async function pushFile(params: {
               pageId,
               data,
             });
+
+            // Update attachment state after successful upload
+            if (state && attachmentEntry) {
+              updateAttachmentState(state, pageId, existing.id, {
+                localHash,
+                remoteHash: localHash,
+                baseHash: localHash,
+                lastSyncedAt: new Date().toISOString(),
+                syncState: "synced",
+              });
+            }
           } else {
             // Upload new attachment
-            await client.uploadAttachment({
+            const newAttachment = await client.uploadAttachment({
               pageId,
               filename,
               data,
             });
+
+            // Add new attachment to state
+            if (state && newAttachment) {
+              updateAttachmentState(state, pageId, newAttachment.id, {
+                attachmentId: newAttachment.id,
+                filename: newAttachment.filename,
+                localPath: filename,
+                mediaType: newAttachment.mediaType,
+                fileSize: newAttachment.fileSize,
+                version: newAttachment.version,
+                localHash,
+                remoteHash: localHash,
+                baseHash: localHash,
+                lastSyncedAt: new Date().toISOString(),
+                syncState: "synced",
+              });
+            }
           }
         } catch (err) {
           if (!opts.json) {
             output(`Warning: Could not upload attachment ${filename}`, opts);
+          }
+        }
+      }
+
+      // Check for locally deleted attachments (in state but file doesn't exist)
+      const pageState = state?.pages[pageId];
+      if (pageState?.attachments && atlcliDir) {
+        const referencedFiles = new Set(attachmentRefs);
+
+        for (const [attId, attState] of Object.entries(pageState.attachments)) {
+          const localAttPath = join(attachmentsDir, attState.filename);
+
+          // If file doesn't exist locally AND not referenced in markdown, delete from Confluence
+          if (!existsSync(localAttPath) && !referencedFiles.has(attState.filename)) {
+            try {
+              await client.deleteAttachment(attId);
+              removeAttachmentState(state, pageId, attId);
+              await deleteAttachmentBase(atlcliDir, pageId, attId, extname(attState.filename));
+              if (!opts.json) {
+                output(`Deleted ${attState.filename} from Confluence`, opts);
+              }
+            } catch (err) {
+              if (!opts.json) {
+                output(`Warning: Could not delete attachment ${attState.filename}`, opts);
+              }
+            }
           }
         }
       }
