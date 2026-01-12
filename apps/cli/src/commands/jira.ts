@@ -17,6 +17,7 @@ import {
   JiraEpic,
   TimerState,
   SprintMetrics,
+  BulkOperationSummary,
   parseTimeToSeconds,
   secondsToJiraFormat,
   secondsToHuman,
@@ -64,6 +65,9 @@ export async function handleJira(
       return;
     case "analyze":
       await handleAnalyze(rest, flags, opts);
+      return;
+    case "bulk":
+      await handleBulk(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -2227,6 +2231,481 @@ Examples:
 `;
 }
 
+// ============ Bulk Operations ============
+
+async function handleBulk(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "edit":
+      await handleBulkEdit(flags, opts);
+      return;
+    case "transition":
+      await handleBulkTransition(flags, opts);
+      return;
+    case "label":
+      await handleBulkLabel(rest, flags, opts);
+      return;
+    case "delete":
+      await handleBulkDelete(flags, opts);
+      return;
+    default:
+      output(bulkHelp(), opts);
+      return;
+  }
+}
+
+/**
+ * Fetch all issues matching JQL (with pagination).
+ */
+async function fetchAllIssues(
+  client: JiraClient,
+  jql: string,
+  maxResults: number = 1000
+): Promise<JiraIssue[]> {
+  const issues: JiraIssue[] = [];
+  let nextPageToken: string | undefined;
+
+  do {
+    const result = await client.search(jql, {
+      maxResults: Math.min(100, maxResults - issues.length),
+      nextPageToken,
+      fields: ["summary", "status", "labels", "priority", "assignee"],
+    });
+    issues.push(...result.issues);
+    nextPageToken = result.nextPageToken;
+  } while (nextPageToken && issues.length < maxResults);
+
+  return issues;
+}
+
+/**
+ * Execute an operation on issues in parallel batches.
+ */
+async function executeInBatches(
+  issues: JiraIssue[],
+  operation: (issue: JiraIssue) => Promise<void>,
+  batchSize: number = 10
+): Promise<BulkOperationSummary> {
+  const summary: BulkOperationSummary = {
+    total: issues.length,
+    successful: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < issues.length; i += batchSize) {
+    const batch = issues.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map(operation));
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled") {
+        summary.successful++;
+      } else {
+        summary.failed++;
+        summary.errors.push({
+          key: batch[j].key,
+          error: result.reason?.message || String(result.reason),
+        });
+      }
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Parse --set field=value assignments.
+ */
+function parseFieldAssignments(
+  setFlags: string[]
+): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+
+  for (const assignment of setFlags) {
+    const eqIndex = assignment.indexOf("=");
+    if (eqIndex === -1) {
+      throw new Error(`Invalid --set format: "${assignment}". Use field=value.`);
+    }
+
+    const field = assignment.slice(0, eqIndex).trim();
+    const value = assignment.slice(eqIndex + 1).trim();
+
+    // Handle special field mappings
+    switch (field.toLowerCase()) {
+      case "priority":
+        fields.priority = { name: value };
+        break;
+      case "assignee":
+        fields.assignee = value === "none" ? null : { accountId: value };
+        break;
+      case "labels":
+        fields.labels = value.split(",").map((l) => l.trim());
+        break;
+      default:
+        fields[field] = value;
+    }
+  }
+
+  return fields;
+}
+
+async function handleBulkEdit(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const jql = getFlag(flags, "jql");
+  const setFlag = getFlag(flags, "set");
+  const dryRun = hasFlag(flags, "dry-run");
+  const limit = Number(getFlag(flags, "limit") ?? 1000);
+
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
+  }
+  if (!setFlag) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--set is required. Use --set field=value.");
+  }
+
+  // Parse field assignments (support multiple --set flags via comma)
+  let fieldUpdates: Record<string, unknown>;
+  try {
+    fieldUpdates = parseFieldAssignments(setFlag.split(",").map((s) => s.trim()));
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+
+  const client = await getClient(flags, opts);
+  const issues = await fetchAllIssues(client, jql, limit);
+
+  if (issues.length === 0) {
+    output(
+      { schemaVersion: "1", operation: "edit", jql, count: 0, message: "No issues found." },
+      opts
+    );
+    return;
+  }
+
+  // Dry run - show preview
+  if (dryRun) {
+    output(
+      {
+        schemaVersion: "1",
+        dryRun: true,
+        operation: "edit",
+        jql,
+        fields: fieldUpdates,
+        affectedIssues: issues.map((i) => ({ key: i.key, summary: i.fields.summary })),
+        count: issues.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  // Execute bulk edit
+  const summary = await executeInBatches(issues, async (issue) => {
+    await client.updateIssue(issue.key, { fields: fieldUpdates });
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      operation: "edit",
+      jql,
+      fields: fieldUpdates,
+      result: summary,
+    },
+    opts
+  );
+}
+
+async function handleBulkTransition(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const jql = getFlag(flags, "jql");
+  const toStatus = getFlag(flags, "to");
+  const dryRun = hasFlag(flags, "dry-run");
+  const limit = Number(getFlag(flags, "limit") ?? 1000);
+
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
+  }
+  if (!toStatus) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--to is required. Specify target status.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issues = await fetchAllIssues(client, jql, limit);
+
+  if (issues.length === 0) {
+    output(
+      { schemaVersion: "1", operation: "transition", jql, to: toStatus, count: 0, message: "No issues found." },
+      opts
+    );
+    return;
+  }
+
+  // Dry run - show preview
+  if (dryRun) {
+    output(
+      {
+        schemaVersion: "1",
+        dryRun: true,
+        operation: "transition",
+        jql,
+        to: toStatus,
+        affectedIssues: issues.map((i) => ({
+          key: i.key,
+          summary: i.fields.summary,
+          currentStatus: i.fields.status?.name,
+        })),
+        count: issues.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  // Execute bulk transition
+  const summary = await executeInBatches(issues, async (issue) => {
+    // Find the transition for this issue
+    const transitions = await client.getTransitions(issue.key);
+    const transition = transitions.find(
+      (t: JiraTransition) =>
+        t.name.toLowerCase() === toStatus.toLowerCase() ||
+        t.to.name.toLowerCase() === toStatus.toLowerCase() ||
+        t.id === toStatus
+    );
+
+    if (!transition) {
+      const available = transitions.map((t: JiraTransition) => t.name).join(", ");
+      throw new Error(`Transition "${toStatus}" not available. Available: ${available}`);
+    }
+
+    await client.transitionIssue(issue.key, { transition: { id: transition.id } });
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      operation: "transition",
+      jql,
+      to: toStatus,
+      result: summary,
+    },
+    opts
+  );
+}
+
+async function handleBulkLabel(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [action, ...labelArgs] = args;
+
+  if (action !== "add" && action !== "remove") {
+    output(bulkLabelHelp(), opts);
+    return;
+  }
+
+  const label = labelArgs[0] || getFlag(flags, "label");
+  const jql = getFlag(flags, "jql");
+  const dryRun = hasFlag(flags, "dry-run");
+  const limit = Number(getFlag(flags, "limit") ?? 1000);
+
+  if (!label) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Label is required.");
+  }
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issues = await fetchAllIssues(client, jql, limit);
+
+  if (issues.length === 0) {
+    output(
+      { schemaVersion: "1", operation: `label-${action}`, jql, label, count: 0, message: "No issues found." },
+      opts
+    );
+    return;
+  }
+
+  // Dry run - show preview
+  if (dryRun) {
+    output(
+      {
+        schemaVersion: "1",
+        dryRun: true,
+        operation: `label-${action}`,
+        jql,
+        label,
+        affectedIssues: issues.map((i) => ({
+          key: i.key,
+          summary: i.fields.summary,
+          currentLabels: i.fields.labels,
+        })),
+        count: issues.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  // Execute bulk label operation
+  const summary = await executeInBatches(issues, async (issue) => {
+    if (action === "add") {
+      await client.addLabels(issue.key, [label]);
+    } else {
+      await client.removeLabels(issue.key, [label]);
+    }
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      operation: `label-${action}`,
+      jql,
+      label,
+      result: summary,
+    },
+    opts
+  );
+}
+
+async function handleBulkDelete(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const jql = getFlag(flags, "jql");
+  const confirm = hasFlag(flags, "confirm");
+  const dryRun = hasFlag(flags, "dry-run");
+  const limit = Number(getFlag(flags, "limit") ?? 1000);
+
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issues = await fetchAllIssues(client, jql, limit);
+
+  if (issues.length === 0) {
+    output(
+      { schemaVersion: "1", operation: "delete", jql, count: 0, message: "No issues found." },
+      opts
+    );
+    return;
+  }
+
+  // Dry run - show preview
+  if (dryRun) {
+    output(
+      {
+        schemaVersion: "1",
+        dryRun: true,
+        operation: "delete",
+        jql,
+        affectedIssues: issues.map((i) => ({ key: i.key, summary: i.fields.summary })),
+        count: issues.length,
+        warning: "Use --confirm to execute this destructive operation.",
+      },
+      opts
+    );
+    return;
+  }
+
+  // Require confirmation for actual delete
+  if (!confirm) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `--confirm is required to delete ${issues.length} issues. Use --dry-run to preview.`
+    );
+  }
+
+  // Execute bulk delete
+  const summary = await executeInBatches(issues, async (issue) => {
+    await client.deleteIssue(issue.key);
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      operation: "delete",
+      jql,
+      result: summary,
+    },
+    opts
+  );
+}
+
+function bulkHelp(): string {
+  return `atlcli jira bulk <command>
+
+Commands:
+  edit --jql <query> --set <field>=<value> [--dry-run] [--limit <n>]
+      Bulk edit issues matching JQL query
+
+  transition --jql <query> --to <status> [--dry-run] [--limit <n>]
+      Bulk transition issues to a new status
+
+  label add <label> --jql <query> [--dry-run] [--limit <n>]
+      Add a label to all matching issues
+
+  label remove <label> --jql <query> [--dry-run] [--limit <n>]
+      Remove a label from all matching issues
+
+  delete --jql <query> --confirm [--dry-run] [--limit <n>]
+      Delete all matching issues (destructive!)
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+  --jql <query>      JQL query to select issues
+  --dry-run          Preview changes without applying
+  --limit <n>        Max issues to process (default: 1000)
+  --confirm          Required for delete operations
+
+Supported --set fields:
+  priority=High      Set priority by name
+  assignee=<id>      Set assignee by account ID (or "none")
+  labels=a,b,c       Replace all labels
+
+Examples:
+  # Preview bulk transition
+  jira bulk transition --jql "project = PROJ AND status = Open" --to "In Progress" --dry-run
+
+  # Add label to sprint issues
+  jira bulk label add sprint-47 --jql "sprint in openSprints()"
+
+  # Set priority on all bugs
+  jira bulk edit --jql "project = PROJ AND type = Bug" --set priority=High
+
+  # Delete test issues (careful!)
+  jira bulk delete --jql "project = TEST AND summary ~ 'test'" --confirm
+`;
+}
+
+function bulkLabelHelp(): string {
+  return `atlcli jira bulk label <add|remove> <label> --jql <query>
+
+Usage:
+  jira bulk label add <label> --jql <query> [--dry-run]
+  jira bulk label remove <label> --jql <query> [--dry-run]
+
+Examples:
+  jira bulk label add urgent --jql "project = PROJ AND priority = High"
+  jira bulk label remove obsolete --jql "project = PROJ AND resolution IS NOT EMPTY"
+`;
+}
+
 // ============ Search (JQL) ============
 
 async function handleSearch(
@@ -2313,10 +2792,11 @@ Commands:
   project     Project operations (list, get, create, types)
   issue       Issue operations (get, create, update, delete, transition, comment, link)
   board       Board operations (list, get, backlog, issues)
-  sprint      Sprint operations (list, get, create, start, close, add, remove)
+  sprint      Sprint operations (list, get, create, start, close, add, remove, report)
   worklog     Time tracking (add, list, update, delete, timer)
   epic        Epic operations (list, get, create, issues, add, remove, progress)
   analyze     Sprint analytics (velocity, burndown, scope-change, predictability)
+  bulk        Bulk operations (edit, transition, label, delete)
   search      Search with JQL
   me          Get current user info
 
@@ -2328,11 +2808,9 @@ Examples:
   atlcli jira project list
   atlcli jira issue create --project PROJ --type Task --summary "My task"
   atlcli jira worklog add PROJ-123 1h30m --comment "Feature work"
-  atlcli jira worklog timer start PROJ-123
-  atlcli jira epic list --project PROJ
+  atlcli jira bulk label add sprint-47 --jql "sprint in openSprints()"
+  atlcli jira bulk transition --jql "project = PROJ" --to "Done" --dry-run
   atlcli jira analyze velocity --board 123 --sprints 5
-  atlcli jira board list --project PROJ
-  atlcli jira sprint list --board 123
   atlcli jira search --project PROJ --assignee me
 `;
 }

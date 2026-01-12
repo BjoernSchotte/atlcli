@@ -394,6 +394,17 @@ export interface BulkOperationResult {
   status: string;
 }
 
+/** Bulk operation summary (for loop-based operations) */
+export interface BulkOperationSummary {
+  total: number;
+  successful: number;
+  failed: number;
+  errors: Array<{
+    key: string;
+    error: string;
+  }>;
+}
+
 // ============ Field Types ============
 
 /** Jira field metadata */

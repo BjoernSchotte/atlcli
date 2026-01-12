@@ -230,31 +230,32 @@ Calculate velocity, burndown, and sprint health metrics.
 
 ## 8. Bulk Operations (Priority: Medium)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Batch operations on multiple issues.
 
 **Features:**
-- `jira bulk edit --jql <query> --set <field>=<value>` - Bulk edit
-- `jira bulk transition --jql <query> --to <status>` - Bulk transition
-- `jira bulk label add <label> --jql <query>` - Add labels
-- `jira bulk label remove <label> --jql <query>` - Remove labels
-- `jira bulk delete --jql <query> --confirm` - Bulk delete
-- `--dry-run` flag for preview
+- `jira bulk edit --jql <query> --set <field>=<value> [--dry-run] [--limit <n>]` - Bulk edit ✅
+- `jira bulk transition --jql <query> --to <status> [--dry-run] [--limit <n>]` - Bulk transition ✅
+- `jira bulk label add <label> --jql <query> [--dry-run] [--limit <n>]` - Add labels ✅
+- `jira bulk label remove <label> --jql <query> [--dry-run] [--limit <n>]` - Remove labels ✅
+- `jira bulk delete --jql <query> --confirm [--dry-run] [--limit <n>]` - Bulk delete ✅
 
-**API Endpoints:**
-- `POST /rest/api/3/issue/bulk` - Bulk create (max 1000)
-- `POST /rest/api/3/bulk/issues/fields` - Bulk edit
-- `POST /rest/api/3/issue/bulk/transition` - Bulk transition
-- `POST /rest/api/3/issue/bulk/delete` - Bulk delete
+**Implementation Notes:**
+- No true bulk API in Jira Cloud - operations executed in parallel batches (10 concurrent)
+- Reuses existing client methods (updateIssue, transitionIssue, deleteIssue, addLabels, removeLabels)
+- `--dry-run` shows preview of affected issues
+- `--limit <n>` caps max issues (default 1000)
+- `--confirm` required for delete operations
+- Supports field assignments: priority, assignee, labels
 
 **Limitations:**
 - Summary/Description cannot be bulk edited (unique per issue)
-- Max 1,000 issues per request
+- Max 1,000 issues per operation (configurable with --limit)
 
 **Package Files:**
-- `packages/jira/src/bulk.ts` - Bulk operations
-- `apps/cli/src/commands/jira/bulk.ts` - CLI commands
+- `packages/jira/src/types.ts` - BulkOperationSummary type
+- `apps/cli/src/commands/jira.ts` - CLI commands (under `jira bulk`)
 
 ---
 
@@ -329,7 +330,7 @@ Optional integration for advanced time tracking.
 | 5 | Time Tracking | Small | Issues | ✅ COMPLETE |
 | 6 | Epic Management | Small | Issues, Agile | ✅ COMPLETE |
 | 7 | Sprint Analytics | Large | Sprints | ✅ COMPLETE |
-| 8 | Bulk Operations | Medium | Issues, JQL | Not Started |
+| 8 | Bulk Operations | Medium | Issues, JQL | ✅ COMPLETE |
 | 9 | Import/Export | Medium | Issues, JQL | Not Started |
 | 10 | Saved Filters | Small | JQL | Not Started |
 | 11 | Tempo Integration | Medium | Time Tracking | Not Started |
