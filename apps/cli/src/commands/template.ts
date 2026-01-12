@@ -13,6 +13,7 @@ import {
   ConfluenceClient,
   listTemplates,
   getTemplate,
+  loadTemplate,
   saveTemplate,
   deleteTemplate,
   validateTemplate,
@@ -130,7 +131,7 @@ async function handleCreate(
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
-  const description = getFlag(flags, "description") ?? "";
+  const description = getFlag(flags, "description");
   const fromFile = getFlag(flags, "from-file");
   const global = hasFlag(flags, "global");
 
@@ -138,22 +139,49 @@ async function handleCreate(
     fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
   }
 
-  let content = "";
-  if (fromFile) {
-    content = await readTextFile(fromFile);
-  }
-
   const atlcliDir = await findAtlcliDir(process.cwd());
+  let template: Template;
 
-  const template: Template = {
-    metadata: {
-      name,
-      description: description || `Template: ${name}`,
-    },
-    content,
-    location: "",
-    isLocal: !global,
-  };
+  if (fromFile) {
+    // Try to load the file as a template (parses frontmatter)
+    const loaded = loadTemplate(fromFile);
+    if (loaded && loaded.metadata.name) {
+      // File has valid template frontmatter - use it but override name
+      template = {
+        ...loaded,
+        metadata: {
+          ...loaded.metadata,
+          name, // Use the provided name
+          description: description ?? loaded.metadata.description,
+        },
+        location: "",
+        isLocal: !global,
+      };
+    } else {
+      // File doesn't have template frontmatter - use content as-is
+      const content = await readTextFile(fromFile);
+      template = {
+        metadata: {
+          name,
+          description: description ?? `Template: ${name}`,
+        },
+        content,
+        location: "",
+        isLocal: !global,
+      };
+    }
+  } else {
+    // No source file - create empty template
+    template = {
+      metadata: {
+        name,
+        description: description ?? `Template: ${name}`,
+      },
+      content: "",
+      location: "",
+      isLocal: !global,
+    };
+  }
 
   const path = saveTemplate(template, {
     atlcliDir: atlcliDir ?? undefined,
