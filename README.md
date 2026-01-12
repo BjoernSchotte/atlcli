@@ -580,11 +580,14 @@ atlcli log list --json | jq '.entries[] | select(.data.status >= 400)'
 ### Following Logs
 
 ```bash
-# Show recent logs and follow new entries
+# Show recent logs and follow new entries (defaults to global logs)
 atlcli log tail -f
 
 # Filter while following
 atlcli log tail -f --level error
+
+# Tail project-specific logs instead
+atlcli log tail --project
 ```
 
 ### Viewing Full Entry Details
