@@ -281,22 +281,25 @@ Import and export issues in various formats.
 
 ## 10. Saved Filters (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Manage personal and shared JQL filters.
 
 **Features:**
-- `jira filter list` - List saved filters
-- `jira filter get <id>` - Get filter JQL
-- `jira filter create --name <name> --jql <query>` - Create filter
-- `jira filter update <id> --jql <query>` - Update filter
-- `jira filter delete <id> --confirm` - Delete filter
-- `jira filter share <id> --with <group|project>` - Share filter
+- `jira filter list [--query <text>] [--limit <n>] [--favorite]` - List saved filters ✅
+- `jira filter get <id>` - Get filter details and JQL ✅
+- `jira filter create --name <name> --jql <query> [--description] [--favorite]` - Create filter ✅
+- `jira filter update <id> [--name] [--jql] [--description]` - Update filter ✅
+- `jira filter delete <id> --confirm` - Delete filter ✅
+- `jira filter share <id> --type <global|project|group> [--project] [--group]` - Share filter ✅
 
 **API Endpoints:**
 - `GET /rest/api/3/filter/search` - List
+- `GET /rest/api/3/filter/{id}` - Get
 - `POST /rest/api/3/filter` - Create
 - `PUT /rest/api/3/filter/{id}` - Update
+- `DELETE /rest/api/3/filter/{id}` - Delete
+- `POST /rest/api/3/filter/{id}/permission` - Share
 
 ---
 
@@ -332,7 +335,7 @@ Optional integration for advanced time tracking.
 | 7 | Sprint Analytics | Large | Sprints | ✅ COMPLETE |
 | 8 | Bulk Operations | Medium | Issues, JQL | ✅ COMPLETE |
 | 9 | Import/Export | Medium | Issues, JQL | Not Started |
-| 10 | Saved Filters | Small | JQL | Not Started |
+| 10 | Saved Filters | Small | JQL | ✅ COMPLETE |
 | 11 | Tempo Integration | Medium | Time Tracking | Not Started |
 
 ---

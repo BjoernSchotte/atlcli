@@ -15,6 +15,7 @@ import {
   JiraSprint,
   JiraWorklog,
   JiraEpic,
+  JiraFilter,
   TimerState,
   SprintMetrics,
   BulkOperationSummary,
@@ -68,6 +69,9 @@ export async function handleJira(
       return;
     case "bulk":
       await handleBulk(rest, flags, opts);
+      return;
+    case "filter":
+      await handleFilter(rest, flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -2706,6 +2710,312 @@ Examples:
 `;
 }
 
+// ============ Filter Operations ============
+
+async function handleFilter(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleFilterList(flags, opts);
+      return;
+    case "get":
+      await handleFilterGet(rest, flags, opts);
+      return;
+    case "create":
+      await handleFilterCreate(flags, opts);
+      return;
+    case "update":
+      await handleFilterUpdate(rest, flags, opts);
+      return;
+    case "delete":
+      await handleFilterDelete(rest, flags, opts);
+      return;
+    case "share":
+      await handleFilterShare(rest, flags, opts);
+      return;
+    default:
+      output(filterHelp(), opts);
+      return;
+  }
+}
+
+async function handleFilterList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const query = getFlag(flags, "query");
+  const limit = Number(getFlag(flags, "limit") ?? 50);
+  const favourite = hasFlag(flags, "favorite") || hasFlag(flags, "favourite");
+
+  const client = await getClient(flags, opts);
+
+  if (favourite) {
+    const filters = await client.getFavouriteFilters();
+    output(
+      {
+        schemaVersion: "1",
+        filters: filters.map(formatFilter),
+        total: filters.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  const result = await client.listFilters({
+    filterName: query,
+    maxResults: limit,
+    expand: "sharePermissions",
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      filters: result.values.map(formatFilter),
+      total: result.total,
+    },
+    opts
+  );
+}
+
+async function handleFilterGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const filter = await client.getFilter(id, { expand: "sharePermissions" });
+
+  output(
+    {
+      schemaVersion: "1",
+      filter: formatFilter(filter),
+    },
+    opts
+  );
+}
+
+async function handleFilterCreate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = getFlag(flags, "name");
+  const jql = getFlag(flags, "jql");
+  const description = getFlag(flags, "description");
+  const favourite = hasFlag(flags, "favorite") || hasFlag(flags, "favourite");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+  }
+  if (!jql) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--jql is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const filter = await client.createFilter({
+    name,
+    jql,
+    description,
+    favourite,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      created: formatFilter(filter),
+    },
+    opts
+  );
+}
+
+async function handleFilterUpdate(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
+  }
+
+  const name = getFlag(flags, "name");
+  const jql = getFlag(flags, "jql");
+  const description = getFlag(flags, "description");
+
+  if (!name && !jql && !description) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one of --name, --jql, or --description is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const input: { name?: string; jql?: string; description?: string } = {};
+  if (name) input.name = name;
+  if (jql) input.jql = jql;
+  if (description) input.description = description;
+
+  const filter = await client.updateFilter(id, input);
+
+  output(
+    {
+      schemaVersion: "1",
+      updated: formatFilter(filter),
+    },
+    opts
+  );
+}
+
+async function handleFilterDelete(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a filter.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteFilter(id);
+
+  output(
+    {
+      schemaVersion: "1",
+      deleted: id,
+    },
+    opts
+  );
+}
+
+async function handleFilterShare(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  const shareType = getFlag(flags, "type") as "global" | "project" | "group" | undefined;
+  const project = getFlag(flags, "project");
+  const group = getFlag(flags, "group");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Filter ID is required.");
+  }
+  if (!shareType) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--type is required (global, project, or group).");
+  }
+
+  if (shareType === "project" && !project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required when type is 'project'.");
+  }
+  if (shareType === "group" && !group) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--group is required when type is 'group'.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // If project key is provided, we need to look up the project ID
+  let projectId: string | undefined;
+  if (shareType === "project" && project) {
+    const projectData = await client.getProject(project);
+    projectId = projectData.id;
+  }
+
+  const permission = await client.addFilterPermission(id, {
+    type: shareType,
+    projectId,
+    groupname: group,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      shared: {
+        filterId: id,
+        permission: {
+          id: permission.id,
+          type: permission.type,
+          project: permission.project,
+          group: permission.group,
+        },
+      },
+    },
+    opts
+  );
+}
+
+function formatFilter(filter: JiraFilter): {
+  id: string;
+  name: string;
+  jql: string;
+  description?: string;
+  favourite: boolean;
+  owner?: string;
+  sharePermissions?: Array<{ type: string; project?: string; group?: string }>;
+} {
+  return {
+    id: filter.id,
+    name: filter.name,
+    jql: filter.jql,
+    description: filter.description,
+    favourite: filter.favourite,
+    owner: filter.owner?.displayName,
+    sharePermissions: filter.sharePermissions?.map((p) => ({
+      type: p.type,
+      project: p.project?.key || p.project?.name,
+      group: p.group?.name,
+    })),
+  };
+}
+
+function filterHelp(): string {
+  return `atlcli jira filter <command>
+
+Commands:
+  list [--query <text>] [--limit <n>] [--favorite]
+      List saved filters (optionally search by name)
+
+  get <id>
+      Get filter details and JQL
+
+  create --name <name> --jql <query> [--description <text>] [--favorite]
+      Create a new saved filter
+
+  update <id> [--name <name>] [--jql <query>] [--description <text>]
+      Update a filter
+
+  delete <id> --confirm
+      Delete a filter
+
+  share <id> --type <global|project|group> [--project <key>] [--group <name>]
+      Share a filter with others
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira filter list
+  jira filter list --favorite
+  jira filter get 10000
+  jira filter create --name "My Open Issues" --jql "assignee = currentUser() AND resolution IS EMPTY"
+  jira filter update 10000 --jql "assignee = currentUser() AND status != Done"
+  jira filter share 10000 --type project --project PERSONAL
+  jira filter delete 10000 --confirm
+`;
+}
+
 // ============ Search (JQL) ============
 
 async function handleSearch(
@@ -2797,6 +3107,7 @@ Commands:
   epic        Epic operations (list, get, create, issues, add, remove, progress)
   analyze     Sprint analytics (velocity, burndown, scope-change, predictability)
   bulk        Bulk operations (edit, transition, label, delete)
+  filter      Saved JQL filters (list, get, create, update, delete, share)
   search      Search with JQL
   me          Get current user info
 
@@ -2807,9 +3118,8 @@ Options:
 Examples:
   atlcli jira project list
   atlcli jira issue create --project PROJ --type Task --summary "My task"
-  atlcli jira worklog add PROJ-123 1h30m --comment "Feature work"
+  atlcli jira filter create --name "My Issues" --jql "assignee = currentUser()"
   atlcli jira bulk label add sprint-47 --jql "sprint in openSprints()"
-  atlcli jira bulk transition --jql "project = PROJ" --to "Done" --dry-run
   atlcli jira analyze velocity --board 123 --sprints 5
   atlcli jira search --project PROJ --assignee me
 `;

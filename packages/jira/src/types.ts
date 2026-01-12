@@ -476,6 +476,47 @@ export interface VelocityTrend {
   trend: number; // percentage change
 }
 
+// ============ Filter Types ============
+
+/** Jira saved filter */
+export interface JiraFilter {
+  id: string;
+  name: string;
+  description?: string;
+  jql: string;
+  favourite: boolean;
+  owner?: JiraUser;
+  self?: string;
+  sharePermissions?: JiraFilterPermission[];
+  viewUrl?: string;
+  searchUrl?: string;
+}
+
+/** Filter share permission */
+export interface JiraFilterPermission {
+  id?: number;
+  type: "global" | "project" | "group" | "user" | "loggedin" | "project-unknown";
+  project?: { id: string; key?: string; name?: string };
+  group?: { name: string };
+  user?: JiraUser;
+}
+
+/** Input for creating a filter */
+export interface CreateFilterInput {
+  name: string;
+  description?: string;
+  jql: string;
+  favourite?: boolean;
+}
+
+/** Input for updating a filter */
+export interface UpdateFilterInput {
+  name?: string;
+  description?: string;
+  jql?: string;
+  favourite?: boolean;
+}
+
 // ============ Error Types ============
 
 /** Jira API error response */

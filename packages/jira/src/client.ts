@@ -12,14 +12,18 @@ import type {
   JiraSprint,
   JiraEpic,
   JiraField,
+  JiraFilter,
+  JiraFilterPermission,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
+  CreateFilterInput,
+  UpdateFilterInput,
   BulkCreateResult,
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -329,6 +333,144 @@ export class JiraClient {
         f.name.toLowerCase() === "estimation"
     );
     return storyPointsField?.id || null;
+  }
+
+  // ============ Filter Operations ============
+
+  /**
+   * List/search saved filters.
+   *
+   * GET /rest/api/3/filter/search
+   */
+  async listFilters(
+    options: {
+      filterName?: string;
+      startAt?: number;
+      maxResults?: number;
+      expand?: string;
+      favourite?: boolean;
+    } = {}
+  ): Promise<{ values: JiraFilter[]; total: number }> {
+    const query: Record<string, string | number | boolean> = {};
+    if (options.filterName) query.filterName = options.filterName;
+    if (options.startAt !== undefined) query.startAt = options.startAt;
+    if (options.maxResults !== undefined) query.maxResults = options.maxResults;
+    if (options.expand) query.expand = options.expand;
+
+    const data = await this.request<{
+      values: JiraFilter[];
+      total: number;
+      startAt: number;
+      maxResults: number;
+      isLast: boolean;
+    }>("/filter/search", { query });
+
+    return { values: data.values, total: data.total };
+  }
+
+  /**
+   * Get my favourite filters.
+   *
+   * GET /rest/api/3/filter/favourite
+   */
+  async getFavouriteFilters(): Promise<JiraFilter[]> {
+    return this.request<JiraFilter[]>("/filter/favourite");
+  }
+
+  /**
+   * Get a filter by ID.
+   *
+   * GET /rest/api/3/filter/{id}
+   */
+  async getFilter(
+    id: string,
+    options: { expand?: string } = {}
+  ): Promise<JiraFilter> {
+    const query: Record<string, string> = {};
+    if (options.expand) query.expand = options.expand;
+
+    return this.request<JiraFilter>(`/filter/${id}`, { query });
+  }
+
+  /**
+   * Create a new filter.
+   *
+   * POST /rest/api/3/filter
+   */
+  async createFilter(input: CreateFilterInput): Promise<JiraFilter> {
+    return this.request<JiraFilter>("/filter", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /**
+   * Update a filter.
+   *
+   * PUT /rest/api/3/filter/{id}
+   */
+  async updateFilter(
+    id: string,
+    input: UpdateFilterInput
+  ): Promise<JiraFilter> {
+    return this.request<JiraFilter>(`/filter/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  /**
+   * Delete a filter.
+   *
+   * DELETE /rest/api/3/filter/{id}
+   */
+  async deleteFilter(id: string): Promise<void> {
+    await this.request(`/filter/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Add a share permission to a filter.
+   *
+   * POST /rest/api/3/filter/{id}/permission
+   */
+  async addFilterPermission(
+    id: string,
+    permission: {
+      type: "global" | "project" | "group" | "user";
+      projectId?: string;
+      groupname?: string;
+      accountId?: string;
+    }
+  ): Promise<JiraFilterPermission> {
+    return this.request<JiraFilterPermission>(`/filter/${id}/permission`, {
+      method: "POST",
+      body: permission,
+    });
+  }
+
+  /**
+   * Get filter share permissions.
+   *
+   * GET /rest/api/3/filter/{id}/permission
+   */
+  async getFilterPermissions(id: string): Promise<JiraFilterPermission[]> {
+    return this.request<JiraFilterPermission[]>(`/filter/${id}/permission`);
+  }
+
+  /**
+   * Delete a filter share permission.
+   *
+   * DELETE /rest/api/3/filter/{id}/permission/{permissionId}
+   */
+  async deleteFilterPermission(
+    filterId: string,
+    permissionId: number
+  ): Promise<void> {
+    await this.request(`/filter/${filterId}/permission/${permissionId}`, {
+      method: "DELETE",
+    });
   }
 
   // ============ Issue Operations ============
