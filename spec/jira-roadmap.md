@@ -312,20 +312,11 @@ Manage personal and shared JQL filters.
 
 ## 11. Tempo Integration (Priority: Low)
 
-**Status**: Not Started
+**Status**: SKIPPED ⏭️
 
-Optional integration for advanced time tracking.
+Commercial plugin - not implementing.
 
-**Features:**
-- `jira tempo log <key> <time> --account <account>` - Log with account
-- `jira tempo report --from <date> --to <date>` - Detailed report
-- `jira tempo accounts` - List Tempo accounts
-- Billable hours tracking
-- Account categories: BILLABLE, INTERNAL, OPERATIONAL
-
-**API Base:** `https://api.tempo.io/4`
-
-**Note:** Requires separate Tempo API token.
+**Reason:** Tempo is a paid third-party plugin. The built-in Jira time tracking (`jira worklog`) covers standard use cases.
 
 ---
 
@@ -343,7 +334,7 @@ Optional integration for advanced time tracking.
 | 8 | Bulk Operations | Medium | Issues, JQL | ✅ COMPLETE |
 | 9 | Import/Export | Medium | Issues, JQL | ✅ COMPLETE |
 | 10 | Saved Filters | Small | JQL | ✅ COMPLETE |
-| 11 | Tempo Integration | Medium | Time Tracking | Not Started |
+| 11 | Tempo Integration | Medium | Time Tracking | ⏭️ SKIPPED |
 
 ---
 
