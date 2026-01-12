@@ -37,6 +37,74 @@ This document consolidates research on Jira REST API capabilities for building a
 | OAuth 2.0 (3LO) | Cloud | Authorization code flow |
 | Personal Access Token | Server/DC | `Authorization: Bearer {PAT}` |
 
+#### Reusing Core Package Auth
+
+The `@atlcli/core` package provides product-agnostic authentication that works for both Confluence and Jira:
+
+```typescript
+// packages/core/src/config.ts
+export type AuthConfig = {
+  type: AuthType;  // 'basic' | 'oauth' | 'pat'
+  email?: string;
+  token?: string;
+  clientId?: string;
+};
+
+export type Profile = {
+  name: string;
+  baseUrl: string;  // Site root, e.g., https://company.atlassian.net
+  auth: AuthConfig;
+  cloudId?: string;
+};
+```
+
+**Why this works:**
+- Atlassian auth is **site-wide** - same credentials access all products
+- API tokens grant access to Confluence, Jira, and other Atlassian APIs
+- OAuth 2.0 scopes can include both `read:confluence-*` and `read:jira-*`
+- `cloudId` is per-site, not per-product
+
+**Usage in Jira package:**
+
+```typescript
+import { getActiveProfile, loadConfig } from '@atlcli/core';
+
+export class JiraClient {
+  constructor(private profile: Profile) {}
+
+  private get baseUrl(): string {
+    // Build Jira API URL from profile's site URL
+    return `${this.profile.baseUrl}/rest/api/3`;
+  }
+
+  private get agileUrl(): string {
+    return `${this.profile.baseUrl}/rest/agile/1.0`;
+  }
+
+  private getAuthHeader(): string {
+    if (this.profile.auth.type === 'basic') {
+      const credentials = `${this.profile.auth.email}:${this.profile.auth.token}`;
+      return `Basic ${Buffer.from(credentials).toString('base64')}`;
+    }
+    if (this.profile.auth.type === 'pat') {
+      return `Bearer ${this.profile.auth.token}`;
+    }
+    // OAuth handled separately
+    return '';
+  }
+}
+
+// CLI usage
+const profile = await getActiveProfile();
+const jiraClient = new JiraClient(profile);
+```
+
+**Benefits:**
+- Single `auth login` command works for all products
+- No duplicate credential storage
+- Profile switching (`auth switch`) applies everywhere
+- Consistent auth UX across Confluence and Jira commands
+
 ### Rate Limits (Cloud)
 
 - Points-based model (enforced Feb 2026)
@@ -573,14 +641,14 @@ jira health backlog --board 123
 ```
 packages/jira/
 ├── src/
-│   ├── client.ts          # Jira REST API client
+│   ├── client.ts          # Jira REST API client (uses @atlcli/core auth)
 │   ├── jql.ts             # JQL builder and parser
 │   ├── agile.ts           # Board/Sprint operations
 │   ├── worklog.ts         # Time tracking
 │   ├── bulk.ts            # Bulk operations
 │   ├── analysis.ts        # Metrics calculation
 │   └── index.ts           # Public exports
-├── package.json
+├── package.json           # depends on @atlcli/core
 └── README.md
 
 apps/cli/src/commands/
@@ -600,10 +668,12 @@ apps/cli/src/commands/
 ## 11. Implementation Phases
 
 ### Phase 1: Foundation
-- Jira client with auth (API token, PAT)
+- Jira client using `@atlcli/core` auth (API token, OAuth, PAT)
 - Issue CRUD
 - Basic JQL search
 - Project listing
+
+**Note:** Auth is inherited from core package - no new auth implementation needed.
 
 ### Phase 2: Agile Core
 - Board management

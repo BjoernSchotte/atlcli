@@ -8,6 +8,7 @@
   "dependencies": {
     "@atlcli/core": "workspace:*",
     "@atlcli/confluence": "workspace:*",
+    "@atlcli/jira": "workspace:*",
     "@atlcli/plugin-api": "workspace:*"
   },
   "scripts": {

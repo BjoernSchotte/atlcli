@@ -1,0 +1,809 @@
+import { Buffer } from "node:buffer";
+import { Profile, getLogger, generateRequestId, redactSensitive } from "@atlcli/core";
+import type {
+  JiraProject,
+  JiraIssue,
+  JiraIssueType,
+  JiraSearchResults,
+  JiraTransition,
+  JiraComment,
+  JiraUser,
+  CreateIssueInput,
+  UpdateIssueInput,
+  TransitionIssueInput,
+  BulkCreateResult,
+  AdfDocument,
+} from "./types.js";
+
+export type { JiraTransition } from "./types.js";
+
+/**
+ * Jira REST API client for Cloud (v3) and Server (v2).
+ *
+ * Uses @atlcli/core auth - same credentials work for Confluence and Jira.
+ */
+export class JiraClient {
+  private baseUrl: string;
+  private authHeader: string;
+  private maxRetries = 3;
+  private baseDelayMs = 1000;
+  private isCloud: boolean;
+
+  constructor(profile: Profile) {
+    this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
+    this.isCloud = this.baseUrl.includes(".atlassian.net");
+
+    if (profile.auth.type !== "apiToken") {
+      throw new Error("OAuth is not implemented yet. Use API token auth.");
+    }
+    const email = profile.auth.email ?? "";
+    const token = profile.auth.token ?? "";
+    const encoded = Buffer.from(`${email}:${token}`).toString("base64");
+    this.authHeader = `Basic ${encoded}`;
+  }
+
+  /** API version path - v3 for Cloud, v2 for Server */
+  private get apiPath(): string {
+    return this.isCloud ? "/rest/api/3" : "/rest/api/2";
+  }
+
+  /** Agile API path */
+  private get agilePath(): string {
+    return "/rest/agile/1.0";
+  }
+
+  /** Sleep utility for rate limiting */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Core request helper for Jira REST API.
+   */
+  private async request<T = unknown>(
+    path: string,
+    options: {
+      method?: string;
+      query?: Record<string, string | number | boolean | undefined>;
+      body?: unknown;
+      apiBase?: string; // Override API base path
+    } = {}
+  ): Promise<T> {
+    const apiBase = options.apiBase ?? this.apiPath;
+    const url = new URL(`${this.baseUrl}${apiBase}${path}`);
+
+    if (options.query) {
+      for (const [key, value] of Object.entries(options.query)) {
+        if (value === undefined) continue;
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const method = options.method ?? "GET";
+    const startTime = Date.now();
+
+    // Log request
+    logger.api("request", {
+      requestId,
+      method,
+      url: url.toString(),
+      path,
+      headers: redactSensitive({
+        Authorization: this.authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: options.body ? redactSensitive(options.body) : undefined,
+    });
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const res = await fetch(url.toString(), {
+        method,
+        headers: {
+          Authorization: this.authHeader,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+
+      // Handle rate limiting (429)
+      if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After");
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : this.baseDelayMs * Math.pow(2, attempt);
+
+        if (attempt < this.maxRetries) {
+          await this.sleep(delayMs);
+          continue;
+        }
+        const error = new Error(`Rate limited by Jira API after ${this.maxRetries} retries`);
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: "Too Many Requests",
+          durationMs: Date.now() - startTime,
+          error: error.message,
+        });
+        throw error;
+      }
+
+      // Handle 204 No Content
+      if (res.status === 204) {
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          durationMs: Date.now() - startTime,
+        });
+        return {} as T;
+      }
+
+      const text = await res.text();
+      let data: unknown = text;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+
+      if (!res.ok) {
+        const message = typeof data === "string" ? data : JSON.stringify(data);
+        lastError = new Error(`Jira API error (${res.status}): ${message}`);
+
+        // Retry on server errors (5xx)
+        if (res.status >= 500 && attempt < this.maxRetries) {
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          statusText: res.statusText,
+          body: redactSensitive(data),
+          durationMs: Date.now() - startTime,
+          error: lastError.message,
+        });
+        throw lastError;
+      }
+
+      // Log successful response
+      logger.api("response", {
+        requestId,
+        status: res.status,
+        statusText: res.statusText,
+        body: redactSensitive(data),
+        durationMs: Date.now() - startTime,
+      });
+
+      return data as T;
+    }
+
+    throw lastError ?? new Error("Request failed after retries");
+  }
+
+  // ============ Myself ============
+
+  /**
+   * Get the current user.
+   *
+   * GET /rest/api/3/myself
+   */
+  async getCurrentUser(): Promise<JiraUser> {
+    return this.request<JiraUser>("/myself");
+  }
+
+  // ============ Project Operations ============
+
+  /**
+   * List all projects accessible to the user.
+   *
+   * GET /rest/api/3/project/search
+   */
+  async listProjects(options: {
+    startAt?: number;
+    maxResults?: number;
+    orderBy?: string;
+    query?: string;
+    typeKey?: string;
+    expand?: string;
+  } = {}): Promise<{ values: JiraProject[]; total: number }> {
+    const data = await this.request<{
+      values: JiraProject[];
+      total: number;
+      startAt: number;
+      maxResults: number;
+    }>("/project/search", {
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        orderBy: options.orderBy,
+        query: options.query,
+        typeKey: options.typeKey,
+        expand: options.expand,
+      },
+    });
+
+    return {
+      values: data.values.map((p) => this.parseProject(p)),
+      total: data.total,
+    };
+  }
+
+  /**
+   * Get a project by key or ID.
+   *
+   * GET /rest/api/3/project/{projectIdOrKey}
+   */
+  async getProject(keyOrId: string): Promise<JiraProject> {
+    const data = await this.request<JiraProject>(`/project/${keyOrId}`, {
+      query: { expand: "description,lead,issueTypes" },
+    });
+    return this.parseProject(data);
+  }
+
+  /**
+   * Create a new project.
+   *
+   * POST /rest/api/3/project
+   */
+  async createProject(params: {
+    key: string;
+    name: string;
+    projectTypeKey: "software" | "service_desk" | "business";
+    projectTemplateKey?: string;
+    description?: string;
+    leadAccountId?: string;
+    url?: string;
+    assigneeType?: "PROJECT_LEAD" | "UNASSIGNED";
+  }): Promise<JiraProject> {
+    const data = await this.request<JiraProject>("/project", {
+      method: "POST",
+      body: params,
+    });
+    return this.parseProject(data);
+  }
+
+  /**
+   * Get issue types for a project.
+   *
+   * GET /rest/api/3/project/{projectIdOrKey}/statuses
+   * (Alternative: use project with expand=issueTypes)
+   */
+  async getProjectIssueTypes(keyOrId: string): Promise<JiraIssueType[]> {
+    const project = await this.request<{ issueTypes?: JiraIssueType[] }>(
+      `/project/${keyOrId}`,
+      { query: { expand: "issueTypes" } }
+    );
+    return project.issueTypes ?? [];
+  }
+
+  private parseProject(data: any): JiraProject {
+    return {
+      id: data.id,
+      key: data.key,
+      name: data.name,
+      description: data.description,
+      lead: data.lead,
+      url: data.self,
+      projectTypeKey: data.projectTypeKey,
+      style: data.style,
+      avatarUrls: data.avatarUrls,
+      simplified: data.simplified,
+    };
+  }
+
+  // ============ Issue Operations ============
+
+  /**
+   * Get an issue by key or ID.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}
+   */
+  async getIssue(
+    keyOrId: string,
+    options: {
+      fields?: string[];
+      expand?: string;
+    } = {}
+  ): Promise<JiraIssue> {
+    const query: Record<string, string | undefined> = {};
+    if (options.fields) {
+      query.fields = options.fields.join(",");
+    }
+    if (options.expand) {
+      query.expand = options.expand;
+    }
+
+    return this.request<JiraIssue>(`/issue/${keyOrId}`, { query });
+  }
+
+  /**
+   * Create a new issue.
+   *
+   * POST /rest/api/3/issue
+   */
+  async createIssue(input: CreateIssueInput): Promise<JiraIssue> {
+    const data = await this.request<{ id: string; key: string; self: string }>(
+      "/issue",
+      {
+        method: "POST",
+        body: input,
+      }
+    );
+
+    // Fetch the full issue to return
+    return this.getIssue(data.key);
+  }
+
+  /**
+   * Create multiple issues at once.
+   *
+   * POST /rest/api/3/issue/bulk
+   * Max 1000 issues per request.
+   */
+  async createIssuesBulk(issues: CreateIssueInput[]): Promise<BulkCreateResult> {
+    return this.request<BulkCreateResult>("/issue/bulk", {
+      method: "POST",
+      body: { issueUpdates: issues },
+    });
+  }
+
+  /**
+   * Update an issue.
+   *
+   * PUT /rest/api/3/issue/{issueIdOrKey}
+   */
+  async updateIssue(
+    keyOrId: string,
+    input: UpdateIssueInput,
+    options: { notifyUsers?: boolean } = {}
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}`, {
+      method: "PUT",
+      query: { notifyUsers: options.notifyUsers },
+      body: input,
+    });
+  }
+
+  /**
+   * Delete an issue.
+   *
+   * DELETE /rest/api/3/issue/{issueIdOrKey}
+   */
+  async deleteIssue(
+    keyOrId: string,
+    options: { deleteSubtasks?: boolean } = {}
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}`, {
+      method: "DELETE",
+      query: { deleteSubtasks: options.deleteSubtasks ?? false },
+    });
+  }
+
+  /**
+   * Get available transitions for an issue.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/transitions
+   */
+  async getTransitions(keyOrId: string): Promise<JiraTransition[]> {
+    const data = await this.request<{ transitions: JiraTransition[] }>(
+      `/issue/${keyOrId}/transitions`
+    );
+    return data.transitions;
+  }
+
+  /**
+   * Transition an issue to a new status.
+   *
+   * POST /rest/api/3/issue/{issueIdOrKey}/transitions
+   */
+  async transitionIssue(
+    keyOrId: string,
+    input: TransitionIssueInput
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}/transitions`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /**
+   * Assign an issue to a user.
+   *
+   * PUT /rest/api/3/issue/{issueIdOrKey}/assignee
+   */
+  async assignIssue(
+    keyOrId: string,
+    assignee: { accountId: string } | { name: string } | null
+  ): Promise<void> {
+    await this.request(`/issue/${keyOrId}/assignee`, {
+      method: "PUT",
+      body: assignee ?? { accountId: null },
+    });
+  }
+
+  // ============ Search (JQL) ============
+
+  /**
+   * Search for issues using JQL.
+   *
+   * POST /rest/api/3/search (supports longer JQL queries)
+   */
+  async search(
+    jql: string,
+    options: {
+      maxResults?: number;
+      fields?: string[];
+      expand?: string;
+      nextPageToken?: string;
+    } = {}
+  ): Promise<JiraSearchResults> {
+    // Use the new /search/jql endpoint as /search is deprecated (410)
+    // See: https://developer.atlassian.com/changelog/#CHANGE-2046
+    // Note: New endpoint uses nextPageToken for pagination, not startAt
+    // Default fields is just "id", use "*navigable" for all navigable fields
+    const fields = options.fields ?? ["*navigable"];
+
+    const result = await this.request<{
+      issues: JiraIssue[];
+      nextPageToken?: string;
+      total?: number;
+    }>("/search/jql", {
+      method: "POST",
+      body: {
+        jql,
+        maxResults: options.maxResults ?? 50,
+        fields,
+        expand: options.expand,
+        nextPageToken: options.nextPageToken,
+      },
+    });
+
+    return {
+      issues: result.issues,
+      startAt: 0, // Deprecated, use nextPageToken
+      maxResults: options.maxResults ?? 50,
+      total: result.total ?? result.issues.length,
+      nextPageToken: result.nextPageToken,
+    };
+  }
+
+  /**
+   * Search with GET (for simpler queries).
+   * Note: Uses /search/jql endpoint as /search is deprecated.
+   */
+  async searchGet(
+    jql: string,
+    options: {
+      maxResults?: number;
+      fields?: string;
+    } = {}
+  ): Promise<JiraSearchResults> {
+    const result = await this.request<{
+      issues: JiraIssue[];
+      nextPageToken?: string;
+      total?: number;
+    }>("/search/jql", {
+      query: {
+        jql,
+        maxResults: options.maxResults ?? 50,
+        fields: options.fields ?? "*navigable",
+      },
+    });
+
+    return {
+      issues: result.issues,
+      startAt: 0,
+      maxResults: options.maxResults ?? 50,
+      total: result.total ?? result.issues.length,
+      nextPageToken: result.nextPageToken,
+    };
+  }
+
+  // ============ Comments ============
+
+  /**
+   * Get comments for an issue.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/comment
+   */
+  async getComments(
+    keyOrId: string,
+    options: { startAt?: number; maxResults?: number } = {}
+  ): Promise<{ comments: JiraComment[]; total: number }> {
+    return this.request<{ comments: JiraComment[]; total: number }>(
+      `/issue/${keyOrId}/comment`,
+      {
+        query: {
+          startAt: options.startAt,
+          maxResults: options.maxResults ?? 50,
+        },
+      }
+    );
+  }
+
+  /**
+   * Add a comment to an issue.
+   *
+   * POST /rest/api/3/issue/{issueIdOrKey}/comment
+   */
+  async addComment(
+    keyOrId: string,
+    body: AdfDocument | string
+  ): Promise<JiraComment> {
+    const commentBody = typeof body === "string" ? this.textToAdf(body) : body;
+
+    return this.request<JiraComment>(`/issue/${keyOrId}/comment`, {
+      method: "POST",
+      body: { body: commentBody },
+    });
+  }
+
+  // ============ Labels ============
+
+  /**
+   * Add labels to an issue.
+   */
+  async addLabels(keyOrId: string, labels: string[]): Promise<void> {
+    await this.updateIssue(keyOrId, {
+      update: {
+        labels: labels.map((label) => ({ add: label })),
+      },
+    });
+  }
+
+  /**
+   * Remove labels from an issue.
+   */
+  async removeLabels(keyOrId: string, labels: string[]): Promise<void> {
+    await this.updateIssue(keyOrId, {
+      update: {
+        labels: labels.map((label) => ({ remove: label })),
+      },
+    });
+  }
+
+  // ============ Issue Links ============
+
+  /**
+   * Create a link between two issues.
+   *
+   * POST /rest/api/3/issueLink
+   */
+  async createIssueLink(params: {
+    type: { name: string } | { id: string };
+    inwardIssue: { key: string } | { id: string };
+    outwardIssue: { key: string } | { id: string };
+    comment?: { body: AdfDocument | string };
+  }): Promise<void> {
+    await this.request("/issueLink", {
+      method: "POST",
+      body: params,
+    });
+  }
+
+  /**
+   * Delete an issue link.
+   *
+   * DELETE /rest/api/3/issueLink/{linkId}
+   */
+  async deleteIssueLink(linkId: string): Promise<void> {
+    await this.request(`/issueLink/${linkId}`, { method: "DELETE" });
+  }
+
+  /**
+   * Get all issue link types.
+   *
+   * GET /rest/api/3/issueLinkType
+   */
+  async getIssueLinkTypes(): Promise<{ issueLinkTypes: Array<{ id: string; name: string; inward: string; outward: string }> }> {
+    return this.request("/issueLinkType");
+  }
+
+  // ============ Agile (Board/Sprint) ============
+
+  /**
+   * List all boards.
+   *
+   * GET /rest/agile/1.0/board
+   */
+  async listBoards(options: {
+    startAt?: number;
+    maxResults?: number;
+    type?: "scrum" | "kanban" | "simple";
+    name?: string;
+    projectKeyOrId?: string;
+  } = {}): Promise<{ values: Array<{ id: number; name: string; type: string }>; total: number }> {
+    return this.request("/board", {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        type: options.type,
+        name: options.name,
+        projectKeyOrId: options.projectKeyOrId,
+      },
+    });
+  }
+
+  /**
+   * Get a board by ID.
+   *
+   * GET /rest/agile/1.0/board/{boardId}
+   */
+  async getBoard(boardId: number): Promise<{ id: number; name: string; type: string; location?: { projectKey?: string } }> {
+    return this.request(`/board/${boardId}`, { apiBase: this.agilePath });
+  }
+
+  /**
+   * List sprints for a board.
+   *
+   * GET /rest/agile/1.0/board/{boardId}/sprint
+   */
+  async listSprints(
+    boardId: number,
+    options: {
+      startAt?: number;
+      maxResults?: number;
+      state?: "future" | "active" | "closed";
+    } = {}
+  ): Promise<{ values: Array<{ id: number; name: string; state: string; startDate?: string; endDate?: string }>; total: number }> {
+    return this.request(`/board/${boardId}/sprint`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+        state: options.state,
+      },
+    });
+  }
+
+  /**
+   * Create a sprint.
+   *
+   * POST /rest/agile/1.0/sprint
+   */
+  async createSprint(params: {
+    name: string;
+    originBoardId: number;
+    startDate?: string;
+    endDate?: string;
+    goal?: string;
+  }): Promise<{ id: number; name: string; state: string }> {
+    return this.request("/sprint", {
+      apiBase: this.agilePath,
+      method: "POST",
+      body: params,
+    });
+  }
+
+  /**
+   * Move issues to a sprint.
+   *
+   * POST /rest/agile/1.0/sprint/{sprintId}/issue
+   */
+  async moveIssuesToSprint(
+    sprintId: number,
+    issues: string[]
+  ): Promise<void> {
+    await this.request(`/sprint/${sprintId}/issue`, {
+      apiBase: this.agilePath,
+      method: "POST",
+      body: { issues },
+    });
+  }
+
+  /**
+   * Move issues to backlog (remove from sprint).
+   *
+   * POST /rest/agile/1.0/backlog/issue
+   */
+  async moveIssuesToBacklog(issues: string[]): Promise<void> {
+    await this.request("/backlog/issue", {
+      apiBase: this.agilePath,
+      method: "POST",
+      body: { issues },
+    });
+  }
+
+  // ============ Epic Operations ============
+
+  /**
+   * Get issues in an epic.
+   *
+   * GET /rest/agile/1.0/epic/{epicIdOrKey}/issue
+   */
+  async getEpicIssues(
+    epicKeyOrId: string,
+    options: { startAt?: number; maxResults?: number } = {}
+  ): Promise<JiraSearchResults> {
+    return this.request(`/epic/${epicKeyOrId}/issue`, {
+      apiBase: this.agilePath,
+      query: {
+        startAt: options.startAt,
+        maxResults: options.maxResults ?? 50,
+      },
+    });
+  }
+
+  /**
+   * Move issues to an epic.
+   *
+   * POST /rest/agile/1.0/epic/{epicIdOrKey}/issue
+   */
+  async moveIssuesToEpic(epicKeyOrId: string, issues: string[]): Promise<void> {
+    await this.request(`/epic/${epicKeyOrId}/issue`, {
+      apiBase: this.agilePath,
+      method: "POST",
+      body: { issues },
+    });
+  }
+
+  /**
+   * Remove issues from epic (move to "none" epic).
+   *
+   * POST /rest/agile/1.0/epic/none/issue
+   */
+  async removeIssuesFromEpic(issues: string[]): Promise<void> {
+    await this.request("/epic/none/issue", {
+      apiBase: this.agilePath,
+      method: "POST",
+      body: { issues },
+    });
+  }
+
+  // ============ Helpers ============
+
+  /**
+   * Convert plain text to ADF (Atlassian Document Format).
+   */
+  textToAdf(text: string): AdfDocument {
+    return {
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  /**
+   * Convert ADF to plain text (basic extraction).
+   */
+  adfToText(adf: AdfDocument | string | null | undefined): string {
+    if (!adf) return "";
+    if (typeof adf === "string") return adf;
+
+    const extractText = (nodes: AdfNode[] | undefined): string => {
+      if (!nodes) return "";
+      return nodes
+        .map((node) => {
+          if (node.text) return node.text;
+          if (node.content) return extractText(node.content);
+          return "";
+        })
+        .join("");
+    };
+
+    return extractText(adf.content);
+  }
+}
+
+// Re-export types
+export type { AdfDocument, AdfNode } from "./types.js";

@@ -16,6 +16,7 @@ import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleSearch } from "./commands/search.js";
 import { handleTemplate } from "./commands/template.js";
+import { handleJira } from "./commands/jira.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = "0.2.0";
@@ -116,6 +117,9 @@ async function main(): Promise<void> {
         break;
       case "template":
         await handleTemplate(rest, parsed.flags, opts);
+        break;
+      case "jira":
+        await handleJira(rest, parsed.flags, opts);
         break;
       case "version":
         output({ version: VERSION }, opts);
@@ -224,6 +228,7 @@ Commands:
   docs        Confluence docs sync (pull/push)
   search      Search Confluence content
   template    Page template management
+  jira        Jira operations (project, issue, search)
   log         Query and manage logs
   plugin      Manage plugins
   version     Show version

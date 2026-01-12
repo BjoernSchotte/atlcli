@@ -1,0 +1,11 @@
+{
+  "name": "@atlcli/jira",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlcli/core": "workspace:*"
+  }
+}
