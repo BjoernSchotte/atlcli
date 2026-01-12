@@ -21,6 +21,7 @@ A blazingly fast, extensible CLI for Atlassian products. Currently supports Conf
 - Multiple auth profiles
 - Clean filename handling with YAML frontmatter
 - **Plugin system** for extending with custom commands
+- **Page templates** with Handlebars-style variables and modifiers
 
 ## Installation
 
@@ -77,6 +78,18 @@ atlcli page get <ID>                   # Get page content
 atlcli page create --space KEY --title "Title" --body "Content"
 atlcli page update <ID> --body "New content"
 atlcli page delete <ID>
+```
+
+### Templates
+
+```bash
+atlcli template list                    # List available templates
+atlcli template get --name <name>       # View template details
+atlcli template create --name <name>    # Create empty template
+atlcli template create --name <name> --from-file <file>  # Create from file
+atlcli template validate --name <name>  # Validate template syntax
+atlcli template preview --name <name>   # Preview rendered template
+atlcli template delete --name <name> --confirm  # Delete template
 ```
 
 ### Documentation Sync
@@ -322,6 +335,112 @@ Hidden content here.
 
 :::toc
 :::
+```
+
+## Page Templates
+
+Create pages from reusable templates with a powerful Handlebars-style variable system.
+
+### Template Storage
+
+Templates are stored in two locations:
+- **Local**: `.atlcli/templates/` in your project (project-specific)
+- **Global**: `~/.config/atlcli/templates/` (available everywhere)
+
+### Creating a Template
+
+```bash
+# Create from an existing file
+atlcli template create --name meeting-notes --from-file ./templates/meeting.md
+
+# Create as global template (available across projects)
+atlcli template create --name meeting-notes --from-file ./meeting.md --global
+```
+
+### Template Format
+
+Templates use YAML frontmatter for metadata and Handlebars-style `{{variable}}` syntax:
+
+```markdown
+---
+template:
+  name: "meeting-notes"
+  description: "Weekly meeting notes template"
+  variables:
+    - name: "meeting_date"
+      prompt: "Meeting date"
+      type: "date"
+      default: "{{TODAY}}"
+    - name: "attendees"
+      prompt: "Attendees (comma-separated)"
+      type: "list"
+      required: true
+  target:
+    labels: ["meeting-notes"]
+---
+
+# {{TITLE}}
+
+**Date:** {{meeting_date | date:'MMMM D, YYYY'}}
+**Attendees:**
+{{#each attendees}}
+- {{this}}
+{{/each}}
+
+## Notes
+
+---
+*Created by {{USER.displayName}} on {{NOW | date:'YYYY-MM-DD HH:mm'}}*
+```
+
+### Built-in Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{NOW}}` | Current timestamp |
+| `{{TODAY}}` | Current date |
+| `{{YEAR}}`, `{{MONTH}}`, `{{DAY}}` | Date parts |
+| `{{TIME}}`, `{{WEEKDAY}}` | Time and day name |
+| `{{USER.displayName}}`, `{{USER.email}}` | Current user info |
+| `{{SPACE.key}}`, `{{SPACE.name}}` | Target space info |
+| `{{TITLE}}` | Page title |
+| `{{UUID}}` | Random UUID |
+| `{{ENV.VAR_NAME}}` | Environment variable |
+
+### Modifiers
+
+Chain modifiers with `|` for transformations:
+
+```handlebars
+{{name | upper}}                    # UPPERCASE
+{{name | lower}}                    # lowercase
+{{date | date:'MMMM D, YYYY'}}      # January 12, 2025
+{{items | join:', '}}               # item1, item2, item3
+{{value | default:'N/A'}}           # Fallback value
+{{text | truncate:50}}              # Truncate to 50 chars
+```
+
+### Conditionals and Loops
+
+```handlebars
+{{#if status}}
+  Status: {{status}}
+{{else}}
+  No status set
+{{/if}}
+
+{{#each items}}
+  {{@number}}. {{this}}
+{{/each}}
+```
+
+### Previewing Templates
+
+```bash
+# Preview with variables
+atlcli template preview --name meeting-notes \
+  --title "Weekly Sync" \
+  --var attendees="Alice,Bob,Charlie"
 ```
 
 ## Directory Structure
