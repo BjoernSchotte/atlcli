@@ -14,6 +14,7 @@ import type {
   JiraField,
   JiraFilter,
   JiraFilterPermission,
+  JiraAttachment,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -23,7 +24,7 @@ import type {
   AdfDocument,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -1235,6 +1236,158 @@ export class JiraClient {
         done: options.done,
       },
     });
+  }
+
+  // ============ Attachment Operations ============
+
+  /**
+   * Get attachments for an issue.
+   *
+   * GET /rest/api/3/issue/{keyOrId}?fields=attachment
+   */
+  async getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]> {
+    const issue = await this.request<{ fields: { attachment?: JiraAttachment[] } }>(
+      `/issue/${keyOrId}`,
+      { query: { fields: "attachment" } }
+    );
+    return issue.fields.attachment ?? [];
+  }
+
+  /**
+   * Download an attachment's binary content.
+   *
+   * Fetches the content URL directly (not through API path).
+   */
+  async downloadAttachment(contentUrl: string): Promise<Buffer> {
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const startTime = Date.now();
+
+    logger.api("request", {
+      requestId,
+      method: "GET",
+      url: redactSensitive(contentUrl),
+      path: "/attachment/content",
+    });
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const res = await fetch(contentUrl, {
+          method: "GET",
+          headers: {
+            Authorization: this.authHeader,
+          },
+        });
+
+        if (res.status === 429) {
+          const retryAfter = res.headers.get("Retry-After");
+          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          logger.api("rate-limited", { requestId, retryAfter: delay });
+          await this.sleep(delay);
+          continue;
+        }
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Attachment download failed (${res.status}): ${errorText}`);
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          duration: Date.now() - startTime,
+          size: buffer.length,
+        });
+
+        return buffer;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < this.maxRetries - 1) {
+          const delay = this.baseDelayMs * Math.pow(2, attempt);
+          await this.sleep(delay);
+        }
+      }
+    }
+
+    throw lastError ?? new Error("Attachment download failed");
+  }
+
+  /**
+   * Upload an attachment to an issue.
+   *
+   * POST /rest/api/3/issue/{keyOrId}/attachments
+   * Uses multipart/form-data.
+   */
+  async uploadAttachment(
+    keyOrId: string,
+    filename: string,
+    data: Buffer
+  ): Promise<JiraAttachment[]> {
+    const logger = getLogger();
+    const requestId = generateRequestId();
+    const url = `${this.baseUrl}${this.apiPath}/issue/${keyOrId}/attachments`;
+    const startTime = Date.now();
+
+    logger.api("request", {
+      requestId,
+      method: "POST",
+      url: redactSensitive(url),
+      path: `/issue/${keyOrId}/attachments`,
+    });
+
+    // Create FormData with file
+    const formData = new FormData();
+    const blob = new Blob([data]);
+    formData.append("file", blob, filename);
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: this.authHeader,
+            "X-Atlassian-Token": "no-check", // Required for attachment uploads
+          },
+          body: formData,
+        });
+
+        if (res.status === 429) {
+          const retryAfter = res.headers.get("Retry-After");
+          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          logger.api("rate-limited", { requestId, retryAfter: delay });
+          await this.sleep(delay);
+          continue;
+        }
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Attachment upload failed (${res.status}): ${errorText}`);
+        }
+
+        const attachments = await res.json() as JiraAttachment[];
+
+        logger.api("response", {
+          requestId,
+          status: res.status,
+          duration: Date.now() - startTime,
+        });
+
+        return attachments;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < this.maxRetries - 1) {
+          const delay = this.baseDelayMs * Math.pow(2, attempt);
+          await this.sleep(delay);
+        }
+      }
+    }
+
+    throw lastError ?? new Error("Attachment upload failed");
   }
 
   // ============ Helpers ============

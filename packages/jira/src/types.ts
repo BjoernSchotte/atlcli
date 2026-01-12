@@ -525,3 +525,69 @@ export interface JiraErrorResponse {
   errors?: Record<string, string>;
   status?: number;
 }
+
+// ============ Import/Export Types ============
+
+/** Exported comment (simplified) */
+export interface ExportedComment {
+  author: string;
+  body: string;
+  created: string;
+}
+
+/** Exported attachment metadata */
+export interface ExportedAttachment {
+  filename: string;
+  /** Base64-encoded content for JSON, or relative file path for CSV */
+  content: string;
+  size: number;
+  mimeType: string;
+}
+
+/** Exported issue with comments and attachments */
+export interface ExportedIssue {
+  key: string;
+  fields: Record<string, unknown>;
+  comments?: ExportedComment[];
+  attachments?: ExportedAttachment[];
+}
+
+/** Full export data structure */
+export interface ExportData {
+  exportedAt: string;
+  query: string;
+  issues: ExportedIssue[];
+}
+
+/** Export options */
+export interface ExportOptions {
+  format: "csv" | "json";
+  includeComments?: boolean;
+  includeAttachments?: boolean;
+  outputPath: string;
+}
+
+/** Issue data for import */
+export interface ImportIssue {
+  fields: {
+    summary: string;
+    issuetype: { name: string } | { id: string };
+    [key: string]: unknown;
+  };
+  comments?: Array<{ body: string }>;
+  attachments?: Array<{ filename: string; content: string }>;
+}
+
+/** Import result */
+export interface ImportResult {
+  total: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  issues: Array<{
+    key?: string;
+    summary: string;
+    status: "created" | "skipped" | "failed";
+    error?: string;
+  }>;
+}

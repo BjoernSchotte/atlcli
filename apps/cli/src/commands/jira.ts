@@ -19,6 +19,8 @@ import {
   TimerState,
   SprintMetrics,
   BulkOperationSummary,
+  ExportData,
+  ImportResult,
   parseTimeToSeconds,
   secondsToJiraFormat,
   secondsToHuman,
@@ -37,6 +39,10 @@ import {
   calculateBurndown,
   getStoryPoints,
   generateProgressBar as generateAnalyticsProgressBar,
+  collectExportData,
+  writeExportFile,
+  parseImportFile,
+  importIssues,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -72,6 +78,12 @@ export async function handleJira(
       return;
     case "filter":
       await handleFilter(rest, flags, opts);
+      return;
+    case "export":
+      await handleExport(flags, opts);
+      return;
+    case "import":
+      await handleImport(flags, opts);
       return;
     case "search":
       await handleSearch(rest, flags, opts);
@@ -3095,6 +3107,244 @@ function formatIssue(issue: JiraIssue): Record<string, unknown> {
   };
 }
 
+// ============ Export/Import Commands ============
+
+async function handleExport(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const jql = getFlag(flags, "jql");
+  const outputPath = getFlag(flags, "o") || getFlag(flags, "output");
+  const format = (getFlag(flags, "format") || "json") as "csv" | "json";
+  const includeComments = !hasFlag(flags, "no-comments");
+  const includeAttachments = !hasFlag(flags, "no-attachments");
+
+  if (!jql) {
+    output(exportHelp(), opts);
+    return;
+  }
+
+  if (!outputPath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--output (-o) is required for export.");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Fetch all matching issues
+  const allIssues: JiraIssue[] = [];
+  let startAt = 0;
+  const maxResults = 100;
+
+  if (!opts.json) {
+    process.stderr.write("Searching issues...\n");
+  }
+
+  while (true) {
+    const result = await client.search(jql, {
+      startAt,
+      maxResults,
+      fields: ["*all"],
+    });
+    allIssues.push(...result.issues);
+    if (allIssues.length >= result.total || result.issues.length === 0) break;
+    startAt += maxResults;
+  }
+
+  if (allIssues.length === 0) {
+    if (opts.json) {
+      output({ schemaVersion: "1", exported: 0, message: "No issues found" }, opts);
+    } else {
+      output("No issues found matching the query.", opts);
+    }
+    return;
+  }
+
+  if (!opts.json) {
+    process.stderr.write(`Found ${allIssues.length} issues. Collecting data...\n`);
+  }
+
+  // Collect export data
+  const exportedIssues = await collectExportData(
+    client,
+    allIssues,
+    {
+      format,
+      includeComments,
+      includeAttachments,
+      outputPath,
+    },
+    (current, total, key) => {
+      if (!opts.json) {
+        process.stderr.write(`\rProcessing ${current}/${total}: ${key}...`);
+      }
+    }
+  );
+
+  if (!opts.json) {
+    process.stderr.write("\n");
+  }
+
+  // Build export data structure
+  const exportData: ExportData = {
+    exportedAt: new Date().toISOString(),
+    query: jql,
+    issues: exportedIssues,
+  };
+
+  // Write to file
+  await writeExportFile(exportData, {
+    format,
+    includeComments,
+    includeAttachments,
+    outputPath,
+  });
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      exported: exportedIssues.length,
+      format,
+      outputPath,
+      includeComments,
+      includeAttachments,
+    }, opts);
+  } else {
+    output(`Exported ${exportedIssues.length} issues to ${outputPath}`, opts);
+    if (format === "csv" && includeAttachments) {
+      output(`Attachments saved to: ${outputPath}_attachments/`, opts);
+    }
+  }
+}
+
+async function handleImport(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const filePath = getFlag(flags, "file");
+  const project = getFlag(flags, "project");
+  const dryRun = hasFlag(flags, "dry-run");
+  const skipAttachments = hasFlag(flags, "skip-attachments");
+
+  if (!filePath || !project) {
+    output(importHelp(), opts);
+    return;
+  }
+
+  // Parse the import file
+  let issues;
+  try {
+    issues = await parseImportFile(filePath);
+  } catch (err) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Failed to parse import file: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+
+  if (issues.length === 0) {
+    if (opts.json) {
+      output({ schemaVersion: "1", imported: 0, message: "No issues found in file" }, opts);
+    } else {
+      output("No issues found in the import file.", opts);
+    }
+    return;
+  }
+
+  if (!opts.json) {
+    if (dryRun) {
+      process.stderr.write(`[DRY RUN] Would import ${issues.length} issues into project ${project}\n`);
+    } else {
+      process.stderr.write(`Importing ${issues.length} issues into project ${project}...\n`);
+    }
+  }
+
+  const client = await getClient(flags, opts);
+
+  const result = await importIssues(
+    client,
+    issues,
+    { project, dryRun, skipAttachments },
+    (current, total, summary, status) => {
+      if (!opts.json) {
+        process.stderr.write(`\r${dryRun ? "[DRY RUN] " : ""}${current}/${total}: ${summary.substring(0, 40)}...`);
+      }
+    }
+  );
+
+  if (!opts.json) {
+    process.stderr.write("\n");
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      dryRun,
+      total: result.total,
+      created: result.created,
+      skipped: result.skipped,
+      failed: result.failed,
+      issues: result.issues,
+    }, opts);
+  } else {
+    output(`${dryRun ? "[DRY RUN] " : ""}Import complete:`, opts);
+    output(`  Total: ${result.total}`, opts);
+    output(`  Created: ${result.created}`, opts);
+    if (result.skipped > 0) output(`  Skipped: ${result.skipped}`, opts);
+    if (result.failed > 0) {
+      output(`  Failed: ${result.failed}`, opts);
+      for (const issue of result.issues.filter((i) => i.status === "failed")) {
+        output(`    - ${issue.summary}: ${issue.error}`, opts);
+      }
+    }
+  }
+}
+
+function exportHelp(): string {
+  return `atlcli jira export --jql <query> -o <file> [options]
+
+Export issues to CSV or JSON with comments and attachments.
+
+Options:
+  --jql <query>        JQL query to select issues (required)
+  -o, --output <file>  Output file path (required)
+  --format <format>    Output format: json (default) or csv
+  --no-comments        Exclude comments from export
+  --no-attachments     Exclude attachments from export
+  --profile <name>     Use a specific auth profile
+  --json               JSON output for status
+
+Examples:
+  jira export --jql "project = PROJ" -o issues.json
+  jira export --jql "assignee = currentUser()" -o my-issues.csv --format csv
+  jira export --jql "sprint in openSprints()" -o sprint.json --no-attachments
+`;
+}
+
+function importHelp(): string {
+  return `atlcli jira import --file <path> --project <key> [options]
+
+Import issues from CSV or JSON file (create-only mode).
+
+Options:
+  --file <path>        Import file path (required)
+  --project <key>      Target project key (required)
+  --dry-run            Preview import without creating issues
+  --skip-attachments   Skip attachment uploads
+  --profile <name>     Use a specific auth profile
+  --json               JSON output
+
+Notes:
+  - Import creates new issues only (does not update existing)
+  - Issues with existing keys are skipped
+  - Required fields: summary, issuetype
+  - Comments and attachments are included if present in file
+
+Examples:
+  jira import --file issues.json --project PROJ --dry-run
+  jira import --file backup.csv --project PERSONAL
+  jira import --file export.json --project PROJ --skip-attachments
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -3108,6 +3358,8 @@ Commands:
   analyze     Sprint analytics (velocity, burndown, scope-change, predictability)
   bulk        Bulk operations (edit, transition, label, delete)
   filter      Saved JQL filters (list, get, create, update, delete, share)
+  export      Export issues to CSV/JSON with comments and attachments
+  import      Import issues from CSV/JSON file
   search      Search with JQL
   me          Get current user info
 
@@ -3121,6 +3373,8 @@ Examples:
   atlcli jira filter create --name "My Issues" --jql "assignee = currentUser()"
   atlcli jira bulk label add sprint-47 --jql "sprint in openSprints()"
   atlcli jira analyze velocity --board 123 --sprints 5
+  atlcli jira export --jql "project = PROJ" -o issues.json
+  atlcli jira import --file issues.json --project PROJ --dry-run
   atlcli jira search --project PROJ --assignee me
 `;
 }

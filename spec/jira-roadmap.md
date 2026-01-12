@@ -261,21 +261,28 @@ Batch operations on multiple issues.
 
 ## 9. Import/Export (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
-Import and export issues in various formats.
+Import and export issues with comments and attachments.
 
 **Features:**
-- `jira export --jql <query> --format csv -o file.csv` - Export to CSV
-- `jira export --jql <query> --format json -o file.json` - Export to JSON
-- `jira import --file issues.csv --project <key>` - Import from CSV
-- `jira import --file issues.json --project <key>` - Import from JSON
+- `jira export --jql <query> --output <file> [--format csv|json] [--no-comments] [--no-attachments]` - Export issues ✅
+- `jira import --file <path> --project <key> [--dry-run] [--skip-attachments]` - Import issues ✅
 
-**Fields for Export:**
-- key, summary, status, priority, assignee, reporter
-- created, updated, resolved, due
-- labels, components, fix versions
-- story points, time spent, time estimate
+**Export:**
+- Supports CSV and JSON formats
+- Includes all fields (standard and custom)
+- Comments exported with author, body, created
+- Attachments: base64 in JSON, separate files for CSV
+
+**Import:**
+- Create-only mode (doesn't update existing)
+- Dry-run preview support
+- Comments and attachments included
+
+**Package Files:**
+- `packages/jira/src/export.ts` - Export logic
+- `packages/jira/src/import.ts` - Import logic
 
 ---
 
@@ -334,7 +341,7 @@ Optional integration for advanced time tracking.
 | 6 | Epic Management | Small | Issues, Agile | ✅ COMPLETE |
 | 7 | Sprint Analytics | Large | Sprints | ✅ COMPLETE |
 | 8 | Bulk Operations | Medium | Issues, JQL | ✅ COMPLETE |
-| 9 | Import/Export | Medium | Issues, JQL | Not Started |
+| 9 | Import/Export | Medium | Issues, JQL | ✅ COMPLETE |
 | 10 | Saved Filters | Small | JQL | ✅ COMPLETE |
 | 11 | Tempo Integration | Medium | Time Tracking | Not Started |
 
