@@ -300,20 +300,25 @@ async function handleDelete(
   output({ schemaVersion: "1", deleted: true, name }, opts);
 }
 
-function extractVarFlags(flags: Record<string, string | boolean>): Record<string, string> {
+function extractVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, string> {
   const vars: Record<string, string> = {};
 
-  // Handle --var key=value format
-  const varFlag = flags["var"];
-  if (typeof varFlag === "string") {
-    const [key, ...valueParts] = varFlag.split("=");
-    if (key && valueParts.length > 0) {
-      vars[key] = valueParts.join("=");
+  // Check for --var.name=value format
+  for (const [key, value] of Object.entries(flags)) {
+    if (key.startsWith("var.") && typeof value === "string") {
+      vars[key.slice(4)] = value;
     }
   }
 
-  // Also check for multiple --var flags (would be in an array)
-  // For now, we just support single --var, but the engine supports multiple
+  // Handle --var key=value (supports multiple --var flags)
+  const varFlag = flags["var"];
+  const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
+  for (const v of varValues) {
+    const eqIdx = v.indexOf("=");
+    if (eqIdx > 0) {
+      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
+    }
+  }
 
   return vars;
 }

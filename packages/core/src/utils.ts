@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 export type ParsedArgs = {
   _: string[];
-  flags: Record<string, string | boolean>;
+  flags: Record<string, string | boolean | string[]>;
 };
 
 export type OutputOptions = {
@@ -21,7 +21,20 @@ export const ERROR_CODES = {
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
-  const flags: Record<string, string | boolean> = {};
+  const flags: Record<string, string | boolean | string[]> = {};
+
+  const addFlag = (key: string, value: string | boolean) => {
+    const existing = flags[key];
+    if (existing === undefined) {
+      flags[key] = value;
+    } else if (Array.isArray(existing)) {
+      if (typeof value === "string") {
+        existing.push(value);
+      }
+    } else if (typeof existing === "string" && typeof value === "string") {
+      flags[key] = [existing, value];
+    }
+  };
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -31,15 +44,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const key = keyRaw.trim();
       if (!key) continue;
       if (valueRaw !== undefined) {
-        flags[key] = valueRaw;
+        addFlag(key, valueRaw);
         continue;
       }
       const next = argv[i + 1];
       if (next && !next.startsWith("-")) {
-        flags[key] = next;
+        addFlag(key, next);
         i += 1;
       } else {
-        flags[key] = true;
+        addFlag(key, true);
       }
     } else {
       positional.push(token);
@@ -49,14 +62,23 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return { _: positional, flags };
 }
 
-export function getFlag(flags: Record<string, string | boolean>, key: string): string | undefined {
+export function getFlag(flags: Record<string, string | boolean | string[]>, key: string): string | undefined {
   const value = flags[key];
   if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) return value[0];
   return undefined;
 }
 
-export function hasFlag(flags: Record<string, string | boolean>, key: string): boolean {
-  return flags[key] === true || typeof flags[key] === "string";
+export function getFlags(flags: Record<string, string | boolean | string[]>, key: string): string[] {
+  const value = flags[key];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
+export function hasFlag(flags: Record<string, string | boolean | string[]>, key: string): boolean {
+  const value = flags[key];
+  return value === true || typeof value === "string" || (Array.isArray(value) && value.length > 0);
 }
 
 export function output(data: unknown, opts: OutputOptions): void {
