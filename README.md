@@ -84,7 +84,22 @@ atlcli page get <ID>                   # Get page content
 atlcli page create --space KEY --title "Title" --body "Content"
 atlcli page update <ID> --body "New content"
 atlcli page delete <ID>
+
+# Reordering siblings (move within same parent)
+atlcli page move ./docs/setup.md --before ./docs/intro.md
+atlcli page move ./docs/advanced.md --after ./docs/basics.md
+atlcli page move ./docs/quickstart.md --first
+atlcli page move ./docs/appendix.md --last
+atlcli page move --id 12345 --position 3
+
+# Sorting children of a page
+atlcli page sort ./docs/api.md --alphabetical
+atlcli page sort ./docs/chapters.md --natural       # Chapter 1, 2, 10 (not 1, 10, 2)
+atlcli page sort ./docs/changelog.md --by created --reverse
+atlcli page sort --id 12345 --alphabetical --dry-run
 ```
+
+**File path references:** The move and sort commands accept file paths (e.g., `./docs/page.md`) in addition to page IDs. The page ID is read from the `atlcli.id` frontmatter.
 
 ### Templates
 
