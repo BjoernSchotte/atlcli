@@ -1141,8 +1141,9 @@ async function pushFile(params: {
             (a) => a.filename === filename
           );
 
-          // Skip upload if unchanged (same hash as base)
-          if (attachmentEntry && localHash === attachmentEntry.baseHash) {
+          // Skip upload if unchanged (same hash as base) AND exists on remote
+          // If attachment was deleted from Confluence, we need to re-upload
+          if (attachmentEntry && localHash === attachmentEntry.baseHash && existing) {
             continue;
           }
 
@@ -1151,6 +1152,7 @@ async function pushFile(params: {
             await client.updateAttachment({
               attachmentId: existing.id,
               pageId,
+              filename,
               data,
             });
 

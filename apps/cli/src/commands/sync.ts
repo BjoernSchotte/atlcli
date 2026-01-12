@@ -817,6 +817,7 @@ class SyncEngine {
                   await this.client.updateAttachment({
                     attachmentId: existing.id,
                     pageId,
+                    filename,
                     data,
                   });
                 } else {

@@ -999,10 +999,10 @@ export class ConfluenceClient {
     const { pageId, filename, data, mimeType, comment } = params;
 
     const formData = new FormData();
-    const blob = new Blob([data], {
+    const file = new File([data], filename, {
       type: mimeType ?? this.detectMimeType(filename),
     });
-    formData.append("file", blob, filename);
+    formData.append("file", file);
 
     if (comment) {
       formData.append("comment", comment);
@@ -1024,17 +1024,21 @@ export class ConfluenceClient {
   async updateAttachment(params: {
     attachmentId: string;
     pageId: string;
+    filename?: string;
     data: Buffer | Uint8Array;
     mimeType?: string;
     comment?: string;
   }): Promise<AttachmentInfo> {
-    const { attachmentId, pageId, data, mimeType, comment } = params;
+    const { attachmentId, pageId, filename, data, mimeType, comment } = params;
 
     const formData = new FormData();
-    const blob = new Blob([data], {
-      type: mimeType ?? "application/octet-stream",
+    const detectedMimeType = filename
+      ? this.detectMimeType(filename)
+      : "application/octet-stream";
+    const file = new File([data], filename ?? "file", {
+      type: mimeType ?? detectedMimeType,
     });
-    formData.append("file", blob);
+    formData.append("file", file);
 
     if (comment) {
       formData.append("comment", comment);
