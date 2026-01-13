@@ -391,7 +391,7 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 11 | Tempo Integration | Medium | Time Tracking | ⏭️ SKIPPED |
 | 12 | Issue Watchers | Small | Issues | ✅ COMPLETE |
 | 13 | Webhook Server | Medium | Watchers | ✅ COMPLETE |
-| 14 | Subtask Management | Small | Issues | Not Started |
+| 14 | Subtask Management | Small | Issues | ✅ COMPLETE |
 | 15 | Components & Versions | Small | Projects | Not Started |
 | 16 | Custom Fields | Medium | Issues | Not Started |
 | 17 | Dashboard Widgets | Medium | Analytics | Not Started |
@@ -404,14 +404,18 @@ Real-time notifications via local webhook server (like Confluence sync).
 
 ### 14. Subtask Management (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Create and manage subtasks for issues.
 
 **Features:**
-- `jira subtask create <parent> --summary <text>` - Create subtask
-- `jira subtask list <parent>` - List subtasks for an issue
-- `jira subtask move <key> --parent <new-parent>` - Reparent subtask
+- `jira subtask create <parent> --summary <text> [--description] [--assignee] [--priority]` - Create subtask ✅
+- `jira subtask list <parent>` - List subtasks for an issue ✅
+
+**Implementation Notes:**
+- Auto-detects project from parent issue
+- Auto-detects subtask issue type from project (handles localized type names)
+- Jira API does not support moving subtasks to different parent
 
 **API Endpoints:**
 - `POST /rest/api/3/issue` with `parent` field

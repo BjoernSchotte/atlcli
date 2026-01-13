@@ -108,6 +108,9 @@ export async function handleJira(
     case "webhook":
       await handleWebhook(rest, flags, opts);
       return;
+    case "subtask":
+      await handleSubtask(rest, flags, opts);
+      return;
     default:
       output(jiraHelp(), opts);
       return;
@@ -3759,6 +3762,130 @@ Examples:
 `;
 }
 
+// ============ Subtask Commands ============
+
+async function handleSubtask(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "create":
+      await handleSubtaskCreate(rest, flags, opts);
+      return;
+    case "list":
+      await handleSubtaskList(rest, flags, opts);
+      return;
+    default:
+      output(subtaskHelp(), opts);
+      return;
+  }
+}
+
+async function handleSubtaskCreate(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const parentKey = args[0] || getFlag(flags, "parent");
+  const summary = getFlag(flags, "summary");
+  const description = getFlag(flags, "description");
+  const assignee = getFlag(flags, "assignee");
+  const priority = getFlag(flags, "priority");
+
+  if (!parentKey || !summary) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Parent issue key and --summary are required.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Get parent issue to extract project key
+  const parent = await client.getIssue(parentKey, { fields: ["project"] });
+  const projectKey = parent.fields.project.key;
+
+  // Find subtask issue type for this project
+  const issueTypes = await client.getProjectIssueTypes(projectKey);
+  const subtaskType = issueTypes.find((t) => t.subtask);
+  if (!subtaskType) {
+    fail(opts, 1, ERROR_CODES.API, `No subtask issue type found for project ${projectKey}.`);
+  }
+
+  const issue = await client.createIssue({
+    fields: {
+      project: { key: projectKey },
+      issuetype: { id: subtaskType.id },
+      summary,
+      description: description ? client.textToAdf(description) : undefined,
+      assignee: assignee ? { accountId: assignee } : undefined,
+      priority: priority ? { name: priority } : undefined,
+      parent: { key: parentKey },
+    },
+  });
+
+  output({
+    schemaVersion: "1",
+    created: {
+      id: issue.id,
+      key: issue.key,
+      parent: parentKey,
+      summary,
+    },
+  }, opts);
+}
+
+async function handleSubtaskList(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const parentKey = args[0] || getFlag(flags, "parent");
+  if (!parentKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Parent issue key is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issue = await client.getIssue(parentKey, { fields: ["subtasks", "summary"] });
+
+  const subtasks = issue.fields.subtasks ?? [];
+
+  output({
+    schemaVersion: "1",
+    parent: {
+      key: parentKey,
+      summary: issue.fields.summary,
+    },
+    subtasks: subtasks.map((s) => ({
+      key: s.key,
+      summary: s.fields?.summary,
+      status: s.fields?.status?.name,
+      type: s.fields?.issuetype?.name,
+    })),
+    total: subtasks.length,
+  }, opts);
+}
+
+function subtaskHelp(): string {
+  return `atlcli jira subtask <command>
+
+Commands:
+  create <parent> --summary <text> [--description <text>] [--assignee <id>] [--priority <name>]
+      Create a subtask under the specified parent issue
+
+  list <parent>
+      List all subtasks for an issue
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira subtask create PROJ-123 --summary "Implement feature"
+  jira subtask create PROJ-123 --summary "Fix bug" --priority High
+  jira subtask list PROJ-123
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -3780,6 +3907,7 @@ Commands:
   unwatch     Stop watching an issue
   watchers    List watchers for an issue
   webhook     Webhook server (serve, list, register, delete, refresh)
+  subtask     Subtask operations (create, list)
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -3796,5 +3924,6 @@ Examples:
   atlcli jira watch PROJ-123
   atlcli jira search --project PROJ --assignee me
   atlcli jira webhook serve --port 3000 --projects PROJ
+  atlcli jira subtask create PROJ-123 --summary "My subtask"
 `;
 }
