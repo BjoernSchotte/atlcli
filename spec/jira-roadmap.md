@@ -391,6 +391,128 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 11 | Tempo Integration | Medium | Time Tracking | ⏭️ SKIPPED |
 | 12 | Issue Watchers | Small | Issues | ✅ COMPLETE |
 | 13 | Webhook Server | Medium | Watchers | ✅ COMPLETE |
+| 14 | Subtask Management | Small | Issues | Not Started |
+| 15 | Components & Versions | Small | Projects | Not Started |
+| 16 | Custom Fields | Medium | Issues | Not Started |
+| 17 | Dashboard Widgets | Medium | Analytics | Not Started |
+| 18 | Issue Templates | Small | Issues | Not Started |
+| 19 | Offline Mode | Large | All | Not Started |
+
+---
+
+## Future Ideas
+
+### 14. Subtask Management (Priority: Low)
+
+**Status**: Not Started
+
+Create and manage subtasks for issues.
+
+**Features:**
+- `jira subtask create <parent> --summary <text>` - Create subtask
+- `jira subtask list <parent>` - List subtasks for an issue
+- `jira subtask move <key> --parent <new-parent>` - Reparent subtask
+
+**API Endpoints:**
+- `POST /rest/api/3/issue` with `parent` field
+- `GET /rest/api/3/issue/{key}?fields=subtasks`
+
+---
+
+### 15. Components & Versions (Priority: Low)
+
+**Status**: Not Started
+
+CRUD operations for project components and versions.
+
+**Features:**
+- `jira component list --project <key>` - List components
+- `jira component create --project <key> --name <name>` - Create component
+- `jira component update <id> [--name] [--lead] [--description]` - Update
+- `jira component delete <id> --confirm` - Delete component
+- `jira version list --project <key>` - List versions
+- `jira version create --project <key> --name <name> [--released] [--release-date]` - Create
+- `jira version release <id>` - Mark version as released
+- `jira version delete <id> --confirm` - Delete version
+
+**API Endpoints:**
+- `GET/POST/PUT/DELETE /rest/api/3/component`
+- `GET/POST/PUT/DELETE /rest/api/3/version`
+
+---
+
+### 16. Custom Fields (Priority: Low)
+
+**Status**: Not Started
+
+List and explore custom field configurations.
+
+**Features:**
+- `jira field list [--type <type>]` - List all fields
+- `jira field get <id>` - Get field details
+- `jira field options <id>` - List options for select fields
+- `jira field search <query>` - Search fields by name
+
+**API Endpoints:**
+- `GET /rest/api/3/field`
+- `GET /rest/api/3/field/{fieldId}/context`
+
+---
+
+### 17. Dashboard Widgets (Priority: Low)
+
+**Status**: Not Started
+
+Terminal-based dashboard with sprint charts and metrics.
+
+**Features:**
+- `jira dashboard` - Interactive dashboard view
+- `jira dashboard burndown --sprint <id>` - ASCII burndown chart
+- `jira dashboard velocity --board <id>` - Velocity bar chart
+- `jira dashboard status --project <key>` - Status distribution pie
+
+**Implementation Notes:**
+- Use terminal graphics libraries (blessed, ink)
+- Real-time updates with polling or webhooks
+- Export charts as SVG/PNG
+
+---
+
+### 18. Issue Templates (Priority: Low)
+
+**Status**: Not Started
+
+Save and apply issue templates locally.
+
+**Features:**
+- `jira template save <name> --issue <key>` - Save issue as template
+- `jira template list` - List saved templates
+- `jira template apply <name> --project <key>` - Create issue from template
+- `jira template delete <name>` - Delete template
+- `jira template export <name> --output <file>` - Export template
+- `jira template import --file <path>` - Import template
+
+**Storage:** `~/.atlcli/templates/jira/<name>.json`
+
+---
+
+### 19. Offline Mode (Priority: Low)
+
+**Status**: Not Started
+
+Queue operations when offline for later sync.
+
+**Features:**
+- `jira offline status` - Show pending operations
+- `jira offline sync` - Sync pending operations
+- `jira offline clear` - Clear pending queue
+- Automatic detection of network availability
+- Conflict resolution for concurrent edits
+
+**Implementation Notes:**
+- Store pending operations in `~/.atlcli/offline/jira/queue.json`
+- Track issue snapshots for conflict detection
+- Support create, update, transition, comment operations
 
 ---
 
