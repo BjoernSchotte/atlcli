@@ -392,7 +392,7 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 12 | Issue Watchers | Small | Issues | ✅ COMPLETE |
 | 13 | Webhook Server | Medium | Watchers | ✅ COMPLETE |
 | 14 | Subtask Management | Small | Issues | ✅ COMPLETE |
-| 15 | Components & Versions | Small | Projects | Not Started |
+| 15 | Components & Versions | Small | Projects | ✅ COMPLETE |
 | 16 | Custom Fields | Medium | Issues | Not Started |
 | 17 | Dashboard Widgets | Medium | Analytics | Not Started |
 | 18 | Issue Templates | Small | Issues | Not Started |
@@ -425,23 +425,30 @@ Create and manage subtasks for issues.
 
 ### 15. Components & Versions (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 CRUD operations for project components and versions.
 
-**Features:**
-- `jira component list --project <key>` - List components
-- `jira component create --project <key> --name <name>` - Create component
-- `jira component update <id> [--name] [--lead] [--description]` - Update
-- `jira component delete <id> --confirm` - Delete component
-- `jira version list --project <key>` - List versions
-- `jira version create --project <key> --name <name> [--released] [--release-date]` - Create
-- `jira version release <id>` - Mark version as released
-- `jira version delete <id> --confirm` - Delete version
+**Component Features:**
+- `jira component list --project <key>` - List components ✅
+- `jira component get <id>` - Get component details ✅
+- `jira component create --project <key> --name <name> [--description] [--lead]` - Create component ✅
+- `jira component update <id> [--name] [--description] [--lead]` - Update component ✅
+- `jira component delete <id> --confirm` - Delete component ✅
+
+**Version Features:**
+- `jira version list --project <key>` - List versions ✅
+- `jira version get <id>` - Get version details ✅
+- `jira version create --project <key> --name <name> [--description] [--start-date] [--release-date]` - Create ✅
+- `jira version update <id> [--name] [--description] [--start-date] [--release-date]` - Update ✅
+- `jira version release <id>` - Mark version as released (sets release date to today) ✅
+- `jira version delete <id> --confirm` - Delete version ✅
 
 **API Endpoints:**
-- `GET/POST/PUT/DELETE /rest/api/3/component`
-- `GET/POST/PUT/DELETE /rest/api/3/version`
+- `GET /rest/api/3/project/{key}/components` - List components
+- `GET/POST/PUT/DELETE /rest/api/3/component/{id}` - Component CRUD
+- `GET /rest/api/3/project/{key}/versions` - List versions
+- `GET/POST/PUT/DELETE /rest/api/3/version/{id}` - Version CRUD
 
 ---
 

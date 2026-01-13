@@ -111,6 +111,12 @@ export async function handleJira(
     case "subtask":
       await handleSubtask(rest, flags, opts);
       return;
+    case "component":
+      await handleComponent(rest, flags, opts);
+      return;
+    case "version":
+      await handleVersion(rest, flags, opts);
+      return;
     default:
       output(jiraHelp(), opts);
       return;
@@ -3886,6 +3892,444 @@ Examples:
 `;
 }
 
+// ============ Component Commands ============
+
+async function handleComponent(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleComponentList(flags, opts);
+      return;
+    case "get":
+      await handleComponentGet(rest, flags, opts);
+      return;
+    case "create":
+      await handleComponentCreate(flags, opts);
+      return;
+    case "update":
+      await handleComponentUpdate(rest, flags, opts);
+      return;
+    case "delete":
+      await handleComponentDelete(rest, flags, opts);
+      return;
+    default:
+      output(componentHelp(), opts);
+      return;
+  }
+}
+
+async function handleComponentList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const project = getFlag(flags, "project");
+  if (!project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const components = await client.getProjectComponents(project);
+
+  output({
+    schemaVersion: "1",
+    project,
+    components: components.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      lead: c.lead?.displayName,
+    })),
+    total: components.length,
+  }, opts);
+}
+
+async function handleComponentGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Component ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const component = await client.getComponent(id);
+
+  output({
+    schemaVersion: "1",
+    component: {
+      id: component.id,
+      name: component.name,
+      description: component.description,
+      lead: component.lead?.displayName,
+      leadAccountId: component.lead?.accountId,
+      assigneeType: component.assigneeType,
+    },
+  }, opts);
+}
+
+async function handleComponentCreate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const project = getFlag(flags, "project");
+  const name = getFlag(flags, "name");
+  const description = getFlag(flags, "description");
+  const lead = getFlag(flags, "lead");
+
+  if (!project || !name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const component = await client.createComponent({
+    project,
+    name,
+    description,
+    leadAccountId: lead,
+  });
+
+  output({
+    schemaVersion: "1",
+    created: {
+      id: component.id,
+      name: component.name,
+    },
+  }, opts);
+}
+
+async function handleComponentUpdate(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Component ID is required.");
+  }
+
+  const name = getFlag(flags, "name");
+  const description = getFlag(flags, "description");
+  const lead = getFlag(flags, "lead");
+
+  if (!name && !description && !lead) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one of --name, --description, or --lead is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const component = await client.updateComponent(id, {
+    name,
+    description,
+    leadAccountId: lead,
+  });
+
+  output({
+    schemaVersion: "1",
+    updated: {
+      id: component.id,
+      name: component.name,
+    },
+  }, opts);
+}
+
+async function handleComponentDelete(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Component ID is required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a component.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteComponent(id);
+
+  output({ schemaVersion: "1", deleted: id }, opts);
+}
+
+function componentHelp(): string {
+  return `atlcli jira component <command>
+
+Commands:
+  list --project <key>
+      List all components for a project
+
+  get <id>
+      Get component details
+
+  create --project <key> --name <name> [--description <text>] [--lead <accountId>]
+      Create a new component
+
+  update <id> [--name <name>] [--description <text>] [--lead <accountId>]
+      Update a component
+
+  delete <id> --confirm
+      Delete a component
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira component list --project PROJ
+  jira component create --project PROJ --name "Backend"
+  jira component update 10001 --description "Backend services"
+  jira component delete 10001 --confirm
+`;
+}
+
+// ============ Version Commands ============
+
+async function handleVersion(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleVersionList(flags, opts);
+      return;
+    case "get":
+      await handleVersionGet(rest, flags, opts);
+      return;
+    case "create":
+      await handleVersionCreate(flags, opts);
+      return;
+    case "update":
+      await handleVersionUpdate(rest, flags, opts);
+      return;
+    case "release":
+      await handleVersionRelease(rest, flags, opts);
+      return;
+    case "delete":
+      await handleVersionDelete(rest, flags, opts);
+      return;
+    default:
+      output(versionHelp(), opts);
+      return;
+  }
+}
+
+async function handleVersionList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const project = getFlag(flags, "project");
+  if (!project) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const versions = await client.getProjectVersions(project);
+
+  output({
+    schemaVersion: "1",
+    project,
+    versions: versions.map((v) => ({
+      id: v.id,
+      name: v.name,
+      description: v.description,
+      released: v.released,
+      releaseDate: v.releaseDate,
+      startDate: v.startDate,
+      archived: v.archived,
+    })),
+    total: versions.length,
+  }, opts);
+}
+
+async function handleVersionGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Version ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const version = await client.getVersion(id);
+
+  output({
+    schemaVersion: "1",
+    version: {
+      id: version.id,
+      name: version.name,
+      description: version.description,
+      released: version.released,
+      releaseDate: version.releaseDate,
+      startDate: version.startDate,
+      archived: version.archived,
+    },
+  }, opts);
+}
+
+async function handleVersionCreate(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const project = getFlag(flags, "project");
+  const name = getFlag(flags, "name");
+  const description = getFlag(flags, "description");
+  const startDate = getFlag(flags, "start-date");
+  const releaseDate = getFlag(flags, "release-date");
+
+  if (!project || !name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Need project ID for version creation
+  const projectData = await client.getProject(project);
+
+  const version = await client.createVersion({
+    projectId: projectData.id,
+    name,
+    description,
+    startDate,
+    releaseDate,
+  });
+
+  output({
+    schemaVersion: "1",
+    created: {
+      id: version.id,
+      name: version.name,
+    },
+  }, opts);
+}
+
+async function handleVersionUpdate(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Version ID is required.");
+  }
+
+  const name = getFlag(flags, "name");
+  const description = getFlag(flags, "description");
+  const startDate = getFlag(flags, "start-date");
+  const releaseDate = getFlag(flags, "release-date");
+
+  if (!name && !description && !startDate && !releaseDate) {
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one of --name, --description, --start-date, or --release-date is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const version = await client.updateVersion(id, {
+    name,
+    description,
+    startDate,
+    releaseDate,
+  });
+
+  output({
+    schemaVersion: "1",
+    updated: {
+      id: version.id,
+      name: version.name,
+    },
+  }, opts);
+}
+
+async function handleVersionRelease(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Version ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const version = await client.updateVersion(id, {
+    released: true,
+    releaseDate: new Date().toISOString().split("T")[0],
+  });
+
+  output({
+    schemaVersion: "1",
+    released: {
+      id: version.id,
+      name: version.name,
+      releaseDate: version.releaseDate,
+    },
+  }, opts);
+}
+
+async function handleVersionDelete(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] || getFlag(flags, "id");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Version ID is required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a version.");
+  }
+
+  const client = await getClient(flags, opts);
+  await client.deleteVersion(id);
+
+  output({ schemaVersion: "1", deleted: id }, opts);
+}
+
+function versionHelp(): string {
+  return `atlcli jira version <command>
+
+Commands:
+  list --project <key>
+      List all versions for a project
+
+  get <id>
+      Get version details
+
+  create --project <key> --name <name> [--description <text>] [--start-date <YYYY-MM-DD>] [--release-date <YYYY-MM-DD>]
+      Create a new version
+
+  update <id> [--name <name>] [--description <text>] [--start-date <YYYY-MM-DD>] [--release-date <YYYY-MM-DD>]
+      Update a version
+
+  release <id>
+      Mark version as released (sets release date to today)
+
+  delete <id> --confirm
+      Delete a version
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira version list --project PROJ
+  jira version create --project PROJ --name "1.0.0" --release-date 2026-02-01
+  jira version release 10001
+  jira version delete 10001 --confirm
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -3908,6 +4352,8 @@ Commands:
   watchers    List watchers for an issue
   webhook     Webhook server (serve, list, register, delete, refresh)
   subtask     Subtask operations (create, list)
+  component   Component operations (list, get, create, update, delete)
+  version     Version operations (list, get, create, update, release, delete)
 
 Options:
   --profile <name>   Use a specific auth profile

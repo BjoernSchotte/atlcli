@@ -309,6 +309,140 @@ export class JiraClient {
     };
   }
 
+  // ============ Component Operations ============
+
+  /**
+   * Get all components for a project.
+   *
+   * GET /rest/api/3/project/{projectIdOrKey}/components
+   */
+  async getProjectComponents(projectKeyOrId: string): Promise<JiraComponent[]> {
+    return this.request<JiraComponent[]>(`/project/${projectKeyOrId}/components`);
+  }
+
+  /**
+   * Get a component by ID.
+   *
+   * GET /rest/api/3/component/{id}
+   */
+  async getComponent(id: string): Promise<JiraComponent> {
+    return this.request<JiraComponent>(`/component/${id}`);
+  }
+
+  /**
+   * Create a component.
+   *
+   * POST /rest/api/3/component
+   */
+  async createComponent(input: {
+    project: string;
+    name: string;
+    description?: string;
+    leadAccountId?: string;
+  }): Promise<JiraComponent> {
+    return this.request<JiraComponent>("/component", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /**
+   * Update a component.
+   *
+   * PUT /rest/api/3/component/{id}
+   */
+  async updateComponent(
+    id: string,
+    input: {
+      name?: string;
+      description?: string;
+      leadAccountId?: string;
+    }
+  ): Promise<JiraComponent> {
+    return this.request<JiraComponent>(`/component/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  /**
+   * Delete a component.
+   *
+   * DELETE /rest/api/3/component/{id}
+   */
+  async deleteComponent(id: string): Promise<void> {
+    await this.request(`/component/${id}`, { method: "DELETE" });
+  }
+
+  // ============ Version Operations ============
+
+  /**
+   * Get all versions for a project.
+   *
+   * GET /rest/api/3/project/{projectIdOrKey}/versions
+   */
+  async getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]> {
+    return this.request<JiraVersion[]>(`/project/${projectKeyOrId}/versions`);
+  }
+
+  /**
+   * Get a version by ID.
+   *
+   * GET /rest/api/3/version/{id}
+   */
+  async getVersion(id: string): Promise<JiraVersion> {
+    return this.request<JiraVersion>(`/version/${id}`);
+  }
+
+  /**
+   * Create a version.
+   *
+   * POST /rest/api/3/version
+   */
+  async createVersion(input: {
+    projectId: string;
+    name: string;
+    description?: string;
+    startDate?: string;
+    releaseDate?: string;
+  }): Promise<JiraVersion> {
+    return this.request<JiraVersion>("/version", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /**
+   * Update a version.
+   *
+   * PUT /rest/api/3/version/{id}
+   */
+  async updateVersion(
+    id: string,
+    input: {
+      name?: string;
+      description?: string;
+      startDate?: string;
+      releaseDate?: string;
+      released?: boolean;
+      archived?: boolean;
+    }
+  ): Promise<JiraVersion> {
+    return this.request<JiraVersion>(`/version/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  /**
+   * Delete a version.
+   *
+   * DELETE /rest/api/3/version/{id}
+   */
+  async deleteVersion(id: string): Promise<void> {
+    await this.request(`/version/${id}`, { method: "DELETE" });
+  }
+
   // ============ Field Operations ============
 
   /**
