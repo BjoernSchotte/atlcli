@@ -340,26 +340,37 @@ Watch/unwatch issues to receive Jira notifications.
 
 ## 13. Webhook Server (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Real-time notifications via local webhook server (like Confluence sync).
 
 **Features:**
-- `jira webhook serve [--port 8080]` - Start local webhook server
-- `jira webhook register --url <url> --events <events>` - Register webhook with Jira
-- `jira webhook list` - List registered webhooks
-- `jira webhook delete <id>` - Delete webhook
+- `jira webhook serve [--port 8080] [--path /webhook] [--secret <s>] [--projects <list>] [--events <list>]` - Start local webhook server ✅
+- `jira webhook list` - List registered webhooks (requires OAuth 2.0) ✅
+- `jira webhook register --url <url> --events <events> [--jql <filter>]` - Register webhook (requires OAuth 2.0) ✅
+- `jira webhook delete <id>` - Delete webhook (requires OAuth 2.0) ✅
+- `jira webhook refresh <id>` - Refresh webhook expiration (requires OAuth 2.0) ✅
 
 **Webhook Events:**
 - `jira:issue_created`, `jira:issue_updated`, `jira:issue_deleted`
 - `comment_created`, `comment_updated`, `comment_deleted`
-- `sprint_started`, `sprint_closed`
+- `sprint_created`, `sprint_started`, `sprint_closed`
+- `worklog_created`, `worklog_updated`, `worklog_deleted`
 
 **Implementation Notes:**
-- Use Bun's built-in HTTP server
-- Support JQL filtering for targeted notifications
-- Output events to stdout or file
-- Optional: Desktop notifications via system notify
+- Uses Bun's built-in HTTP server (`Bun.serve()`)
+- Support project and event type filtering
+- Output events to stdout (text or JSON format)
+- HMAC signature validation with shared secret
+- Health check endpoint at `/health`
+
+**Limitations:**
+- Webhook registration/list/delete APIs require OAuth 2.0 or Connect app (not PAT tokens)
+- For local development, use ngrok/cloudflare tunnel to expose the local server
+
+**Package Files:**
+- `packages/jira/src/webhook-server.ts` - Webhook server implementation
+- `apps/cli/src/commands/jira.ts` - CLI commands (under `jira webhook`)
 
 ---
 
@@ -379,7 +390,7 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 10 | Saved Filters | Small | JQL | ✅ COMPLETE |
 | 11 | Tempo Integration | Medium | Time Tracking | ⏭️ SKIPPED |
 | 12 | Issue Watchers | Small | Issues | ✅ COMPLETE |
-| 13 | Webhook Server | Medium | Watchers | Not Started |
+| 13 | Webhook Server | Medium | Watchers | ✅ COMPLETE |
 
 ---
 

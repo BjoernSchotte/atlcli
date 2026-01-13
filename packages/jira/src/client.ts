@@ -1435,6 +1435,80 @@ export class JiraClient {
     });
   }
 
+  // ============ Webhook Operations ============
+
+  /**
+   * Register webhooks with Jira.
+   *
+   * POST /rest/api/3/webhook
+   */
+  async registerWebhooks(webhooks: Array<{
+    jqlFilter: string;
+    events: string[];
+  }>, url: string): Promise<{
+    webhookRegistrationResult: Array<{
+      createdWebhookId?: number;
+      errors?: string[];
+    }>;
+  }> {
+    return this.request("/webhook", {
+      method: "POST",
+      body: {
+        url,
+        webhooks,
+      },
+    });
+  }
+
+  /**
+   * Get list of registered webhooks.
+   *
+   * GET /rest/api/3/webhook
+   */
+  async getWebhooks(startAt = 0, maxResults = 100): Promise<{
+    values: Array<{
+      id: number;
+      jqlFilter: string;
+      fieldIdsFilter?: string[];
+      issuePropertyKeysFilter?: string[];
+      events: string[];
+      expirationDate?: string;
+    }>;
+    startAt: number;
+    maxResults: number;
+    total: number;
+  }> {
+    return this.request("/webhook", {
+      query: { startAt, maxResults },
+    });
+  }
+
+  /**
+   * Delete webhooks by ID.
+   *
+   * DELETE /rest/api/3/webhook
+   */
+  async deleteWebhooks(webhookIds: number[]): Promise<void> {
+    await this.request("/webhook", {
+      method: "DELETE",
+      body: { webhookIds },
+    });
+  }
+
+  /**
+   * Refresh webhook expiration.
+   *
+   * PUT /rest/api/3/webhook/refresh
+   */
+  async refreshWebhooks(webhookIds: number[]): Promise<{
+    expirationDate: string;
+  }> {
+    return this.request("/webhook/refresh", {
+      method: "PUT",
+      body: { webhookIds },
+    });
+  }
+
   // ============ Helpers ============
 
   /**

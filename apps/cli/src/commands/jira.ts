@@ -23,6 +23,9 @@ import {
   BulkOperationSummary,
   ExportData,
   ImportResult,
+  JiraWebhookServer,
+  JiraWebhookPayload,
+  formatWebhookEvent,
   parseTimeToSeconds,
   secondsToJiraFormat,
   secondsToHuman,
@@ -101,6 +104,9 @@ export async function handleJira(
       return;
     case "watchers":
       await handleWatchers(rest, flags, opts);
+      return;
+    case "webhook":
+      await handleWebhook(rest, flags, opts);
       return;
     default:
       output(jiraHelp(), opts);
@@ -3497,6 +3503,262 @@ async function handleWatchers(
   }
 }
 
+// ============ Webhook Commands ============
+
+async function handleWebhook(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "serve":
+      await handleWebhookServe(flags, opts);
+      return;
+    case "list":
+      await handleWebhookList(flags, opts);
+      return;
+    case "register":
+      await handleWebhookRegister(flags, opts);
+      return;
+    case "delete":
+      await handleWebhookDelete(rest, flags, opts);
+      return;
+    case "refresh":
+      await handleWebhookRefresh(rest, flags, opts);
+      return;
+    default:
+      output(webhookHelp(), opts);
+      return;
+  }
+}
+
+async function handleWebhookServe(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const port = Number(getFlag(flags, "port") ?? 8080);
+  const path = getFlag(flags, "path") ?? "/webhook";
+  const secret = getFlag(flags, "secret");
+  const projectsStr = getFlag(flags, "projects");
+  const eventsStr = getFlag(flags, "events");
+
+  const filterProjects = projectsStr ? new Set(projectsStr.split(",")) : undefined;
+  const filterEvents = eventsStr ? new Set(eventsStr.split(",")) : undefined;
+
+  const server = new JiraWebhookServer({
+    port,
+    path,
+    secret,
+    filterProjects,
+    filterEvents,
+  });
+
+  // Register handler to output events
+  server.on((payload: JiraWebhookPayload) => {
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        type: "event",
+        payload,
+      }, opts);
+    } else {
+      output(formatWebhookEvent(payload), opts);
+    }
+  });
+
+  // Start server
+  server.start();
+
+  const url = server.getUrl();
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      type: "started",
+      url,
+      port,
+      path,
+      filters: {
+        projects: projectsStr ? projectsStr.split(",") : null,
+        events: eventsStr ? eventsStr.split(",") : null,
+      },
+    }, opts);
+  } else {
+    output(`Webhook server started at ${url}`, opts);
+    output(`Health check: http://localhost:${port}/health`, opts);
+    if (filterProjects) {
+      output(`Filtering projects: ${projectsStr}`, opts);
+    }
+    if (filterEvents) {
+      output(`Filtering events: ${eventsStr}`, opts);
+    }
+    output("Press Ctrl+C to stop...", opts);
+  }
+
+  // Keep running until interrupted
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => {
+      server.stop();
+      if (!opts.json) {
+        output("\nWebhook server stopped.", opts);
+      }
+      resolve();
+    });
+    process.on("SIGTERM", () => {
+      server.stop();
+      resolve();
+    });
+  });
+}
+
+async function handleWebhookList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const client = await getClient(flags, opts);
+  const result = await client.getWebhooks();
+
+  output({
+    schemaVersion: "1",
+    webhooks: result.values.map((w) => ({
+      id: w.id,
+      jqlFilter: w.jqlFilter,
+      events: w.events,
+      expirationDate: w.expirationDate,
+    })),
+    total: result.total,
+  }, opts);
+}
+
+async function handleWebhookRegister(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const url = getFlag(flags, "url");
+  const jql = getFlag(flags, "jql") ?? "";
+  const eventsStr = getFlag(flags, "events");
+
+  if (!url) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--url is required (your webhook endpoint URL).");
+  }
+  if (!eventsStr) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--events is required (comma-separated event types).");
+  }
+
+  const events = eventsStr.split(",");
+
+  const client = await getClient(flags, opts);
+  const result = await client.registerWebhooks([{ jqlFilter: jql, events }], url);
+
+  const registration = result.webhookRegistrationResult[0];
+  if (registration.errors && registration.errors.length > 0) {
+    fail(opts, 1, ERROR_CODES.API, `Webhook registration failed: ${registration.errors.join(", ")}`);
+  }
+
+  output({
+    schemaVersion: "1",
+    registered: true,
+    webhookId: registration.createdWebhookId,
+    url,
+    jqlFilter: jql || "(all issues)",
+    events,
+  }, opts);
+}
+
+async function handleWebhookDelete(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const idStr = args[0] || getFlag(flags, "id");
+  if (!idStr) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Webhook ID is required.");
+  }
+
+  const ids = idStr.split(",").map(Number);
+
+  const client = await getClient(flags, opts);
+  await client.deleteWebhooks(ids);
+
+  output({
+    schemaVersion: "1",
+    deleted: ids,
+  }, opts);
+}
+
+async function handleWebhookRefresh(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const idStr = args[0] || getFlag(flags, "id");
+  if (!idStr) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Webhook ID(s) required.");
+  }
+
+  const ids = idStr.split(",").map(Number);
+
+  const client = await getClient(flags, opts);
+  const result = await client.refreshWebhooks(ids);
+
+  output({
+    schemaVersion: "1",
+    refreshed: ids,
+    expirationDate: result.expirationDate,
+  }, opts);
+}
+
+function webhookHelp(): string {
+  return `atlcli jira webhook <command>
+
+Commands:
+  serve [--port <n>] [--path <path>] [--secret <s>] [--projects <p1,p2>] [--events <e1,e2>]
+      Start local webhook server to receive Jira events
+
+  list
+      List registered webhooks
+
+  register --url <url> --events <events> [--jql <filter>]
+      Register a webhook with Jira Cloud
+
+  delete <id>
+      Delete a registered webhook
+
+  refresh <id>
+      Refresh webhook expiration (webhooks expire after 30 days)
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+  --port <n>         Server port (default: 8080)
+  --path <path>      Webhook endpoint path (default: /webhook)
+  --secret <s>       Shared secret for HMAC validation
+  --projects <list>  Filter by project keys (comma-separated)
+  --events <list>    Filter/register event types (comma-separated)
+  --url <url>        Your webhook endpoint URL (for registration)
+  --jql <filter>     JQL filter for registered webhook
+
+Event Types:
+  jira:issue_created, jira:issue_updated, jira:issue_deleted
+  comment_created, comment_updated, comment_deleted
+  sprint_created, sprint_started, sprint_closed
+  worklog_created, worklog_updated, worklog_deleted
+
+Examples:
+  # Start local server (use with ngrok/cloudflare tunnel)
+  jira webhook serve --port 3000 --projects PROJ,TEAM
+
+  # List registered webhooks
+  jira webhook list
+
+  # Register webhook (after starting local server + tunnel)
+  jira webhook register --url https://abc.ngrok.io/webhook --events jira:issue_updated,comment_created
+
+  # Refresh before expiration
+  jira webhook refresh 12345
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -3517,6 +3779,7 @@ Commands:
   watch       Start watching an issue (receive notifications)
   unwatch     Stop watching an issue
   watchers    List watchers for an issue
+  webhook     Webhook server (serve, list, register, delete, refresh)
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -3532,5 +3795,6 @@ Examples:
   atlcli jira import --file issues.json --project PROJ --dry-run
   atlcli jira watch PROJ-123
   atlcli jira search --project PROJ --assignee me
+  atlcli jira webhook serve --port 3000 --projects PROJ
 `;
 }
