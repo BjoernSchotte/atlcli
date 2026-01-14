@@ -1,6 +1,6 @@
 site_name: atlcli
 site_description: Extensible CLI for Atlassian products
-site_url: https://bjoernschotte.github.io/atlcli/
+site_url: https://atlcli.sh/
 repo_url: https://github.com/BjoernSchotte/atlcli
 repo_name: BjoernSchotte/atlcli
 edit_uri: edit/main/docs/
