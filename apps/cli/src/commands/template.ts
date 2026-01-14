@@ -1,54 +1,66 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import * as readline from "node:readline";
 import {
   ERROR_CODES,
   OutputOptions,
   fail,
-  getActiveProfile,
   getFlag,
   hasFlag,
-  loadConfig,
   output,
-  readTextFile,
-} from "@atlcli/core";
-import {
-  ConfluenceClient,
-  listTemplates,
-  getTemplate,
-  loadTemplate,
-  saveTemplate,
-  deleteTemplate,
+  loadConfig,
+  getActiveProfile,
+  isInteractive,
+  // Template system from core
+  GlobalTemplateStorage,
+  ProfileTemplateStorage,
+  SpaceTemplateStorage,
+  TemplateResolver,
+  TemplateEngine,
+  parseTemplate,
+  serializeTemplate,
   validateTemplate,
-  renderTemplate,
-  createBuiltins,
-  getRequiredVariables,
-  findAtlcliDir,
-} from "@atlcli/confluence";
-import type { Template, TemplateVariable, TemplateContext } from "@atlcli/confluence";
-import * as readline from "node:readline";
+  type Template,
+  type TemplateFilter,
+  type TemplateSummary,
+  type TemplateStorage,
+} from "@atlcli/core";
+import { findAtlcliDir } from "@atlcli/confluence";
+
+type Flags = Record<string, string | boolean | string[]>;
 
 export async function handleTemplate(
   args: string[],
-  flags: Record<string, string | boolean | string[]>,
+  flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
   const sub = args[0];
+  const rest = args.slice(1);
+
   switch (sub) {
     case "list":
-      await handleList(flags, opts);
+      await handleList(rest, flags, opts);
       return;
-    case "get":
-      await handleGet(flags, opts);
+    case "show":
+      await handleShow(rest, flags, opts);
       return;
     case "create":
-      await handleCreate(flags, opts);
+      await handleCreate(rest, flags, opts);
       return;
-    case "validate":
-      await handleValidate(flags, opts);
-      return;
-    case "preview":
-      await handlePreview(flags, opts);
+    case "edit":
+      await handleEdit(rest, flags, opts);
       return;
     case "delete":
-      await handleDelete(flags, opts);
+      await handleDelete(rest, flags, opts);
+      return;
+    case "rename":
+      await handleRename(rest, flags, opts);
+      return;
+    case "validate":
+      await handleValidate(rest, flags, opts);
       return;
     default:
       output(templateHelp(), opts);
@@ -56,345 +68,692 @@ export async function handleTemplate(
   }
 }
 
+// ============================================================================
+// Context and Storage Helpers
+// ============================================================================
+
+interface TemplateContext {
+  resolver: TemplateResolver;
+  global: GlobalTemplateStorage;
+  profile?: ProfileTemplateStorage;
+  space?: SpaceTemplateStorage;
+  profileName?: string;
+  spaceKey?: string;
+  docsDir?: string;
+}
+
+async function getTemplateContext(flags: Flags): Promise<TemplateContext> {
+  const config = await loadConfig();
+  const activeProfile = getActiveProfile(config);
+  const profileName = getFlag(flags, "profile") ?? activeProfile?.name;
+  const spaceKey = getFlag(flags, "space");
+
+  // Detect docs folder for space context
+  const docsDir = await findAtlcliDir(process.cwd());
+
+  const global = new GlobalTemplateStorage();
+  const profile = profileName ? new ProfileTemplateStorage(profileName) : undefined;
+  const space = spaceKey
+    ? new SpaceTemplateStorage(spaceKey, docsDir ?? undefined)
+    : undefined;
+
+  const resolver = new TemplateResolver(global, profile, space);
+
+  return { resolver, global, profile, space, profileName, spaceKey, docsDir: docsDir ?? undefined };
+}
+
+function getTargetStorage(
+  ctx: TemplateContext,
+  flags: Flags
+): { storage: TemplateStorage; level: string } {
+  const level = getFlag(flags, "level");
+
+  if (level === "global" || (!getFlag(flags, "profile") && !getFlag(flags, "space"))) {
+    return { storage: ctx.global, level: "global" };
+  }
+
+  if (getFlag(flags, "profile")) {
+    if (!ctx.profile) {
+      throw new Error("Profile storage not available");
+    }
+    return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+  }
+
+  if (getFlag(flags, "space")) {
+    if (!ctx.space) {
+      throw new Error("Space storage not available");
+    }
+    return { storage: ctx.space, level: `space:${ctx.spaceKey}` };
+  }
+
+  return { storage: ctx.global, level: "global" };
+}
+
+// ============================================================================
+// List Command
+// ============================================================================
+
 async function handleList(
-  flags: Record<string, string | boolean | string[]>,
+  args: string[],
+  flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
-  const source = getFlag(flags, "source") as "local" | "global" | "all" | undefined;
-  const atlcliDir = await findAtlcliDir(process.cwd());
+  const ctx = await getTemplateContext(flags);
 
-  const templates = listTemplates({
-    atlcliDir: atlcliDir ?? undefined,
-    source: source ?? "all",
-  });
+  const filter: TemplateFilter = {};
+
+  const level = getFlag(flags, "level");
+  if (level === "global" || level === "profile" || level === "space") {
+    filter.level = level;
+  }
+
+  if (getFlag(flags, "profile")) {
+    filter.level = "profile";
+    filter.profile = getFlag(flags, "profile");
+  }
+
+  if (getFlag(flags, "space")) {
+    filter.level = "space";
+    filter.space = getFlag(flags, "space");
+  }
+
+  const tag = getFlag(flags, "tag");
+  if (tag) {
+    filter.tags = [tag];
+  }
+
+  const search = getFlag(flags, "search");
+  if (search) {
+    filter.search = search;
+  }
+
+  if (hasFlag(flags, "all")) {
+    filter.includeOverridden = true;
+  }
+
+  const templates = await ctx.resolver.listAll(filter);
 
   if (opts.json) {
-    output({ schemaVersion: "1", templates }, opts);
-  } else {
-    if (templates.length === 0) {
-      output("No templates found.", opts);
-      return;
-    }
-    output("Available templates:", opts);
-    for (const t of templates) {
-      output(`  ${t.name.padEnd(24)} ${t.description}`, opts);
-    }
+    output({ templates }, opts);
+    return;
+  }
+
+  if (templates.length === 0) {
+    output("No templates found.", opts);
+    return;
+  }
+
+  // Format as table
+  for (const t of templates) {
+    const levelStr = formatLevel(t);
+    const overrideStr = t.overrides ? " (overridden)" : "";
+    const desc = t.description ?? "";
+    output(`${t.name.padEnd(24)} ${levelStr.padEnd(16)} ${desc}${overrideStr}`, opts);
   }
 }
 
-async function handleGet(
-  flags: Record<string, string | boolean | string[]>,
+function formatLevel(t: TemplateSummary): string {
+  if (t.level === "global") return "[global]";
+  if (t.level === "profile") return `[profile:${t.profile}]`;
+  if (t.level === "space") return `[space:${t.space}]`;
+  return `[${t.level}]`;
+}
+
+// ============================================================================
+// Show Command
+// ============================================================================
+
+async function handleShow(
+  args: string[],
+  flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
-  const name = getFlag(flags, "name");
+  const name = args[0];
   if (!name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
 
-  const atlcliDir = await findAtlcliDir(process.cwd());
-  const template = getTemplate(name, atlcliDir ?? undefined);
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, name, flags, opts);
 
   if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template "${name}" not found.`);
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
   }
 
   if (opts.json) {
-    output({ schemaVersion: "1", template }, opts);
-  } else {
-    output(`Template: ${template.metadata.name}`, opts);
-    output(`Description: ${template.metadata.description}`, opts);
-    if (template.metadata.version) {
-      output(`Version: ${template.metadata.version}`, opts);
-    }
-    output(`Location: ${template.location}`, opts);
-    output("", opts);
-
-    if (template.metadata.variables && template.metadata.variables.length > 0) {
-      output("Variables:", opts);
-      for (const v of template.metadata.variables) {
-        const req = v.required ? " (required)" : "";
-        const def = v.default !== undefined ? ` [default: ${v.default}]` : "";
-        output(`  {{${v.name}}}${req}${def}`, opts);
-        output(`    ${v.prompt}`, opts);
-      }
-      output("", opts);
-    }
-
-    output("Content:", opts);
-    output("---", opts);
-    output(template.content, opts);
+    output({ template }, opts);
+    return;
   }
+
+  // Display metadata
+  output(`Name:        ${template.metadata.name}`, opts);
+  output(`Level:       ${template.source.level}`, opts);
+  if (template.source.profile) {
+    output(`Profile:     ${template.source.profile}`, opts);
+  }
+  if (template.source.space) {
+    output(`Space:       ${template.source.space}`, opts);
+  }
+  if (template.metadata.description) {
+    output(`Description: ${template.metadata.description}`, opts);
+  }
+  if (template.metadata.author) {
+    output(`Author:      ${template.metadata.author}`, opts);
+  }
+  if (template.metadata.version) {
+    output(`Version:     ${template.metadata.version}`, opts);
+  }
+  if (template.metadata.tags?.length) {
+    output(`Tags:        ${template.metadata.tags.join(", ")}`, opts);
+  }
+
+  if (template.metadata.variables?.length) {
+    output("Variables:", opts);
+    for (const v of template.metadata.variables) {
+      const req = v.required ? ", required" : "";
+      const def = v.default ? `, default: ${v.default}` : "";
+      const opts_str = v.options ? `, options: ${v.options.join("|")}` : "";
+      output(`  - ${v.name} (${v.type}${req}${def}${opts_str})`, opts);
+      if (v.description) {
+        output(`    ${v.description}`, opts);
+      }
+    }
+  }
+
+  output("", opts);
+  output("--- Content ---", opts);
+  output(template.content, opts);
 }
+
+async function resolveTemplate(
+  ctx: TemplateContext,
+  name: string,
+  flags: Flags,
+  opts: OutputOptions
+): Promise<Template | null> {
+  const level = getFlag(flags, "level");
+  const profile = getFlag(flags, "profile");
+  const space = getFlag(flags, "space");
+
+  // If specific level requested, get from that storage
+  if (level === "global") {
+    return ctx.global.get(name);
+  }
+  if (profile && ctx.profile) {
+    return ctx.profile.get(name);
+  }
+  if (space && ctx.space) {
+    return ctx.space.get(name);
+  }
+
+  // Otherwise use resolver (precedence-based)
+  const template = await ctx.resolver.resolve(name);
+
+  // Check for ambiguity
+  if (template && isInteractive()) {
+    const locations = await ctx.resolver.getTemplateLocations(name);
+    if (locations.length > 1) {
+      output(`Template '${name}' exists at multiple levels:`, opts);
+      for (const loc of locations) {
+        output(`  - ${formatLevel(loc)}`, opts);
+      }
+      output("Use --level, --profile, or --space to specify.", opts);
+    }
+  }
+
+  return template;
+}
+
+// ============================================================================
+// Create Command
+// ============================================================================
 
 async function handleCreate(
-  flags: Record<string, string | boolean | string[]>,
+  args: string[],
+  flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
-  const name = getFlag(flags, "name");
-  const description = getFlag(flags, "description");
-  const fromFile = getFlag(flags, "from-file");
-  const global = hasFlag(flags, "global");
-
+  const name = args[0];
   if (!name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
 
-  const atlcliDir = await findAtlcliDir(process.cwd());
-  let template: Template;
+  const ctx = await getTemplateContext(flags);
+  const { storage, level } = getTargetStorage(ctx, flags);
+  const force = hasFlag(flags, "force");
 
-  if (fromFile) {
-    // Try to load the file as a template (parses frontmatter)
-    const loaded = loadTemplate(fromFile);
-    if (loaded && loaded.metadata.name) {
-      // File has valid template frontmatter - use it but override name
-      template = {
-        ...loaded,
-        metadata: {
-          ...loaded.metadata,
-          name, // Use the provided name
-          description: description ?? loaded.metadata.description,
-        },
-        location: "",
-        isLocal: !global,
-      };
-    } else {
-      // File doesn't have template frontmatter - use content as-is
-      const content = await readTextFile(fromFile);
-      template = {
-        metadata: {
-          name,
-          description: description ?? `Template: ${name}`,
-        },
-        content,
-        location: "",
-        isLocal: !global,
-      };
+  // Check if exists
+  if (!force && (await storage.exists(name))) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Template '${name}' already exists at ${level}. Use --force to overwrite.`
+    );
+  }
+
+  let content: string;
+  const filePath = getFlag(flags, "file");
+
+  if (filePath) {
+    // Read from file
+    if (!existsSync(filePath)) {
+      fail(opts, 1, ERROR_CODES.IO, `File not found: ${filePath}`);
     }
+    content = await readFile(filePath, "utf8");
+  } else if (isInteractive()) {
+    // Open editor
+    content = await openEditorForNew(name);
   } else {
-    // No source file - create empty template
-    template = {
-      metadata: {
-        name,
-        description: description ?? `Template: ${name}`,
-      },
-      content: "",
-      location: "",
-      isLocal: !global,
-    };
+    fail(opts, 1, ERROR_CODES.USAGE, "--file is required in non-interactive mode.");
   }
 
-  const path = saveTemplate(template, {
-    atlcliDir: atlcliDir ?? undefined,
-    global,
-  });
+  // Parse and validate
+  const { metadata, content: body } = parseTemplate(content);
+  metadata.name = name; // Ensure name matches
 
-  output({ schemaVersion: "1", created: true, path }, opts);
-}
-
-async function handleValidate(
-  flags: Record<string, string | boolean | string[]>,
-  opts: OutputOptions
-): Promise<void> {
-  const name = getFlag(flags, "name");
-  if (!name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
-  }
-
-  const atlcliDir = await findAtlcliDir(process.cwd());
-  const template = getTemplate(name, atlcliDir ?? undefined);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template "${name}" not found.`);
-  }
-
-  const result = validateTemplate(template);
-
-  if (opts.json) {
-    output({ schemaVersion: "1", ...result }, opts);
-  } else {
-    if (result.valid) {
-      output(`Template "${name}" is valid.`, opts);
-    } else {
-      output(`Template "${name}" has ${result.errors.length} error(s):`, opts);
-      for (const err of result.errors) {
-        const loc = err.line ? ` (line ${err.line})` : "";
-        output(`  - ${err.message}${loc}`, opts);
-      }
-    }
-  }
-}
-
-async function handlePreview(
-  flags: Record<string, string | boolean | string[]>,
-  opts: OutputOptions
-): Promise<void> {
-  const name = getFlag(flags, "name");
-  const title = getFlag(flags, "title") ?? "Preview Page";
-  const space = getFlag(flags, "space") ?? "PREVIEW";
-  const varFlags = extractVarFlags(flags);
-
-  if (!name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
-  }
-
-  const atlcliDir = await findAtlcliDir(process.cwd());
-  const template = getTemplate(name, atlcliDir ?? undefined);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template "${name}" not found.`);
-  }
-
-  // Parse variables from --var flags and prompt for missing required ones
-  const variables = await collectVariables(template, varFlags, opts);
-
-  const builtins = createBuiltins({
-    title,
-    spaceKey: space,
-  });
-
-  const context: TemplateContext = {
-    variables,
-    builtins,
-    spaceKey: space,
-    title,
+  const template: Template = {
+    metadata,
+    content: body,
+    source: {
+      level: level.startsWith("profile:") ? "profile" : level.startsWith("space:") ? "space" : "global",
+      profile: ctx.profileName,
+      space: ctx.spaceKey,
+      path: "",
+    },
   };
 
-  const rendered = renderTemplate(template, context);
+  // Validate
+  const engine = new TemplateEngine();
+  const validation = engine.validate(template);
+  if (!validation.valid) {
+    output("Template has validation errors:", opts);
+    for (const err of validation.errors) {
+      output(`  - ${err.message}`, opts);
+    }
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Template validation failed.");
+  }
+
+  await storage.save(template);
 
   if (opts.json) {
-    output({ schemaVersion: "1", rendered }, opts);
+    output({ created: true, name, level }, opts);
   } else {
-    output(`Preview: ${rendered.title}`, opts);
-    output(`Space: ${rendered.spaceKey}`, opts);
-    if (rendered.labels && rendered.labels.length > 0) {
-      output(`Labels: ${rendered.labels.join(", ")}`, opts);
-    }
-    output("", opts);
-    output("---", opts);
-    output(rendered.markdown, opts);
+    output(`Created template '${name}' at ${level}.`, opts);
   }
 }
 
-async function handleDelete(
-  flags: Record<string, string | boolean | string[]>,
+async function openEditorForNew(name: string): Promise<string> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "atlcli-template-"));
+  const tmpFile = join(tmpDir, `${name}.md`);
+
+  // Create starter content
+  const starter = `---
+name: ${name}
+description: ""
+variables: []
+---
+# {{title}}
+
+Your template content here.
+`;
+
+  await writeFile(tmpFile, starter, "utf8");
+
+  try {
+    await openInEditor(tmpFile);
+    return await readFile(tmpFile, "utf8");
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function openInEditor(filePath: string): Promise<void> {
+  const editor = process.env.EDITOR ?? process.env.VISUAL ?? "vi";
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(editor, [filePath], {
+      stdio: "inherit",
+      shell: true,
+    });
+
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Editor exited with code ${code}`));
+      }
+    });
+
+    child.on("error", reject);
+  });
+}
+
+// ============================================================================
+// Edit Command
+// ============================================================================
+
+async function handleEdit(
+  args: string[],
+  flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
-  const name = getFlag(flags, "name");
-  const confirm = hasFlag(flags, "confirm");
-
+  const name = args[0];
   if (!name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--name is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
 
-  if (!confirm) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete templates.");
+  if (!isInteractive()) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Edit requires an interactive terminal.");
   }
 
-  const atlcliDir = await findAtlcliDir(process.cwd());
-  const deleted = deleteTemplate(name, atlcliDir ?? undefined);
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, name, flags, opts);
 
-  if (!deleted) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template "${name}" not found.`);
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
   }
 
-  output({ schemaVersion: "1", deleted: true, name }, opts);
+  // Get the storage for this template's level
+  const storage = ctx.resolver.getStorage(template.source.level);
+  if (!storage) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Cannot edit template at level '${template.source.level}'.`);
+  }
+
+  // Create temp file with content
+  const tmpDir = await mkdtemp(join(tmpdir(), "atlcli-template-"));
+  const tmpFile = join(tmpDir, `${name}.md`);
+  const content = serializeTemplate(template.metadata, template.content);
+  await writeFile(tmpFile, content, "utf8");
+
+  try {
+    await openInEditor(tmpFile);
+    const edited = await readFile(tmpFile, "utf8");
+
+    // Parse and save
+    const { metadata, content: body } = parseTemplate(edited);
+    metadata.name = name; // Keep original name
+
+    const updatedTemplate: Template = {
+      metadata,
+      content: body,
+      source: template.source,
+    };
+
+    await storage.save(updatedTemplate);
+
+    if (opts.json) {
+      output({ edited: true, name }, opts);
+    } else {
+      output(`Template '${name}' updated.`, opts);
+    }
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 }
 
-function extractVarFlags(flags: Record<string, string | boolean | string[]>): Record<string, string> {
-  const vars: Record<string, string> = {};
+// ============================================================================
+// Delete Command
+// ============================================================================
 
-  // Check for --var.name=value format
-  for (const [key, value] of Object.entries(flags)) {
-    if (key.startsWith("var.") && typeof value === "string") {
-      vars[key.slice(4)] = value;
-    }
-  }
-
-  // Handle --var key=value (supports multiple --var flags)
-  const varFlag = flags["var"];
-  const varValues = Array.isArray(varFlag) ? varFlag : typeof varFlag === "string" ? [varFlag] : [];
-  for (const v of varValues) {
-    const eqIdx = v.indexOf("=");
-    if (eqIdx > 0) {
-      vars[v.slice(0, eqIdx)] = v.slice(eqIdx + 1);
-    }
-  }
-
-  return vars;
-}
-
-async function collectVariables(
-  template: Template,
-  provided: Record<string, string>,
+async function handleDelete(
+  args: string[],
+  flags: Flags,
   opts: OutputOptions
-): Promise<Record<string, unknown>> {
-  const variables: Record<string, unknown> = { ...provided };
-  const required = getRequiredVariables(template);
-
-  // Check for missing required variables
-  const missing = required.filter((v) => !(v.name in variables));
-
-  if (missing.length > 0 && !opts.json) {
-    // Prompt for missing variables
-    for (const v of missing) {
-      const value = await promptForVariable(v);
-      variables[v.name] = value;
-    }
+): Promise<void> {
+  const name = args[0];
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
 
-  // Apply defaults for variables not provided
-  for (const v of template.metadata.variables ?? []) {
-    if (!(v.name in variables) && v.default !== undefined) {
-      variables[v.name] = v.default;
-    }
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, name, flags, opts);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
   }
 
-  return variables;
+  const force = hasFlag(flags, "force");
+
+  // Confirm deletion
+  if (!force && isInteractive()) {
+    const confirmed = await confirm(
+      `Delete template '${name}' from ${formatLevel({
+        name,
+        level: template.source.level,
+        profile: template.source.profile,
+        space: template.source.space,
+      })}?`
+    );
+    if (!confirmed) {
+      output("Cancelled.", opts);
+      return;
+    }
+  } else if (!force) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Use --force to delete in non-interactive mode.");
+  }
+
+  const storage = ctx.resolver.getStorage(template.source.level);
+  if (!storage) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Cannot delete from level '${template.source.level}'.`);
+  }
+
+  await storage.delete(name);
+
+  if (opts.json) {
+    output({ deleted: true, name }, opts);
+  } else {
+    output(`Deleted template '${name}'.`, opts);
+  }
 }
 
-async function promptForVariable(v: TemplateVariable): Promise<string> {
+async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
   return new Promise((resolve) => {
-    const defaultStr = v.default !== undefined ? ` [${v.default}]` : "";
-    rl.question(`${v.prompt}${defaultStr}: `, (answer) => {
+    rl.question(`${message} (y/N) `, (answer) => {
       rl.close();
-      resolve(answer || String(v.default ?? ""));
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
     });
   });
 }
 
+// ============================================================================
+// Rename Command
+// ============================================================================
+
+async function handleRename(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const oldName = args[0];
+  const newName = args[1];
+
+  if (!oldName || !newName) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Usage: wiki template rename <old-name> <new-name>");
+  }
+
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, oldName, flags, opts);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${oldName}' not found.`);
+  }
+
+  const storage = ctx.resolver.getStorage(template.source.level);
+  if (!storage) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Cannot rename at level '${template.source.level}'.`);
+  }
+
+  // Check if new name exists
+  if (await storage.exists(newName)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${newName}' already exists.`);
+  }
+
+  await storage.rename(oldName, newName);
+
+  if (opts.json) {
+    output({ renamed: true, oldName, newName }, opts);
+  } else {
+    output(`Renamed '${oldName}' to '${newName}'.`, opts);
+  }
+}
+
+// ============================================================================
+// Validate Command
+// ============================================================================
+
+async function handleValidate(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const engine = new TemplateEngine();
+
+  // Validate from file
+  const filePath = getFlag(flags, "file");
+  if (filePath) {
+    if (!existsSync(filePath)) {
+      fail(opts, 1, ERROR_CODES.IO, `File not found: ${filePath}`);
+    }
+    const content = await readFile(filePath, "utf8");
+    const { metadata, content: body } = parseTemplate(content);
+    const template: Template = {
+      metadata,
+      content: body,
+      source: { level: "global", path: filePath },
+    };
+
+    const result = engine.validate(template);
+    outputValidation(filePath, result, opts);
+    return;
+  }
+
+  // Validate all templates
+  if (hasFlag(flags, "all")) {
+    const ctx = await getTemplateContext(flags);
+    const templates = await ctx.resolver.listAll();
+
+    let hasErrors = false;
+    for (const summary of templates) {
+      const template = await ctx.resolver.resolve(summary.name);
+      if (template) {
+        const result = engine.validate(template);
+        if (!result.valid || result.warnings.length > 0) {
+          outputValidation(summary.name, result, opts);
+          if (!result.valid) hasErrors = true;
+        }
+      }
+    }
+
+    if (!hasErrors && !opts.json) {
+      output("All templates valid.", opts);
+    }
+    return;
+  }
+
+  // Validate specific template
+  const name = args[0];
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name required, or use --all or --file.");
+  }
+
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, name, flags, opts);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+  }
+
+  const result = engine.validate(template);
+  outputValidation(name, result, opts);
+}
+
+function outputValidation(
+  name: string,
+  result: ReturnType<TemplateEngine["validate"]>,
+  opts: OutputOptions
+): void {
+  if (opts.json) {
+    output({ name, ...result }, opts);
+    return;
+  }
+
+  if (result.valid && result.warnings.length === 0) {
+    output(`Template '${name}' is valid.`, opts);
+    return;
+  }
+
+  if (!result.valid) {
+    output(`Template '${name}' has errors:`, opts);
+    for (const err of result.errors) {
+      const loc = err.line ? ` (line ${err.line})` : "";
+      output(`  ERROR: ${err.message}${loc}`, opts);
+    }
+  }
+
+  if (result.warnings.length > 0) {
+    if (result.valid) {
+      output(`Template '${name}' has warnings:`, opts);
+    }
+    for (const warn of result.warnings) {
+      output(`  WARN: ${warn.message}`, opts);
+    }
+  }
+}
+
+// ============================================================================
+// Help
+// ============================================================================
+
 function templateHelp(): string {
-  return `atlcli wiki template <subcommand>
+  return `atlcli wiki template <command>
 
-Template management commands.
+Template management with hierarchical storage (global > profile > space).
 
-Subcommands:
+Commands:
   list        List available templates
-  get         Get template details
+  show        Show template details and content
   create      Create a new template
-  validate    Validate a template
-  preview     Preview rendered template
+  edit        Edit a template in $EDITOR
   delete      Delete a template
+  rename      Rename a template
+  validate    Validate template syntax
+
+List options:
+  --level <global|profile|space>  Filter by level
+  --profile <name>                Filter by profile
+  --space <key>                   Filter by space
+  --tag <tag>                     Filter by tag
+  --search <text>                 Search name/description
+  --all                           Include overridden templates
+
+Target options (for create/edit/delete/rename):
+  --profile <name>    Target profile templates
+  --space <key>       Target space templates
+  --level global      Target global templates (default)
 
 Examples:
   atlcli wiki template list
-  atlcli wiki template get --name meeting-notes
-  atlcli wiki template create --name my-template --from-file template.md
-  atlcli wiki template validate --name my-template
-  atlcli wiki template preview --name meeting-notes --var date=2025-01-12
-  atlcli wiki template delete --name old-template --confirm
+  atlcli wiki template list --level global
+  atlcli wiki template list --profile work
 
-Options:
-  --source    Filter by source: local, global, all (default: all)
-  --name      Template name
-  --from-file Create template from file
-  --global    Create as global template
-  --var       Provide variable value (--var key=value)
-  --confirm   Confirm deletion
-  --json      JSON output
+  atlcli wiki template show meeting-notes
+  atlcli wiki template show standup --profile work
+
+  atlcli wiki template create my-template --file template.md
+  atlcli wiki template create standup --profile work
+
+  atlcli wiki template edit meeting-notes
+  atlcli wiki template rename old-name new-name
+  atlcli wiki template delete old-template --force
+
+  atlcli wiki template validate my-template
+  atlcli wiki template validate --all
+  atlcli wiki template validate --file ./template.md
 `;
 }
