@@ -38,6 +38,14 @@ A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, 
 
 ## Installation
 
+### Homebrew (macOS & Linux)
+
+```bash
+brew install bjoernschotte/tap/atlcli
+```
+
+### From Source
+
 ```bash
 git clone https://github.com/BjoernSchotte/atlcli.git
 cd atlcli

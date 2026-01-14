@@ -4,12 +4,47 @@ This guide walks you through installing atlcli, authenticating with Atlassian, a
 
 ## Installation
 
-### Prerequisites
+### Homebrew (Recommended)
+
+The easiest way to install atlcli on macOS or Linux:
+
+```bash
+brew install bjoernschotte/tap/atlcli
+```
+
+This installs the latest release and adds `atlcli` to your PATH automatically.
+
+To upgrade to a newer version:
+
+```bash
+brew upgrade atlcli
+```
+
+### Manual Download
+
+Download the latest release for your platform from the [releases page](https://github.com/BjoernSchotte/atlcli/releases):
+
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `atlcli-darwin-arm64.tar.gz` |
+| macOS (Intel) | `atlcli-darwin-x64.tar.gz` |
+| Linux (ARM64) | `atlcli-linux-arm64.tar.gz` |
+| Linux (x64) | `atlcli-linux-x64.tar.gz` |
+
+Extract and add to your PATH:
+
+```bash
+tar -xzf atlcli-*.tar.gz
+sudo mv atlcli /usr/local/bin/
+```
+
+### From Source
+
+For development or if you want the latest unreleased changes:
+
+**Prerequisites:**
 
 - [Bun](https://bun.sh) v1.0 or later
-- An Atlassian Cloud account
-
-### Install from Source
 
 ```bash
 git clone https://github.com/BjoernSchotte/atlcli.git
