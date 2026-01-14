@@ -4,17 +4,31 @@ This guide walks you through installing atlcli, authenticating with Atlassian, a
 
 ## Installation
 
-### Homebrew (Recommended)
+### Quick Install (Recommended)
 
-The easiest way to install atlcli on macOS or Linux:
+The fastest way to install atlcli on macOS or Linux:
+
+```bash
+curl -fsSL https://atlcli.sh/install.sh | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://atlcli.sh/install.sh | bash -s v0.5.1
+```
+
+This installs to `~/.atlcli/bin` and updates your shell PATH automatically.
+
+### Homebrew
+
+Alternatively, install via Homebrew:
 
 ```bash
 brew install bjoernschotte/tap/atlcli
 ```
 
-This installs the latest release and adds `atlcli` to your PATH automatically.
-
-To upgrade to a newer version:
+To upgrade:
 
 ```bash
 brew upgrade atlcli
