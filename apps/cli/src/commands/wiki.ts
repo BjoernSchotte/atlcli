@@ -2,7 +2,7 @@ import { OutputOptions, output } from "@atlcli/core";
 import { handlePage } from "./page.js";
 import { handleSpace } from "./space.js";
 import { handleDocs } from "./docs.js";
-import { handleSearch } from "./search.js";
+import { handleSearch, handleRecent } from "./search.js";
 import { handleTemplate } from "./template.js";
 
 export async function handleWiki(
@@ -24,6 +24,9 @@ export async function handleWiki(
     case "search":
       await handleSearch(rest, flags, opts);
       return;
+    case "recent":
+      await handleRecent(rest, flags, opts);
+      return;
     case "template":
       await handleTemplate(rest, flags, opts);
       return;
@@ -41,6 +44,7 @@ Commands:
   space       Space operations (list, get, create)
   docs        Docs sync (init, pull, push, status, watch)
   search      Search Confluence content
+  recent      Recently modified pages
   template    Page template management
 
 Options:

@@ -167,6 +167,16 @@ atlcli wiki search --format compact          # Compact output
 atlcli wiki search --verbose                 # Detailed output
 ```
 
+### Recent Pages
+
+```bash
+atlcli wiki recent                           # Last 7 days (default)
+atlcli wiki recent --days 30                 # Last 30 days
+atlcli wiki recent --space <key>             # Filter by space
+atlcli wiki recent --label <name>            # Filter by label
+atlcli wiki recent --limit <n>               # Limit results (default 25)
+```
+
 ### Spaces
 
 ```bash

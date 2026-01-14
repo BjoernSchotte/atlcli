@@ -15,6 +15,32 @@ atlcli wiki search "API" --space TEAM
 atlcli wiki search --label api
 ```
 
+## Recent Pages
+
+Quick access to recently modified pages:
+
+```bash
+# Last 7 days (default)
+atlcli wiki recent
+
+# Last 30 days
+atlcli wiki recent --days 30
+
+# Filter by space
+atlcli wiki recent --space TEAM
+
+# Filter by label
+atlcli wiki recent --label api
+
+# Limit results
+atlcli wiki recent --limit 50
+```
+
+The `wiki recent` command generates CQL like:
+```
+type = page AND lastModified >= now("-7d") ORDER BY lastModified DESC
+```
+
 ## CQL Search
 
 Use full CQL for advanced queries:
