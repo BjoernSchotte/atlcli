@@ -393,7 +393,7 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 13 | Webhook Server | Medium | Watchers | ✅ COMPLETE |
 | 14 | Subtask Management | Small | Issues | ✅ COMPLETE |
 | 15 | Components & Versions | Small | Projects | ✅ COMPLETE |
-| 16 | Custom Fields | Medium | Issues | Not Started |
+| 16 | Custom Fields | Medium | Issues | ✅ COMPLETE |
 | 17 | Dashboard Widgets | Medium | Analytics | Not Started |
 | 18 | Issue Templates | Small | Issues | Not Started |
 | 19 | Offline Mode | Large | All | Not Started |
@@ -454,19 +454,24 @@ CRUD operations for project components and versions.
 
 ### 16. Custom Fields (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 List and explore custom field configurations.
 
 **Features:**
-- `jira field list [--type <type>]` - List all fields
-- `jira field get <id>` - Get field details
-- `jira field options <id>` - List options for select fields
-- `jira field search <query>` - Search fields by name
+- `jira field list [--custom] [--type <type>]` - List all fields (optionally filter) ✅
+- `jira field get <id>` - Get field details ✅
+- `jira field options <id>` - List options for select fields ✅
+- `jira field search <query>` - Search fields by name, ID, or clause name ✅
+
+**Implementation Notes:**
+- Field options API requires Jira admin permission (handled gracefully)
+- Search matches field name, ID, and JQL clause names
 
 **API Endpoints:**
-- `GET /rest/api/3/field`
-- `GET /rest/api/3/field/{fieldId}/context`
+- `GET /rest/api/3/field` - List all fields
+- `GET /rest/api/3/field/{fieldId}/context` - Get field contexts
+- `GET /rest/api/3/field/{fieldId}/context/{contextId}/option` - Get options
 
 ---
 

@@ -117,6 +117,9 @@ export async function handleJira(
     case "version":
       await handleVersion(rest, flags, opts);
       return;
+    case "field":
+      await handleField(rest, flags, opts);
+      return;
     default:
       output(jiraHelp(), opts);
       return;
@@ -4330,6 +4333,250 @@ Examples:
 `;
 }
 
+// ============ Field ============
+
+async function handleField(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleFieldList(flags, opts);
+      return;
+    case "get":
+      await handleFieldGet(rest, flags, opts);
+      return;
+    case "options":
+      await handleFieldOptions(rest, flags, opts);
+      return;
+    case "search":
+      await handleFieldSearch(rest, flags, opts);
+      return;
+    default:
+      output(fieldHelp(), opts);
+      return;
+  }
+}
+
+async function handleFieldList(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const customOnly = hasFlag(flags, "custom");
+  const typeFilter = getFlag(flags, "type");
+
+  const client = await getClient(flags, opts);
+  const fields = await client.getFields();
+
+  let filtered = fields;
+
+  if (customOnly) {
+    filtered = filtered.filter((f) => f.custom);
+  }
+
+  if (typeFilter) {
+    filtered = filtered.filter((f) => f.schema?.type === typeFilter);
+  }
+
+  output(
+    {
+      schemaVersion: "1",
+      fields: filtered.map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: f.schema?.type ?? "unknown",
+        custom: f.custom,
+        searchable: f.searchable,
+        clauseNames: f.clauseNames,
+      })),
+      total: filtered.length,
+    },
+    opts
+  );
+}
+
+async function handleFieldGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const fieldId = args[0] || getFlag(flags, "id");
+
+  if (!fieldId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Field ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const fields = await client.getFields();
+  const field = fields.find((f) => f.id === fieldId || f.key === fieldId);
+
+  if (!field) {
+    fail(opts, 1, ERROR_CODES.API, `Field not found: ${fieldId}`);
+  }
+
+  output(
+    {
+      schemaVersion: "1",
+      field: {
+        id: field.id,
+        key: field.key,
+        name: field.name,
+        custom: field.custom,
+        type: field.schema?.type ?? "unknown",
+        customType: field.schema?.custom,
+        searchable: field.searchable,
+        orderable: field.orderable,
+        navigable: field.navigable,
+        clauseNames: field.clauseNames,
+      },
+    },
+    opts
+  );
+}
+
+async function handleFieldOptions(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const fieldId = args[0] || getFlag(flags, "id");
+
+  if (!fieldId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Field ID is required.");
+  }
+
+  const client = await getClient(flags, opts);
+
+  // Verify field exists and is a custom field
+  const fields = await client.getFields();
+  const field = fields.find((f) => f.id === fieldId || f.key === fieldId);
+
+  if (!field) {
+    fail(opts, 1, ERROR_CODES.API, `Field not found: ${fieldId}`);
+  }
+
+  if (!field.custom) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Field "${field.name}" is a system field. Only custom fields have configurable options.`
+    );
+  }
+
+  try {
+    const options = await client.getFieldOptions(field.id);
+
+    output(
+      {
+        schemaVersion: "1",
+        field: { id: field.id, name: field.name },
+        options,
+        total: options.length,
+      },
+      opts
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("404") || msg.includes("not found")) {
+      output(
+        {
+          schemaVersion: "1",
+          field: { id: field.id, name: field.name },
+          options: [],
+          total: 0,
+          message: "Field has no configurable options or does not support options.",
+        },
+        opts
+      );
+    } else if (msg.includes("403") || msg.includes("administrators")) {
+      output(
+        {
+          schemaVersion: "1",
+          field: { id: field.id, name: field.name },
+          options: [],
+          total: 0,
+          message: "Jira admin permission required to access field options.",
+        },
+        opts
+      );
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function handleFieldSearch(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const query = args.join(" ") || getFlag(flags, "query");
+
+  if (!query) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Search query is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const fields = await client.getFields();
+
+  const lowerQuery = query.toLowerCase();
+  const matches = fields.filter(
+    (f) =>
+      f.name.toLowerCase().includes(lowerQuery) ||
+      f.id.toLowerCase().includes(lowerQuery) ||
+      f.clauseNames?.some((c) => c.toLowerCase().includes(lowerQuery))
+  );
+
+  output(
+    {
+      schemaVersion: "1",
+      query,
+      fields: matches.map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: f.schema?.type ?? "unknown",
+        custom: f.custom,
+        clauseNames: f.clauseNames,
+      })),
+      total: matches.length,
+    },
+    opts
+  );
+}
+
+function fieldHelp(): string {
+  return `atlcli jira field <command>
+
+Commands:
+  list [--custom] [--type <type>]
+      List all fields (optionally filter by custom or type)
+
+  get <id>
+      Get field details
+
+  options <id>
+      List options for select/multiselect custom fields
+
+  search <query>
+      Search fields by name, ID, or clause name
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira field list
+  jira field list --custom
+  jira field list --type string
+  jira field get customfield_10016
+  jira field options customfield_10001
+  jira field search "story point"
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -4354,6 +4601,7 @@ Commands:
   subtask     Subtask operations (create, list)
   component   Component operations (list, get, create, update, delete)
   version     Version operations (list, get, create, update, release, delete)
+  field       Field operations (list, get, options, search)
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -4371,5 +4619,6 @@ Examples:
   atlcli jira search --project PROJ --assignee me
   atlcli jira webhook serve --port 3000 --projects PROJ
   atlcli jira subtask create PROJ-123 --summary "My subtask"
+  atlcli jira field search "story point"
 `;
 }

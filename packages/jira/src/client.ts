@@ -470,6 +470,74 @@ export class JiraClient {
     return storyPointsField?.id || null;
   }
 
+  /**
+   * Get contexts for a custom field.
+   *
+   * GET /rest/api/3/field/{fieldId}/context
+   */
+  async getFieldContexts(
+    fieldId: string
+  ): Promise<{
+    values: Array<{
+      id: string;
+      name: string;
+      isGlobalContext: boolean;
+      isAnyIssueType: boolean;
+    }>;
+  }> {
+    return this.request(`/field/${fieldId}/context`);
+  }
+
+  /**
+   * Get options for a custom field context.
+   *
+   * GET /rest/api/3/field/{fieldId}/context/{contextId}/option
+   */
+  async getFieldContextOptions(
+    fieldId: string,
+    contextId: string
+  ): Promise<{
+    values: Array<{
+      id: string;
+      value: string;
+      disabled?: boolean;
+    }>;
+  }> {
+    return this.request(`/field/${fieldId}/context/${contextId}/option`);
+  }
+
+  /**
+   * Get all options for a custom field across all contexts.
+   * Aggregates options from all contexts.
+   */
+  async getFieldOptions(
+    fieldId: string
+  ): Promise<Array<{ id: string; value: string; disabled?: boolean }>> {
+    const contexts = await this.getFieldContexts(fieldId);
+    const allOptions: Array<{ id: string; value: string; disabled?: boolean }> = [];
+    const seenIds = new Set<string>();
+
+    for (const ctx of contexts.values) {
+      try {
+        const result = await this.getFieldContextOptions(fieldId, ctx.id);
+        for (const opt of result.values) {
+          if (!seenIds.has(opt.id)) {
+            seenIds.add(opt.id);
+            allOptions.push({
+              id: opt.id,
+              value: opt.value,
+              disabled: opt.disabled,
+            });
+          }
+        }
+      } catch {
+        // Context may not have options, skip
+      }
+    }
+
+    return allOptions;
+  }
+
   // ============ Filter Operations ============
 
   /**
