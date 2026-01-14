@@ -5,53 +5,124 @@ Manage epics and their child issues.
 ## List Epics
 
 ```bash
-atlcli jira epic list --project PROJ
+atlcli jira epic list --project ATLCLI
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--project` | Filter by project key |
+| `--board` | Filter by board ID |
+| `--done` | Include completed epics |
+
+### Examples
+
+```bash
+# List epics in a project
+atlcli jira epic list --project ATLCLI
+
+# List epics on a board
+atlcli jira epic list --board 123
+
+# Include completed epics
+atlcli jira epic list --project ATLCLI --done
 ```
 
 ## Get Epic
 
 ```bash
-atlcli jira epic get PROJ-100
+atlcli jira epic get ATLCLI-100
 ```
 
 ## Create Epic
 
 ```bash
-atlcli jira epic create --project PROJ --name "User Authentication" --summary "Implement login system"
+atlcli jira epic create --project ATLCLI --summary "User Authentication"
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--project` | Project key (required) |
+| `--summary` | Epic summary (required) |
+| `--description` | Epic description |
 
 ## Epic Issues
 
 List issues in an epic:
 
 ```bash
-atlcli jira epic issues PROJ-100
+atlcli jira epic issues ATLCLI-100
 ```
 
-## Add to Epic
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--status` | Filter by status |
+| `--limit` | Maximum results |
+
+## Add Issues to Epic
+
+Add one or more issues to an epic:
 
 ```bash
-atlcli jira epic add PROJ-100 --issues PROJ-101,PROJ-102,PROJ-103
+atlcli jira epic add ATLCLI-101 ATLCLI-102 ATLCLI-103 --epic ATLCLI-100
 ```
 
-## Remove from Epic
+The issue keys are positional arguments, and `--epic` specifies the target epic.
+
+## Remove Issues from Epic
+
+Remove issues from their epic:
 
 ```bash
-atlcli jira epic remove PROJ-100 --issues PROJ-101
+atlcli jira epic remove ATLCLI-101
 ```
 
-## Move Issues Between Epics
-
-```bash
-atlcli jira epic move --from PROJ-100 --to PROJ-200 --issues PROJ-101,PROJ-102
-```
+This removes the issue from its current epic.
 
 ## Epic Progress
 
 View completion status:
 
 ```bash
-atlcli jira epic progress PROJ-100
+atlcli jira epic progress ATLCLI-100
 ```
 
-Output includes total issues, completed, in progress, and percentage complete.
+Output:
+
+```
+Epic: ATLCLI-100 - User Authentication
+Progress: 60% complete
+
+Issues: 10 total
+  Done:        6
+  In Progress: 2
+  To Do:       2
+```
+
+## JSON Output
+
+All commands support `--json`:
+
+```bash
+atlcli jira epic list --project ATLCLI --json
+```
+
+```json
+{
+  "schemaVersion": "1",
+  "epics": [
+    {
+      "key": "ATLCLI-100",
+      "summary": "User Authentication",
+      "status": "In Progress",
+      "issueCount": 10,
+      "doneCount": 6
+    }
+  ]
+}
+```

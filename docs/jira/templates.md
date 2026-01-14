@@ -70,7 +70,7 @@ atlcli jira template import --file ./templates/bug-report.json
 
 ## Template Storage
 
-Templates are stored locally at `~/.config/atlcli/templates/jira/`.
+Templates are stored locally at `~/.atlcli/templates/jira/`.
 
 ## Captured Fields
 

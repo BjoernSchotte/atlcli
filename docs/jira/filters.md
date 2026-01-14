@@ -54,12 +54,21 @@ atlcli jira filter delete 12345 --confirm
 atlcli jira search --filter 12345
 ```
 
-## Favorite Filters
+## Share Filter
+
+Share a filter with users or groups:
 
 ```bash
-# Add to favorites
-atlcli jira filter favorite 12345
-
-# Remove from favorites
-atlcli jira filter unfavorite 12345
+atlcli jira filter share 12345 --user alice@company.com
+atlcli jira filter share 12345 --group developers
+atlcli jira filter share 12345 --project PROJ
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--user` | Share with user (email or account ID) |
+| `--group` | Share with group |
+| `--project` | Share with project |
+| `--role` | Share with project role |
