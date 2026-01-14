@@ -4,13 +4,31 @@
 
 Reorganize atlcli documentation for first-class developer experience using mkdocs-material, with a slim README and comprehensive docs site.
 
-## Goals
+## Decisions Summary
 
-1. **Slim README** - Installation, elevator pitch, quick links only
-2. **Organized docs/** - Product-based structure (Confluence, Jira)
-3. **Modern docs site** - mkdocs-material with search, navigation, code highlighting
-4. **Automated deployment** - GitHub Actions to gh-pages
-5. **English** - Single language for now
+| Decision | Choice |
+|----------|--------|
+| Site name | `atlcli` (simple) |
+| Color scheme | Teal/Cyan |
+| Logo | Custom logo later (placeholder for now) |
+| Navigation | Tabs + sections (top tabs for products, sidebar within) |
+| Features | Code copy, nav tracking, search suggestions, instant loading |
+| Versioning | No versioning (single version) |
+| Analytics | Skip for now (Plausible placeholder for later) |
+| Footer | Full (social links + "Made with mkdocs-material" + copyright) |
+| Changelog | Link to GitHub releases |
+| CLI Reference | Quick reference (cheat-sheet style with links) |
+| Edit links | Yes (GitHub edit on each page) |
+| Getting Started | Full tutorial (install, auth, examples for both products) |
+| Tab labels | With material icons (Confluence, Jira) |
+| Troubleshooting | Single page (covers both products) |
+| Tone | Developer-focused (assumes technical knowledge, direct) |
+| GitHub Pages | bjoernschotte.github.io/atlcli (CNAME-ready for custom domain) |
+| Examples | Both side-by-side (tabbed human-readable + JSON) |
+| README | Feature highlights + workflow example + badges |
+| Badges | Standard set (license, build status, docs) |
+| Specs | Keep separate (spec/ internal, docs/ user-facing) |
+| Extra pages | Use cases/recipes section |
 
 ---
 
@@ -19,7 +37,7 @@ Reorganize atlcli documentation for first-class developer experience using mkdoc
 ```
 docs/
 ├── index.md                    # Home / Landing page
-├── getting-started.md          # Installation, quick start, first steps
+├── getting-started.md          # Full tutorial: install, auth, Confluence + Jira examples
 ├── authentication.md           # Auth profiles, API tokens, env vars
 ├── configuration.md            # Config files, logging, plugins
 │
@@ -48,6 +66,13 @@ docs/
 │   ├── webhooks.md             # Webhook server
 │   └── fields.md               # Custom fields, components, versions
 │
+├── recipes/
+│   ├── index.md                # Use cases overview
+│   ├── team-docs.md            # "Sync team documentation" workflow
+│   ├── sprint-reporting.md     # "Automated sprint reports" workflow
+│   ├── ci-cd-docs.md           # "CI/CD documentation publish" workflow
+│   └── issue-triage.md         # "Bulk issue triage" workflow
+│
 ├── plugins/
 │   ├── index.md                # Plugin system overview
 │   ├── using-plugins.md        # Installing, enabling, disabling
@@ -55,9 +80,9 @@ docs/
 │   └── plugin-git.md           # Git integration plugin
 │
 ├── reference/
-│   ├── cli-commands.md         # Full CLI reference (auto-generated?)
+│   ├── cli-commands.md         # Quick reference (cheat-sheet style)
 │   ├── environment.md          # Environment variables
-│   └── troubleshooting.md      # Common issues, FAQ
+│   └── troubleshooting.md      # Common issues for both products
 │
 └── contributing.md             # Development setup, architecture, contributing
 ```
@@ -66,40 +91,74 @@ docs/
 
 ## Phase 2: Slim README.md
 
-New README structure (~100-150 lines):
+Target: ~100-150 lines with badges, feature highlights, and workflow example.
 
 ```markdown
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
+[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://bjoernschotte.github.io/atlcli/)
+
 # atlcli
 
-Extensible CLI for Atlassian products - Confluence and Jira.
+A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, manage Jira issues from your terminal.
 
-## Features
+## Key Features
 
-- Confluence: Bidirectional markdown sync, macros, templates
-- Jira: Full issue lifecycle, sprints, analytics, time tracking
-- Plugin system for extensibility
+**Confluence**
+- Bidirectional markdown sync with conflict detection
+- Macro support (info, note, warning, expand, toc)
+- Page templates with Handlebars-style variables
+
+**Jira**
+- Full issue lifecycle from the command line
+- JQL search with convenient shortcuts
+- Sprint analytics (velocity, burndown)
+- Timer-based time tracking
+
+**General**
 - Multiple auth profiles
+- Plugin system for extensibility
+- Comprehensive logging
 
 ## Installation
 
-[Quick install instructions]
+\`\`\`bash
+git clone https://github.com/BjoernSchotte/atlcli.git
+cd atlcli
+bun install && bun run build
+\`\`\`
 
-## Quick Start
+## Quick Example
 
-[3-5 essential commands for each product]
+\`\`\`bash
+# Authenticate
+atlcli auth init
+
+# Sync Confluence docs
+atlcli docs init ./my-docs --space TEAM
+atlcli docs pull ./my-docs
+# Edit locally...
+atlcli docs push ./my-docs
+
+# Search Jira issues
+atlcli jira search --assignee me --status "In Progress"
+
+# Track time on an issue
+atlcli jira worklog timer start PROJ-123
+\`\`\`
 
 ## Documentation
 
-Full documentation at: https://your-org.github.io/atlcli/
+Full documentation: **https://bjoernschotte.github.io/atlcli/**
 
-- [Getting Started](docs link)
-- [Confluence Guide](docs link)
-- [Jira Guide](docs link)
-- [Plugin Development](docs link)
+- [Getting Started](https://bjoernschotte.github.io/atlcli/getting-started/)
+- [Confluence Guide](https://bjoernschotte.github.io/atlcli/confluence/)
+- [Jira Guide](https://bjoernschotte.github.io/atlcli/jira/)
+- [Plugin Development](https://bjoernschotte.github.io/atlcli/plugins/)
 
 ## License
 
-MIT
+MIT - see [LICENSE](LICENSE)
 ```
 
 ---
@@ -114,19 +173,22 @@ site_description: Extensible CLI for Atlassian products
 site_url: https://bjoernschotte.github.io/atlcli/
 repo_url: https://github.com/BjoernSchotte/atlcli
 repo_name: BjoernSchotte/atlcli
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  # logo: assets/logo.png  # Add later
+  # favicon: assets/favicon.png  # Add later
   palette:
     - scheme: default
-      primary: blue
-      accent: blue
+      primary: teal
+      accent: cyan
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: blue
-      accent: blue
+      primary: teal
+      accent: cyan
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -134,6 +196,7 @@ theme:
     - navigation.instant
     - navigation.tracking
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
     - navigation.top
@@ -141,14 +204,15 @@ theme:
     - search.highlight
     - content.code.copy
     - content.tabs.link
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
 
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Authentication: authentication.md
-  - Configuration: configuration.md
   - Confluence:
-    - Overview: confluence/index.md
+    - confluence/index.md
     - Sync: confluence/sync.md
     - Pages: confluence/pages.md
     - Spaces: confluence/spaces.md
@@ -157,7 +221,7 @@ nav:
     - Attachments: confluence/attachments.md
     - File Format: confluence/file-format.md
   - Jira:
-    - Overview: jira/index.md
+    - jira/index.md
     - Issues: jira/issues.md
     - Search: jira/search.md
     - Boards & Sprints: jira/boards-sprints.md
@@ -170,13 +234,21 @@ nav:
     - Import/Export: jira/import-export.md
     - Webhooks: jira/webhooks.md
     - Fields: jira/fields.md
+  - Recipes:
+    - recipes/index.md
+    - Team Docs Sync: recipes/team-docs.md
+    - Sprint Reporting: recipes/sprint-reporting.md
+    - CI/CD Docs: recipes/ci-cd-docs.md
+    - Issue Triage: recipes/issue-triage.md
   - Plugins:
-    - Overview: plugins/index.md
+    - plugins/index.md
     - Using Plugins: plugins/using-plugins.md
     - Creating Plugins: plugins/creating-plugins.md
     - Git Plugin: plugins/plugin-git.md
   - Reference:
-    - CLI Commands: reference/cli-commands.md
+    - reference/cli-commands.md
+    - Authentication: authentication.md
+    - Configuration: configuration.md
     - Environment: reference/environment.md
     - Troubleshooting: reference/troubleshooting.md
   - Contributing: contributing.md
@@ -184,6 +256,9 @@ nav:
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
@@ -191,6 +266,8 @@ markdown_extensions:
   - pymdownx.snippets
   - admonition
   - tables
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true
 
@@ -203,26 +280,13 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/BjoernSchotte/atlcli
-```
+      name: atlcli on GitHub
+  generator: true  # "Made with Material for MkDocs"
+  # analytics:  # Add Plausible later
+  #   provider: custom
+  #   property: plausible
 
-### Dependencies
-
-```bash
-# Add to project or use pip
-pip install mkdocs-material mkdocs-minify-plugin
-```
-
-Or add to project:
-
-```json
-// package.json scripts
-{
-  "scripts": {
-    "docs:serve": "mkdocs serve",
-    "docs:build": "mkdocs build",
-    "docs:deploy": "mkdocs gh-deploy"
-  }
-}
+copyright: Copyright &copy; 2025 Björn Schotte
 ```
 
 ---
@@ -263,11 +327,19 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-mkdocs-material
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: pip install mkdocs-material mkdocs-minify-plugin
 
       - name: Build docs
-        run: mkdocs build
+        run: mkdocs build --strict
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -290,56 +362,90 @@ jobs:
 
 ## Phase 5: Implementation Tasks
 
-| Task | Description | Priority |
-|------|-------------|----------|
-| Create docs/ structure | Create directories and placeholder files | High |
-| Migrate README content | Extract content to appropriate doc pages | High |
-| Slim README | Rewrite README to essentials only | High |
-| Add mkdocs.yml | Configure mkdocs-material | High |
-| Add GH workflow | Set up docs.yml workflow | High |
-| Write index.md | Landing page with overview | High |
-| Write getting-started.md | Installation, quick start | High |
-| Migrate Confluence docs | Split README Confluence content | Medium |
-| Migrate Jira docs | Split README Jira content | Medium |
-| Migrate Plugin docs | Split README plugin content | Medium |
-| Write reference pages | CLI reference, env vars, troubleshooting | Medium |
-| Add code examples | Ensure all pages have runnable examples | Low |
-| Add screenshots/diagrams | Visual aids where helpful | Low |
+| # | Task | Priority | Est. |
+|---|------|----------|------|
+| 1 | Create docs/ directory structure with placeholder files | High | S |
+| 2 | Add mkdocs.yml configuration | High | S |
+| 3 | Add .github/workflows/docs.yml | High | S |
+| 4 | Write docs/index.md (landing page) | High | M |
+| 5 | Write docs/getting-started.md (full tutorial) | High | L |
+| 6 | Slim down README.md | High | M |
+| 7 | Write docs/authentication.md | High | M |
+| 8 | Write docs/configuration.md | High | M |
+| 9 | Migrate Confluence content (8 pages) | Medium | L |
+| 10 | Migrate Jira content (13 pages) | Medium | L |
+| 11 | Write recipes/ pages (4 pages) | Medium | M |
+| 12 | Write plugins/ pages (4 pages) | Medium | M |
+| 13 | Write reference/ pages (3 pages) | Medium | M |
+| 14 | Write docs/contributing.md | Medium | M |
+| 15 | Test local mkdocs serve | High | S |
+| 16 | Test GitHub Pages deployment | High | S |
+| 17 | Add logo placeholder and favicon | Low | S |
+
+S = Small (< 30 min), M = Medium (30-60 min), L = Large (1-2 hours)
 
 ---
 
 ## Phase 6: Content Guidelines
 
-### Style
-- Use imperative voice for instructions ("Run the command", not "You should run")
-- Start each page with a brief overview paragraph
-- Include practical examples for every feature
-- Use admonitions (tip, warning, note) for callouts
-- Keep code blocks focused and commented
+### Tone
+- **Developer-focused**: Assume technical knowledge, be direct and efficient
+- Use imperative voice: "Run the command" not "You should run"
+- Skip unnecessary explanation, link to details when needed
 
-### Structure per page
-1. Brief intro (1-2 sentences)
-2. Quick example (show, don't tell)
-3. Detailed explanation
+### Example Format (tabbed)
+
+Use tabs to show both human-readable and JSON output:
+
+```markdown
+=== "Human-readable"
+    ```bash
+    atlcli jira search --assignee me
+    ```
+    ```
+    PROJ-123  In Progress  Fix login bug
+    PROJ-124  To Do        Add dark mode
+    ```
+
+=== "JSON"
+    ```bash
+    atlcli jira search --assignee me --json
+    ```
+    ```json
+    {
+      "issues": [
+        {"key": "PROJ-123", "status": "In Progress", "summary": "Fix login bug"},
+        {"key": "PROJ-124", "status": "To Do", "summary": "Add dark mode"}
+      ]
+    }
+    ```
+```
+
+### Page Structure
+1. Brief intro (1-2 sentences, what this page covers)
+2. Quick example (show the most common use case)
+3. Detailed sections with more examples
 4. Options/flags table (where applicable)
-5. More examples
-6. Related pages links
+5. Related pages links at bottom
 
-### Code blocks
-- Always specify language for syntax highlighting
-- Use `bash` for CLI commands
-- Show expected output where helpful
-- Use `# Comments` to explain non-obvious parts
+### Admonitions
+Use sparingly:
+- `!!! tip` - Helpful shortcuts or best practices
+- `!!! warning` - Gotchas or destructive operations
+- `!!! note` - Important context or prerequisites
 
 ---
 
 ## Success Criteria
 
-- [ ] README is under 150 lines
+- [ ] README is under 150 lines with badges
 - [ ] All current README content preserved in docs/
-- [ ] mkdocs serves locally without errors
-- [ ] GH Pages deployment works
-- [ ] Navigation is intuitive (< 3 clicks to any topic)
-- [ ] Search works for all content
-- [ ] Mobile-friendly layout
+- [ ] `mkdocs serve` runs without errors
+- [ ] GitHub Pages deployment succeeds
+- [ ] Navigation tabs work (Home, Confluence, Jira, Recipes, Plugins, Reference)
+- [ ] Search finds content across all pages
 - [ ] Dark/light mode toggle works
+- [ ] Edit links go to correct GitHub files
+- [ ] Code copy buttons work
+- [ ] Tabbed examples render correctly
+- [ ] Mobile layout is usable
