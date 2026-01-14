@@ -189,9 +189,45 @@ Create Confluence pages automatically for new local files:
 atlcli wiki docs sync ./docs --space TEAM --auto-create
 ```
 
-New markdown files without frontmatter will be:
-1. Created as pages in Confluence
-2. Updated with frontmatter containing the new page ID
+Auto-create triggers in two scenarios:
+
+1. **During initial sync**: Untracked local files (no frontmatter ID) are created as new pages
+2. **During file watching**: New files added while sync is running are automatically created
+
+**How it works:**
+
+| Aspect | Behavior |
+|--------|----------|
+| Title | From frontmatter `title`, or filename converted to title case |
+| Parent | Space home page (for `--space`) or ancestor (for `--ancestor`) |
+| Content | Full markdown content converted to Confluence storage format |
+
+**Example workflow:**
+
+```bash
+# Start sync with auto-create
+atlcli wiki docs sync ./docs --space TEAM --auto-create
+
+# In another terminal, create a new file
+echo "# My New Feature" > ./docs/my-new-feature.md
+
+# Sync automatically:
+# 1. Detects new file
+# 2. Creates page "My New Feature" in Confluence
+# 3. Updates local file with frontmatter containing page ID
+```
+
+After auto-create, the file is updated with frontmatter:
+
+```markdown
+---
+atlcli:
+  id: "12345678"
+  title: "My New Feature"
+---
+
+# My New Feature
+```
 
 ### Lock File
 
@@ -498,9 +534,8 @@ docs/
 │   ├── config.json         # Sync configuration
 │   ├── state.json          # Sync state (versions, timestamps)
 │   ├── .sync.lock          # Lock file (when sync running)
-│   ├── base/               # Base versions for 3-way merge
-│   │   └── 12345.md        # Base content by page ID
-│   └── logs/               # Operation logs
+│   └── cache/              # Base versions for 3-way merge
+│       └── 12345.md        # Base content by page ID
 ├── getting-started.md
 ├── api-reference.md
 ├── api-reference.attachments/
@@ -537,18 +572,26 @@ docs/
 
 ## File Format
 
-Local files use YAML frontmatter:
+Local files use YAML frontmatter with the `atlcli` namespace:
 
 ```markdown
 ---
-id: "12345"
-title: "API Reference"
+atlcli:
+  id: "12345"
+  title: "API Reference"
 ---
 
 # API Reference
 
 Content here...
 ```
+
+The frontmatter fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Confluence page ID (set automatically on pull/create) |
+| `title` | No | Page title override (defaults to first H1 heading) |
 
 See [File Format](file-format.md) for details.
 
