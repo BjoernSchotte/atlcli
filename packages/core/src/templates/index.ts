@@ -36,3 +36,15 @@ export type { TemplateStorage } from "./storage.js";
 
 // Resolver
 export { TemplateResolver } from "./resolver.js";
+
+// Importer (import/export)
+export {
+  exportToDirectory,
+  exportSingleTemplate,
+  importFromDirectory,
+  importFromGitUrl,
+  importFromUrl,
+  detectImportSourceType,
+  getTrackedTemplates,
+} from "./importer.js";
+export type { ImportOptions, ImportResult } from "./importer.js";

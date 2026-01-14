@@ -25,12 +25,21 @@ import {
   serializeTemplate,
   validateTemplate,
   getBuiltinVariables,
+  // Import/export
+  exportToDirectory,
+  exportSingleTemplate,
+  importFromDirectory,
+  importFromGitUrl,
+  importFromUrl,
+  detectImportSourceType,
+  getTrackedTemplates,
   type Template,
   type TemplateFilter,
   type TemplateSummary,
   type TemplateStorage,
   type TemplateVariable,
   type TemplateMetadata,
+  type ImportOptions,
 } from "@atlcli/core";
 import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence";
 
@@ -74,6 +83,15 @@ export async function handleTemplate(
       return;
     case "copy":
       await handleCopy(rest, flags, opts);
+      return;
+    case "export":
+      await handleExport(rest, flags, opts);
+      return;
+    case "import":
+      await handleImport(rest, flags, opts);
+      return;
+    case "update":
+      await handleUpdate(rest, flags, opts);
       return;
     default:
       output(templateHelp(), opts);
@@ -1281,6 +1299,290 @@ function outputValidation(
 }
 
 // ============================================================================
+// Export Command
+// ============================================================================
+
+async function handleExport(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const ctx = await getTemplateContext(flags);
+  const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
+
+  // Single template export to stdout or file
+  if (args.length === 1) {
+    const name = args[0];
+    const level = getFlag(flags, "level") as "global" | "profile" | "space" | undefined;
+    const profile = getFlag(flags, "profile");
+    const space = getFlag(flags, "space");
+
+    const content = await exportSingleTemplate(
+      ctx.resolver,
+      name,
+      level,
+      profile,
+      space
+    );
+
+    if (!content) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+    }
+
+    if (outputPath && !outputPath.endsWith("/")) {
+      // Output to file
+      await writeFile(outputPath, content, "utf8");
+      if (opts.json) {
+        output({ exported: true, name, file: outputPath }, opts);
+      } else {
+        output(`Exported '${name}' to ${outputPath}`, opts);
+      }
+    } else {
+      // Output to stdout
+      process.stdout.write(content);
+    }
+    return;
+  }
+
+  // Multi-template export to directory
+  const outputDir = outputPath ?? "./templates-export";
+
+  // Build filter from flags
+  const filter: TemplateFilter = {};
+  const level = getFlag(flags, "level");
+  if (level === "global" || level === "profile" || level === "space") {
+    filter.level = level;
+  }
+  if (getFlag(flags, "profile")) {
+    filter.level = "profile";
+    filter.profile = getFlag(flags, "profile");
+  }
+  if (getFlag(flags, "space")) {
+    filter.level = "space";
+    filter.space = getFlag(flags, "space");
+  }
+  const tag = getFlag(flags, "tag");
+  if (tag) {
+    filter.tags = [tag];
+  }
+
+  const { exported, manifest } = await exportToDirectory(ctx.resolver, outputDir, filter);
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      exported,
+      directory: outputDir,
+      manifest,
+    }, opts);
+  } else {
+    output(`Exported ${exported.length} template(s) to ${outputDir}/`, opts);
+    if (exported.length > 0) {
+      output(`Templates: ${exported.join(", ")}`, opts);
+    }
+  }
+}
+
+// ============================================================================
+// Import Command
+// ============================================================================
+
+async function handleImport(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const source = args[0];
+  const templateNames = args.slice(1);
+
+  if (!source) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Import source is required (directory, Git URL, or tar.gz URL).");
+  }
+
+  // Build import options
+  const importOpts: ImportOptions = {
+    replace: hasFlag(flags, "replace"),
+    templateNames: templateNames.length > 0 ? templateNames : undefined,
+  };
+
+  // Handle flattening options
+  if (hasFlag(flags, "to-level") && getFlag(flags, "to-level") === "global") {
+    importOpts.toLevel = "global";
+  }
+  if (getFlag(flags, "to-profile")) {
+    importOpts.toProfile = getFlag(flags, "to-profile");
+  }
+  if (getFlag(flags, "to-space")) {
+    importOpts.toSpace = getFlag(flags, "to-space");
+  }
+
+  // Build storages object
+  const config = await loadConfig();
+  const activeProfile = getActiveProfile(config);
+  const docsDir = await findAtlcliDir(process.cwd());
+
+  const storages = {
+    global: new GlobalTemplateStorage(),
+    getProfile: (name: string) => new ProfileTemplateStorage(name),
+    getSpace: (key: string) => new SpaceTemplateStorage(key, docsDir ?? undefined),
+  };
+
+  // Detect source type and import
+  const sourceType = detectImportSourceType(source);
+
+  let result;
+  try {
+    if (sourceType === "directory") {
+      result = await importFromDirectory(source, storages, importOpts);
+    } else if (sourceType === "git") {
+      output("Cloning repository...", opts);
+      result = await importFromGitUrl(source, storages, importOpts);
+    } else {
+      output("Downloading archive...", opts);
+      result = await importFromUrl(source, storages, importOpts);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    fail(opts, 1, ERROR_CODES.IO, `Import failed: ${message}`);
+  }
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      source,
+      sourceType,
+      ...result,
+    }, opts);
+  } else {
+    output(`Imported ${result.imported.length} template(s) from ${source}`, opts);
+    if (result.imported.length > 0) {
+      output(`  Imported: ${result.imported.join(", ")}`, opts);
+    }
+    if (result.skipped.length > 0) {
+      output(`  Skipped (already exist): ${result.skipped.join(", ")}`, opts);
+    }
+    if (result.errors.length > 0) {
+      output(`  Errors:`, opts);
+      for (const err of result.errors) {
+        output(`    - ${err.name}: ${err.error}`, opts);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Update Command
+// ============================================================================
+
+async function handleUpdate(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const templateNames = args;
+  const sourceUrl = getFlag(flags, "source");
+  const force = hasFlag(flags, "force");
+
+  const ctx = await getTemplateContext(flags);
+
+  // Get templates with tracked sources
+  const tracked = await getTrackedTemplates(ctx.resolver, sourceUrl);
+
+  if (tracked.length === 0) {
+    if (sourceUrl) {
+      fail(opts, 1, ERROR_CODES.USAGE, `No templates tracked from source: ${sourceUrl}`);
+    } else {
+      fail(opts, 1, ERROR_CODES.USAGE, "No templates with tracked sources found.");
+    }
+  }
+
+  // Filter by template names if specified
+  const toUpdate = templateNames.length > 0
+    ? tracked.filter((t) => templateNames.includes(t.name))
+    : tracked;
+
+  if (toUpdate.length === 0) {
+    fail(opts, 1, ERROR_CODES.USAGE, `No tracked templates found matching: ${templateNames.join(", ")}`);
+  }
+
+  // Group by source URL
+  const bySource = new Map<string, typeof toUpdate>();
+  for (const t of toUpdate) {
+    const existing = bySource.get(t.source) ?? [];
+    existing.push(t);
+    bySource.set(t.source, existing);
+  }
+
+  // Build storages object
+  const docsDir = await findAtlcliDir(process.cwd());
+  const storages = {
+    global: new GlobalTemplateStorage(),
+    getProfile: (name: string) => new ProfileTemplateStorage(name),
+    getSpace: (key: string) => new SpaceTemplateStorage(key, docsDir ?? undefined),
+  };
+
+  const allResults: { source: string; imported: string[]; skipped: string[]; errors: Array<{ name: string; error: string }> }[] = [];
+
+  // Import from each source
+  for (const [url, templates] of bySource) {
+    output(`Updating from ${url}...`, opts);
+
+    const sourceType = detectImportSourceType(url);
+    const names = templates.map((t) => t.name);
+
+    const importOpts: ImportOptions = {
+      replace: true, // Always replace when updating
+      templateNames: names,
+      sourceUrl: url,
+    };
+
+    let result;
+    try {
+      if (sourceType === "directory") {
+        result = await importFromDirectory(url, storages, importOpts);
+      } else if (sourceType === "git") {
+        result = await importFromGitUrl(url, storages, importOpts);
+      } else {
+        result = await importFromUrl(url, storages, importOpts);
+      }
+      allResults.push({ source: url, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      output(`  Error updating from ${url}: ${message}`, opts);
+      allResults.push({
+        source: url,
+        imported: [],
+        skipped: [],
+        errors: templates.map((t) => ({ name: t.name, error: message })),
+      });
+    }
+  }
+
+  // Output results
+  if (opts.json) {
+    const totalImported = allResults.flatMap((r) => r.imported);
+    const totalSkipped = allResults.flatMap((r) => r.skipped);
+    const totalErrors = allResults.flatMap((r) => r.errors);
+    output({
+      schemaVersion: "1",
+      updated: totalImported,
+      skipped: totalSkipped,
+      errors: totalErrors,
+      sources: allResults,
+    }, opts);
+  } else {
+    let totalUpdated = 0;
+    for (const result of allResults) {
+      if (result.imported.length > 0) {
+        output(`  Updated: ${result.imported.join(", ")}`, opts);
+        totalUpdated += result.imported.length;
+      }
+    }
+    output(`Updated ${totalUpdated} template(s).`, opts);
+  }
+}
+
+// ============================================================================
 // Help
 // ============================================================================
 
@@ -1300,6 +1602,9 @@ Commands:
   render      Render a template with variables
   init        Create template from existing content
   copy        Copy template between levels
+  export      Export templates to directory or file
+  import      Import templates from directory/URL/Git
+  update      Re-import templates from tracked sources
 
 List options:
   --level <global|profile|space>  Filter by level
@@ -1340,6 +1645,23 @@ Copy options:
   --to-space <key>      Copy to space
   --force               Overwrite existing template
 
+Export options:
+  -o, --output <path>   Output directory or file path
+  --level <level>       Filter by level
+  --profile <name>      Filter by profile
+  --space <key>         Filter by space
+  --tag <tag>           Filter by tag
+
+Import options:
+  --replace             Replace existing templates (default: skip)
+  --to-level global     Import all to global level
+  --to-profile <name>   Import all to profile
+  --to-space <key>      Import all to space
+
+Update options:
+  --source <url>        Update only from this source
+  --force               Re-track source for templates
+
 Built-in @variables available in templates:
   @date, @datetime, @time, @year, @month, @day, @weekday
   @user, @space, @profile, @title, @parent, @uuid
@@ -1373,5 +1695,20 @@ Examples:
 
   atlcli wiki template copy meeting-notes --from-level global --to-profile work
   atlcli wiki template copy meeting-notes team-meeting --from-level global --to-space TEAM
+
+  atlcli wiki template export                           # All → ./templates-export/
+  atlcli wiki template export -o ./my-pack              # All → ./my-pack/
+  atlcli wiki template export meeting-notes             # Single → stdout
+  atlcli wiki template export meeting-notes -o out.md   # Single → file
+  atlcli wiki template export --profile work            # Filter by profile
+
+  atlcli wiki template import ./templates-export        # Local directory
+  atlcli wiki template import https://github.com/user/templates  # Git URL
+  atlcli wiki template import ./templates --to-profile work      # Flatten to profile
+  atlcli wiki template import ./templates --replace              # Replace existing
+
+  atlcli wiki template update                           # Update all tracked
+  atlcli wiki template update meeting-notes             # Update specific
+  atlcli wiki template update --source https://github.com/user/templates
 `;
 }
