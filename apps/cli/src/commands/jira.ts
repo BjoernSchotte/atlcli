@@ -39,6 +39,10 @@ import {
   cancelTimer,
   loadTimer,
   getElapsedSeconds,
+  parseDateInput,
+  aggregateWorklogs,
+  toWorklogWithIssue,
+  WorklogWithIssue,
   calculateSprintMetrics,
   calculateVelocityTrend,
   calculateBurndown,
@@ -1114,6 +1118,9 @@ async function handleWorklog(
     case "timer":
       await handleWorklogTimer(rest, flags, opts);
       return;
+    case "report":
+      await handleWorklogReport(flags, opts);
+      return;
     default:
       output(worklogHelp(), opts);
       return;
@@ -1297,6 +1304,132 @@ function formatWorklog(worklog: JiraWorklog): Record<string, unknown> {
     updated: worklog.updated,
     comment: worklog.comment,
   };
+}
+
+// ============ Worklog Report ============
+
+async function handleWorklogReport(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const client = await getClient(flags, opts);
+
+  // Parse date range
+  const sinceStr = getFlag(flags, "since") ?? "30d";
+  const untilStr = getFlag(flags, "until") ?? "today";
+  const groupBy = getFlag(flags, "group-by") as "issue" | "date" | undefined;
+
+  let sinceDate: Date;
+  let untilDate: Date;
+  try {
+    sinceDate = parseDateInput(sinceStr);
+    untilDate = parseDateInput(untilStr);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+
+  // Set to start/end of day for proper date range
+  sinceDate.setHours(0, 0, 0, 0);
+  untilDate.setHours(23, 59, 59, 999);
+
+  const sinceDateStr = sinceDate.toISOString().split("T")[0];
+  const untilDateStr = untilDate.toISOString().split("T")[0];
+
+  // Determine user - default to "me" (currentUser())
+  const userInput = getFlag(flags, "user") ?? "me";
+  const userJql = userInput === "me" ? "currentUser()" : `"${userInput}"`;
+
+  // Build JQL to find issues with worklogs by this user in date range
+  const jql = `worklogAuthor = ${userJql} AND worklogDate >= "${sinceDateStr}" AND worklogDate <= "${untilDateStr}"`;
+
+  // Search for matching issues
+  const searchResult = await client.search(jql, {
+    maxResults: 1000,
+    fields: ["key", "summary"],
+  });
+
+  if (searchResult.issues.length === 0) {
+    output(
+      {
+        schemaVersion: "1",
+        message: "No worklogs found for the specified criteria.",
+        query: { user: userInput, since: sinceDateStr, until: untilDateStr },
+        summary: {
+          totalTimeSeconds: 0,
+          totalTimeHuman: "0 minutes",
+          worklogCount: 0,
+          issueCount: 0,
+          averagePerDay: "0 minutes",
+        },
+        worklogs: [],
+      },
+      opts
+    );
+    return;
+  }
+
+  // Fetch worklogs for each issue and filter
+  const allWorklogs: WorklogWithIssue[] = [];
+
+  // Get current user's accountId for filtering (if using "me")
+  let targetAccountId: string | undefined;
+  if (userInput === "me") {
+    const currentUser = await client.getCurrentUser();
+    targetAccountId = currentUser.accountId;
+  }
+
+  for (const issue of searchResult.issues) {
+    const worklogsResult = await client.getWorklogs(issue.key, { maxResults: 1000 });
+
+    for (const worklog of worklogsResult.worklogs) {
+      const worklogDate = new Date(worklog.started);
+
+      // Filter by date range
+      if (worklogDate < sinceDate || worklogDate > untilDate) {
+        continue;
+      }
+
+      // Filter by user
+      if (userInput === "me") {
+        if (worklog.author?.accountId !== targetAccountId) {
+          continue;
+        }
+      } else {
+        // Match by display name or email
+        const authorName = worklog.author?.displayName?.toLowerCase() ?? "";
+        const authorEmail = worklog.author?.emailAddress?.toLowerCase() ?? "";
+        const searchLower = userInput.toLowerCase();
+        if (!authorName.includes(searchLower) && !authorEmail.includes(searchLower)) {
+          continue;
+        }
+      }
+
+      allWorklogs.push(toWorklogWithIssue(worklog, issue.key, issue.fields.summary));
+    }
+  }
+
+  // Determine user display name for report
+  let userName = userInput;
+  let userId: string | undefined;
+  if (userInput === "me") {
+    const currentUser = await client.getCurrentUser();
+    userName = currentUser.displayName;
+    userId = currentUser.accountId;
+  } else if (allWorklogs.length > 0) {
+    userName = allWorklogs[0].author;
+    userId = allWorklogs[0].authorId;
+  }
+
+  // Aggregate and output
+  const report = aggregateWorklogs(
+    allWorklogs,
+    userName,
+    userId,
+    { from: sinceDateStr, to: untilDateStr },
+    groupBy
+  );
+
+  output({ schemaVersion: "1", ...report }, opts);
 }
 
 // ============ Timer Operations ============
@@ -1498,12 +1631,19 @@ Commands:
   list --issue <key> [--limit <n>]
   update --issue <key> --id <worklogId> [--time <time>] [--comment <text>] [--started <date>]
   delete --issue <key> --id <worklogId> --confirm
+  report [--user <user>] [--since <date>] [--until <date>] [--group-by <issue|date>]
 
 Timer mode (start/stop tracking):
   timer start <issue> [--comment <text>]   Start tracking time
   timer stop [--round <interval>]          Stop and log worklog
   timer status                             Show running timer
   timer cancel                             Cancel without logging
+
+Report options:
+  --user <user>           User to report on (default: me)
+  --since <date>          Start date (default: 30d)
+  --until <date>          End date (default: today)
+  --group-by <issue|date> Group worklogs by issue or date
 
 Time formats:
   1h30m, 1h 30m      Hours and minutes

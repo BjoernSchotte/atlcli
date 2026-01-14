@@ -273,6 +273,36 @@ export interface JiraWorklog {
   issueId: string;
 }
 
+/** Worklog entry with issue context (for reports) */
+export interface WorklogWithIssue {
+  issueKey: string;
+  issueSummary: string;
+  worklogId: string;
+  author: string;
+  authorId?: string;
+  timeSpent: string;
+  timeSpentSeconds: number;
+  started: string;
+  comment?: string;
+}
+
+/** Worklog report result */
+export interface WorklogReport {
+  user: string;
+  userId?: string;
+  dateRange: { from: string; to: string };
+  summary: {
+    totalTimeSeconds: number;
+    totalTimeHuman: string;
+    worklogCount: number;
+    issueCount: number;
+    averagePerDay: string;
+  };
+  worklogs: WorklogWithIssue[];
+  byIssue?: Record<string, WorklogWithIssue[]>;
+  byDate?: Record<string, WorklogWithIssue[]>;
+}
+
 // ============ Attachment Types ============
 
 /** Issue attachment */

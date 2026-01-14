@@ -445,3 +445,169 @@ export function formatElapsed(seconds: number): string {
   }
   return `${minutes}m`;
 }
+
+// ============ Worklog Report ============
+
+import type { WorklogWithIssue, WorklogReport, JiraWorklog } from "./types";
+
+/**
+ * Parse a relative duration to a Date.
+ * Supports: "7d", "30d", "1w", "2w", "1m" (month)
+ */
+export function parseRelativeDuration(input: string): Date {
+  const trimmed = input.trim().toLowerCase();
+  const now = new Date();
+
+  // Days (e.g., "7d", "30d")
+  const daysMatch = trimmed.match(/^(\d+)d$/);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1], 10);
+    now.setDate(now.getDate() - days);
+    return now;
+  }
+
+  // Weeks (e.g., "1w", "2w")
+  const weeksMatch = trimmed.match(/^(\d+)w$/);
+  if (weeksMatch) {
+    const weeks = parseInt(weeksMatch[1], 10);
+    now.setDate(now.getDate() - weeks * 7);
+    return now;
+  }
+
+  // Months (e.g., "1m", "3m")
+  const monthsMatch = trimmed.match(/^(\d+)m$/);
+  if (monthsMatch) {
+    const months = parseInt(monthsMatch[1], 10);
+    now.setMonth(now.getMonth() - months);
+    return now;
+  }
+
+  throw new Error(
+    `Invalid duration format: "${input}". Supported: 7d, 30d, 1w, 2w, 1m`
+  );
+}
+
+/**
+ * Parse a date input that can be either absolute or relative.
+ * Relative: "7d", "30d", "1w", "2w", "1m"
+ * Absolute: "2026-01-01", ISO 8601, "today", "yesterday"
+ */
+export function parseDateInput(input: string): Date {
+  const trimmed = input.trim().toLowerCase();
+
+  // Try relative duration first
+  if (/^\d+[dwm]$/.test(trimmed)) {
+    return parseRelativeDuration(trimmed);
+  }
+
+  // Fall back to absolute date parsing
+  return parseStartedDate(input);
+}
+
+/**
+ * Extract comment text from worklog comment (handles ADF and string).
+ */
+function extractCommentText(comment?: unknown): string | undefined {
+  if (!comment) return undefined;
+  if (typeof comment === "string") return comment;
+
+  // Handle Atlassian Document Format (ADF)
+  if (typeof comment === "object" && comment !== null && "content" in comment) {
+    const adf = comment as { content?: Array<{ content?: Array<{ text?: string }> }> };
+    const texts: string[] = [];
+    for (const block of adf.content || []) {
+      for (const inline of block.content || []) {
+        if (inline.text) texts.push(inline.text);
+      }
+    }
+    return texts.join(" ") || undefined;
+  }
+
+  return undefined;
+}
+
+/**
+ * Aggregate worklogs into a report.
+ *
+ * @param worklogs - Array of worklogs with issue context
+ * @param user - User display name for the report
+ * @param userId - User account ID (optional)
+ * @param dateRange - Date range for the report
+ * @param groupBy - Optional grouping: "issue" or "date"
+ */
+export function aggregateWorklogs(
+  worklogs: WorklogWithIssue[],
+  user: string,
+  userId: string | undefined,
+  dateRange: { from: string; to: string },
+  groupBy?: "issue" | "date"
+): WorklogReport {
+  // Calculate totals
+  const totalTimeSeconds = worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
+  const uniqueIssues = new Set(worklogs.map((w) => w.issueKey));
+
+  // Calculate days in range for average
+  const fromDate = new Date(dateRange.from);
+  const toDate = new Date(dateRange.to);
+  const daysDiff = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  const workingDays = Math.ceil(daysDiff * 5 / 7); // Approximate working days
+  const avgSecondsPerDay = workingDays > 0 ? Math.round(totalTimeSeconds / workingDays) : 0;
+
+  const report: WorklogReport = {
+    user,
+    userId,
+    dateRange,
+    summary: {
+      totalTimeSeconds,
+      totalTimeHuman: secondsToHuman(totalTimeSeconds),
+      worklogCount: worklogs.length,
+      issueCount: uniqueIssues.size,
+      averagePerDay: secondsToHuman(avgSecondsPerDay),
+    },
+    worklogs: worklogs.sort((a, b) => new Date(b.started).getTime() - new Date(a.started).getTime()),
+  };
+
+  // Group by issue
+  if (groupBy === "issue") {
+    const byIssue: Record<string, WorklogWithIssue[]> = {};
+    for (const w of worklogs) {
+      if (!byIssue[w.issueKey]) byIssue[w.issueKey] = [];
+      byIssue[w.issueKey].push(w);
+    }
+    report.byIssue = byIssue;
+  }
+
+  // Group by date
+  if (groupBy === "date") {
+    const byDate: Record<string, WorklogWithIssue[]> = {};
+    for (const w of worklogs) {
+      const dateKey = w.started.split("T")[0]; // YYYY-MM-DD
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(w);
+    }
+    report.byDate = byDate;
+  }
+
+  return report;
+}
+
+/**
+ * Convert a JiraWorklog to WorklogWithIssue format.
+ */
+export function toWorklogWithIssue(
+  worklog: JiraWorklog,
+  issueKey: string,
+  issueSummary: string
+): WorklogWithIssue {
+  return {
+    issueKey,
+    issueSummary,
+    worklogId: worklog.id,
+    author: worklog.author?.displayName || "Unknown",
+    authorId: worklog.author?.accountId,
+    timeSpent: worklog.timeSpent,
+    timeSpentSeconds: worklog.timeSpentSeconds,
+    started: worklog.started,
+    comment: extractCommentText(worklog.comment),
+  };
+}

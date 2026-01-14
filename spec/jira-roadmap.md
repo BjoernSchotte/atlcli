@@ -144,8 +144,8 @@ Log and manage work time on issues.
 - `jira worklog timer status` - Show active timer ✅
 - `jira worklog timer cancel` - Cancel without logging ✅
 
-**Phase 3 Features (Pending):**
-- `jira worklog report --user <user> [--since] [--until]` - Time report
+**Phase 3 Features (Report) - COMPLETE:**
+- `jira worklog report [--user <user>] [--since <date>] [--until <date>] [--group-by <issue|date>]` - Time report ✅
 
 **Time Formats:** `1h30m`, `1.5h`, `90m`, `1:30`, `1d`, `1w` (week=5d, day=8h)
 
