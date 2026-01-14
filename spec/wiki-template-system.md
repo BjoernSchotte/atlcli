@@ -18,7 +18,7 @@ Implement a hierarchical template system for Confluence pages with three levels 
 | Variable syntax | Handlebars `{{variable}}` with full logic support (if, unless, each, with) |
 | Variable input | CLI flags `--var key=value` with interactive fallback for required vars |
 | Variable types | string, number, date, boolean, select (enum) + validation |
-| Variable defaults | Handlebars syntax: `{{author "Team"}}` |
+| Variable defaults | Frontmatter `default:` field (Handlebars `{{var "default"}}` also supported, frontmatter takes precedence) |
 | Required vars | Explicit `required: true` in frontmatter |
 | Template naming | Slug-style: lowercase, hyphens only |
 | Inheritance | No inheritance (standalone templates) |
@@ -37,21 +37,23 @@ Implement a hierarchical template system for Confluence pages with three levels 
 ### Global Templates
 ```
 ~/.config/atlcli/templates/
-├── meeting-notes.md
-├── sprint-retro.md
-└── decision-record.md
+└── global/
+    ├── meeting-notes.md
+    ├── sprint-retro.md
+    └── decision-record.md
 ```
 
-Override with `ATLCLI_TEMPLATES_DIR` environment variable.
+Override base path with `ATLCLI_TEMPLATES_DIR` environment variable.
 
 ### Profile Templates
 ```
 ~/.config/atlcli/templates/
-├── work/                    # Profile: work
-│   ├── standup.md
-│   └── team-update.md
-└── personal/                # Profile: personal
-    └── journal.md
+└── profiles/
+    ├── work/                # Profile: work
+    │   ├── standup.md
+    │   └── team-update.md
+    └── personal/            # Profile: personal
+        └── journal.md
 ```
 
 ### Space Templates (Two Locations)
@@ -68,10 +70,13 @@ Override with `ATLCLI_TEMPLATES_DIR` environment variable.
 **Option 2: Under config (fallback)**
 ```
 ~/.config/atlcli/templates/
-└── work/                    # Profile
-    └── TEAM/                # Space key
-        └── team-specific.md
+└── spaces/
+    └── work/                # Profile name
+        └── TEAM/            # Space key
+            └── team-specific.md
 ```
+
+> **Note**: The explicit `global/`, `profiles/`, and `spaces/` subdirectories prevent naming collisions between template names and profile/space names.
 
 ---
 
@@ -161,6 +166,8 @@ variables:
 
 Date format configurable via `--date-format` flag or config setting.
 
+**Precedence**: User-provided `--var` values override built-ins. If you pass `--var date=custom`, it overrides the built-in `{{date}}`. This allows templates to use built-in names while still accepting user overrides.
+
 ---
 
 ## Commands
@@ -172,14 +179,24 @@ Date format configurable via `--date-format` flag or config setting.
 atlcli wiki template list
 
 # Output:
-# meeting-notes      [global]     Template for recurring team meetings
-# standup           [profile:work] Daily standup template
-# runbook           [space:TEAM]   Operations runbook template
+# meeting-notes      [global]       Template for recurring team meetings
+# standup            [profile:work] Daily standup template
+# runbook            [space:TEAM]   Operations runbook template
 
 # Filter by level
 atlcli wiki template list --level global
 atlcli wiki template list --level profile
 atlcli wiki template list --level space
+
+# Include space templates (requires context or explicit flags)
+atlcli wiki template list --space TEAM              # List including space TEAM templates
+atlcli wiki template list --profile work            # List including profile work templates
+
+# Show all levels including overridden templates
+atlcli wiki template list --all
+# Output shows shadowed templates:
+# meeting-notes      [global]       Template for recurring team meetings
+# meeting-notes      [space:TEAM]   (overrides global) Team-specific meeting notes
 
 # Filter by tags
 atlcli wiki template list --tag meeting
@@ -190,6 +207,8 @@ atlcli wiki template list --search retro
 # JSON output
 atlcli wiki template list --json
 ```
+
+**Context inference**: When run inside a synced docs folder, space templates from that folder are automatically included. Otherwise, use `--space` to specify.
 
 ### Show Template
 
@@ -218,7 +237,7 @@ atlcli wiki template show meeting-notes
 ### Create Template
 
 ```bash
-# From file
+# From file (default: global level)
 atlcli wiki template create meeting-notes --file ./my-template.md
 
 # Opens $EDITOR if no file specified
@@ -233,36 +252,47 @@ atlcli wiki template create standup --file ./standup.md --profile work
 atlcli wiki template create runbook --file ./runbook.md --space TEAM
 ```
 
-### Init Template from Existing Page
+**Default level**: Global. Use `--profile` or `--space` to create at other levels. When run inside a synced docs folder, you can use `--space .` to create in the current space's templates.
+
+### Init Template from Existing Content
 
 ```bash
 # From page ID
-atlcli wiki template init meeting-template --from-page 12345
+atlcli wiki template init meeting-template --from 12345
 
-# From page title
-atlcli wiki template init meeting-template --from-page "Team Meetings"
+# From page title (requires --space to resolve)
+atlcli wiki template init meeting-template --from "Team Meetings" --space TEAM
 
 # From local synced .md file
-atlcli wiki template init meeting-template --from-page ./docs/meetings/weekly.md
+atlcli wiki template init meeting-template --from ./docs/meetings/weekly.md
 
 # Specify target level
-atlcli wiki template init retro --from-page 12345 --profile work
+atlcli wiki template init retro --from 12345 --profile work
 ```
+
+The `--from` flag auto-detects the source type:
+- Numeric value → page ID
+- Path with `/` or `.md` → local file
+- Otherwise → page title (requires `--space` to resolve)
 
 ### Edit Template
 
 ```bash
-# Opens in $EDITOR
+# Opens in $EDITOR (resolves by precedence: space > profile > global)
 atlcli wiki template edit meeting-notes
 
-# Edit profile-level template
+# Edit at specific level (required if same name exists at multiple levels)
+atlcli wiki template edit meeting-notes --level global
 atlcli wiki template edit standup --profile work
+atlcli wiki template edit runbook --space TEAM
 ```
+
+**Ambiguity handling**: If a template name exists at multiple levels and no level is specified, the command shows which levels have it and asks you to specify.
 
 ### Delete Template
 
 ```bash
-# Interactive confirmation
+# Interactive confirmation (resolves by precedence)
 atlcli wiki template delete meeting-notes
 
 # Force delete
@@ -270,7 +300,10 @@ atlcli wiki template delete meeting-notes --force
 
 # Delete from specific level
 atlcli wiki template delete standup --profile work --force
+atlcli wiki template delete runbook --space TEAM --force
 ```
+
+**Ambiguity handling**: Same as edit - if name exists at multiple levels, prompts for level selection unless `--level`, `--profile`, or `--space` is specified.
 
 ### Rename Template
 
@@ -284,12 +317,27 @@ atlcli wiki template rename standup daily-standup --profile work
 ### Copy Template
 
 ```bash
-# Copy between levels
-atlcli wiki template copy meeting-notes --from global --to profile:work
+# Copy between levels (same name)
+atlcli wiki template copy meeting-notes --from-level global --to-profile work
 
-# Copy and rename
-atlcli wiki template copy meeting-notes team-meeting --from global --to space:TEAM
+# Copy with rename (new-name is optional second positional arg)
+atlcli wiki template copy meeting-notes team-meeting --from-level global --to-space TEAM
+
+# Copy to global from profile
+atlcli wiki template copy standup --from-profile work --to-level global
 ```
+
+**Syntax**: `wiki template copy <source-name> [<target-name>] --from-X --to-Y`
+
+Flag patterns for source:
+- `--from-level global` - from global level
+- `--from-profile <name>` - from specific profile
+- `--from-space <key>` - from specific space
+
+Flag patterns for target:
+- `--to-level global` - to global level
+- `--to-profile <name>` - to specific profile
+- `--to-space <key>` - to specific space
 
 ### Validate Template
 
@@ -307,12 +355,17 @@ atlcli wiki template validate --file ./my-template.md
 ### Render Template
 
 ```bash
-# Render without creating page
+# Render without creating page (outputs to stdout)
 atlcli wiki template render meeting-notes --var title="Sprint Planning" --var date=today
 
 # Output to file
 atlcli wiki template render meeting-notes --var title="Planning" > rendered.md
+
+# Render with interactive variable prompts
+atlcli wiki template render meeting-notes --interactive
 ```
+
+> **Note**: `render` outputs rendered markdown. For previewing with page context (parent, space), use `wiki page create --template X --dry-run` instead.
 
 ### Using Templates (Page Create)
 
@@ -346,7 +399,7 @@ atlcli wiki template export
 # Creates: ./templates-export/
 
 # Export to specific path
-atlcli wiki template export ./my-templates
+atlcli wiki template export -o ./my-templates
 
 # Export single template to stdout
 atlcli wiki template export meeting-notes
@@ -355,14 +408,25 @@ atlcli wiki template export meeting-notes
 # Export single template to file
 atlcli wiki template export meeting-notes -o ./meeting-notes.md
 
-# Export from specific level
+# Export from specific level only
 atlcli wiki template export --level global
 atlcli wiki template export --profile work
 atlcli wiki template export --space TEAM
 
-# Export specific templates
+# Export specific templates (multiple → always directory)
 atlcli wiki template export meeting-notes standup retro
+# Creates: ./templates-export/ with only those templates
+
+# Export specific templates to custom directory
+atlcli wiki template export meeting-notes standup -o ./my-pack
 ```
+
+**Output behavior**:
+- No template names + no `-o` → `./templates-export/` directory
+- Single template name + no `-o` → stdout
+- Single template name + `-o file.md` → single file
+- Multiple template names → always directory (default or `-o path`)
+- `--level/--profile/--space` filters → always directory
 
 ### Export Directory Structure
 
@@ -403,7 +467,7 @@ templates:
 ### Import Templates
 
 ```bash
-# Import from local directory
+# Import from local directory (respects manifest structure)
 atlcli wiki template import ./templates-export
 
 # Import from git URL (shallow fetch)
@@ -412,10 +476,10 @@ atlcli wiki template import https://github.com/user/template-pack
 # Import from direct URL
 atlcli wiki template import https://example.com/templates.tar.gz
 
-# Import to specific level (overrides manifest)
-atlcli wiki template import ./templates --global
-atlcli wiki template import ./templates --profile work
-atlcli wiki template import ./templates --space TEAM
+# Flatten all to specific level (ignores manifest structure)
+atlcli wiki template import ./templates --to-level global
+atlcli wiki template import ./templates --to-profile work
+atlcli wiki template import ./templates --to-space TEAM
 
 # Replace existing (default is merge/skip)
 atlcli wiki template import ./templates --replace
@@ -424,14 +488,35 @@ atlcli wiki template import ./templates --replace
 atlcli wiki template import ./templates --only meeting-notes,standup
 ```
 
+**Import behavior**:
+- By default, respects manifest structure (global→global, profiles→profiles, etc.)
+- With `--to-level/--to-profile/--to-space`, flattens ALL templates to that single level
+- If profile in manifest doesn't exist locally, creates the profile directory (templates only, not auth profile)
+- Source URL is stored in template metadata for `update` command
+
 ### Update from Remote
 
 ```bash
-# Re-import from original source
+# Update all templates that have a tracked source
+atlcli wiki template update
+
+# Update from specific source (updates templates originally from that source)
 atlcli wiki template update --source https://github.com/user/template-pack
 
-# Update specific templates
-atlcli wiki template update meeting-notes --source https://github.com/user/template-pack
+# Update specific templates (uses their tracked source)
+atlcli wiki template update meeting-notes standup
+
+# Force update from new source (re-tracks source)
+atlcli wiki template update meeting-notes --source https://github.com/other/pack --force
+```
+
+**Source tracking**: When templates are imported from a remote URL, the source is stored in template metadata:
+```yaml
+---
+name: meeting-notes
+_source: https://github.com/user/template-pack
+_source_version: 1.0.0
+---
 ```
 
 ---
@@ -485,6 +570,9 @@ export interface TemplateMetadata {
   tags?: string[];
   category?: string;
   variables?: TemplateVariable[];
+  // Source tracking (set by import, used by update)
+  _source?: string;         // URL template was imported from
+  _source_version?: string; // Version at time of import
 }
 
 export interface Template {
@@ -774,6 +862,21 @@ templates:
 
 ---
 
+## Flag Pattern Reference
+
+Standardized flag patterns across all template commands:
+
+| Purpose | Flag | Example |
+|---------|------|---------|
+| Filter/target global | `--level global` | `list --level global` |
+| Filter/target profile | `--profile <name>` | `create --profile work` |
+| Filter/target space | `--space <key>` | `delete --space TEAM` |
+| Copy source | `--from-level`, `--from-profile`, `--from-space` | `copy X --from-level global` |
+| Copy target | `--to-level`, `--to-profile`, `--to-space` | `copy X --to-profile work` |
+| Output path | `-o, --output` | `export -o ./dir` |
+
+---
+
 ## Error Handling
 
 | Error | Message |
@@ -785,6 +888,8 @@ templates:
 | Template exists | `Template 'meeting' already exists at global level. Use --replace to overwrite.` |
 | Invalid Handlebars | `Template syntax error at line 15: Unexpected closing tag.` |
 | Import failed | `Failed to import from URL: 404 Not Found` |
+| Ambiguous template | `Template 'meeting' exists at multiple levels: global, space:TEAM. Specify level with --level, --profile, or --space.` |
+| No tracked source | `Template 'xyz' has no tracked source. Use --source URL to specify.` |
 
 ---
 
