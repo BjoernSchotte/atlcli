@@ -152,9 +152,6 @@ async function main(): Promise<void> {
     ) {
       checkAndNotifyUpdate().catch(() => {}); // Ignore errors silently
     }
-
-    // Show promo in interactive mode
-    showPromo(opts);
   } catch (err) {
     // Log error and result
     logger.error(err instanceof Error ? err : new Error(String(err)), {
@@ -231,7 +228,9 @@ ${pluginCommands.map((c) => `  ${c.name.padEnd(12)} ${c.command.description}`).j
 `
     : "";
 
-  return `atlcli <command>
+  return `atlcli v${VERSION} • https://atlcli.sh • © Björn Schotte
+
+atlcli <command>
 
 Commands:
   auth        Authenticate and manage profiles
@@ -276,14 +275,6 @@ async function checkAndNotifyUpdate(): Promise<void> {
   } catch {
     // Silently ignore update check errors
   }
-}
-
-/**
- * Show author attribution in interactive mode.
- */
-function showPromo(opts: { json: boolean }): void {
-  if (opts.json || !isInteractive()) return;
-  process.stderr.write("\natlcli © Björn Schotte • https://atlcli.sh\n");
 }
 
 main().catch((err) => {
