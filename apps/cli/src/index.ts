@@ -6,6 +6,7 @@ import {
   configureLogging,
   getLogger,
   Logger,
+  isInteractive,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
@@ -127,6 +128,9 @@ async function main(): Promise<void> {
 
     // Run afterCommand hooks
     await registry.runAfterHooks(ctx);
+
+    // Show promo in interactive mode
+    showPromo(opts);
   } catch (err) {
     // Log error and result
     logger.error(err instanceof Error ? err : new Error(String(err)), {
@@ -218,6 +222,14 @@ Global options:
   --no-log    Disable logging for this command
   --help      Show help
 `;
+}
+
+/**
+ * Show author attribution in interactive mode.
+ */
+function showPromo(opts: { json: boolean }): void {
+  if (opts.json || !isInteractive()) return;
+  process.stderr.write("\natlcli © Björn Schotte • https://atlcli.sh\n");
 }
 
 main().catch((err) => {

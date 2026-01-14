@@ -144,3 +144,21 @@ export async function writeTextFile(path: string, contents: string): Promise<voi
   await ensureDir(dirname(path));
   await writeFile(path, contents, "utf8");
 }
+
+/**
+ * Check if running in an interactive terminal (not CI/CD, not piped).
+ */
+export function isInteractive(): boolean {
+  const ciEnvVars = [
+    "CI",
+    "CONTINUOUS_INTEGRATION",
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "CIRCLECI",
+    "JENKINS",
+    "TRAVIS",
+    "BUILDKITE",
+  ];
+  const isCI = ciEnvVars.some((v) => process.env[v]);
+  return Boolean(process.stdout.isTTY) && !isCI;
+}
