@@ -130,7 +130,7 @@ Summary: 2 updates, 1 create, 0 deletes
 
 ## Watch Mode
 
-Automatically sync changes in real-time:
+Automatically sync changes in real-time using file watching and remote polling:
 
 ```bash
 atlcli wiki docs sync ./docs --watch
@@ -145,9 +145,82 @@ Options:
 | `--no-poll` | Disable remote polling |
 | `--debounce` | Debounce delay for local changes (default: 1000) |
 
+### How Watch Mode Works
+
+Watch mode combines two mechanisms:
+
+1. **Local file watching**: Detects changes to local markdown files instantly
+2. **Remote polling**: Periodically checks Confluence for remote changes
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Local Files │────▶│   atlcli    │◀────│ Confluence  │
+│  (watched)  │     │  (sync)     │     │  (polled)   │
+└─────────────┘     └─────────────┘     └─────────────┘
+      │                    │                    │
+      │  File changed      │                    │
+      └───────────────────▶│                    │
+                           │  Push to remote    │
+                           │───────────────────▶│
+                           │                    │
+                           │  Poll for changes  │
+                           │◀───────────────────│
+                           │                    │
+                           │  Pull if changed   │
+      ◀────────────────────│                    │
+```
+
+### Polling Scopes
+
+Polling efficiency depends on your sync scope:
+
+| Scope | Checks | Best For |
+|-------|--------|----------|
+| `page` | Single page only | Editing one document |
+| `tree` | Page and descendants | Working on a section |
+| `space` | Entire space | Full documentation sync |
+
+```bash
+# Poll single page (most efficient)
+atlcli wiki docs sync ./docs --watch --scope page --page-id 12345
+
+# Poll page tree
+atlcli wiki docs sync ./docs --watch --scope tree --root-page 12345
+
+# Poll entire space (default)
+atlcli wiki docs sync ./docs --watch
+```
+
+### Polling Events
+
+The poller detects three types of changes:
+
+| Event | Description |
+|-------|-------------|
+| `created` | New page added in scope |
+| `changed` | Page content or title updated |
+| `deleted` | Page removed from scope |
+
+### Configuring Poll Interval
+
+Adjust polling frequency based on your needs:
+
+```bash
+# Fast polling (every 10 seconds) - more API calls
+atlcli wiki docs sync ./docs --watch --poll-interval 10000
+
+# Slow polling (every 2 minutes) - fewer API calls
+atlcli wiki docs sync ./docs --watch --poll-interval 120000
+
+# Disable remote polling (local changes only)
+atlcli wiki docs sync ./docs --watch --no-poll
+```
+
+**Note**: Lower intervals mean faster remote change detection but more API requests. The default (30 seconds) balances responsiveness with API usage.
+
 ### With Webhooks
 
-For faster remote change detection, use webhooks:
+For instant remote change detection without polling overhead, use webhooks:
 
 ```bash
 atlcli wiki docs sync ./docs --watch \
@@ -161,6 +234,17 @@ Options:
 |------|-------------|
 | `--webhook-port` | Local webhook server port |
 | `--webhook-url` | URL to register with Confluence |
+
+**Webhooks vs Polling:**
+
+| Feature | Polling | Webhooks |
+|---------|---------|----------|
+| Latency | 0-30s (configurable) | Instant |
+| Setup | None | Requires public URL |
+| API usage | Regular requests | On-demand only |
+| Reliability | Always works | Requires connectivity |
+
+For local development, use polling. For production servers with public URLs, webhooks provide better performance.
 
 ## Conflict Resolution
 
