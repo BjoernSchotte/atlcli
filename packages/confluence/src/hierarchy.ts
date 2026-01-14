@@ -41,6 +41,18 @@ export interface ComputedPath {
   slug: string;
 }
 
+/** Options for computing file paths */
+export interface ComputeFilePathOptions {
+  /** Set of paths already in use (for uniqueness) */
+  existingPaths?: Set<string>;
+  /**
+   * Root ancestor ID to skip in path computation.
+   * When set, this ancestor and any ancestors before it are not included
+   * in the directory path. Used to flatten space home page children.
+   */
+  rootAncestorId?: string;
+}
+
 /**
  * Compute the file path for a page based on its ancestors.
  *
@@ -48,22 +60,41 @@ export interface ComputedPath {
  * - Page file: `{slug}.md`
  * - Child pages go in: `{parent-slug}/` directory
  * - Root pages (no parent in scope) go in sync root
+ * - If rootAncestorId is set, children of that page go in sync root
  *
  * @param page - Page info with title, parentId, and ancestors
  * @param ancestorTitles - Map of ancestor ID to title (for slug generation)
- * @param existingPaths - Set of paths already in use (for uniqueness)
+ * @param options - Optional settings for path computation
  * @returns Computed path info
  */
 export function computeFilePath(
   page: PageHierarchyInfo,
   ancestorTitles: Map<string, string>,
-  existingPaths: Set<string> = new Set()
+  options: ComputeFilePathOptions | Set<string> = {}
 ): ComputedPath {
+  // Support legacy signature: computeFilePath(page, titles, existingPaths)
+  const opts: ComputeFilePathOptions =
+    options instanceof Set ? { existingPaths: options } : options;
+  const existingPaths = opts.existingPaths ?? new Set<string>();
+  const rootAncestorId = opts.rootAncestorId;
+
   const slug = slugifyTitle(page.title) || "page";
 
   // Build directory path from ancestors
   const dirParts: string[] = [];
-  for (const ancestorId of page.ancestors) {
+
+  // Find the index to start from (skip root ancestor and its ancestors)
+  let startIndex = 0;
+  if (rootAncestorId) {
+    const rootIndex = page.ancestors.indexOf(rootAncestorId);
+    if (rootIndex !== -1) {
+      // Start after the root ancestor
+      startIndex = rootIndex + 1;
+    }
+  }
+
+  for (let i = startIndex; i < page.ancestors.length; i++) {
+    const ancestorId = page.ancestors[i];
     const ancestorTitle = ancestorTitles.get(ancestorId);
     if (ancestorTitle) {
       const ancestorSlug = slugifyTitle(ancestorTitle) || "page";
@@ -194,18 +225,35 @@ export function getChildDirectory(parentPath: string): string {
   return dir === "." ? slug : `${dir}/${slug}`;
 }
 
+/** Options for building path map */
+export interface BuildPathMapOptions {
+  /** Set of paths already in use (for uniqueness) */
+  existingPaths?: Set<string>;
+  /**
+   * Root ancestor ID to skip in path computation.
+   * Children of this page will be placed at the root level.
+   */
+  rootAncestorId?: string;
+}
+
 /**
  * Build a map of page IDs to their computed file paths.
  * Processes pages in hierarchical order (parents before children).
  *
  * @param pages - Array of pages with hierarchy info
- * @param existingPaths - Set of paths already in use
+ * @param options - Options for path computation (or legacy Set<string> for existingPaths)
  * @returns Map of page ID to computed path
  */
 export function buildPathMap(
   pages: PageHierarchyInfo[],
-  existingPaths: Set<string> = new Set()
+  options: BuildPathMapOptions | Set<string> = {}
 ): Map<string, ComputedPath> {
+  // Support legacy signature: buildPathMap(pages, existingPaths)
+  const opts: BuildPathMapOptions =
+    options instanceof Set ? { existingPaths: options } : options;
+  const existingPaths = opts.existingPaths ?? new Set<string>();
+  const rootAncestorId = opts.rootAncestorId;
+
   // Build title map for ancestor lookups
   const titleMap = new Map<string, string>();
   for (const page of pages) {
@@ -220,7 +268,10 @@ export function buildPathMap(
   const usedPaths = new Set(existingPaths);
 
   for (const page of sorted) {
-    const computed = computeFilePath(page, titleMap, usedPaths);
+    const computed = computeFilePath(page, titleMap, {
+      existingPaths: usedPaths,
+      rootAncestorId,
+    });
     pathMap.set(page.id, computed);
     usedPaths.add(computed.relativePath);
   }

@@ -13,7 +13,6 @@ import {
   loadConfig,
   output,
   readTextFile,
-  slugify,
   writeTextFile,
 } from "@atlcli/core";
 import {
@@ -26,28 +25,30 @@ import {
   storageToMarkdown,
   threeWayMerge,
   hasConflictMarkers,
-  resolveConflicts,
   WebhookServer,
   WebhookPayload,
   parseFrontmatter,
   addFrontmatter,
   AtlcliFrontmatter,
-  // Config
-  findAtlcliDir,
+  // Config & State
   readConfig,
   getConfigScope,
-  isConfigV2,
-  ConfigScope,
+  initAtlcliDirV2,
+  readState,
+  writeState,
+  updatePageState,
+  readBaseContent,
+  writeBaseContent,
+  AtlcliState,
+  PageState,
+  SyncState as StateSyncState,
   // Hierarchy
   computeFilePath,
-  buildPathMap,
   hasPageMoved,
   moveFile,
   PageHierarchyInfo,
-  slugifyTitle,
   // Scope
   parseScope,
-  scopeToString,
   // Ignore
   loadIgnorePatterns,
   shouldIgnore,
@@ -57,15 +58,6 @@ import {
   AttachmentInfo,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
-
-import {
-  EnhancedMeta,
-  SyncState,
-  createEnhancedMeta,
-  computeSyncState,
-  readBase,
-  writeBase,
-} from "./docs.js";
 
 /** Sync daemon options */
 interface SyncOptions {
@@ -116,11 +108,12 @@ export async function handleSync(
     scope = parsedScope.scope;
     resolvedSpaceKey = parsedScope.spaceKey;
   } else {
-    // Try to read scope from .atlcli config
-    const atlcliRoot = findAtlcliDir(dir);
-    if (atlcliRoot) {
+    // Try to read scope from .atlcli config in target directory
+    // Note: Check target dir only, not walking up, to avoid global ~/.atlcli/
+    const atlcliConfigPath = join(dir, ".atlcli", "config.json");
+    if (existsSync(atlcliConfigPath)) {
       try {
-        const dirConfig = await readConfig(atlcliRoot);
+        const dirConfig = await readConfig(dir);
         const configScope = getConfigScope(dirConfig);
         resolvedSpaceKey = dirConfig.space;
 
@@ -171,7 +164,7 @@ export async function handleSync(
   await ensureDir(syncOpts.dir);
 
   // Create sync engine
-  const engine = new SyncEngine(client, syncOpts, opts);
+  const engine = new SyncEngine(client, syncOpts, opts, profile.baseUrl);
 
   // Initial sync
   await engine.initialSync();
@@ -192,19 +185,34 @@ class SyncEngine {
   private poller: ConfluencePoller | null = null;
   private webhookServer: WebhookServer | null = null;
   private watchers: FSWatcher[] = [];
-  private fileToMeta: Map<string, EnhancedMeta> = new Map();
-  private idToFile: Map<string, string> = new Map();
   private pushQueue: Set<string> = new Set();
   private pushTimer: NodeJS.Timeout | null = null;
   private debounceMs = 500;
   private lockFilePath: string;
   private ignore: Ignore | null = null;
+  // State management
+  private state: AtlcliState | null = null;
+  private atlcliDir: string = "";
+  private spaceKey: string = "";
+  private baseUrl: string;
+  private homePageId: string | undefined; // Space home page ID for flattening hierarchy
 
-  constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions) {
+  constructor(client: ConfluenceClient, opts: SyncOptions, outputOpts: OutputOptions, baseUrl: string) {
     this.lockFilePath = join(opts.dir, ".atlcli", ".sync.lock");
     this.client = client;
     this.opts = opts;
     this.outputOpts = outputOpts;
+    this.baseUrl = baseUrl;
+  }
+
+  /** Get file path for a page ID from state */
+  private getFileByPageId(pageId: string): string | undefined {
+    if (!this.state) return undefined;
+    // Reverse lookup: find path that maps to this pageId in pathIndex
+    for (const [path, id] of Object.entries(this.state.pathIndex)) {
+      if (id === pageId) return path;
+    }
+    return undefined;
   }
 
   /** Emit a sync event to output */
@@ -230,6 +238,45 @@ class SyncEngine {
   /** Initial sync - pull all pages and establish baseline */
   async initialSync(): Promise<void> {
     this.emit({ type: "status", message: "Starting initial sync..." });
+
+    // Auto-initialize .atlcli/ if not present in target directory
+    // Note: We check the target dir specifically, NOT walking up the tree,
+    // to avoid finding the global ~/.atlcli/ config directory
+    const atlcliPath = join(this.opts.dir, ".atlcli");
+    if (existsSync(atlcliPath)) {
+      this.atlcliDir = this.opts.dir;
+    } else {
+      // Need to determine space key for initialization
+      if (this.opts.scope.type === "space") {
+        this.spaceKey = this.opts.scope.spaceKey;
+      } else {
+        // Fetch from page
+        const pageId = this.opts.scope.type === "page"
+          ? this.opts.scope.pageId
+          : this.opts.scope.ancestorId;
+        const page = await this.client.getPage(pageId);
+        this.spaceKey = page.spaceKey ?? "";
+      }
+
+      this.emit({ type: "status", message: "Initializing .atlcli/ directory..." });
+      await initAtlcliDirV2(this.opts.dir, {
+        scope: this.opts.scope,
+        space: this.spaceKey,
+        baseUrl: this.baseUrl,
+      });
+      this.atlcliDir = this.opts.dir;
+    }
+
+    // Load state
+    this.state = await readState(this.atlcliDir);
+    if (!this.spaceKey) {
+      try {
+        const config = await readConfig(this.atlcliDir);
+        this.spaceKey = config.space;
+      } catch {
+        // Config may not exist yet
+      }
+    }
 
     // Get all pages in scope, optionally filtered by label
     let pages: { id: string; title: string; version: number; spaceKey?: string }[];
@@ -270,53 +317,110 @@ class SyncEngine {
 
     this.emit({ type: "status", message: `Found ${pages.length} pages in scope` });
 
-    // Load existing local files - check both .meta.json and frontmatter
+    // Detect space home page for flattening hierarchy
+    // When syncing a space, find the root page (the one with no ancestors)
+    if (this.opts.scope.type === "space" && pages.length > 0) {
+      // Find the page that has no parent (space home page)
+      for (const page of pages) {
+        const fullPage = await this.client.getPage(page.id);
+        if (!fullPage.parentId && (!fullPage.ancestors || fullPage.ancestors.length === 0)) {
+          this.homePageId = page.id;
+          this.emit({
+            type: "status",
+            message: `Using "${fullPage.title}" as space home page (children will be at root level)`,
+          });
+          break;
+        }
+      }
+    }
+
+    // Load existing local files and migrate legacy format
     const existingFiles = await this.collectMarkdownFiles(this.opts.dir);
     for (const filePath of existingFiles) {
-      // First try .meta.json
-      let meta = await this.readMeta(filePath);
-      let pageId = meta?.id;
+      const relativePath = this.getRelativePath(filePath);
 
-      // If no meta, check frontmatter
+      // Check if already in state
+      let pageId = this.state!.pathIndex[relativePath];
+
+      if (!pageId) {
+        // Try legacy .meta.json migration
+        const legacyMetaPath = `${filePath}.meta.json`;
+        if (existsSync(legacyMetaPath)) {
+          try {
+            const legacyMeta = JSON.parse(await readTextFile(legacyMetaPath));
+            pageId = legacyMeta.id;
+            if (pageId) {
+              // Migrate to state.json
+              updatePageState(this.state!, pageId, {
+                path: relativePath,
+                title: legacyMeta.title || basename(filePath, ".md"),
+                spaceKey: legacyMeta.spaceKey || this.spaceKey,
+                version: legacyMeta.version || 0,
+                lastSyncedAt: legacyMeta.lastSyncedAt || new Date().toISOString(),
+                localHash: legacyMeta.localHash || "",
+                remoteHash: legacyMeta.remoteHash || "",
+                baseHash: legacyMeta.baseHash || "",
+                syncState: (legacyMeta.syncState as StateSyncState) || "synced",
+                parentId: legacyMeta.parentId ?? null,
+                ancestors: legacyMeta.ancestors || [],
+              });
+              // Migrate .base file if exists
+              const legacyBasePath = `${filePath}.base`;
+              if (existsSync(legacyBasePath)) {
+                const baseContent = await readTextFile(legacyBasePath);
+                await writeBaseContent(this.atlcliDir, pageId, baseContent);
+                await unlink(legacyBasePath);
+              }
+              // Delete legacy meta
+              await unlink(legacyMetaPath);
+              this.emit({ type: "status", message: `Migrated: ${relativePath}` });
+            }
+          } catch {
+            // Migration failed, continue
+          }
+        }
+      }
+
+      // If still no pageId, check frontmatter
       if (!pageId) {
         try {
           const content = await readTextFile(filePath);
           const { frontmatter } = parseFrontmatter(content);
           if (frontmatter?.id) {
             pageId = frontmatter.id;
-            // Create a minimal meta from frontmatter
-            meta = {
-              id: frontmatter.id,
+            // Add to state
+            updatePageState(this.state!, pageId, {
+              path: relativePath,
               title: frontmatter.title || basename(filePath, ".md"),
-              spaceKey: "",
+              spaceKey: this.spaceKey,
               version: 0, // Unknown version - will check remote
               lastSyncedAt: "",
               localHash: "",
               remoteHash: "",
               baseHash: "",
               syncState: "synced",
-            };
+              parentId: null,
+              ancestors: [],
+            });
           }
         } catch {
           // File read error, skip
         }
       }
-
-      if (pageId && meta) {
-        this.fileToMeta.set(filePath, meta as EnhancedMeta);
-        this.idToFile.set(pageId, filePath);
-      }
     }
+
+    // Save migrated state
+    await writeState(this.atlcliDir, this.state!);
 
     // Sync each page
     for (const pageInfo of pages) {
-      const existingFile = this.idToFile.get(pageInfo.id);
+      const pageState = this.state!.pages[pageInfo.id];
 
-      if (existingFile) {
+      if (pageState) {
         // Check for changes
-        const meta = this.fileToMeta.get(existingFile);
-        if (meta && pageInfo.version > meta.version) {
+        if (pageInfo.version > pageState.version) {
           // Remote has newer version - pull
+          const existingFile = join(this.opts.dir, pageState.path);
           await this.pullPage(pageInfo.id, existingFile);
         }
       } else {
@@ -326,6 +430,17 @@ class SyncEngine {
     }
 
     this.emit({ type: "status", message: "Initial sync complete" });
+  }
+
+  /** Get relative path from absolute path */
+  private getRelativePath(filePath: string): string {
+    if (filePath.startsWith(this.opts.dir + "/")) {
+      return filePath.slice(this.opts.dir.length + 1);
+    }
+    if (filePath.startsWith(this.opts.dir)) {
+      return filePath.slice(this.opts.dir.length);
+    }
+    return filePath;
   }
 
   /** Start the sync daemon */
@@ -369,7 +484,7 @@ class SyncEngine {
           details: { pageId: payload.page.id, event: payload.eventType },
         });
 
-        const file = this.idToFile.get(payload.page.id);
+        const file = this.getFileByPageId(payload.page.id);
 
         if (payload.eventType === "page_updated" || payload.eventType === "page_created") {
           await this.handleRemoteChange(payload.page.id, file);
@@ -420,7 +535,7 @@ class SyncEngine {
       });
 
       this.poller.on(async (event) => {
-        const file = this.idToFile.get(event.pageId);
+        const file = this.getFileByPageId(event.pageId);
         if (event.type === "changed" || event.type === "created") {
           await this.handleRemoteChange(event.pageId, file);
         } else if (event.type === "deleted" && file) {
@@ -528,27 +643,23 @@ class SyncEngine {
 
   /** Handle a remote change detected by polling */
   private async handleRemoteChange(pageId: string, existingFile?: string): Promise<void> {
-    if (existingFile) {
-      const meta = this.fileToMeta.get(existingFile);
+    const pageState = this.state?.pages[pageId];
+
+    if (existingFile && pageState) {
       const localContent = await readTextFile(existingFile);
+      const { content: markdownContent } = parseFrontmatter(localContent);
+      const currentHash = hashContent(normalizeMarkdown(markdownContent));
 
-      if (meta) {
-        const syncState = computeSyncState({
-          localContent,
-          meta,
-          remoteVersion: undefined, // Will be fetched
-        });
-
-        if (syncState === "local-modified") {
-          // Both changed - need merge
-          await this.mergeChanges(pageId, existingFile, localContent, meta);
-        } else {
-          // Only remote changed - pull
-          await this.pullPage(pageId, existingFile);
-        }
+      // Check if local has been modified since last sync
+      if (currentHash !== pageState.localHash) {
+        // Both changed - need merge
+        await this.mergeChanges(pageId, existingFile, markdownContent, pageState);
       } else {
+        // Only remote changed - pull
         await this.pullPage(pageId, existingFile);
       }
+    } else if (existingFile) {
+      await this.pullPage(pageId, existingFile);
     } else {
       // New page
       await this.pullPage(pageId);
@@ -580,35 +691,27 @@ class SyncEngine {
       };
 
       // Get existing paths to avoid collisions
-      const existingPaths = new Set<string>();
-      for (const [file, _meta] of this.fileToMeta) {
-        const relativePath = file.startsWith(this.opts.dir)
-          ? file.slice(this.opts.dir.length + 1)
-          : file;
-        existingPaths.add(relativePath);
-      }
+      const existingPaths = new Set<string>(Object.keys(this.state?.pathIndex || {}));
 
-      const computed = computeFilePath(pageInfo, ancestorTitles, existingPaths);
+      const computed = computeFilePath(pageInfo, ancestorTitles, {
+        existingPaths,
+        rootAncestorId: this.homePageId,
+      });
       let filePath = join(this.opts.dir, computed.relativePath);
 
       // Check if page has moved (existing file but different path)
       if (existingFile && existingFile !== filePath) {
         // Page moved in Confluence - check if ancestors changed
-        const existingMeta = this.fileToMeta.get(existingFile);
-        if (existingMeta && "ancestors" in existingMeta) {
-          const oldAncestors = (existingMeta as any).ancestors || [];
+        const existingState = this.state?.pages[pageId];
+        if (existingState?.ancestors) {
+          const oldAncestors = existingState.ancestors;
           if (hasPageMoved(oldAncestors, ancestorIds)) {
             if (!this.opts.dryRun) {
               // Get relative paths for moveFile (it expects relative paths)
-              const oldRelPath = existingFile.startsWith(this.opts.dir + "/")
-                ? existingFile.slice(this.opts.dir.length + 1)
-                : existingFile;
+              const oldRelPath = this.getRelativePath(existingFile);
 
               // Move the local file to match new hierarchy
               await moveFile(this.opts.dir, oldRelPath, computed.relativePath);
-              // Also move .meta.json and .base files
-              await moveFile(this.opts.dir, `${oldRelPath}.meta.json`, `${computed.relativePath}.meta.json`).catch(() => {});
-              await moveFile(this.opts.dir, `${oldRelPath}.base`, `${computed.relativePath}.base`).catch(() => {});
 
               this.emit({
                 type: "status",
@@ -624,10 +727,6 @@ class SyncEngine {
                 pageId: page.id,
               });
             }
-
-            // Update internal tracking
-            this.fileToMeta.delete(existingFile);
-            this.idToFile.set(page.id, filePath);
           }
         }
       } else if (existingFile) {
@@ -657,24 +756,30 @@ class SyncEngine {
       const contentWithFrontmatter = addFrontmatter(markdown, frontmatter);
       await writeTextFile(filePath, contentWithFrontmatter);
 
-      // Create enhanced metadata with ancestors
-      const meta = createEnhancedMeta({
-        id: page.id,
+      // Compute hash for state
+      const contentHash = hashContent(normalizeMarkdown(markdown));
+      const relativePath = this.getRelativePath(filePath);
+
+      // Update state
+      updatePageState(this.state!, pageId, {
+        path: relativePath,
         title: page.title,
-        spaceKey: page.spaceKey ?? "",
+        spaceKey: page.spaceKey ?? this.spaceKey,
         version: page.version ?? 1,
-        localContent: markdown,
-        remoteContent: markdown,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: page.parentId ?? null,
+        ancestors: ancestorIds,
       });
-      // Add ancestors to meta for move detection
-      (meta as any).ancestors = ancestorIds;
-      (meta as any).parentId = page.parentId ?? null;
 
-      await this.writeMeta(filePath, meta);
-      await writeBase(filePath, markdown);
+      // Write base content for 3-way merge
+      await writeBaseContent(this.atlcliDir, pageId, markdown);
 
-      this.fileToMeta.set(filePath, meta);
-      this.idToFile.set(page.id, filePath);
+      // Save state
+      await writeState(this.atlcliDir, this.state!);
 
       this.emit({
         type: "pull",
@@ -698,15 +803,21 @@ class SyncEngine {
       const { content: markdownContent } = parseFrontmatter(content);
       const currentHash = hashContent(normalizeMarkdown(markdownContent));
 
-      // Check against stored localHash in metadata
-      const meta = this.fileToMeta.get(filePath);
-      if (!meta) {
-        // No metadata = new file or untracked, treat as changed
+      // Check against stored localHash in state
+      const relativePath = this.getRelativePath(filePath);
+      const pageId = this.state?.pathIndex[relativePath];
+      if (!pageId) {
+        // No state = new file or untracked, treat as changed
+        return true;
+      }
+
+      const pageState = this.state?.pages[pageId];
+      if (!pageState) {
         return true;
       }
 
       // Only changed if hash differs
-      return currentHash !== meta.localHash;
+      return currentHash !== pageState.localHash;
     } catch {
       // File read error, skip
       return false;
@@ -732,14 +843,20 @@ class SyncEngine {
   /** Push a local file to Confluence */
   private async pushFile(filePath: string): Promise<void> {
     try {
-      let meta = await this.readMeta(filePath);
       const localContent = await readTextFile(filePath);
 
       // Parse frontmatter to get page ID and clean content
       const { frontmatter, content: markdownContent } = parseFrontmatter(localContent);
+      const relativePath = this.getRelativePath(filePath);
 
-      // Get page ID from meta or frontmatter
-      const pageId = meta?.id || frontmatter?.id;
+      // Get page ID from state or frontmatter
+      let pageId = this.state?.pathIndex[relativePath];
+      let pageState = pageId ? this.state?.pages[pageId] : undefined;
+
+      // If no state, try frontmatter
+      if (!pageId && frontmatter?.id) {
+        pageId = frontmatter.id;
+      }
 
       // Check for conflict markers
       if (hasConflictMarkers(markdownContent)) {
@@ -755,27 +872,14 @@ class SyncEngine {
       const storage = markdownToStorage(markdownContent);
 
       if (pageId) {
-        // Create minimal meta if we only have frontmatter
-        if (!meta && frontmatter) {
-          meta = {
-            id: frontmatter.id!,
-            title: frontmatter.title || basename(filePath, ".md"),
-            spaceKey: "",
-            version: 0,
-            lastSyncedAt: "",
-            localHash: "",
-            remoteHash: "",
-            baseHash: "",
-            syncState: "synced",
-          };
-        }
         // Update existing page
         const current = await this.client.getPage(pageId);
+        const stateVersion = pageState?.version ?? 0;
 
         // Check if remote changed since last sync
-        if (meta!.version && current.version && current.version > meta!.version) {
+        if (stateVersion && current.version && current.version > stateVersion) {
           // Remote changed - need merge
-          await this.mergeChanges(pageId, filePath, markdownContent, meta as EnhancedMeta);
+          await this.mergeChanges(pageId, filePath, markdownContent, pageState!);
           return;
         }
 
@@ -840,26 +944,37 @@ class SyncEngine {
         }
 
         const version = (current.version ?? 1) + 1;
+        const title = pageState?.title ?? frontmatter?.title ?? current.title;
         const page = await this.client.updatePage({
           id: pageId,
-          title: meta!.title ?? current.title,
+          title,
           storage,
           version,
         });
 
-        // Update metadata
-        const newMeta = createEnhancedMeta({
-          id: page.id,
+        // Compute hash for state
+        const contentHash = hashContent(normalizeMarkdown(markdownContent));
+
+        // Update state
+        updatePageState(this.state!, pageId, {
+          path: relativePath,
           title: page.title,
-          spaceKey: page.spaceKey ?? (meta as any).spaceKey ?? "",
+          spaceKey: page.spaceKey ?? pageState?.spaceKey ?? this.spaceKey,
           version: page.version ?? version,
-          localContent: markdownContent,
-          remoteContent: markdownContent,
+          lastSyncedAt: new Date().toISOString(),
+          localHash: contentHash,
+          remoteHash: contentHash,
+          baseHash: contentHash,
+          syncState: "synced",
+          parentId: pageState?.parentId ?? null,
+          ancestors: pageState?.ancestors ?? [],
         });
 
-        await this.writeMeta(filePath, newMeta);
-        await writeBase(filePath, markdownContent);
-        this.fileToMeta.set(filePath, newMeta);
+        // Write base content
+        await writeBaseContent(this.atlcliDir, pageId, markdownContent);
+
+        // Save state
+        await writeState(this.atlcliDir, this.state!);
 
         this.emit({
           type: "push",
@@ -871,18 +986,18 @@ class SyncEngine {
         // Auto-create new page for untracked file
         const title = frontmatter?.title || basename(filePath, ".md").replace(/-/g, " ");
 
-        // Get space key from scope
-        let spaceKey: string;
-        if (this.opts.scope.type === "space") {
-          spaceKey = this.opts.scope.spaceKey;
-        } else if (this.opts.scope.type === "tree") {
-          // Get space from ancestor page
-          const ancestor = await this.client.getPage(this.opts.scope.ancestorId);
-          spaceKey = ancestor.spaceKey ?? "";
-        } else {
-          // Single page scope - get space from that page
-          const refPage = await this.client.getPage(this.opts.scope.pageId);
-          spaceKey = refPage.spaceKey ?? "";
+        // Get space key from scope or stored spaceKey
+        let spaceKey = this.spaceKey;
+        if (!spaceKey) {
+          if (this.opts.scope.type === "space") {
+            spaceKey = this.opts.scope.spaceKey;
+          } else if (this.opts.scope.type === "tree") {
+            const ancestor = await this.client.getPage(this.opts.scope.ancestorId);
+            spaceKey = ancestor.spaceKey ?? "";
+          } else {
+            const refPage = await this.client.getPage(this.opts.scope.pageId);
+            spaceKey = refPage.spaceKey ?? "";
+          }
         }
 
         if (this.opts.dryRun) {
@@ -908,20 +1023,29 @@ class SyncEngine {
         const contentWithFrontmatter = addFrontmatter(markdownContent, newFrontmatter);
         await writeTextFile(filePath, contentWithFrontmatter);
 
-        // Create metadata
-        const newMeta = createEnhancedMeta({
-          id: page.id,
+        // Compute hash for state
+        const contentHash = hashContent(normalizeMarkdown(markdownContent));
+
+        // Update state
+        updatePageState(this.state!, page.id, {
+          path: relativePath,
           title: page.title,
           spaceKey: page.spaceKey ?? spaceKey,
           version: page.version ?? 1,
-          localContent: markdownContent,
-          remoteContent: markdownContent,
+          lastSyncedAt: new Date().toISOString(),
+          localHash: contentHash,
+          remoteHash: contentHash,
+          baseHash: contentHash,
+          syncState: "synced",
+          parentId: parentId ?? null,
+          ancestors: [],
         });
 
-        await this.writeMeta(filePath, newMeta);
-        await writeBase(filePath, markdownContent);
-        this.fileToMeta.set(filePath, newMeta);
-        this.idToFile.set(page.id, filePath);
+        // Write base content
+        await writeBaseContent(this.atlcliDir, page.id, markdownContent);
+
+        // Save state
+        await writeState(this.atlcliDir, this.state!);
 
         this.emit({
           type: "push",
@@ -930,7 +1054,7 @@ class SyncEngine {
           pageId: page.id,
         });
       } else {
-        // Skip files without metadata (not tracked)
+        // Skip files without state (not tracked)
         this.emit({
           type: "status",
           message: `Skipping untracked file: ${filePath}`,
@@ -951,15 +1075,15 @@ class SyncEngine {
     pageId: string,
     filePath: string,
     localContent: string,
-    meta: EnhancedMeta
+    pageState: PageState
   ): Promise<void> {
     try {
       // Get remote content
       const remotePage = await this.client.getPage(pageId);
       const remoteContent = storageToMarkdown(remotePage.storage);
 
-      // Get base content
-      const baseContent = await readBase(filePath);
+      // Get base content from .atlcli/cache/
+      const baseContent = await readBaseContent(this.atlcliDir, pageId);
       if (!baseContent) {
         // No base - can't do three-way merge, treat as conflict
         this.emit({
@@ -993,28 +1117,39 @@ class SyncEngine {
         const version = (remotePage.version ?? 1) + 1;
         const page = await this.client.updatePage({
           id: pageId,
-          title: meta.title,
+          title: pageState.title,
           storage,
           version,
         });
 
-        // Update metadata
-        const newMeta = createEnhancedMeta({
-          id: page.id,
+        // Compute hash for state
+        const contentHash = hashContent(normalizeMarkdown(result.content));
+        const relativePath = this.getRelativePath(filePath);
+
+        // Update state
+        updatePageState(this.state!, pageId, {
+          path: relativePath,
           title: page.title,
-          spaceKey: page.spaceKey ?? meta.spaceKey,
+          spaceKey: page.spaceKey ?? pageState.spaceKey,
           version: page.version ?? version,
-          localContent: result.content,
-          remoteContent: result.content,
+          lastSyncedAt: new Date().toISOString(),
+          localHash: contentHash,
+          remoteHash: contentHash,
+          baseHash: contentHash,
+          syncState: "synced",
+          parentId: pageState.parentId,
+          ancestors: pageState.ancestors,
         });
 
-        await this.writeMeta(filePath, newMeta);
-        await writeBase(filePath, result.content);
-        this.fileToMeta.set(filePath, newMeta);
+        // Write base content
+        await writeBaseContent(this.atlcliDir, pageId, result.content);
+
+        // Save state
+        await writeState(this.atlcliDir, this.state!);
 
         this.emit({
           type: "push",
-          message: `Auto-merged and pushed: ${meta.title}`,
+          message: `Auto-merged and pushed: ${pageState.title}`,
           file: filePath,
           pageId,
         });
@@ -1031,13 +1166,14 @@ class SyncEngine {
           if (!this.opts.dryRun) {
             await writeTextFile(filePath, result.content);
 
-            // Update metadata to conflict state
-            const conflictMeta: EnhancedMeta = {
-              ...meta,
+            // Update state to conflict
+            const relativePath = this.getRelativePath(filePath);
+            updatePageState(this.state!, pageId, {
+              ...pageState,
+              path: relativePath,
               syncState: "conflict",
-            };
-            await this.writeMeta(filePath, conflictMeta);
-            this.fileToMeta.set(filePath, conflictMeta);
+            });
+            await writeState(this.atlcliDir, this.state!);
           }
 
           this.emit({
@@ -1060,19 +1196,6 @@ class SyncEngine {
   }
 
   // Helper methods
-
-  private async readMeta(path: string): Promise<EnhancedMeta | null> {
-    try {
-      const raw = await readTextFile(`${path}.meta.json`);
-      return JSON.parse(raw) as EnhancedMeta;
-    } catch {
-      return null;
-    }
-  }
-
-  private async writeMeta(path: string, meta: EnhancedMeta): Promise<void> {
-    await writeTextFile(`${path}.meta.json`, JSON.stringify(meta, null, 2));
-  }
 
   private async collectMarkdownFiles(dir: string): Promise<string[]> {
     try {

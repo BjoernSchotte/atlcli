@@ -437,8 +437,24 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
+  // Detect space home page for flattening hierarchy
+  // When syncing a space, find the root page (the one with no ancestors)
+  let homePageId: string | undefined;
+  if (scope.type === "space" && pageDetails.length > 0) {
+    const homePage = pageDetails.find((p) => !p.parentId && p.ancestors.length === 0);
+    if (homePage) {
+      homePageId = homePage.id;
+      if (!opts.json) {
+        output(`Using "${homePage.title}" as space home page (children will be at root level)`, opts);
+      }
+    }
+  }
+
   // Compute nested paths
-  const pathMap = buildPathMap(hierarchyPages, existingPaths);
+  const pathMap = buildPathMap(hierarchyPages, {
+    existingPaths,
+    rootAncestorId: homePageId,
+  });
 
   let pulled = 0;
   let skipped = 0;
