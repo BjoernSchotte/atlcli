@@ -11,14 +11,14 @@ theme:
   # favicon: assets/favicon.png  # Add later
   palette:
     - scheme: default
-      primary: teal
-      accent: cyan
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: teal
-      accent: cyan
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -46,17 +46,27 @@ nav:
     - Sync: confluence/sync.md
     - Pages: confluence/pages.md
     - Spaces: confluence/spaces.md
+    - Search: confluence/search.md
+    - Comments: confluence/comments.md
+    - Labels: confluence/labels.md
+    - History: confluence/history.md
     - Templates: confluence/templates.md
     - Macros: confluence/macros.md
     - Attachments: confluence/attachments.md
+    - Webhooks: confluence/webhooks.md
+    - Validation: confluence/validation.md
+    - Ignore Patterns: confluence/ignore.md
     - File Format: confluence/file-format.md
   - Jira:
     - jira/index.md
     - Issues: jira/issues.md
     - Search: jira/search.md
+    - Projects: jira/projects.md
     - Boards & Sprints: jira/boards-sprints.md
     - Time Tracking: jira/time-tracking.md
     - Epics: jira/epics.md
+    - Subtasks: jira/subtasks.md
+    - Attachments: jira/attachments.md
     - Analytics: jira/analytics.md
     - Bulk Operations: jira/bulk-operations.md
     - Filters: jira/filters.md
@@ -79,6 +89,7 @@ nav:
     - reference/cli-commands.md
     - Authentication: authentication.md
     - Configuration: configuration.md
+    - Logging: reference/logging.md
     - Environment: reference/environment.md
     - Troubleshooting: reference/troubleshooting.md
   - Contributing: contributing.md
@@ -94,6 +105,9 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.details
   - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - admonition
   - tables
   - attr_list
@@ -116,4 +130,8 @@ extra:
   #   provider: custom
   #   property: plausible
 
-copyright: Copyright &copy; 2025 Björn Schotte
+extra_css:
+  - stylesheets/fonts.css
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2025-2026 Björn Schotte
