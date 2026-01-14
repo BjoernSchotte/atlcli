@@ -11,9 +11,9 @@ Implement a hierarchical template system for Confluence pages with three levels 
 | Decision | Choice |
 |----------|--------|
 | Precedence | Most specific wins: Space > Profile > Global |
-| Global storage | `~/.config/atlcli/templates/` (configurable via `ATLCLI_TEMPLATES_DIR`) |
-| Profile storage | `~/.config/atlcli/templates/<profile>/` |
-| Space storage | Both: `.atlcli/templates/` in docs folder (checked first) + config folder |
+| Global storage | `~/.config/atlcli/templates/global/` (base configurable via `ATLCLI_TEMPLATES_DIR`) |
+| Profile storage | `~/.config/atlcli/templates/profiles/<profile>/` |
+| Space storage | Both: `.atlcli/templates/` in docs folder (checked first) + `~/.config/atlcli/templates/spaces/<space>/` |
 | Template format | Markdown with YAML frontmatter |
 | Variable syntax | Handlebars `{{variable}}` with full logic support (if, unless, each, with) |
 | Variable input | CLI flags `--var key=value` with interactive fallback for required vars |
@@ -71,12 +71,13 @@ Override base path with `ATLCLI_TEMPLATES_DIR` environment variable.
 ```
 ~/.config/atlcli/templates/
 └── spaces/
-    └── work/                # Profile name
-        └── TEAM/            # Space key
-            └── team-specific.md
+    └── TEAM/                # Space key
+        └── team-specific.md
 ```
 
 > **Note**: The explicit `global/`, `profiles/`, and `spaces/` subdirectories prevent naming collisions between template names and profile/space names.
+>
+> **Space templates are space-scoped, not profile-scoped**: A Confluence space (e.g., TEAM) is the same regardless of which auth profile you use. Space templates in config are stored by space key only.
 
 ---
 
@@ -164,9 +165,13 @@ variables:
 | `{{month}}` | Current month | MM |
 | `{{day}}` | Current day | DD |
 
-Date format configurable via `--date-format` flag or config setting.
+**Date format precedence** (highest to lowest):
+1. `--date-format` flag on command
+2. Profile config `templates.date_format`
+3. Global config `templates.date_format`
+4. Default: ISO 8601 (`YYYY-MM-DD`)
 
-**Precedence**: User-provided `--var` values override built-ins. If you pass `--var date=custom`, it overrides the built-in `{{date}}`. This allows templates to use built-in names while still accepting user overrides.
+**Variable precedence**: User-provided `--var` values override built-ins. If you pass `--var date=custom`, it overrides the built-in `{{date}}`. This allows templates to use built-in names while still accepting user overrides.
 
 ---
 
@@ -213,8 +218,13 @@ atlcli wiki template list --json
 ### Show Template
 
 ```bash
-# Show metadata and content
+# Show metadata and content (resolves by precedence: space > profile > global)
 atlcli wiki template show meeting-notes
+
+# Show from specific level
+atlcli wiki template show meeting-notes --level global
+atlcli wiki template show standup --profile work
+atlcli wiki template show runbook --space TEAM
 
 # Output:
 # Name:        meeting-notes
@@ -233,6 +243,8 @@ atlcli wiki template show meeting-notes
 # # {{title}}
 # ...
 ```
+
+**Ambiguity handling**: Same as edit/delete - if name exists at multiple levels, prompts for selection.
 
 ### Create Template
 
@@ -275,6 +287,8 @@ The `--from` flag auto-detects the source type:
 - Path with `/` or `.md` → local file
 - Otherwise → page title (requires `--space` to resolve)
 
+**Default level**: Global. Use `--profile` or `--space` to create at other levels.
+
 ### Edit Template
 
 ```bash
@@ -308,11 +322,16 @@ atlcli wiki template delete runbook --space TEAM --force
 ### Rename Template
 
 ```bash
+# Rename (resolves by precedence if ambiguous)
 atlcli wiki template rename old-name new-name
 
 # Rename at specific level
 atlcli wiki template rename standup daily-standup --profile work
+atlcli wiki template rename meeting team-meeting --level global
+atlcli wiki template rename runbook ops-runbook --space TEAM
 ```
+
+**Ambiguity handling**: Same as show/edit/delete - if name exists at multiple levels, prompts for selection.
 
 ### Copy Template
 
@@ -342,8 +361,12 @@ Flag patterns for target:
 ### Validate Template
 
 ```bash
-# Validate syntax, variables, Handlebars
+# Validate syntax, variables, Handlebars (resolves by precedence)
 atlcli wiki template validate meeting-notes
+
+# Validate at specific level
+atlcli wiki template validate meeting-notes --level global
+atlcli wiki template validate standup --profile work
 
 # Validate all templates
 atlcli wiki template validate --all
@@ -352,11 +375,16 @@ atlcli wiki template validate --all
 atlcli wiki template validate --file ./my-template.md
 ```
 
+**Ambiguity handling**: Same as other commands - prompts for level if name exists at multiple levels.
+
 ### Render Template
 
 ```bash
-# Render without creating page (outputs to stdout)
+# Render without creating page (outputs to stdout, resolves by precedence)
 atlcli wiki template render meeting-notes --var title="Sprint Planning" --var date=today
+
+# Render from specific level
+atlcli wiki template render meeting-notes --level global --var title="Planning"
 
 # Output to file
 atlcli wiki template render meeting-notes --var title="Planning" > rendered.md
@@ -366,6 +394,8 @@ atlcli wiki template render meeting-notes --interactive
 ```
 
 > **Note**: `render` outputs rendered markdown. For previewing with page context (parent, space), use `wiki page create --template X --dry-run` instead.
+
+**Ambiguity handling**: Same as other commands - prompts for level if name exists at multiple levels.
 
 ### Using Templates (Page Create)
 
@@ -427,6 +457,8 @@ atlcli wiki template export meeting-notes standup -o ./my-pack
 - Single template name + `-o file.md` → single file
 - Multiple template names → always directory (default or `-o path`)
 - `--level/--profile/--space` filters → always directory
+
+**Space template export**: When exporting space templates, exports from BOTH locations (docs folder and config folder). Templates from docs folder take precedence if same name exists in both.
 
 ### Export Directory Structure
 
@@ -611,6 +643,43 @@ export interface RenderResult {
   content: string;
   usedVariables: string[];
   missingVariables: string[];
+}
+
+export interface TemplateFilter {
+  level?: 'global' | 'profile' | 'space';
+  profile?: string;
+  space?: string;
+  tags?: string[];
+  search?: string;
+}
+
+export interface TemplateSummary {
+  name: string;
+  description?: string;
+  level: 'global' | 'profile' | 'space';
+  profile?: string;
+  space?: string;
+  tags?: string[];
+  overrides?: TemplateSource;  // If this shadows another template
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+}
+
+export interface ValidationError {
+  line?: number;
+  column?: number;
+  message: string;
+  type: 'syntax' | 'variable' | 'handlebars';
+}
+
+export interface ValidationWarning {
+  line?: number;
+  message: string;
+  type: 'unused-variable' | 'undeclared-variable' | 'deprecated';
 }
 ```
 
