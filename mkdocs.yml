@@ -89,6 +89,8 @@ nav:
     - reference/cli-commands.md
     - Authentication: authentication.md
     - Configuration: configuration.md
+    - Shell Completion: reference/shell-completions.md
+    - Updating: reference/updating.md
     - Logging: reference/logging.md
     - Environment: reference/environment.md
     - Troubleshooting: reference/troubleshooting.md

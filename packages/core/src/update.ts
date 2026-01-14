@@ -77,7 +77,7 @@ interface GitHubRelease {
 export function getCurrentVersion(): string {
   // TODO: This should be injected at build time
   // For now, we'll use a hardcoded value that needs to be kept in sync
-  return "0.5.1";
+  return "0.6.0";
 }
 
 /**

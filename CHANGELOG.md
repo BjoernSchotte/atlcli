@@ -5,6 +5,24 @@ All notable changes to atlcli will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-14
+
+### Added
+
+- **Shell Completion** - Tab completion for zsh and bash
+  - Generate scripts: `atlcli completion zsh` / `atlcli completion bash`
+  - Completes commands, subcommands, and flags
+  - Dynamic completion for issue keys, project keys, sprint names
+  - Installation: `atlcli completion zsh >> ~/.zshrc`
+
+- **Self-Update** - Built-in update mechanism
+  - `atlcli update` - Check for and install updates
+  - `atlcli update --check` - Check only, don't install
+  - `atlcli update v0.5.0` - Install specific version
+  - Auto-check once per day in interactive terminals
+  - Detects installation method and shows appropriate instructions
+  - Skips auto-check in CI/CD and non-interactive environments
+
 ## [0.5.1] - 2026-01-14
 
 ### Added
@@ -208,6 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `space list`, `get`, `create` commands
 - `page list`, `get`, `create`, `update`, `delete` commands
 
+[0.6.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/BjoernSchotte/atlcli/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.3.0...v0.4.0
