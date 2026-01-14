@@ -107,6 +107,7 @@ atlcli wiki page sort <file> --by created
 atlcli wiki page sort --id <id> --by modified --reverse
 atlcli wiki page archive --id <id> --confirm
 atlcli wiki page archive --cql <query> --dry-run
+atlcli wiki page open <id>              # Open page in browser
 ```
 
 ### Page History
@@ -210,6 +211,7 @@ atlcli jira issue assign --key <key> --assignee <email>
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
 atlcli jira issue attach --key <key> <file>  # Attach file
+atlcli jira issue open <key>            # Open issue in browser
 atlcli jira watch <key>                 # Watch issue
 atlcli jira unwatch <key>               # Stop watching
 atlcli jira watchers <key>              # List watchers

@@ -91,6 +91,9 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "archive":
       await handleArchive(flags, opts);
       return;
+    case "open":
+      await handleOpen(args.slice(1), flags, opts);
+      return;
     default:
       output(pageHelp(), opts);
       return;
@@ -1512,6 +1515,73 @@ Examples:
 `;
 }
 
+async function handleOpen(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const id = args[0] ?? getFlag(flags, "id");
+
+  if (!id) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Page ID is required: wiki page open <id>");
+    return;
+  }
+
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"));
+
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.CONFIG, "No active profile. Run: atlcli auth login");
+    return;
+  }
+
+  // Construct URL - Confluence Cloud page URL
+  const url = `${profile.baseUrl}/wiki/pages/${id}`;
+
+  // Always display the URL first (for headless environments)
+  output(url, opts);
+
+  // Attempt to open in browser
+  try {
+    await openUrl(url);
+  } catch {
+    // Silently fail - URL was already printed
+  }
+}
+
+async function openUrl(url: string): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const platform = process.platform;
+
+  let command: string;
+  let args: string[];
+
+  if (platform === "darwin") {
+    command = "open";
+    args = [url];
+  } else if (platform === "win32") {
+    command = "cmd";
+    args = ["/c", "start", "", url];
+  } else {
+    // Linux and others
+    command = "xdg-open";
+    args = [url];
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: "ignore",
+      detached: true,
+    });
+
+    child.on("error", reject);
+    child.on("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 function pageHelp(): string {
   return `atlcli wiki page <command>
 
@@ -1540,6 +1610,7 @@ Commands:
   diff --id <id> [--version <n>]       Compare versions
   restore --id <id> --version <n> --confirm  Restore to version
   comments <list|add|reply|...>        Manage page comments
+  open <id>                            Open page in browser
 
 Options:
   --profile <name>   Use a specific auth profile

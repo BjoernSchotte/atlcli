@@ -325,6 +325,9 @@ async function handleIssue(
     case "attach":
       await handleIssueAttach(args.slice(1), flags, opts);
       return;
+    case "open":
+      await handleIssueOpen(args.slice(1), flags, opts);
+      return;
     default:
       output(issueHelp(), opts);
       return;
@@ -599,6 +602,73 @@ async function handleIssueAttach(
   }
 }
 
+async function handleIssueOpen(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = args[0] ?? getFlag(flags, "key");
+
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required: jira issue open <key>");
+    return;
+  }
+
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"));
+
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.CONFIG, "No active profile. Run: atlcli auth login");
+    return;
+  }
+
+  // Construct URL - Jira Cloud browse URL
+  const url = `${profile.baseUrl}/browse/${key}`;
+
+  // Always display the URL first (for headless environments)
+  output(url, opts);
+
+  // Attempt to open in browser
+  try {
+    await openUrl(url);
+  } catch {
+    // Silently fail - URL was already printed
+  }
+}
+
+async function openUrl(url: string): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const platform = process.platform;
+
+  let command: string;
+  let args: string[];
+
+  if (platform === "darwin") {
+    command = "open";
+    args = [url];
+  } else if (platform === "win32") {
+    command = "cmd";
+    args = ["/c", "start", "", url];
+  } else {
+    // Linux and others
+    command = "xdg-open";
+    args = [url];
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: "ignore",
+      detached: true,
+    });
+
+    child.on("error", reject);
+    child.on("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 function issueHelp(): string {
   return `atlcli jira issue <command>
 
@@ -613,6 +683,7 @@ Commands:
   comment --key <key> <text>
   link --from <key> --to <key> --type <name>
   attach --key <key> <file>            Attach a file to an issue
+  open <key>                           Open issue in browser
 
 Options:
   --profile <name>   Use a specific auth profile

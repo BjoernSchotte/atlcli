@@ -76,6 +76,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
       "label",
       "list",
       "move",
+      "open",
       "restore",
       "sort",
       "update",
@@ -113,6 +114,7 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
       "delete",
       "get",
       "link",
+      "open",
       "transition",
       "transitions",
       "update",
@@ -183,6 +185,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki page diff": ["--id", "--version1", "--version2"],
   "wiki page restore": ["--id", "--version"],
   "wiki page comments": ["--id"],
+  "wiki page open": ["--id"],
 
   // wiki space flags
   "wiki space list": ["--limit"],
@@ -260,6 +263,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "jira issue comment": ["--body", "--key"],
   "jira issue link": ["--from", "--to", "--type"],
   "jira issue attach": ["--file", "--key"],
+  "jira issue open": ["--key"],
 
   // jira board flags
   "jira board list": ["--limit", "--project", "--type"],
