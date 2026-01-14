@@ -1,6 +1,14 @@
 # atlcli
 
-A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, manage Jira issues from your terminal.
+A blazingly fast CLI for Atlassian products. Write documentation in markdown, sync bidirectionally with Confluence. Manage Jira issues from your terminal.
+
+**Core feature:** True bidirectional sync between local markdown files and Confluence wiki pages - edit locally in your favorite editor, push to Confluence, or pull remote changes. Conflict detection included.
+
+**Extensive macro support:** Full conversion of Confluence macros to markdown and back:
+
+- **Simple macros:** info, note, warning, tip panels, expand/collapse, table of contents
+- **Complex macros:** code blocks with syntax highlighting, tables, task lists, layouts
+- **Unknown macros:** Preserved as-is during sync - no information loss
 
 ## Features
 
@@ -10,7 +18,7 @@ A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, 
 
     ---
 
-    Bidirectional markdown sync with conflict detection, macro support, and page templates.
+    **Bidirectional markdown/wiki sync** - write in your editor, sync to Confluence. Pull, push, watch mode with conflict detection. Plus macro support and templates.
 
     [:octicons-arrow-right-24: Confluence Guide](confluence/index.md)
 
@@ -51,7 +59,7 @@ cd atlcli && bun install && bun run build
 atlcli auth init
 
 # Sync Confluence docs
-atlcli docs pull ./my-docs --space TEAM
+atlcli wiki docs pull ./my-docs --space TEAM
 
 # Search Jira issues
 atlcli jira search --assignee me --status "In Progress"

@@ -15,7 +15,7 @@ On push, atlcli uploads the image as an attachment and updates the reference.
 ## Pull Attachments
 
 ```bash
-atlcli docs pull ./docs --attachments
+atlcli wiki docs pull ./docs --attachments
 ```
 
 Downloads all attachments to a local `attachments/` directory.

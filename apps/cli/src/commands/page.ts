@@ -311,7 +311,7 @@ async function handleLabelAdd(args: string[], flags: Record<string, string | boo
     : [];
 
   if (labels.length === 0) {
-    fail(opts, 1, ERROR_CODES.USAGE, "At least one label is required. Usage: atlcli page label add <label> [<label>...] --id <id>");
+    fail(opts, 1, ERROR_CODES.USAGE, "At least one label is required. Usage: atlcli wiki page label add <label> [<label>...] --id <id>");
   }
 
   const client = await getClient(flags, opts);
@@ -408,7 +408,7 @@ async function handleLabelRemove(args: string[], flags: Record<string, string | 
     fail(opts, 1, ERROR_CODES.USAGE, "--id or --cql is required.");
   }
   if (!label) {
-    fail(opts, 1, ERROR_CODES.USAGE, "Label name is required. Usage: atlcli page label remove <label> --id <id>");
+    fail(opts, 1, ERROR_CODES.USAGE, "Label name is required. Usage: atlcli wiki page label remove <label> --id <id>");
   }
 
   const client = await getClient(flags, opts);
@@ -756,7 +756,7 @@ async function handleCommentsAdd(args: string[], flags: Record<string, string | 
   } else if (args.length > 0) {
     commentText = args.join(" ");
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli page comments add --id <id> <text>");
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli wiki page comments add --id <id> <text>");
   }
 
   if (!commentText.trim()) {
@@ -800,7 +800,7 @@ async function handleCommentsReply(args: string[], flags: Record<string, string 
   } else if (args.length > 0) {
     replyText = args.join(" ");
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "Reply text is required. Usage: atlcli page comments reply --id <id> --parent <commentId> <text>");
+    fail(opts, 1, ERROR_CODES.USAGE, "Reply text is required. Usage: atlcli wiki page comments reply --id <id> --parent <commentId> <text>");
   }
 
   if (!replyText.trim()) {
@@ -845,7 +845,7 @@ async function handleCommentsAddInline(args: string[], flags: Record<string, str
   } else if (args.length > 0) {
     commentText = args.join(" ");
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli page comments add-inline --id <id> --selection <text> <comment>");
+    fail(opts, 1, ERROR_CODES.USAGE, "Comment text is required. Usage: atlcli wiki page comments add-inline --id <id> --selection <text> <comment>");
   }
 
   if (!commentText.trim()) {
@@ -1447,7 +1447,7 @@ async function handleArchive(flags: Record<string, string | boolean>, opts: Outp
 
 function commentsHelp(): string {
   return `
-atlcli page comments <command>
+atlcli wiki page comments <command>
 
 Commands:
   list --id <id>                         List all comments (default)
@@ -1463,18 +1463,18 @@ Options:
   --match-index <n>    For inline: which occurrence of selection (default: 0)
 
 Examples:
-  atlcli page comments --id 12345
-  atlcli page comments add --id 12345 "Looks good!"
-  atlcli page comments add --id 12345 --file comment.md
-  atlcli page comments reply --id 12345 --parent 67890 "Thanks!"
-  atlcli page comments add-inline --id 12345 --selection "important text" "Please clarify this"
-  atlcli page comments resolve --comment 67890
-  atlcli page comments delete --comment 67890 --confirm
+  atlcli wiki page comments --id 12345
+  atlcli wiki page comments add --id 12345 "Looks good!"
+  atlcli wiki page comments add --id 12345 --file comment.md
+  atlcli wiki page comments reply --id 12345 --parent 67890 "Thanks!"
+  atlcli wiki page comments add-inline --id 12345 --selection "important text" "Please clarify this"
+  atlcli wiki page comments resolve --comment 67890
+  atlcli wiki page comments delete --comment 67890 --confirm
 `;
 }
 
 function labelHelp(): string {
-  return `atlcli page label <command>
+  return `atlcli wiki page label <command>
 
 Commands:
   add <label> [<label>...] --id <id>   Add labels to a page
@@ -1487,17 +1487,17 @@ Options:
   --dry-run    Preview what would be affected without making changes
 
 Examples:
-  atlcli page label add architecture api-docs --id 12345
-  atlcli page label add archived --cql "space=OLD" --dry-run
-  atlcli page label add archived --cql "space=OLD" --confirm
-  atlcli page label remove draft --id 12345
-  atlcli page label remove draft --cql "label=draft AND space=DEV" --confirm
-  atlcli page label list --id 12345
+  atlcli wiki page label add architecture api-docs --id 12345
+  atlcli wiki page label add archived --cql "space=OLD" --dry-run
+  atlcli wiki page label add archived --cql "space=OLD" --confirm
+  atlcli wiki page label remove draft --id 12345
+  atlcli wiki page label remove draft --cql "label=draft AND space=DEV" --confirm
+  atlcli wiki page label list --id 12345
 `;
 }
 
 function pageHelp(): string {
-  return `atlcli page <command>
+  return `atlcli wiki page <command>
 
 Commands:
   get --id <id>
@@ -1534,28 +1534,28 @@ Options:
 Move/Sort targets can be file paths (./docs/page.md) or page IDs.
 
 Examples:
-  atlcli page list --label architecture
-  atlcli page move --id 12345 --parent 67890
-  atlcli page move ./docs/setup.md --before ./docs/intro.md
-  atlcli page move ./docs/appendix.md --last
-  atlcli page move --id 12345 --position 3
-  atlcli page sort ./docs/api.md --alphabetical
-  atlcli page sort ./docs/chapters.md --natural
-  atlcli page sort ./docs/changelog.md --by created --reverse
-  atlcli page sort --id 12345 --alphabetical --dry-run
-  atlcli page copy --id 12345 --title "Copy of Page"
-  atlcli page children --id 12345
-  atlcli page delete --id 12345 --confirm
-  atlcli page delete --cql "label=to-delete" --dry-run
-  atlcli page delete --cql "label=to-delete" --confirm
-  atlcli page archive --cql "lastModified < now('-1y')" --dry-run
-  atlcli page archive --cql "lastModified < now('-1y')" --confirm
-  atlcli page history --id 12345 --limit 5
-  atlcli page diff --id 12345 --version 3
-  atlcli page restore --id 12345 --version 3 --confirm
-  atlcli page comments --id 12345
-  atlcli page comments add --id 12345 "Great work!"
+  atlcli wiki page list --label architecture
+  atlcli wiki page move --id 12345 --parent 67890
+  atlcli wiki page move ./docs/setup.md --before ./docs/intro.md
+  atlcli wiki page move ./docs/appendix.md --last
+  atlcli wiki page move --id 12345 --position 3
+  atlcli wiki page sort ./docs/api.md --alphabetical
+  atlcli wiki page sort ./docs/chapters.md --natural
+  atlcli wiki page sort ./docs/changelog.md --by created --reverse
+  atlcli wiki page sort --id 12345 --alphabetical --dry-run
+  atlcli wiki page copy --id 12345 --title "Copy of Page"
+  atlcli wiki page children --id 12345
+  atlcli wiki page delete --id 12345 --confirm
+  atlcli wiki page delete --cql "label=to-delete" --dry-run
+  atlcli wiki page delete --cql "label=to-delete" --confirm
+  atlcli wiki page archive --cql "lastModified < now('-1y')" --dry-run
+  atlcli wiki page archive --cql "lastModified < now('-1y')" --confirm
+  atlcli wiki page history --id 12345 --limit 5
+  atlcli wiki page diff --id 12345 --version 3
+  atlcli wiki page restore --id 12345 --version 3 --confirm
+  atlcli wiki page comments --id 12345
+  atlcli wiki page comments add --id 12345 "Great work!"
 
-Run 'atlcli page label' or 'atlcli page comments' for subcommand help.
+Run 'atlcli wiki page label' or 'atlcli wiki page comments' for subcommand help.
 `;
 }

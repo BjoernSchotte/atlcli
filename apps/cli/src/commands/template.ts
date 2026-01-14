@@ -368,7 +368,7 @@ async function promptForVariable(v: TemplateVariable): Promise<string> {
 }
 
 function templateHelp(): string {
-  return `atlcli template <subcommand>
+  return `atlcli wiki template <subcommand>
 
 Template management commands.
 
@@ -381,12 +381,12 @@ Subcommands:
   delete      Delete a template
 
 Examples:
-  atlcli template list
-  atlcli template get --name meeting-notes
-  atlcli template create --name my-template --from-file template.md
-  atlcli template validate --name my-template
-  atlcli template preview --name meeting-notes --var date=2025-01-12
-  atlcli template delete --name old-template --confirm
+  atlcli wiki template list
+  atlcli wiki template get --name meeting-notes
+  atlcli wiki template create --name my-template --from-file template.md
+  atlcli wiki template validate --name my-template
+  atlcli wiki template preview --name meeting-notes --var date=2025-01-12
+  atlcli wiki template delete --name old-template --confirm
 
 Options:
   --source    Filter by source: local, global, all (default: all)

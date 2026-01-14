@@ -1759,13 +1759,13 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
   }
 
   output(`Resolved conflicts in ${filePath} using ${accept} version.`, opts);
-  output("Run 'atlcli docs push' to push the resolved version.", opts);
+  output("Run 'atlcli wiki docs push' to push the resolved version.", opts);
 }
 
 async function handleDocsDiff(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
   const filePath = args[0];
   if (!filePath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "File path is required. Usage: atlcli docs diff <file>");
+    fail(opts, 1, ERROR_CODES.USAGE, "File path is required. Usage: atlcli wiki docs diff <file>");
   }
 
   // Check if file exists and read it
@@ -1882,7 +1882,7 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
 }
 
 function docsHelp(): string {
-  return `atlcli docs <command>
+  return `atlcli wiki docs <command>
 
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
@@ -1925,23 +1925,23 @@ Validation checks:
   - Page size exceeding 500KB (warning)
 
 Examples:
-  atlcli docs init ./docs --space TEAM              Initialize for entire space
-  atlcli docs init ./docs --ancestor 12345          Initialize for page tree
-  atlcli docs init ./docs --page-id 67890           Initialize for single page
-  atlcli docs pull ./docs                           Pull using saved scope
-  atlcli docs pull ./docs --ancestor 99999          Override scope for this pull
-  atlcli docs pull ./docs --label architecture      Pull only pages with label
-  atlcli docs pull ./docs --comments                Pull pages with comments
-  atlcli docs push ./docs                           Push all tracked files
-  atlcli docs push ./docs/page.md                   Push single file
-  atlcli docs push --page-id 12345                  Push by page ID
-  atlcli docs push --validate                       Validate before pushing
-  atlcli docs push --validate --strict              Fail on warnings too
-  atlcli docs diff ./docs/page.md                   Show local vs remote diff
-  atlcli docs check ./docs                          Check for broken links
-  atlcli docs check ./docs --strict                 Treat warnings as errors
-  atlcli docs check ./docs --json                   JSON output for CI/agents
+  atlcli wiki docs init ./docs --space TEAM              Initialize for entire space
+  atlcli wiki docs init ./docs --ancestor 12345          Initialize for page tree
+  atlcli wiki docs init ./docs --page-id 67890           Initialize for single page
+  atlcli wiki docs pull ./docs                           Pull using saved scope
+  atlcli wiki docs pull ./docs --ancestor 99999          Override scope for this pull
+  atlcli wiki docs pull ./docs --label architecture      Pull only pages with label
+  atlcli wiki docs pull ./docs --comments                Pull pages with comments
+  atlcli wiki docs push ./docs                           Push all tracked files
+  atlcli wiki docs push ./docs/page.md                   Push single file
+  atlcli wiki docs push --page-id 12345                  Push by page ID
+  atlcli wiki docs push --validate                       Validate before pushing
+  atlcli wiki docs push --validate --strict              Fail on warnings too
+  atlcli wiki docs diff ./docs/page.md                   Show local vs remote diff
+  atlcli wiki docs check ./docs                          Check for broken links
+  atlcli wiki docs check ./docs --strict                 Treat warnings as errors
+  atlcli wiki docs check ./docs --json                   JSON output for CI/agents
 
-For sync command options: atlcli docs sync --help
+For sync command options: atlcli wiki docs sync --help
 `;
 }

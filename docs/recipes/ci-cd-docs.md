@@ -43,7 +43,7 @@ jobs:
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
         run: |
-          /tmp/atlcli/apps/cli/dist/atlcli docs push ./docs
+          /tmp/atlcli/apps/cli/dist/atlcli wiki docs push ./docs
 ```
 
 ### On Release
@@ -70,7 +70,7 @@ jobs:
           ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: atlcli docs push ./docs
+        run: atlcli wiki docs push ./docs
 ```
 
 ## GitLab CI
@@ -87,7 +87,7 @@ publish-docs:
     changes:
       - docs/**
   script:
-    - atlcli docs push ./docs
+    - atlcli wiki docs push ./docs
   variables:
     ATLCLI_BASE_URL: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
@@ -112,7 +112,7 @@ pipeline {
                 changeset 'docs/**'
             }
             steps {
-                sh 'atlcli docs push ./docs'
+                sh 'atlcli wiki docs push ./docs'
             }
         }
     }

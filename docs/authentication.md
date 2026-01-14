@@ -2,6 +2,19 @@
 
 atlcli uses Atlassian API tokens for authentication, supporting multiple profiles for different instances.
 
+## Quick Start
+
+```bash
+# Initialize credentials (interactive)
+atlcli auth init
+
+# Check current status
+atlcli auth status
+
+# List all profiles
+atlcli auth list
+```
+
 ## API Tokens
 
 ### Creating a Token
@@ -17,6 +30,100 @@ API tokens inherit your account permissions. For atlcli to work fully, your acco
 
 - **Confluence**: Space admin or contributor permissions
 - **Jira**: Project access for issues you want to manage
+
+## Auth Commands
+
+### Initialize (Interactive)
+
+Interactive setup that prompts for all credentials:
+
+```bash
+atlcli auth init
+atlcli auth init --profile work
+```
+
+### Login (Non-Interactive)
+
+Login with credentials provided via flags or environment:
+
+```bash
+atlcli auth login --site https://company.atlassian.net --email you@company.com --token YOUR_TOKEN
+atlcli auth login --profile work --site https://work.atlassian.net
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--site` | Atlassian instance URL |
+| `--email` | Account email |
+| `--token` | API token |
+| `--profile` | Profile name to create/update |
+
+### Status
+
+Check current authentication status:
+
+```bash
+atlcli auth status
+```
+
+Output:
+
+```
+Profile: work (active)
+Site:    https://company.atlassian.net
+Email:   you@company.com
+Status:  Authenticated ✓
+```
+
+### List Profiles
+
+```bash
+atlcli auth list
+```
+
+Output:
+
+```
+PROFILE     SITE                              EMAIL              ACTIVE
+default     https://company.atlassian.net     you@company.com
+work        https://work.atlassian.net        work@company.com   ✓
+personal    https://personal.atlassian.net    me@gmail.com
+```
+
+### Switch Profile
+
+Change the active profile:
+
+```bash
+atlcli auth switch work
+atlcli auth switch personal
+```
+
+### Rename Profile
+
+```bash
+atlcli auth rename old-name new-name
+```
+
+### Logout
+
+Clear credentials but keep the profile (for easy re-login):
+
+```bash
+atlcli auth logout
+atlcli auth logout work
+```
+
+### Delete Profile
+
+Remove a profile entirely:
+
+```bash
+atlcli auth delete old-profile
+atlcli auth delete --profile staging --confirm
+```
 
 ## Profiles
 
@@ -44,36 +151,34 @@ Use a profile with any command:
 
 ```bash
 atlcli jira search --assignee me --profile work
-atlcli docs pull ./docs --profile client-acme
+atlcli wiki docs pull ./docs --profile client-acme
 ```
 
-### List Profiles
+### Per-Command Override
 
 ```bash
-atlcli auth list
-```
-
-### Delete a Profile
-
-```bash
-atlcli auth delete --profile old-profile
+# Use specific profile for one command
+atlcli wiki page list --space TEAM --profile work
 ```
 
 ## Credential Storage
 
-Credentials are stored at `~/.config/atlcli/credentials.json`:
+Credentials are stored at `~/.atlcli/credentials.json`:
 
 ```json
 {
+  "currentProfile": "work",
   "profiles": {
     "default": {
+      "name": "default",
       "baseUrl": "https://company.atlassian.net",
       "email": "you@company.com",
       "apiToken": "ATATT3x..."
     },
-    "personal": {
-      "baseUrl": "https://personal.atlassian.net",
-      "email": "you@gmail.com",
+    "work": {
+      "name": "work",
+      "baseUrl": "https://work.atlassian.net",
+      "email": "work@company.com",
       "apiToken": "ATATT3x..."
     }
   }
@@ -83,7 +188,7 @@ Credentials are stored at `~/.config/atlcli/credentials.json`:
 !!! warning "Security"
     Protect this file with appropriate permissions:
     ```bash
-    chmod 600 ~/.config/atlcli/credentials.json
+    chmod 600 ~/.atlcli/credentials.json
     ```
 
 ## Environment Variables
@@ -92,7 +197,7 @@ Override credentials with environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `ATLCLI_BASE_URL` | Atlassian instance URL |
+| `ATLCLI_SITE` | Atlassian instance URL |
 | `ATLCLI_EMAIL` | Account email |
 | `ATLCLI_API_TOKEN` | API token |
 | `ATLCLI_PROFILE` | Default profile name |
@@ -100,11 +205,20 @@ Override credentials with environment variables:
 Environment variables take precedence over config files:
 
 ```bash
-export ATLCLI_BASE_URL="https://ci.atlassian.net"
+export ATLCLI_SITE="https://ci.atlassian.net"
 export ATLCLI_EMAIL="ci@company.com"
 export ATLCLI_API_TOKEN="$CI_ATLASSIAN_TOKEN"
 atlcli jira search --jql "project = PROJ"
 ```
+
+## Precedence
+
+Credentials are resolved in this order (later wins):
+
+1. Default profile in config
+2. `ATLCLI_PROFILE` environment variable
+3. `ATLCLI_SITE` / `ATLCLI_EMAIL` / `ATLCLI_API_TOKEN` env vars
+4. `--profile` command flag
 
 ## CI/CD Usage
 
@@ -115,7 +229,7 @@ For CI/CD pipelines, use environment variables or secrets:
 ```yaml
 - name: Search Jira
   env:
-    ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+    ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
     ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
     ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
   run: atlcli jira search --jql "fixVersion = ${{ github.ref_name }}"
@@ -128,9 +242,25 @@ jira-update:
   script:
     - atlcli jira transition $ISSUE_KEY --status Done
   variables:
-    ATLCLI_BASE_URL: $ATLASSIAN_URL
+    ATLCLI_SITE: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
     ATLCLI_API_TOKEN: $ATLASSIAN_TOKEN
+```
+
+### Jenkins
+
+```groovy
+environment {
+    ATLCLI_SITE = credentials('atlassian-url')
+    ATLCLI_EMAIL = credentials('atlassian-email')
+    ATLCLI_API_TOKEN = credentials('atlassian-token')
+}
+```
+
+### Docker
+
+```bash
+docker run -e ATLCLI_SITE -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli jira search
 ```
 
 ## Troubleshooting
@@ -144,6 +274,7 @@ Error: Authentication failed (401)
 - Verify your API token hasn't expired
 - Check the instance URL includes `https://`
 - Confirm email matches your Atlassian account
+- Re-initialize: `atlcli auth init`
 
 ### Permission Denied
 
@@ -154,3 +285,23 @@ Error: You don't have permission (403)
 - Check your account has access to the project/space
 - For Jira, verify project permissions
 - For Confluence, verify space permissions
+
+### Wrong Profile
+
+```bash
+# Check which profile is active
+atlcli auth status
+
+# Switch if needed
+atlcli auth switch correct-profile
+```
+
+### Token Expired
+
+Atlassian API tokens can expire. Regenerate and update:
+
+```bash
+# Generate new token at https://id.atlassian.com/manage-profile/security/api-tokens
+# Then update
+atlcli auth init --profile work
+```

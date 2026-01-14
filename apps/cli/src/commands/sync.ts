@@ -1149,7 +1149,7 @@ class SyncEngine {
 }
 
 export function syncHelp(): string {
-  return `atlcli docs sync <dir> [options]
+  return `atlcli wiki docs sync <dir> [options]
 
 Start bidirectional sync daemon for Confluence pages.
 
@@ -1177,20 +1177,20 @@ Webhook options (optional, for real-time updates):
 
 Examples:
   # Sync using scope from .atlcli/config.json
-  atlcli docs sync ./docs
+  atlcli wiki docs sync ./docs
 
   # Sync with explicit scope
-  atlcli docs sync ./docs --space DEV
-  atlcli docs sync ./docs --ancestor 12345 --poll-interval 10000
-  atlcli docs sync ./docs --page-id 12345
+  atlcli wiki docs sync ./docs --space DEV
+  atlcli wiki docs sync ./docs --ancestor 12345 --poll-interval 10000
+  atlcli wiki docs sync ./docs --page-id 12345
 
   # Sync only pages with a specific label
-  atlcli docs sync ./docs --space DEV --label architecture
+  atlcli wiki docs sync ./docs --space DEV --label architecture
 
   # Sync with auto-create for new local files
-  atlcli docs sync ./docs --space DEV --auto-create
+  atlcli wiki docs sync ./docs --space DEV --auto-create
 
   # Sync with webhook for real-time updates
-  atlcli docs sync ./docs --space DEV --webhook-port 3000 --webhook-url https://example.com/webhook
+  atlcli wiki docs sync ./docs --space DEV --webhook-port 3000 --webhook-url https://example.com/webhook
 `;
 }

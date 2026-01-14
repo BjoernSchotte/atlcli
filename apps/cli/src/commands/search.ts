@@ -331,17 +331,17 @@ function truncate(str: string, maxLen: number): string {
 }
 
 function searchHelp(): string {
-  return `atlcli search <query> [options]
+  return `atlcli wiki search <query> [options]
 
 Search Confluence content using text search or CQL.
 
 Usage:
-  atlcli search "API documentation"
-  atlcli search --space DEV --label architecture
-  atlcli search --cql "type=page AND label=draft"
+  atlcli wiki search "API documentation"
+  atlcli wiki search --space DEV --label architecture
+  atlcli wiki search --cql "type=page AND label=draft"
 
 Text Search:
-  atlcli search <query>        Search for text in page content
+  atlcli wiki search <query>        Search for text in page content
 
 Filters:
   --space <key>                Filter by space (comma-separated for multiple)
@@ -364,11 +364,11 @@ Raw CQL:
   --cql <query>                Use raw CQL query (ignores other filters)
 
 Examples:
-  atlcli search "getting started"
-  atlcli search --space DEV,DOCS --modified-since 7d
-  atlcli search --label api --label documentation
-  atlcli search --creator me --created-since thisMonth
-  atlcli search --cql "type=page AND space=DEV AND lastModified >= startOfWeek()"
+  atlcli wiki search "getting started"
+  atlcli wiki search --space DEV,DOCS --modified-since 7d
+  atlcli wiki search --label api --label documentation
+  atlcli wiki search --creator me --created-since thisMonth
+  atlcli wiki search --cql "type=page AND space=DEV AND lastModified >= startOfWeek()"
 
 Date Expressions:
   7d, 30d          Days ago

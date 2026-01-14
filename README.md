@@ -51,10 +51,10 @@ bun install && bun run build
 atlcli auth init
 
 # Sync Confluence docs
-atlcli docs init ./my-docs --space TEAM
-atlcli docs pull ./my-docs
+atlcli wiki docs init ./my-docs --space TEAM
+atlcli wiki docs pull ./my-docs
 # Edit locally...
-atlcli docs push ./my-docs
+atlcli wiki docs push ./my-docs
 
 # Search Jira issues
 atlcli jira search --assignee me --status "In Progress"

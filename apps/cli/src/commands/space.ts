@@ -67,7 +67,7 @@ async function handleCreate(flags: Record<string, string | boolean>, opts: Outpu
 }
 
 function spaceHelp(): string {
-  return `atlcli space <command>
+  return `atlcli wiki space <command>
 
 Commands:
   list [--limit <n>]

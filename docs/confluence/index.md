@@ -8,16 +8,16 @@ Work with Confluence using familiar Git-like workflows:
 
 ```bash
 # Initialize a local directory
-atlcli docs init ./team-docs --space TEAM
+atlcli wiki docs init ./team-docs --space TEAM
 
 # Pull pages from Confluence
-atlcli docs pull ./team-docs
+atlcli wiki docs pull ./team-docs
 
 # Edit locally, then push changes
-atlcli docs push ./team-docs
+atlcli wiki docs push ./team-docs
 
 # Watch for changes
-atlcli docs sync ./team-docs --watch
+atlcli wiki docs sync ./team-docs --watch
 ```
 
 ## Key Features
@@ -33,13 +33,13 @@ atlcli docs sync ./team-docs --watch
 ### 1. Initialize Directory
 
 ```bash
-atlcli docs init ./docs --space TEAM
+atlcli wiki docs init ./docs --space TEAM
 ```
 
 ### 2. Pull Pages
 
 ```bash
-atlcli docs pull ./docs
+atlcli wiki docs pull ./docs
 ```
 
 ### 3. Edit Files
@@ -61,7 +61,7 @@ Your content here...
 ### 4. Push Changes
 
 ```bash
-atlcli docs push ./docs
+atlcli wiki docs push ./docs
 ```
 
 ## Sections

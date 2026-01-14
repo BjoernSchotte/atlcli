@@ -4,7 +4,7 @@ Install, enable, and configure atlcli plugins.
 
 ## Plugin Location
 
-Plugins are stored at `~/.config/atlcli/plugins/`.
+Plugins are stored at `~/.atlcli/plugins/`.
 
 ## Installing Plugins
 
@@ -64,13 +64,13 @@ atlcli plugin remove custom
 
 ### Global Config
 
-Enable plugins in `~/.config/atlcli/config.json`:
+Enable plugins in `~/.atlcli/config.json`:
 
 ```json
 {
   "plugins": {
     "enabled": ["git"],
-    "path": "~/.config/atlcli/plugins"
+    "path": "~/.atlcli/plugins"
   }
 }
 ```
@@ -96,7 +96,7 @@ Plugins can add new commands:
 
 ```bash
 # Git plugin adds commit command
-atlcli docs commit -m "Update documentation"
+atlcli wiki docs commit -m "Update documentation"
 ```
 
 List available commands from a plugin:

@@ -15,13 +15,13 @@ Your team maintains documentation in a Git repository. You want to:
 ### 1. Initialize Directory
 
 ```bash
-atlcli docs init ./team-docs --space TEAM
+atlcli wiki docs init ./team-docs --space TEAM
 ```
 
 ### 2. Pull Existing Content
 
 ```bash
-atlcli docs pull ./team-docs
+atlcli wiki docs pull ./team-docs
 ```
 
 ### 3. Add to Git
@@ -39,7 +39,7 @@ git commit -m "Initial docs sync"
 
 ```bash
 # Pull latest from Confluence
-atlcli docs pull ./team-docs
+atlcli wiki docs pull ./team-docs
 
 # Check for changes
 git status
@@ -47,7 +47,7 @@ git status
 # Edit locally...
 
 # Push changes to Confluence
-atlcli docs push ./team-docs
+atlcli wiki docs push ./team-docs
 
 # Commit to Git
 git add .
@@ -60,17 +60,17 @@ When both local and Confluence have changes:
 
 ```bash
 # Pull will warn about conflicts
-atlcli docs pull ./team-docs
+atlcli wiki docs pull ./team-docs
 
 # Review changes
 git diff
 
 # Choose resolution:
 # Option 1: Keep local changes
-atlcli docs push ./team-docs --force
+atlcli wiki docs push ./team-docs --force
 
 # Option 2: Accept remote changes
-atlcli docs pull ./team-docs --force
+atlcli wiki docs pull ./team-docs --force
 ```
 
 ## Automation
@@ -82,7 +82,7 @@ Sync before committing:
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
-atlcli docs push ./team-docs --dry-run
+atlcli wiki docs push ./team-docs --dry-run
 if [ $? -ne 0 ]; then
   echo "Docs sync would fail. Check changes."
   exit 1
@@ -94,7 +94,7 @@ fi
 Auto-sync during editing:
 
 ```bash
-atlcli docs sync ./team-docs --watch
+atlcli wiki docs sync ./team-docs --watch
 ```
 
 ## Tips

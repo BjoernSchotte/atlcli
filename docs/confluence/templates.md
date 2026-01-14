@@ -5,7 +5,7 @@ Create pages from reusable templates with variable substitution.
 ## Using Templates
 
 ```bash
-atlcli docs create --template meeting-notes --space TEAM --title "Team Meeting 2025-01-14"
+atlcli wiki docs create --template meeting-notes --space TEAM --title "Team Meeting 2025-01-14"
 ```
 
 ## Template Variables
@@ -38,11 +38,11 @@ name: meeting-notes
 
 ```bash
 # List templates
-atlcli docs template list
+atlcli wiki docs template list
 
 # Save a page as template
-atlcli docs template save --page 12345 --name my-template
+atlcli wiki docs template save --page 12345 --name my-template
 
 # Delete template
-atlcli docs template delete my-template
+atlcli wiki docs template delete my-template
 ```

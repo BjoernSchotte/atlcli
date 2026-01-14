@@ -49,7 +49,7 @@ Follow the prompts to enter:
 - **Email**: Your Atlassian account email
 - **API Token**: The token you created
 
-Your credentials are stored securely at `~/.config/atlcli/credentials.json`.
+Your credentials are stored securely at `~/.atlcli/credentials.json`.
 
 ### Multiple Profiles
 
@@ -71,7 +71,7 @@ atlcli jira search --assignee me --profile work
 ### Initialize a Local Directory
 
 ```bash
-atlcli docs init ./team-docs --space TEAM
+atlcli wiki docs init ./team-docs --space TEAM
 ```
 
 This creates a local directory linked to the TEAM space.
@@ -79,7 +79,7 @@ This creates a local directory linked to the TEAM space.
 ### Pull Pages
 
 ```bash
-atlcli docs pull ./team-docs
+atlcli wiki docs pull ./team-docs
 ```
 
 Pages are downloaded as markdown files with YAML frontmatter:
@@ -101,7 +101,7 @@ Content here...
 Edit files locally with your favorite editor, then push changes:
 
 ```bash
-atlcli docs push ./team-docs
+atlcli wiki docs push ./team-docs
 ```
 
 atlcli detects changes and updates only modified pages.

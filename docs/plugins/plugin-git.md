@@ -25,7 +25,7 @@ atlcli plugin enable git
 Commit synced docs with a message:
 
 ```bash
-atlcli docs commit -m "Update API documentation"
+atlcli wiki docs commit -m "Update API documentation"
 ```
 
 This:
@@ -38,7 +38,7 @@ This:
 Show sync status with Git info:
 
 ```bash
-atlcli docs status
+atlcli wiki docs status
 ```
 
 Output includes:
@@ -48,7 +48,7 @@ Output includes:
 
 ## Configuration
 
-Configure in `~/.config/atlcli/config.json`:
+Configure in `~/.atlcli/config.json`:
 
 ```json
 {
@@ -76,14 +76,14 @@ Configure in `~/.config/atlcli/config.json`:
 
 ```bash
 # 1. Pull latest
-atlcli docs pull ./docs
+atlcli wiki docs pull ./docs
 git status  # Check for remote changes
 
 # 2. Edit locally
 # ...
 
 # 3. Commit and push
-atlcli docs commit -m "Update user guide"
+atlcli wiki docs commit -m "Update user guide"
 # This: stages, commits, pushes to Confluence
 
 # 4. Push to Git remote
@@ -97,7 +97,7 @@ Work on docs in a branch:
 ```bash
 git checkout -b docs/api-update
 # Edit docs...
-atlcli docs push ./docs
+atlcli wiki docs push ./docs
 git add . && git commit -m "API updates"
 git push -u origin docs/api-update
 # Create PR
