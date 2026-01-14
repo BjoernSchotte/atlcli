@@ -8,7 +8,7 @@ Start a timer, work, then stop to log time automatically:
 
 ```bash
 # Start timer
-atlcli jira worklog timer start --key PROJ-123
+atlcli jira worklog timer start PROJ-123
 
 # Check active timer
 atlcli jira worklog timer status
@@ -21,7 +21,7 @@ atlcli jira worklog timer stop
 
 ```bash
 # Start with comment
-atlcli jira worklog timer start --key PROJ-123 --comment "Starting code review"
+atlcli jira worklog timer start PROJ-123 --comment "Starting code review"
 
 # Stop with rounding
 atlcli jira worklog timer stop --round 15m
@@ -47,17 +47,15 @@ Timer state is stored in `~/.atlcli/timer.json`:
 Log time directly without using the timer:
 
 ```bash
-atlcli jira worklog add --key PROJ-123 --time 2h
-atlcli jira worklog add --key PROJ-123 --time 30m --comment "Bug investigation"
-atlcli jira worklog add --key PROJ-123 --time 1h --started "2025-01-14T09:00:00"
+atlcli jira worklog add PROJ-123 2h
+atlcli jira worklog add PROJ-123 30m --comment "Bug investigation"
+atlcli jira worklog add PROJ-123 1h --started "2026-01-14T09:00:00"
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--key` | Issue key (required) |
-| `--time` | Time spent (required) |
 | `--comment` | Work description |
 | `--started` | Start time (defaults to now) |
 | `--round` | Round time to interval |
@@ -94,16 +92,16 @@ For `--started` flag:
 
 ```bash
 # Various time formats
-atlcli jira worklog add --key PROJ-123 --time 1h30m
-atlcli jira worklog add --key PROJ-123 --time 1.5h
-atlcli jira worklog add --key PROJ-123 --time "1 hour 30 minutes"
-atlcli jira worklog add --key PROJ-123 --time 1:30
-atlcli jira worklog add --key PROJ-123 --time "1w 2d"
+atlcli jira worklog add PROJ-123 1h30m
+atlcli jira worklog add PROJ-123 1.5h
+atlcli jira worklog add PROJ-123 "1 hour 30 minutes"
+atlcli jira worklog add PROJ-123 1:30
+atlcli jira worklog add PROJ-123 "1w 2d"
 
 # Various date formats
-atlcli jira worklog add --key PROJ-123 --time 2h --started yesterday
-atlcli jira worklog add --key PROJ-123 --time 2h --started "2025-01-14T09:00:00"
-atlcli jira worklog add --key PROJ-123 --time 2h --started 09:00
+atlcli jira worklog add PROJ-123 2h --started yesterday
+atlcli jira worklog add PROJ-123 2h --started "2026-01-14T09:00:00"
+atlcli jira worklog add PROJ-123 2h --started 09:00
 ```
 
 ## Rounding
@@ -112,7 +110,7 @@ Round logged time to common intervals:
 
 ```bash
 # Round to 15 minutes
-atlcli jira worklog add --key PROJ-123 --time 37m --round 15m
+atlcli jira worklog add PROJ-123 37m --round 15m
 # Result: 45m
 
 # Round on timer stop
@@ -135,94 +133,128 @@ Rounding uses standard rounding rules (rounds up at midpoint).
 View all worklogs on an issue:
 
 ```bash
-atlcli jira worklog list --key PROJ-123
-```
-
-Output:
-
-```
-ID       AUTHOR         TIME    DATE         COMMENT
-10001    alice@co.com   2h      2025-01-14   Initial investigation
-10002    bob@co.com     1h 30m  2025-01-14   Code review
-10003    alice@co.com   3h      2025-01-15   Implementation
+atlcli jira worklog list --issue PROJ-123
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--key` | Issue key (required) |
+| `--issue` | Issue key (required) |
 | `--limit` | Maximum results |
 
 ## Update Worklog
 
 ```bash
-atlcli jira worklog update --key PROJ-123 --worklog-id 10001 --time 3h
-atlcli jira worklog update --key PROJ-123 --worklog-id 10001 --comment "Updated description"
+atlcli jira worklog update --issue PROJ-123 --id 10001 --time 3h
+atlcli jira worklog update --issue PROJ-123 --id 10001 --comment "Updated description"
 ```
 
 ## Delete Worklog
 
 ```bash
-atlcli jira worklog delete --key PROJ-123 --worklog-id 10001 --confirm
+atlcli jira worklog delete --issue PROJ-123 --id 10001 --confirm
 ```
 
 ## Time Report
 
-View logged time across issues:
+Generate a time report for a user across all issues:
 
 ```bash
-atlcli jira worklog report --user me --from 2025-01-01 --to 2025-01-14
-```
+# Current user, last 30 days (default)
+atlcli jira worklog report
 
-Output:
+# Specific date range
+atlcli jira worklog report --since 2026-01-01 --until 2026-01-14
 
-```
-Time Report: 2025-01-01 to 2025-01-14
-User: alice@company.com
+# Specific user
+atlcli jira worklog report --user john@example.com
 
-ISSUE        TIME     DESCRIPTION
-PROJ-123     8h       Login feature implementation
-PROJ-124     4h 30m   Bug fixes
-PROJ-125     2h       Code review
-─────────────────────
-TOTAL        14h 30m
+# Group by issue or date
+atlcli jira worklog report --group-by issue
+atlcli jira worklog report --group-by date
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--user` | User email or `me` |
-| `--from` | Start date |
-| `--to` | End date |
-| `--project` | Filter by project |
-| `--format` | Output: `table`, `json`, `csv` |
+| `--user` | User email or `me` (default: `me`) |
+| `--since` | Start date (default: 30 days ago) |
+| `--until` | End date (default: today) |
+| `--group-by` | Group results: `issue` or `date` |
 
-## JSON Output
+### Date formats for --since/--until
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| Relative days | `7d`, `30d` | Days ago |
+| Relative weeks | `1w`, `2w` | Weeks ago |
+| Relative months | `1m`, `3m` | Months ago |
+| Absolute date | `2026-01-01` | Specific date |
+| Relative | `today`, `yesterday` | Named dates |
+
+### Report Output
+
+The report includes:
+
+- **Summary**: Total time, worklog count, issue count, average per day
+- **Worklogs**: List of all worklogs with issue key, summary, time, and comment
+- **Grouping**: Optional `byIssue` or `byDate` breakdown
 
 ```bash
-atlcli jira worklog list --key PROJ-123 --json
+atlcli jira worklog report --since 7d --json
 ```
 
 ```json
 {
   "schemaVersion": "1",
-  "issueKey": "PROJ-123",
+  "user": "Björn Schotte",
+  "dateRange": { "from": "2026-01-07", "to": "2026-01-14" },
+  "summary": {
+    "totalTimeSeconds": 5400,
+    "totalTimeHuman": "1 hour 30 minutes",
+    "worklogCount": 1,
+    "issueCount": 1,
+    "averagePerDay": "12 minutes"
+  },
+  "worklogs": [
+    {
+      "issueKey": "PROJ-123",
+      "issueSummary": "Implement feature",
+      "timeSpent": "1h 30m",
+      "timeSpentSeconds": 5400,
+      "started": "2026-01-14T09:00:00.000+0100",
+      "comment": "Initial work"
+    }
+  ]
+}
+```
+
+## JSON Output
+
+All worklog commands support `--json` for structured output:
+
+```bash
+atlcli jira worklog list --issue PROJ-123 --json
+```
+
+```json
+{
+  "schemaVersion": "1",
   "worklogs": [
     {
       "id": "10001",
-      "author": {
-        "displayName": "Alice",
-        "emailAddress": "alice@company.com"
-      },
+      "author": "Alice",
+      "authorId": "557058:abc123",
       "timeSpent": "2h",
       "timeSpentSeconds": 7200,
-      "started": "2025-01-14T09:00:00.000+0000",
+      "timeSpentHuman": "2 hours",
+      "started": "2026-01-14T09:00:00.000+0000",
       "comment": "Initial investigation"
     }
   ],
-  "total": 3
+  "total": 1
 }
 ```
 

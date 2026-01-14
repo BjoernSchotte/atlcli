@@ -225,21 +225,27 @@ atlcli jira issue comment --key <key> "Comment text"
 ### Worklogs
 
 ```bash
-atlcli jira worklog list --key <key>
-atlcli jira worklog add --key <key> --time <duration>
-atlcli jira worklog add --key <key> --time 2h --comment <text>
-atlcli jira worklog add --key <key> --time 1h30m --started <datetime>
-atlcli jira worklog add --key <key> --time 1h --round 15m
-atlcli jira worklog update --key <key> --worklog-id <id> --time <duration>
-atlcli jira worklog delete --key <key> --worklog-id <id> --confirm
+atlcli jira worklog list --issue <key>
+atlcli jira worklog add <key> <duration>
+atlcli jira worklog add <key> 2h --comment <text>
+atlcli jira worklog add <key> 1h30m --started <datetime>
+atlcli jira worklog add <key> 1h --round 15m
+atlcli jira worklog update --issue <key> --id <id> --time <duration>
+atlcli jira worklog delete --issue <key> --id <id> --confirm
 
 # Timer mode
-atlcli jira worklog timer start --key <key>
-atlcli jira worklog timer start --key <key> --comment <text>
+atlcli jira worklog timer start <key>
+atlcli jira worklog timer start <key> --comment <text>
 atlcli jira worklog timer stop           # Stop and log time
 atlcli jira worklog timer stop --round 15m
 atlcli jira worklog timer status         # Show running timer
 atlcli jira worklog timer cancel         # Cancel without logging
+
+# Report
+atlcli jira worklog report               # Current user, last 30 days
+atlcli jira worklog report --user <user> --since <date> --until <date>
+atlcli jira worklog report --group-by issue
+atlcli jira worklog report --group-by date
 ```
 
 ### Boards
