@@ -40,6 +40,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const token = argv[i];
     if (!token) continue;
     if (token.startsWith("--")) {
+      // Long flag: --key or --key=value
       const [keyRaw, valueRaw] = token.slice(2).split("=", 2);
       const key = keyRaw.trim();
       if (!key) continue;
@@ -53,6 +54,30 @@ export function parseArgs(argv: string[]): ParsedArgs {
         i += 1;
       } else {
         addFlag(key, true);
+      }
+    } else if (token.startsWith("-") && token.length > 1 && !token.startsWith("--")) {
+      // Short flag: -x or -x value or -xyz (multiple boolean flags)
+      const flags_part = token.slice(1);
+      // Check if it's a single letter followed by =
+      if (flags_part.includes("=")) {
+        const [keyRaw, valueRaw] = flags_part.split("=", 2);
+        addFlag(keyRaw, valueRaw);
+        continue;
+      }
+      // Check if single letter with next arg as value
+      if (flags_part.length === 1) {
+        const next = argv[i + 1];
+        if (next && !next.startsWith("-")) {
+          addFlag(flags_part, next);
+          i += 1;
+        } else {
+          addFlag(flags_part, true);
+        }
+      } else {
+        // Multiple flags like -abc → a=true, b=true, c=true
+        for (const char of flags_part) {
+          addFlag(char, true);
+        }
       }
     } else {
       positional.push(token);
