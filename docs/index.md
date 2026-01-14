@@ -51,9 +51,11 @@ A blazingly fast CLI for Atlassian products. Write documentation in markdown, sy
 ## Quick Start
 
 ```bash
-# Install
-git clone https://github.com/BjoernSchotte/atlcli.git
-cd atlcli && bun install && bun run build
+# Install (macOS/Linux)
+curl -fsSL https://atlcli.sh/install.sh | bash
+
+# Or via Homebrew
+brew install bjoernschotte/tap/atlcli
 
 # Authenticate
 atlcli auth init

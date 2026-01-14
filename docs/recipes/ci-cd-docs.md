@@ -29,21 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Install atlcli
-        run: |
-          git clone https://github.com/BjoernSchotte/atlcli.git /tmp/atlcli
-          cd /tmp/atlcli && bun install && bun run build
+        run: curl -fsSL https://atlcli.sh/install.sh | bash
 
       - name: Push to Confluence
         env:
           ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: |
-          /tmp/atlcli/apps/cli/dist/atlcli wiki docs push ./docs
+        run: ~/.atlcli/bin/atlcli wiki docs push ./docs
 ```
 
 ### On Release
@@ -61,6 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install atlcli
+        run: curl -fsSL https://atlcli.sh/install.sh | bash
+
       - name: Update version in docs
         run: |
           sed -i "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" docs/index.md
@@ -70,7 +67,7 @@ jobs:
           ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
           ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
           ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
-        run: atlcli wiki docs push ./docs
+        run: ~/.atlcli/bin/atlcli wiki docs push ./docs
 ```
 
 ## GitLab CI
@@ -87,7 +84,8 @@ publish-docs:
     changes:
       - docs/**
   script:
-    - atlcli wiki docs push ./docs
+    - curl -fsSL https://atlcli.sh/install.sh | bash
+    - ~/.atlcli/bin/atlcli wiki docs push ./docs
   variables:
     ATLCLI_BASE_URL: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
@@ -107,12 +105,17 @@ pipeline {
     }
 
     stages {
+        stage('Install atlcli') {
+            steps {
+                sh 'curl -fsSL https://atlcli.sh/install.sh | bash'
+            }
+        }
         stage('Publish Docs') {
             when {
                 changeset 'docs/**'
             }
             steps {
-                sh 'atlcli wiki docs push ./docs'
+                sh '~/.atlcli/bin/atlcli wiki docs push ./docs'
             }
         }
     }
