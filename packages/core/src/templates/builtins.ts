@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 /**
  * Context for generating built-in variables.
  */
@@ -6,6 +8,9 @@ export interface BuiltinContext {
   space?: string; // Current space key
   profile?: string; // Current profile name
   dateFormat?: string; // Date format string (default: YYYY-MM-DD)
+  title?: string; // Page title (for page creation)
+  parentId?: string; // Parent page ID
+  parentTitle?: string; // Parent page title
 }
 
 /**
@@ -29,6 +34,8 @@ export function formatDate(date: Date, format: string): string {
     .replace("ss", seconds);
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 /**
  * Get all built-in variables for template rendering.
  * All built-in variables use the @ prefix.
@@ -45,11 +52,22 @@ export function getBuiltinVariables(ctx: BuiltinContext): Record<string, unknown
     year: now.getFullYear().toString(),
     month: (now.getMonth() + 1).toString().padStart(2, "0"),
     day: now.getDate().toString().padStart(2, "0"),
+    weekday: WEEKDAYS[now.getDay()],
 
     // Context variables
     user: ctx.user ?? "",
     space: ctx.space ?? "",
     profile: ctx.profile ?? "",
+
+    // Page context (for page creation)
+    title: ctx.title ?? "",
+    parent: {
+      id: ctx.parentId ?? "",
+      title: ctx.parentTitle ?? "",
+    },
+
+    // Utilities
+    uuid: randomUUID(),
   };
 }
 
@@ -63,9 +81,13 @@ export const BUILTIN_VARIABLE_NAMES = [
   "year",
   "month",
   "day",
+  "weekday",
   "user",
   "space",
   "profile",
+  "title",
+  "parent",
+  "uuid",
 ] as const;
 
 export type BuiltinVariableName = (typeof BUILTIN_VARIABLE_NAMES)[number];

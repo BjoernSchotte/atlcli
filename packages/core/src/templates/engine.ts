@@ -120,6 +120,9 @@ export class TemplateEngine {
       user: context.builtins.user as string | undefined,
       space: context.builtins.space as string | undefined,
       profile: context.builtins.profile as string | undefined,
+      title: context.builtins.title as string | undefined,
+      parentId: context.builtins.parentId as string | undefined,
+      parentTitle: context.builtins.parentTitle as string | undefined,
       dateFormat: context.dateFormat,
     });
 

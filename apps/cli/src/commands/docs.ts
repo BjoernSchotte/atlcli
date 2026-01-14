@@ -15,6 +15,12 @@ import {
   readTextFile,
   slugify,
   writeTextFile,
+  // New template system
+  GlobalTemplateStorage,
+  ProfileTemplateStorage,
+  SpaceTemplateStorage,
+  TemplateResolver,
+  TemplateEngine,
 } from "@atlcli/core";
 import {
   ConfluenceClient,
@@ -98,12 +104,8 @@ import {
   validateDirectory,
   formatValidationReport,
   ValidationResult,
-  // Templates
-  getTemplate,
-  renderTemplate,
-  createBuiltins,
 } from "@atlcli/confluence";
-import type { TemplateContext, Ignore } from "@atlcli/confluence";
+import type { Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -916,10 +918,21 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
   let labels: string[] | undefined;
 
   if (templateName) {
-    const template = getTemplate(templateName, atlcliDir);
+    // Create template resolver
+    const globalConfig = await loadConfig();
+    const activeProfile = getActiveProfile(globalConfig);
+
+    const global = new GlobalTemplateStorage();
+    const profile = activeProfile?.name ? new ProfileTemplateStorage(activeProfile.name) : undefined;
+    const spaceStorage = space ? new SpaceTemplateStorage(space, atlcliDir) : undefined;
+    const resolver = new TemplateResolver(global, profile, spaceStorage);
+
+    const template = await resolver.resolve(templateName);
     if (!template) {
       fail(opts, 1, ERROR_CODES.USAGE, `Template "${templateName}" not found.`);
     }
+
+    const targetParentId = parentId ?? template.metadata.target?.parent;
 
     // Parse --var flags
     const variables = parseVarFlags(flags);
@@ -931,23 +944,20 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
       }
     }
 
-    const builtins = createBuiltins({
+    // Build builtins context for rendering
+    const builtins: Record<string, unknown> = {
+      user: activeProfile?.name,
+      space,
+      profile: activeProfile?.name,
       title,
-      spaceKey: space,
-      parentId: parentId ?? template.metadata.target?.parent,
-    });
-
-    const context: TemplateContext = {
-      variables,
-      builtins,
-      spaceKey: space,
-      parentId: parentId ?? template.metadata.target?.parent,
-      title,
+      parentId: targetParentId,
     };
 
-    const rendered = renderTemplate(template, context);
-    markdownContent = rendered.markdown;
-    labels = rendered.labels;
+    // Render template
+    const engine = new TemplateEngine();
+    const rendered = engine.render(template, { variables, builtins });
+    markdownContent = rendered.content;
+    labels = template.metadata.labels;
   }
 
   // Convert to storage format (strip frontmatter if any)

@@ -11,6 +11,13 @@ export interface TemplateVariable {
   options?: string[]; // For select type
 }
 
+/** Target configuration for page creation from template */
+export interface TemplateTarget {
+  space?: string; // Default space key
+  parent?: string; // Default parent page ID
+  parentTitle?: string; // Default parent page title (alternative to ID)
+}
+
 /** Template metadata from frontmatter */
 export interface TemplateMetadata {
   name: string;
@@ -20,6 +27,8 @@ export interface TemplateMetadata {
   tags?: string[];
   category?: string;
   variables?: TemplateVariable[];
+  target?: TemplateTarget; // Target page configuration
+  labels?: string[]; // Labels to add to created pages
   // Source tracking (set by import, used by update)
   _source?: string; // URL template was imported from
   _source_version?: string; // Version at time of import

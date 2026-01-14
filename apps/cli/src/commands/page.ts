@@ -8,6 +8,12 @@ import {
   loadConfig,
   output,
   readTextFile,
+  // New template system
+  GlobalTemplateStorage,
+  ProfileTemplateStorage,
+  SpaceTemplateStorage,
+  TemplateResolver,
+  TemplateEngine,
 } from "@atlcli/core";
 import {
   ConfluenceClient,
@@ -19,9 +25,6 @@ import {
   commentBodyToText,
   FooterComment,
   InlineComment,
-  getTemplate,
-  renderTemplate,
-  createBuiltins,
   findAtlcliDir,
   moveToFirst,
   moveToLast,
@@ -31,7 +34,6 @@ import {
   parseFrontmatter,
   SortStrategy,
 } from "@atlcli/confluence";
-import type { TemplateContext } from "@atlcli/confluence";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
@@ -160,8 +162,17 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
       fail(opts, 1, ERROR_CODES.USAGE, "--title is required when using --template.");
     }
 
-    const atlcliDir = await findAtlcliDir(process.cwd());
-    const template = getTemplate(templateName, atlcliDir ?? undefined);
+    // Create template resolver
+    const config = await loadConfig();
+    const activeProfile = getActiveProfile(config);
+    const docsDir = await findAtlcliDir(process.cwd());
+
+    const global = new GlobalTemplateStorage();
+    const profile = activeProfile?.name ? new ProfileTemplateStorage(activeProfile.name) : undefined;
+    const spaceStorage = space ? new SpaceTemplateStorage(space, docsDir ?? undefined) : undefined;
+    const resolver = new TemplateResolver(global, profile, spaceStorage);
+
+    const template = await resolver.resolve(templateName);
 
     if (!template) {
       fail(opts, 1, ERROR_CODES.USAGE, `Template "${templateName}" not found.`);
@@ -171,6 +182,8 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
     if (!spaceKey) {
       fail(opts, 1, ERROR_CODES.USAGE, "--space is required (or set in template target).");
     }
+
+    const targetParentId = parentId ?? template.metadata.target?.parent;
 
     // Parse --var flags
     const variables = parseVarFlags(flags);
@@ -182,43 +195,46 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
       }
     }
 
-    const builtins = createBuiltins({
+    // Build builtins context for rendering
+    const builtins: Record<string, unknown> = {
+      user: activeProfile?.name,
+      space: spaceKey,
+      profile: activeProfile?.name,
       title,
-      spaceKey,
-      parentId: parentId ?? template.metadata.target?.parent,
-    });
-
-    const context: TemplateContext = {
-      variables,
-      builtins,
-      spaceKey,
-      parentId: parentId ?? template.metadata.target?.parent,
-      title,
+      parentId: targetParentId,
     };
 
-    const rendered = renderTemplate(template, context);
+    // Render template
+    const engine = new TemplateEngine();
+    const rendered = engine.render(template, { variables, builtins });
 
     if (dryRun) {
       output({
         schemaVersion: "1",
         dryRun: true,
-        rendered,
+        rendered: {
+          markdown: rendered.content,
+          title,
+          spaceKey,
+          parentId: targetParentId,
+          labels: template.metadata.labels,
+        },
       }, opts);
       return;
     }
 
     const client = await getClient(flags, opts);
-    const storage = markdownToStorage(rendered.markdown);
+    const storage = markdownToStorage(rendered.content);
     const page = await client.createPage({
-      spaceKey: rendered.spaceKey,
-      title: rendered.title,
+      spaceKey,
+      title,
       storage,
-      parentId: rendered.parentId,
+      parentId: targetParentId,
     });
 
-    // Add labels if specified
-    if (rendered.labels && rendered.labels.length > 0) {
-      await client.addLabels(page.id, rendered.labels);
+    // Add labels if specified in template
+    if (template.metadata.labels && template.metadata.labels.length > 0) {
+      await client.addLabels(page.id, template.metadata.labels);
     }
 
     output({ schemaVersion: "1", page }, opts);

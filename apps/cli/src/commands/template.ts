@@ -23,10 +23,12 @@ import {
   parseTemplate,
   serializeTemplate,
   validateTemplate,
+  getBuiltinVariables,
   type Template,
   type TemplateFilter,
   type TemplateSummary,
   type TemplateStorage,
+  type TemplateVariable,
 } from "@atlcli/core";
 import { findAtlcliDir } from "@atlcli/confluence";
 
@@ -61,6 +63,9 @@ export async function handleTemplate(
       return;
     case "validate":
       await handleValidate(rest, flags, opts);
+      return;
+    case "render":
+      await handleRender(rest, flags, opts);
       return;
     default:
       output(templateHelp(), opts);
@@ -673,6 +678,169 @@ async function handleValidate(
   outputValidation(name, result, opts);
 }
 
+// ============================================================================
+// Render Command
+// ============================================================================
+
+async function handleRender(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0];
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+
+  const ctx = await getTemplateContext(flags);
+  const template = await resolveTemplate(ctx, name, flags, opts);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+  }
+
+  // Parse --var flags
+  const variables = parseVarFlags(flags);
+
+  // Check for missing required variables
+  const requiredVars = (template.metadata.variables ?? []).filter((v) => v.required);
+  const missingRequired = requiredVars.filter(
+    (v) => !(v.name in variables) && v.default === undefined
+  );
+
+  // Interactive mode: prompt for missing variables
+  if (hasFlag(flags, "interactive") && missingRequired.length > 0) {
+    if (!isInteractive()) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Interactive mode requires a terminal.");
+    }
+    await promptForVariables(missingRequired, variables, opts);
+  }
+
+  // Apply defaults for any remaining missing variables
+  for (const v of template.metadata.variables ?? []) {
+    if (!(v.name in variables) && v.default !== undefined) {
+      variables[v.name] = v.default;
+    }
+  }
+
+  // Build builtin context
+  const builtins: Record<string, unknown> = {
+    user: ctx.profileName,
+    space: getFlag(flags, "space") ?? ctx.spaceKey,
+    profile: ctx.profileName,
+    title: getFlag(flags, "title"),
+  };
+
+  // Render
+  const engine = new TemplateEngine();
+  try {
+    const result = engine.render(template, {
+      variables,
+      builtins,
+    });
+
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        content: result.content,
+        usedVariables: result.usedVariables,
+        missingVariables: result.missingVariables,
+      }, opts);
+    } else {
+      // Output raw rendered content (for piping to files)
+      process.stdout.write(result.content);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    fail(opts, 1, ERROR_CODES.VALIDATION, `Render failed: ${message}`);
+  }
+}
+
+/**
+ * Parse --var key=value flags into a variables object.
+ */
+function parseVarFlags(flags: Flags): Record<string, unknown> {
+  const variables: Record<string, unknown> = {};
+  const varFlags = flags.var;
+
+  if (!varFlags) return variables;
+
+  const vars = Array.isArray(varFlags) ? varFlags : [varFlags];
+  for (const v of vars) {
+    if (typeof v !== "string") continue;
+    const eqIndex = v.indexOf("=");
+    if (eqIndex === -1) {
+      variables[v] = true; // Boolean flag
+    } else {
+      const key = v.slice(0, eqIndex);
+      const value = v.slice(eqIndex + 1);
+      // Try to parse as JSON for complex types
+      try {
+        variables[key] = JSON.parse(value);
+      } catch {
+        variables[key] = value;
+      }
+    }
+  }
+
+  return variables;
+}
+
+/**
+ * Prompt for missing required variables interactively.
+ */
+async function promptForVariables(
+  variables: TemplateVariable[],
+  values: Record<string, unknown>,
+  opts: OutputOptions
+): Promise<void> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr, // Use stderr for prompts so stdout can be piped
+  });
+
+  const question = (prompt: string): Promise<string> => {
+    return new Promise((resolve) => {
+      rl.question(prompt, resolve);
+    });
+  };
+
+  for (const variable of variables) {
+    const desc = variable.description ? ` (${variable.description})` : "";
+    const typeHint = variable.type !== "string" ? ` [${variable.type}]` : "";
+
+    let prompt = `${variable.name}${typeHint}${desc}: `;
+
+    if (variable.type === "select" && variable.options) {
+      output(`\n${variable.name}${desc}:`, { ...opts, json: false });
+      variable.options.forEach((opt, i) => {
+        output(`  ${i + 1}. ${opt}`, { ...opts, json: false });
+      });
+      prompt = "Select (1-" + variable.options.length + "): ";
+    }
+
+    const answer = await question(prompt);
+
+    if (variable.type === "select" && variable.options) {
+      const idx = parseInt(answer, 10) - 1;
+      if (idx >= 0 && idx < variable.options.length) {
+        values[variable.name] = variable.options[idx];
+      } else {
+        values[variable.name] = answer;
+      }
+    } else if (variable.type === "number") {
+      values[variable.name] = parseFloat(answer);
+    } else if (variable.type === "boolean") {
+      values[variable.name] = answer.toLowerCase() === "true" || answer === "1" || answer === "yes";
+    } else {
+      values[variable.name] = answer;
+    }
+  }
+
+  rl.close();
+}
+
 function outputValidation(
   name: string,
   result: ReturnType<TemplateEngine["validate"]>,
@@ -723,6 +891,7 @@ Commands:
   delete      Delete a template
   rename      Rename a template
   validate    Validate template syntax
+  render      Render a template with variables
 
 List options:
   --level <global|profile|space>  Filter by level
@@ -736,6 +905,15 @@ Target options (for create/edit/delete/rename):
   --profile <name>    Target profile templates
   --space <key>       Target space templates
   --level global      Target global templates (default)
+
+Render options:
+  --var <key=value>   Set variable value (repeatable)
+  --interactive       Prompt for missing required variables
+  --title <title>     Set @title built-in variable
+
+Built-in @variables available in templates:
+  @date, @datetime, @time, @year, @month, @day, @weekday
+  @user, @space, @profile, @title, @parent, @uuid
 
 Examples:
   atlcli wiki template list
@@ -755,5 +933,9 @@ Examples:
   atlcli wiki template validate my-template
   atlcli wiki template validate --all
   atlcli wiki template validate --file ./template.md
+
+  atlcli wiki template render meeting-notes --var title="Sprint Planning"
+  atlcli wiki template render meeting-notes --interactive
+  atlcli wiki template render meeting-notes --var title="Planning" > output.md
 `;
 }
