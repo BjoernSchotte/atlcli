@@ -1,0 +1,128 @@
+# CI/CD Documentation
+
+Publish documentation from CI/CD pipelines.
+
+## Use Case
+
+Automatically publish documentation to Confluence when:
+
+- Code is merged to main
+- Release is tagged
+- Documentation files change
+
+## GitHub Actions
+
+### On Push to Main
+
+```yaml
+name: Publish Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install atlcli
+        run: |
+          git clone https://github.com/BjoernSchotte/atlcli.git /tmp/atlcli
+          cd /tmp/atlcli && bun install && bun run build
+
+      - name: Push to Confluence
+        env:
+          ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+          ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
+          ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
+        run: |
+          /tmp/atlcli/apps/cli/dist/atlcli docs push ./docs
+```
+
+### On Release
+
+```yaml
+name: Release Docs
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update version in docs
+        run: |
+          sed -i "s/VERSION_PLACEHOLDER/${{ github.ref_name }}/g" docs/index.md
+
+      - name: Push to Confluence
+        env:
+          ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+          ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
+          ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
+        run: atlcli docs push ./docs
+```
+
+## GitLab CI
+
+```yaml
+stages:
+  - publish
+
+publish-docs:
+  stage: publish
+  only:
+    refs:
+      - main
+    changes:
+      - docs/**
+  script:
+    - atlcli docs push ./docs
+  variables:
+    ATLCLI_BASE_URL: $ATLASSIAN_URL
+    ATLCLI_EMAIL: $ATLASSIAN_EMAIL
+    ATLCLI_API_TOKEN: $ATLASSIAN_TOKEN
+```
+
+## Jenkins
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        ATLCLI_BASE_URL = credentials('atlassian-url')
+        ATLCLI_EMAIL = credentials('atlassian-email')
+        ATLCLI_API_TOKEN = credentials('atlassian-token')
+    }
+
+    stages {
+        stage('Publish Docs') {
+            when {
+                changeset 'docs/**'
+            }
+            steps {
+                sh 'atlcli docs push ./docs'
+            }
+        }
+    }
+}
+```
+
+## Best Practices
+
+1. **Use secrets** - Never commit credentials
+2. **Path filtering** - Only run when docs change
+3. **Dry run first** - Test with `--dry-run` flag
+4. **Version tagging** - Include version in doc pages
+5. **Failure handling** - Don't block releases on doc failures

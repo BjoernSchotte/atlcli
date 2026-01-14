@@ -1,0 +1,119 @@
+site_name: atlcli
+site_description: Extensible CLI for Atlassian products
+site_url: https://bjoernschotte.github.io/atlcli/
+repo_url: https://github.com/BjoernSchotte/atlcli
+repo_name: BjoernSchotte/atlcli
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  # logo: assets/logo.png  # Add later
+  # favicon: assets/favicon.png  # Add later
+  palette:
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Confluence:
+    - confluence/index.md
+    - Sync: confluence/sync.md
+    - Pages: confluence/pages.md
+    - Spaces: confluence/spaces.md
+    - Templates: confluence/templates.md
+    - Macros: confluence/macros.md
+    - Attachments: confluence/attachments.md
+    - File Format: confluence/file-format.md
+  - Jira:
+    - jira/index.md
+    - Issues: jira/issues.md
+    - Search: jira/search.md
+    - Boards & Sprints: jira/boards-sprints.md
+    - Time Tracking: jira/time-tracking.md
+    - Epics: jira/epics.md
+    - Analytics: jira/analytics.md
+    - Bulk Operations: jira/bulk-operations.md
+    - Filters: jira/filters.md
+    - Templates: jira/templates.md
+    - Import/Export: jira/import-export.md
+    - Webhooks: jira/webhooks.md
+    - Fields: jira/fields.md
+  - Recipes:
+    - recipes/index.md
+    - Team Docs Sync: recipes/team-docs.md
+    - Sprint Reporting: recipes/sprint-reporting.md
+    - CI/CD Docs: recipes/ci-cd-docs.md
+    - Issue Triage: recipes/issue-triage.md
+  - Plugins:
+    - plugins/index.md
+    - Using Plugins: plugins/using-plugins.md
+    - Creating Plugins: plugins/creating-plugins.md
+    - Git Plugin: plugins/plugin-git.md
+  - Reference:
+    - reference/cli-commands.md
+    - Authentication: authentication.md
+    - Configuration: configuration.md
+    - Environment: reference/environment.md
+    - Troubleshooting: reference/troubleshooting.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/BjoernSchotte/atlcli
+      name: atlcli on GitHub
+  generator: true  # "Made with Material for MkDocs"
+  # analytics:  # Add Plausible later
+  #   provider: custom
+  #   property: plausible
+
+copyright: Copyright &copy; 2025 Björn Schotte
