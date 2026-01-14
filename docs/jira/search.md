@@ -2,6 +2,35 @@
 
 Search Jira issues using JQL or convenient shortcuts.
 
+## My Issues
+
+Quick access to your assigned issues:
+
+```bash
+# Open issues assigned to me (default)
+atlcli jira my
+
+# All my issues (including resolved)
+atlcli jira my --all
+
+# Filter by project
+atlcli jira my --project PROJ
+
+# Filter by status
+atlcli jira my --status "In Progress"
+
+# Filter by type
+atlcli jira my --type Bug
+
+# Limit results
+atlcli jira my --limit 50
+```
+
+The `jira my` command generates JQL like:
+```
+assignee = currentUser() AND resolution IS EMPTY ORDER BY updated DESC
+```
+
 ## Basic Search
 
 ```bash
