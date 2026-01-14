@@ -36,6 +36,24 @@ atlcli auth delete --profile <name>     # Delete profile entirely
 atlcli auth delete --profile <name> --confirm  # Skip confirmation
 ```
 
+## Diagnostics
+
+```bash
+atlcli doctor                 # Run all health checks
+atlcli doctor --fix           # Auto-fix safe issues (create dirs, etc.)
+atlcli doctor --json          # JSON output for scripting
+```
+
+**Checks performed:**
+- Config file exists and is valid JSON
+- At least one profile configured
+- Active profile has credentials
+- Confluence API reachable and authenticated
+- Jira API reachable and authenticated
+- Log directory writable
+
+**Exit codes:** 0 = all passed, 1 = failures detected
+
 ## Confluence
 
 ### Sync
