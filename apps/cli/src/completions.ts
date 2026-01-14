@@ -42,6 +42,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
     "import",
     "issue",
     "me",
+    "my",
     "project",
     "search",
     "sprint",
@@ -225,6 +226,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
     "--type",
     "--updated",
   ],
+
+  // jira my flags
+  "jira my": ["--all", "--limit", "--project", "--status", "--type"],
 
   // jira project flags
   "jira project list": ["--limit"],

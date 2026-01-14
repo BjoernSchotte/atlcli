@@ -236,6 +236,17 @@ atlcli jira search --limit <n> --start <n>
 atlcli jira search --fields key,summary,status
 ```
 
+### My Issues
+
+```bash
+atlcli jira my                          # My open/unresolved issues
+atlcli jira my --all                    # All my issues (including resolved)
+atlcli jira my --project <key>          # Filter by project
+atlcli jira my --status "In Progress"   # Filter by status
+atlcli jira my --type Bug               # Filter by issue type
+atlcli jira my --limit <n>              # Limit results (default 25)
+```
+
 ### Comments
 
 ```bash

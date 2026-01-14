@@ -109,6 +109,9 @@ export async function handleJira(
     case "me":
       await handleMe(flags, opts);
       return;
+    case "my":
+      await handleMy(rest, flags, opts);
+      return;
     case "watch":
       await handleWatch(rest, flags, opts);
       return;
@@ -3382,6 +3385,48 @@ async function handleSearch(
   );
 }
 
+async function handleMy(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const parts: string[] = ["assignee = currentUser()"];
+
+  // Optional filters
+  const project = getFlag(flags, "project");
+  const status = getFlag(flags, "status");
+  const type = getFlag(flags, "type");
+  const all = hasFlag(flags, "all");
+
+  if (project) parts.push(`project = ${project}`);
+  if (status) parts.push(`status = "${status}"`);
+  if (type) parts.push(`issuetype = "${type}"`);
+
+  // Default: exclude resolved unless --all
+  if (!all && !status) {
+    parts.push("resolution IS EMPTY");
+  }
+
+  // Order by updated
+  const jql = parts.join(" AND ") + " ORDER BY updated DESC";
+  const limit = Number(getFlag(flags, "limit") ?? 25);
+
+  const client = await getClient(flags, opts);
+  const result = await client.search(jql, {
+    maxResults: Number.isNaN(limit) ? 25 : limit,
+  });
+
+  output(
+    {
+      schemaVersion: "1",
+      jql,
+      issues: result.issues.map(formatIssue),
+      total: result.total,
+    },
+    opts
+  );
+}
+
 // ============ Helpers ============
 
 function formatIssue(issue: JiraIssue): Record<string, unknown> {
@@ -5123,6 +5168,7 @@ Commands:
   import      Import issues from CSV/JSON file
   search      Search with JQL
   me          Get current user info
+  my          My open issues (shortcut for search --assignee me)
   watch       Start watching an issue (receive notifications)
   unwatch     Stop watching an issue
   watchers    List watchers for an issue
