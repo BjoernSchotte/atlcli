@@ -112,6 +112,10 @@ variables:
       - planning
       - retro
     required: true
+  - name: agenda
+    type: string
+    required: false
+    description: Pre-filled agenda items (optional)
 ---
 # {{title}}
 
@@ -189,13 +193,16 @@ atlcli wiki template list
 # runbook            [space:TEAM]   Operations runbook template
 
 # Filter by level
-atlcli wiki template list --level global
-atlcli wiki template list --level profile
-atlcli wiki template list --level space
+atlcli wiki template list --level global            # Only global templates
+atlcli wiki template list --level profile           # All profile templates (all profiles)
+atlcli wiki template list --level space             # All space templates (all spaces)
 
-# Include space templates (requires context or explicit flags)
-atlcli wiki template list --space TEAM              # List including space TEAM templates
-atlcli wiki template list --profile work            # List including profile work templates
+# Filter to specific profile or space
+atlcli wiki template list --profile work            # Only templates from profile "work"
+atlcli wiki template list --space TEAM              # Only templates from space "TEAM"
+
+# Combine level and specific filters
+atlcli wiki template list --level profile --profile work   # Same as --profile work
 
 # Show all levels including overridden templates
 atlcli wiki template list --all
@@ -214,6 +221,8 @@ atlcli wiki template list --json
 ```
 
 **Context inference**: When run inside a synced docs folder, space templates from that folder are automatically included. Otherwise, use `--space` to specify.
+
+**Shorthand**: Use `--space .` or `--profile .` to refer to the current context (inferred from synced docs folder or active profile).
 
 ### Show Template
 
@@ -288,6 +297,11 @@ The `--from` flag auto-detects the source type:
 - Otherwise → page title (requires `--space` to resolve)
 
 **Default level**: Global. Use `--profile` or `--space` to create at other levels.
+
+**Variable identification**: The init command creates a template with the page content as-is (no automatic variable detection). After init, edit the template to:
+1. Replace dynamic content with `{{variables}}`
+2. Add variable definitions to frontmatter
+3. Validate with `wiki template validate`
 
 ### Edit Template
 
@@ -400,12 +414,16 @@ atlcli wiki template render meeting-notes --interactive
 ### Using Templates (Page Create)
 
 ```bash
-# Create page from template
+# Create page from template (resolves by precedence if ambiguous)
 atlcli wiki page create --template meeting-notes \
   --var title="Sprint Planning" \
   --var date=2026-01-14 \
   --var type=planning \
   --space TEAM
+
+# Use template from specific level
+atlcli wiki page create --template meeting-notes --template-level global \
+  --var title="Planning" --space TEAM
 
 # Interactive prompts for missing required variables
 atlcli wiki page create --template meeting-notes --space TEAM
@@ -416,6 +434,8 @@ atlcli wiki page create --template meeting-notes \
   --var title="Test" \
   --dry-run
 ```
+
+**Template resolution**: Uses same precedence as other commands (space > profile > global). Use `--template-level` to select specific level if same name exists at multiple levels.
 
 ---
 
@@ -431,9 +451,13 @@ atlcli wiki template export
 # Export to specific path
 atlcli wiki template export -o ./my-templates
 
-# Export single template to stdout
+# Export single template to stdout (resolves by precedence if ambiguous)
 atlcli wiki template export meeting-notes
 # Outputs template content to stdout
+
+# Export single template from specific level
+atlcli wiki template export meeting-notes --level global
+atlcli wiki template export standup --profile work
 
 # Export single template to file
 atlcli wiki template export meeting-notes -o ./meeting-notes.md
@@ -569,14 +593,16 @@ packages/
 │           ├── storage.ts         # Template storage abstraction
 │           ├── resolver.ts        # Multi-level resolution (precedence)
 │           ├── builtins.ts        # Built-in variables (date, user, etc.)
-│           └── validation.ts      # Schema validation
+│           ├── validation.ts      # Schema validation
+│           └── importer.ts        # Import/export logic (Jira-ready)
 └── confluence/
     └── src/
         └── templates/
             ├── index.ts           # Confluence-specific exports
-            ├── commands.ts        # CLI command handlers
-            └── importer.ts        # Import/export logic
+            └── commands.ts        # CLI command handlers
 ```
+
+> **Note**: Import/export logic is in `@atlcli/core` so it can be reused for Jira templates in the future.
 
 ### Core Types
 
@@ -916,10 +942,15 @@ export async function handleTemplate(
 ```yaml
 # ~/.config/atlcli/config.yml
 templates:
-  directory: ~/.config/atlcli/templates  # Override with ATLCLI_TEMPLATES_DIR
+  directory: ~/.config/atlcli/templates  # Base directory for templates
   date_format: "YYYY-MM-DD"              # Default date format for {{date}}
   editor: code                           # Override $EDITOR for template editing
 ```
+
+**Directory precedence** (highest to lowest):
+1. `ATLCLI_TEMPLATES_DIR` environment variable
+2. `templates.directory` in config.yml
+3. Default: `~/.config/atlcli/templates`
 
 ### Profile Config
 
@@ -940,9 +971,11 @@ Standardized flag patterns across all template commands:
 | Filter/target global | `--level global` | `list --level global` |
 | Filter/target profile | `--profile <name>` | `create --profile work` |
 | Filter/target space | `--space <key>` | `delete --space TEAM` |
+| Current context | `--profile .`, `--space .` | `create --space .` |
 | Copy source | `--from-level`, `--from-profile`, `--from-space` | `copy X --from-level global` |
 | Copy target | `--to-level`, `--to-profile`, `--to-space` | `copy X --to-profile work` |
 | Output path | `-o, --output` | `export -o ./dir` |
+| Template level (page create) | `--template-level` | `page create --template X --template-level global` |
 
 ---
 
