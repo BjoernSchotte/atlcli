@@ -402,6 +402,9 @@ class SyncEngine {
               parentId: null,
               ancestors: [],
             });
+          } else if (this.opts.autoCreate) {
+            // Auto-create page for untracked file during initial sync
+            await this.autoCreatePage(filePath, content, frontmatter);
           }
         } catch {
           // File read error, skip
@@ -645,21 +648,24 @@ class SyncEngine {
   private async handleRemoteChange(pageId: string, existingFile?: string): Promise<void> {
     const pageState = this.state?.pages[pageId];
 
-    if (existingFile && pageState) {
-      const localContent = await readTextFile(existingFile);
+    // Convert relative path to absolute
+    const absoluteFile = existingFile ? join(this.opts.dir, existingFile) : undefined;
+
+    if (absoluteFile && pageState) {
+      const localContent = await readTextFile(absoluteFile);
       const { content: markdownContent } = parseFrontmatter(localContent);
       const currentHash = hashContent(normalizeMarkdown(markdownContent));
 
       // Check if local has been modified since last sync
       if (currentHash !== pageState.localHash) {
         // Both changed - need merge
-        await this.mergeChanges(pageId, existingFile, markdownContent, pageState);
+        await this.mergeChanges(pageId, absoluteFile, markdownContent, pageState);
       } else {
         // Only remote changed - pull
-        await this.pullPage(pageId, existingFile);
+        await this.pullPage(pageId, absoluteFile);
       }
-    } else if (existingFile) {
-      await this.pullPage(pageId, existingFile);
+    } else if (absoluteFile) {
+      await this.pullPage(pageId, absoluteFile);
     } else {
       // New page
       await this.pullPage(pageId);
@@ -1070,6 +1076,103 @@ class SyncEngine {
     }
   }
 
+  /** Auto-create a new Confluence page for an untracked local file */
+  private async autoCreatePage(
+    filePath: string,
+    content: string,
+    frontmatter: AtlcliFrontmatter | null
+  ): Promise<void> {
+    try {
+      const { content: markdownContent } = parseFrontmatter(content);
+      const title = frontmatter?.title || basename(filePath, ".md").replace(/-/g, " ");
+      const relativePath = this.getRelativePath(filePath);
+
+      // Get space key
+      let spaceKey = this.spaceKey;
+      if (!spaceKey) {
+        if (this.opts.scope.type === "space") {
+          spaceKey = this.opts.scope.spaceKey;
+        } else if (this.opts.scope.type === "tree") {
+          const ancestor = await this.client.getPage(this.opts.scope.ancestorId);
+          spaceKey = ancestor.spaceKey ?? "";
+        } else {
+          const refPage = await this.client.getPage(this.opts.scope.pageId);
+          spaceKey = refPage.spaceKey ?? "";
+        }
+      }
+
+      if (this.opts.dryRun) {
+        this.emit({
+          type: "push",
+          message: `Would create: ${title} in space ${spaceKey}`,
+          file: filePath,
+        });
+        return;
+      }
+
+      // Convert to storage format
+      const storage = markdownToStorage(markdownContent);
+
+      // Determine parent - use home page if syncing a space, or ancestor if syncing a tree
+      let parentId: string | undefined;
+      if (this.opts.scope.type === "tree") {
+        parentId = this.opts.scope.ancestorId;
+      } else if (this.homePageId) {
+        parentId = this.homePageId;
+      }
+
+      // Create the page
+      const page = await this.client.createPage({
+        spaceKey,
+        title,
+        storage,
+        parentId,
+      });
+
+      // Add frontmatter to local file
+      const newFrontmatter: AtlcliFrontmatter = { id: page.id, title: page.title };
+      const contentWithFrontmatter = addFrontmatter(markdownContent, newFrontmatter);
+      await writeTextFile(filePath, contentWithFrontmatter);
+
+      // Compute hash for state
+      const contentHash = hashContent(normalizeMarkdown(markdownContent));
+
+      // Update state
+      updatePageState(this.state!, page.id, {
+        path: relativePath,
+        title: page.title,
+        spaceKey: page.spaceKey ?? spaceKey,
+        version: page.version ?? 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: parentId ?? null,
+        ancestors: parentId ? [parentId] : [],
+      });
+
+      // Write base content
+      await writeBaseContent(this.atlcliDir, page.id, markdownContent);
+
+      // Save state
+      await writeState(this.atlcliDir, this.state!);
+
+      this.emit({
+        type: "push",
+        message: `Created: ${page.title} (ID: ${page.id})`,
+        file: filePath,
+        pageId: page.id,
+      });
+    } catch (err) {
+      this.emit({
+        type: "error",
+        message: `Failed to create page for ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        file: filePath,
+      });
+    }
+  }
+
   /** Merge local and remote changes */
   private async mergeChanges(
     pageId: string,
@@ -1203,6 +1306,11 @@ class SyncEngine {
       const results: string[] = [];
 
       for (const entry of entries) {
+        // Always skip .atlcli directory (contains cache files, not documents)
+        if (entry.name === ".atlcli") {
+          continue;
+        }
+
         const fullPath = join(dir, entry.name);
 
         // Check if path should be ignored
