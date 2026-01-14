@@ -18,7 +18,7 @@ Implement a hierarchical template system for Confluence pages with three levels 
 | Variable syntax | Handlebars `{{variable}}` with full logic support (if, unless, each, with) |
 | Variable input | CLI flags `--var key=value` with interactive fallback for required vars |
 | Variable types | string, number, date, boolean, select (enum) + validation |
-| Variable defaults | Frontmatter `default:` field (Handlebars `{{var "default"}}` also supported, frontmatter takes precedence) |
+| Variable defaults | Frontmatter `default:` field (custom helper `{{var "default"}}` also supported, frontmatter takes precedence) |
 | Required vars | Explicit `required: true` in frontmatter |
 | Template naming | Slug-style: lowercase, hyphens only |
 | Inheritance | No inheritance (standalone templates) |
@@ -157,25 +157,25 @@ variables:
 
 ### Built-in Variables
 
+Built-in variables use the `@` prefix to distinguish them from user-defined variables (consistent with Handlebars' convention for special variables like `@index`, `@first`).
+
 | Variable | Description | Format |
 |----------|-------------|--------|
-| `{{date}}` | Current date | Configurable (default ISO 8601) |
-| `{{datetime}}` | Current date and time | ISO 8601 |
-| `{{time}}` | Current time | HH:MM |
-| `{{user}}` | Current user display name | From profile |
-| `{{space}}` | Current space key | From context |
-| `{{profile}}` | Current profile name | From context |
-| `{{year}}` | Current year | YYYY |
-| `{{month}}` | Current month | MM |
-| `{{day}}` | Current day | DD |
+| `{{@date}}` | Current date | Configurable (default ISO 8601) |
+| `{{@datetime}}` | Current date and time | ISO 8601 |
+| `{{@time}}` | Current time | HH:MM |
+| `{{@user}}` | Current user display name | From profile |
+| `{{@space}}` | Current space key | From context |
+| `{{@profile}}` | Current profile name | From context |
+| `{{@year}}` | Current year | YYYY |
+| `{{@month}}` | Current month | MM |
+| `{{@day}}` | Current day | DD |
 
 **Date format precedence** (highest to lowest):
 1. `--date-format` flag on command
 2. Profile config `templates.date_format`
 3. Global config `templates.date_format`
 4. Default: ISO 8601 (`YYYY-MM-DD`)
-
-**Variable precedence**: User-provided `--var` values override built-ins. If you pass `--var date=custom`, it overrides the built-in `{{date}}`. This allows templates to use built-in names while still accepting user overrides.
 
 ---
 
@@ -192,17 +192,17 @@ atlcli wiki template list
 # standup            [profile:work] Daily standup template
 # runbook            [space:TEAM]   Operations runbook template
 
-# Filter by level
+# Filter by level (category filter)
 atlcli wiki template list --level global            # Only global templates
-atlcli wiki template list --level profile           # All profile templates (all profiles)
-atlcli wiki template list --level space             # All space templates (all spaces)
+atlcli wiki template list --level profile           # All profile templates (across all profiles)
+atlcli wiki template list --level space             # All space templates (across all spaces)
 
 # Filter to specific profile or space
 atlcli wiki template list --profile work            # Only templates from profile "work"
 atlcli wiki template list --space TEAM              # Only templates from space "TEAM"
 
-# Combine level and specific filters
-atlcli wiki template list --level profile --profile work   # Same as --profile work
+# Note: --level is a category filter, --profile/--space are specific filters
+# Using --profile or --space implies the corresponding level
 
 # Show all levels including overridden templates
 atlcli wiki template list --all
@@ -271,32 +271,40 @@ atlcli wiki template create --interactive
 # Specify target level
 atlcli wiki template create standup --file ./standup.md --profile work
 atlcli wiki template create runbook --file ./runbook.md --space TEAM
+
+# Overwrite existing template
+atlcli wiki template create meeting-notes --file ./updated.md --force
 ```
 
 **Default level**: Global. Use `--profile` or `--space` to create at other levels. When run inside a synced docs folder, you can use `--space .` to create in the current space's templates.
 
+**Overwrite behavior**: If template already exists at target level, fails with error unless `--force` is specified.
+
 ### Init Template from Existing Content
 
 ```bash
-# From page ID
+# From page ID (default: saves to global)
 atlcli wiki template init meeting-template --from 12345
 
-# From page title (requires --space to resolve)
-atlcli wiki template init meeting-template --from "Team Meetings" --space TEAM
+# From page title (requires --from-space to resolve the page)
+atlcli wiki template init meeting-template --from "Team Meetings" --from-space TEAM
 
 # From local synced .md file
 atlcli wiki template init meeting-template --from ./docs/meetings/weekly.md
 
-# Specify target level
-atlcli wiki template init retro --from 12345 --profile work
+# Specify target level with --to-* flags
+atlcli wiki template init retro --from 12345 --to-profile work
+atlcli wiki template init runbook --from "Ops Guide" --from-space OPS --to-space TEAM
 ```
 
 The `--from` flag auto-detects the source type:
 - Numeric value → page ID
 - Path with `/` or `.md` → local file
-- Otherwise → page title (requires `--space` to resolve)
+- Otherwise → page title (requires `--from-space` to resolve)
 
-**Default level**: Global. Use `--profile` or `--space` to create at other levels.
+**Source flags**: `--from-space <key>` resolves page titles in that space.
+
+**Target flags**: `--to-profile <name>` or `--to-space <key>` to save at specific level. Default: global.
 
 **Variable identification**: The init command creates a template with the page content as-is (no automatic variable detection). After init, edit the template to:
 1. Replace dynamic content with `{{variables}}`
@@ -479,6 +487,7 @@ atlcli wiki template export meeting-notes standup -o ./my-pack
 - No template names + no `-o` → `./templates-export/` directory
 - Single template name + no `-o` → stdout
 - Single template name + `-o file.md` → single file
+- Single template name + `-o ./dir/` (trailing slash) → file in directory (`./dir/meeting-notes.md`)
 - Multiple template names → always directory (default or `-o path`)
 - `--level/--profile/--space` filters → always directory
 
@@ -540,8 +549,8 @@ atlcli wiki template import ./templates --to-space TEAM
 # Replace existing (default is merge/skip)
 atlcli wiki template import ./templates --replace
 
-# Import specific templates only
-atlcli wiki template import ./templates --only meeting-notes,standup
+# Import specific templates only (positional args after source)
+atlcli wiki template import ./templates meeting-notes standup
 ```
 
 **Import behavior**:
@@ -564,7 +573,13 @@ atlcli wiki template update meeting-notes standup
 
 # Force update from new source (re-tracks source)
 atlcli wiki template update meeting-notes --source https://github.com/other/pack --force
+
+# Update template at specific level (if same name exists at multiple levels)
+atlcli wiki template update meeting-notes --level global
+atlcli wiki template update standup --profile work
 ```
+
+**Ambiguity handling**: Same as other commands - if a template name exists at multiple levels, prompts for level selection unless `--level`, `--profile`, or `--space` is specified. When updating without specifying names, all tracked templates across all levels are updated.
 
 **Source tracking**: When templates are imported from a remote URL, the source is stored in template metadata:
 ```yaml
@@ -677,6 +692,7 @@ export interface TemplateFilter {
   space?: string;
   tags?: string[];
   search?: string;
+  includeOverridden?: boolean;  // For --all flag: include shadowed templates
 }
 
 export interface TemplateSummary {
@@ -711,6 +727,15 @@ export interface ValidationWarning {
 
 ### Template Engine
 
+The template engine wraps Handlebars and registers custom helpers:
+
+**Custom Helpers:**
+- `{{varName "default"}}` - Inline default syntax: outputs variable value or fallback if undefined
+- `{{formatDate date "YYYY-MM-DD"}}` - Format date values
+- `{{lowercase str}}` / `{{uppercase str}}` - String case helpers
+
+> **Note**: The inline default syntax `{{attendees "TBD"}}` is NOT standard Handlebars. It's implemented as a custom helper that checks if the variable is defined and falls back to the provided default. Frontmatter `default:` takes precedence over inline defaults.
+
 ```typescript
 // packages/core/src/templates/engine.ts
 
@@ -722,18 +747,28 @@ export class TemplateEngine {
   constructor() {
     this.handlebars = Handlebars.create();
     this.registerBuiltins();
+    this.registerDefaultHelper();
   }
 
   private registerBuiltins(): void {
-    // Register built-in helpers and variables
+    // Register built-in @variables (@date, @user, etc.)
+  }
+
+  private registerDefaultHelper(): void {
+    // Register helper for inline defaults: {{varName "fallback"}}
   }
 
   render(template: string, context: RenderContext): RenderResult {
     // Render template with context
   }
 
-  validate(template: string): ValidationResult {
-    // Validate Handlebars syntax
+  validate(template: Template): ValidationResult {
+    // Validate Handlebars syntax and variable declarations
+    // Checks: syntax errors, undeclared variables used, declared variables unused
+  }
+
+  validateContent(content: string): ValidationResult {
+    // Validate Handlebars syntax only (for --file validation before create)
   }
 }
 ```
@@ -972,10 +1007,16 @@ Standardized flag patterns across all template commands:
 | Filter/target profile | `--profile <name>` | `create --profile work` |
 | Filter/target space | `--space <key>` | `delete --space TEAM` |
 | Current context | `--profile .`, `--space .` | `create --space .` |
-| Copy source | `--from-level`, `--from-profile`, `--from-space` | `copy X --from-level global` |
-| Copy target | `--to-level`, `--to-profile`, `--to-space` | `copy X --to-profile work` |
+| Copy/init source | `--from-level`, `--from-profile`, `--from-space` | `copy X --from-level global` |
+| Copy/init target | `--to-level`, `--to-profile`, `--to-space` | `init X --to-profile work` |
 | Output path | `-o, --output` | `export -o ./dir` |
 | Template level (page create) | `--template-level` | `page create --template X --template-level global` |
+| Include all (list) | `--all` | `list --all` (shows overridden) |
+| Apply to all (validate) | `--all` | `validate --all` (validates all templates) |
+| Force overwrite | `--force` | `create X --force`, `delete X --force` |
+| Replace on import | `--replace` | `import ./dir --replace` |
+
+> **Note on `--all` flag**: Context determines meaning. For `list`, it includes shadowed/overridden templates. For `validate`, it validates all templates instead of a specific one.
 
 ---
 
@@ -987,7 +1028,7 @@ Standardized flag patterns across all template commands:
 | Variable required | `Required variable 'title' not provided. Use --var title=VALUE or run interactively.` |
 | Invalid variable type | `Variable 'count' expects a number, got 'abc'.` |
 | Invalid select value | `Variable 'type' must be one of: standup, planning, retro. Got 'invalid'.` |
-| Template exists | `Template 'meeting' already exists at global level. Use --replace to overwrite.` |
+| Template exists | `Template 'meeting' already exists at global level. Use --force to overwrite.` |
 | Invalid Handlebars | `Template syntax error at line 15: Unexpected closing tag.` |
 | Import failed | `Failed to import from URL: 404 Not Found` |
 | Ambiguous template | `Template 'meeting' exists at multiple levels: global, space:TEAM. Specify level with --level, --profile, or --space.` |
