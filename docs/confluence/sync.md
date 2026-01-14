@@ -55,22 +55,24 @@ Watch mode combines two mechanisms for bidirectional sync:
 1. **Local file watching**: Detects changes to local markdown files instantly
 2. **Remote polling**: Periodically checks Confluence for remote changes
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ Local Files │────▶│   atlcli    │◀────│ Confluence  │
-│  (watched)  │     │  (sync)     │     │  (polled)   │
-└─────────────┘     └─────────────┘     └─────────────┘
-      │                    │                    │
-      │  File changed      │                    │
-      └───────────────────▶│                    │
-                           │  Push to remote    │
-                           │───────────────────▶│
-                           │                    │
-                           │  Poll for changes  │
-                           │◀───────────────────│
-                           │                    │
-                           │  Pull if changed   │
-      ◀────────────────────│                    │
+```mermaid
+sequenceDiagram
+    participant L as Local Files
+    participant A as atlcli sync
+    participant C as Confluence
+
+    Note over L,C: Bidirectional Sync Flow
+
+    L->>A: File changed (watched)
+    A->>C: Push to remote
+    C-->>A: OK
+
+    loop Every 30s (configurable)
+        A->>C: Poll for changes
+        C-->>A: Changed pages
+    end
+
+    A->>L: Pull if changed
 ```
 
 ### Sync Command Options
