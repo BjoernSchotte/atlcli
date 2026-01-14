@@ -14,6 +14,7 @@ import {
   loadConfig,
   getActiveProfile,
   isInteractive,
+  readTextFile,
   // Template system from core
   GlobalTemplateStorage,
   ProfileTemplateStorage,
@@ -29,8 +30,9 @@ import {
   type TemplateSummary,
   type TemplateStorage,
   type TemplateVariable,
+  type TemplateMetadata,
 } from "@atlcli/core";
-import { findAtlcliDir } from "@atlcli/confluence";
+import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence";
 
 type Flags = Record<string, string | boolean | string[]>;
 
@@ -66,6 +68,12 @@ export async function handleTemplate(
       return;
     case "render":
       await handleRender(rest, flags, opts);
+      return;
+    case "init":
+      await handleInit(rest, flags, opts);
+      return;
+    case "copy":
+      await handleCopy(rest, flags, opts);
       return;
     default:
       output(templateHelp(), opts);
@@ -318,7 +326,36 @@ async function handleCreate(
   flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
-  const name = args[0];
+  let name = args[0];
+  const filePath = getFlag(flags, "file");
+  const interactiveWizard = hasFlag(flags, "interactive");
+
+  // Interactive wizard mode
+  if (interactiveWizard) {
+    if (!isInteractive()) {
+      fail(opts, 1, ERROR_CODES.USAGE, "--interactive requires a terminal.");
+    }
+    const wizardResult = await runCreateWizard(name, opts);
+    name = wizardResult.name;
+
+    const ctx = await getTemplateContext(flags);
+    const { storage, level } = getTargetStorage(ctx, flags);
+    const force = hasFlag(flags, "force");
+
+    if (!force && (await storage.exists(name))) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' already exists at ${level}. Use --force to overwrite.`);
+    }
+
+    await storage.save(wizardResult.template);
+
+    if (opts.json) {
+      output({ created: true, name, level }, opts);
+    } else {
+      output(`Created template '${name}' at ${level}.`, opts);
+    }
+    return;
+  }
+
   if (!name) {
     fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
@@ -338,7 +375,6 @@ async function handleCreate(
   }
 
   let content: string;
-  const filePath = getFlag(flags, "file");
 
   if (filePath) {
     // Read from file
@@ -432,6 +468,106 @@ async function openInEditor(filePath: string): Promise<void> {
 
     child.on("error", reject);
   });
+}
+
+/**
+ * Interactive wizard for creating a new template.
+ * Prompts for: name → description → tags → opens editor for content
+ */
+async function runCreateWizard(
+  initialName: string | undefined,
+  opts: OutputOptions
+): Promise<{ name: string; template: Template }> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+
+  const question = (prompt: string): Promise<string> => {
+    return new Promise((resolve) => {
+      rl.question(prompt, resolve);
+    });
+  };
+
+  output("\n--- Template Creation Wizard ---\n", opts);
+
+  // Name
+  let name = initialName;
+  if (!name) {
+    name = await question("Template name (slug-style, e.g., meeting-notes): ");
+    if (!name.trim()) {
+      rl.close();
+      fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+    }
+    name = name.trim().toLowerCase().replace(/\s+/g, "-");
+  }
+
+  // Description
+  const description = await question("Description (optional): ");
+
+  // Tags
+  const tagsInput = await question("Tags (comma-separated, optional): ");
+  const tags = tagsInput
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  rl.close();
+
+  // Create starter content with collected metadata
+  const metadata: TemplateMetadata = {
+    name,
+    description: description.trim() || undefined,
+    tags: tags.length > 0 ? tags : undefined,
+  };
+
+  const starterContent = `# {{title}}
+
+Your template content here.
+
+{{#if items}}
+## Items
+{{#each items}}
+- {{this}}
+{{/each}}
+{{/if}}
+`;
+
+  // Open editor
+  const tmpDir = await mkdtemp(join(tmpdir(), "atlcli-template-"));
+  const tmpFile = join(tmpDir, `${name}.md`);
+
+  const fullContent = serializeTemplate(metadata, starterContent);
+  await writeFile(tmpFile, fullContent, "utf8");
+
+  output("\nOpening editor to write template content...\n", opts);
+
+  try {
+    await openInEditor(tmpFile);
+    const editedContent = await readFile(tmpFile, "utf8");
+    const parsed = parseTemplate(editedContent);
+
+    const template: Template = {
+      metadata: { ...parsed.metadata, name },
+      content: parsed.content,
+      source: { level: "global", path: "" },
+    };
+
+    // Validate
+    const engine = new TemplateEngine();
+    const validation = engine.validate(template);
+    if (!validation.valid) {
+      output("\nTemplate has validation errors:", opts);
+      for (const err of validation.errors) {
+        output(`  - ${err.message}`, opts);
+      }
+      fail(opts, 1, ERROR_CODES.VALIDATION, "Template validation failed.");
+    }
+
+    return { name, template };
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 }
 
 // ============================================================================
@@ -757,6 +893,276 @@ async function handleRender(
   }
 }
 
+// ============================================================================
+// Init Command - Create template from existing content
+// ============================================================================
+
+async function handleInit(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0];
+  const fromSource = getFlag(flags, "from");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+  if (!fromSource) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--from is required (page ID, title, or file path).");
+  }
+
+  // Determine source type
+  const sourceType = detectSourceType(fromSource);
+  let content: string;
+  let sourceDescription: string;
+
+  if (sourceType === "file") {
+    // Read from local file
+    if (!existsSync(fromSource)) {
+      fail(opts, 1, ERROR_CODES.IO, `File not found: ${fromSource}`);
+    }
+    content = await readTextFile(fromSource);
+    sourceDescription = `file: ${fromSource}`;
+  } else {
+    // Fetch from Confluence page
+    const config = await loadConfig();
+    const activeProfile = getActiveProfile(config);
+    if (!activeProfile) {
+      fail(opts, 1, ERROR_CODES.AUTH, "No active profile. Run 'atlcli config profile' to set one.");
+    }
+
+    const client = new ConfluenceClient(activeProfile);
+
+    let page;
+    if (sourceType === "id") {
+      // Fetch by page ID
+      page = await client.getPage(fromSource);
+    } else {
+      // Fetch by title - requires --from-space
+      const fromSpace = getFlag(flags, "from-space");
+      if (!fromSpace) {
+        fail(opts, 1, ERROR_CODES.USAGE, "--from-space is required when using page title.");
+      }
+      const pages = await client.searchPages(`title="${fromSource}" AND space="${fromSpace}"`, 1);
+      if (pages.length === 0) {
+        fail(opts, 1, ERROR_CODES.USAGE, `Page "${fromSource}" not found in space ${fromSpace}.`);
+      }
+      page = await client.getPage(pages[0].id);
+    }
+
+    // Convert storage format to markdown
+    content = storageToMarkdown(page.storage);
+    sourceDescription = `page: ${page.title} (${page.id})`;
+  }
+
+  // Create template metadata
+  const metadata: TemplateMetadata = {
+    name,
+    description: `Template created from ${sourceDescription}`,
+  };
+
+  // Create template object
+  const template: Template = {
+    metadata,
+    content,
+    source: { level: "global", path: "" },
+  };
+
+  // Determine target storage
+  const toProfile = getFlag(flags, "to-profile");
+  const toSpace = getFlag(flags, "to-space");
+
+  let storage: TemplateStorage;
+  let targetDesc: string;
+
+  if (toSpace) {
+    const docsDir = await findAtlcliDir(process.cwd());
+    storage = new SpaceTemplateStorage(toSpace, docsDir ?? undefined);
+    template.source.level = "space";
+    template.source.space = toSpace;
+    targetDesc = `space: ${toSpace}`;
+  } else if (toProfile) {
+    storage = new ProfileTemplateStorage(toProfile);
+    template.source.level = "profile";
+    template.source.profile = toProfile;
+    targetDesc = `profile: ${toProfile}`;
+  } else {
+    storage = new GlobalTemplateStorage();
+    targetDesc = "global";
+  }
+
+  // Check if template already exists
+  const force = hasFlag(flags, "force");
+  if (await storage.exists(name)) {
+    if (!force) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' already exists at ${targetDesc}. Use --force to overwrite.`);
+    }
+  }
+
+  // Save template
+  await storage.save(template);
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      created: true,
+      name,
+      level: template.source.level,
+      profile: template.source.profile,
+      space: template.source.space,
+      source: sourceDescription,
+    }, opts);
+  } else {
+    output(`Created template '${name}' at ${targetDesc} from ${sourceDescription}.`, opts);
+    output(`\nNext steps:`, opts);
+    output(`  1. Edit to add variables: atlcli wiki template edit ${name}`, opts);
+    output(`  2. Validate: atlcli wiki template validate ${name}`, opts);
+  }
+}
+
+/**
+ * Detect source type from --from value.
+ * - Numeric string → page ID
+ * - Contains / or ends with .md → file path
+ * - Otherwise → page title
+ */
+function detectSourceType(source: string): "id" | "file" | "title" {
+  // Check if it's a numeric ID
+  if (/^\d+$/.test(source)) {
+    return "id";
+  }
+  // Check if it looks like a file path
+  if (source.includes("/") || source.includes("\\") || source.endsWith(".md")) {
+    return "file";
+  }
+  // Default to page title
+  return "title";
+}
+
+// ============================================================================
+// Copy Command - Copy template between levels
+// ============================================================================
+
+async function handleCopy(
+  args: string[],
+  flags: Flags,
+  opts: OutputOptions
+): Promise<void> {
+  const sourceName = args[0];
+  const targetName = args[1] ?? sourceName; // Default to same name
+
+  if (!sourceName) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Source template name is required.");
+  }
+
+  // Determine source storage
+  const fromLevel = getFlag(flags, "from-level");
+  const fromProfile = getFlag(flags, "from-profile");
+  const fromSpace = getFlag(flags, "from-space");
+
+  let sourceStorage: TemplateStorage;
+  let sourceDesc: string;
+
+  if (fromSpace) {
+    const docsDir = await findAtlcliDir(process.cwd());
+    sourceStorage = new SpaceTemplateStorage(fromSpace, docsDir ?? undefined);
+    sourceDesc = `space: ${fromSpace}`;
+  } else if (fromProfile) {
+    sourceStorage = new ProfileTemplateStorage(fromProfile);
+    sourceDesc = `profile: ${fromProfile}`;
+  } else if (fromLevel === "global") {
+    sourceStorage = new GlobalTemplateStorage();
+    sourceDesc = "global";
+  } else {
+    // If no source specified, resolve by precedence
+    const ctx = await getTemplateContext(flags);
+    const template = await ctx.resolver.resolve(sourceName);
+    if (!template) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template '${sourceName}' not found.`);
+    }
+    sourceStorage = ctx.resolver.getStorage(template.source.level)!;
+    sourceDesc = template.source.level;
+    if (template.source.profile) sourceDesc = `profile: ${template.source.profile}`;
+    if (template.source.space) sourceDesc = `space: ${template.source.space}`;
+  }
+
+  // Get source template
+  const sourceTemplate = await sourceStorage.get(sourceName);
+  if (!sourceTemplate) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${sourceName}' not found at ${sourceDesc}.`);
+  }
+
+  // Determine target storage
+  const toLevel = getFlag(flags, "to-level");
+  const toProfile = getFlag(flags, "to-profile");
+  const toSpace = getFlag(flags, "to-space");
+
+  if (!toLevel && !toProfile && !toSpace) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Target is required: --to-level global, --to-profile <name>, or --to-space <key>.");
+  }
+
+  let targetStorage: TemplateStorage;
+  let targetDesc: string;
+  let targetLevel: "global" | "profile" | "space";
+
+  if (toSpace) {
+    const docsDir = await findAtlcliDir(process.cwd());
+    targetStorage = new SpaceTemplateStorage(toSpace, docsDir ?? undefined);
+    targetDesc = `space: ${toSpace}`;
+    targetLevel = "space";
+  } else if (toProfile) {
+    targetStorage = new ProfileTemplateStorage(toProfile);
+    targetDesc = `profile: ${toProfile}`;
+    targetLevel = "profile";
+  } else {
+    targetStorage = new GlobalTemplateStorage();
+    targetDesc = "global";
+    targetLevel = "global";
+  }
+
+  // Check if target already exists
+  const force = hasFlag(flags, "force");
+  if (await targetStorage.exists(targetName)) {
+    if (!force) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template '${targetName}' already exists at ${targetDesc}. Use --force to overwrite.`);
+    }
+  }
+
+  // Create copy with updated name and source
+  const copiedTemplate: Template = {
+    metadata: {
+      ...sourceTemplate.metadata,
+      name: targetName,
+    },
+    content: sourceTemplate.content,
+    source: {
+      level: targetLevel,
+      profile: toProfile,
+      space: toSpace,
+      path: "",
+    },
+  };
+
+  // Save copy
+  await targetStorage.save(copiedTemplate);
+
+  if (opts.json) {
+    output({
+      schemaVersion: "1",
+      copied: true,
+      source: { name: sourceName, level: sourceDesc },
+      target: { name: targetName, level: targetDesc },
+    }, opts);
+  } else {
+    if (sourceName === targetName) {
+      output(`Copied template '${sourceName}' from ${sourceDesc} to ${targetDesc}.`, opts);
+    } else {
+      output(`Copied template '${sourceName}' (${sourceDesc}) to '${targetName}' (${targetDesc}).`, opts);
+    }
+  }
+}
+
 /**
  * Parse --var key=value flags into a variables object.
  */
@@ -892,6 +1298,8 @@ Commands:
   rename      Rename a template
   validate    Validate template syntax
   render      Render a template with variables
+  init        Create template from existing content
+  copy        Copy template between levels
 
 List options:
   --level <global|profile|space>  Filter by level
@@ -906,10 +1314,31 @@ Target options (for create/edit/delete/rename):
   --space <key>       Target space templates
   --level global      Target global templates (default)
 
+Create options:
+  --file <path>       Read template from file
+  --interactive       Run creation wizard (prompts for name, description, tags)
+  --force             Overwrite existing template
+
 Render options:
   --var <key=value>   Set variable value (repeatable)
   --interactive       Prompt for missing required variables
   --title <title>     Set @title built-in variable
+
+Init options:
+  --from <source>       Page ID, title, or file path (required)
+  --from-space <key>    Space for resolving page titles
+  --to-profile <name>   Save to profile level
+  --to-space <key>      Save to space level
+  --force               Overwrite existing template
+
+Copy options:
+  --from-level global   Copy from global level
+  --from-profile <name> Copy from profile
+  --from-space <key>    Copy from space
+  --to-level global     Copy to global level
+  --to-profile <name>   Copy to profile
+  --to-space <key>      Copy to space
+  --force               Overwrite existing template
 
 Built-in @variables available in templates:
   @date, @datetime, @time, @year, @month, @day, @weekday
@@ -937,5 +1366,12 @@ Examples:
   atlcli wiki template render meeting-notes --var title="Sprint Planning"
   atlcli wiki template render meeting-notes --interactive
   atlcli wiki template render meeting-notes --var title="Planning" > output.md
+
+  atlcli wiki template init meeting-template --from 12345
+  atlcli wiki template init meeting-template --from "Weekly Meeting" --from-space TEAM
+  atlcli wiki template init retro --from ./docs/retro.md --to-profile work
+
+  atlcli wiki template copy meeting-notes --from-level global --to-profile work
+  atlcli wiki template copy meeting-notes team-meeting --from-level global --to-space TEAM
 `;
 }
