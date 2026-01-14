@@ -75,6 +75,26 @@ The CLI is now available at `./apps/cli/dist/atlcli`.
     alias atlcli="$(pwd)/apps/cli/dist/atlcli"
     ```
 
+## Shell Completion
+
+Enable tab completion for commands and flags:
+
+=== "Zsh"
+    ```bash
+    # Add to ~/.zshrc
+    eval "$(atlcli completion zsh)"
+    ```
+
+=== "Bash"
+    ```bash
+    # Add to ~/.bashrc
+    eval "$(atlcli completion bash)"
+    ```
+
+Restart your shell or run `source ~/.zshrc` (or `~/.bashrc`) to activate.
+
+[:octicons-arrow-right-24: Full Shell Completion Guide](reference/shell-completions.md)
+
 ## Authentication
 
 atlcli uses API tokens for authentication. You can manage multiple profiles for different Atlassian instances.

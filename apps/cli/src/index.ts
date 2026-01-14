@@ -10,6 +10,7 @@ import {
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
+import { handleCompletion } from "./commands/completion.js";
 import { handleWiki } from "./commands/wiki.js";
 import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
@@ -93,6 +94,9 @@ async function main(): Promise<void> {
     switch (command) {
       case "auth":
         await handleAuth(rest, parsed.flags, opts);
+        break;
+      case "completion":
+        await handleCompletion(rest, parsed.flags, opts);
         break;
       case "wiki":
         await handleWiki(rest, parsed.flags, opts);
@@ -211,6 +215,7 @@ ${pluginCommands.map((c) => `  ${c.name.padEnd(12)} ${c.command.description}`).j
 
 Commands:
   auth        Authenticate and manage profiles
+  completion  Generate shell completion scripts
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
   log         Query and manage logs
