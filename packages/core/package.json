@@ -5,5 +5,8 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {}
+  "dependencies": {
+    "handlebars": "^4.7.8",
+    "yaml": "^2.7.0"
+  }
 }
