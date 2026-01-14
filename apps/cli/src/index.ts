@@ -7,17 +7,23 @@ import {
   getLogger,
   Logger,
   isInteractive,
+  getCurrentVersion,
+  checkForUpdates,
+  loadUpdateState,
+  saveUpdateState,
+  shouldCheckForUpdates,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
 import { handleCompletion } from "./commands/completion.js";
+import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
 import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
-const VERSION = "0.2.0";
+const VERSION = getCurrentVersion();
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
@@ -110,6 +116,9 @@ async function main(): Promise<void> {
       case "plugin":
         await handlePlugin(rest, parsed.flags, opts);
         break;
+      case "update":
+        await handleUpdate(rest, parsed.flags, opts);
+        break;
       case "version":
         output({ version: VERSION }, opts);
         break;
@@ -132,6 +141,17 @@ async function main(): Promise<void> {
 
     // Run afterCommand hooks
     await registry.runAfterHooks(ctx);
+
+    // Check for updates (non-blocking, interactive only)
+    // Skip in: CI/CD, non-interactive, JSON output, explicitly disabled, or when running update command
+    if (
+      command !== "update" &&
+      isInteractive() &&
+      !json &&
+      !process.env.ATLCLI_DISABLE_UPDATE_CHECK
+    ) {
+      checkAndNotifyUpdate().catch(() => {}); // Ignore errors silently
+    }
 
     // Show promo in interactive mode
     showPromo(opts);
@@ -220,6 +240,7 @@ Commands:
   jira        Jira operations (issue, board, sprint, epic)
   log         Query and manage logs
   plugin      Manage plugins
+  update      Check for and install updates
   version     Show version
 ${pluginSection}
 Global options:
@@ -227,6 +248,34 @@ Global options:
   --no-log    Disable logging for this command
   --help      Show help
 `;
+}
+
+/**
+ * Check for updates and notify user if available (non-blocking).
+ * Only checks once per day to avoid excessive API calls.
+ */
+async function checkAndNotifyUpdate(): Promise<void> {
+  try {
+    const state = await loadUpdateState();
+
+    // Only check once per day
+    if (!shouldCheckForUpdates(state)) {
+      return;
+    }
+
+    const info = await checkForUpdates();
+
+    // Save check time
+    await saveUpdateState({ lastCheck: new Date().toISOString() });
+
+    if (info.updateAvailable) {
+      process.stderr.write(
+        `\nUpdate available: ${info.currentVersion} → ${info.latestVersion}. Run: atlcli update\n`
+      );
+    }
+  } catch {
+    // Silently ignore update check errors
+  }
 }
 
 /**

@@ -20,6 +20,7 @@ const BUILTIN_ROOT_COMMANDS = [
   "jira",
   "log",
   "plugin",
+  "update",
   "version",
   "wiki",
 ];
@@ -367,6 +368,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "plugin remove": [],
   "plugin enable": [],
   "plugin disable": [],
+
+  // update flags
+  update: ["--check"],
 };
 
 /**
