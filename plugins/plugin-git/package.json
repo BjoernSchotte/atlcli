@@ -1,6 +1,6 @@
 {
   "name": "atlcli-plugin-git",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Git integration for atlcli Confluence sync",
   "exports": {
