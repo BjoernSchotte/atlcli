@@ -28,7 +28,7 @@ import type { PluginMetadata } from "@atlcli/plugin-api";
 
 export async function handlePlugin(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sub = args[0];
@@ -98,7 +98,7 @@ async function handleList(opts: OutputOptions): Promise<void> {
 
 async function handleInstall(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const source = args[0];

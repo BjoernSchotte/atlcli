@@ -147,7 +147,7 @@ async function main(): Promise<void> {
 async function executePluginCommand(
   cmd: import("@atlcli/plugin-api").CommandDefinition,
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: { json: boolean }
 ): Promise<void> {
   const [subcommand, ...subArgs] = args;

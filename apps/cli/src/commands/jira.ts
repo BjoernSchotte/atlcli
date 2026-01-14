@@ -65,7 +65,7 @@ import {
 
 export async function handleJira(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -143,7 +143,7 @@ export async function handleJira(
 }
 
 async function getClient(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<JiraClient> {
   const config = await loadConfig();
@@ -164,7 +164,7 @@ async function getClient(
 // ============ Me ============
 
 async function handleMe(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -176,7 +176,7 @@ async function handleMe(
 
 async function handleProject(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub] = args;
@@ -200,7 +200,7 @@ async function handleProject(
 }
 
 async function handleProjectList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -216,7 +216,7 @@ async function handleProjectList(
 }
 
 async function handleProjectGet(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -230,7 +230,7 @@ async function handleProjectGet(
 }
 
 async function handleProjectCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -258,7 +258,7 @@ async function handleProjectCreate(
 }
 
 async function handleProjectTypes(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -290,7 +290,7 @@ Options:
 
 async function handleIssue(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub] = args;
@@ -332,7 +332,7 @@ async function handleIssue(
 }
 
 async function handleIssueGet(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key") ?? getFlag(flags, "id");
@@ -348,7 +348,7 @@ async function handleIssueGet(
 }
 
 async function handleIssueCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -382,7 +382,7 @@ async function handleIssueCreate(
 }
 
 async function handleIssueUpdate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -427,7 +427,7 @@ async function handleIssueUpdate(
 }
 
 async function handleIssueDelete(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -448,7 +448,7 @@ async function handleIssueDelete(
 }
 
 async function handleIssueTransitions(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -462,7 +462,7 @@ async function handleIssueTransitions(
 }
 
 async function handleIssueTransition(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -493,7 +493,7 @@ async function handleIssueTransition(
 }
 
 async function handleIssueAssign(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -517,7 +517,7 @@ async function handleIssueAssign(
 
 async function handleIssueComment(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -536,7 +536,7 @@ async function handleIssueComment(
 }
 
 async function handleIssueLink(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const from = getFlag(flags, "from");
@@ -559,7 +559,7 @@ async function handleIssueLink(
 
 async function handleIssueAttach(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const key = getFlag(flags, "key");
@@ -624,7 +624,7 @@ Options:
 
 async function handleBoard(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub] = args;
@@ -648,7 +648,7 @@ async function handleBoard(
 }
 
 async function handleBoardList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -668,7 +668,7 @@ async function handleBoardList(
 }
 
 async function handleBoardGet(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -682,7 +682,7 @@ async function handleBoardGet(
 }
 
 async function handleBoardBacklog(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -710,7 +710,7 @@ async function handleBoardBacklog(
 }
 
 async function handleBoardIssues(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -756,7 +756,7 @@ Options:
 
 async function handleSprint(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub] = args;
@@ -798,7 +798,7 @@ async function handleSprint(
 }
 
 async function handleSprintList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const boardId = getFlag(flags, "board");
@@ -819,7 +819,7 @@ async function handleSprintList(
 }
 
 async function handleSprintGet(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -833,7 +833,7 @@ async function handleSprintGet(
 }
 
 async function handleSprintCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const boardId = getFlag(flags, "board");
@@ -860,7 +860,7 @@ async function handleSprintCreate(
 }
 
 async function handleSprintStart(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -883,7 +883,7 @@ async function handleSprintStart(
 }
 
 async function handleSprintClose(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -897,7 +897,7 @@ async function handleSprintClose(
 }
 
 async function handleSprintDelete(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -916,7 +916,7 @@ async function handleSprintDelete(
 }
 
 async function handleSprintIssues(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = getFlag(flags, "id");
@@ -945,7 +945,7 @@ async function handleSprintIssues(
 
 async function handleSprintAdd(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sprintId = getFlag(flags, "sprint");
@@ -965,7 +965,7 @@ async function handleSprintAdd(
 
 async function handleSprintRemove(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const issues = args.length > 0 ? args : getFlag(flags, "issues")?.split(",");
@@ -981,7 +981,7 @@ async function handleSprintRemove(
 
 async function handleSprintReport(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sprintId = args[0] || getFlag(flags, "id");
@@ -995,7 +995,7 @@ async function handleSprintReport(
   // Detect or use specified story points field
   let pointsField = pointsFieldOverride;
   if (!pointsField) {
-    pointsField = await client.detectStoryPointsField();
+    pointsField = (await client.detectStoryPointsField()) ?? undefined;
     if (!pointsField) {
       fail(
         opts,
@@ -1098,7 +1098,7 @@ Examples:
 
 async function handleWorklog(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -1129,7 +1129,7 @@ async function handleWorklog(
 
 async function handleWorklogAdd(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   // Parse: jira worklog add PROJ-123 1h30m [--comment "..."] [--started "..."]
@@ -1193,7 +1193,7 @@ async function handleWorklogAdd(
 }
 
 async function handleWorklogList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const issueKey = getFlag(flags, "issue");
@@ -1219,7 +1219,7 @@ async function handleWorklogList(
 }
 
 async function handleWorklogUpdate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const issueKey = getFlag(flags, "issue");
@@ -1270,7 +1270,7 @@ async function handleWorklogUpdate(
 }
 
 async function handleWorklogDelete(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const issueKey = getFlag(flags, "issue");
@@ -1309,7 +1309,7 @@ function formatWorklog(worklog: JiraWorklog): Record<string, unknown> {
 // ============ Worklog Report ============
 
 async function handleWorklogReport(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -1436,7 +1436,7 @@ async function handleWorklogReport(
 
 async function handleWorklogTimer(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -1461,7 +1461,7 @@ async function handleWorklogTimer(
 
 async function handleTimerStart(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const issueKey = args[0] || getFlag(flags, "issue");
@@ -1493,7 +1493,7 @@ async function handleTimerStart(
 }
 
 async function handleTimerStop(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const roundFlag = getFlag(flags, "round");
@@ -1685,7 +1685,7 @@ Examples:
 
 async function handleEpic(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -1718,7 +1718,7 @@ async function handleEpic(
 }
 
 async function handleEpicList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -1770,7 +1770,7 @@ async function handleEpicList(
 
 async function handleEpicGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const epicKey = args[0];
@@ -1814,7 +1814,7 @@ async function handleEpicGet(
 }
 
 async function handleEpicCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -1854,7 +1854,7 @@ async function handleEpicCreate(
 
 async function handleEpicIssues(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const epicKey = args[0];
@@ -1896,7 +1896,7 @@ async function handleEpicIssues(
 
 async function handleEpicAdd(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const epicKey = getFlag(flags, "epic");
@@ -1924,7 +1924,7 @@ async function handleEpicAdd(
 
 async function handleEpicRemove(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   if (args.length === 0) {
@@ -1947,7 +1947,7 @@ async function handleEpicRemove(
 
 async function handleEpicProgress(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const epicKey = args[0];
@@ -2060,7 +2060,7 @@ Examples:
 
 async function handleAnalyze(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub] = args;
@@ -2084,7 +2084,7 @@ async function handleAnalyze(
 }
 
 async function handleAnalyzeVelocity(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const boardId = getFlag(flags, "board");
@@ -2103,7 +2103,7 @@ async function handleAnalyzeVelocity(
   // Detect or use specified story points field
   let pointsField = pointsFieldOverride;
   if (!pointsField) {
-    pointsField = await client.detectStoryPointsField();
+    pointsField = (await client.detectStoryPointsField()) ?? undefined;
     if (!pointsField) {
       fail(
         opts,
@@ -2184,7 +2184,7 @@ async function handleAnalyzeVelocity(
 }
 
 async function handleAnalyzeBurndown(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sprintId = getFlag(flags, "sprint");
@@ -2198,7 +2198,7 @@ async function handleAnalyzeBurndown(
   // Detect or use specified story points field
   let pointsField = pointsFieldOverride;
   if (!pointsField) {
-    pointsField = await client.detectStoryPointsField();
+    pointsField = (await client.detectStoryPointsField()) ?? undefined;
     if (!pointsField) {
       fail(
         opts,
@@ -2262,7 +2262,7 @@ async function handleAnalyzeBurndown(
 }
 
 async function handleAnalyzeScopeChange(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sprintId = getFlag(flags, "sprint");
@@ -2276,7 +2276,7 @@ async function handleAnalyzeScopeChange(
   // Detect or use specified story points field
   let pointsField = pointsFieldOverride;
   if (!pointsField) {
-    pointsField = await client.detectStoryPointsField();
+    pointsField = (await client.detectStoryPointsField()) ?? undefined;
     if (!pointsField) {
       fail(
         opts,
@@ -2340,7 +2340,7 @@ async function handleAnalyzeScopeChange(
 }
 
 async function handleAnalyzePredictability(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const boardId = getFlag(flags, "board");
@@ -2359,7 +2359,7 @@ async function handleAnalyzePredictability(
   // Detect or use specified story points field
   let pointsField = pointsFieldOverride;
   if (!pointsField) {
-    pointsField = await client.detectStoryPointsField();
+    pointsField = (await client.detectStoryPointsField()) ?? undefined;
     if (!pointsField) {
       fail(
         opts,
@@ -2478,7 +2478,7 @@ Examples:
 
 async function handleBulk(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -2598,7 +2598,7 @@ function parseFieldAssignments(
 }
 
 async function handleBulkEdit(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const jql = getFlag(flags, "jql");
@@ -2667,7 +2667,7 @@ async function handleBulkEdit(
 }
 
 async function handleBulkTransition(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const jql = getFlag(flags, "jql");
@@ -2747,7 +2747,7 @@ async function handleBulkTransition(
 
 async function handleBulkLabel(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [action, ...labelArgs] = args;
@@ -2823,7 +2823,7 @@ async function handleBulkLabel(
 }
 
 async function handleBulkDelete(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const jql = getFlag(flags, "jql");
@@ -2953,7 +2953,7 @@ Examples:
 
 async function handleFilter(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -2983,7 +2983,7 @@ async function handleFilter(
 }
 
 async function handleFilterList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const query = getFlag(flags, "query");
@@ -3023,7 +3023,7 @@ async function handleFilterList(
 
 async function handleFilterGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -3044,7 +3044,7 @@ async function handleFilterGet(
 }
 
 async function handleFilterCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
@@ -3078,7 +3078,7 @@ async function handleFilterCreate(
 
 async function handleFilterUpdate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -3113,7 +3113,7 @@ async function handleFilterUpdate(
 
 async function handleFilterDelete(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -3140,7 +3140,7 @@ async function handleFilterDelete(
 
 async function handleFilterShare(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -3259,7 +3259,7 @@ Examples:
 
 async function handleSearch(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   // JQL can be passed as args or --jql flag
@@ -3337,7 +3337,7 @@ function formatIssue(issue: JiraIssue): Record<string, unknown> {
 // ============ Export/Import Commands ============
 
 async function handleExport(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const jql = getFlag(flags, "jql");
@@ -3360,8 +3360,8 @@ async function handleExport(
 
   // Fetch all matching issues
   const allIssues: JiraIssue[] = [];
-  let startAt = 0;
   const maxResults = 100;
+  let nextPageToken: string | undefined;
 
   if (!opts.json) {
     process.stderr.write("Searching issues...\n");
@@ -3369,13 +3369,13 @@ async function handleExport(
 
   while (true) {
     const result = await client.search(jql, {
-      startAt,
+      nextPageToken,
       maxResults,
       fields: ["*all"],
     });
     allIssues.push(...result.issues);
-    if (allIssues.length >= result.total || result.issues.length === 0) break;
-    startAt += maxResults;
+    if (!result.nextPageToken || result.issues.length === 0) break;
+    nextPageToken = result.nextPageToken;
   }
 
   if (allIssues.length === 0) {
@@ -3445,7 +3445,7 @@ async function handleExport(
 }
 
 async function handleImport(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const filePath = getFlag(flags, "file");
@@ -3576,7 +3576,7 @@ Examples:
 
 async function handleWatch(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [key] = args;
@@ -3604,7 +3604,7 @@ async function handleWatch(
 
 async function handleUnwatch(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [key] = args;
@@ -3632,7 +3632,7 @@ async function handleUnwatch(
 
 async function handleWatchers(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [key] = args;
@@ -3671,7 +3671,7 @@ async function handleWatchers(
 
 async function handleWebhook(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -3698,7 +3698,7 @@ async function handleWebhook(
 }
 
 async function handleWebhookServe(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const port = Number(getFlag(flags, "port") ?? 8080);
@@ -3776,7 +3776,7 @@ async function handleWebhookServe(
 }
 
 async function handleWebhookList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const client = await getClient(flags, opts);
@@ -3795,7 +3795,7 @@ async function handleWebhookList(
 }
 
 async function handleWebhookRegister(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const url = getFlag(flags, "url");
@@ -3831,7 +3831,7 @@ async function handleWebhookRegister(
 
 async function handleWebhookDelete(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const idStr = args[0] || getFlag(flags, "id");
@@ -3852,7 +3852,7 @@ async function handleWebhookDelete(
 
 async function handleWebhookRefresh(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const idStr = args[0] || getFlag(flags, "id");
@@ -3927,7 +3927,7 @@ Examples:
 
 async function handleSubtask(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -3946,7 +3946,7 @@ async function handleSubtask(
 
 async function handleSubtaskCreate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const parentKey = args[0] || getFlag(flags, "parent");
@@ -3997,7 +3997,7 @@ async function handleSubtaskCreate(
 
 async function handleSubtaskList(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const parentKey = args[0] || getFlag(flags, "parent");
@@ -4051,7 +4051,7 @@ Examples:
 
 async function handleComponent(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -4078,7 +4078,7 @@ async function handleComponent(
 }
 
 async function handleComponentList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -4104,7 +4104,7 @@ async function handleComponentList(
 
 async function handleComponentGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4129,7 +4129,7 @@ async function handleComponentGet(
 }
 
 async function handleComponentCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -4160,7 +4160,7 @@ async function handleComponentCreate(
 
 async function handleComponentUpdate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4194,7 +4194,7 @@ async function handleComponentUpdate(
 
 async function handleComponentDelete(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4248,7 +4248,7 @@ Examples:
 
 async function handleVersion(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -4278,7 +4278,7 @@ async function handleVersion(
 }
 
 async function handleVersionList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -4307,7 +4307,7 @@ async function handleVersionList(
 
 async function handleVersionGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4333,7 +4333,7 @@ async function handleVersionGet(
 }
 
 async function handleVersionCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const project = getFlag(flags, "project");
@@ -4370,7 +4370,7 @@ async function handleVersionCreate(
 
 async function handleVersionUpdate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4406,7 +4406,7 @@ async function handleVersionUpdate(
 
 async function handleVersionRelease(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4432,7 +4432,7 @@ async function handleVersionRelease(
 
 async function handleVersionDelete(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0] || getFlag(flags, "id");
@@ -4489,7 +4489,7 @@ Examples:
 
 async function handleField(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -4513,7 +4513,7 @@ async function handleField(
 }
 
 async function handleFieldList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const customOnly = hasFlag(flags, "custom");
@@ -4551,7 +4551,7 @@ async function handleFieldList(
 
 async function handleFieldGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const fieldId = args[0] || getFlag(flags, "id");
@@ -4590,7 +4590,7 @@ async function handleFieldGet(
 
 async function handleFieldOptions(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const fieldId = args[0] || getFlag(flags, "id");
@@ -4662,7 +4662,7 @@ async function handleFieldOptions(
 
 async function handleFieldSearch(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const query = args.join(" ") || getFlag(flags, "query");
@@ -4733,7 +4733,7 @@ Examples:
 
 async function handleTemplate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
@@ -4785,7 +4785,7 @@ async function handleTemplateList(opts: OutputOptions): Promise<void> {
 
 async function handleTemplateSave(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = args[0] || getFlag(flags, "name");
@@ -4819,7 +4819,7 @@ async function handleTemplateSave(
 
 async function handleTemplateGet(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = args[0] || getFlag(flags, "name");
@@ -4847,7 +4847,7 @@ async function handleTemplateGet(
 
 async function handleTemplateApply(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = args[0] || getFlag(flags, "name");
@@ -4896,7 +4896,7 @@ async function handleTemplateApply(
 
 async function handleTemplateDelete(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = args[0] || getFlag(flags, "name");
@@ -4916,7 +4916,7 @@ async function handleTemplateDelete(
 
 async function handleTemplateExport(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = args[0] || getFlag(flags, "name");
@@ -4944,7 +4944,7 @@ async function handleTemplateExport(
 }
 
 async function handleTemplateImport(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const filePath = getFlag(flags, "file");

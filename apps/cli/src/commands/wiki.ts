@@ -7,7 +7,7 @@ import { handleTemplate } from "./template.js";
 
 export async function handleWiki(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;

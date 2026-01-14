@@ -29,7 +29,7 @@ export class ScopeError extends Error {
  * @param flags - Command flags
  * @returns Parsed scope, or null if no scope specified
  */
-export function parseScope(flags: Record<string, string | boolean>): ParsedScope | null {
+export function parseScope(flags: Record<string, string | boolean | string[]>): ParsedScope | null {
   const pageId = getStringFlag(flags, "page-id");
   const ancestorId = getStringFlag(flags, "ancestor");
   const spaceKey = getStringFlag(flags, "space");
@@ -116,7 +116,7 @@ export function scopesEqual(a: SyncScope, b: SyncScope): boolean {
  * Helper to get string flag value.
  */
 function getStringFlag(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   name: string
 ): string | undefined {
   const value = flags[name];

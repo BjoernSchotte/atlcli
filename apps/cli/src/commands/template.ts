@@ -27,7 +27,7 @@ import * as readline from "node:readline";
 
 export async function handleTemplate(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sub = args[0];
@@ -57,7 +57,7 @@ export async function handleTemplate(
 }
 
 async function handleList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const source = getFlag(flags, "source") as "local" | "global" | "all" | undefined;
@@ -83,7 +83,7 @@ async function handleList(
 }
 
 async function handleGet(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
@@ -127,7 +127,7 @@ async function handleGet(
 }
 
 async function handleCreate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
@@ -192,7 +192,7 @@ async function handleCreate(
 }
 
 async function handleValidate(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
@@ -225,7 +225,7 @@ async function handleValidate(
 }
 
 async function handlePreview(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");
@@ -276,7 +276,7 @@ async function handlePreview(
 }
 
 async function handleDelete(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const name = getFlag(flags, "name");

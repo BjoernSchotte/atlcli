@@ -245,7 +245,7 @@ export function issueToTemplate(
   }
 
   // Custom fields (those starting with customfield_)
-  const issueFields = issue.fields as Record<string, unknown>;
+  const issueFields = issue.fields as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(issueFields)) {
     if (key.startsWith("customfield_") && value != null) {
       // Skip string values that look like rank/order values or empty objects

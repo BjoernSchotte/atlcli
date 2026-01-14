@@ -19,7 +19,7 @@ import {
   slugify,
 } from "@atlcli/core";
 
-export async function handleAuth(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+export async function handleAuth(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
 
   switch (sub) {
@@ -53,16 +53,16 @@ export async function handleAuth(args: string[], flags: Record<string, string | 
   }
 }
 
-async function handleLogin(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleLogin(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   await handleLoginWithMode(flags, opts, { interactive: true, forceTokenPrompt: false });
 }
 
-async function handleInit(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleInit(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   await handleLoginWithMode(flags, opts, { interactive: true, forceTokenPrompt: true });
 }
 
 async function handleLoginWithMode(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
   mode: { interactive: boolean; forceTokenPrompt: boolean }
 ): Promise<void> {
@@ -135,7 +135,7 @@ async function handleLoginWithMode(
   );
 }
 
-async function handleStatus(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleStatus(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);

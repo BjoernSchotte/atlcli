@@ -56,7 +56,7 @@ import {
   getAttachmentsDirName,
   AttachmentInfo,
 } from "@atlcli/confluence";
-import type { Ignore } from "ignore";
+import type { Ignore } from "@atlcli/confluence";
 
 import {
   EnhancedMeta,
@@ -94,7 +94,7 @@ interface SyncEvent {
 
 export async function handleSync(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   // Show help if requested

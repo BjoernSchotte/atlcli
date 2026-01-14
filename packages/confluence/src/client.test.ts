@@ -47,7 +47,7 @@ describe("ConfluenceClient", () => {
             { status: 200, headers: { "Content-Type": "application/json" } }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.getPage("123");
@@ -80,7 +80,7 @@ describe("ConfluenceClient", () => {
             { status: 200, headers: { "Content-Type": "application/json" } }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.getPage("123");
@@ -102,7 +102,7 @@ describe("ConfluenceClient", () => {
         return Promise.resolve(
           new Response("Rate limited", { status: 429 })
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
 
@@ -132,7 +132,7 @@ describe("ConfluenceClient", () => {
             { status: 200, headers: { "Content-Type": "application/json" } }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.getPage("123");
@@ -148,7 +148,7 @@ describe("ConfluenceClient", () => {
         return Promise.resolve(
           new Response("Not found", { status: 404 })
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
 
@@ -175,7 +175,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.getPage("123");
@@ -213,7 +213,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.getPage("123");
@@ -241,7 +241,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const results = await client.searchPages("space=TEST");
@@ -268,7 +268,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.createPage({
@@ -302,7 +302,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.updatePage({
@@ -334,7 +334,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const labels = await client.getLabels("123");
@@ -367,7 +367,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.addLabels("123", ["new-label", "another-label"]);
@@ -392,7 +392,7 @@ describe("ConfluenceClient", () => {
         return Promise.resolve(
           new Response("", { status: 204 })
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.removeLabel("123", "old-label");
@@ -409,7 +409,7 @@ describe("ConfluenceClient", () => {
         return Promise.resolve(
           new Response("", { status: 204 })
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.removeLabel("123", "label with spaces");
@@ -443,7 +443,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const pages = await client.getPagesByLabel("architecture");
@@ -468,7 +468,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.getPagesByLabel("architecture", { spaceKey: "DEV" });
@@ -506,7 +506,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const history = await client.getPageHistory("123");
@@ -528,7 +528,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.getPageHistory("123", { limit: 5 });
@@ -555,7 +555,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const page = await client.getPageAtVersion("123", 2);
@@ -625,7 +625,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       const result = await client.restorePageVersion("123", 2, "Restored to v2");
@@ -690,7 +690,7 @@ describe("ConfluenceClient", () => {
             { status: 200 }
           )
         );
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       const client = new ConfluenceClient(mockProfile);
       await client.restorePageVersion("123", 2);

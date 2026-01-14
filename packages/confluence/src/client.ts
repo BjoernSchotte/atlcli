@@ -999,7 +999,8 @@ export class ConfluenceClient {
     const { pageId, filename, data, mimeType, comment } = params;
 
     const formData = new FormData();
-    const file = new File([data], filename, {
+    const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
+    const file = new File([fileData], filename, {
       type: mimeType ?? this.detectMimeType(filename),
     });
     formData.append("file", file);
@@ -1035,7 +1036,8 @@ export class ConfluenceClient {
     const detectedMimeType = filename
       ? this.detectMimeType(filename)
       : "application/octet-stream";
-    const file = new File([data], filename ?? "file", {
+    const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
+    const file = new File([fileData], filename ?? "file", {
       type: mimeType ?? detectedMimeType,
     });
     formData.append("file", file);

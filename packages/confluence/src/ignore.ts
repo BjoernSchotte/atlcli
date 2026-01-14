@@ -3,7 +3,9 @@
  * Uses gitignore-style pattern matching.
  */
 
-import ignore, { Ignore } from "ignore";
+import ignore, { type Ignore } from "ignore";
+
+export type { Ignore };
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 

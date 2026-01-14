@@ -90,7 +90,7 @@ export interface JiraWebhookServerOptions {
  * Starts a local HTTP server to receive webhook events from Jira.
  */
 export class JiraWebhookServer {
-  private server: Server | null = null;
+  private server: Server<unknown> | null = null;
   private handlers: Set<JiraWebhookHandler> = new Set();
   private options: Required<Omit<JiraWebhookServerOptions, "secret" | "filterProjects" | "filterEvents">> &
     Pick<JiraWebhookServerOptions, "secret" | "filterProjects" | "filterEvents">;

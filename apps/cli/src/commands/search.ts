@@ -15,7 +15,7 @@ import {
 
 export async function handleSearch(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   // Show help if requested or no query provided
@@ -42,7 +42,7 @@ export async function handleSearch(
   await executeSearch(cql, flags, opts);
 }
 
-function hasFilters(flags: Record<string, string | boolean>): boolean {
+function hasFilters(flags: Record<string, string | boolean | string[]>): boolean {
   return !!(
     getFlag(flags, "space") ||
     getFlag(flags, "type") ||
@@ -58,7 +58,7 @@ function hasFilters(flags: Record<string, string | boolean>): boolean {
 /**
  * Build CQL query from text search and flags.
  */
-function buildCql(query: string, flags: Record<string, string | boolean>): string {
+function buildCql(query: string, flags: Record<string, string | boolean | string[]>): string {
   const conditions: string[] = [];
 
   // Text search (full-text)
@@ -192,7 +192,7 @@ function escapeQuotes(str: string): string {
  */
 async function executeSearch(
   cql: string,
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const config = await loadConfig();

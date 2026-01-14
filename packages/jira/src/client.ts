@@ -15,6 +15,8 @@ import type {
   JiraFilter,
   JiraFilterPermission,
   JiraAttachment,
+  JiraComponent,
+  JiraVersion,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
@@ -22,6 +24,7 @@ import type {
   UpdateFilterInput,
   BulkCreateResult,
   AdfDocument,
+  AdfNode,
 } from "./types.js";
 
 export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment } from "./types.js";
@@ -1512,8 +1515,8 @@ export class JiraClient {
         logger.api("response", {
           requestId,
           status: res.status,
-          duration: Date.now() - startTime,
-          size: buffer.length,
+          statusText: res.statusText,
+          durationMs: Date.now() - startTime,
         });
 
         return buffer;
@@ -1554,7 +1557,8 @@ export class JiraClient {
 
     // Create FormData with file
     const formData = new FormData();
-    const blob = new Blob([data]);
+    const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
+    const blob = new Blob([fileData]);
     formData.append("file", blob, filename);
 
     let lastError: Error | undefined;
@@ -1587,7 +1591,8 @@ export class JiraClient {
         logger.api("response", {
           requestId,
           status: res.status,
-          duration: Date.now() - startTime,
+          statusText: res.statusText,
+          durationMs: Date.now() - startTime,
         });
 
         return attachments;

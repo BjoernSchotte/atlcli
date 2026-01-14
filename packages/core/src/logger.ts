@@ -22,6 +22,7 @@ export type LogLevel = "off" | "error" | "warn" | "info" | "debug";
 export type LogEntryType =
   | "api.request"
   | "api.response"
+  | "api.rate-limit"
   | "cli.command"
   | "cli.result"
   | "sync.event"
@@ -45,7 +46,7 @@ export interface ApiRequestData {
   url: string;
   path: string;
   query?: Record<string, string | number | undefined>;
-  headers: Record<string, string>;
+  headers?: Record<string, string>;
   body?: unknown;
 }
 
@@ -58,6 +59,13 @@ export interface ApiResponseData {
   body?: unknown;
   durationMs: number;
   retryCount?: number;
+  error?: string;
+}
+
+/** API rate limit log data */
+export interface ApiRateLimitData {
+  requestId: string;
+  retryAfter: number;
 }
 
 /** CLI command invocation data */
@@ -93,6 +101,7 @@ export interface AuthChangeData {
   profile?: string;
   email?: string;
   baseUrl?: string;
+  details?: unknown;
 }
 
 /** Error log data */
@@ -112,6 +121,7 @@ export interface ErrorData {
 export type LogEntry =
   | (BaseLogEntry & { type: "api.request"; data: ApiRequestData })
   | (BaseLogEntry & { type: "api.response"; data: ApiResponseData })
+  | (BaseLogEntry & { type: "api.rate-limit"; data: ApiRateLimitData })
   | (BaseLogEntry & { type: "cli.command"; data: CommandData })
   | (BaseLogEntry & { type: "cli.result"; data: ResultData })
   | (BaseLogEntry & { type: "sync.event"; data: SyncEventData })
@@ -310,11 +320,12 @@ export class Logger {
   }
 
   /**
-   * Log an API request.
+   * Log an API request, response, or rate limit event.
    */
   api(type: "request", data: ApiRequestData): void;
   api(type: "response", data: ApiResponseData): void;
-  api(type: "request" | "response", data: ApiRequestData | ApiResponseData): void {
+  api(type: "rate-limited", data: ApiRateLimitData): void;
+  api(type: "request" | "response" | "rate-limited", data: ApiRequestData | ApiResponseData | ApiRateLimitData): void {
     if (type === "request") {
       const entry: LogEntry = {
         ...this.createBase("info", "api.request"),
@@ -322,11 +333,18 @@ export class Logger {
         data: redactSensitive(data as ApiRequestData),
       };
       this.write(entry);
-    } else {
+    } else if (type === "response") {
       const entry: LogEntry = {
         ...this.createBase("info", "api.response"),
         type: "api.response",
         data: data as ApiResponseData,
+      };
+      this.write(entry);
+    } else {
+      const entry: LogEntry = {
+        ...this.createBase("warn", "api.rate-limit"),
+        type: "api.rate-limit",
+        data: data as ApiRateLimitData,
       };
       this.write(entry);
     }

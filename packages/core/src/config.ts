@@ -19,7 +19,7 @@ export type Profile = {
   cloudId?: string;
 };
 
-export type LogLevel = "off" | "error" | "warn" | "info" | "debug";
+import type { LogLevel } from "./logger.js";
 
 export type LoggingConfig = {
   /** Log level: off, error, warn, info, debug */

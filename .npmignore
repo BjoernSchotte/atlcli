@@ -1,0 +1,47 @@
+# Source files - don't publish
+src/
+apps/
+packages/
+*.ts
+!*.d.ts
+tsconfig.json
+tsconfig.*.json
+
+# Development files
+.turbo/
+.github/
+.vscode/
+.idea/
+*.log
+*.tsbuildinfo
+
+# Test files
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+__tests__/
+tests/
+test/
+
+# Documentation sources
+docs/
+mkdocs.yml
+site/
+spec/
+
+# Source maps - never publish with obfuscated code
+*.map
+
+# Config files
+.gitignore
+.editorconfig
+.eslintrc*
+.prettierrc*
+turbo.json
+bun.lock
+
+# Build artifacts we don't want
+dist-obfuscated/
+
+# Keep only the dist/ folder with obfuscated output

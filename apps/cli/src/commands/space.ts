@@ -9,7 +9,7 @@ import {
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 
-export async function handleSpace(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+export async function handleSpace(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
   switch (sub) {
     case "list":
@@ -27,7 +27,7 @@ export async function handleSpace(args: string[], flags: Record<string, string |
   }
 }
 
-async function getClient(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<ConfluenceClient> {
+async function getClient(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<ConfluenceClient> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -37,14 +37,14 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
   return new ConfluenceClient(profile);
 }
 
-async function handleList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const limit = Number(getFlag(flags, "limit") ?? 25);
   const client = await getClient(flags, opts);
   const spaces = await client.listSpaces(Number.isNaN(limit) ? 25 : limit);
   output({ schemaVersion: "1", spaces }, opts);
 }
 
-async function handleGet(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleGet(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const key = getFlag(flags, "key");
   if (!key) {
     fail(opts, 1, ERROR_CODES.USAGE, "--key is required.");
@@ -54,7 +54,7 @@ async function handleGet(flags: Record<string, string | boolean>, opts: OutputOp
   output({ schemaVersion: "1", space }, opts);
 }
 
-async function handleCreate(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const key = getFlag(flags, "key");
   const name = getFlag(flags, "name");
   const description = getFlag(flags, "description");

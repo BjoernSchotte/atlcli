@@ -7,3 +7,4 @@ dist
 .bun
 site/
 .venv/
+.turbo

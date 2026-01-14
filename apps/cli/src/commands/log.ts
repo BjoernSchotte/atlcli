@@ -162,7 +162,7 @@ function formatEntry(entry: LogEntry, verbose = false): string {
 
 export async function handleLog(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const subcommand = args[0];
@@ -186,7 +186,7 @@ export async function handleLog(
 }
 
 async function handleList(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const sinceStr = getFlag(flags, "since");
@@ -197,8 +197,8 @@ async function handleList(
   const globalOnly = hasFlag(flags, "global");
   const projectOnly = hasFlag(flags, "project");
 
-  const since = sinceStr ? parseDate(sinceStr) : undefined;
-  const until = untilStr ? parseDate(untilStr) : undefined;
+  const since = sinceStr ? (parseDate(sinceStr) ?? undefined) : undefined;
+  const until = untilStr ? (parseDate(untilStr) ?? undefined) : undefined;
 
   if (sinceStr && !since) {
     fail(opts, 1, ERROR_CODES.USAGE, `Invalid date format: ${sinceStr}`);
@@ -240,7 +240,7 @@ async function handleList(
 }
 
 async function handleTail(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const follow = hasFlag(flags, "follow") || hasFlag(flags, "f");
@@ -311,7 +311,7 @@ async function handleTail(
 
 async function handleShow(
   args: string[],
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const id = args[0];
@@ -358,7 +358,7 @@ async function handleShow(
 }
 
 async function handleClear(
-  flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const beforeStr = getFlag(flags, "before");

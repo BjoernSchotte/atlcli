@@ -2,8 +2,7 @@
  * Page reordering and sorting utilities.
  */
 
-import type { ConfluenceClient } from "./client.js";
-import type { ConfluencePage } from "./types.js";
+import type { ConfluenceClient, ConfluencePage } from "./client.js";
 
 export type PageWithPosition = ConfluencePage & { position: number | null };
 

@@ -13,7 +13,7 @@ export interface OutputOptions {
 }
 
 /** Parsed flag from command line */
-export type FlagValue = string | boolean;
+export type FlagValue = string | boolean | string[];
 
 /** Context passed to command handlers and hooks */
 export interface CommandContext {

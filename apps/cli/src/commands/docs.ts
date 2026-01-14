@@ -103,8 +103,7 @@ import {
   renderTemplate,
   createBuiltins,
 } from "@atlcli/confluence";
-import type { TemplateContext } from "@atlcli/confluence";
-import type { Ignore } from "ignore";
+import type { TemplateContext, Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -131,7 +130,7 @@ interface LegacyMeta {
   version?: number;
 }
 
-export async function handleDocs(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
   switch (sub) {
     case "init":
@@ -170,7 +169,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
   }
 }
 
-async function getClient(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<ConfluenceClient> {
+async function getClient(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<ConfluenceClient> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -184,7 +183,7 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
  * Initialize a directory for Confluence sync.
  * Creates .atlcli/ with config.json, state.json, and cache/ directory.
  */
-async function handleInit(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleInit(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const dir = args[0] || ".";
 
   if (isInitialized(dir)) {
@@ -275,7 +274,7 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
   );
 }
 
-async function handlePull(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handlePull(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const outDir = args[0] || getFlag(flags, "out") || ".";
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const force = hasFlag(flags, "force");
@@ -606,7 +605,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
         // Check for deleted attachments (were in state but not in remote list)
         const existingState = state?.pages[detail.id];
-        if (existingState?.attachments && atlcliDir) {
+        if (state && existingState?.attachments && atlcliDir) {
           const remoteFilenames = new Set(attachments.map((a) => a.filename));
 
           for (const [attId, attState] of Object.entries(existingState.attachments)) {
@@ -755,7 +754,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   );
 }
 
-async function handlePush(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handlePush(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const pathArg = args[0] ?? getFlag(flags, "dir") ?? ".";
   const pageIdFlag = getFlag(flags, "page-id");
   const client = await getClient(flags, opts);
@@ -870,7 +869,7 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
  * Add a local file to Confluence tracking.
  * Creates the page in Confluence and adds frontmatter to the local file.
  */
-async function handleAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleAdd(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const filePath = args[0];
   const templateName = getFlag(flags, "template");
 
@@ -1019,7 +1018,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean>
   );
 }
 
-async function handleWatch(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleWatch(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
   const space = getFlag(flags, "space");
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
@@ -1200,7 +1199,7 @@ async function pushFile(params: {
 
       // Check for locally deleted attachments (in state but file doesn't exist)
       const pageState = state?.pages[pageId];
-      if (pageState?.attachments && atlcliDir) {
+      if (state && pageState?.attachments && atlcliDir) {
         const referencedFiles = new Set(attachmentRefs);
 
         for (const [attId, attState] of Object.entries(pageState.attachments)) {
@@ -1562,7 +1561,7 @@ function titleFromFilename(path: string): string {
 /**
  * Show sync status of all tracked files.
  */
-async function handleStatus(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleStatus(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
 
   // Check for .atlcli directory
@@ -1705,7 +1704,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
 /**
  * Resolve conflicts in a file.
  */
-async function handleResolve(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleResolve(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const filePath = args[0];
   if (!filePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "File path is required.");
@@ -1762,7 +1761,7 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
   output("Run 'atlcli wiki docs push' to push the resolved version.", opts);
 }
 
-async function handleDocsDiff(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleDocsDiff(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const filePath = args[0];
   if (!filePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "File path is required. Usage: atlcli wiki docs diff <file>");
@@ -1824,7 +1823,7 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
   output(formatDiffWithColors(diff), opts);
 }
 
-async function handleCheck(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCheck(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const targetPath = args[0] || ".";
   const strict = hasFlag(flags, "strict");
 

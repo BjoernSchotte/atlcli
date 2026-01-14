@@ -33,7 +33,7 @@ import {
 } from "@atlcli/confluence";
 import type { TemplateContext } from "@atlcli/confluence";
 
-export async function handlePage(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
   switch (sub) {
     case "get":
@@ -95,7 +95,7 @@ export async function handlePage(args: string[], flags: Record<string, string | 
   }
 }
 
-async function getClient(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<ConfluenceClient> {
+async function getClient(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<ConfluenceClient> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -105,7 +105,7 @@ async function getClient(flags: Record<string, string | boolean>, opts: OutputOp
   return new ConfluenceClient(profile);
 }
 
-async function handleGet(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleGet(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -115,7 +115,7 @@ async function handleGet(flags: Record<string, string | boolean>, opts: OutputOp
   output({ schemaVersion: "1", page }, opts);
 }
 
-async function handleList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const label = getFlag(flags, "label");
   const space = getFlag(flags, "space");
   const limit = Number(getFlag(flags, "limit") ?? 25);
@@ -146,7 +146,7 @@ async function handleList(flags: Record<string, string | boolean>, opts: OutputO
   output({ schemaVersion: "1", pages }, opts);
 }
 
-async function handleCreate(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const space = getFlag(flags, "space");
   const title = getFlag(flags, "title");
   const bodyPath = getFlag(flags, "body");
@@ -259,7 +259,7 @@ function parseVarFlags(flags: Record<string, string | boolean | string[]>): Reco
   return vars;
 }
 
-async function handleUpdate(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleUpdate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const bodyPath = getFlag(flags, "body");
   if (!id || !bodyPath) {
@@ -277,7 +277,7 @@ async function handleUpdate(flags: Record<string, string | boolean>, opts: Outpu
 
 // ============ Label Operations ============
 
-async function handleLabel(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleLabel(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const action = args[0];
   switch (action) {
     case "add":
@@ -295,7 +295,7 @@ async function handleLabel(args: string[], flags: Record<string, string | boolea
   }
 }
 
-async function handleLabelAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleLabelAdd(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const cql = getFlag(flags, "cql");
   const confirm = hasFlag(flags, "confirm");
@@ -397,7 +397,7 @@ async function handleLabelAdd(args: string[], flags: Record<string, string | boo
   }
 }
 
-async function handleLabelRemove(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleLabelRemove(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const cql = getFlag(flags, "cql");
   const confirm = hasFlag(flags, "confirm");
@@ -497,7 +497,7 @@ async function handleLabelRemove(args: string[], flags: Record<string, string | 
   }
 }
 
-async function handleLabelList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleLabelList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -514,7 +514,7 @@ async function handleLabelList(flags: Record<string, string | boolean>, opts: Ou
 
 // ============ History Operations ============
 
-async function handleHistory(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleHistory(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -551,7 +551,7 @@ async function handleHistory(flags: Record<string, string | boolean>, opts: Outp
   }
 }
 
-async function handleDiff(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleDiff(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -618,7 +618,7 @@ async function handleDiff(flags: Record<string, string | boolean>, opts: OutputO
   output(formatDiffWithColors(diff), opts);
 }
 
-async function handleRestore(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleRestore(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const versionStr = getFlag(flags, "version");
   const confirm = hasFlag(flags, "confirm");
@@ -669,7 +669,7 @@ async function handleRestore(flags: Record<string, string | boolean>, opts: Outp
 
 // ============ Comments Operations ============
 
-async function handleComments(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleComments(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const subcommand = args[0];
 
   switch (subcommand) {
@@ -696,7 +696,7 @@ async function handleComments(args: string[], flags: Record<string, string | boo
   }
 }
 
-async function handleCommentsList(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -741,7 +741,7 @@ async function handleCommentsList(flags: Record<string, string | boolean>, opts:
   }
 }
 
-async function handleCommentsAdd(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsAdd(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
@@ -780,7 +780,7 @@ async function handleCommentsAdd(args: string[], flags: Record<string, string | 
   output(`Created comment ${comment.id}`, opts);
 }
 
-async function handleCommentsReply(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsReply(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const parentId = getFlag(flags, "parent");
 
@@ -825,7 +825,7 @@ async function handleCommentsReply(args: string[], flags: Record<string, string 
   output(`Created reply ${comment.id} to comment ${parentId}`, opts);
 }
 
-async function handleCommentsAddInline(args: string[], flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsAddInline(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const selection = getFlag(flags, "selection");
 
@@ -875,7 +875,7 @@ async function handleCommentsAddInline(args: string[], flags: Record<string, str
   output(`Created inline comment ${comment.id} on "${selection}"`, opts);
 }
 
-async function handleCommentsResolve(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsResolve(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const commentId = getFlag(flags, "comment");
   const type = (getFlag(flags, "type") || "footer") as "footer" | "inline";
 
@@ -894,7 +894,7 @@ async function handleCommentsResolve(flags: Record<string, string | boolean>, op
   output(`Resolved ${type} comment ${commentId}`, opts);
 }
 
-async function handleCommentsDelete(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCommentsDelete(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const commentId = getFlag(flags, "comment");
   const type = (getFlag(flags, "type") || "footer") as "footer" | "inline";
   const confirm = hasFlag(flags, "confirm");
@@ -1186,7 +1186,7 @@ async function resolvePageId(ref: string | undefined, opts: OutputOptions): Prom
   return ref;
 }
 
-async function handleCopy(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleCopy(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const space = getFlag(flags, "space");
   const title = getFlag(flags, "title");
@@ -1212,7 +1212,7 @@ async function handleCopy(flags: Record<string, string | boolean>, opts: OutputO
   output(`Created copy "${page.title}" (id: ${page.id})`, opts);
 }
 
-async function handleChildren(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleChildren(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const limit = Number(getFlag(flags, "limit") ?? 100);
 
@@ -1241,7 +1241,7 @@ async function handleChildren(flags: Record<string, string | boolean>, opts: Out
 
 // ============ Bulk Operations ============
 
-async function handleDelete(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleDelete(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const cql = getFlag(flags, "cql");
   const confirm = hasFlag(flags, "confirm");
@@ -1343,7 +1343,7 @@ async function handleDelete(flags: Record<string, string | boolean>, opts: Outpu
   }
 }
 
-async function handleArchive(flags: Record<string, string | boolean>, opts: OutputOptions): Promise<void> {
+async function handleArchive(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   const cql = getFlag(flags, "cql");
   const confirm = hasFlag(flags, "confirm");
