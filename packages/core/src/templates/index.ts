@@ -24,3 +24,15 @@ export type { VariableValidationResult } from "./validation.js";
 
 // Engine
 export { TemplateEngine } from "./engine.js";
+
+// Storage
+export {
+  getTemplatesBaseDir,
+  GlobalTemplateStorage,
+  ProfileTemplateStorage,
+  SpaceTemplateStorage,
+} from "./storage.js";
+export type { TemplateStorage } from "./storage.js";
+
+// Resolver
+export { TemplateResolver } from "./resolver.js";
