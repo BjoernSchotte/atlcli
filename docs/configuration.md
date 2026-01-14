@@ -4,18 +4,18 @@ atlcli can be configured through config files, environment variables, and comman
 
 ## Config File
 
-Global configuration is stored at `~/.config/atlcli/config.json`:
+Global configuration is stored at `~/.atlcli/config.json`:
 
 ```json
 {
   "defaultProfile": "work",
   "logging": {
     "level": "info",
-    "file": "~/.config/atlcli/atlcli.log"
+    "file": "~/.atlcli/atlcli.log"
   },
   "plugins": {
     "enabled": ["git"],
-    "path": "~/.config/atlcli/plugins"
+    "path": "~/.atlcli/plugins"
   }
 }
 ```
@@ -60,7 +60,7 @@ Configure the plugin system:
 {
   "plugins": {
     "enabled": ["git", "custom-workflow"],
-    "path": "~/.config/atlcli/plugins"
+    "path": "~/.atlcli/plugins"
   }
 }
 ```
@@ -101,7 +101,7 @@ For Confluence sync, project-specific config is stored in `.atlcli.json` within 
 Settings are applied in this order (later overrides earlier):
 
 1. Built-in defaults
-2. Global config file (`~/.config/atlcli/config.json`)
+2. Global config file (`~/.atlcli/config.json`)
 3. Project config file (`.atlcli.json`)
 4. Environment variables
 5. Command-line flags
@@ -124,7 +124,7 @@ Settings are applied in this order (later overrides earlier):
 {
   "logging": {
     "level": "debug",
-    "file": "~/.config/atlcli/debug.log"
+    "file": "~/.atlcli/debug.log"
   },
   "defaultProfile": "dev"
 }

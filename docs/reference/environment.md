@@ -6,7 +6,7 @@ Environment variables for configuring atlcli.
 
 | Variable | Description |
 |----------|-------------|
-| `ATLCLI_BASE_URL` | Atlassian instance URL |
+| `ATLCLI_SITE` | Atlassian instance URL (e.g., `https://company.atlassian.net`) |
 | `ATLCLI_EMAIL` | Account email |
 | `ATLCLI_API_TOKEN` | API token |
 | `ATLCLI_PROFILE` | Default profile name |
@@ -23,7 +23,7 @@ Environment variables for configuring atlcli.
 ### Shell Export
 
 ```bash
-export ATLCLI_BASE_URL="https://company.atlassian.net"
+export ATLCLI_SITE="https://company.atlassian.net"
 export ATLCLI_EMAIL="you@company.com"
 export ATLCLI_API_TOKEN="your-api-token"
 ```
@@ -39,7 +39,7 @@ ATLCLI_PROFILE=work atlcli jira search --assignee me
 Create a `.env` file (don't commit to Git):
 
 ```
-ATLCLI_BASE_URL=https://company.atlassian.net
+ATLCLI_SITE=https://company.atlassian.net
 ATLCLI_EMAIL=you@company.com
 ATLCLI_API_TOKEN=your-api-token
 ```
@@ -55,7 +55,7 @@ atlcli jira search --assignee me
 
 Environment variables override config file settings but are overridden by command-line flags:
 
-1. Config file (`~/.config/atlcli/config.json`)
+1. Config file (`~/.atlcli/config.json`)
 2. Environment variables
 3. Command-line flags
 
@@ -65,7 +65,7 @@ Environment variables override config file settings but are overridden by comman
 
 ```yaml
 env:
-  ATLCLI_BASE_URL: ${{ secrets.ATLASSIAN_URL }}
+  ATLCLI_SITE: ${{ secrets.ATLASSIAN_URL }}
   ATLCLI_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
   ATLCLI_API_TOKEN: ${{ secrets.ATLASSIAN_TOKEN }}
 ```
@@ -74,7 +74,7 @@ env:
 
 ```yaml
 variables:
-  ATLCLI_BASE_URL: $ATLASSIAN_URL
+  ATLCLI_SITE: $ATLASSIAN_URL
   ATLCLI_EMAIL: $ATLASSIAN_EMAIL
   ATLCLI_API_TOKEN: $ATLASSIAN_TOKEN
 ```
@@ -82,5 +82,5 @@ variables:
 ### Docker
 
 ```bash
-docker run -e ATLCLI_BASE_URL -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli jira search
+docker run -e ATLCLI_SITE -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli jira search
 ```

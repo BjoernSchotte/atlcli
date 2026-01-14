@@ -70,9 +70,9 @@ Conflict: file.md was modified both locally and on Confluence
 ```
 
 **Solutions:**
-1. Pull latest changes: `atlcli docs pull`
+1. Pull latest changes: `atlcli wiki docs pull`
 2. Merge manually
-3. Force push: `atlcli docs push --force`
+3. Force push: `atlcli wiki docs push --force`
 
 ### Page Not Found
 
@@ -85,7 +85,7 @@ Error: Page not found (404)
 - Page ID changed
 
 **Solutions:**
-1. Re-pull directory: `atlcli docs pull`
+1. Re-pull directory: `atlcli wiki docs pull`
 2. Remove stale local file
 
 ## Jira Issues
