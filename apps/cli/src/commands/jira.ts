@@ -48,6 +48,15 @@ import {
   writeExportFile,
   parseImportFile,
   importIssues,
+  listTemplates,
+  loadTemplate,
+  saveTemplate,
+  deleteTemplate,
+  templateExists,
+  issueToTemplate,
+  templateToCreateInput,
+  getTemplateFieldNames,
+  JiraTemplate,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -119,6 +128,9 @@ export async function handleJira(
       return;
     case "field":
       await handleField(rest, flags, opts);
+      return;
+    case "template":
+      await handleTemplate(rest, flags, opts);
       return;
     default:
       output(jiraHelp(), opts);
@@ -4577,6 +4589,312 @@ Examples:
 `;
 }
 
+// ============ Template ============
+
+async function handleTemplate(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+      await handleTemplateList(opts);
+      return;
+    case "save":
+      await handleTemplateSave(rest, flags, opts);
+      return;
+    case "get":
+      await handleTemplateGet(rest, flags, opts);
+      return;
+    case "apply":
+      await handleTemplateApply(rest, flags, opts);
+      return;
+    case "delete":
+      await handleTemplateDelete(rest, flags, opts);
+      return;
+    case "export":
+      await handleTemplateExport(rest, flags, opts);
+      return;
+    case "import":
+      await handleTemplateImport(flags, opts);
+      return;
+    default:
+      output(templateHelp(), opts);
+      return;
+  }
+}
+
+async function handleTemplateList(opts: OutputOptions): Promise<void> {
+  const templates = await listTemplates();
+
+  output(
+    {
+      schemaVersion: "1",
+      templates: templates.map((t) => ({
+        name: t.name,
+        description: t.description,
+        createdAt: t.createdAt,
+        sourceIssue: t.sourceIssue,
+      })),
+      total: templates.length,
+    },
+    opts
+  );
+}
+
+async function handleTemplateSave(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0] || getFlag(flags, "name");
+  const issueKey = getFlag(flags, "issue");
+  const description = getFlag(flags, "description");
+  const force = hasFlag(flags, "force");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue <key> is required.");
+  }
+
+  const client = await getClient(flags, opts);
+  const issue = await client.getIssue(issueKey, { fields: ["*all"] });
+
+  const template = issueToTemplate(issue, name, description);
+  await saveTemplate(template, { force });
+
+  output(
+    {
+      schemaVersion: "1",
+      saved: name,
+      sourceIssue: issue.key,
+      fields: getTemplateFieldNames(template),
+    },
+    opts
+  );
+}
+
+async function handleTemplateGet(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0] || getFlag(flags, "name");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+
+  const template = await loadTemplate(name);
+
+  output(
+    {
+      schemaVersion: "1",
+      template: {
+        name: template.name,
+        description: template.description,
+        createdAt: template.createdAt,
+        sourceIssue: template.sourceIssue,
+        fields: template.fields,
+      },
+    },
+    opts
+  );
+}
+
+async function handleTemplateApply(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0] || getFlag(flags, "name");
+  const projectKey = getFlag(flags, "project");
+  const summary = getFlag(flags, "summary");
+  const description = getFlag(flags, "description");
+  const assignee = getFlag(flags, "assignee");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+  if (!projectKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required.");
+  }
+
+  const template = await loadTemplate(name);
+
+  // Summary is required - use template's or override
+  const finalSummary = summary || template.fields.summary;
+  if (!finalSummary) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--summary is required (template has no default summary).");
+  }
+
+  const createInput = templateToCreateInput(template, projectKey, {
+    summary: finalSummary,
+    description,
+    assignee,
+  });
+
+  const client = await getClient(flags, opts);
+  const created = await client.createIssue(createInput as { fields: { project: { key: string }; issuetype: { name: string }; summary: string } });
+
+  output(
+    {
+      schemaVersion: "1",
+      created: {
+        id: created.id,
+        key: created.key,
+        self: created.self,
+      },
+      template: name,
+    },
+    opts
+  );
+}
+
+async function handleTemplateDelete(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0] || getFlag(flags, "name");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+  if (!confirm) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a template.");
+  }
+
+  await deleteTemplate(name);
+
+  output({ schemaVersion: "1", deleted: name }, opts);
+}
+
+async function handleTemplateExport(
+  args: string[],
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const name = args[0] || getFlag(flags, "name");
+  const outputPath = getFlag(flags, "o") || getFlag(flags, "output");
+
+  if (!name) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
+  }
+  if (!outputPath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "-o <file> or --output <file> is required.");
+  }
+
+  const template = await loadTemplate(name);
+  const { writeFile } = await import("fs/promises");
+  await writeFile(outputPath, JSON.stringify(template, null, 2), "utf-8");
+
+  output(
+    {
+      schemaVersion: "1",
+      exported: name,
+      path: outputPath,
+    },
+    opts
+  );
+}
+
+async function handleTemplateImport(
+  flags: Record<string, string | boolean>,
+  opts: OutputOptions
+): Promise<void> {
+  const filePath = getFlag(flags, "file");
+  const force = hasFlag(flags, "force");
+
+  if (!filePath) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--file <path> is required.");
+  }
+
+  const { readFile } = await import("fs/promises");
+  const content = await readFile(filePath, "utf-8");
+
+  let template: JiraTemplate;
+  try {
+    template = JSON.parse(content) as JiraTemplate;
+  } catch {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Invalid JSON in template file.");
+  }
+
+  // Validate required fields
+  if (!template.name || typeof template.name !== "string") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Template must have a 'name' field.");
+  }
+  if (!template.fields || typeof template.fields !== "object") {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Template must have a 'fields' object.");
+  }
+  if (!template.fields.issuetype) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Template fields must include 'issuetype'.");
+  }
+  if (!template.fields.summary) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, "Template fields must include 'summary'.");
+  }
+
+  // Ensure createdAt is set
+  if (!template.createdAt) {
+    template.createdAt = new Date().toISOString();
+  }
+
+  await saveTemplate(template, { force });
+
+  output(
+    {
+      schemaVersion: "1",
+      imported: template.name,
+      fields: getTemplateFieldNames(template),
+    },
+    opts
+  );
+}
+
+function templateHelp(): string {
+  return `atlcli jira template <command>
+
+Commands:
+  list
+      List all saved templates
+
+  save <name> --issue <key> [--description <text>] [--force]
+      Save an issue as a template
+
+  get <name>
+      Show template contents
+
+  apply <name> --project <key> [--summary <text>] [--description <text>] [--assignee <id>]
+      Create a new issue from template
+
+  delete <name> --confirm
+      Delete a template
+
+  export <name> -o <file>
+      Export template to a JSON file
+
+  import --file <path> [--force]
+      Import template from a JSON file
+
+Options:
+  --profile <name>   Use a specific auth profile
+  --json             JSON output
+
+Examples:
+  jira template list
+  jira template save bug-report --issue PROJ-123 --description "Standard bug template"
+  jira template get bug-report
+  jira template apply bug-report --project PROJ --summary "Login button broken"
+  jira template export bug-report -o /tmp/bug-template.json
+  jira template import --file /tmp/bug-template.json
+  jira template delete old-template --confirm
+`;
+}
+
 function jiraHelp(): string {
   return `atlcli jira <command>
 
@@ -4602,6 +4920,7 @@ Commands:
   component   Component operations (list, get, create, update, delete)
   version     Version operations (list, get, create, update, release, delete)
   field       Field operations (list, get, options, search)
+  template    Issue templates (list, save, get, apply, delete, export, import)
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -4620,5 +4939,6 @@ Examples:
   atlcli jira webhook serve --port 3000 --projects PROJ
   atlcli jira subtask create PROJ-123 --summary "My subtask"
   atlcli jira field search "story point"
+  atlcli jira template save bug --issue PROJ-1
 `;
 }

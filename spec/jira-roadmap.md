@@ -395,7 +395,7 @@ Real-time notifications via local webhook server (like Confluence sync).
 | 15 | Components & Versions | Small | Projects | ✅ COMPLETE |
 | 16 | Custom Fields | Medium | Issues | ✅ COMPLETE |
 | 17 | Dashboard Widgets | Medium | Analytics | Not Started |
-| 18 | Issue Templates | Small | Issues | Not Started |
+| 18 | Issue Templates | Small | Issues | ✅ COMPLETE |
 | 19 | Offline Mode | Large | All | Not Started |
 
 ---
@@ -496,19 +496,24 @@ Terminal-based dashboard with sprint charts and metrics.
 
 ### 18. Issue Templates (Priority: Low)
 
-**Status**: Not Started
+**Status**: COMPLETE ✅
 
 Save and apply issue templates locally.
 
 **Features:**
-- `jira template save <name> --issue <key>` - Save issue as template
-- `jira template list` - List saved templates
-- `jira template apply <name> --project <key>` - Create issue from template
-- `jira template delete <name>` - Delete template
-- `jira template export <name> --output <file>` - Export template
-- `jira template import --file <path>` - Import template
+- `jira template list` - List saved templates ✅
+- `jira template save <name> --issue <key>` - Save issue as template ✅
+- `jira template get <name>` - Show template contents ✅
+- `jira template apply <name> --project <key>` - Create issue from template ✅
+- `jira template delete <name> --confirm` - Delete template ✅
+- `jira template export <name> --output <file>` - Export template ✅
+- `jira template import --file <path>` - Import template ✅
 
-**Storage:** `~/.atlcli/templates/jira/<name>.json`
+**Implementation Notes:**
+- Templates stored at `~/.config/atlcli/templates/jira/<name>.json`
+- Captures issue type, summary, description, priority (by ID), labels, components, fixVersions
+- Excludes system fields, user-specific fields, and problematic custom fields (rank, etc.)
+- Priority uses ID for cross-project compatibility
 
 ---
 

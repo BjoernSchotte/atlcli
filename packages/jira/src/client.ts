@@ -456,6 +456,17 @@ export class JiraClient {
   }
 
   /**
+   * Get all available priorities.
+   *
+   * GET /rest/api/3/priority
+   */
+  async getPriorities(): Promise<
+    Array<{ id: string; name: string; description?: string; iconUrl?: string }>
+  > {
+    return this.request("/priority");
+  }
+
+  /**
    * Detect the story points field by searching field names.
    * Returns the field ID (e.g., "customfield_10016") or null if not found.
    */

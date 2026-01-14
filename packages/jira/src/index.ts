@@ -5,3 +5,4 @@ export * from "./analysis.js";
 export * from "./export.js";
 export * from "./import.js";
 export * from "./webhook-server.js";
+export * from "./templates.js";
