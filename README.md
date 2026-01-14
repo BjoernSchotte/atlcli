@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
-[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://bjoernschotte.github.io/atlcli/)
+[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://atlcli.sh/)
 
 ```
          _   _      _ _
@@ -67,13 +67,13 @@ atlcli jira worklog timer stop PROJ-123
 
 ## Documentation
 
-Full documentation: **https://bjoernschotte.github.io/atlcli/**
+Full documentation: **https://atlcli.sh/**
 
-- [Getting Started](https://bjoernschotte.github.io/atlcli/getting-started/)
-- [Confluence Guide](https://bjoernschotte.github.io/atlcli/confluence/)
-- [Jira Guide](https://bjoernschotte.github.io/atlcli/jira/)
-- [CLI Reference](https://bjoernschotte.github.io/atlcli/reference/cli-commands/)
-- [Plugin Development](https://bjoernschotte.github.io/atlcli/plugins/)
+- [Getting Started](https://atlcli.sh/getting-started/)
+- [Confluence Guide](https://atlcli.sh/confluence/)
+- [Jira Guide](https://atlcli.sh/jira/)
+- [CLI Reference](https://atlcli.sh/reference/cli-commands/)
+- [Plugin Development](https://atlcli.sh/plugins/)
 
 ## Development
 
