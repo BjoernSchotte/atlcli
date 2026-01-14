@@ -10,20 +10,36 @@
 
 # atlcli
 
-A blazingly fast, extensible CLI for Atlassian products. Currently supports Confluence with bidirectional markdown sync, with Jira support planned.
+A blazingly fast, extensible CLI for Atlassian products. Supports Confluence with bidirectional markdown sync and Jira with comprehensive issue management.
 
 ## Features
 
+### Confluence
 - Markdown to Confluence storage format conversion
 - Bidirectional sync with conflict detection
 - Confluence macro support (info, note, warning, tip, expand, toc)
 - GFM support (tables, task lists, fenced code blocks)
+- **Page templates** with Handlebars-style variables and modifiers
+- **Attachment sync** with smart change detection and conflict resolution
+
+### Jira
+- Full issue lifecycle (create, update, delete, transition)
+- JQL search with convenient shortcuts
+- Board and sprint management
+- Time tracking with timer mode
+- Epic management
+- Sprint analytics (velocity, burndown, predictability)
+- Bulk operations
+- Saved filters
+- Issue templates
+- Webhook server for real-time events
+- Import/export (CSV, JSON)
+
+### General
 - Multiple auth profiles
 - Clean filename handling with YAML frontmatter
 - **Plugin system** for extending with custom commands
-- **Page templates** with Handlebars-style variables and modifiers
 - **JSONL logging** for observability and enterprise audit
-- **Attachment sync** with smart change detection and conflict resolution
 
 ## Installation
 
@@ -757,6 +773,203 @@ Each log entry is a JSON object on its own line:
 - **sessionId**: Correlates all logs from one CLI invocation
 - **requestId**: Correlates API request with its response
 
+## Jira
+
+atlcli provides comprehensive Jira support for issue management, sprint planning, and analytics.
+
+### Quick Start
+
+```bash
+# Search for your issues
+atlcli jira search --assignee me --status "In Progress"
+
+# Create an issue
+atlcli jira issue create --project PROJ --type Task --summary "My task"
+
+# Transition an issue
+atlcli jira issue transition PROJ-123 --to "Done"
+
+# Start time tracking
+atlcli jira worklog timer start PROJ-123
+# ... work on the issue ...
+atlcli jira worklog timer stop PROJ-123
+```
+
+### Jira Commands
+
+```bash
+# Projects
+atlcli jira project list                    # List all projects
+atlcli jira project get <key>               # Get project details
+atlcli jira project types --key <key>       # List issue types
+
+# Issues
+atlcli jira issue get --key <key>           # Get issue details
+atlcli jira issue create --project <key> --type <type> --summary <text>
+atlcli jira issue update --key <key> [--summary] [--description] [--priority]
+atlcli jira issue delete --key <key> --confirm
+atlcli jira issue transition <key> --to <status>
+atlcli jira issue comment <key> --body <text>
+atlcli jira issue link <source> --blocks|--relates <target>
+atlcli jira issue attach <key> --file <path>
+
+# Search (JQL)
+atlcli jira search --project <key>          # Issues in project
+atlcli jira search --assignee me            # My issues
+atlcli jira search --status "In Progress"   # By status
+atlcli jira search --jql "priority = High"  # Raw JQL
+
+# Boards & Sprints
+atlcli jira board list                      # List boards
+atlcli jira board get <id>                  # Board details
+atlcli jira sprint list --board <id>        # List sprints
+atlcli jira sprint create --board <id> --name <name>
+atlcli jira sprint start <id>               # Start sprint
+atlcli jira sprint close <id>               # Close sprint
+atlcli jira sprint add <id> --issues <keys> # Add issues to sprint
+
+# Time Tracking
+atlcli jira worklog add <key> --time 2h --comment "Work done"
+atlcli jira worklog list <key>              # List worklogs
+atlcli jira worklog timer start <key>       # Start timer
+atlcli jira worklog timer stop <key>        # Stop and log time
+atlcli jira worklog timer status            # Check running timer
+
+# Epics
+atlcli jira epic list --project <key>       # List epics
+atlcli jira epic create --project <key> --summary <text>
+atlcli jira epic issues <key>               # Issues in epic
+atlcli jira epic add <epic> --issues <keys> # Add issues to epic
+atlcli jira epic progress <key>             # Epic completion stats
+
+# Analytics
+atlcli jira analyze velocity --board <id>   # Sprint velocity
+atlcli jira analyze burndown --sprint <id>  # Burndown chart
+atlcli jira analyze scope-change --sprint <id>
+atlcli jira analyze predictability --board <id>
+
+# Bulk Operations
+atlcli jira bulk edit --jql <query> --priority High
+atlcli jira bulk transition --jql <query> --to "Done"
+atlcli jira bulk label add <label> --jql <query>
+atlcli jira bulk delete --jql <query> --confirm
+
+# Filters
+atlcli jira filter list                     # List saved filters
+atlcli jira filter create --name <name> --jql <query>
+atlcli jira filter share <id> --group <name>
+
+# Import/Export
+atlcli jira export --jql <query> -o issues.json
+atlcli jira export --jql <query> -o issues.csv --format csv
+atlcli jira import --file issues.json --project <key>
+
+# Templates
+atlcli jira template list                   # List templates
+atlcli jira template save <name> --issue <key>
+atlcli jira template apply <name> --project <key>
+atlcli jira template export <name> -o template.json
+
+# Webhooks
+atlcli jira webhook serve --port 3000       # Start webhook server
+atlcli jira webhook serve --projects PROJ   # Filter by project
+
+# Components & Versions
+atlcli jira component list --project <key>
+atlcli jira component create --project <key> --name <name>
+atlcli jira version list --project <key>
+atlcli jira version create --project <key> --name "1.0.0"
+atlcli jira version release <id>
+
+# Subtasks
+atlcli jira subtask create <parent> --summary <text>
+atlcli jira subtask list <parent>
+
+# Fields
+atlcli jira field list --custom             # List custom fields
+atlcli jira field search "story point"      # Find fields
+atlcli jira field options <id>              # Field options
+
+# Watchers
+atlcli jira watch <key>                     # Watch an issue
+atlcli jira unwatch <key>                   # Stop watching
+atlcli jira watchers <key>                  # List watchers
+
+# Current User
+atlcli jira me                              # Show current user info
+```
+
+### Issue Templates
+
+Save issues as reusable templates:
+
+```bash
+# Save an existing issue as a template
+atlcli jira template save bug-report --issue PROJ-123 --description "Standard bug template"
+
+# Create a new issue from template
+atlcli jira template apply bug-report --project PROJ --summary "Login fails on mobile"
+
+# Export/import templates for sharing
+atlcli jira template export bug-report -o bug-template.json
+atlcli jira template import --file bug-template.json
+```
+
+Templates capture: issue type, summary, description, priority, labels, components, and fix versions.
+
+### Sprint Analytics
+
+Get insights into team performance:
+
+```bash
+# Velocity over last 5 sprints
+atlcli jira analyze velocity --board 123 --sprints 5
+
+# Sprint burndown with daily progress
+atlcli jira analyze burndown --sprint 456
+
+# Scope change analysis
+atlcli jira analyze scope-change --sprint 456
+
+# Delivery predictability
+atlcli jira analyze predictability --board 123 --sprints 10
+```
+
+### Timer-Based Time Tracking
+
+Track time without manual calculation:
+
+```bash
+# Start working on an issue
+atlcli jira worklog timer start PROJ-123
+
+# Check how long you've been working
+atlcli jira worklog timer status
+
+# Stop and log the time
+atlcli jira worklog timer stop PROJ-123 --comment "Implemented feature X"
+
+# Cancel without logging
+atlcli jira worklog timer cancel
+```
+
+### Webhook Server
+
+Receive real-time Jira events:
+
+```bash
+# Start webhook server
+atlcli jira webhook serve --port 3000
+
+# Filter to specific projects
+atlcli jira webhook serve --port 3000 --projects PROJ,TEAM
+
+# With HMAC signature validation
+atlcli jira webhook serve --port 3000 --secret "your-secret"
+```
+
+Events are displayed in real-time and can be piped to other tools.
+
 ## Environment Variables
 
 ```bash
@@ -1013,8 +1226,9 @@ atlcli/
 ├── apps/
 │   └── cli/                 # @atlcli/cli - Main CLI application
 ├── packages/
-│   ├── core/                # @atlcli/core - Shared utilities
+│   ├── core/                # @atlcli/core - Shared utilities (auth, config, logging)
 │   ├── confluence/          # @atlcli/confluence - Confluence API & sync
+│   ├── jira/                # @atlcli/jira - Jira API client & features
 │   └── plugin-api/          # @atlcli/plugin-api - Plugin interfaces
 └── plugins/
     └── example-plugin/      # Example plugin for reference
