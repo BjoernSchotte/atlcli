@@ -17,6 +17,7 @@ export interface PluginCommandInfo {
 const BUILTIN_ROOT_COMMANDS = [
   "auth",
   "completion",
+  "doctor",
   "jira",
   "log",
   "plugin",
@@ -154,6 +155,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   // auth flags
   "auth init": ["--email", "--profile", "--site", "--token"],
   "auth login": ["--email", "--profile", "--site", "--token"],
+
+  // doctor flags
+  doctor: ["--fix"],
 
   // wiki docs flags
   "wiki docs init": ["--ancestor", "--page-id", "--space"],
