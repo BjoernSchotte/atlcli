@@ -23,7 +23,7 @@ Reorganize atlcli documentation for first-class developer experience using mkdoc
 | Tab labels | With material icons (Confluence, Jira) |
 | Troubleshooting | Single page (covers both products) |
 | Tone | Developer-focused (assumes technical knowledge, direct) |
-| GitHub Pages | bjoernschotte.github.io/atlcli (CNAME-ready for custom domain) |
+| GitHub Pages | atlcli.sh (custom domain) |
 | Examples | Both side-by-side (tabbed human-readable + JSON) |
 | README | Feature highlights + workflow example + badges |
 | Badges | Standard set (license, build status, docs) |
@@ -96,7 +96,7 @@ Target: ~100-150 lines with badges, feature highlights, and workflow example.
 ```markdown
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
-[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://bjoernschotte.github.io/atlcli/)
+[![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://atlcli.sh/)
 
 # atlcli
 
@@ -149,12 +149,12 @@ atlcli jira worklog timer start PROJ-123
 
 ## Documentation
 
-Full documentation: **https://bjoernschotte.github.io/atlcli/**
+Full documentation: **https://atlcli.sh/**
 
-- [Getting Started](https://bjoernschotte.github.io/atlcli/getting-started/)
-- [Confluence Guide](https://bjoernschotte.github.io/atlcli/confluence/)
-- [Jira Guide](https://bjoernschotte.github.io/atlcli/jira/)
-- [Plugin Development](https://bjoernschotte.github.io/atlcli/plugins/)
+- [Getting Started](https://atlcli.sh/getting-started/)
+- [Confluence Guide](https://atlcli.sh/confluence/)
+- [Jira Guide](https://atlcli.sh/jira/)
+- [Plugin Development](https://atlcli.sh/plugins/)
 
 ## License
 
@@ -170,7 +170,7 @@ MIT - see [LICENSE](LICENSE)
 ```yaml
 site_name: atlcli
 site_description: Extensible CLI for Atlassian products
-site_url: https://bjoernschotte.github.io/atlcli/
+site_url: https://atlcli.sh/
 repo_url: https://github.com/BjoernSchotte/atlcli
 repo_name: BjoernSchotte/atlcli
 edit_uri: edit/main/docs/
