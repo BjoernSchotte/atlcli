@@ -5,6 +5,79 @@ All notable changes to atlcli will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-14
+
+### Added
+
+- **Install Script** - Native installer for macOS/Linux
+  - `curl -fsSL https://atlcli.sh/install.sh | bash`
+  - Platform auto-detection (darwin/linux, x64/arm64)
+  - Automatic PATH configuration (zsh, bash, fish)
+  - Version pinning support
+
+### Fixed
+
+- Made repository public for release distribution
+- Added MIT LICENSE file
+
+## [0.5.0] - 2026-01-14
+
+### Added
+
+- **Jira Package** - Complete Jira CLI support (`@atlcli/jira`)
+  - **Issues**: create, get, update, delete, transition, link, comment, attach
+  - **Search**: JQL queries with convenient filters (`--assignee me`, `--status`, etc.)
+  - **Projects**: list, get, components, versions, issue types
+  - **Boards & Sprints**: list boards, manage sprints, add/remove issues
+  - **Time Tracking**: worklog CRUD, timer mode (`timer start/stop/status`), reports
+  - **Epics**: list, create, manage child issues, progress tracking
+  - **Sprint Analytics**: velocity, burndown, scope change, predictability metrics
+  - **Bulk Operations**: edit, transition, label, delete via JQL with `--dry-run`
+  - **Import/Export**: CSV/JSON export, import with comments and attachments
+  - **Saved Filters**: create, update, delete, share filters
+  - **Watchers**: watch, unwatch, list watchers
+  - **Webhooks**: local webhook server for real-time notifications
+  - **Subtasks**: create and list subtasks
+  - **Components & Versions**: full CRUD, version release command
+  - **Custom Fields**: list, search, view options
+  - **Issue Templates**: save issues as templates, apply to new issues
+
+- **Wiki Template System** - Confluence page templates
+  - 17 built-in variables with `@` prefix (@NOW, @TODAY, @USER, etc.)
+  - 50+ modifiers (date formatting, string ops, conditionals)
+  - Commands: `wiki template list/get/create/delete/render/validate`
+  - Import/export for sharing templates
+  - Integration with `wiki page create --template`
+
+- **Documentation Site** - https://atlcli.sh/
+  - MkDocs Material theme with Atlassian blue styling
+  - Comprehensive guides for Confluence and Jira
+  - Recipes for common workflows
+  - Auto-deployed via GitHub Pages
+
+- **Release Workflow** - Automated binary releases
+  - Cross-platform builds (darwin-arm64, darwin-x64, linux-arm64, linux-x64)
+  - GitHub Releases with checksums
+  - Homebrew tap auto-update
+
+### Changed
+
+- **Confluence commands now under `wiki` prefix**
+  - `docs` → `wiki docs`
+  - `page` → `wiki page`
+  - `space` → `wiki space`
+  - `search` → `wiki search`
+
+- **Sync modernization**
+  - Uses `.atlcli/` directory format (state.json, cache/)
+  - Flattens space home page children to root level
+  - Auto-create pages during initial sync with `--auto-create`
+
+### Fixed
+
+- Short flag support in argument parser (`-p` for `--profile`, etc.)
+- Bun test exit code handling in CI
+
 ## [0.4.0] - 2026-01-12
 
 ### Added
@@ -135,6 +208,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `space list`, `get`, `create` commands
 - `page list`, `get`, `create`, `update`, `delete` commands
 
+[0.5.1]: https://github.com/BjoernSchotte/atlcli/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/BjoernSchotte/atlcli/compare/v0.1.0...v0.2.0
