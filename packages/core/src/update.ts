@@ -127,11 +127,9 @@ export function detectPlatform(): string {
   let archName: string;
   switch (cpu) {
     case "x64":
-    case "amd64":
       archName = "x64";
       break;
     case "arm64":
-    case "aarch64":
       archName = "arm64";
       break;
     default:
