@@ -21,8 +21,8 @@ const RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
 const CONFIG_DIR = join(homedir(), ".atlcli");
 const UPDATE_STATE_PATH = join(CONFIG_DIR, "update-state.json");
 
-// Check interval: 24 hours
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Check interval: 6 hours
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Installation method detection.
@@ -70,14 +70,17 @@ interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
+// Version injected at build time via --define
+declare const __ATLCLI_VERSION__: string;
+
 /**
  * Get the current atlcli version.
- * This should match the version in package.json.
+ * Injected at build time from package.json.
  */
 export function getCurrentVersion(): string {
-  // TODO: This should be injected at build time
-  // For now, we'll use a hardcoded value that needs to be kept in sync
-  return "0.6.0";
+  // __ATLCLI_VERSION__ is defined at build time via bun build --define
+  // Falls back to "dev" when running directly from source without building
+  return typeof __ATLCLI_VERSION__ !== "undefined" ? __ATLCLI_VERSION__ : "dev";
 }
 
 /**

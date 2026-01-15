@@ -13,7 +13,7 @@
   },
   "scripts": {
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir ../../dist --target bun",
-    "build:minify": "bun build src/index.ts --outdir ../../dist --target bun --minify"
+    "build": "bun run build.ts",
+    "build:minify": "bun run build.ts --minify"
   }
 }
