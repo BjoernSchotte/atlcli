@@ -145,10 +145,25 @@ export async function handleJira(
   }
 }
 
+type ClientWithDefaults = {
+  client: JiraClient;
+  defaults: { project?: string; space?: string; board?: number };
+};
+
 async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
-): Promise<JiraClient> {
+): Promise<JiraClient>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults: true
+): Promise<ClientWithDefaults>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults?: boolean
+): Promise<JiraClient | ClientWithDefaults> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -161,7 +176,11 @@ async function getClient(
       { profile: profileName }
     );
   }
-  return new JiraClient(profile);
+  const client = new JiraClient(profile);
+  if (withDefaults) {
+    return { client, defaults: config.defaults ?? {} };
+  }
+  return client;
 }
 
 // ============ Me ============
@@ -357,7 +376,8 @@ async function handleIssueCreate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   const type = getFlag(flags, "type");
   const summary = getFlag(flags, "summary");
   const description = getFlag(flags, "description");
@@ -367,10 +387,8 @@ async function handleIssueCreate(
   const parent = getFlag(flags, "parent"); // For subtasks or epic children
 
   if (!project || !type || !summary) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required (or set defaults.project in config).");
   }
-
-  const client = await getClient(flags, opts);
   const issue = await client.createIssue({
     fields: {
       project: { key: project },
@@ -725,11 +743,11 @@ async function handleBoardList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const client = await getClient(flags, opts);
+  const { client, defaults } = await getClient(flags, opts, true);
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const type = getFlag(flags, "type") as "scrum" | "kanban" | "simple" | undefined;
   const name = getFlag(flags, "name");
-  const project = getFlag(flags, "project");
+  const project = getFlag(flags, "project") ?? defaults.project;
 
   const result = await client.listBoards({
     maxResults: Number.isNaN(limit) ? 50 : limit,
@@ -875,12 +893,11 @@ async function handleSprintList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const boardId = getFlag(flags, "board");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
   }
-
-  const client = await getClient(flags, opts);
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const state = getFlag(flags, "state") as "future" | "active" | "closed" | undefined;
 
@@ -910,14 +927,13 @@ async function handleSprintCreate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const boardId = getFlag(flags, "board");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   const name = getFlag(flags, "name");
 
   if (!boardId || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board and --name are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board and --name are required (or set defaults.board in config).");
   }
-
-  const client = await getClient(flags, opts);
   const startDate = getFlag(flags, "start");
   const endDate = getFlag(flags, "end");
   const goal = getFlag(flags, "goal");
@@ -1795,9 +1811,9 @@ async function handleEpicList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const client = await getClient(flags, opts);
-  const project = getFlag(flags, "project");
-  const boardId = getFlag(flags, "board");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
+  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   const includeDone = hasFlag(flags, "done");
   const limit = Number(getFlag(flags, "limit") ?? 50);
 
@@ -1891,18 +1907,17 @@ async function handleEpicCreate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   const summary = getFlag(flags, "summary");
   const description = getFlag(flags, "description");
 
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
   }
   if (!summary) {
     fail(opts, 1, ERROR_CODES.USAGE, "--summary is required.");
   }
-
-  const client = await getClient(flags, opts);
 
   const issue = await client.createIssue({
     fields: {
@@ -2161,15 +2176,14 @@ async function handleAnalyzeVelocity(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const boardId = getFlag(flags, "board");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
   }
 
   const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
   const pointsFieldOverride = getFlag(flags, "points-field");
-
-  const client = await getClient(flags, opts);
 
   // Get board info
   const board = await client.getBoard(Number(boardId));
@@ -2417,15 +2431,14 @@ async function handleAnalyzePredictability(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const boardId = getFlag(flags, "board");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const boardId = getFlag(flags, "board") ?? (defaults.board ? String(defaults.board) : undefined);
   if (!boardId) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--board is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--board is required (or set defaults.board in config).");
   }
 
   const sprintCount = Number(getFlag(flags, "sprints") ?? 5);
   const pointsFieldOverride = getFlag(flags, "points-field");
-
-  const client = await getClient(flags, opts);
 
   // Get board info
   const board = await client.getBoard(Number(boardId));
@@ -3217,9 +3230,10 @@ async function handleFilterShare(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const id = args[0] || getFlag(flags, "id");
   const shareType = getFlag(flags, "type") as "global" | "project" | "group" | undefined;
-  const project = getFlag(flags, "project");
+  const project = getFlag(flags, "project") ?? defaults.project;
   const group = getFlag(flags, "group");
 
   if (!id) {
@@ -3230,13 +3244,11 @@ async function handleFilterShare(
   }
 
   if (shareType === "project" && !project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required when type is 'project'.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required when type is 'project' (or set defaults.project in config).");
   }
   if (shareType === "group" && !group) {
     fail(opts, 1, ERROR_CODES.USAGE, "--group is required when type is 'group'.");
   }
-
-  const client = await getClient(flags, opts);
 
   // If project key is provided, we need to look up the project ID
   let projectId: string | undefined;
@@ -3336,13 +3348,15 @@ async function handleSearch(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+
   // JQL can be passed as args or --jql flag
   let jql = args.join(" ") || getFlag(flags, "jql");
 
   // Build JQL from convenience flags if no raw JQL
   if (!jql) {
     const parts: string[] = [];
-    const project = getFlag(flags, "project");
+    const project = getFlag(flags, "project") ?? defaults.project;
     const assignee = getFlag(flags, "assignee");
     const status = getFlag(flags, "status");
     const type = getFlag(flags, "type");
@@ -3368,7 +3382,6 @@ async function handleSearch(
   }
 
   const limit = Number(getFlag(flags, "limit") ?? 25);
-  const client = await getClient(flags, opts);
 
   const result = await client.search(jql, {
     maxResults: Number.isNaN(limit) ? 25 : limit,
@@ -3390,10 +3403,11 @@ async function handleMy(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const parts: string[] = ["assignee = currentUser()"];
 
-  // Optional filters
-  const project = getFlag(flags, "project");
+  // Optional filters (use defaults if available)
+  const project = getFlag(flags, "project") ?? defaults.project;
   const status = getFlag(flags, "status");
   const type = getFlag(flags, "type");
   const all = hasFlag(flags, "all");
@@ -3410,8 +3424,6 @@ async function handleMy(
   // Order by updated
   const jql = parts.join(" AND ") + " ORDER BY updated DESC";
   const limit = Number(getFlag(flags, "limit") ?? 25);
-
-  const client = await getClient(flags, opts);
   const result = await client.search(jql, {
     maxResults: Number.isNaN(limit) ? 25 : limit,
   });
@@ -3564,8 +3576,9 @@ async function handleImport(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const filePath = getFlag(flags, "file");
-  const project = getFlag(flags, "project");
+  const project = getFlag(flags, "project") ?? defaults.project;
   const dryRun = hasFlag(flags, "dry-run");
   const skipAttachments = hasFlag(flags, "skip-attachments");
 
@@ -3599,8 +3612,6 @@ async function handleImport(
       process.stderr.write(`Importing ${issues.length} issues into project ${project}...\n`);
     }
   }
-
-  const client = await getClient(flags, opts);
 
   const result = await importIssues(
     client,
@@ -4197,12 +4208,11 @@ async function handleComponentList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
   }
-
-  const client = await getClient(flags, opts);
   const components = await client.getProjectComponents(project);
 
   output({
@@ -4248,16 +4258,15 @@ async function handleComponentCreate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   const name = getFlag(flags, "name");
   const description = getFlag(flags, "description");
   const lead = getFlag(flags, "lead");
 
   if (!project || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set defaults.project in config).");
   }
-
-  const client = await getClient(flags, opts);
   const component = await client.createComponent({
     project,
     name,
@@ -4397,12 +4406,11 @@ async function handleVersionList(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   if (!project) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project is required (or set defaults.project in config).");
   }
-
-  const client = await getClient(flags, opts);
   const versions = await client.getProjectVersions(project);
 
   output({
@@ -4452,17 +4460,16 @@ async function handleVersionCreate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const project = getFlag(flags, "project");
+  const { client, defaults } = await getClient(flags, opts, true);
+  const project = getFlag(flags, "project") ?? defaults.project;
   const name = getFlag(flags, "name");
   const description = getFlag(flags, "description");
   const startDate = getFlag(flags, "start-date");
   const releaseDate = getFlag(flags, "release-date");
 
   if (!project || !name) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project and --name are required (or set defaults.project in config).");
   }
-
-  const client = await getClient(flags, opts);
 
   // Need project ID for version creation
   const projectData = await client.getProject(project);
@@ -4966,8 +4973,9 @@ async function handleTemplateApply(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const name = args[0] || getFlag(flags, "name");
-  const projectKey = getFlag(flags, "project");
+  const projectKey = getFlag(flags, "project") ?? defaults.project;
   const summary = getFlag(flags, "summary");
   const description = getFlag(flags, "description");
   const assignee = getFlag(flags, "assignee");
@@ -4976,7 +4984,7 @@ async function handleTemplateApply(
     fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
   if (!projectKey) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required (or set defaults.project in config).");
   }
 
   const template = await loadTemplate(name);
@@ -4993,7 +5001,6 @@ async function handleTemplateApply(
     assignee,
   });
 
-  const client = await getClient(flags, opts);
   const created = await client.createIssue(createInput as { fields: { project: { key: string }; issuetype: { name: string }; summary: string } });
 
   output(

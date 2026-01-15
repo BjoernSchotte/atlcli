@@ -100,14 +100,36 @@ export async function handlePage(args: string[], flags: Record<string, string | 
   }
 }
 
-async function getClient(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<ConfluenceClient> {
+type ClientWithDefaults = {
+  client: ConfluenceClient;
+  defaults: { project?: string; space?: string; board?: number };
+};
+
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<ConfluenceClient>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults: true
+): Promise<ClientWithDefaults>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults?: boolean
+): Promise<ConfluenceClient | ClientWithDefaults> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`." , { profile: profileName });
   }
-  return new ConfluenceClient(profile);
+  const client = new ConfluenceClient(profile);
+  if (withDefaults) {
+    return { client, defaults: config.defaults ?? {} };
+  }
+  return client;
 }
 
 async function handleGet(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -121,10 +143,10 @@ async function handleGet(flags: Record<string, string | boolean | string[]>, opt
 }
 
 async function handleList(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const label = getFlag(flags, "label");
-  const space = getFlag(flags, "space");
+  const space = getFlag(flags, "space") ?? defaults.space;
   const limit = Number(getFlag(flags, "limit") ?? 25);
-  const client = await getClient(flags, opts);
 
   // If --label is provided, use getPagesByLabel
   if (label) {
@@ -152,7 +174,9 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
 }
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const space = getFlag(flags, "space");
+  const config = await loadConfig();
+  const defaultSpace = config.defaults?.space;
+  const space = getFlag(flags, "space") ?? defaultSpace;
   const title = getFlag(flags, "title");
   const bodyPath = getFlag(flags, "body");
   const templateName = getFlag(flags, "template");
@@ -246,7 +270,7 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
 
   // Body mode (original behavior)
   if (!space || !title || !bodyPath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set defaults.space in config).");
   }
   const client = await getClient(flags, opts);
   const markdown = await readTextFile(bodyPath);
@@ -1206,16 +1230,15 @@ async function resolvePageId(ref: string | undefined, opts: OutputOptions): Prom
 }
 
 async function handleCopy(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const id = getFlag(flags, "id");
-  const space = getFlag(flags, "space");
+  const space = getFlag(flags, "space") ?? defaults.space;
   const title = getFlag(flags, "title");
   const parentId = getFlag(flags, "parent");
 
   if (!id) {
     fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
   }
-
-  const client = await getClient(flags, opts);
   const page = await client.copyPage({
     sourceId: id,
     targetSpaceKey: space,

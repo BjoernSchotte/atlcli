@@ -1,4 +1,5 @@
 import {
+  Config,
   ERROR_CODES,
   OutputOptions,
   fail,
@@ -13,6 +14,38 @@ import {
   ConfluenceSearchResult,
 } from "@atlcli/confluence";
 
+type ClientWithDefaults = {
+  client: ConfluenceClient;
+  defaults: { project?: string; space?: string; board?: number };
+};
+
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<ConfluenceClient>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults: true
+): Promise<ClientWithDefaults>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults?: boolean
+): Promise<ConfluenceClient | ClientWithDefaults> {
+  const config = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+  const client = new ConfluenceClient(profile);
+  if (withDefaults) {
+    return { client, defaults: config.defaults ?? {} };
+  }
+  return client;
+}
+
 export async function handleSearch(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -24,27 +57,32 @@ export async function handleSearch(
     return;
   }
 
+  // Load config to get defaults
+  const config = await loadConfig();
+  const defaultSpace = config.defaults?.space;
+
   // Check for raw CQL mode
   const rawCql = getFlag(flags, "cql");
   if (rawCql) {
-    await executeSearch(rawCql, flags, opts);
+    await executeSearch(rawCql, flags, opts, config);
     return;
   }
 
   // Build CQL from query and filters
   const query = args.join(" ").trim();
-  if (!query && !hasFilters(flags)) {
+  if (!query && !hasFilters(flags, defaultSpace)) {
     output(searchHelp(), opts);
     return;
   }
 
-  const cql = buildCql(query, flags);
-  await executeSearch(cql, flags, opts);
+  const cql = buildCql(query, flags, defaultSpace);
+  await executeSearch(cql, flags, opts, config);
 }
 
-function hasFilters(flags: Record<string, string | boolean | string[]>): boolean {
+function hasFilters(flags: Record<string, string | boolean | string[]>, defaultSpace?: string): boolean {
   return !!(
     getFlag(flags, "space") ||
+    defaultSpace ||
     getFlag(flags, "type") ||
     getFlag(flags, "label") ||
     getFlag(flags, "title") ||
@@ -58,7 +96,7 @@ function hasFilters(flags: Record<string, string | boolean | string[]>): boolean
 /**
  * Build CQL query from text search and flags.
  */
-function buildCql(query: string, flags: Record<string, string | boolean | string[]>): string {
+function buildCql(query: string, flags: Record<string, string | boolean | string[]>, defaultSpace?: string): string {
   const conditions: string[] = [];
 
   // Text search (full-text)
@@ -66,8 +104,8 @@ function buildCql(query: string, flags: Record<string, string | boolean | string
     conditions.push(`text ~ "${escapeQuotes(query)}"`);
   }
 
-  // Filter: space
-  const space = getFlag(flags, "space");
+  // Filter: space (use default if not specified)
+  const space = getFlag(flags, "space") ?? defaultSpace;
   if (space) {
     // Support comma-separated spaces
     const spaces = space.split(",").map((s) => s.trim());
@@ -193,11 +231,12 @@ function escapeQuotes(str: string): string {
 async function executeSearch(
   cql: string,
   flags: Record<string, string | boolean | string[]>,
-  opts: OutputOptions
+  opts: OutputOptions,
+  config?: Config
 ): Promise<void> {
-  const config = await loadConfig();
+  const cfg = config ?? await loadConfig();
   const profileName = getFlag(flags, "profile");
-  const profile = getActiveProfile(config, profileName);
+  const profile = getActiveProfile(cfg, profileName);
 
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", {
@@ -395,10 +434,12 @@ export async function handleRecent(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+
   const parts: string[] = ["type = page"];
 
-  // Optional filters
-  const space = getFlag(flags, "space");
+  // Optional filters (use defaults)
+  const space = getFlag(flags, "space") ?? defaults.space;
   const label = getFlag(flags, "label");
   const days = getFlag(flags, "days") ?? "7";
 
@@ -420,15 +461,6 @@ export async function handleRecent(
 
   const cql = parts.join(" AND ") + " ORDER BY lastModified DESC";
   const limit = Number(getFlag(flags, "limit") ?? 25);
-
-  const config = await loadConfig();
-  const profile = getActiveProfile(config, getFlag(flags, "profile"));
-  if (!profile) {
-    fail(opts, 1, ERROR_CODES.AUTH, "No active profile. Run: atlcli auth login");
-    return;
-  }
-
-  const client = new ConfluenceClient(profile);
   const result = await client.search(cql, { limit: Number.isNaN(limit) ? 25 : limit });
 
   if (opts.json) {
@@ -451,6 +483,8 @@ export async function handleMy(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
+
   const parts: string[] = ["type = page"];
 
   // Creator vs contributor
@@ -460,8 +494,8 @@ export async function handleMy(
     parts.push("creator = currentUser()");
   }
 
-  // Optional filters
-  const space = getFlag(flags, "space");
+  // Optional filters (use defaults)
+  const space = getFlag(flags, "space") ?? defaults.space;
   const label = getFlag(flags, "label");
 
   if (space) {
@@ -479,15 +513,6 @@ export async function handleMy(
 
   const cql = parts.join(" AND ") + " ORDER BY lastModified DESC";
   const limit = Number(getFlag(flags, "limit") ?? 25);
-
-  const config = await loadConfig();
-  const profile = getActiveProfile(config, getFlag(flags, "profile"));
-  if (!profile) {
-    fail(opts, 1, ERROR_CODES.AUTH, "No active profile. Run: atlcli auth login");
-    return;
-  }
-
-  const client = new ConfluenceClient(profile);
   const result = await client.search(cql, { limit: Number.isNaN(limit) ? 25 : limit });
 
   if (opts.json) {

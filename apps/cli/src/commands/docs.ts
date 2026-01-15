@@ -171,14 +171,36 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
   }
 }
 
-async function getClient(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<ConfluenceClient> {
+type ClientWithDefaults = {
+  client: ConfluenceClient;
+  defaults: { project?: string; space?: string; board?: number };
+};
+
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<ConfluenceClient>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults: true
+): Promise<ClientWithDefaults>;
+async function getClient(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  withDefaults?: boolean
+): Promise<ConfluenceClient | ClientWithDefaults> {
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
-  return new ConfluenceClient(profile);
+  const client = new ConfluenceClient(profile);
+  if (withDefaults) {
+    return { client, defaults: config.defaults ?? {} };
+  }
+  return client;
 }
 
 /**
@@ -203,7 +225,7 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
   // Parse scope from flags
   const parsedScope = parseScope(flags);
   let scope: ConfigScope;
-  let space: string | undefined = getFlag(flags, "space");
+  let space: string | undefined = getFlag(flags, "space") ?? appConfig.defaults?.space;
 
   if (parsedScope) {
     // Convert SyncScope to ConfigScope
@@ -220,10 +242,10 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
         break;
     }
   } else if (space) {
-    // Only --space provided
+    // Only --space provided (or default)
     scope = { type: "space" };
   } else {
-    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required.");
+    fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or set defaults.space in config).");
   }
 
   // Auto-detect space from page/ancestor if not provided
@@ -810,13 +832,16 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     });
   }
 
+  const globalConfig = await loadConfig();
   let space = getFlag(flags, "space");
   let state: AtlcliState | undefined;
 
   if (atlcliDir) {
     const dirConfig = await readConfig(atlcliDir);
-    space = space || dirConfig.space;
+    space = space || dirConfig.space || globalConfig.defaults?.space;
     state = await readState(atlcliDir);
+  } else {
+    space = space || globalConfig.defaults?.space;
   }
 
   // Run validation if --validate flag is set
@@ -903,6 +928,7 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
 
   const dirConfig = await readConfig(atlcliDir);
   const state = await readState(atlcliDir);
+  const globalConfig = await loadConfig();
   const client = await getClient(flags, opts);
 
   // Read file content
@@ -926,8 +952,8 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
   // Get parent page ID if specified
   const parentId = getFlag(flags, "parent");
 
-  // Get space (from flag or config)
-  const space = getFlag(flags, "space") || dirConfig.space;
+  // Get space (from flag, dir config, or global defaults)
+  const space = getFlag(flags, "space") || dirConfig.space || globalConfig.defaults?.space;
 
   // Apply template if specified
   let markdownContent = rawMarkdownContent;
@@ -935,7 +961,6 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
 
   if (templateName) {
     // Create template resolver
-    const globalConfig = await loadConfig();
     const activeProfile = getActiveProfile(globalConfig);
 
     const global = new GlobalTemplateStorage();
@@ -1045,10 +1070,10 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
 }
 
 async function handleWatch(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  const { client, defaults } = await getClient(flags, opts, true);
   const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
-  const space = getFlag(flags, "space");
+  const space = getFlag(flags, "space") ?? defaults.space;
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
-  const client = await getClient(flags, opts);
 
   if (!opts.json) {
     output(`Watching ${dir} for Markdown changes...`, opts);

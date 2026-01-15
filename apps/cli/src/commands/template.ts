@@ -117,7 +117,7 @@ async function getTemplateContext(flags: Flags): Promise<TemplateContext> {
   const config = await loadConfig();
   const activeProfile = getActiveProfile(config);
   const profileName = getFlag(flags, "profile") ?? activeProfile?.name;
-  const spaceKey = getFlag(flags, "space");
+  const spaceKey = getFlag(flags, "space") ?? config.defaults?.space;
 
   // Detect docs folder for space context
   const docsDir = await findAtlcliDir(process.cwd());
@@ -139,7 +139,7 @@ function getTargetStorage(
 ): { storage: TemplateStorage; level: string } {
   const level = getFlag(flags, "level");
 
-  if (level === "global" || (!getFlag(flags, "profile") && !getFlag(flags, "space"))) {
+  if (level === "global" || (!getFlag(flags, "profile") && !ctx.spaceKey)) {
     return { storage: ctx.global, level: "global" };
   }
 
@@ -150,7 +150,7 @@ function getTargetStorage(
     return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
   }
 
-  if (getFlag(flags, "space")) {
+  if (ctx.spaceKey) {
     if (!ctx.space) {
       throw new Error("Space storage not available");
     }
