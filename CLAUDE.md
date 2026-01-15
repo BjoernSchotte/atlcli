@@ -82,6 +82,24 @@ For errors use `fail(opts, exitCode, ERROR_CODES.*, message, details)`.
 - **Commit regularly** after completing logical units of work
 - **Update docs/** after features are complete and tests pass - documentation is first-class
 
+### Releasing
+
+Use the release script in `scripts/release.ts` to create releases:
+
+```bash
+bun scripts/release.ts patch    # 0.7.0 → 0.7.1
+bun scripts/release.ts minor    # 0.7.0 → 0.8.0
+bun scripts/release.ts major    # 0.7.0 → 1.0.0
+```
+
+**Always do a dry-run first** when creating a new release to check for errors or uncommitted/unpushed changes:
+
+```bash
+bun scripts/release.ts minor --dry-run
+```
+
+The script handles: version bump, changelog generation, git commit/tag, push, wait for GitHub release, and Homebrew tap update.
+
 ## Conventions
 
 ### Commit Messages
