@@ -6,7 +6,7 @@
  *   bun scripts/release.ts patch          # 0.6.0 → 0.6.1
  *   bun scripts/release.ts minor          # 0.6.0 → 0.7.0
  *   bun scripts/release.ts major          # 0.6.0 → 1.0.0
- *   bun scripts/release.ts --dry-run      # Preview without pushing
+ *   bun scripts/release.ts --dry-run      # Preview what would happen (no changes)
  *   bun scripts/release.ts --skip-tests   # Skip test step
  */
 
@@ -61,7 +61,7 @@ Types:
   major          Bump major version (0.6.0 → 1.0.0)
 
 Options:
-  --dry-run      Create commits/tags locally but don't push
+  --dry-run      Preview what would happen (no changes made)
   --skip-tests   Skip running tests before release
   --help, -h     Show this help message
 
@@ -72,7 +72,7 @@ Examples:
 `);
 }
 
-async function validateEnvironment(): Promise<void> {
+async function validateEnvironment(dryRun: boolean): Promise<void> {
   console.log("Validating environment...");
 
   // Check git status is clean
@@ -219,24 +219,26 @@ async function updateHomebrew(newVersion: string): Promise<void> {
   console.log("  Homebrew update workflow triggered");
 }
 
-function showDryRunSummary(newVersion: string): void {
+function showDryRunPlan(currentVersion: string, newVersion: string, skipTests: boolean): void {
   console.log(`
-DRY RUN COMPLETE - Changes made locally but not pushed.
+DRY RUN - No changes will be made.
 
-To complete the release:
-  git push origin main
-  git push origin v${newVersion}
+Release plan: ${currentVersion} → ${newVersion}
 
-After the GitHub release workflow completes (~2-3 minutes), update Homebrew:
-  gh workflow dispatch --repo ${HOMEBREW_TAP} \\
-    -f formula=atlcli \\
-    -f tag=v${newVersion} \\
-    -f repository=${REPO_OWNER}/${REPO_NAME} \\
-    update-formula.yml
+Steps that would be executed:
+  1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun test
+  2. Update version: package.json (version: "${newVersion}")
+  3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
+  4. Commit: git commit -m "chore(release): v${newVersion}"
+  5. Tag: git tag v${newVersion}
+  6. Push: git push origin main && git push origin v${newVersion}
+  7. Wait for GitHub Actions to build release artifacts
+  8. Update Homebrew: gh workflow dispatch --repo ${HOMEBREW_TAP} \\
+       -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME} \\
+       update-formula.yml
 
-To rollback:
-  git reset --hard HEAD~1
-  git tag -d v${newVersion}
+To execute this release, run without --dry-run:
+  bun scripts/release.ts ${newVersion.endsWith(".0.0") ? "major" : newVersion.endsWith(".0") ? "minor" : "patch"}
 `);
 }
 
@@ -262,12 +264,19 @@ async function main(): Promise<void> {
 
   try {
     // 1. Validate environment
-    await validateEnvironment();
+    await validateEnvironment(args.dryRun);
 
     // 2. Calculate new version
     const currentVersion = await getCurrentVersion();
     newVersion = bumpVersion(currentVersion, args.type);
-    console.log(`\nReleasing: ${currentVersion} -> ${newVersion}\n`);
+
+    // DRY RUN: Just show the plan and exit
+    if (args.dryRun) {
+      showDryRunPlan(currentVersion, newVersion, args.skipTests);
+      return;
+    }
+
+    console.log(`\nReleasing: ${currentVersion} → ${newVersion}\n`);
 
     // 3. Run tests (unless skipped)
     if (!args.skipTests) {
@@ -288,11 +297,6 @@ async function main(): Promise<void> {
     // 7. Create tag
     await createTag(newVersion);
 
-    if (args.dryRun) {
-      showDryRunSummary(newVersion);
-      return;
-    }
-
     // 8. Push to origin
     await pushRelease();
 
@@ -306,8 +310,8 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error(`\nError: ${error instanceof Error ? error.message : error}`);
 
-    // Offer rollback if we've made local changes
-    if (newVersion) {
+    // Offer rollback if we've made local changes (only in non-dry-run mode)
+    if (newVersion && !args.dryRun) {
       console.log("\nAttempting rollback...");
       await rollback(newVersion);
     }
