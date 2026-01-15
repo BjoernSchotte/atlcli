@@ -779,9 +779,9 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     }
     // spaces param requires ri:space elements for each space key
     if (spacesMatch && spacesMatch[1]) {
-      const spaceKeys = spacesMatch[1].split(",").map(s => s.trim()).filter(s => s);
+      const spaceKeys = spacesMatch[1].split(",").map((s: string) => s.trim()).filter((s: string) => s);
       if (spaceKeys.length > 0) {
-        const spaceElements = spaceKeys.map(key => `<ri:space ri:space-key="${escapeHtml(key)}"/>`).join("");
+        const spaceElements = spaceKeys.map((key: string) => `<ri:space ri:space-key="${escapeHtml(key)}"/>`).join("");
         html += `\n<ac:parameter ac:name="spaces">${spaceElements}</ac:parameter>`;
       }
     }
