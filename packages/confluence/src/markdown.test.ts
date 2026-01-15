@@ -1333,3 +1333,107 @@ More content
     });
   });
 });
+
+describe("Phase 2 macros - Priority 2 (Labels)", () => {
+  describe("labels-list macro", () => {
+    test("converts labels macro to storage format", () => {
+      const md = `:::labels
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="labels-list"');
+    });
+
+    test("converts storage labels-list to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="labels-list"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::labels");
+    });
+
+    test("round-trips labels macro", () => {
+      const original = `:::labels
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::labels");
+    });
+  });
+
+  describe("popular-labels macro", () => {
+    test("converts popular-labels to storage format", () => {
+      const md = `:::popular-labels count=20 spaces="DEV"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="popular-labels"');
+      expect(html).toContain('ac:name="count">20</ac:parameter>');
+      expect(html).toContain('ac:name="spaces">DEV</ac:parameter>');
+    });
+
+    test("converts popular-labels with style parameter", () => {
+      const md = `:::popular-labels count=10 style=heatmap
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="style">heatmap</ac:parameter>');
+    });
+
+    test("converts storage popular-labels to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="popular-labels">
+<ac:parameter ac:name="count">15</ac:parameter>
+<ac:parameter ac:name="spaces">TEAM</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::popular-labels");
+      expect(md).toContain("count=15");
+      expect(md).toContain('spaces="TEAM"');
+    });
+
+    test("round-trips popular-labels", () => {
+      const original = `:::popular-labels count=25 spaces="DEV"
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::popular-labels");
+      expect(roundtrip).toContain("count=25");
+      expect(roundtrip).toContain('spaces="DEV"');
+    });
+
+    test("handles self-closing popular-labels macro", () => {
+      const storage = `<ac:structured-macro ac:name="popular-labels"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::popular-labels");
+    });
+  });
+
+  describe("related-labels macro", () => {
+    test("converts related-labels to storage format", () => {
+      const md = `:::related-labels labels="api,documentation"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="related-labels"');
+      expect(html).toContain('ac:name="labels">api,documentation</ac:parameter>');
+    });
+
+    test("converts storage related-labels to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="related-labels">
+<ac:parameter ac:name="labels">frontend,react</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::related-labels");
+      expect(md).toContain('labels="frontend,react"');
+    });
+
+    test("round-trips related-labels", () => {
+      const original = `:::related-labels labels="test,demo"
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::related-labels");
+      expect(roundtrip).toContain('labels="test,demo"');
+    });
+
+    test("handles self-closing related-labels macro", () => {
+      const storage = `<ac:structured-macro ac:name="related-labels"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::related-labels");
+    });
+  });
+});

@@ -713,6 +713,54 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle labels-list macro: :::labels
+  processed = processed.replace(LABELS_LIST_MACRO_REGEX, () => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:structured-macro ac:name="labels-list"/>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle popular-labels macro: :::popular-labels count=20 spaces="DEV"
+  processed = processed.replace(POPULAR_LABELS_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const countMatch = params?.match(/count=(\d+)/i);
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const styleMatch = params?.match(/style=(list|heatmap)/i);
+
+    let html = `<ac:structured-macro ac:name="popular-labels">`;
+    if (countMatch) {
+      html += `\n<ac:parameter ac:name="count">${escapeHtml(countMatch[1])}</ac:parameter>`;
+    }
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (styleMatch) {
+      html += `\n<ac:parameter ac:name="style">${escapeHtml(styleMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle related-labels macro: :::related-labels labels="api,docs"
+  processed = processed.replace(RELATED_LABELS_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const labelsMatch = params?.match(/labels="([^"]*)"/i);
+
+    let html = `<ac:structured-macro ac:name="related-labels">`;
+    if (labelsMatch) {
+      html += `\n<ac:parameter ac:name="labels">${escapeHtml(labelsMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -937,7 +985,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels"];
 
 /**
  * Valid status colors in Confluence
@@ -1137,6 +1185,24 @@ const PAGE_PROPERTIES_REPORT_REGEX = /^:::page-properties-report(?:[ \t]+(.+))?\
  * No body content. Confluence calls this "tasks-report-macro" internally.
  */
 const TASK_REPORT_MACRO_REGEX = /^:::task-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for labels-list macro: :::labels
+ * No parameters. Shows labels on current page.
+ */
+const LABELS_LIST_MACRO_REGEX = /^:::labels\n?:::\s*$/gm;
+
+/**
+ * Regex for popular-labels macro: :::popular-labels count=20 spaces="DEV"
+ * Shows a tag cloud of popular labels.
+ */
+const POPULAR_LABELS_MACRO_REGEX = /^:::popular-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for related-labels macro: :::related-labels labels="api,docs"
+ * Shows content related by labels.
+ */
+const RELATED_LABELS_MACRO_REGEX = /^:::related-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -1797,6 +1863,51 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     () => `<div data-macro="task-report" data-spaces="" data-labels="" data-days="" data-assignee="" data-status="">*[task-report]*</div>`
   );
 
+  // Convert labels-list macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="labels-list"[^>]*\/?>([\s\S]*?<\/ac:structured-macro>)?/gi,
+    () => `<div data-macro="labels">*[labels]*</div>`
+  );
+
+  // Convert popular-labels macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="popular-labels"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const countMatch = inner.match(/<ac:parameter\s+ac:name="count"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const styleMatch = inner.match(/<ac:parameter\s+ac:name="style"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const count = countMatch ? countMatch[1] : "";
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const style = styleMatch ? styleMatch[1] : "";
+
+      return `<div data-macro="popular-labels" data-count="${escapeHtml(count)}" data-spaces="${escapeHtml(spaces)}" data-style="${escapeHtml(style)}">*[popular-labels]*</div>`;
+    }
+  );
+
+  // Convert popular-labels macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="popular-labels"[^>]*\/>/gi,
+    () => `<div data-macro="popular-labels" data-count="" data-spaces="" data-style="">*[popular-labels]*</div>`
+  );
+
+  // Convert related-labels macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="related-labels"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const labelsMatch = inner.match(/<ac:parameter\s+ac:name="labels"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const labels = labelsMatch ? labelsMatch[1] : "";
+
+      return `<div data-macro="related-labels" data-labels="${escapeHtml(labels)}">*[related-labels]*</div>`;
+    }
+  );
+
+  // Convert related-labels macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="related-labels"[^>]*\/>/gi,
+    () => `<div data-macro="related-labels" data-labels="">*[related-labels]*</div>`
+  );
+
   // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
   // This allows turndown's taskList rule to convert them to markdown task syntax
   storage = storage.replace(
@@ -2410,6 +2521,35 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
         if (status) params += ` status=${status}`;
 
         return `\n\n:::task-report${params}\n:::\n\n`;
+      }
+
+      // Labels list macro (no params)
+      if (macroType === "labels") {
+        return `\n\n:::labels\n:::\n\n`;
+      }
+
+      // Popular labels macro
+      if (macroType === "popular-labels") {
+        const count = (node as any).getAttribute?.("data-count") || "";
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const style = (node as any).getAttribute?.("data-style") || "";
+
+        let params = "";
+        if (count) params += ` count=${count}`;
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (style) params += ` style=${style}`;
+
+        return `\n\n:::popular-labels${params}\n:::\n\n`;
+      }
+
+      // Related labels macro
+      if (macroType === "related-labels") {
+        const labels = (node as any).getAttribute?.("data-labels") || "";
+
+        let params = "";
+        if (labels) params += ` labels="${labels}"`;
+
+        return `\n\n:::related-labels${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
