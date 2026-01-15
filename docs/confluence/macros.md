@@ -137,6 +137,103 @@ console.log(greeting);
 
 JavaScript, TypeScript, Python, Java, Go, Rust, C, C++, C#, Ruby, PHP, SQL, Bash, YAML, JSON, XML, HTML, CSS, and many more.
 
+### Noformat Block
+
+Preformatted text without syntax highlighting:
+
+````markdown
+```noformat
+This text preserves whitespace
+  and formatting exactly
+    as written.
+```
+````
+
+## Text Formatting
+
+### Colored Text
+
+Apply color to inline text:
+
+```markdown
+This is {color:red}red text{color} and {color:#0066cc}blue text{color}.
+```
+
+Supports CSS color names and hex codes.
+
+### Background Color
+
+Highlight text with background color:
+
+```markdown
+This is {bg:yellow}highlighted{bg} text.
+{bg:#e6f3ff}Custom background{bg}
+```
+
+### Subscript and Superscript
+
+```markdown
+H~2~O (subscript)
+E=mc^2^ (superscript)
+```
+
+## Task Lists
+
+Native checkbox support:
+
+```markdown
+- [ ] Unchecked task
+- [x] Completed task
+- [ ] Another pending task
+```
+
+Converts to Confluence's native task list format with proper checkboxes.
+
+## Date Macro
+
+Insert formatted dates:
+
+```markdown
+{date:2025-01-15}
+```
+
+Rendered as a Confluence date picker showing the specified date.
+
+## Emoticons
+
+Use emoji shortcodes:
+
+```markdown
+:smile: :thumbsup: :warning: :star:
+```
+
+### Supported Emoticons
+
+| Shortcode | Aliases |
+|-----------|---------|
+| `:smile:` | `:)` |
+| `:sad:` | `:(` |
+| `:thumbs-up:` | `:+1:`, `:thumbsup:` |
+| `:thumbs-down:` | `:-1:`, `:thumbsdown:` |
+| `:star:` | |
+| `:warning:` | `:warn:` |
+| `:info:` | `:information:` |
+| `:tick:` | `:check:`, `:checkmark:` |
+| `:cross:` | `:x:`, `:error:` |
+| `:light-on:` | `:bulb:`, `:idea:` |
+| `:heart:` | `:love:` |
+| `:question:` | `:?:` |
+
+## User Mentions
+
+Mention users by account ID:
+
+```markdown
+@[John Doe](557058:abcd-efgh-ijkl)
+```
+
+The account ID can be found in Confluence user profiles or via the API.
+
 ## Status Macro
 
 Inline status labels:
@@ -363,6 +460,171 @@ Embed external content:
 
 ```markdown
 ::: widget url="https://example.com/embed" width=100%
+:::
+```
+
+## TOC Zone
+
+Create a table of contents for a specific section:
+
+```markdown
+::: toc-zone minLevel=2 maxLevel=4
+## Section 1
+Content...
+## Section 2
+Content...
+:::
+```
+
+Only headings within the zone are included in the TOC.
+
+## Page Properties
+
+### Details Summary (Page Properties Panel)
+
+Display page metadata in a panel:
+
+```markdown
+::: details
+| Property | Value |
+|----------|-------|
+| Status | Active |
+| Owner | John |
+:::
+```
+
+### Details (Hidden Metadata)
+
+Store metadata without displaying:
+
+```markdown
+::: detailssummary hidden=true
+| Key | Value |
+|-----|-------|
+| internal-id | 12345 |
+:::
+```
+
+## Tasks Report
+
+Display a summary of tasks across pages:
+
+```markdown
+:::tasks-report-macro spaces="TEAM" pageSize=20
+:::
+```
+
+Shows tasks from specified spaces with pagination.
+
+## Labels Macros
+
+### Labels List
+
+Display labels for the current page:
+
+```markdown
+:::labels-list
+:::
+```
+
+### Popular Labels
+
+Show frequently used labels in a space:
+
+```markdown
+:::popular-labels spaces="TEAM" count=20
+:::
+```
+
+### Related Labels
+
+Show labels related to current page's labels:
+
+```markdown
+:::related-labels labels="api,docs"
+:::
+```
+
+## Blog Posts
+
+Display recent blog posts:
+
+```markdown
+:::blog-posts max=10 spaces="DEV,OPS" labels="announcement"
+:::
+```
+
+Options:
+
+| Option | Description |
+|--------|-------------|
+| `max` | Maximum posts to show |
+| `spaces` | Comma-separated space keys |
+| `labels` | Filter by labels |
+| `author` | Filter by author account ID |
+| `time` | Time period filter |
+| `sort` | Sort order |
+
+## Spaces List
+
+List available spaces:
+
+```markdown
+:::spaces-list
+:::
+```
+
+## Page Index
+
+Display alphabetical index of pages:
+
+```markdown
+:::page-index
+:::
+```
+
+## Contributors
+
+Show page contributors:
+
+```markdown
+:::contributors mode=list showCount=true
+:::
+```
+
+Options:
+
+| Option | Description |
+|--------|-------------|
+| `mode` | `list` or `inline` |
+| `showCount` | Show contribution count |
+| `limit` | Max contributors to show |
+| `order` | `update` or `name` |
+| `showLastTime` | Show last contribution time |
+
+## Change History
+
+Display page change history:
+
+```markdown
+:::change-history
+:::
+```
+
+Options:
+
+| Option | Description |
+|--------|-------------|
+| `limit` | Max entries to show |
+| `showProfilePic` | Show contributor avatars |
+| `showSpace` | Show space name |
+
+## Lorem Ipsum
+
+Generate placeholder text:
+
+```markdown
+:::loremipsum paragraphs=3
 :::
 ```
 
