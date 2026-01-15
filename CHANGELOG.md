@@ -2,6 +2,37 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.9.0] - 2026-01-15
+
+### Bug Fixes
+
+- **confluence:** Add type declarations and fix implicit any types([99051e8](https://github.com/bjoernschotte/atlcli/commit/99051e85d70fca1691967ae8eeefc9b47593c942))
+
+### Documentation
+
+- Simplify and condense CLAUDE.md([9923bfa](https://github.com/bjoernschotte/atlcli/commit/9923bfa6bfce17e5d3e284aa7983cf1bd78d723c))
+- **confluence:** Add documentation for new macro features([8176a5a](https://github.com/bjoernschotte/atlcli/commit/8176a5a09af8411cba89268d9742aa317cc18a38))
+- **jira:** Add hierarchical template storage documentation([2ddc4ab](https://github.com/bjoernschotte/atlcli/commit/2ddc4ab5529c4fea5d9af70a0ce1c180bd01c4ea))
+
+### Features
+
+- **confluence:** Add native task list support([f5e5551](https://github.com/bjoernschotte/atlcli/commit/f5e55514fc1a2a7e8caa64d5a699b08c55a9608e))
+- **confluence:** Add date macro support([9afdb9a](https://github.com/bjoernschotte/atlcli/commit/9afdb9ac2e7f081cfad41b39d73fa4e7539fe3fc))
+- **confluence:** Add emoticon support with aliases([195b46c](https://github.com/bjoernschotte/atlcli/commit/195b46c11b84c57c92011fe5e39c756050de68b8))
+- **confluence:** Add user mention support with @[Name](id) syntax([873812f](https://github.com/bjoernschotte/atlcli/commit/873812f5a268fec8a29c25b6dbb7786d4f1f0e3c))
+- **confluence:** Add colored text support with {color:name}text{color} syntax([dc35151](https://github.com/bjoernschotte/atlcli/commit/dc35151dfa1ff73c3ba7f068ca87ada37f20f17e))
+- **confluence:** Add background color support with {bg:color}text{bg} syntax([c2c6562](https://github.com/bjoernschotte/atlcli/commit/c2c656224f2fefcc16a9217b86612b69cfba6305))
+- **confluence:** Add subscript/superscript support with ~sub~ and ^sup^ syntax([19249b3](https://github.com/bjoernschotte/atlcli/commit/19249b3e79fdede21faaae9bc26e1896a6eefa23))
+- **confluence:** Add noformat macro support with ```noformat syntax([c992104](https://github.com/bjoernschotte/atlcli/commit/c9921049d7c17cdcb0118e477efd3bcbe5971024))
+- **confluence:** Add Phase 2 Priority 1 macros (toc-zone, page-properties, task-report)([6c8da5c](https://github.com/bjoernschotte/atlcli/commit/6c8da5ccb03796d45f3b161cf7f7b237bcaca73c))
+- **confluence:** Add Phase 2 Priority 2 macros (labels-list, popular-labels, related-labels)([408987e](https://github.com/bjoernschotte/atlcli/commit/408987e850aeadefcac6247607123b83edf488c3))
+- **confluence:** Add Phase 2 Priority 3 macros (blog-posts, spaces-list, page-index)([a42b4c2](https://github.com/bjoernschotte/atlcli/commit/a42b4c2f9c47b9b80b3f96e2a33000dac1f29fdb))
+- **confluence:** Add Phase 2 Priority 4 macros (contributors, change-history)([ec7a9fa](https://github.com/bjoernschotte/atlcli/commit/ec7a9fa622569a2ee52d12bc418506ff5417a105))
+- **confluence:** Add Phase 2 Priority 5 macro (loremipsum)([362ccbf](https://github.com/bjoernschotte/atlcli/commit/362ccbfa259df3a59ea96b3ca53146752b913a65))
+
+### Miscellaneous
+
+- Update bun.lock([e9c032a](https://github.com/bjoernschotte/atlcli/commit/e9c032a39f1bccf39e4c26b8ae03cff7921da6a4))
 ## [0.8.0] - 2026-01-15
 
 ### Documentation
