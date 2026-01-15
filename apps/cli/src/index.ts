@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const [command, ...rest] = parsed._;
   const json = hasFlag(parsed.flags, "json");
   const noLog = hasFlag(parsed.flags, "no-log");
+  const helpRequested = hasFlag(parsed.flags, "help") || hasFlag(parsed.flags, "h");
   const opts = { json };
   const startTime = Date.now();
 
@@ -64,8 +65,15 @@ async function main(): Promise<void> {
   await initializePlugins();
   const registry = getPluginRegistry();
 
-  if (!command) {
+  // Global help: show root help if --help/-h with no command
+  if (!command || (helpRequested && !command)) {
     output(rootHelp(registry), opts);
+    return;
+  }
+
+  // Command-level help: show command-specific help
+  if (helpRequested) {
+    showCommandHelp(command, rest, registry, opts);
     return;
   }
 
@@ -177,6 +185,63 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * Show help for a specific command.
+ * Calls the command handler with empty args to trigger its default help output.
+ */
+function showCommandHelp(
+  command: string,
+  subArgs: string[],
+  registry: import("./plugins/loader.js").PluginRegistry,
+  opts: { json: boolean }
+): void {
+  // For subcommand help (e.g., "atlcli auth login --help"), pass through
+  // to the command handler with the help flag - Phase 2 will add proper handling
+  // For now, just show the top-level command help
+  const helpFlags = { help: true };
+
+  switch (command) {
+    case "auth":
+      handleAuth([], helpFlags, opts);
+      break;
+    case "completion":
+      handleCompletion([], helpFlags, opts);
+      break;
+    case "config":
+      handleConfig([], helpFlags, opts);
+      break;
+    case "doctor":
+      handleDoctor([], helpFlags, opts);
+      break;
+    case "wiki":
+      handleWiki([], helpFlags, opts);
+      break;
+    case "jira":
+      handleJira([], helpFlags, opts);
+      break;
+    case "log":
+      handleLog([], helpFlags, opts);
+      break;
+    case "plugin":
+      handlePlugin([], helpFlags, opts);
+      break;
+    case "update":
+      handleUpdate([], helpFlags, opts);
+      break;
+    case "version":
+      output({ version: VERSION }, opts);
+      break;
+    default:
+      // Check for plugin commands
+      const pluginCmd = registry.getCommand(command);
+      if (pluginCmd) {
+        output(pluginCommandHelp(pluginCmd), opts);
+      } else {
+        output(rootHelp(registry), opts);
+      }
+  }
+}
+
 async function executePluginCommand(
   cmd: import("@atlcli/plugin-api").CommandDefinition,
   args: string[],
@@ -253,9 +318,10 @@ Commands:
   version     Show version
 ${pluginSection}
 Global options:
-  --json      JSON output
-  --no-log    Disable logging for this command
-  --help      Show help
+  --profile <name>   Use specific auth profile
+  --json             JSON output
+  --no-log           Disable logging for this command
+  --help, -h         Show help
 `;
 }
 
