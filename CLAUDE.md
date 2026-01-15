@@ -84,6 +84,8 @@ For errors use `fail(opts, exitCode, ERROR_CODES.*, message, details)`.
 
 ### Releasing
 
+**Never create releases automatically** - only create a release when the human explicitly asks for it.
+
 Use the release script in `scripts/release.ts` to create releases:
 
 ```bash
