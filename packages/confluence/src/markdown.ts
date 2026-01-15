@@ -61,7 +61,7 @@ const md = new MarkdownIt({
   breaks: false,
   typographer: true,
 })
-  .use(taskLists, { label: true, labelAfter: true });
+  .use(taskLists, { label: true, labelAfter: false });
 
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
@@ -690,6 +690,10 @@ ${md.render(trimmedContent).trim()}
   // Render markdown
   let result = md.render(processed);
 
+  // Convert task lists to Confluence ac:task-list format
+  // markdown-it-task-lists produces: <ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" disabled> text</li></ul>
+  result = convertTaskListsToConfluence(result);
+
   // Replace placeholders with actual macro HTML
   for (const { placeholder, html } of macros) {
     // The placeholder might be wrapped in <p> tags
@@ -698,6 +702,52 @@ ${md.render(trimmedContent).trim()}
   }
 
   return result;
+}
+
+/**
+ * Convert HTML task lists (from markdown-it-task-lists) to Confluence ac:task-list format.
+ * Input: <ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" disabled> text</li></ul>
+ * Output: <ac:task-list><ac:task><ac:task-id>1</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>text</ac:task-body></ac:task></ac:task-list>
+ */
+function convertTaskListsToConfluence(html: string): string {
+  // Match task list ULs - they have class="contains-task-list"
+  return html.replace(
+    /<ul class="contains-task-list">([\s\S]*?)<\/ul>/gi,
+    (_, listContent) => {
+      let taskId = 1;
+      const tasks: string[] = [];
+
+      // Match each task list item - checkbox attributes can be in any order
+      // With labelAfter: false, markdown-it-task-lists produces:
+      // <li class="task-list-item"><label><input class="..." checked="" disabled="" type="checkbox"> content</label></li>
+      const itemRegex = /<li class="task-list-item">\s*<label>\s*<input([^>]*)>\s*([\s\S]*?)<\/label>\s*<\/li>/gi;
+      let itemMatch;
+      while ((itemMatch = itemRegex.exec(listContent)) !== null) {
+        const attrs = itemMatch[1];
+        // Check if this is actually a checkbox (should always be, but verify)
+        if (!/type="checkbox"/i.test(attrs)) continue;
+        const isChecked = /\bchecked\b/i.test(attrs);
+        const status = isChecked ? "complete" : "incomplete";
+        // Get the task body content (after the checkbox, before </label>)
+        const body = itemMatch[2].trim();
+
+        tasks.push(
+          `<ac:task>` +
+          `<ac:task-id>${taskId++}</ac:task-id>` +
+          `<ac:task-status>${status}</ac:task-status>` +
+          `<ac:task-body>${body}</ac:task-body>` +
+          `</ac:task>`
+        );
+      }
+
+      if (tasks.length === 0) {
+        // No tasks found, return original
+        return `<ul class="contains-task-list">${listContent}</ul>`;
+      }
+
+      return `<ac:task-list>${tasks.join("")}</ac:task-list>`;
+    }
+  );
 }
 
 /**
@@ -1297,6 +1347,31 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="pagetree"[^>]*\/>/gi,
     () => `<div data-macro="pagetree" data-root="" data-startdepth="" data-expandcollapseall="false" data-searchbox="false">*[pagetree]*</div>`
+  );
+
+  // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
+  // This allows turndown's taskList rule to convert them to markdown task syntax
+  storage = storage.replace(
+    /<ac:task-list>([\s\S]*?)<\/ac:task-list>/gi,
+    (_, inner) => {
+      // Extract all tasks from the task list
+      const taskItems: string[] = [];
+      const taskRegex = /<ac:task>([\s\S]*?)<\/ac:task>/gi;
+      let taskMatch;
+      while ((taskMatch = taskRegex.exec(inner)) !== null) {
+        const taskContent = taskMatch[1];
+        // Extract status (complete/incomplete)
+        const statusMatch = taskContent.match(/<ac:task-status>([^<]*)<\/ac:task-status>/i);
+        const isComplete = statusMatch && statusMatch[1].toLowerCase() === "complete";
+        // Extract task body - may contain HTML like spans
+        const bodyMatch = taskContent.match(/<ac:task-body>([\s\S]*?)<\/ac:task-body>/i);
+        const body = bodyMatch ? bodyMatch[1] : "";
+        // Create checkbox input
+        const checkbox = isComplete ? '<input type="checkbox" checked>' : '<input type="checkbox">';
+        taskItems.push(`<li>${checkbox} ${body}</li>`);
+      }
+      return `<ul class="task-list">${taskItems.join("")}</ul>`;
+    }
   );
 
   // Convert ac:image with ri:attachment (image attachments)

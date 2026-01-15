@@ -25,10 +25,15 @@ describe("markdownToStorage", () => {
     expect(html).toContain("language-typescript");
   });
 
-  test("converts task lists", () => {
+  test("converts task lists to Confluence format", () => {
     const md = "- [ ] Unchecked\n- [x] Checked";
     const html = markdownToStorage(md);
-    expect(html).toContain("checkbox");
+    expect(html).toContain("<ac:task-list>");
+    expect(html).toContain("<ac:task>");
+    expect(html).toContain("<ac:task-status>incomplete</ac:task-status>");
+    expect(html).toContain("<ac:task-status>complete</ac:task-status>");
+    expect(html).toContain("Unchecked");
+    expect(html).toContain("Checked");
   });
 
   test("converts tables", () => {
@@ -60,6 +65,28 @@ describe("storageToMarkdown", () => {
     const html = '<input type="checkbox" checked> Done';
     const md = storageToMarkdown(html);
     expect(md).toContain("[x]");
+  });
+
+  test("converts Confluence native tasks to markdown", () => {
+    const storage = `
+      <ac:task-list>
+        <ac:task>
+          <ac:task-id>1</ac:task-id>
+          <ac:task-status>incomplete</ac:task-status>
+          <ac:task-body>Buy milk</ac:task-body>
+        </ac:task>
+        <ac:task>
+          <ac:task-id>2</ac:task-id>
+          <ac:task-status>complete</ac:task-status>
+          <ac:task-body>Write code</ac:task-body>
+        </ac:task>
+      </ac:task-list>
+    `;
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("[ ]");
+    expect(md).toContain("[x]");
+    expect(md).toContain("Buy milk");
+    expect(md).toContain("Write code");
   });
 
   test("ends with single newline", () => {
