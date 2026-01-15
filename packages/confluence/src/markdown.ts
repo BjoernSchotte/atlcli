@@ -222,6 +222,16 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle background color: {bg:yellow}text{bg}
+  processed = processed.replace(BG_COLOR_REGEX, (_, color, text) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const normalizedColor = color.trim();
+    const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
+    const html = `<span style="background-color: ${escapeHtml(normalizedColor)};">${innerHtml}</span>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -898,6 +908,12 @@ const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
 const COLOR_REGEX = /\{color:([^}]+)\}([\s\S]*?)\{color\}/gi;
 
 /**
+ * Regex for background color: {bg:yellow}text{bg} or {bg:#FFFF00}text{bg}
+ * Supports CSS color names and hex codes
+ */
+const BG_COLOR_REGEX = /\{bg:([^}]+)\}([\s\S]*?)\{bg\}/gi;
+
+/**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
  */
 const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
@@ -1190,6 +1206,14 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     /<span\s+style="color:\s*([^;"]+);?"[^>]*>([\s\S]*?)<\/span>/gi,
     (_, color, content) => {
       return `<span data-color="${escapeHtml(color.trim())}">${content}</span>`;
+    }
+  );
+
+  // Convert background-color spans to placeholder for turndown
+  storage = storage.replace(
+    /<span\s+style="background-color:\s*([^;"]+);?"[^>]*>([\s\S]*?)<\/span>/gi,
+    (_, color, content) => {
+      return `<span data-bg-color="${escapeHtml(color.trim())}">${content}</span>`;
     }
   );
 
@@ -1723,6 +1747,18 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const color = (node as any).getAttribute?.("data-color") || "";
       if (!color || !content.trim()) return content;
       return `{color:${color}}${content}{color}`;
+    },
+  });
+
+  // Handle background color
+  service.addRule("bgColor", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).hasAttribute?.("data-bg-color");
+    },
+    replacement: (content, node) => {
+      const color = (node as any).getAttribute?.("data-bg-color") || "";
+      if (!color || !content.trim()) return content;
+      return `{bg:${color}}${content}{bg}`;
     },
   });
 

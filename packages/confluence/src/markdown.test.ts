@@ -91,6 +91,18 @@ describe("markdownToStorage", () => {
     expect(html).toContain("<strong>");
   });
 
+  test("converts background color to span with style", () => {
+    const md = "This is {bg:yellow}highlighted{bg} text";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<span style="background-color: yellow;">highlighted</span>');
+  });
+
+  test("converts hex background color", () => {
+    const md = "Use {bg:#FFFF00}bright yellow{bg} here";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<span style="background-color: #FFFF00;">bright yellow</span>');
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -190,6 +202,18 @@ describe("storageToMarkdown", () => {
     const storage = '<p>Text <span style="color: rgb(255, 0, 0);">in red</span></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("{color:rgb(255, 0, 0)}in red{color}");
+  });
+
+  test("converts background color span to markdown syntax", () => {
+    const storage = '<p>This is <span style="background-color: yellow;">highlighted</span> text</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{bg:yellow}highlighted{bg}");
+  });
+
+  test("converts rgb background color from span", () => {
+    const storage = '<p>Text <span style="background-color: rgb(255, 255, 0);">yellow bg</span></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{bg:rgb(255, 255, 0)}yellow bg{bg}");
   });
 
   test("ends with single newline", () => {
