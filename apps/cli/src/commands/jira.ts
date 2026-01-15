@@ -63,6 +63,15 @@ import {
   getTemplateFieldNames,
   JiraTemplate,
   CreateRemoteLinkInput,
+  // Hierarchical template storage
+  JiraTemplateFilter,
+  JiraTemplateSummary,
+  JiraTemplateStorage,
+  GlobalJiraTemplateStorage,
+  ProfileJiraTemplateStorage,
+  ProjectJiraTemplateStorage,
+  JiraTemplateResolver,
+  ensureMigrated,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -5138,6 +5147,86 @@ Examples:
 
 // ============ Template ============
 
+interface JiraTemplateContext {
+  resolver: JiraTemplateResolver;
+  global: GlobalJiraTemplateStorage;
+  profile?: ProfileJiraTemplateStorage;
+  project?: ProjectJiraTemplateStorage;
+  profileName?: string;
+  projectKey?: string;
+}
+
+async function getJiraTemplateContext(
+  flags: Record<string, string | boolean | string[]>
+): Promise<JiraTemplateContext> {
+  // Check for migration
+  const migrationResult = await ensureMigrated();
+  if (migrationResult && migrationResult.migrated.length > 0) {
+    console.error(`Migrated ${migrationResult.migrated.length} template(s) to new storage location.`);
+  }
+
+  const config = await loadConfig();
+  const activeProfile = getActiveProfile(config, getFlag(flags, "profile"));
+  const profileName = getFlag(flags, "profile") ?? activeProfile?.name;
+  const defaults = resolveDefaults(config, activeProfile);
+  const projectKey = getFlag(flags, "project") ?? defaults.project;
+
+  const global = new GlobalJiraTemplateStorage();
+  const profile = profileName ? new ProfileJiraTemplateStorage(profileName) : undefined;
+  const project = projectKey ? new ProjectJiraTemplateStorage(projectKey) : undefined;
+
+  const resolver = new JiraTemplateResolver(global, profile, project);
+
+  return { resolver, global, profile, project, profileName, projectKey };
+}
+
+function getTargetJiraStorage(
+  ctx: JiraTemplateContext,
+  flags: Record<string, string | boolean | string[]>
+): { storage: JiraTemplateStorage; level: string } {
+  const level = getFlag(flags, "level");
+
+  if (level === "global") {
+    return { storage: ctx.global, level: "global" };
+  }
+
+  if (level === "profile" || getFlag(flags, "profile")) {
+    if (!ctx.profile) {
+      throw new Error("Profile not specified. Use --profile <name>.");
+    }
+    return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+  }
+
+  if (level === "project" || getFlag(flags, "project")) {
+    if (!ctx.project) {
+      throw new Error("Project not specified. Use --project <key>.");
+    }
+    return { storage: ctx.project, level: `project:${ctx.projectKey}` };
+  }
+
+  // Default to global
+  return { storage: ctx.global, level: "global" };
+}
+
+function formatJiraLevel(t: JiraTemplateSummary): string {
+  if (t.level === "global") return "[global]";
+  if (t.level === "profile") return `[profile:${t.profile}]`;
+  if (t.level === "project") return `[project:${t.project}]`;
+  return `[${t.level}]`;
+}
+
+function formatFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "string") return value.length > 40 ? value.slice(0, 37) + "..." : value;
+  if (typeof value === "object") {
+    if (Array.isArray(value)) return `[${value.length} items]`;
+    if ("name" in (value as Record<string, unknown>)) return (value as { name: string }).name;
+    if ("value" in (value as Record<string, unknown>)) return String((value as { value: unknown }).value);
+    return JSON.stringify(value).slice(0, 40);
+  }
+  return String(value);
+}
+
 async function handleTemplate(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -5146,7 +5235,7 @@ async function handleTemplate(
   const [sub, ...rest] = args;
   switch (sub) {
     case "list":
-      await handleTemplateList(opts);
+      await handleTemplateList(flags, opts);
       return;
     case "save":
       await handleTemplateSave(rest, flags, opts);
@@ -5172,22 +5261,100 @@ async function handleTemplate(
   }
 }
 
-async function handleTemplateList(opts: OutputOptions): Promise<void> {
-  const templates = await listTemplates();
+async function handleTemplateList(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const ctx = await getJiraTemplateContext(flags);
 
-  output(
-    {
-      schemaVersion: "1",
-      templates: templates.map((t) => ({
-        name: t.name,
-        description: t.description,
-        createdAt: t.createdAt,
-        sourceIssue: t.sourceIssue,
-      })),
-      total: templates.length,
-    },
-    opts
-  );
+  // Build filter from flags
+  const filter: JiraTemplateFilter = {};
+  const level = getFlag(flags, "level");
+  if (level === "global" || level === "profile" || level === "project") {
+    filter.level = level;
+  }
+  const profileFilter = getFlag(flags, "profile");
+  if (profileFilter) {
+    filter.level = "profile";
+    filter.profile = profileFilter;
+  }
+  const projectFilter = getFlag(flags, "project");
+  if (projectFilter) {
+    filter.level = "project";
+    filter.project = projectFilter;
+  }
+  const search = getFlag(flags, "search");
+  if (search) {
+    filter.search = search;
+  }
+  const issueType = getFlag(flags, "type");
+  if (issueType) {
+    filter.issueType = issueType;
+  }
+  const tag = getFlag(flags, "tag");
+  if (tag) {
+    filter.tags = [tag];
+  }
+  if (hasFlag(flags, "all")) {
+    filter.includeOverridden = true;
+  }
+
+  const templates = await ctx.resolver.listAll(filter);
+
+  // JSON output
+  if (opts.json) {
+    output({ schemaVersion: "1", templates, total: templates.length }, opts);
+    return;
+  }
+
+  // Table output
+  if (templates.length === 0) {
+    output("No templates found.", opts);
+    return;
+  }
+
+  // Header
+  output("NAME                     TYPE      FIELDS  LEVEL            DESCRIPTION", opts);
+  output("─".repeat(80), opts);
+
+  for (const t of templates) {
+    const levelStr = formatJiraLevel(t);
+    const override = t.overrides ? " *" : "";
+    const desc = t.description ? t.description.slice(0, 30) : "";
+    output(
+      `${t.name.padEnd(24)} ${t.issueType.padEnd(9)} ${String(t.fieldCount).padEnd(7)} ${levelStr.padEnd(16)} ${desc}${override}`,
+      opts
+    );
+  }
+
+  if (templates.some(t => t.overrides)) {
+    output("\n* = overrides template at lower level", opts);
+  }
+
+  // Expand mode: show full details
+  if (hasFlag(flags, "expand")) {
+    output("\n--- Expanded Details ---", opts);
+    for (const summary of templates) {
+      const template = await ctx.resolver.resolve(summary.name);
+      if (template) {
+        output(`\n[${template.name}]`, opts);
+        output(`  Issue Type: ${summary.issueType}`, opts);
+        output(`  Level:      ${formatJiraLevel(summary)}`, opts);
+        output(`  Source:     ${template.sourceIssue ?? "manual"}`, opts);
+        output(`  Created:    ${template.createdAt}`, opts);
+        if (template.tags?.length) {
+          output(`  Tags:       ${template.tags.join(", ")}`, opts);
+        }
+        output(`  Fields:`, opts);
+        for (const [key, value] of Object.entries(template.fields)) {
+          if (value != null) {
+            const valueStr = formatFieldValue(value);
+            output(`    ${key}: ${valueStr}`, opts);
+          }
+        }
+      }
+    }
+  }
 }
 
 async function handleTemplateSave(
@@ -5198,6 +5365,7 @@ async function handleTemplateSave(
   const name = args[0] || getFlag(flags, "name");
   const issueKey = getFlag(flags, "issue");
   const description = getFlag(flags, "description");
+  const tagsStr = getFlag(flags, "tags");
   const force = hasFlag(flags, "force");
 
   if (!name) {
@@ -5207,16 +5375,31 @@ async function handleTemplateSave(
     fail(opts, 1, ERROR_CODES.USAGE, "--issue <key> is required.");
   }
 
+  const ctx = await getJiraTemplateContext(flags);
+  const { storage, level } = getTargetJiraStorage(ctx, flags);
+
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(issueKey, { fields: ["*all"] });
 
   const template = issueToTemplate(issue, name, description);
-  await saveTemplate(template, { force });
+
+  // Add tags if provided
+  if (tagsStr) {
+    template.tags = tagsStr.split(",").map(t => t.trim()).filter(t => t.length > 0);
+  }
+
+  // Check if exists
+  if (!force && (await storage.exists(name))) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' already exists at ${level}. Use --force to overwrite.`);
+  }
+
+  await storage.save(template);
 
   output(
     {
       schemaVersion: "1",
       saved: name,
+      level,
       sourceIssue: issue.key,
       fields: getTemplateFieldNames(template),
     },
@@ -5235,7 +5418,12 @@ async function handleTemplateGet(
     fail(opts, 1, ERROR_CODES.USAGE, "Template name is required.");
   }
 
-  const template = await loadTemplate(name);
+  const ctx = await getJiraTemplateContext(flags);
+  const template = await ctx.resolver.resolve(name);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+  }
 
   output(
     {
@@ -5245,6 +5433,8 @@ async function handleTemplateGet(
         description: template.description,
         createdAt: template.createdAt,
         sourceIssue: template.sourceIssue,
+        tags: template.tags,
+        source: template.source,
         fields: template.fields,
       },
     },
@@ -5271,7 +5461,12 @@ async function handleTemplateApply(
     fail(opts, 1, ERROR_CODES.USAGE, "--project <key> is required (or set defaults.project in config).");
   }
 
-  const template = await loadTemplate(name);
+  const ctx = await getJiraTemplateContext(flags);
+  const template = await ctx.resolver.resolve(name);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+  }
 
   // Summary is required - use template's or override
   const finalSummary = summary || template.fields.summary;
@@ -5296,6 +5491,7 @@ async function handleTemplateApply(
         self: created.self,
       },
       template: name,
+      templateLevel: template.source?.level ?? "global",
     },
     opts
   );
@@ -5316,9 +5512,16 @@ async function handleTemplateDelete(
     fail(opts, 1, ERROR_CODES.USAGE, "--confirm is required to delete a template.");
   }
 
-  await deleteTemplate(name);
+  const ctx = await getJiraTemplateContext(flags);
+  const { storage, level } = getTargetJiraStorage(ctx, flags);
 
-  output({ schemaVersion: "1", deleted: name }, opts);
+  if (!(await storage.exists(name))) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found at ${level}.`);
+  }
+
+  await storage.delete(name);
+
+  output({ schemaVersion: "1", deleted: name, level }, opts);
 }
 
 async function handleTemplateExport(
@@ -5336,7 +5539,13 @@ async function handleTemplateExport(
     fail(opts, 1, ERROR_CODES.USAGE, "-o <file> or --output <file> is required.");
   }
 
-  const template = await loadTemplate(name);
+  const ctx = await getJiraTemplateContext(flags);
+  const template = await ctx.resolver.resolve(name);
+
+  if (!template) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+  }
+
   const { writeFile } = await import("fs/promises");
   await writeFile(outputPath, JSON.stringify(template, null, 2), "utf-8");
 
@@ -5361,8 +5570,8 @@ async function handleTemplateImport(
     fail(opts, 1, ERROR_CODES.USAGE, "--file <path> is required.");
   }
 
-  const { readFile } = await import("fs/promises");
-  const content = await readFile(filePath, "utf-8");
+  const { readFile: fsReadFile } = await import("fs/promises");
+  const content = await fsReadFile(filePath, "utf-8");
 
   let template: JiraTemplate;
   try {
@@ -5390,12 +5599,20 @@ async function handleTemplateImport(
     template.createdAt = new Date().toISOString();
   }
 
-  await saveTemplate(template, { force });
+  const ctx = await getJiraTemplateContext(flags);
+  const { storage, level } = getTargetJiraStorage(ctx, flags);
+
+  if (!force && (await storage.exists(template.name))) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Template '${template.name}' already exists at ${level}. Use --force to overwrite.`);
+  }
+
+  await storage.save(template);
 
   output(
     {
       schemaVersion: "1",
       imported: template.name,
+      level,
       fields: getTemplateFieldNames(template),
     },
     opts
@@ -5406,38 +5623,71 @@ function templateHelp(): string {
   return `atlcli jira template <command>
 
 Commands:
-  list
-      List all saved templates
+  list        List saved templates (with filtering and table output)
+  save        Save an issue as a template
+  get         Show template contents
+  apply       Create new issue from template
+  delete      Delete a template
+  export      Export template to JSON file
+  import      Import template from JSON file
 
-  save <name> --issue <key> [--description <text>] [--force]
-      Save an issue as a template
+Storage Hierarchy (precedence: project > profile > global):
+  ~/.atlcli/templates/jira/global/              Global templates
+  ~/.atlcli/templates/jira/profiles/{name}/     Profile-specific
+  ~/.atlcli/templates/jira/projects/{key}/      Project-specific
 
-  get <name>
-      Show template contents
+List options:
+  --level <global|profile|project>   Filter by storage level
+  --profile <name>                   Filter by profile
+  --project <key>                    Filter by project
+  --type <type>                      Filter by issue type (Bug, Task, etc.)
+  --tag <tag>                        Filter by tag
+  --search <text>                    Search name and description
+  --all                              Include overridden templates
+  --expand                           Show full field details
 
-  apply <name> --project <key> [--summary <text>] [--description <text>] [--assignee <id>]
-      Create a new issue from template
+Save options:
+  --issue <key>         Source issue key (required)
+  --description <text>  Template description
+  --tags <tags>         Comma-separated tags
+  --level global        Save to global templates
+  --project <key>       Save to project templates
+  --force               Overwrite existing template
 
-  delete <name> --confirm
-      Delete a template
+Apply options:
+  --project <key>       Target project (required)
+  --summary <text>      Issue summary
+  --description <text>  Issue description
+  --assignee <id>       Assignee account ID
 
-  export <name> -o <file>
-      Export template to a JSON file
-
-  import --file <path> [--force]
-      Import template from a JSON file
-
-Options:
-  --profile <name>   Use a specific auth profile
-  --json             JSON output
+Global options:
+  --profile <name>      Use a specific auth profile
+  --json                JSON output
 
 Examples:
+  # List all templates with table output
   jira template list
-  jira template save bug-report --issue PROJ-123 --description "Standard bug template"
-  jira template get bug-report
+
+  # Filter by issue type and search
+  jira template list --type Bug --search login
+
+  # List project templates with expanded details
+  jira template list --project PROJ --expand
+
+  # Save template to global storage
+  jira template save bug-report --issue PROJ-123 --description "Bug template"
+
+  # Save template to project level with tags
+  jira template save feature-request --issue PROJ-456 --project PROJ --tags feature,request
+
+  # Apply template (uses highest-precedence match)
   jira template apply bug-report --project PROJ --summary "Login button broken"
-  jira template export bug-report -o /tmp/bug-template.json
-  jira template import --file /tmp/bug-template.json
+
+  # Export/import
+  jira template export bug-report -o /tmp/template.json
+  jira template import --file /tmp/template.json --project PROJ
+
+  # Delete
   jira template delete old-template --confirm
 `;
 }
