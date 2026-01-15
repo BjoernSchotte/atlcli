@@ -215,7 +215,7 @@ async function waitForRelease(newVersion: string): Promise<void> {
 
 async function updateHomebrew(newVersion: string): Promise<void> {
   console.log("Triggering Homebrew tap update...");
-  await $`gh workflow dispatch --repo ${HOMEBREW_TAP} -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME} update-formula.yml`;
+  await $`gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}`;
   console.log("  Homebrew update workflow triggered");
 }
 
@@ -233,9 +233,8 @@ Steps that would be executed:
   5. Tag: git tag v${newVersion}
   6. Push: git push origin main && git push origin v${newVersion}
   7. Wait for GitHub Actions to build release artifacts
-  8. Update Homebrew: gh workflow dispatch --repo ${HOMEBREW_TAP} \\
-       -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME} \\
-       update-formula.yml
+  8. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
+       -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 
 To execute this release, run without --dry-run:
   bun scripts/release.ts ${newVersion.endsWith(".0.0") ? "major" : newVersion.endsWith(".0") ? "minor" : "patch"}
