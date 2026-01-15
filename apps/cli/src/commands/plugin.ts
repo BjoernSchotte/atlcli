@@ -298,23 +298,20 @@ async function handleDisable(args: string[], opts: OutputOptions): Promise<void>
 function pluginHelp(): string {
   return `atlcli plugin <command>
 
-Manage atlcli plugins.
+Manage CLI plugins to extend functionality.
 
 Commands:
-  list              List installed plugins
-  install <path>    Install a plugin from local path
-  remove <name>     Remove an installed plugin
-  enable <name>     Enable a disabled plugin
-  disable <name>    Disable a plugin
+  list            List installed plugins
+  install <path>  Install a plugin from local path
+  remove <name>   Remove an installed plugin
+  enable <name>   Enable a disabled plugin
+  disable <name>  Disable a plugin
 
 Examples:
   atlcli plugin list
   atlcli plugin install ./my-plugin
   atlcli plugin remove my-plugin
-  atlcli plugin disable my-plugin
   atlcli plugin enable my-plugin
-
-Plugin Development:
-  Plugins are Node.js/Bun packages that export a plugin definition.
-  See @atlcli/plugin-api for the plugin API documentation.`;
+  atlcli plugin disable my-plugin
+`;
 }

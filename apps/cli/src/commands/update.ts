@@ -224,22 +224,15 @@ export async function handleUpdate(
 function updateHelp(): string {
   return `atlcli update [version] [options]
 
-Check for and install updates.
-
-Arguments:
-  version         Specific version to install (e.g., v0.5.0)
+Check for and install atlcli updates.
 
 Options:
-  --check         Check for updates without installing
-  --json          JSON output
+  --check  Check for updates without installing
+  --json   JSON output
 
 Examples:
-  atlcli update              # Update to latest version
-  atlcli update --check      # Check if update is available
-  atlcli update v0.5.0       # Install specific version
-  atlcli update --json       # JSON output for scripting
-
-Environment:
-  ATLCLI_DISABLE_UPDATE_CHECK=1   Disable automatic update checks
+  atlcli update
+  atlcli update --check
+  atlcli update v0.5.0
 `;
 }

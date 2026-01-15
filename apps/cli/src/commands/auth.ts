@@ -269,22 +269,29 @@ async function handleDelete(args: string[], opts: OutputOptions): Promise<void> 
 function authHelp(): string {
   return `atlcli auth <command>
 
+Manage authentication profiles for Atlassian Cloud.
+
 Commands:
-  login                    Authenticate (default: API token, prompts)
-  init                     Initialize auth by pasting an API token
-  status                   Show active profile
-  list                     List profiles
-  switch <name>            Switch active profile
-  rename <old> <new>       Rename a profile
-  logout [name]            Log out (clear credentials, keep profile)
-  delete <name>            Delete a profile entirely
+  login             Authenticate with API token (interactive)
+  init              Initialize auth by pasting credentials
+  status            Show current profile status
+  list              List all profiles
+  switch <name>     Switch active profile
+  rename <old> <new> Rename a profile
+  logout [name]     Clear credentials (keeps profile)
+  delete <name>     Delete profile entirely
 
 Options:
-  --api-token      Use API token auth (default)
-  --oauth          OAuth login (not implemented)
-  --site <url>     Atlassian site URL
-  --email <email>  Atlassian email
-  --token <token>  API token
-  --profile <name> Profile name
+  --site <url>      Atlassian site URL
+  --email <email>   Account email
+  --token <token>   API token (or use interactive prompt)
+  --profile <name>  Profile name for new login
+
+Examples:
+  atlcli auth login
+  atlcli auth login --site https://mycompany.atlassian.net
+  atlcli auth status
+  atlcli auth list
+  atlcli auth switch work
 `;
 }

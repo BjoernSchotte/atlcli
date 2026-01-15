@@ -509,27 +509,22 @@ function outputHuman(
 function doctorHelp(): string {
   return `atlcli doctor [options]
 
-Diagnose common issues with atlcli setup.
+Diagnose common issues with atlcli setup and connectivity.
 
 Options:
-  --fix         Auto-fix safe issues (create directories, etc.)
-  --json        JSON output for scripting
+  --fix   Auto-fix safe issues (create directories, etc.)
+  --json  JSON output for scripting
 
 Checks:
-  - Config file exists and is valid JSON
-  - At least one profile configured
-  - Active profile has valid credentials
-  - Confluence API reachable and authenticated
-  - Jira API reachable and authenticated
+  - Config file exists and valid
+  - Profile configured with credentials
+  - Confluence API reachable
+  - Jira API reachable
   - Log directory writable
 
-Exit codes:
-  0  All checks passed (or only warnings)
-  1  One or more checks failed
-
 Examples:
-  atlcli doctor              # Run all checks
-  atlcli doctor --fix        # Auto-fix safe issues
-  atlcli doctor --json       # JSON output for CI/CD
+  atlcli doctor
+  atlcli doctor --fix
+  atlcli doctor --json
 `;
 }

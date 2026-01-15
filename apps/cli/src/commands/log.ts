@@ -422,40 +422,33 @@ async function handleClear(
 }
 
 function logHelp(): string {
-  return `atlcli log <subcommand>
+  return `atlcli log <command>
 
-Subcommands:
+Query and manage CLI activity logs.
+
+Commands:
   list      List/filter log entries
-  tail      Stream recent logs
-  show      Show full log entry details
+  tail      Stream recent logs (like tail -f)
+  show <id> Show full log entry details
   clear     Clear old log files
 
-List options:
+Options:
   --since <date>    Start date (ISO or relative: 1h, 7d, 30m)
   --until <date>    End date
-  --level <level>   Filter by level: error|warn|info|debug
-  --type <type>     Filter by type: api|cli|sync|auth|error
-  --limit <n>       Max entries (default: 100)
-  --global          Query global logs only
-  --project         Query project logs only
-
-Tail options:
-  -f, --follow      Keep following (like tail -f)
-  --level <level>   Filter by level
-  --limit <n>       Initial entries to show (default: 20)
-  --project         Tail project logs instead of global
-
-Clear options:
-  --before <date>   Clear logs older than date
-  --global          Clear global logs only
-  --project         Clear project logs only
-  --confirm         Required to actually clear
+  --level <level>   Filter by level: error, warn, info, debug
+  --type <type>     Filter by type: api, cli, sync, auth, error
+  --limit <n>       Max entries (default: 100 for list, 20 for tail)
+  --global          Query/clear global logs only
+  --project         Query/clear project logs only
+  -f, --follow      Keep following new entries (tail only)
+  --before <date>   Clear logs older than date (clear only)
+  --confirm         Required to actually clear logs
 
 Examples:
-  atlcli log list --since "1h" --level error
+  atlcli log list --since 1h --level error
   atlcli log list --type api --limit 50
   atlcli log tail -f
   atlcli log show abc123-uuid
-  atlcli log clear --before "7d" --confirm
+  atlcli log clear --before 7d --confirm
 `;
 }

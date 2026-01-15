@@ -73,29 +73,22 @@ export async function handleCompletion(
 function completionHelp(): string {
   return `atlcli completion <shell>
 
-Generate shell completion scripts.
+Generate shell completion scripts for tab completion.
 
 Commands:
   zsh         Output zsh completion script
   bash        Output bash completion script
 
 Setup:
-  # Zsh (add to ~/.zshrc)
+  # Zsh - add to ~/.zshrc
   eval "$(atlcli completion zsh)"
 
-  # Bash (add to ~/.bashrc)
+  # Bash - add to ~/.bashrc
   eval "$(atlcli completion bash)"
 
-  # Or append to shell config
-  atlcli completion zsh >> ~/.zshrc
-  atlcli completion bash >> ~/.bashrc
-
-After installation, restart your shell or run:
-  source ~/.zshrc   # for zsh
-  source ~/.bashrc  # for bash
-
 Examples:
-  atlcli completion zsh     # Output zsh script
-  atlcli completion bash    # Output bash script
+  atlcli completion zsh
+  atlcli completion bash
+  atlcli completion zsh >> ~/.zshrc
 `;
 }

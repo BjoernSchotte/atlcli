@@ -76,13 +76,24 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
 function spaceHelp(): string {
   return `atlcli wiki space <command>
 
+Confluence space operations.
+
 Commands:
-  list [--limit <n>]
-  get --key <key>
-  create --key <KEY> --name <name> [--description <text>]
+  list    List spaces
+  get     Get space details
+  create  Create a new space
 
 Options:
-  --profile <name>   Use a specific auth profile
-  --json             JSON output
+  --key <key>         Space key (required for get/create)
+  --name <name>       Space name (required for create)
+  --description <txt> Space description (optional)
+  --limit <n>         Max results for list (default: 25)
+  --profile <name>    Use a specific auth profile
+  --json              JSON output
+
+Examples:
+  atlcli wiki space list
+  atlcli wiki space get --key TEAM
+  atlcli wiki space create --key DOCS --name "Documentation"
 `;
 }

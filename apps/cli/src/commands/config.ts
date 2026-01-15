@@ -262,7 +262,7 @@ function formatConfig(config: any): string {
 function configHelp(): string {
   return `atlcli config <command>
 
-Manage CLI configuration.
+Manage CLI configuration settings.
 
 Commands:
   list              Show all configuration
@@ -270,31 +270,24 @@ Commands:
   set <key> <value> Set a configuration value
   unset <key>       Remove a configuration value
 
-Configuration Keys:
-  Global defaults (apply to all profiles):
-    global.project              Default Jira project key
-    global.space                Default Confluence space key
-    global.board                Default Jira board ID
+Keys:
+  global.project          Default Jira project key
+  global.space            Default Confluence space key
+  global.board            Default Jira board ID
+  profiles.<name>.project Profile-specific Jira project
+  profiles.<name>.space   Profile-specific Confluence space
+  profiles.<name>.board   Profile-specific Jira board
+  logging.level           Log level: off, error, warn, info, debug
+  logging.global          Enable global logs (true/false)
+  logging.project         Enable project logs (true/false)
 
-  Profile-specific (override global for that profile):
-    profiles.<name>.project     Profile-specific Jira project
-    profiles.<name>.space       Profile-specific Confluence space
-    profiles.<name>.board       Profile-specific Jira board
-
-  Logging:
-    logging.level               Log level: off, error, warn, info, debug
-    logging.global              Enable global logs (true/false)
-    logging.project             Enable project logs (true/false)
-
-Resolution precedence: CLI flag > profile config > global config
+Resolution: CLI flag > profile config > global config
 
 Examples:
   atlcli config list
   atlcli config set global.project PROJ
-  atlcli config set global.space DOCS
   atlcli config set profiles.work.project WORKPROJ
-  atlcli config get profiles.work.project
-  atlcli config set logging.level debug
-  atlcli config unset global.project
+  atlcli config get logging.level
+  atlcli config unset global.space
 `;
 }

@@ -49,23 +49,25 @@ export async function handleWiki(
 function wikiHelp(): string {
   return `atlcli wiki <command>
 
+Confluence wiki operations.
+
 Commands:
-  page        Page operations (list, get, create, update, delete, move, copy)
-  space       Space operations (list, get, create)
-  docs        Docs sync (init, pull, push, status, watch)
-  search      Search Confluence content
-  my          My pages (created or contributed)
-  recent      Recently modified pages
-  template    Page template management
+  page      Page operations (list, get, create, update, delete, move, copy)
+  space     Space operations (list, get, create)
+  docs      Local sync (init, pull, push, status, watch, sync)
+  search    Search Confluence content with CQL
+  my        My pages (created or contributed)
+  recent    Recently modified pages
+  template  Page template management
 
 Options:
-  --profile <name>   Use a specific auth profile
-  --json             JSON output
+  --profile <name>  Use a specific auth profile
+  --json            JSON output
 
 Examples:
   atlcli wiki page list --space TEAM
   atlcli wiki space get --key DOCS
-  atlcli wiki docs pull ./docs
-  atlcli wiki search "query" --space TEAM
+  atlcli wiki docs pull ./docs --space TEAM
+  atlcli wiki search "API docs" --space DEV
 `;
 }
