@@ -18,7 +18,7 @@ Phase 1 implemented these macros:
 
 ## Phase 2 Macros
 
-### Priority 1: Documentation Essentials
+### Priority 1: Documentation Essentials ✅ COMPLETE
 
 These macros are commonly used in technical documentation:
 
@@ -29,7 +29,7 @@ These macros are commonly used in technical documentation:
 | **page-properties-report** | Query properties | `:::page-properties-report` | labels, spaces, cql |
 | **task-report** | Task completion report | `:::task-report` | spaces, labels, days |
 
-### Priority 2: Labels & Discovery
+### Priority 2: Labels & Discovery ✅ COMPLETE
 
 | Macro | Purpose | Syntax | Parameters |
 |-------|---------|--------|------------|
@@ -37,13 +37,15 @@ These macros are commonly used in technical documentation:
 | **popular-labels** | Tag cloud | `:::popular-labels` | count, spaces |
 | **related-labels** | Related content | `:::related-labels` | labels |
 
-### Priority 3: Content Listings
+### Priority 3: Content Listings ✅ COMPLETE
 
 | Macro | Purpose | Syntax | Parameters |
 |-------|---------|--------|------------|
-| **blog-posts** | List blog entries | `:::blog-posts` | max, spaces, labels, time |
-| **spaces-list** | List spaces | `:::spaces-list` | spaces, width |
+| **blog-posts** | List blog entries | `:::blog-posts` | max, spaces, author, labels, time, sort, content |
+| **spaces-list** | List spaces | `:::spaces-list` | spaces, width, theme |
 | **page-index** | Alphabetical index | `:::page-index` | - |
+
+Note: `blog-posts` spaces param uses comma-separated space keys (e.g., `spaces="DEV,OPS"`), converted to `ri:space` elements. Author param uses Atlassian account-id (e.g., `author="557058:abcd-1234"`).
 
 ### Priority 4: Page Metadata
 

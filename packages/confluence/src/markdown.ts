@@ -761,6 +761,85 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle blog-posts macro: :::blog-posts max=10 spaces="DEV,OPS" author="557058:abc" labels="news"
+  processed = processed.replace(BLOG_POSTS_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const maxMatch = params?.match(/max=(\d+)/i);
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const authorMatch = params?.match(/author="([^"]*)"/i);
+    const labelsMatch = params?.match(/labels="([^"]*)"/i);
+    const timeMatch = params?.match(/time="([^"]*)"/i);
+    const sortMatch = params?.match(/sort=(created|modified|creation|title)/i);
+    const contentMatch = params?.match(/content=(titles|excerpts|full)/i);
+
+    let html = `<ac:structured-macro ac:name="blog-posts">`;
+    if (maxMatch) {
+      html += `\n<ac:parameter ac:name="max">${escapeHtml(maxMatch[1])}</ac:parameter>`;
+    }
+    // spaces param requires ri:space elements for each space key
+    if (spacesMatch && spacesMatch[1]) {
+      const spaceKeys = spacesMatch[1].split(",").map(s => s.trim()).filter(s => s);
+      if (spaceKeys.length > 0) {
+        const spaceElements = spaceKeys.map(key => `<ri:space ri:space-key="${escapeHtml(key)}"/>`).join("");
+        html += `\n<ac:parameter ac:name="spaces">${spaceElements}</ac:parameter>`;
+      }
+    }
+    // author param requires ri:user element with account-id
+    if (authorMatch && authorMatch[1]) {
+      html += `\n<ac:parameter ac:name="author"><ri:user ri:account-id="${escapeHtml(authorMatch[1])}"/></ac:parameter>`;
+    }
+    if (labelsMatch) {
+      html += `\n<ac:parameter ac:name="labels">${escapeHtml(labelsMatch[1])}</ac:parameter>`;
+    }
+    if (timeMatch) {
+      html += `\n<ac:parameter ac:name="time">${escapeHtml(timeMatch[1])}</ac:parameter>`;
+    }
+    if (sortMatch) {
+      html += `\n<ac:parameter ac:name="sort">${escapeHtml(sortMatch[1])}</ac:parameter>`;
+    }
+    if (contentMatch) {
+      html += `\n<ac:parameter ac:name="content">${escapeHtml(contentMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle spaces-list macro: :::spaces-list spaces="DEV,OPS"
+  processed = processed.replace(SPACES_LIST_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const widthMatch = params?.match(/width="([^"]*)"/i);
+    const themeMatch = params?.match(/theme=(?:"([^"]*)"|(\w+))/i);
+
+    let html = `<ac:structured-macro ac:name="spaces-list">`;
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (widthMatch) {
+      html += `\n<ac:parameter ac:name="width">${escapeHtml(widthMatch[1])}</ac:parameter>`;
+    }
+    if (themeMatch) {
+      const theme = themeMatch[1] || themeMatch[2];
+      html += `\n<ac:parameter ac:name="theme">${escapeHtml(theme)}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle page-index macro: :::page-index
+  processed = processed.replace(PAGE_INDEX_MACRO_REGEX, () => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:structured-macro ac:name="index"/>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -985,7 +1064,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index"];
 
 /**
  * Valid status colors in Confluence
@@ -1203,6 +1282,24 @@ const POPULAR_LABELS_MACRO_REGEX = /^:::popular-labels(?:[ \t]+(.+))?\n?:::\s*$/
  * Shows content related by labels.
  */
 const RELATED_LABELS_MACRO_REGEX = /^:::related-labels(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for blog-posts macro: :::blog-posts max=10 spaces="TEAM"
+ * Lists blog posts from specified spaces.
+ */
+const BLOG_POSTS_MACRO_REGEX = /^:::blog-posts(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for spaces-list macro: :::spaces-list spaces="DEV,OPS"
+ * Lists Confluence spaces.
+ */
+const SPACES_LIST_MACRO_REGEX = /^:::spaces-list(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for page-index macro: :::page-index
+ * Shows alphabetical index of pages.
+ */
+const PAGE_INDEX_MACRO_REGEX = /^:::page-index\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -1908,6 +2005,85 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     () => `<div data-macro="related-labels" data-labels="">*[related-labels]*</div>`
   );
 
+  // Convert blog-posts macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="blog-posts"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const maxMatch = inner.match(/<ac:parameter\s+ac:name="max"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const labelsMatch = inner.match(/<ac:parameter\s+ac:name="labels"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const timeMatch = inner.match(/<ac:parameter\s+ac:name="time"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const sortMatch = inner.match(/<ac:parameter\s+ac:name="sort"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const contentMatch = inner.match(/<ac:parameter\s+ac:name="content"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      // Extract spaces from ri:space elements
+      const spacesParamMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([\s\S]*?)<\/ac:parameter>/i);
+      let spaces = "";
+      if (spacesParamMatch) {
+        const spaceKeyMatches = spacesParamMatch[1].matchAll(/ri:space-key="([^"]*)"/gi);
+        const spaceKeys = [...spaceKeyMatches].map(m => m[1]);
+        spaces = spaceKeys.join(",");
+      }
+
+      // Extract author from ri:user element (account-id)
+      const authorParamMatch = inner.match(/<ac:parameter\s+ac:name="author"[^>]*>([\s\S]*?)<\/ac:parameter>/i);
+      let author = "";
+      if (authorParamMatch) {
+        const accountIdMatch = authorParamMatch[1].match(/ri:account-id="([^"]*)"/i);
+        if (accountIdMatch) {
+          author = accountIdMatch[1];
+        }
+      }
+
+      const max = maxMatch ? maxMatch[1] : "";
+      const labels = labelsMatch ? labelsMatch[1] : "";
+      const time = timeMatch ? timeMatch[1] : "";
+      const sort = sortMatch ? sortMatch[1] : "";
+      const content = contentMatch ? contentMatch[1] : "";
+
+      return `<div data-macro="blog-posts" data-max="${escapeHtml(max)}" data-spaces="${escapeHtml(spaces)}" data-author="${escapeHtml(author)}" data-labels="${escapeHtml(labels)}" data-time="${escapeHtml(time)}" data-sort="${escapeHtml(sort)}" data-content="${escapeHtml(content)}">*[blog-posts]*</div>`;
+    }
+  );
+
+  // Convert blog-posts macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="blog-posts"[^>]*\/>/gi,
+    () => `<div data-macro="blog-posts" data-max="" data-spaces="" data-author="" data-labels="" data-time="" data-sort="" data-content="">*[blog-posts]*</div>`
+  );
+
+  // Convert spaces-list macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="spaces-list"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const widthMatch = inner.match(/<ac:parameter\s+ac:name="width"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const themeMatch = inner.match(/<ac:parameter\s+ac:name="theme"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const width = widthMatch ? widthMatch[1] : "";
+      const theme = themeMatch ? themeMatch[1] : "";
+
+      return `<div data-macro="spaces-list" data-spaces="${escapeHtml(spaces)}" data-width="${escapeHtml(width)}" data-theme="${escapeHtml(theme)}">*[spaces-list]*</div>`;
+    }
+  );
+
+  // Convert spaces-list macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="spaces-list"[^>]*\/>/gi,
+    () => `<div data-macro="spaces-list" data-spaces="" data-width="" data-theme="">*[spaces-list]*</div>`
+  );
+
+  // Convert page-index macro (ac:name="index")
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="index"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    () => `<div data-macro="page-index">*[page-index]*</div>`
+  );
+
+  // Convert page-index macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="index"[^>]*\/>/gi,
+    () => `<div data-macro="page-index">*[page-index]*</div>`
+  );
+
   // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
   // This allows turndown's taskList rule to convert them to markdown task syntax
   storage = storage.replace(
@@ -2550,6 +2726,47 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
         if (labels) params += ` labels="${labels}"`;
 
         return `\n\n:::related-labels${params}\n:::\n\n`;
+      }
+
+      // Blog posts macro
+      if (macroType === "blog-posts") {
+        const max = (node as any).getAttribute?.("data-max") || "";
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const author = (node as any).getAttribute?.("data-author") || "";
+        const labels = (node as any).getAttribute?.("data-labels") || "";
+        const time = (node as any).getAttribute?.("data-time") || "";
+        const sort = (node as any).getAttribute?.("data-sort") || "";
+        const content = (node as any).getAttribute?.("data-content") || "";
+
+        let params = "";
+        if (max) params += ` max=${max}`;
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (author) params += ` author="${author}"`;
+        if (labels) params += ` labels="${labels}"`;
+        if (time) params += ` time="${time}"`;
+        if (sort) params += ` sort=${sort}`;
+        if (content) params += ` content=${content}`;
+
+        return `\n\n:::blog-posts${params}\n:::\n\n`;
+      }
+
+      // Spaces list macro
+      if (macroType === "spaces-list") {
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const width = (node as any).getAttribute?.("data-width") || "";
+        const theme = (node as any).getAttribute?.("data-theme") || "";
+
+        let params = "";
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (width) params += ` width="${width}"`;
+        if (theme) params += ` theme=${theme}`;
+
+        return `\n\n:::spaces-list${params}\n:::\n\n`;
+      }
+
+      // Page index macro
+      if (macroType === "page-index") {
+        return `\n\n:::page-index\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros

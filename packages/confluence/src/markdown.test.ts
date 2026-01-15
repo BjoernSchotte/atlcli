@@ -1436,4 +1436,183 @@ describe("Phase 2 macros - Priority 2 (Labels)", () => {
       expect(md).toContain(":::related-labels");
     });
   });
+
+  describe("blog-posts macro", () => {
+    test("converts blog-posts to storage format with all params", () => {
+      const md = `:::blog-posts max=10 labels="news" content=titles
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="blog-posts"');
+      expect(html).toContain('ac:name="max">10</ac:parameter>');
+      expect(html).toContain('ac:name="labels">news</ac:parameter>');
+      expect(html).toContain('ac:name="content">titles</ac:parameter>');
+    });
+
+    test("converts blog-posts with time and sort params", () => {
+      const md = `:::blog-posts time="30d" sort=created
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="blog-posts"');
+      expect(html).toContain('ac:name="time">30d</ac:parameter>');
+      expect(html).toContain('ac:name="sort">created</ac:parameter>');
+    });
+
+    test("converts storage blog-posts to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="blog-posts">
+<ac:parameter ac:name="max">5</ac:parameter>
+<ac:parameter ac:name="labels">test</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::blog-posts");
+      expect(md).toContain("max=5");
+      expect(md).toContain('labels="test"');
+    });
+
+    test("round-trips blog-posts", () => {
+      const original = `:::blog-posts max=10 labels="news"
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::blog-posts");
+      expect(roundtrip).toContain("max=10");
+      expect(roundtrip).toContain('labels="news"');
+    });
+
+    test("handles self-closing blog-posts macro", () => {
+      const storage = `<ac:structured-macro ac:name="blog-posts"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::blog-posts");
+    });
+
+    test("converts blog-posts spaces param to ri:space elements", () => {
+      const md = `:::blog-posts spaces="DEV,OPS"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="spaces"');
+      expect(html).toContain('ri:space-key="DEV"');
+      expect(html).toContain('ri:space-key="OPS"');
+    });
+
+    test("converts blog-posts author param to ri:user element", () => {
+      const md = `:::blog-posts author="557058:abcd-1234-efgh"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="author"');
+      expect(html).toContain('ri:account-id="557058:abcd-1234-efgh"');
+    });
+
+    test("converts storage blog-posts with ri:space elements to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="blog-posts">
+<ac:parameter ac:name="spaces"><ri:space ri:space-key="DEV"/><ri:space ri:space-key="OPS"/></ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::blog-posts");
+      expect(md).toContain('spaces="DEV,OPS"');
+    });
+
+    test("converts storage blog-posts with ri:user element to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="blog-posts">
+<ac:parameter ac:name="author"><ri:user ri:account-id="557058:abcd-1234-efgh"/></ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::blog-posts");
+      expect(md).toContain('author="557058:abcd-1234-efgh"');
+    });
+
+    test("round-trips blog-posts with spaces param", () => {
+      const original = `:::blog-posts spaces="DEV,OPS"
+:::`;
+      const storage = markdownToStorage(original);
+      expect(storage).toContain('ri:space-key="DEV"');
+      expect(storage).toContain('ri:space-key="OPS"');
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::blog-posts");
+      expect(roundtrip).toContain('spaces="DEV,OPS"');
+    });
+
+    test("round-trips blog-posts with author param", () => {
+      const original = `:::blog-posts author="557058:test-user"
+:::`;
+      const storage = markdownToStorage(original);
+      expect(storage).toContain('ri:account-id="557058:test-user"');
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::blog-posts");
+      expect(roundtrip).toContain('author="557058:test-user"');
+    });
+  });
+
+  describe("spaces-list macro", () => {
+    test("converts spaces-list to storage format", () => {
+      const md = `:::spaces-list spaces="DEV,OPS"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="spaces-list"');
+      expect(html).toContain('ac:name="spaces">DEV,OPS</ac:parameter>');
+    });
+
+    test("converts spaces-list with all params", () => {
+      const md = `:::spaces-list spaces="TEAM" width="100%" theme=cards
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="spaces-list"');
+      expect(html).toContain('ac:name="spaces">TEAM</ac:parameter>');
+      expect(html).toContain('ac:name="width">100%</ac:parameter>');
+      expect(html).toContain('ac:name="theme">cards</ac:parameter>');
+    });
+
+    test("converts storage spaces-list to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="spaces-list">
+<ac:parameter ac:name="spaces">DEV,OPS</ac:parameter>
+<ac:parameter ac:name="width">80%</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::spaces-list");
+      expect(md).toContain('spaces="DEV,OPS"');
+      expect(md).toContain('width="80%"');
+    });
+
+    test("round-trips spaces-list", () => {
+      const original = `:::spaces-list spaces="TEAM"
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::spaces-list");
+      expect(roundtrip).toContain('spaces="TEAM"');
+    });
+
+    test("handles self-closing spaces-list macro", () => {
+      const storage = `<ac:structured-macro ac:name="spaces-list"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::spaces-list");
+    });
+  });
+
+  describe("page-index macro", () => {
+    test("converts page-index to storage format", () => {
+      const md = `:::page-index
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="index"');
+    });
+
+    test("converts storage page-index (index macro) to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="index"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::page-index");
+    });
+
+    test("converts storage page-index with body to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="index"></ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::page-index");
+    });
+
+    test("round-trips page-index", () => {
+      const original = `:::page-index
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::page-index");
+    });
+  });
 });
