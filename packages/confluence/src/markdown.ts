@@ -1,5 +1,7 @@
 import MarkdownIt from "markdown-it";
 import taskLists from "markdown-it-task-lists";
+import sub from "markdown-it-sub";
+import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { createHash } from "crypto";
@@ -61,7 +63,9 @@ const md = new MarkdownIt({
   breaks: false,
   typographer: true,
 })
-  .use(taskLists, { label: true, labelAfter: false });
+  .use(taskLists, { label: true, labelAfter: false })
+  .use(sub)  // ~subscript~
+  .use(sup); // ^superscript^
 
 md.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
@@ -1759,6 +1763,22 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const color = (node as any).getAttribute?.("data-bg-color") || "";
       if (!color || !content.trim()) return content;
       return `{bg:${color}}${content}{bg}`;
+    },
+  });
+
+  // Handle subscript
+  service.addRule("subscript", {
+    filter: "sub",
+    replacement: (content) => {
+      return content ? `~${content}~` : "";
+    },
+  });
+
+  // Handle superscript
+  service.addRule("superscript", {
+    filter: "sup",
+    replacement: (content) => {
+      return content ? `^${content}^` : "";
     },
   });
 

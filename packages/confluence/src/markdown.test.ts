@@ -103,6 +103,18 @@ describe("markdownToStorage", () => {
     expect(html).toContain('<span style="background-color: #FFFF00;">bright yellow</span>');
   });
 
+  test("converts subscript to sub element", () => {
+    const md = "H~2~O is water";
+    const html = markdownToStorage(md);
+    expect(html).toContain("<sub>2</sub>");
+  });
+
+  test("converts superscript to sup element", () => {
+    const md = "E=mc^2^";
+    const html = markdownToStorage(md);
+    expect(html).toContain("<sup>2</sup>");
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -214,6 +226,18 @@ describe("storageToMarkdown", () => {
     const storage = '<p>Text <span style="background-color: rgb(255, 255, 0);">yellow bg</span></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("{bg:rgb(255, 255, 0)}yellow bg{bg}");
+  });
+
+  test("converts sub element to subscript syntax", () => {
+    const storage = "<p>H<sub>2</sub>O is water</p>";
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("H~2~O");
+  });
+
+  test("converts sup element to superscript syntax", () => {
+    const storage = "<p>E=mc<sup>2</sup></p>";
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("E=mc^2^");
   });
 
   test("ends with single newline", () => {
