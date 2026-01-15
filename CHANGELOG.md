@@ -2,7 +2,7 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [0.7.0] - 2026-01-15
+## [0.7.1] - 2026-01-15
 
 ### Bug Fixes
 
@@ -10,12 +10,15 @@ All notable changes to atlcli will be documented in this file.
 - **update:** Inject version at build time and reduce check interval([09eff71](https://github.com/bjoernschotte/atlcli/commit/09eff71b6022b8fd3fba67e34a35c198c89ec0e9))
 - **doctor:** Fix TypeScript errors in doctor command([d7a1d07](https://github.com/bjoernschotte/atlcli/commit/d7a1d076bb737c23019c1c6fce539497a24dd0eb))
 - **release:** Make dry-run a true preview with no changes([cb04305](https://github.com/bjoernschotte/atlcli/commit/cb04305d0aa5bbcaa3aa053ac53da54dbc37c20c))
+- **release:** Use correct gh workflow run command([eea10c1](https://github.com/bjoernschotte/atlcli/commit/eea10c1b724d15dc6f0b96dbd27fb4b4843bc107))
+- **update:** Instruct Homebrew users to run brew update first([7f02fb4](https://github.com/bjoernschotte/atlcli/commit/7f02fb4c25f71eec720be638557128e89efd71c9))
 
 ### Documentation
 
 - Add doctor command to CLI reference([ac05565](https://github.com/bjoernschotte/atlcli/commit/ac05565d99dd81206b260b87f4fcbd8b205ebd86))
 - **jira:** Add 'my' command to search documentation([36a61c7](https://github.com/bjoernschotte/atlcli/commit/36a61c74d94af6119ac4965ea3fea5ce196212d5))
 - Add CLAUDE.md for AI assistant guidance([ca935ee](https://github.com/bjoernschotte/atlcli/commit/ca935ee0727d2ee563269c0158ed37283ba2e5cc))
+- Add release process to CLAUDE.md([0e47c04](https://github.com/bjoernschotte/atlcli/commit/0e47c04871323cf4e166e5f6b2c7cd268852bbfa))
 
 ### Features
 
