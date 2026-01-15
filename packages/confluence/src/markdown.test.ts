@@ -42,6 +42,28 @@ describe("markdownToStorage", () => {
     expect(html).toContain('<time datetime="2024-01-15" />');
   });
 
+  test("converts emoticons to ac:emoticon", () => {
+    const md = "Great job :thumbs-up: and :smile:";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:emoticon ac:name="thumbs-up" />');
+    expect(html).toContain('<ac:emoticon ac:name="smile" />');
+  });
+
+  test("does not convert unknown emoticons", () => {
+    const md = "This :not-a-real-emoticon: stays";
+    const html = markdownToStorage(md);
+    expect(html).toContain(":not-a-real-emoticon:");
+    expect(html).not.toContain("ac:emoticon");
+  });
+
+  test("converts emoticon aliases to Confluence names", () => {
+    const md = "Good :+1: idea :bulb: check :check:";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:emoticon ac:name="thumbs-up" />');
+    expect(html).toContain('<ac:emoticon ac:name="light-on" />');
+    expect(html).toContain('<ac:emoticon ac:name="tick" />');
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -105,6 +127,12 @@ describe("storageToMarkdown", () => {
     const storage = '<p>Deadline: <ac:structured-macro ac:name="date"><ac:parameter ac:name="">2025-12-31</ac:parameter></ac:structured-macro></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("{date:2025-12-31}");
+  });
+
+  test("converts ac:emoticon to markdown", () => {
+    const storage = '<p>Great <ac:emoticon ac:name="thumbs-up" /> work!</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain(":thumbs-up:");
   });
 
   test("ends with single newline", () => {

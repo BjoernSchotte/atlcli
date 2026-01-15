@@ -187,6 +187,22 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle emoticons: :smile: :thumbs-up: :+1: etc.
+  processed = processed.replace(EMOTICON_REGEX, (match, name) => {
+    const lowerName = name.toLowerCase();
+    // Check if it's a known Confluence emoticon or an alias
+    let emoticonName = lowerName;
+    if (EMOTICON_ALIASES[lowerName]) {
+      emoticonName = EMOTICON_ALIASES[lowerName];
+    } else if (!EMOTICON_NAMES.includes(lowerName)) {
+      return match; // Return unchanged if not a known emoticon or alias
+    }
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:emoticon ac:name="${escapeHtml(emoticonName)}" />`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -792,6 +808,65 @@ const JIRA_REGEX = /\{jira:([A-Z][A-Z0-9]*-\d+)(?:\|([^}]*))?\}/gi;
 const DATE_REGEX = /\{date:(\d{4}-\d{2}-\d{2})\}/gi;
 
 /**
+ * Valid Confluence emoticon names
+ */
+const EMOTICON_NAMES = [
+  "smile", "sad", "cheeky", "laugh", "wink",
+  "thumbs-up", "thumbs-down",
+  "tick", "cross",
+  "warning", "information", "question",
+  "light-on", "light-off",
+  "yellow-star", "red-star", "green-star", "blue-star",
+  "heart", "broken-heart",
+  "plus", "minus",
+];
+
+/**
+ * Common aliases for Confluence emoticons (GitHub/Slack style)
+ */
+const EMOTICON_ALIASES: Record<string, string> = {
+  // Thumbs
+  "+1": "thumbs-up",
+  "thumbsup": "thumbs-up",
+  "-1": "thumbs-down",
+  "thumbsdown": "thumbs-down",
+  // Check/cross
+  "check": "tick",
+  "white_check_mark": "tick",
+  "heavy_check_mark": "tick",
+  "x": "cross",
+  "heavy_multiplication_x": "cross",
+  // Light/idea
+  "bulb": "light-on",
+  "idea": "light-on",
+  "lightbulb": "light-on",
+  // Stars
+  "star": "yellow-star",
+  // Info/warning
+  "info": "information",
+  "warn": "warning",
+  "alert": "warning",
+  // Faces
+  "grinning": "smile",
+  "grin": "smile",
+  "smiley": "smile",
+  "disappointed": "sad",
+  "cry": "sad",
+  "stuck_out_tongue": "cheeky",
+  "joy": "laugh",
+  "laughing": "laugh",
+  // Heart
+  "love": "heart",
+  "red_heart": "heart",
+};
+
+/**
+ * Regex for emoticon: :smile: :thumbs-up: :+1: etc.
+ * Supports letters, numbers, hyphens, underscores, and +/- for aliases
+ */
+const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
+
+/**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
  */
 const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
@@ -1051,6 +1126,14 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     /<time\s+datetime="([^"]+)"[^>]*(?:\/>|><\/time>)/gi,
     (_, dateValue) => {
       return `<span data-macro="date" data-date="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</span>`;
+    }
+  );
+
+  // Convert ac:emoticon to placeholder for markdown :name: syntax
+  storage = storage.replace(
+    /<ac:emoticon\s+ac:name="([^"]+)"[^>]*\/>/gi,
+    (_, name) => {
+      return `<span data-emoticon="${escapeHtml(name)}">:${escapeHtml(name)}:</span>`;
     }
   );
 
@@ -1548,6 +1631,17 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
     replacement: (_content, node) => {
       const dateValue = (node as any).getAttribute?.("data-date") || "";
       return dateValue ? `{date:${dateValue}}` : "";
+    },
+  });
+
+  // Handle emoticon
+  service.addRule("emoticon", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).hasAttribute?.("data-emoticon");
+    },
+    replacement: (_content, node) => {
+      const name = (node as any).getAttribute?.("data-emoticon") || "";
+      return name ? `:${name}:` : "";
     },
   });
 
