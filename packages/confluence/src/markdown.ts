@@ -840,6 +840,54 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle contributors macro: :::contributors mode=list limit=10
+  processed = processed.replace(CONTRIBUTORS_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const modeMatch = params?.match(/mode=(list|inline)/i);
+    const limitMatch = params?.match(/limit=(\d+)/i);
+    const showCountMatch = params?.match(/showCount=(true|false)/i);
+    const orderMatch = params?.match(/order=(name|count|update)/i);
+    const scopeMatch = params?.match(/scope=(page|descendants)/i);
+
+    let html = `<ac:structured-macro ac:name="contributors">`;
+    if (modeMatch) {
+      html += `\n<ac:parameter ac:name="mode">${escapeHtml(modeMatch[1])}</ac:parameter>`;
+    }
+    if (limitMatch) {
+      html += `\n<ac:parameter ac:name="limit">${escapeHtml(limitMatch[1])}</ac:parameter>`;
+    }
+    if (showCountMatch) {
+      html += `\n<ac:parameter ac:name="showCount">${escapeHtml(showCountMatch[1])}</ac:parameter>`;
+    }
+    if (orderMatch) {
+      html += `\n<ac:parameter ac:name="order">${escapeHtml(orderMatch[1])}</ac:parameter>`;
+    }
+    if (scopeMatch) {
+      html += `\n<ac:parameter ac:name="scope">${escapeHtml(scopeMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle change-history macro: :::change-history limit=10
+  processed = processed.replace(CHANGE_HISTORY_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const limitMatch = params?.match(/limit=(\d+)/i);
+
+    let html = `<ac:structured-macro ac:name="change-history">`;
+    if (limitMatch) {
+      html += `\n<ac:parameter ac:name="limit">${escapeHtml(limitMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -1064,7 +1112,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history"];
 
 /**
  * Valid status colors in Confluence
@@ -1300,6 +1348,18 @@ const SPACES_LIST_MACRO_REGEX = /^:::spaces-list(?:[ \t]+(.+))?\n?:::\s*$/gm;
  * Shows alphabetical index of pages.
  */
 const PAGE_INDEX_MACRO_REGEX = /^:::page-index\n?:::\s*$/gm;
+
+/**
+ * Regex for contributors macro: :::contributors mode=list limit=10
+ * Shows page contributors.
+ */
+const CONTRIBUTORS_MACRO_REGEX = /^:::contributors(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for change-history macro: :::change-history limit=10
+ * Shows page version history.
+ */
+const CHANGE_HISTORY_MACRO_REGEX = /^:::change-history(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -2084,6 +2144,49 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     () => `<div data-macro="page-index">*[page-index]*</div>`
   );
 
+  // Convert contributors macro (self-closing) - MUST be before body version
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="contributors"[^>]*\/>/gi,
+    () => `<div data-macro="contributors" data-mode="" data-limit="" data-showcount="" data-order="" data-scope="">*[contributors]*</div>`
+  );
+
+  // Convert contributors macro (with body)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="contributors"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const modeMatch = inner.match(/<ac:parameter\s+ac:name="mode"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const limitMatch = inner.match(/<ac:parameter\s+ac:name="limit"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const showCountMatch = inner.match(/<ac:parameter\s+ac:name="showCount"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const orderMatch = inner.match(/<ac:parameter\s+ac:name="order"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const scopeMatch = inner.match(/<ac:parameter\s+ac:name="scope"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const mode = modeMatch ? modeMatch[1] : "";
+      const limit = limitMatch ? limitMatch[1] : "";
+      const showCount = showCountMatch ? showCountMatch[1] : "";
+      const order = orderMatch ? orderMatch[1] : "";
+      const scope = scopeMatch ? scopeMatch[1] : "";
+
+      return `<div data-macro="contributors" data-mode="${escapeHtml(mode)}" data-limit="${escapeHtml(limit)}" data-showcount="${escapeHtml(showCount)}" data-order="${escapeHtml(order)}" data-scope="${escapeHtml(scope)}">*[contributors]*</div>`;
+    }
+  );
+
+  // Convert change-history macro (self-closing) - MUST be before body version
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="change-history"[^>]*\/>/gi,
+    () => `<div data-macro="change-history" data-limit="">*[change-history]*</div>`
+  );
+
+  // Convert change-history macro (with body)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="change-history"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const limitMatch = inner.match(/<ac:parameter\s+ac:name="limit"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const limit = limitMatch ? limitMatch[1] : "";
+
+      return `<div data-macro="change-history" data-limit="${escapeHtml(limit)}">*[change-history]*</div>`;
+    }
+  );
+
   // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
   // This allows turndown's taskList rule to convert them to markdown task syntax
   storage = storage.replace(
@@ -2767,6 +2870,34 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       // Page index macro
       if (macroType === "page-index") {
         return `\n\n:::page-index\n:::\n\n`;
+      }
+
+      // Contributors macro
+      if (macroType === "contributors") {
+        const mode = (node as any).getAttribute?.("data-mode") || "";
+        const limit = (node as any).getAttribute?.("data-limit") || "";
+        const showCount = (node as any).getAttribute?.("data-showcount") || "";
+        const order = (node as any).getAttribute?.("data-order") || "";
+        const scope = (node as any).getAttribute?.("data-scope") || "";
+
+        let params = "";
+        if (mode) params += ` mode=${mode}`;
+        if (limit) params += ` limit=${limit}`;
+        if (showCount) params += ` showCount=${showCount}`;
+        if (order) params += ` order=${order}`;
+        if (scope) params += ` scope=${scope}`;
+
+        return `\n\n:::contributors${params}\n:::\n\n`;
+      }
+
+      // Change history macro
+      if (macroType === "change-history") {
+        const limit = (node as any).getAttribute?.("data-limit") || "";
+
+        let params = "";
+        if (limit) params += ` limit=${limit}`;
+
+        return `\n\n:::change-history${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros

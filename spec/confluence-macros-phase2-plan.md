@@ -47,12 +47,12 @@ These macros are commonly used in technical documentation:
 
 Note: `blog-posts` spaces param uses comma-separated space keys (e.g., `spaces="DEV,OPS"`), converted to `ri:space` elements. Author param uses Atlassian account-id (e.g., `author="557058:abcd-1234"`).
 
-### Priority 4: Page Metadata
+### Priority 4: Page Metadata ✅ COMPLETE
 
 | Macro | Purpose | Syntax | Parameters |
 |-------|---------|--------|------------|
-| **contributors** | Page contributors | `:::contributors` | mode, limit |
-| **change-history** | Version history | `:::change-history` | - |
+| **contributors** | Page contributors | `:::contributors` | mode, limit, showCount, order, scope |
+| **change-history** | Version history | `:::change-history` | limit |
 
 ### Priority 5: Utility
 

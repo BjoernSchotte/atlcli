@@ -1615,4 +1615,102 @@ describe("Phase 2 macros - Priority 2 (Labels)", () => {
       expect(roundtrip).toContain(":::page-index");
     });
   });
+
+  describe("contributors macro", () => {
+    test("converts contributors to storage format with params", () => {
+      const md = `:::contributors mode=list limit=10
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="contributors"');
+      expect(html).toContain('ac:name="mode">list</ac:parameter>');
+      expect(html).toContain('ac:name="limit">10</ac:parameter>');
+    });
+
+    test("converts contributors with all params", () => {
+      const md = `:::contributors mode=list limit=5 showCount=true order=update scope=descendants
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="contributors"');
+      expect(html).toContain('ac:name="mode">list</ac:parameter>');
+      expect(html).toContain('ac:name="limit">5</ac:parameter>');
+      expect(html).toContain('ac:name="showCount">true</ac:parameter>');
+      expect(html).toContain('ac:name="order">update</ac:parameter>');
+      expect(html).toContain('ac:name="scope">descendants</ac:parameter>');
+    });
+
+    test("converts storage contributors to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="contributors">
+<ac:parameter ac:name="mode">list</ac:parameter>
+<ac:parameter ac:name="limit">10</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::contributors");
+      expect(md).toContain("mode=list");
+      expect(md).toContain("limit=10");
+    });
+
+    test("round-trips contributors", () => {
+      const original = `:::contributors mode=list limit=5
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::contributors");
+      expect(roundtrip).toContain("mode=list");
+      expect(roundtrip).toContain("limit=5");
+    });
+
+    test("handles self-closing contributors macro", () => {
+      const storage = `<ac:structured-macro ac:name="contributors"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::contributors");
+    });
+
+    test("converts parameterless contributors macro", () => {
+      const md = `:::contributors
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="contributors"');
+    });
+  });
+
+  describe("change-history macro", () => {
+    test("converts change-history to storage format", () => {
+      const md = `:::change-history
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="change-history"');
+    });
+
+    test("converts change-history with limit param", () => {
+      const md = `:::change-history limit=20
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="change-history"');
+      expect(html).toContain('ac:name="limit">20</ac:parameter>');
+    });
+
+    test("converts storage change-history to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="change-history">
+<ac:parameter ac:name="limit">15</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::change-history");
+      expect(md).toContain("limit=15");
+    });
+
+    test("round-trips change-history", () => {
+      const original = `:::change-history limit=10
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::change-history");
+      expect(roundtrip).toContain("limit=10");
+    });
+
+    test("handles self-closing change-history macro", () => {
+      const storage = `<ac:structured-macro ac:name="change-history"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::change-history");
+    });
+  });
 });
