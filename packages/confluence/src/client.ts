@@ -325,6 +325,19 @@ export class ConfluenceClient {
     throw lastError ?? new Error("Request failed after retries");
   }
 
+  /**
+   * Get the current authenticated user.
+   * Useful for verifying authentication and connectivity.
+   */
+  async getCurrentUser(): Promise<{ accountId: string; displayName: string; email?: string }> {
+    const data = (await this.request("/user/current")) as any;
+    return {
+      accountId: data.accountId,
+      displayName: data.displayName,
+      email: data.email,
+    };
+  }
+
   async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "body.storage,version,space,ancestors" },

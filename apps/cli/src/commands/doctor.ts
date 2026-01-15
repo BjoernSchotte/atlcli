@@ -234,7 +234,7 @@ async function checkActiveProfile(): Promise<CheckResult> {
       };
     }
 
-    if (!profile.auth?.email || !profile.auth?.apiToken) {
+    if (!profile.auth?.email || !profile.auth?.token) {
       return {
         name: "active_profile",
         category: "auth",
