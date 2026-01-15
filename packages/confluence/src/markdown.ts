@@ -179,6 +179,14 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle date macros: {date:2024-01-15}
+  processed = processed.replace(DATE_REGEX, (_, dateValue) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<time datetime="${escapeHtml(dateValue)}" />`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -754,7 +762,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date"];
 
 /**
  * Valid status colors in Confluence
@@ -776,6 +784,12 @@ const ANCHOR_REGEX = /\{#([a-zA-Z][a-zA-Z0-9_-]*)\}/g;
  * Supports optional parameters after pipe: showSummary, count, etc.
  */
 const JIRA_REGEX = /\{jira:([A-Z][A-Z0-9]*-\d+)(?:\|([^}]*))?\}/gi;
+
+/**
+ * Regex for date macro: {date:2024-01-15}
+ * Supports ISO date format YYYY-MM-DD
+ */
+const DATE_REGEX = /\{date:(\d{4}-\d{2}-\d{2})\}/gi;
 
 /**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
@@ -1018,6 +1032,25 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
       const color = colorMatch ? colorMatch[1].toLowerCase() : "grey";
       const title = titleMatch ? titleMatch[1] : "";
       return `<span data-macro="status" data-color="${escapeHtml(color)}" data-title="${escapeHtml(title)}">[${escapeHtml(title)}]</span>`;
+    }
+  );
+
+  // Convert date macro (ac:structured-macro format)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="date"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      // Date can be in parameter with name="" or name="date"
+      const dateMatch = inner.match(/<ac:parameter\s+ac:name="[^"]*"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const dateValue = dateMatch ? dateMatch[1] : "";
+      return `<span data-macro="date" data-date="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</span>`;
+    }
+  );
+
+  // Convert HTML5 time element to date macro placeholder
+  storage = storage.replace(
+    /<time\s+datetime="([^"]+)"[^>]*(?:\/>|><\/time>)/gi,
+    (_, dateValue) => {
+      return `<span data-macro="date" data-date="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</span>`;
     }
   );
 
@@ -1504,6 +1537,17 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
     replacement: (_content, node) => {
       const name = (node as any).getAttribute?.("data-name") || "";
       return name ? `{#${name}}` : "";
+    },
+  });
+
+  // Handle date macro
+  service.addRule("dateMacro", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-macro") === "date";
+    },
+    replacement: (_content, node) => {
+      const dateValue = (node as any).getAttribute?.("data-date") || "";
+      return dateValue ? `{date:${dateValue}}` : "";
     },
   });
 

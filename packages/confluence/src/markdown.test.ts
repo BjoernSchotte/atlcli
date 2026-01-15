@@ -36,6 +36,12 @@ describe("markdownToStorage", () => {
     expect(html).toContain("Checked");
   });
 
+  test("converts date macros to time element", () => {
+    const md = "Meeting on {date:2024-01-15} at 3pm";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<time datetime="2024-01-15" />');
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -87,6 +93,18 @@ describe("storageToMarkdown", () => {
     expect(md).toContain("[x]");
     expect(md).toContain("Buy milk");
     expect(md).toContain("Write code");
+  });
+
+  test("converts time element to date macro", () => {
+    const storage = '<p>Meeting on <time datetime="2024-01-15" /> at 3pm</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{date:2024-01-15}");
+  });
+
+  test("converts Confluence date macro to markdown", () => {
+    const storage = '<p>Deadline: <ac:structured-macro ac:name="date"><ac:parameter ac:name="">2025-12-31</ac:parameter></ac:structured-macro></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{date:2025-12-31}");
   });
 
   test("ends with single newline", () => {
