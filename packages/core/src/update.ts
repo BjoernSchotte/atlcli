@@ -406,7 +406,7 @@ export async function installUpdate(version?: string): Promise<string> {
     throw new Error(
       `Cannot auto-update: installed via ${installMethod}. ` +
         (installMethod === "homebrew"
-          ? "Run: brew upgrade atlcli"
+          ? "Run: brew update && brew upgrade atlcli"
           : installMethod === "source"
             ? "Run: git pull && bun run build"
             : "Please reinstall using the install script.")

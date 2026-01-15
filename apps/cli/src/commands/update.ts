@@ -40,7 +40,7 @@ export async function handleUpdate(
           latestVersion: info.latestVersion,
           updateAvailable: info.updateAvailable,
           installMethod: "homebrew",
-          updateCommand: "brew upgrade atlcli",
+          updateCommand: "brew update && brew upgrade atlcli",
         },
         opts
       );
@@ -54,7 +54,7 @@ export async function handleUpdate(
     }
     output("", opts);
     output("Installed via Homebrew. To update, run:", opts);
-    output("  brew upgrade atlcli", opts);
+    output("  brew update && brew upgrade atlcli", opts);
     return;
   }
 

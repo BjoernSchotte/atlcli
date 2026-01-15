@@ -65,7 +65,7 @@ $ atlcli update
 Update available: 0.5.1 → 0.6.0
 
 Installed via Homebrew. To update, run:
-  brew upgrade atlcli
+  brew update && brew upgrade atlcli
 ```
 
 ### From Source

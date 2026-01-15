@@ -31,7 +31,7 @@ brew install bjoernschotte/tap/atlcli
 To upgrade:
 
 ```bash
-brew upgrade atlcli
+brew update && brew upgrade atlcli
 ```
 
 ### Manual Download
