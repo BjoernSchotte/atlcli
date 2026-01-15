@@ -138,6 +138,13 @@ atlcli wiki page sort --id <id> --by modified --reverse
 atlcli wiki page archive --id <id> --confirm
 atlcli wiki page archive --cql <query> --dry-run
 atlcli wiki page open <id>              # Open page in browser
+
+# Cross-product linking (Confluence ↔ Jira)
+atlcli wiki page link-issue --id <id> --issue <key>  # Link Jira issue to page
+atlcli wiki page link-issue --id <id> --issue <key> --comment  # With comment
+atlcli wiki page issues --id <id>       # List linked Jira issues
+atlcli wiki page issues --id <id> --project <key>  # Filter by project
+atlcli wiki page unlink-issue --id <id> --issue <key>  # Remove link
 ```
 
 ### Page History
@@ -262,6 +269,13 @@ atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
 atlcli jira issue attach --key <key> <file>  # Attach file
 atlcli jira issue open <key>            # Open issue in browser
+
+# Cross-product linking (Jira ↔ Confluence)
+atlcli jira issue link-page --key <key> --page <id>  # Link to Confluence page
+atlcli jira issue link-page --key <key> --page <id> --comment  # With comment
+atlcli jira issue pages --key <key>     # List linked Confluence pages
+atlcli jira issue unlink-page --key <key> --link <id>  # Remove link
+
 atlcli jira watch <key>                 # Watch issue
 atlcli jira unwatch <key>               # Stop watching
 atlcli jira watchers <key>              # List watchers
@@ -284,6 +298,12 @@ atlcli jira search --created-since <duration>
 atlcli jira search --updated-since <duration>
 atlcli jira search --limit <n> --start <n>
 atlcli jira search --fields key,summary,status
+```
+
+### Current User
+
+```bash
+atlcli jira me                          # Get current user info
 ```
 
 ### My Issues
@@ -407,16 +427,37 @@ atlcli jira version delete --id <id> --confirm
 ### Templates
 
 ```bash
+# List with filtering
 atlcli jira template list
+atlcli jira template list --level global       # Global templates only
+atlcli jira template list --level profile      # Profile templates only
+atlcli jira template list --level project      # Project templates only
+atlcli jira template list --type Bug           # Filter by issue type
+atlcli jira template list --tag <tag>          # Filter by tag
+atlcli jira template list --search <text>      # Search name/description
+atlcli jira template list --all                # Include overridden templates
+atlcli jira template list --expand             # Show full field details
+
 atlcli jira template get <name>
-atlcli jira template save <name> --issue <key>
+
+# Save to different levels
+atlcli jira template save <name> --issue <key>                    # Global (default)
+atlcli jira template save <name> --issue <key> --level profile    # Profile level
+atlcli jira template save <name> --issue <key> --project <key>    # Project level
+atlcli jira template save <name> --issue <key> --tags bug,urgent  # With tags
+atlcli jira template save <name> --issue <key> --force            # Overwrite
+
 atlcli jira template apply <name> --project <key> --summary <text>
-atlcli jira template apply <name> --project <key> --summary <text> \
-  --variables "version=2.0,component=API"
 atlcli jira template delete <name> --confirm
 atlcli jira template export <name> -o <file>
 atlcli jira template import --file <path>
+atlcli jira template import --file <path> --project <key>  # To project level
 ```
+
+**Storage hierarchy (precedence: project > profile > global):**
+- Global: `~/.atlcli/templates/jira/global/`
+- Profile: `~/.atlcli/templates/jira/profiles/{name}/`
+- Project: `~/.atlcli/templates/jira/projects/{key}/`
 
 ### Bulk Operations
 
@@ -475,6 +516,25 @@ atlcli jira import --file <path>.csv --project <key>
 atlcli jira import --file <path>.json --project <key>
 atlcli jira import --file <path> --dry-run
 ```
+
+### Webhooks
+
+```bash
+# Start local webhook server (use with ngrok/cloudflare tunnel)
+atlcli jira webhook serve --port 3000
+atlcli jira webhook serve --port 3000 --projects PROJ,TEAM
+atlcli jira webhook serve --port 3000 --events jira:issue_updated
+atlcli jira webhook serve --secret <secret>  # HMAC validation
+
+# Manage registered webhooks
+atlcli jira webhook list                # List registered webhooks
+atlcli jira webhook register --url <url> --events <events>
+atlcli jira webhook register --url <url> --events jira:issue_created --jql <filter>
+atlcli jira webhook delete <id>         # Delete webhook
+atlcli jira webhook refresh <id>        # Refresh expiration (30 day limit)
+```
+
+**Event types:** `jira:issue_created`, `jira:issue_updated`, `jira:issue_deleted`, `comment_created`, `comment_updated`, `comment_deleted`, `sprint_created`, `sprint_started`, `sprint_closed`, `worklog_created`, `worklog_updated`, `worklog_deleted`
 
 ## Logging
 
