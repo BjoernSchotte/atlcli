@@ -15,6 +15,7 @@ import {
   getActiveProfile,
   isInteractive,
   readTextFile,
+  resolveDefaults,
   // Template system from core
   GlobalTemplateStorage,
   ProfileTemplateStorage,
@@ -115,9 +116,10 @@ interface TemplateContext {
 
 async function getTemplateContext(flags: Flags): Promise<TemplateContext> {
   const config = await loadConfig();
-  const activeProfile = getActiveProfile(config);
+  const activeProfile = getActiveProfile(config, getFlag(flags, "profile"));
   const profileName = getFlag(flags, "profile") ?? activeProfile?.name;
-  const spaceKey = getFlag(flags, "space") ?? config.defaults?.space;
+  const defaults = resolveDefaults(config, activeProfile);
+  const spaceKey = getFlag(flags, "space") ?? defaults.space;
 
   // Detect docs folder for space context
   const docsDir = await findAtlcliDir(process.cwd());

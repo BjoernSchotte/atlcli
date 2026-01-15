@@ -8,6 +8,7 @@ import {
   hasFlag,
   loadConfig,
   output,
+  resolveDefaults,
 } from "@atlcli/core";
 import {
   ConfluenceClient,
@@ -41,7 +42,7 @@ async function getClient(
   }
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
-    return { client, defaults: config.defaults ?? {} };
+    return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
 }
@@ -59,7 +60,10 @@ export async function handleSearch(
 
   // Load config to get defaults
   const config = await loadConfig();
-  const defaultSpace = config.defaults?.space;
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  const defaults = resolveDefaults(config, profile);
+  const defaultSpace = defaults.space;
 
   // Check for raw CQL mode
   const rawCql = getFlag(flags, "cql");

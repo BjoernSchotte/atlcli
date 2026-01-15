@@ -17,6 +17,12 @@ export type Profile = {
   baseUrl: string;
   auth: AuthConfig;
   cloudId?: string;
+  /** Profile-specific Jira project key */
+  project?: string;
+  /** Profile-specific Confluence space key */
+  space?: string;
+  /** Profile-specific Jira board ID */
+  board?: number;
 };
 
 import type { LogLevel } from "./logger.js";
@@ -44,7 +50,9 @@ export type Config = {
   profiles: Record<string, Profile>;
   /** Logging configuration */
   logging?: LoggingConfig;
-  /** Default values for commands */
+  /** Global default values for commands */
+  global?: DefaultsConfig;
+  /** @deprecated Use 'global' instead. Kept for migration. */
   defaults?: DefaultsConfig;
 };
 
@@ -62,6 +70,14 @@ export async function loadConfig(): Promise<Config> {
   const raw = await readFile(CONFIG_PATH, "utf8");
   const parsed = JSON.parse(raw) as Config;
   if (!parsed.profiles) parsed.profiles = {};
+
+  // Migration: defaults → global
+  if (parsed.defaults && !parsed.global) {
+    parsed.global = parsed.defaults;
+    delete parsed.defaults;
+    await saveConfig(parsed);
+  }
+
   return parsed;
 }
 
@@ -116,4 +132,19 @@ export function getActiveProfile(config: Config, requested?: string): Profile | 
   if (requested) return config.profiles[requested];
   if (config.currentProfile) return config.profiles[config.currentProfile];
   return undefined;
+}
+
+/**
+ * Resolve defaults with profile-level overrides.
+ * Precedence: profile values > global values
+ */
+export function resolveDefaults(config: Config, profile?: Profile): DefaultsConfig {
+  const globalDefaults = config.global ?? {};
+  if (!profile) return globalDefaults;
+
+  return {
+    project: profile.project ?? globalDefaults.project,
+    space: profile.space ?? globalDefaults.space,
+    board: profile.board ?? globalDefaults.board,
+  };
 }

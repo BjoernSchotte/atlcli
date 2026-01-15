@@ -9,6 +9,7 @@ import {
   hasFlag,
   loadConfig,
   output,
+  resolveDefaults,
 } from "@atlcli/core";
 import {
   JiraClient,
@@ -178,7 +179,7 @@ async function getClient(
   }
   const client = new JiraClient(profile);
   if (withDefaults) {
-    return { client, defaults: config.defaults ?? {} };
+    return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
 }

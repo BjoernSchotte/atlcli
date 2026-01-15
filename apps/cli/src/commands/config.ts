@@ -37,16 +37,23 @@ export async function handleConfig(
 async function configList(opts: OutputOptions): Promise<void> {
   const config = await loadConfig();
 
-  // Redact sensitive auth data
+  // Redact sensitive auth data, include profile-specific defaults
   const safe = {
     currentProfile: config.currentProfile,
     profiles: Object.fromEntries(
       Object.entries(config.profiles).map(([name, p]) => [
         name,
-        { name: p.name, baseUrl: p.baseUrl, auth: { type: p.auth.type } },
+        {
+          name: p.name,
+          baseUrl: p.baseUrl,
+          auth: { type: p.auth.type },
+          project: p.project,
+          space: p.space,
+          board: p.board,
+        },
       ])
     ),
-    defaults: config.defaults,
+    global: config.global,
     logging: config.logging,
   };
 
@@ -64,7 +71,16 @@ async function configGet(key: string, opts: OutputOptions): Promise<void> {
   }
 
   const config = await loadConfig();
-  const value = getNestedValue(config, key);
+
+  // Special handling for profile keys
+  const profileMatch = key.match(/^profiles\.([^.]+)\.(.+)$/);
+  let value: any;
+  if (profileMatch) {
+    const [, profileName, field] = profileMatch;
+    value = (config.profiles[profileName] as any)?.[field];
+  } else {
+    value = getNestedValue(config, key);
+  }
 
   if (value === undefined) {
     output(`Key "${key}" not set`, opts);
@@ -89,14 +105,28 @@ async function configSet(key: string, value: string, opts: OutputOptions): Promi
   }
 
   // Validate key path
-  const validPrefixes = ["defaults.", "logging."];
-  if (!validPrefixes.some((p) => key.startsWith(p))) {
+  if (!isValidKey(key)) {
     output(`Invalid key: ${key}`, opts);
-    output("Valid keys: defaults.project, defaults.space, defaults.board, logging.level, logging.global, logging.project", opts);
+    output("Valid keys: global.(project|space|board), profiles.<name>.(project|space|board), logging.(level|global|project)", opts);
     return;
   }
 
   const config = await loadConfig();
+
+  // Special handling for profile keys
+  const profileMatch = key.match(/^profiles\.([^.]+)\.(.+)$/);
+  if (profileMatch) {
+    const [, profileName, field] = profileMatch;
+    if (!config.profiles[profileName]) {
+      output(`Profile "${profileName}" not found.`, opts);
+      return;
+    }
+    (config.profiles[profileName] as any)[field] = parseValue(value);
+    await saveConfig(config);
+    output(`Set ${key} = ${value}`, opts);
+    return;
+  }
+
   setNestedValue(config, key, parseValue(value));
   await saveConfig(config);
 
@@ -110,6 +140,19 @@ async function configUnset(key: string, opts: OutputOptions): Promise<void> {
   }
 
   const config = await loadConfig();
+
+  // Special handling for profile keys
+  const profileMatch = key.match(/^profiles\.([^.]+)\.(.+)$/);
+  if (profileMatch) {
+    const [, profileName, field] = profileMatch;
+    if (config.profiles[profileName]) {
+      delete (config.profiles[profileName] as any)[field];
+      await saveConfig(config);
+    }
+    output(`Unset ${key}`, opts);
+    return;
+  }
+
   deleteNestedValue(config, key);
   await saveConfig(config);
 
@@ -146,6 +189,20 @@ function parseValue(value: string): any {
   return value;
 }
 
+// Helper: validate key
+function isValidKey(key: string): boolean {
+  // Global: global.project, global.space, global.board
+  if (/^global\.(project|space|board)$/.test(key)) return true;
+
+  // Logging: logging.level, logging.global, logging.project
+  if (/^logging\.(level|global|project)$/.test(key)) return true;
+
+  // Profile: profiles.<name>.(project|space|board)
+  if (/^profiles\.[a-zA-Z0-9_-]+\.(project|space|board)$/.test(key)) return true;
+
+  return false;
+}
+
 // Helper: format config for display
 function formatConfig(config: any): string {
   const lines: string[] = [];
@@ -154,10 +211,10 @@ function formatConfig(config: any): string {
     lines.push(`Current Profile: ${config.currentProfile}`);
   }
 
-  if (config.defaults && Object.keys(config.defaults).length > 0) {
+  if (config.global && Object.keys(config.global).length > 0) {
     lines.push("");
-    lines.push("Defaults:");
-    for (const [key, value] of Object.entries(config.defaults)) {
+    lines.push("Global:");
+    for (const [key, value] of Object.entries(config.global)) {
       lines.push(`  ${key}: ${value}`);
     }
   }
@@ -176,6 +233,15 @@ function formatConfig(config: any): string {
     for (const [name, profile] of Object.entries(config.profiles) as [string, any][]) {
       const current = name === config.currentProfile ? " (active)" : "";
       lines.push(`  ${name}${current}: ${profile.baseUrl}`);
+
+      // Show profile-specific defaults if set
+      const profileDefaults: string[] = [];
+      if (profile.project) profileDefaults.push(`project: ${profile.project}`);
+      if (profile.space) profileDefaults.push(`space: ${profile.space}`);
+      if (profile.board) profileDefaults.push(`board: ${profile.board}`);
+      if (profileDefaults.length > 0) {
+        lines.push(`    ${profileDefaults.join(", ")}`);
+      }
     }
   }
 
@@ -198,19 +264,30 @@ Commands:
   unset <key>       Remove a configuration value
 
 Configuration Keys:
-  defaults.project  Default Jira project key
-  defaults.space    Default Confluence space key
-  defaults.board    Default Jira board ID
-  logging.level     Log level: off, error, warn, info, debug
-  logging.global    Enable global logs (true/false)
-  logging.project   Enable project logs (true/false)
+  Global defaults (apply to all profiles):
+    global.project              Default Jira project key
+    global.space                Default Confluence space key
+    global.board                Default Jira board ID
+
+  Profile-specific (override global for that profile):
+    profiles.<name>.project     Profile-specific Jira project
+    profiles.<name>.space       Profile-specific Confluence space
+    profiles.<name>.board       Profile-specific Jira board
+
+  Logging:
+    logging.level               Log level: off, error, warn, info, debug
+    logging.global              Enable global logs (true/false)
+    logging.project             Enable project logs (true/false)
+
+Resolution precedence: CLI flag > profile config > global config
 
 Examples:
   atlcli config list
-  atlcli config get defaults.project
-  atlcli config set defaults.project PROJ
-  atlcli config set defaults.space DOCS
+  atlcli config set global.project PROJ
+  atlcli config set global.space DOCS
+  atlcli config set profiles.work.project WORKPROJ
+  atlcli config get profiles.work.project
   atlcli config set logging.level debug
-  atlcli config unset defaults.project
+  atlcli config unset global.project
 `;
 }

@@ -8,6 +8,7 @@ import {
   loadConfig,
   output,
   readTextFile,
+  resolveDefaults,
   // New template system
   GlobalTemplateStorage,
   ProfileTemplateStorage,
@@ -127,7 +128,7 @@ async function getClient(
   }
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
-    return { client, defaults: config.defaults ?? {} };
+    return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
 }
@@ -175,8 +176,10 @@ async function handleList(flags: Record<string, string | boolean | string[]>, op
 
 async function handleCreate(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const config = await loadConfig();
-  const defaultSpace = config.defaults?.space;
-  const space = getFlag(flags, "space") ?? defaultSpace;
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  const defaults = resolveDefaults(config, profile);
+  const space = getFlag(flags, "space") ?? defaults.space;
   const title = getFlag(flags, "title");
   const bodyPath = getFlag(flags, "body");
   const templateName = getFlag(flags, "template");

@@ -13,6 +13,7 @@ import {
   loadConfig,
   output,
   readTextFile,
+  resolveDefaults,
   slugify,
   writeTextFile,
   // New template system
@@ -198,7 +199,7 @@ async function getClient(
   }
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
-    return { client, defaults: config.defaults ?? {} };
+    return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
 }
