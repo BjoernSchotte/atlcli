@@ -25,6 +25,7 @@ atlcli jira worklog timer start PROJ-123
 - **Boards & Sprints** - View boards, manage sprints, backlog operations
 - **Time Tracking** - Log work with timer or direct entry
 - **Epic Management** - Create epics, add/remove issues
+- **Cross-Product Linking** - Link issues to Confluence pages bidirectionally
 - **Analytics** - Velocity, burndown, predictability metrics
 - **Bulk Operations** - Edit, transition, label multiple issues
 - **Templates** - Save and reuse issue configurations

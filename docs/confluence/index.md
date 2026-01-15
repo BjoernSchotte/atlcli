@@ -26,6 +26,8 @@ atlcli wiki docs sync ./team-docs --watch
 - **Conflict Detection** - Warns when both local and remote changed
 - **Markdown Format** - Write in markdown, atlcli handles conversion
 - **Macro Support** - Use Confluence macros like info panels and TOC
+- **Smart Links** - Jira issues and Confluence page links with display modes
+- **Cross-Product Linking** - Link pages to Jira issues bidirectionally
 - **Page Templates** - Create pages from reusable templates
 
 ## Quick Start

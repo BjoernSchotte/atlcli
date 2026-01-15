@@ -300,6 +300,62 @@ Chapter 2                  Chapter 10
 Chapter 3                  Chapter 3
 ```
 
+## Cross-Product Linking
+
+Link Confluence pages to Jira issues for bidirectional traceability.
+
+### Link Issue to Page
+
+```bash
+atlcli wiki page link-issue --id 12345 --issue PROJ-123
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--id` | Page ID (required) |
+| `--issue` | Jira issue key (required) |
+| `--comment` | Add comment to the linked issue |
+
+### List Linked Issues
+
+```bash
+atlcli wiki page issues --id 12345
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--id` | Page ID (required) |
+| `--project` | Filter by Jira project |
+
+### Unlink Issue
+
+```bash
+atlcli wiki page unlink-issue --id 12345 --issue PROJ-123
+```
+
+### Examples
+
+```bash
+# Link a Jira issue to a page
+atlcli wiki page link-issue --id 12345 --issue PROJ-123
+
+# Link with comment on the issue
+atlcli wiki page link-issue --id 12345 --issue PROJ-456 --comment
+
+# List all Jira issues linked to a page
+atlcli wiki page issues --id 12345
+
+# Filter by project
+atlcli wiki page issues --id 12345 --project PROJ
+
+# Remove link
+atlcli wiki page unlink-issue --id 12345 --issue PROJ-123
+```
+
 ## JSON Output
 
 All commands support `--json`:

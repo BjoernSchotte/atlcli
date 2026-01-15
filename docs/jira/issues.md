@@ -212,6 +212,58 @@ atlcli jira issue assign --key PROJ-123 --assignee alice@company.com
 atlcli jira issue assign --key PROJ-123 --assignee none
 ```
 
+## Cross-Product Linking
+
+Link Jira issues to Confluence pages for bidirectional traceability.
+
+### Link Page to Issue
+
+```bash
+atlcli jira issue link-page --key PROJ-123 --page 12345
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--key` | Issue key (required) |
+| `--page` | Confluence page ID (required) |
+
+### List Linked Pages
+
+```bash
+atlcli jira issue pages --key PROJ-123
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--key` | Issue key (required) |
+| `--space` | Filter by Confluence space |
+
+### Unlink Page
+
+```bash
+atlcli jira issue unlink-page --key PROJ-123 --page 12345
+```
+
+### Examples
+
+```bash
+# Link a Confluence page to an issue
+atlcli jira issue link-page --key PROJ-123 --page 12345
+
+# List all Confluence pages linked to an issue
+atlcli jira issue pages --key PROJ-123
+
+# Filter by space
+atlcli jira issue pages --key PROJ-123 --space TEAM
+
+# Remove link
+atlcli jira issue unlink-page --key PROJ-123 --page 12345
+```
+
 ## JSON Output
 
 All commands support `--json`:

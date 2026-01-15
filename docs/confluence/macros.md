@@ -161,13 +161,74 @@ Create link anchors:
 Link to [my section](#my-anchor).
 ```
 
-## Jira Integration
+## Smart Links
 
-### Single Issue
+Atlassian smart links are rich links to Jira issues, Confluence pages, and other Atlassian content that display contextual information. atlcli supports bidirectional conversion of smart links.
+
+### Markdown Format
+
+When pulling pages, smart links are converted to standard markdown URLs:
 
 ```markdown
-{jira:PROJ-123}
+# Inline link (default)
+[PROJ-123](https://your-site.atlassian.net/browse/PROJ-123)
+
+# Card view - shows preview card
+[PROJ-123](https://your-site.atlassian.net/browse/PROJ-123)<!--card-->
+
+# Embed view - embeds content
+[Page Title](https://your-site.atlassian.net/wiki/spaces/TEAM/pages/12345)<!--embed-->
 ```
+
+### How It Works
+
+| Direction | Process |
+|-----------|---------|
+| **Pull** | Smart links → Full URLs with display mode annotations |
+| **Push** | Atlassian URLs → Smart links with `data-card-appearance` |
+
+### Display Modes
+
+| Mode | Annotation | Description |
+|------|------------|-------------|
+| Inline | (none) | Link appears inline in text |
+| Card | `<!--card-->` | Shows preview card with title and metadata |
+| Embed | `<!--embed-->` | Embeds full content preview |
+
+### Supported URL Patterns
+
+- **Jira Issues**: `/browse/PROJ-123`
+- **Confluence Pages**: `/wiki/spaces/SPACE/pages/12345`
+- **Trello**: `trello.com/c/...` or `trello.com/b/...`
+- **Bitbucket**: `bitbucket.org/user/repo`
+
+### Profile-Based Conversion
+
+Only URLs matching your active profile's Atlassian instance are converted to smart links. External URLs remain as regular markdown links.
+
+```markdown
+# Converted to smart link (same instance)
+[Issue](https://your-site.atlassian.net/browse/PROJ-123)
+
+# Remains regular link (different instance)
+[External](https://other-site.atlassian.net/browse/PROJ-456)
+```
+
+## Jira Integration
+
+### Single Issue (Legacy)
+
+The `{jira:KEY}` syntax is deprecated. Use full URLs instead:
+
+```markdown
+# Deprecated (still works)
+{jira:PROJ-123}
+
+# Recommended - use full URL
+[PROJ-123](https://your-site.atlassian.net/browse/PROJ-123)
+```
+
+When pulling pages, Jira macros are automatically converted to full URLs.
 
 ### JQL Query
 
