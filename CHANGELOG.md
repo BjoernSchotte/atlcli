@@ -2,6 +2,22 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.8.0] - 2026-01-15
+
+### Documentation
+
+- Add rule to never create releases automatically([566ba04](https://github.com/bjoernschotte/atlcli/commit/566ba04c3971792b4450343110c1bbb00a78b9e4))
+- Add smart links and cross-product linking documentation([d4913a8](https://github.com/bjoernschotte/atlcli/commit/d4913a843b79af77b820cb9056c7dd74a5d7eddc))
+
+### Features
+
+- **cli:** Add global --help and -h flag support([7d13913](https://github.com/bjoernschotte/atlcli/commit/7d13913e094e02baf4b0260da7665ea188401668))
+- **cli:** Add --help/-h support to all commands (Phase 2)([3df7126](https://github.com/bjoernschotte/atlcli/commit/3df7126173d25eac9e60c7062801b0ea9f94c395))
+- **cli:** Add --version/-v global flag (Phase 3)([f869c93](https://github.com/bjoernschotte/atlcli/commit/f869c93100e76e8f880c9be4c5c92940bcec1673))
+- **cli:** Standardize help format across commands (Phase 4)([60ca394](https://github.com/bjoernschotte/atlcli/commit/60ca394fd015ba537390fd11ac76254cc04546b4))
+- **jira,wiki:** Add cross-product linking between Jira and Confluence([a323a97](https://github.com/bjoernschotte/atlcli/commit/a323a9707dd1bf4b2242b4897d7cd65ea629e937))
+- **confluence:** Add smart link support for markdown conversion([6274d81](https://github.com/bjoernschotte/atlcli/commit/6274d8169dda4eb6414e6d2be0c8e25e504539fb))
+- **jira:** Add hierarchical template storage and enhanced list command([de28277](https://github.com/bjoernschotte/atlcli/commit/de2827753c2d0befd25b944d0d298bee5b925ade))
 ## [0.7.2] - 2026-01-15
 
 ### Bug Fixes
