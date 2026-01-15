@@ -23,6 +23,7 @@ import {
   markdownToStorage,
   normalizeMarkdown,
   storageToMarkdown,
+  ConversionOptions,
   threeWayMerge,
   hasConflictMarkers,
   WebhookServer,
@@ -203,6 +204,15 @@ class SyncEngine {
     this.opts = opts;
     this.outputOpts = outputOpts;
     this.baseUrl = baseUrl;
+  }
+
+  /** Get conversion options for markdown/storage conversion */
+  private get conversionOptions(): ConversionOptions {
+    return {
+      baseUrl: this.baseUrl,
+      emitWarnings: true,
+      onWarning: (msg) => console.warn(msg),
+    };
   }
 
   /** Get file path for a page ID from state */
@@ -676,7 +686,7 @@ class SyncEngine {
   private async pullPage(pageId: string, existingFile?: string): Promise<void> {
     try {
       const page = await this.client.getPage(pageId);
-      const markdown = storageToMarkdown(page.storage);
+      const markdown = storageToMarkdown(page.storage, this.conversionOptions);
 
       // Get page ancestors for hierarchy-based path
       const ancestors = page.ancestors || [];
@@ -875,7 +885,7 @@ class SyncEngine {
       }
 
       // Convert markdown (without frontmatter) to storage format
-      const storage = markdownToStorage(markdownContent);
+      const storage = markdownToStorage(markdownContent, this.conversionOptions);
 
       if (pageId) {
         // Update existing page
@@ -1111,7 +1121,7 @@ class SyncEngine {
       }
 
       // Convert to storage format
-      const storage = markdownToStorage(markdownContent);
+      const storage = markdownToStorage(markdownContent, this.conversionOptions);
 
       // Determine parent - use home page if syncing a space, or ancestor if syncing a tree
       let parentId: string | undefined;
@@ -1183,7 +1193,7 @@ class SyncEngine {
     try {
       // Get remote content
       const remotePage = await this.client.getPage(pageId);
-      const remoteContent = storageToMarkdown(remotePage.storage);
+      const remoteContent = storageToMarkdown(remotePage.storage, this.conversionOptions);
 
       // Get base content from .atlcli/cache/
       const baseContent = await readBaseContent(this.atlcliDir, pageId);
@@ -1216,7 +1226,7 @@ class SyncEngine {
         await writeTextFile(filePath, result.content);
 
         // Push merged content
-        const storage = markdownToStorage(result.content);
+        const storage = markdownToStorage(result.content, this.conversionOptions);
         const version = (remotePage.version ?? 1) + 1;
         const page = await this.client.updatePage({
           id: pageId,

@@ -20,6 +20,7 @@ import {
   ConfluenceClient,
   markdownToStorage,
   storageToMarkdown,
+  ConversionOptions,
   generateDiff,
   formatDiffWithColors,
   formatDiffSummary,
@@ -148,6 +149,26 @@ async function getClient(
   return client;
 }
 
+/**
+ * Get conversion options based on the current profile.
+ */
+async function getConversionOptions(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<ConversionOptions> {
+  const config = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+  return {
+    baseUrl: profile.baseUrl,
+    emitWarnings: true,
+    onWarning: (msg) => console.warn(msg),
+  };
+}
+
 async function handleGet(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const id = getFlag(flags, "id");
   if (!id) {
@@ -269,7 +290,8 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
     }
 
     const client = await getClient(flags, opts);
-    const storage = markdownToStorage(rendered.content);
+    const convOpts = await getConversionOptions(flags, opts);
+    const storage = markdownToStorage(rendered.content, convOpts);
     const page = await client.createPage({
       spaceKey,
       title,
@@ -291,8 +313,9 @@ async function handleCreate(flags: Record<string, string | boolean | string[]>, 
     fail(opts, 1, ERROR_CODES.USAGE, "--space, --title, and --body are required (or set defaults.space in config).");
   }
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
   const markdown = await readTextFile(bodyPath);
-  const storage = markdownToStorage(markdown);
+  const storage = markdownToStorage(markdown, convOpts);
   const page = await client.createPage({ spaceKey: space, title, storage, parentId });
   output({ schemaVersion: "1", page }, opts);
 }
@@ -327,10 +350,11 @@ async function handleUpdate(flags: Record<string, string | boolean | string[]>, 
     fail(opts, 1, ERROR_CODES.USAGE, "--id and --body are required.");
   }
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
   const current = await client.getPage(id);
   const title = getFlag(flags, "title") ?? current.title;
   const markdown = await readTextFile(bodyPath);
-  const storage = markdownToStorage(markdown);
+  const storage = markdownToStorage(markdown, convOpts);
   const version = (current.version ?? 1) + 1;
   const page = await client.updatePage({ id, title, storage, version });
   output({ schemaVersion: "1", page }, opts);
@@ -620,10 +644,11 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
 
   const versionStr = getFlag(flags, "version");
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
 
   // Get current page
   const current = await client.getPage(id);
-  const currentMarkdown = storageToMarkdown(current.storage);
+  const currentMarkdown = storageToMarkdown(current.storage, convOpts);
 
   // Determine which version to compare against
   let compareVersion: number;
@@ -643,7 +668,7 @@ async function handleDiff(flags: Record<string, string | boolean | string[]>, op
 
   // Get the comparison version
   const oldPage = await client.getPageAtVersion(id, compareVersion);
-  const oldMarkdown = storageToMarkdown(oldPage.storage);
+  const oldMarkdown = storageToMarkdown(oldPage.storage, convOpts);
 
   // Generate diff
   const diff = generateDiff(oldMarkdown, currentMarkdown, {
@@ -825,9 +850,10 @@ async function handleCommentsAdd(args: string[], flags: Record<string, string | 
   }
 
   // Convert markdown to storage format
-  const storageBody = markdownToStorage(commentText);
-
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
+  const storageBody = markdownToStorage(commentText, convOpts);
+
   const comment = await client.createFooterComment({
     pageId: id,
     body: storageBody,
@@ -869,9 +895,10 @@ async function handleCommentsReply(args: string[], flags: Record<string, string 
   }
 
   // Convert markdown to storage format
-  const storageBody = markdownToStorage(replyText);
-
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
+  const storageBody = markdownToStorage(replyText, convOpts);
+
   const comment = await client.createFooterComment({
     pageId: id,
     body: storageBody,
@@ -918,9 +945,10 @@ async function handleCommentsAddInline(args: string[], flags: Record<string, str
   const matchIndex = matchIndexStr ? parseInt(matchIndexStr, 10) : 0;
 
   // Convert markdown to storage format
-  const storageBody = markdownToStorage(commentText);
-
   const client = await getClient(flags, opts);
+  const convOpts = await getConversionOptions(flags, opts);
+  const storageBody = markdownToStorage(commentText, convOpts);
+
   const comment = await client.createInlineComment({
     pageId: id,
     body: storageBody,

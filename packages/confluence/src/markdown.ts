@@ -5,6 +5,56 @@ import { gfm } from "turndown-plugin-gfm";
 import { createHash } from "crypto";
 import { stripFrontmatter } from "./frontmatter.js";
 
+// ============ Smart Link Types and Utilities ============
+
+/** Display modes for Atlassian Smart Links */
+export type SmartLinkAppearance = "inline" | "card" | "embed";
+
+/** Options for markdown conversion functions */
+export interface ConversionOptions {
+  /** Base URL of the Atlassian instance (e.g., "https://company.atlassian.net") */
+  baseUrl?: string;
+  /** Emit deprecation warnings for legacy syntax */
+  emitWarnings?: boolean;
+  /** Callback for deprecation warnings */
+  onWarning?: (message: string) => void;
+}
+
+/** URL patterns for detecting Atlassian product URLs */
+const ATLASSIAN_URL_PATTERNS = {
+  jira: /\/browse\/([A-Z][A-Z0-9]*-\d+)/i,
+  confluence: /\/wiki\/spaces\/([^\/]+)\/pages\/(\d+)/i,
+  trello: /^https?:\/\/trello\.com\/(c|b)\/([a-zA-Z0-9]+)/i,
+  bitbucket: /^https?:\/\/bitbucket\.org\/([^\/]+)\/([^\/]+)/i,
+};
+
+/**
+ * Check if a URL matches the given baseUrl's hostname.
+ */
+function urlMatchesBaseUrl(url: string, baseUrl: string): boolean {
+  try {
+    const urlHost = new URL(url).hostname.toLowerCase();
+    const baseHost = new URL(baseUrl).hostname.toLowerCase();
+    return urlHost === baseHost;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a URL is an Atlassian product URL (Jira, Confluence, etc.)
+ */
+function isAtlassianUrl(url: string): boolean {
+  return (
+    ATLASSIAN_URL_PATTERNS.jira.test(url) ||
+    ATLASSIAN_URL_PATTERNS.confluence.test(url) ||
+    ATLASSIAN_URL_PATTERNS.trello.test(url) ||
+    ATLASSIAN_URL_PATTERNS.bitbucket.test(url)
+  );
+}
+
+// ============ Markdown Conversion ============
+
 const md = new MarkdownIt({
   html: true,  // Allow HTML passthrough for macro placeholders
   linkify: true,
@@ -64,8 +114,10 @@ const CONFLUENCE_MACRO_REGEX = /^:::confluence\s+(\S+)\n([\s\S]*?)^:::\s*$/gm;
 
 /**
  * Convert ::: macro blocks to placeholders, render markdown, then replace placeholders.
+ * @param markdown - The markdown content to convert
+ * @param options - Optional conversion options (baseUrl for smart links, warnings)
  */
-export function markdownToStorage(markdown: string): string {
+export function markdownToStorage(markdown: string, options?: ConversionOptions): string {
   // Strip frontmatter before processing (defensive - callers should also strip)
   const content = stripFrontmatter(markdown);
 
@@ -90,17 +142,27 @@ export function markdownToStorage(markdown: string): string {
   });
 
   // Handle jira macros: {jira:PROJ-123} or {jira:PROJ-123|showSummary}
-  processed = processed.replace(JIRA_REGEX, (_, issueKey, options) => {
+  // Note: This syntax is deprecated in favor of full URLs
+  processed = processed.replace(JIRA_REGEX, (_, issueKey, jiraOpts) => {
+    // Emit deprecation warning if enabled
+    if (options?.emitWarnings && options?.onWarning) {
+      const baseUrl = options.baseUrl || "https://your-instance.atlassian.net";
+      options.onWarning(
+        `Deprecation: {jira:${issueKey}} syntax is deprecated. ` +
+        `Use [${issueKey}](${baseUrl}/browse/${issueKey}) instead.`
+      );
+    }
+
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
     let html = `<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">${escapeHtml(issueKey)}</ac:parameter>`;
-    if (options) {
+    if (jiraOpts) {
       // Parse options - handle columns= specially since it can contain commas
       // First extract columns= if present
-      const columnsMatch = options.match(/columns=([^,]*(?:,[^,=]*)*?)(?:,(?=\w+=)|,(?=showSummary|count)|$)/);
-      let remainingOpts = options;
+      const columnsMatch = jiraOpts.match(/columns=([^,]*(?:,[^,=]*)*?)(?:,(?=\w+=)|,(?=showSummary|count)|$)/);
+      let remainingOpts = jiraOpts;
       if (columnsMatch) {
         html += `<ac:parameter ac:name="columns">${escapeHtml(columnsMatch[1])}</ac:parameter>`;
-        remainingOpts = options.replace(columnsMatch[0], "").replace(/^,|,$/g, "");
+        remainingOpts = jiraOpts.replace(columnsMatch[0], "").replace(/^,|,$/g, "");
       }
       // Parse remaining simple options
       const simpleOpts = remainingOpts.split(",").map((o: string) => o.trim()).filter(Boolean);
@@ -598,6 +660,28 @@ ${md.render(trimmedContent).trim()}
     return placeholder;
   });
 
+  // Convert Atlassian URLs to smart links if baseUrl is provided
+  // Matches: [text](url) or [text](url)<!--card--> or [text](url)<!--embed-->
+  if (options?.baseUrl) {
+    const smartLinkRegex = /\[([^\]]+)\]\(([^)]+)\)(?:<!--(card|embed)-->)?/g;
+    processed = processed.replace(smartLinkRegex, (match, text, url, appearance) => {
+      // Only convert if URL matches profile baseUrl and is an Atlassian URL
+      if (!urlMatchesBaseUrl(url, options.baseUrl!) || !isAtlassianUrl(url)) {
+        return match; // Leave as regular markdown link
+      }
+
+      const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+      const displayMode = appearance || "inline";
+
+      // Use anchor tag for all appearances - Confluence strips attributes from div elements
+      // The data-card-appearance attribute controls display mode (inline/card/embed)
+      const html = `<a href="${escapeHtml(url)}" data-card-appearance="${displayMode}">${escapeHtml(text)}</a>`;
+
+      macros.push({ placeholder, html });
+      return placeholder;
+    });
+  }
+
   // Restore inline code blocks before markdown rendering
   for (let i = 0; i < inlineCodeBlocks.length; i++) {
     processed = processed.replace(`<!--INLINE_CODE_${i}-->`, inlineCodeBlocks[i]);
@@ -818,7 +902,33 @@ export function extractAttachmentRefs(markdown: string): string[] {
  * Preprocess Confluence storage to convert macros to placeholder HTML
  * that turndown can process.
  */
-function preprocessStorageMacros(storage: string): string {
+function preprocessStorageMacros(storage: string, options?: ConversionOptions): string {
+  // Convert smart links with data-card-appearance (inline mode)
+  // <a href="..." data-card-appearance="inline">text</a>
+  storage = storage.replace(
+    /<a\s+href="([^"]+)"\s*data-card-appearance="(inline|card|embed)"[^>]*>([^<]*)<\/a>/gi,
+    (_, url, appearance, text) => {
+      return `<span data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</span>`;
+    }
+  );
+
+  // Also handle href after data-card-appearance
+  storage = storage.replace(
+    /<a\s+data-card-appearance="(inline|card|embed)"[^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/gi,
+    (_, appearance, url, text) => {
+      return `<span data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</span>`;
+    }
+  );
+
+  // Convert smart links wrapped in div (card/embed mode)
+  // <div data-card-appearance="embed"><a href="...">text</a></div>
+  storage = storage.replace(
+    /<div\s+data-card-appearance="(card|embed)"[^>]*>\s*<a\s+href="([^"]+)"[^>]*>([^<]*)<\/a>\s*<\/div>/gi,
+    (_, appearance, url, text) => {
+      return `<div data-smartlink="true" data-url="${escapeHtml(url)}" data-appearance="${appearance}" data-text="${escapeHtml(text)}">[${escapeHtml(text)}]</div>`;
+    }
+  );
+
   // Convert panel macros (info, note, warning, tip)
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="(info|note|warning|tip)"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
@@ -1282,9 +1392,14 @@ function decodeRawXml(encoded: string): string {
   return Buffer.from(encoded, "base64").toString("utf-8");
 }
 
-export function storageToMarkdown(storage: string): string {
+/**
+ * Convert Confluence storage format to markdown.
+ * @param storage - The Confluence storage format HTML
+ * @param options - Optional conversion options (baseUrl for smart link URLs)
+ */
+export function storageToMarkdown(storage: string, options?: ConversionOptions): string {
   // Preprocess Confluence macros
-  const preprocessed = preprocessStorageMacros(storage);
+  const preprocessed = preprocessStorageMacros(storage, options);
 
   const service = new TurndownService({
     headingStyle: "atx",
@@ -1317,7 +1432,7 @@ export function storageToMarkdown(storage: string): string {
     },
   });
 
-  // Handle jira macro
+  // Handle jira macro - convert to full URL if baseUrl available
   service.addRule("jiraMacro", {
     filter: (node) => {
       return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-macro") === "jira";
@@ -1330,7 +1445,13 @@ export function storageToMarkdown(storage: string): string {
 
       if (!key) return "";
 
-      // Build options string
+      // If baseUrl is available, output full URL (preferred format)
+      if (options?.baseUrl) {
+        const url = `${options.baseUrl}/browse/${key}`;
+        return `[${key}](${url})`;
+      }
+
+      // Fallback to legacy {jira:KEY} syntax if no baseUrl
       const opts: string[] = [];
       if (showSummary) opts.push("showSummary");
       if (count) opts.push("count");
@@ -1340,6 +1461,32 @@ export function storageToMarkdown(storage: string): string {
         return `{jira:${key}|${opts.join(",")}}`;
       }
       return `{jira:${key}}`;
+    },
+  });
+
+  // Handle smart links (data-smartlink attribute)
+  service.addRule("smartLink", {
+    filter: (node) => {
+      const tagName = node.nodeName;
+      return (tagName === "SPAN" || tagName === "DIV") &&
+             (node as any).getAttribute?.("data-smartlink") === "true";
+    },
+    replacement: (_content, node) => {
+      const url = (node as any).getAttribute?.("data-url") || "";
+      const text = (node as any).getAttribute?.("data-text") || "";
+      const appearance = (node as any).getAttribute?.("data-appearance") || "inline";
+
+      if (!url) return text || "";
+
+      // Build markdown link
+      let link = `[${text}](${url})`;
+
+      // Add appearance annotation if not inline (default)
+      if (appearance === "card" || appearance === "embed") {
+        link += `<!--${appearance}-->`;
+      }
+
+      return link;
     },
   });
 

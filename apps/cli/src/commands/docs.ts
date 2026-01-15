@@ -25,6 +25,7 @@ import {
 } from "@atlcli/core";
 import {
   ConfluenceClient,
+  type ConversionOptions,
   hashContent,
   markdownToStorage,
   normalizeMarkdown,
@@ -208,6 +209,15 @@ async function getClient(
     return { client, defaults: resolveDefaults(config, profile) };
   }
   return client;
+}
+
+/** Build ConversionOptions from profile baseUrl */
+function buildConversionOptions(baseUrl?: string): ConversionOptions {
+  return {
+    baseUrl,
+    emitWarnings: true,
+    onWarning: (msg) => console.warn(msg),
+  };
 }
 
 /**
@@ -497,9 +507,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const pullComments = hasFlag(flags, "comments");
   let commentsPulled = 0;
 
+  // Build conversion options using baseUrl from dirConfig
+  const conversionOptions = buildConversionOptions(dirConfig?.baseUrl);
+
   for (const detail of pageDetails) {
     // Convert storage to markdown, then apply page-specific attachment paths
-    const rawMarkdown = storageToMarkdown(detail.storage);
+    const rawMarkdown = storageToMarkdown(detail.storage, conversionOptions);
     const ancestorIds = detail.ancestors.map((a) => a.id);
 
     // Get computed path for this page
@@ -842,9 +855,10 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   const globalConfig = await loadConfig();
   let space = getFlag(flags, "space");
   let state: AtlcliState | undefined;
+  let dirConfig: AtlcliConfig | null = null;
 
   if (atlcliDir) {
-    const dirConfig = await readConfig(atlcliDir);
+    dirConfig = await readConfig(atlcliDir);
     space = space || dirConfig.space || globalConfig.global?.space;
     state = await readState(atlcliDir);
   } else {
@@ -882,7 +896,7 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   let skipped = 0;
 
   for (const filePath of files) {
-    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state });
+    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl });
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
     else skipped += 1;
@@ -1012,7 +1026,8 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
   }
 
   // Convert to storage format (strip frontmatter if any)
-  const storage = markdownToStorage(markdownContent);
+  const conversionOptions = buildConversionOptions(dirConfig?.baseUrl);
+  const storage = markdownToStorage(markdownContent, conversionOptions);
 
   // Create page in Confluence
   const page = await client.createPage({
@@ -1084,6 +1099,8 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
   const space = getFlag(flags, "space") ?? defaults.space;
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
+  const atlcliDir = findAtlcliDir(dir);
+  const dirConfig = atlcliDir ? await readConfig(atlcliDir) : null;
 
   if (!opts.json) {
     output(`Watching ${dir} for Markdown changes...`, opts);
@@ -1109,7 +1126,7 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
 
       for (const file of batch) {
         try {
-          const result = await pushFile({ client, filePath: file, space, opts });
+          const result = await pushFile({ client, filePath: file, space, opts, baseUrl: dirConfig?.baseUrl });
           const payload = { schemaVersion: "1", file, result };
           if (opts.json) {
             process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -1146,8 +1163,9 @@ async function pushFile(params: {
   opts: OutputOptions;
   atlcliDir?: string;
   state?: AtlcliState;
+  baseUrl?: string;
 }): Promise<PushResult> {
-  const { client, filePath, space, opts, atlcliDir, state } = params;
+  const { client, filePath, space, opts, atlcliDir, state, baseUrl } = params;
 
   // Read file and parse frontmatter
   const rawContent = await readTextFile(filePath);
@@ -1160,7 +1178,8 @@ async function pushFile(params: {
   const pageId = frontmatter?.id || legacyMeta?.id;
 
   // Strip frontmatter before converting to storage format
-  const storage = markdownToStorage(markdownContent);
+  const conversionOptions = buildConversionOptions(baseUrl);
+  const storage = markdownToStorage(markdownContent, conversionOptions);
 
   // Check for attachment references and upload them
   const pageFilename = basename(filePath);
@@ -1828,6 +1847,11 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
     fail(opts, 1, ERROR_CODES.USAGE, "File path is required. Usage: atlcli wiki docs diff <file>");
   }
 
+  // Get baseUrl from dirConfig if available
+  const atlcliDir = findAtlcliDir(dirname(filePath));
+  const dirConfig = atlcliDir ? await readConfig(atlcliDir) : null;
+  const conversionOptions = buildConversionOptions(dirConfig?.baseUrl);
+
   // Check if file exists and read it
   let localContent: string;
   try {
@@ -1848,7 +1872,7 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
-  const remoteMarkdown = storageToMarkdown(remotePage.storage);
+  const remoteMarkdown = storageToMarkdown(remotePage.storage, conversionOptions);
 
   // Generate diff
   const diff = generateDiff(remoteMarkdown, localMarkdown, {

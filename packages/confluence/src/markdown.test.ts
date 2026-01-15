@@ -757,3 +757,199 @@ Example: \`![alt](./page.attachments/example.png)\` syntax
     expect(refs).not.toContain("example.png");
   });
 });
+
+describe("smart links", () => {
+  const baseUrl = "https://example.atlassian.net";
+
+  describe("storageToMarkdown - smart link conversion", () => {
+    test("converts inline smart link to markdown URL", () => {
+      const storage = '<p>See <a href="https://example.atlassian.net/browse/PROJ-123" data-card-appearance="inline">PROJ-123</a> for details.</p>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      expect(md).toContain("[PROJ-123](https://example.atlassian.net/browse/PROJ-123)");
+      expect(md).not.toContain("<!--");
+    });
+
+    test("converts card smart link to markdown URL with annotation", () => {
+      const storage = '<div data-card-appearance="card"><a href="https://example.atlassian.net/browse/PROJ-456">PROJ-456</a></div>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      expect(md).toContain("[PROJ-456](https://example.atlassian.net/browse/PROJ-456)<!--card-->");
+    });
+
+    test("converts embed smart link to markdown URL with annotation", () => {
+      const storage = '<div data-card-appearance="embed"><a href="https://example.atlassian.net/wiki/spaces/TEAM/pages/123">Page Title</a></div>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      expect(md).toContain("[Page Title](https://example.atlassian.net/wiki/spaces/TEAM/pages/123)<!--embed-->");
+    });
+
+    test("handles smart link without data-card-appearance as inline", () => {
+      const storage = '<p><a href="https://example.atlassian.net/browse/TEST-1">TEST-1</a></p>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      // Regular links should still work even without data-card-appearance
+      expect(md).toContain("[TEST-1](https://example.atlassian.net/browse/TEST-1)");
+    });
+  });
+
+  describe("markdownToStorage - URL to smart link conversion", () => {
+    test("converts Jira URL to inline smart link", () => {
+      const md = "[PROJ-123](https://example.atlassian.net/browse/PROJ-123)";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).toContain('data-card-appearance="inline"');
+      expect(html).toContain('href="https://example.atlassian.net/browse/PROJ-123"');
+      expect(html).toContain(">PROJ-123</a>");
+    });
+
+    test("converts Confluence URL to inline smart link", () => {
+      const md = "[Page Title](https://example.atlassian.net/wiki/spaces/TEAM/pages/12345)";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).toContain('data-card-appearance="inline"');
+      expect(html).toContain('href="https://example.atlassian.net/wiki/spaces/TEAM/pages/12345"');
+    });
+
+    test("converts URL with card annotation to card smart link", () => {
+      const md = "[PROJ-456](https://example.atlassian.net/browse/PROJ-456)<!--card-->";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).toContain('data-card-appearance="card"');
+      // Uses anchor tag directly - Confluence strips attributes from div elements
+      expect(html).toContain("<a");
+    });
+
+    test("converts URL with embed annotation to embed smart link", () => {
+      const md = "[Page](https://example.atlassian.net/wiki/spaces/TEAM/pages/123)<!--embed-->";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).toContain('data-card-appearance="embed"');
+      // Uses anchor tag directly - Confluence strips attributes from div elements
+      expect(html).toContain("<a");
+    });
+
+    test("does not convert URLs from different hosts", () => {
+      const md = "[PROJ-123](https://other.atlassian.net/browse/PROJ-123)";
+      const html = markdownToStorage(md, { baseUrl });
+      // Should be a regular link, not a smart link
+      expect(html).not.toContain('data-card-appearance');
+      expect(html).toContain('<a href="https://other.atlassian.net/browse/PROJ-123">');
+    });
+
+    test("does not convert non-Atlassian URLs", () => {
+      const md = "[GitHub](https://github.com/user/repo)";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).not.toContain('data-card-appearance');
+      expect(html).toContain('<a href="https://github.com/user/repo">');
+    });
+
+    test("handles missing baseUrl gracefully", () => {
+      const md = "[PROJ-123](https://example.atlassian.net/browse/PROJ-123)";
+      const html = markdownToStorage(md);
+      // Without baseUrl, should be a regular link
+      expect(html).not.toContain('data-card-appearance');
+      expect(html).toContain('<a href="https://example.atlassian.net/browse/PROJ-123">');
+    });
+  });
+
+  describe("legacy jira macro with baseUrl", () => {
+    test("outputs full URL when baseUrl is provided", () => {
+      const storage = '<p><ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">PROJ-123</ac:parameter></ac:structured-macro></p>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      expect(md).toContain("[PROJ-123](https://example.atlassian.net/browse/PROJ-123)");
+      expect(md).not.toContain("{jira:");
+    });
+
+    test("falls back to {jira:} syntax without baseUrl", () => {
+      const storage = '<p><ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">PROJ-123</ac:parameter></ac:structured-macro></p>';
+      const md = storageToMarkdown(storage);
+      expect(md).toContain("{jira:PROJ-123}");
+      expect(md).not.toContain("https://");
+    });
+
+    test("preserves jira macro options with full URL", () => {
+      const storage = '<p><ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">PROJ-456</ac:parameter><ac:parameter ac:name="showSummary">true</ac:parameter></ac:structured-macro></p>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      // With baseUrl, outputs URL with options in comment
+      expect(md).toContain("[PROJ-456](https://example.atlassian.net/browse/PROJ-456)");
+    });
+  });
+
+  describe("round-trip smart link conversion", () => {
+    test("inline smart link survives round-trip", () => {
+      const original = "[PROJ-123](https://example.atlassian.net/browse/PROJ-123)";
+      const storage = markdownToStorage(original, { baseUrl });
+      const result = storageToMarkdown(storage, { baseUrl });
+      expect(result.trim()).toBe(original);
+    });
+
+    test("card smart link survives round-trip", () => {
+      const original = "[PROJ-456](https://example.atlassian.net/browse/PROJ-456)<!--card-->";
+      const storage = markdownToStorage(original, { baseUrl });
+      const result = storageToMarkdown(storage, { baseUrl });
+      expect(result.trim()).toBe(original);
+    });
+
+    test("embed smart link survives round-trip", () => {
+      const original = "[Page](https://example.atlassian.net/wiki/spaces/TEAM/pages/123)<!--embed-->";
+      const storage = markdownToStorage(original, { baseUrl });
+      const result = storageToMarkdown(storage, { baseUrl });
+      expect(result.trim()).toBe(original);
+    });
+  });
+
+  describe("deprecation warnings", () => {
+    test("emits warning for legacy {jira:} syntax when enabled", () => {
+      const warnings: string[] = [];
+      const options = {
+        baseUrl,
+        emitWarnings: true,
+        onWarning: (msg: string) => warnings.push(msg),
+      };
+
+      markdownToStorage("See {jira:PROJ-123} for details.", options);
+      expect(warnings.length).toBeGreaterThan(0);
+      expect(warnings[0]).toContain("deprecated");
+    });
+
+    test("does not emit warning when emitWarnings is false", () => {
+      const warnings: string[] = [];
+      const options = {
+        baseUrl,
+        emitWarnings: false,
+        onWarning: (msg: string) => warnings.push(msg),
+      };
+
+      markdownToStorage("See {jira:PROJ-123} for details.", options);
+      expect(warnings.length).toBe(0);
+    });
+  });
+
+  describe("edge cases", () => {
+    test("handles multiple smart links in same paragraph", () => {
+      const md = "See [PROJ-1](https://example.atlassian.net/browse/PROJ-1) and [PROJ-2](https://example.atlassian.net/browse/PROJ-2)";
+      const html = markdownToStorage(md, { baseUrl });
+      const inlineCount = (html.match(/data-card-appearance="inline"/g) || []).length;
+      expect(inlineCount).toBe(2);
+    });
+
+    test("handles mixed smart links and regular links", () => {
+      const md = `
+[Jira](https://example.atlassian.net/browse/PROJ-123)
+[GitHub](https://github.com/user/repo)
+[Wiki](https://example.atlassian.net/wiki/spaces/TEAM/pages/123)
+`;
+      const html = markdownToStorage(md, { baseUrl });
+      // Should have 2 smart links (Jira and Wiki)
+      const smartLinkCount = (html.match(/data-card-appearance/g) || []).length;
+      expect(smartLinkCount).toBe(2);
+      // GitHub should be a regular link
+      expect(html).toContain('<a href="https://github.com/user/repo">');
+    });
+
+    test("preserves smart link text exactly", () => {
+      const storage = '<a href="https://example.atlassian.net/browse/PROJ-123" data-card-appearance="inline">Custom Text Here</a>';
+      const md = storageToMarkdown(storage, { baseUrl });
+      expect(md).toContain("[Custom Text Here]");
+    });
+
+    test("handles URL with special characters in path", () => {
+      const md = "[Page Name](https://example.atlassian.net/wiki/spaces/My%20Space/pages/123)";
+      const html = markdownToStorage(md, { baseUrl });
+      expect(html).toContain('href="https://example.atlassian.net/wiki/spaces/My%20Space/pages/123"');
+    });
+  });
+});
