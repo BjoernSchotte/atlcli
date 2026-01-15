@@ -14,7 +14,7 @@
     },
     "apps/cli": {
       "name": "@atlcli/cli",
-      "version": "0.2.0",
+      "version": "0.6.0",
       "bin": {
         "atlcli": "src/index.ts",
       },
@@ -27,12 +27,14 @@
     },
     "packages/confluence": {
       "name": "@atlcli/confluence",
-      "version": "1.0.0",
+      "version": "0.6.0",
       "dependencies": {
         "@atlcli/core": "workspace:*",
         "diff": "^8.0.2",
         "ignore": "^7.0.5",
         "markdown-it": "^14.1.0",
+        "markdown-it-sub": "^2.0.0",
+        "markdown-it-sup": "^2.0.0",
         "markdown-it-task-lists": "^2.1.1",
         "turndown": "^7.1.2",
         "turndown-plugin-gfm": "^1.0.2",
@@ -44,7 +46,7 @@
     },
     "packages/core": {
       "name": "@atlcli/core",
-      "version": "1.0.0",
+      "version": "0.6.0",
       "dependencies": {
         "handlebars": "^4.7.8",
         "yaml": "^2.7.0",
@@ -52,14 +54,14 @@
     },
     "packages/jira": {
       "name": "@atlcli/jira",
-      "version": "1.0.0",
+      "version": "0.6.0",
       "dependencies": {
         "@atlcli/core": "workspace:*",
       },
     },
     "packages/plugin-api": {
       "name": "@atlcli/plugin-api",
-      "version": "1.0.0",
+      "version": "0.6.0",
     },
   },
   "packages": {
@@ -118,6 +120,10 @@
     "linkify-it": ["linkify-it@5.0.0", "", { "dependencies": { "uc.micro": "^2.0.0" } }, "sha512-5aHCbzQRADcdP+ATqnDuhhJ/MRIqDkZX5pyjFHRRysS8vZ5AbqGEoFIb6pYHPZ+L/OC2Lc+xT8uHVVR5CAK/wQ=="],
 
     "markdown-it": ["markdown-it@14.1.0", "", { "dependencies": { "argparse": "^2.0.1", "entities": "^4.4.0", "linkify-it": "^5.0.0", "mdurl": "^2.0.0", "punycode.js": "^2.3.1", "uc.micro": "^2.1.0" }, "bin": { "markdown-it": "bin/markdown-it.mjs" } }, "sha512-a54IwgWPaeBCAAsv13YgmALOF1elABB08FxO9i+r4VFk5Vl4pKokRPeX8u5TCgSsPi6ec1otfLjdOpVcgbpshg=="],
+
+    "markdown-it-sub": ["markdown-it-sub@2.0.0", "", {}, "sha512-iCBKgwCkfQBRg2vApy9vx1C1Tu6D8XYo8NvevI3OlwzBRmiMtsJ2sXupBgEA7PPxiDwNni3qIUkhZ6j5wofDUA=="],
+
+    "markdown-it-sup": ["markdown-it-sup@2.0.0", "", {}, "sha512-5VgmdKlkBd8sgXuoDoxMpiU+BiEt3I49GItBzzw7Mxq9CxvnhE/k09HFli09zgfFDRixDQDfDxi0mgBCXtaTvA=="],
 
     "markdown-it-task-lists": ["markdown-it-task-lists@2.1.1", "", {}, "sha512-TxFAc76Jnhb2OUu+n3yz9RMu4CwGfaT788br6HhEDlvWfdeJcLUsxk1Hgw2yJio0OXsxv7pyIPmvECY7bMbluA=="],
 
