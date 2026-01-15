@@ -592,6 +592,127 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle toc-zone macro: :::toc-zone minLevel=2 maxLevel=4
+  processed = processed.replace(TOC_ZONE_MACRO_REGEX, (_, params, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const trimmedContent = (content || "").trim();
+
+    const minLevelMatch = params?.match(/minLevel=(\d+)/i);
+    const maxLevelMatch = params?.match(/maxLevel=(\d+)/i);
+    const locationMatch = params?.match(/location=(top|bottom)/i);
+
+    let html = `<ac:structured-macro ac:name="toc-zone">`;
+    if (minLevelMatch) {
+      html += `\n<ac:parameter ac:name="minLevel">${escapeHtml(minLevelMatch[1])}</ac:parameter>`;
+    }
+    if (maxLevelMatch) {
+      html += `\n<ac:parameter ac:name="maxLevel">${escapeHtml(maxLevelMatch[1])}</ac:parameter>`;
+    }
+    if (locationMatch) {
+      html += `\n<ac:parameter ac:name="location">${escapeHtml(locationMatch[1])}</ac:parameter>`;
+    }
+    const innerHtml = md.render(trimmedContent).trim();
+    html += `\n<ac:rich-text-body>${innerHtml}</ac:rich-text-body>`;
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle page-properties macro: :::page-properties id="info"
+  // Confluence calls this "details" internally
+  processed = processed.replace(PAGE_PROPERTIES_MACRO_REGEX, (_, params, content) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const trimmedContent = (content || "").trim();
+
+    const idMatch = params?.match(/id="([^"]*)"/i);
+    const hasHidden = params ? /\bhidden\b/i.test(params) : false;
+
+    let html = `<ac:structured-macro ac:name="details">`;
+    if (idMatch) {
+      html += `\n<ac:parameter ac:name="id">${escapeHtml(idMatch[1])}</ac:parameter>`;
+    }
+    if (hasHidden) {
+      html += `\n<ac:parameter ac:name="hidden">true</ac:parameter>`;
+    }
+    const innerHtml = md.render(trimmedContent).trim();
+    html += `\n<ac:rich-text-body>${innerHtml}</ac:rich-text-body>`;
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle page-properties-report macro: :::page-properties-report labels="status"
+  // Confluence calls this "detailssummary" internally
+  processed = processed.replace(PAGE_PROPERTIES_REPORT_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const labelsMatch = params?.match(/labels="([^"]*)"/i);
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const cqlMatch = params?.match(/cql="([^"]*)"/i);
+    const headingsMatch = params?.match(/headings="([^"]*)"/i);
+    const sortByMatch = params?.match(/sortBy="([^"]*)"/i);
+    const pageSizeMatch = params?.match(/pageSize=(\d+)/i);
+
+    let html = `<ac:structured-macro ac:name="detailssummary">`;
+    if (labelsMatch) {
+      html += `\n<ac:parameter ac:name="label">${escapeHtml(labelsMatch[1])}</ac:parameter>`;
+    }
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (cqlMatch) {
+      html += `\n<ac:parameter ac:name="cql">${escapeHtml(cqlMatch[1])}</ac:parameter>`;
+    }
+    if (headingsMatch) {
+      html += `\n<ac:parameter ac:name="headings">${escapeHtml(headingsMatch[1])}</ac:parameter>`;
+    }
+    if (sortByMatch) {
+      html += `\n<ac:parameter ac:name="sortBy">${escapeHtml(sortByMatch[1])}</ac:parameter>`;
+    }
+    if (pageSizeMatch) {
+      html += `\n<ac:parameter ac:name="pageSize">${escapeHtml(pageSizeMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
+  // Handle task-report macro: :::task-report spaces="DEV" labels="sprint-1"
+  // Confluence calls this "tasks-report-macro" internally
+  processed = processed.replace(TASK_REPORT_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const spacesMatch = params?.match(/spaces="([^"]*)"/i);
+    const labelsMatch = params?.match(/labels="([^"]*)"/i);
+    const daysMatch = params?.match(/days=(\d+)/i);
+    const assigneeMatch = params?.match(/assignee="([^"]*)"/i);
+    const statusMatch = params?.match(/status=(complete|incomplete)/i);
+
+    let html = `<ac:structured-macro ac:name="tasks-report-macro">`;
+    if (spacesMatch) {
+      html += `\n<ac:parameter ac:name="spaces">${escapeHtml(spacesMatch[1])}</ac:parameter>`;
+    }
+    if (labelsMatch) {
+      html += `\n<ac:parameter ac:name="labels">${escapeHtml(labelsMatch[1])}</ac:parameter>`;
+    }
+    if (daysMatch) {
+      html += `\n<ac:parameter ac:name="days">${escapeHtml(daysMatch[1])}</ac:parameter>`;
+    }
+    if (assigneeMatch) {
+      html += `\n<ac:parameter ac:name="assignee">${escapeHtml(assigneeMatch[1])}</ac:parameter>`;
+    }
+    if (statusMatch) {
+      html += `\n<ac:parameter ac:name="status">${escapeHtml(statusMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -816,7 +937,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro"];
 
 /**
  * Valid status colors in Confluence
@@ -992,6 +1113,30 @@ const RECENTLY_UPDATED_REGEX = /^:::recently-updated(?:[ \t]+(.+))?\n?:::\s*$/gm
  * Regex for pagetree macro: :::pagetree root="PageName"
  */
 const PAGETREE_MACRO_REGEX = /^:::pagetree(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for toc-zone macro: :::toc-zone minLevel=2 maxLevel=4
+ * Has body content for the zone
+ */
+const TOC_ZONE_MACRO_REGEX = /^:::toc-zone(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
+
+/**
+ * Regex for page-properties macro: :::page-properties id="info"
+ * Has body content (key-value table). Confluence calls this "details" internally.
+ */
+const PAGE_PROPERTIES_MACRO_REGEX = /^:::page-properties(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
+
+/**
+ * Regex for page-properties-report macro: :::page-properties-report labels="status"
+ * No body content. Confluence calls this "detailssummary" internally.
+ */
+const PAGE_PROPERTIES_REPORT_REGEX = /^:::page-properties-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for task-report macro: :::task-report spaces="DEV" labels="sprint-1"
+ * No body content. Confluence calls this "tasks-report-macro" internally.
+ */
+const TASK_REPORT_MACRO_REGEX = /^:::task-report(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -1564,6 +1709,94 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     () => `<div data-macro="pagetree" data-root="" data-startdepth="" data-expandcollapseall="false" data-searchbox="false">*[pagetree]*</div>`
   );
 
+  // Convert toc-zone macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="toc-zone"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const minLevelMatch = inner.match(/<ac:parameter\s+ac:name="minLevel"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const maxLevelMatch = inner.match(/<ac:parameter\s+ac:name="maxLevel"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const locationMatch = inner.match(/<ac:parameter\s+ac:name="location"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const minLevel = minLevelMatch ? minLevelMatch[1] : "";
+      const maxLevel = maxLevelMatch ? maxLevelMatch[1] : "";
+      const location = locationMatch ? locationMatch[1] : "";
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="toc-zone" data-minlevel="${escapeHtml(minLevel)}" data-maxlevel="${escapeHtml(maxLevel)}" data-location="${escapeHtml(location)}">${body}</div>`;
+    }
+  );
+
+  // Convert page-properties (details) macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="details"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const idMatch = inner.match(/<ac:parameter\s+ac:name="id"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const hiddenMatch = inner.match(/<ac:parameter\s+ac:name="hidden"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+
+      const id = idMatch ? idMatch[1] : "";
+      const hidden = hiddenMatch ? hiddenMatch[1].toLowerCase() === "true" : false;
+      const body = bodyMatch ? bodyMatch[1] : "";
+
+      return `<div data-macro="page-properties" data-id="${escapeHtml(id)}" data-hidden="${hidden}">${body}</div>`;
+    }
+  );
+
+  // Convert page-properties-report (detailssummary) macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="detailssummary"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const labelMatch = inner.match(/<ac:parameter\s+ac:name="label"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const cqlMatch = inner.match(/<ac:parameter\s+ac:name="cql"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const headingsMatch = inner.match(/<ac:parameter\s+ac:name="headings"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const sortByMatch = inner.match(/<ac:parameter\s+ac:name="sortBy"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const pageSizeMatch = inner.match(/<ac:parameter\s+ac:name="pageSize"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const labels = labelMatch ? labelMatch[1] : "";
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const cql = cqlMatch ? cqlMatch[1] : "";
+      const headings = headingsMatch ? headingsMatch[1] : "";
+      const sortBy = sortByMatch ? sortByMatch[1] : "";
+      const pageSize = pageSizeMatch ? pageSizeMatch[1] : "";
+
+      return `<div data-macro="page-properties-report" data-labels="${escapeHtml(labels)}" data-spaces="${escapeHtml(spaces)}" data-cql="${escapeHtml(cql)}" data-headings="${escapeHtml(headings)}" data-sortby="${escapeHtml(sortBy)}" data-pagesize="${escapeHtml(pageSize)}">*[page-properties-report]*</div>`;
+    }
+  );
+
+  // Convert page-properties-report (detailssummary) macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="detailssummary"[^>]*\/>/gi,
+    () => `<div data-macro="page-properties-report" data-labels="" data-spaces="" data-cql="" data-headings="" data-sortby="" data-pagesize="">*[page-properties-report]*</div>`
+  );
+
+  // Convert task-report (tasks-report-macro) macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="tasks-report-macro"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const spacesMatch = inner.match(/<ac:parameter\s+ac:name="spaces"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const labelsMatch = inner.match(/<ac:parameter\s+ac:name="labels"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const daysMatch = inner.match(/<ac:parameter\s+ac:name="days"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const assigneeMatch = inner.match(/<ac:parameter\s+ac:name="assignee"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const statusMatch = inner.match(/<ac:parameter\s+ac:name="status"[^>]*>([^<]*)<\/ac:parameter>/i);
+
+      const spaces = spacesMatch ? spacesMatch[1] : "";
+      const labels = labelsMatch ? labelsMatch[1] : "";
+      const days = daysMatch ? daysMatch[1] : "";
+      const assignee = assigneeMatch ? assigneeMatch[1] : "";
+      const status = statusMatch ? statusMatch[1] : "";
+
+      return `<div data-macro="task-report" data-spaces="${escapeHtml(spaces)}" data-labels="${escapeHtml(labels)}" data-days="${escapeHtml(days)}" data-assignee="${escapeHtml(assignee)}" data-status="${escapeHtml(status)}">*[task-report]*</div>`;
+    }
+  );
+
+  // Convert task-report (tasks-report-macro) macro (self-closing)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="tasks-report-macro"[^>]*\/>/gi,
+    () => `<div data-macro="task-report" data-spaces="" data-labels="" data-days="" data-assignee="" data-status="">*[task-report]*</div>`
+  );
+
   // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
   // This allows turndown's taskList rule to convert them to markdown task syntax
   storage = storage.replace(
@@ -2113,6 +2346,70 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
         if (searchBox) params += " searchBox";
 
         return `\n\n:::pagetree${params}\n:::\n\n`;
+      }
+
+      // TOC zone macro (has body content)
+      if (macroType === "toc-zone") {
+        const minLevel = (node as any).getAttribute?.("data-minlevel") || "";
+        const maxLevel = (node as any).getAttribute?.("data-maxlevel") || "";
+        const location = (node as any).getAttribute?.("data-location") || "";
+
+        let params = "";
+        if (minLevel) params += ` minLevel=${minLevel}`;
+        if (maxLevel) params += ` maxLevel=${maxLevel}`;
+        if (location) params += ` location=${location}`;
+
+        return `\n\n:::toc-zone${params}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Page properties macro (has body content)
+      if (macroType === "page-properties") {
+        const id = (node as any).getAttribute?.("data-id") || "";
+        const hidden = (node as any).getAttribute?.("data-hidden") === "true";
+
+        let params = "";
+        if (id) params += ` id="${id}"`;
+        if (hidden) params += " hidden";
+
+        return `\n\n:::page-properties${params}\n${content.trim()}\n:::\n\n`;
+      }
+
+      // Page properties report macro (no body)
+      if (macroType === "page-properties-report") {
+        const labels = (node as any).getAttribute?.("data-labels") || "";
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const cql = (node as any).getAttribute?.("data-cql") || "";
+        const headings = (node as any).getAttribute?.("data-headings") || "";
+        const sortBy = (node as any).getAttribute?.("data-sortby") || "";
+        const pageSize = (node as any).getAttribute?.("data-pagesize") || "";
+
+        let params = "";
+        if (labels) params += ` labels="${labels}"`;
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (cql) params += ` cql="${cql}"`;
+        if (headings) params += ` headings="${headings}"`;
+        if (sortBy) params += ` sortBy="${sortBy}"`;
+        if (pageSize) params += ` pageSize=${pageSize}`;
+
+        return `\n\n:::page-properties-report${params}\n:::\n\n`;
+      }
+
+      // Task report macro (no body)
+      if (macroType === "task-report") {
+        const spaces = (node as any).getAttribute?.("data-spaces") || "";
+        const labels = (node as any).getAttribute?.("data-labels") || "";
+        const days = (node as any).getAttribute?.("data-days") || "";
+        const assignee = (node as any).getAttribute?.("data-assignee") || "";
+        const status = (node as any).getAttribute?.("data-status") || "";
+
+        let params = "";
+        if (spaces) params += ` spaces="${spaces}"`;
+        if (labels) params += ` labels="${labels}"`;
+        if (days) params += ` days=${days}`;
+        if (assignee) params += ` assignee="${assignee}"`;
+        if (status) params += ` status=${status}`;
+
+        return `\n\n:::task-report${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros

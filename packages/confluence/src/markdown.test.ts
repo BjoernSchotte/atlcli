@@ -1147,3 +1147,189 @@ describe("smart links", () => {
     });
   });
 });
+
+describe("Phase 2 macros - Priority 1", () => {
+  describe("toc-zone macro", () => {
+    test("converts toc-zone to storage format", () => {
+      const md = `:::toc-zone minLevel=2 maxLevel=4
+## Heading One
+Content here
+## Heading Two
+More content
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="toc-zone"');
+      expect(html).toContain('ac:name="minLevel">2</ac:parameter>');
+      expect(html).toContain('ac:name="maxLevel">4</ac:parameter>');
+      expect(html).toContain("<ac:rich-text-body>");
+      expect(html).toContain("<h2>Heading One</h2>");
+    });
+
+    test("converts toc-zone with location parameter", () => {
+      const md = `:::toc-zone location=bottom
+## Content
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="location">bottom</ac:parameter>');
+    });
+
+    test("converts storage toc-zone to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="toc-zone">
+<ac:parameter ac:name="minLevel">2</ac:parameter>
+<ac:parameter ac:name="maxLevel">3</ac:parameter>
+<ac:rich-text-body><h2>Section</h2><p>Content</p></ac:rich-text-body>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::toc-zone");
+      expect(md).toContain("minLevel=2");
+      expect(md).toContain("maxLevel=3");
+      expect(md).toContain("## Section");
+    });
+
+    test("round-trips toc-zone with parameters", () => {
+      const original = `:::toc-zone minLevel=2
+## Test
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::toc-zone");
+      expect(roundtrip).toContain("minLevel=2");
+      expect(roundtrip).toContain("## Test");
+    });
+  });
+
+  describe("page-properties macro", () => {
+    test("converts page-properties to storage format", () => {
+      const md = `:::page-properties id="project-info"
+| Key | Value |
+|-----|-------|
+| Status | Active |
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="details"');
+      expect(html).toContain('ac:name="id">project-info</ac:parameter>');
+      expect(html).toContain("<ac:rich-text-body>");
+      expect(html).toContain("<table>");
+    });
+
+    test("converts page-properties with hidden flag", () => {
+      const md = `:::page-properties hidden
+| Key | Value |
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="hidden">true</ac:parameter>');
+    });
+
+    test("converts storage page-properties to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="details">
+<ac:parameter ac:name="id">my-props</ac:parameter>
+<ac:rich-text-body><table><tr><td>Key</td><td>Value</td></tr></table></ac:rich-text-body>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::page-properties");
+      expect(md).toContain('id="my-props"');
+    });
+
+    test("round-trips page-properties with id", () => {
+      const original = `:::page-properties id="test"
+| A | B |
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::page-properties");
+      expect(roundtrip).toContain('id="test"');
+    });
+  });
+
+  describe("page-properties-report macro", () => {
+    test("converts page-properties-report to storage format", () => {
+      const md = `:::page-properties-report labels="project-status" spaces="DEV,OPS"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="detailssummary"');
+      expect(html).toContain('ac:name="label">project-status</ac:parameter>');
+      expect(html).toContain('ac:name="spaces">DEV,OPS</ac:parameter>');
+    });
+
+    test("converts page-properties-report with all parameters", () => {
+      const md = `:::page-properties-report labels="status" cql="space=DEV" headings="Status,Owner" sortBy="title" pageSize=20
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="label">status</ac:parameter>');
+      expect(html).toContain('ac:name="cql">space=DEV</ac:parameter>');
+      expect(html).toContain('ac:name="headings">Status,Owner</ac:parameter>');
+      expect(html).toContain('ac:name="sortBy">title</ac:parameter>');
+      expect(html).toContain('ac:name="pageSize">20</ac:parameter>');
+    });
+
+    test("converts storage page-properties-report to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="detailssummary">
+<ac:parameter ac:name="label">my-label</ac:parameter>
+<ac:parameter ac:name="spaces">TEAM</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::page-properties-report");
+      expect(md).toContain('labels="my-label"');
+      expect(md).toContain('spaces="TEAM"');
+    });
+
+    test("round-trips page-properties-report", () => {
+      const original = `:::page-properties-report labels="test" spaces="DEV"
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::page-properties-report");
+      expect(roundtrip).toContain('labels="test"');
+      expect(roundtrip).toContain('spaces="DEV"');
+    });
+  });
+
+  describe("task-report macro", () => {
+    test("converts task-report to storage format", () => {
+      const md = `:::task-report spaces="DEV" labels="sprint-1"
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="tasks-report-macro"');
+      expect(html).toContain('ac:name="spaces">DEV</ac:parameter>');
+      expect(html).toContain('ac:name="labels">sprint-1</ac:parameter>');
+    });
+
+    test("converts task-report with all parameters", () => {
+      const md = `:::task-report spaces="DEV" labels="sprint" days=30 assignee="john" status=complete
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="spaces">DEV</ac:parameter>');
+      expect(html).toContain('ac:name="labels">sprint</ac:parameter>');
+      expect(html).toContain('ac:name="days">30</ac:parameter>');
+      expect(html).toContain('ac:name="assignee">john</ac:parameter>');
+      expect(html).toContain('ac:name="status">complete</ac:parameter>');
+    });
+
+    test("converts storage task-report to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="tasks-report-macro">
+<ac:parameter ac:name="spaces">TEAM</ac:parameter>
+<ac:parameter ac:name="days">14</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::task-report");
+      expect(md).toContain('spaces="TEAM"');
+      expect(md).toContain("days=14");
+    });
+
+    test("round-trips task-report", () => {
+      const original = `:::task-report spaces="DEV" days=7
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::task-report");
+      expect(roundtrip).toContain('spaces="DEV"');
+      expect(roundtrip).toContain("days=7");
+    });
+
+    test("handles self-closing task-report macro", () => {
+      const storage = `<ac:structured-macro ac:name="tasks-report-macro"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::task-report");
+    });
+  });
+});
