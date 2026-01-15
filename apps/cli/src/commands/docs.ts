@@ -839,10 +839,10 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
 
   if (atlcliDir) {
     const dirConfig = await readConfig(atlcliDir);
-    space = space || dirConfig.space || globalConfig.defaults?.space;
+    space = space || dirConfig.space || globalConfig.global?.space;
     state = await readState(atlcliDir);
   } else {
-    space = space || globalConfig.defaults?.space;
+    space = space || globalConfig.global?.space;
   }
 
   // Run validation if --validate flag is set
@@ -954,7 +954,10 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
   const parentId = getFlag(flags, "parent");
 
   // Get space (from flag, dir config, or global defaults)
-  const space = getFlag(flags, "space") || dirConfig.space || globalConfig.defaults?.space;
+  const space = getFlag(flags, "space") || dirConfig.space || globalConfig.global?.space;
+  if (!space) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Space is required. Use --space or set in config.");
+  }
 
   // Apply template if specified
   let markdownContent = rawMarkdownContent;

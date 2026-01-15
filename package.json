@@ -11,6 +11,7 @@
   "scripts": {
     "start": "bun run --cwd apps/cli src/index.ts",
     "build": "turbo run build",
+    "release": "bun scripts/release.ts",
     "build:cli": "bun run --cwd apps/cli build",
     "lint": "echo 'no lint configured'",
     "test": "bun test",

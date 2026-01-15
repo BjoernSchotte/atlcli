@@ -115,6 +115,48 @@ async function handleCommand(args: string[], flags: Flags, opts: Options): Promi
 }
 ```
 
+## Releasing
+
+Releases are automated via the release script:
+
+```bash
+bun scripts/release.ts patch    # 0.6.0 → 0.6.1
+bun scripts/release.ts minor    # 0.6.0 → 0.7.0
+bun scripts/release.ts major    # 0.6.0 → 1.0.0
+```
+
+### What the Release Script Does
+
+1. Validates clean working directory and main branch
+2. Runs tests and type checking
+3. Bumps version in `package.json`
+4. Generates changelog with git-cliff
+5. Creates commit and tag
+6. Pushes to origin (triggers GitHub release workflow)
+7. Waits for release artifacts
+8. Triggers Homebrew tap update
+
+### Options
+
+- `--dry-run` - Create commits/tags locally without pushing
+- `--skip-tests` - Skip test step (use with caution)
+
+### Prerequisites
+
+- GitHub CLI authenticated (`gh auth login`)
+- On main branch with clean working directory
+
+### Example: Dry Run
+
+```bash
+# Preview release without pushing
+bun scripts/release.ts patch --dry-run
+
+# Review changes, then rollback
+git reset --hard HEAD~1
+git tag -d v0.6.1
+```
+
 ## Reporting Issues
 
 Use [GitHub Issues](https://github.com/BjoernSchotte/atlcli/issues) for:
