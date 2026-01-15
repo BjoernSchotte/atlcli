@@ -49,14 +49,16 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p release
+          VERSION="${{ steps.version.outputs.version }}"
 
           for target in $(echo "${{ matrix.targets }}" | tr ',' ' '); do
-            echo "Building for $target..."
+            echo "Building for $target (v$VERSION)..."
 
-            # Build the binary
+            # Build the binary with version injected
             bun build apps/cli/src/index.ts \
               --compile \
               --target "bun-$target" \
+              --define "__ATLCLI_VERSION__=\"$VERSION\"" \
               --outfile "release/atlcli"
 
             # Package as tar.gz (binary is named 'atlcli' inside)
