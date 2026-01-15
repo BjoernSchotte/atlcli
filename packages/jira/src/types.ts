@@ -621,3 +621,61 @@ export interface ImportResult {
     error?: string;
   }>;
 }
+
+// ============ Remote Link Types ============
+
+/** Remote link object (for linking to external resources like Confluence pages) */
+export interface JiraRemoteLink {
+  /** Link ID */
+  id?: number;
+  /** Global ID (unique identifier for the link) */
+  globalId?: string;
+  /** Application info */
+  application?: {
+    type?: string;
+    name?: string;
+  };
+  /** Relationship type (e.g., "mentioned in") */
+  relationship?: string;
+  /** Link object details */
+  object: {
+    url: string;
+    title: string;
+    summary?: string;
+    icon?: {
+      url16x16?: string;
+      title?: string;
+    };
+    status?: {
+      resolved?: boolean;
+      icon?: {
+        url16x16?: string;
+        title?: string;
+        link?: string;
+      };
+    };
+  };
+}
+
+/** Input for creating a remote link */
+export interface CreateRemoteLinkInput {
+  /** Global ID (optional, auto-generated if not provided) */
+  globalId?: string;
+  /** Application info */
+  application?: {
+    type?: string;
+    name?: string;
+  };
+  /** Relationship type */
+  relationship?: string;
+  /** Link object */
+  object: {
+    url: string;
+    title: string;
+    summary?: string;
+    icon?: {
+      url16x16?: string;
+      title?: string;
+    };
+  };
+}

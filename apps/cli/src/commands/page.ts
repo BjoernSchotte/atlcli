@@ -101,6 +101,15 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "open":
       await handleOpen(args.slice(1), flags, opts);
       return;
+    case "link-issue":
+      await handleLinkIssue(flags, opts);
+      return;
+    case "issues":
+      await handleIssues(flags, opts);
+      return;
+    case "unlink-issue":
+      await handleUnlinkIssue(flags, opts);
+      return;
     default:
       output(pageHelp(), opts);
       return;
@@ -1614,6 +1623,247 @@ async function openUrl(url: string): Promise<void> {
   });
 }
 
+// ============ Cross-Product Linking (Confluence → Jira) ============
+
+async function handleLinkIssue(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const pageId = getFlag(flags, "id");
+  const issueKey = getFlag(flags, "issue");
+  const comment = hasFlag(flags, "comment");
+
+  if (!pageId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue is required.");
+  }
+
+  // Get Confluence client and page details
+  const config = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+  const confluenceClient = new ConfluenceClient(profile);
+
+  // Fetch page details
+  let page: { id: string; title: string; _links?: { webui?: string; base?: string } };
+  try {
+    page = await confluenceClient.getPage(pageId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(opts, 1, ERROR_CODES.API, `Failed to fetch Confluence page ${pageId}: ${message}`);
+    return;
+  }
+
+  const pageUrl = page._links?.base && page._links?.webui
+    ? `${page._links.base}${page._links.webui}`
+    : `${profile.baseUrl}/wiki/spaces/pages/${page.id}`;
+  const globalId = `atlcli-confluence-${page.id}`;
+
+  // Get Jira client and create remote link
+  const { JiraClient } = await import("@atlcli/jira");
+  const jiraClient = new JiraClient(profile);
+
+  const input = {
+    globalId,
+    application: {
+      type: "com.atlassian.confluence",
+      name: "Confluence",
+    },
+    relationship: "mentioned in",
+    object: {
+      url: pageUrl,
+      title: page.title,
+      icon: {
+        url16x16: `${profile.baseUrl}/wiki/favicon.ico`,
+        title: "Confluence",
+      },
+    },
+  };
+
+  try {
+    const result = await jiraClient.createRemoteLink(issueKey, input);
+
+    // Add comment to issue if requested
+    if (comment) {
+      await jiraClient.addComment(issueKey, `Linked to Confluence page: [${page.title}|${pageUrl}]`);
+    }
+
+    output(
+      {
+        schemaVersion: "1",
+        linked: true,
+        pageId: page.id,
+        pageTitle: page.title,
+        pageUrl,
+        issueKey,
+        linkId: result.id,
+      },
+      opts
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(opts, 1, ERROR_CODES.API, `Failed to link issue ${issueKey} to page: ${message}`);
+  }
+}
+
+async function handleIssues(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const pageId = getFlag(flags, "id");
+
+  if (!pageId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  // Get Confluence client and page details for URL matching
+  const config = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+  const confluenceClient = new ConfluenceClient(profile);
+
+  // Fetch page details
+  let page: { id: string; title: string; _links?: { webui?: string; base?: string } };
+  try {
+    page = await confluenceClient.getPage(pageId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(opts, 1, ERROR_CODES.API, `Failed to fetch Confluence page ${pageId}: ${message}`);
+    return;
+  }
+
+  // Use JQL to search for issues with remote links containing this page's global ID
+  // Note: Jira doesn't have a direct way to search by remote link, so we search for issues
+  // that mention this page in a project, then filter client-side
+  const { JiraClient } = await import("@atlcli/jira");
+  const jiraClient = new JiraClient(profile);
+
+  const globalIdPattern = `atlcli-confluence-${pageId}`;
+
+  // Search for all issues and check their remote links
+  // This is not ideal for large result sets, but it's the most reliable approach
+  // since Jira doesn't index remote links for JQL search
+  const projectKey = getFlag(flags, "project");
+  const limit = Number(getFlag(flags, "limit") ?? 100);
+
+  // Build JQL - if project specified, filter by it
+  const jql = projectKey ? `project = "${projectKey}"` : "order by updated DESC";
+
+  const searchResult = await jiraClient.search(jql, {
+    maxResults: Math.min(limit, 100),
+    fields: ["summary", "status", "issuetype"],
+  });
+
+  // Check each issue for remote links to this page
+  const linkedIssues: Array<{
+    key: string;
+    summary: string;
+    status: string;
+    linkId: number;
+  }> = [];
+
+  for (const issue of searchResult.issues) {
+    try {
+      const remoteLinks = await jiraClient.getRemoteLinks(issue.key);
+      const confluenceLink = remoteLinks.find(
+        (link) =>
+          link.globalId === globalIdPattern ||
+          link.object.url.includes(`/pages/${pageId}`) ||
+          (link.application?.type === "com.atlassian.confluence" &&
+            link.object.url.includes(pageId))
+      );
+
+      if (confluenceLink) {
+        linkedIssues.push({
+          key: issue.key,
+          summary: issue.fields.summary,
+          status: issue.fields.status.name,
+          linkId: confluenceLink.id!,
+        });
+      }
+    } catch {
+      // Skip issues where we can't fetch remote links
+    }
+  }
+
+  output(
+    {
+      schemaVersion: "1",
+      pageId: page.id,
+      pageTitle: page.title,
+      issues: linkedIssues,
+      count: linkedIssues.length,
+    },
+    opts
+  );
+}
+
+async function handleUnlinkIssue(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const pageId = getFlag(flags, "id");
+  const issueKey = getFlag(flags, "issue");
+  const linkId = getFlag(flags, "link");
+
+  if (!pageId && !linkId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id (page) or --link (link ID) is required.");
+  }
+  if (!issueKey) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--issue is required.");
+  }
+
+  const config = await loadConfig();
+  const profileName = getFlag(flags, "profile");
+  const profile = getActiveProfile(config, profileName);
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
+  }
+
+  const { JiraClient } = await import("@atlcli/jira");
+  const jiraClient = new JiraClient(profile);
+
+  try {
+    if (linkId) {
+      // Delete by link ID
+      await jiraClient.deleteRemoteLink(issueKey, Number(linkId));
+      output(
+        {
+          schemaVersion: "1",
+          unlinked: true,
+          issueKey,
+          linkId: Number(linkId),
+        },
+        opts
+      );
+    } else {
+      // Delete by global ID (page-based)
+      const globalId = `atlcli-confluence-${pageId}`;
+      await jiraClient.deleteRemoteLinkByGlobalId(issueKey, globalId);
+      output(
+        {
+          schemaVersion: "1",
+          unlinked: true,
+          issueKey,
+          pageId,
+        },
+        opts
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(opts, 1, ERROR_CODES.API, `Failed to unlink: ${message}`);
+  }
+}
+
 function pageHelp(): string {
   return `atlcli wiki page <command>
 
@@ -1643,12 +1893,17 @@ Commands:
   restore --id <id> --version <n> --confirm  Restore to version
   comments <list|add|reply|...>        Manage page comments
   open <id>                            Open page in browser
+  link-issue --id <id> --issue <key>   Link a Jira issue to this page
+  issues --id <id> [--project <key>]   List Jira issues linked to this page
+  unlink-issue --issue <key> --id <id> Remove Jira issue link from page
 
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --dry-run          Preview bulk operations without executing
   --reverse          Reverse sort order (for sort command)
+  --issue <key>      Jira issue key (for link-issue/unlink-issue)
+  --comment          Add comment to linked issue (for link-issue)
 
 Move/Sort targets can be file paths (./docs/page.md) or page IDs.
 
@@ -1674,6 +1929,11 @@ Examples:
   atlcli wiki page restore --id 12345 --version 3 --confirm
   atlcli wiki page comments --id 12345
   atlcli wiki page comments add --id 12345 "Great work!"
+  atlcli wiki page link-issue --id 12345 --issue PROJ-100
+  atlcli wiki page link-issue --id 12345 --issue PROJ-100 --comment
+  atlcli wiki page issues --id 12345
+  atlcli wiki page issues --id 12345 --project PROJ
+  atlcli wiki page unlink-issue --id 12345 --issue PROJ-100
 
 Run 'atlcli wiki page label' or 'atlcli wiki page comments' for subcommand help.
 `;

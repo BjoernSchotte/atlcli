@@ -17,17 +17,19 @@ import type {
   JiraAttachment,
   JiraComponent,
   JiraVersion,
+  JiraRemoteLink,
   CreateIssueInput,
   UpdateIssueInput,
   TransitionIssueInput,
   CreateFilterInput,
   UpdateFilterInput,
+  CreateRemoteLinkInput,
   BulkCreateResult,
   AdfDocument,
   AdfNode,
 } from "./types.js";
 
-export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment } from "./types.js";
+export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment, JiraRemoteLink, CreateRemoteLinkInput } from "./types.js";
 
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
@@ -1131,6 +1133,64 @@ export class JiraClient {
    */
   async getIssueLinkTypes(): Promise<{ issueLinkTypes: Array<{ id: string; name: string; inward: string; outward: string }> }> {
     return this.request("/issueLinkType");
+  }
+
+  // ============ Remote Links (Cross-Product) ============
+
+  /**
+   * Get all remote links for an issue.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/remotelink
+   */
+  async getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]> {
+    return this.request<JiraRemoteLink[]>(`/issue/${keyOrId}/remotelink`);
+  }
+
+  /**
+   * Get a specific remote link by ID.
+   *
+   * GET /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}
+   */
+  async getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink> {
+    return this.request<JiraRemoteLink>(`/issue/${keyOrId}/remotelink/${linkId}`);
+  }
+
+  /**
+   * Create a remote link to an external resource (e.g., Confluence page).
+   *
+   * POST /rest/api/3/issue/{issueIdOrKey}/remotelink
+   */
+  async createRemoteLink(
+    keyOrId: string,
+    input: CreateRemoteLinkInput
+  ): Promise<{ id: number; self: string }> {
+    return this.request(`/issue/${keyOrId}/remotelink`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /**
+   * Delete a remote link.
+   *
+   * DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink/{linkId}
+   */
+  async deleteRemoteLink(keyOrId: string, linkId: number): Promise<void> {
+    await this.request(`/issue/${keyOrId}/remotelink/${linkId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Delete a remote link by global ID.
+   *
+   * DELETE /rest/api/3/issue/{issueIdOrKey}/remotelink?globalId={globalId}
+   */
+  async deleteRemoteLinkByGlobalId(keyOrId: string, globalId: string): Promise<void> {
+    await this.request(`/issue/${keyOrId}/remotelink`, {
+      method: "DELETE",
+      query: { globalId },
+    });
   }
 
   // ============ Agile (Board/Sprint) ============
