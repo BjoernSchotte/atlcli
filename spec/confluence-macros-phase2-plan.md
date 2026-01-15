@@ -15,6 +15,7 @@ Phase 1 implemented these macros:
 - Inline: `status`, `anchor`, `jira`, `date`
 - Code: `code`, `noformat`
 - Reporting: `content-by-label`, `recently-updated`
+- Text formatting: colored text `{color:red}text{color}`, background color, subscript `~text~`, superscript `^text^`, task lists, emoticons, user mentions
 
 ## Phase 2 Macros
 
