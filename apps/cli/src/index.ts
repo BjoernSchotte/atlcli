@@ -33,6 +33,7 @@ async function main(): Promise<void> {
   const json = hasFlag(parsed.flags, "json");
   const noLog = hasFlag(parsed.flags, "no-log");
   const helpRequested = hasFlag(parsed.flags, "help") || hasFlag(parsed.flags, "h");
+  const versionRequested = hasFlag(parsed.flags, "version") || hasFlag(parsed.flags, "v");
   const opts = { json };
   const startTime = Date.now();
 
@@ -64,6 +65,12 @@ async function main(): Promise<void> {
   // Initialize plugins (gracefully handles errors)
   await initializePlugins();
   const registry = getPluginRegistry();
+
+  // Global version: show version if --version/-v flag
+  if (versionRequested) {
+    output({ version: VERSION }, opts);
+    return;
+  }
 
   // Global help: show root help if --help/-h with no command
   if (!command || (helpRequested && !command)) {
@@ -319,6 +326,7 @@ Global options:
   --json             JSON output
   --no-log           Disable logging for this command
   --help, -h         Show help
+  --version, -v      Show version
 `;
 }
 
