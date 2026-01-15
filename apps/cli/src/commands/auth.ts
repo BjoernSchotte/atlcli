@@ -7,6 +7,7 @@ import {
   getConfigPath,
   getFlag,
   getLogger,
+  hasFlag,
   loadConfig,
   normalizeBaseUrl,
   output,
@@ -21,6 +22,12 @@ import {
 
 export async function handleAuth(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const sub = args[0];
+
+  // Show help if no subcommand
+  if (!sub) {
+    output(authHelp(), opts);
+    return;
+  }
 
   switch (sub) {
     case "login":

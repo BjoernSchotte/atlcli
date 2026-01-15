@@ -51,6 +51,12 @@ export async function handleTemplate(
   flags: Flags,
   opts: OutputOptions
 ): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(templateHelp(), opts);
+    return;
+  }
+
   const sub = args[0];
   const rest = args.slice(1);
 

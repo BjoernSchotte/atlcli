@@ -37,6 +37,12 @@ import {
 } from "@atlcli/confluence";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(pageHelp(), opts);
+    return;
+  }
+
   const sub = args[0];
   switch (sub) {
     case "get":

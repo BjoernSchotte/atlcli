@@ -70,6 +70,13 @@ export async function handleJira(
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
+
+  // Show help if no subcommand
+  if (!sub) {
+    output(jiraHelp(), opts);
+    return;
+  }
+
   switch (sub) {
     case "project":
       await handleProject(rest, flags, opts);

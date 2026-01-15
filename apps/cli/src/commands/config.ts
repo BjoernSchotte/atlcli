@@ -7,7 +7,7 @@
  * atlcli config unset <key>             - Remove a value
  */
 
-import { OutputOptions, output, loadConfig, saveConfig } from "@atlcli/core";
+import { OutputOptions, output, loadConfig, saveConfig, hasFlag } from "@atlcli/core";
 
 export async function handleConfig(
   args: string[],
@@ -15,6 +15,13 @@ export async function handleConfig(
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
+
+  // Show help if no subcommand
+  if (!sub) {
+    output(configHelp(), opts);
+    return;
+  }
+
   switch (sub) {
     case "list":
       await configList(opts);

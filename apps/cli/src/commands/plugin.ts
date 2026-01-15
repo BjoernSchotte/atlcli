@@ -15,6 +15,7 @@ import {
   OutputOptions,
   output,
   fail,
+  hasFlag,
   ERROR_CODES,
 } from "@atlcli/core";
 import {
@@ -32,6 +33,12 @@ export async function handlePlugin(
   opts: OutputOptions
 ): Promise<void> {
   const sub = args[0];
+
+  // Show help if no subcommand
+  if (!sub) {
+    output(pluginHelp(), opts);
+    return;
+  }
 
   switch (sub) {
     case "list":

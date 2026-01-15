@@ -167,6 +167,12 @@ export async function handleLog(
 ): Promise<void> {
   const subcommand = args[0];
 
+  // Show help if no subcommand
+  if (!subcommand) {
+    output(logHelp(), opts);
+    return;
+  }
+
   switch (subcommand) {
     case "list":
       await handleList(flags, opts);

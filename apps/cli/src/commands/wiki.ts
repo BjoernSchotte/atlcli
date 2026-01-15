@@ -1,4 +1,4 @@
-import { OutputOptions, output } from "@atlcli/core";
+import { OutputOptions, output, hasFlag } from "@atlcli/core";
 import { handlePage } from "./page.js";
 import { handleSpace } from "./space.js";
 import { handleDocs } from "./docs.js";
@@ -11,6 +11,13 @@ export async function handleWiki(
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
+
+  // Show help if --help/-h with no subcommand, or no subcommand at all
+  if (!sub) {
+    output(wikiHelp(), opts);
+    return;
+  }
+
   switch (sub) {
     case "page":
       await handlePage(rest, flags, opts);

@@ -187,7 +187,7 @@ async function main(): Promise<void> {
 
 /**
  * Show help for a specific command.
- * Calls the command handler with empty args to trigger its default help output.
+ * Passes args to handler with help flag so nested subcommands can show their help.
  */
 function showCommandHelp(
   command: string,
@@ -195,38 +195,35 @@ function showCommandHelp(
   registry: import("./plugins/loader.js").PluginRegistry,
   opts: { json: boolean }
 ): void {
-  // For subcommand help (e.g., "atlcli auth login --help"), pass through
-  // to the command handler with the help flag - Phase 2 will add proper handling
-  // For now, just show the top-level command help
   const helpFlags = { help: true };
 
   switch (command) {
     case "auth":
-      handleAuth([], helpFlags, opts);
+      handleAuth(subArgs, helpFlags, opts);
       break;
     case "completion":
-      handleCompletion([], helpFlags, opts);
+      handleCompletion(subArgs, helpFlags, opts);
       break;
     case "config":
-      handleConfig([], helpFlags, opts);
+      handleConfig(subArgs, helpFlags, opts);
       break;
     case "doctor":
-      handleDoctor([], helpFlags, opts);
+      handleDoctor(subArgs, helpFlags, opts);
       break;
     case "wiki":
-      handleWiki([], helpFlags, opts);
+      handleWiki(subArgs, helpFlags, opts);
       break;
     case "jira":
-      handleJira([], helpFlags, opts);
+      handleJira(subArgs, helpFlags, opts);
       break;
     case "log":
-      handleLog([], helpFlags, opts);
+      handleLog(subArgs, helpFlags, opts);
       break;
     case "plugin":
-      handlePlugin([], helpFlags, opts);
+      handlePlugin(subArgs, helpFlags, opts);
       break;
     case "update":
-      handleUpdate([], helpFlags, opts);
+      handleUpdate(subArgs, helpFlags, opts);
       break;
     case "version":
       output({ version: VERSION }, opts);

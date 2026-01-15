@@ -4,12 +4,19 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  hasFlag,
   loadConfig,
   output,
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 
 export async function handleSpace(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(spaceHelp(), opts);
+    return;
+  }
+
   const sub = args[0];
   switch (sub) {
     case "list":

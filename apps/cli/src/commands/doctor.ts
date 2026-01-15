@@ -55,6 +55,12 @@ export async function handleDoctor(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(doctorHelp(), opts);
+    return;
+  }
+
   const fix = hasFlag(flags, "fix");
   const results: CheckResult[] = [];
 

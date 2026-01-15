@@ -23,6 +23,12 @@ export async function handleUpdate(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(updateHelp(), opts);
+    return;
+  }
+
   const checkOnly = hasFlag(flags, "check");
   const targetVersion = args[0]; // e.g., "v0.5.0" or undefined for latest
 

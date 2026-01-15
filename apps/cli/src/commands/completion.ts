@@ -6,7 +6,7 @@
  * atlcli completion __complete <args> - Internal: get completions for args
  */
 
-import { output } from "@atlcli/core";
+import { output, hasFlag } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
 import {
   getCompletions,
@@ -18,10 +18,16 @@ import { getPluginRegistry } from "../plugins/loader.js";
 
 export async function handleCompletion(
   args: string[],
-  _flags: Record<string, string | boolean | string[]>,
+  flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const [sub, ...rest] = args;
+
+  // Show help if no subcommand
+  if (!sub) {
+    output(completionHelp(), opts);
+    return;
+  }
 
   switch (sub) {
     case "zsh":

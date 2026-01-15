@@ -134,6 +134,12 @@ interface LegacyMeta {
 }
 
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
+  // Show help if --help or -h flag is set
+  if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
+    output(docsHelp(), opts);
+    return;
+  }
+
   const sub = args[0];
   switch (sub) {
     case "init":
