@@ -15,6 +15,67 @@ from docx.oxml import OxmlElement
 from docxtpl import DocxTemplate
 
 
+# Panel colors for info, warning, note, tip macros
+PANEL_STYLES = {
+    "info": {"bg": "DEEBFF", "border": "0052CC", "icon": "ℹ️"},
+    "warning": {"bg": "FFFAE6", "border": "FF8B00", "icon": "⚠️"},
+    "note": {"bg": "EAE6FF", "border": "6554C0", "icon": "📝"},
+    "tip": {"bg": "E3FCEF", "border": "00875A", "icon": "💡"},
+    "error": {"bg": "FFEBE6", "border": "DE350B", "icon": "❌"},
+}
+
+# Status badge colors
+STATUS_COLORS = {
+    "green": RGBColor(0, 128, 0),
+    "yellow": RGBColor(204, 153, 0),
+    "red": RGBColor(204, 0, 0),
+    "blue": RGBColor(0, 102, 204),
+    "grey": RGBColor(128, 128, 128),
+    "gray": RGBColor(128, 128, 128),
+    "purple": RGBColor(128, 0, 128),
+}
+
+
+def preprocess_markdown(md_text: str) -> str:
+    """Pre-process custom markdown syntax before standard markdown conversion.
+
+    Converts:
+    - :::type Title\\ncontent\\n::: → <div class="panel panel-type"><div class="panel-title">Title</div>content</div>
+    - {color:name}[TEXT]{color} → <span class="status status-name">TEXT</span>
+    """
+    # Convert panel macros: :::type Title\ncontent\n:::
+    # Pattern matches :::type optional-title\ncontent\n::: (non-greedy, stopping at first \n:::)
+    panel_pattern = re.compile(
+        r':::(\w+)(?: ([^\n]*))?\n(.*?)\n:::',
+        re.DOTALL
+    )
+
+    def panel_replacer(match):
+        panel_type = match.group(1).lower()
+        title = (match.group(2) or "").strip()
+        content = match.group(3).strip()
+
+        if title:
+            return f'<div class="panel panel-{panel_type}"><div class="panel-title">{title}</div>\n\n{content}\n\n</div>'
+        else:
+            return f'<div class="panel panel-{panel_type}">\n\n{content}\n\n</div>'
+
+    result = panel_pattern.sub(panel_replacer, md_text)
+
+    # Convert status badges: {color:name}[TEXT]{color} or {color:name}\[TEXT\]{color}
+    # Note: brackets may be escaped in markdown from Confluence
+    status_pattern = re.compile(r'\{color:(\w+)\}\\?\[([^\]\\]+)\\?\]\{color\}')
+
+    def status_replacer(match):
+        color = match.group(1).lower()
+        text = match.group(2)
+        return f'<span class="status status-{color}">{text}</span>'
+
+    result = status_pattern.sub(status_replacer, result)
+
+    return result
+
+
 class MarkdownToWordConverter:
     """Converts markdown text to Word document elements."""
 
@@ -42,8 +103,11 @@ class MarkdownToWordConverter:
         For the vertical slice, we return the content as a subdocument
         that can be inserted into the template.
         """
+        # Pre-process custom syntax (panels, status badges)
+        preprocessed = preprocess_markdown(md_text)
+
         # Parse markdown to HTML
-        html = self.md.convert(md_text)
+        html = self.md.convert(preprocessed)
         self.md.reset()
 
         # Create subdocument
@@ -118,7 +182,24 @@ class MarkdownToWordConverter:
             # Horizontal rule - add empty paragraph with bottom border
             p = subdoc.add_paragraph()
 
-        elif tag_name in ("div", "section", "article"):
+        elif tag_name == "div":
+            # Check for panel macro
+            classes = tag.get("class", [])
+            panel_type = None
+            for cls in classes:
+                if cls.startswith("panel-") and cls != "panel-title":
+                    panel_type = cls.replace("panel-", "")
+                    break
+
+            if panel_type and panel_type in PANEL_STYLES:
+                self._process_panel(tag, subdoc, panel_type)
+            else:
+                # Regular div - process children
+                for child in tag.children:
+                    if isinstance(child, Tag):
+                        self._process_tag(child, subdoc)
+
+        elif tag_name in ("section", "article"):
             # Container elements - process children
             for child in tag.children:
                 if isinstance(child, Tag):
@@ -167,12 +248,13 @@ class MarkdownToWordConverter:
                     self._add_image(paragraph, src, alt)
 
                 elif child_name == "span":
-                    # Check for status macro
+                    # Check for status badge
                     classes = child.get("class", [])
                     if "status" in classes:
                         self._add_status_badge(child, paragraph)
                     else:
-                        paragraph.add_run(child.get_text())
+                        # Recursively process span content
+                        self._add_inline_content(child, paragraph)
 
                 else:
                     # Recursively process other inline elements
@@ -240,6 +322,86 @@ class MarkdownToWordConverter:
                         for paragraph in word_cell.paragraphs:
                             for run in paragraph.runs:
                                 run.bold = True
+
+    def _process_panel(self, tag: Tag, subdoc, panel_type: str) -> None:
+        """Process a panel macro (info, warning, note, tip) as a styled box."""
+        style = PANEL_STYLES.get(panel_type, PANEL_STYLES["info"])
+
+        # Find title if present
+        title_div = tag.find("div", class_="panel-title")
+        title = title_div.get_text().strip() if title_div else None
+
+        # Create a table with 1 cell to simulate a box with border/background
+        table = subdoc.add_table(rows=1, cols=1)
+        cell = table.rows[0].cells[0]
+
+        # Style the cell with background and border
+        self._style_panel_cell(cell, style)
+
+        # Add title if present
+        if title:
+            title_p = cell.paragraphs[0]
+            title_run = title_p.add_run(f"{style['icon']} {title}")
+            title_run.bold = True
+            title_run.font.size = Pt(11)
+        else:
+            # Add icon only
+            first_p = cell.paragraphs[0]
+            icon_run = first_p.add_run(f"{style['icon']} ")
+
+        # Process content (skip the title div)
+        for child in tag.children:
+            if isinstance(child, Tag):
+                if "panel-title" in child.get("class", []):
+                    continue  # Skip title, already handled
+
+                # For paragraphs, add to existing or new paragraph in cell
+                if child.name == "p":
+                    # If first paragraph is empty (no title), use it
+                    if not title and len(cell.paragraphs) == 1 and not cell.paragraphs[0].text.strip():
+                        p = cell.paragraphs[0]
+                        p.add_run(f"{style['icon']} ")
+                    else:
+                        p = cell.add_paragraph()
+                    self._add_inline_content(child, p)
+                else:
+                    # For other elements, add as new paragraph
+                    p = cell.add_paragraph()
+                    self._add_inline_content(child, p)
+
+        # Add spacing after panel
+        subdoc.add_paragraph()
+
+    def _style_panel_cell(self, cell, style: dict) -> None:
+        """Apply panel styling to a table cell."""
+        # Set cell background color
+        tc = cell._tc
+        tcPr = tc.get_or_add_tcPr()
+
+        # Background shading
+        shading = OxmlElement("w:shd")
+        shading.set(qn("w:val"), "clear")
+        shading.set(qn("w:fill"), style["bg"])
+        tcPr.append(shading)
+
+        # Cell borders
+        tcBorders = OxmlElement("w:tcBorders")
+        for border_name in ["top", "left", "bottom", "right"]:
+            border = OxmlElement(f"w:{border_name}")
+            border.set(qn("w:val"), "single")
+            border.set(qn("w:sz"), "12")  # 1.5pt border
+            border.set(qn("w:color"), style["border"])
+            tcBorders.append(border)
+        tcPr.append(tcBorders)
+
+        # Cell margins/padding
+        tcMar = OxmlElement("w:tcMar")
+        for margin_name in ["top", "left", "bottom", "right"]:
+            margin = OxmlElement(f"w:{margin_name}")
+            margin.set(qn("w:w"), "144")  # ~0.1 inch
+            margin.set(qn("w:type"), "dxa")
+            tcMar.append(margin)
+        tcPr.append(tcMar)
 
     def _add_shading(self, paragraph, color: str) -> None:
         """Add background shading to a paragraph."""
@@ -353,25 +515,53 @@ class MarkdownToWordConverter:
             run.font.color.rgb = RGBColor(128, 128, 128)
 
     def _add_status_badge(self, tag: Tag, paragraph) -> None:
-        """Add a colored status badge."""
-        text = tag.get_text()
-        color_class = None
+        """Add a colored status badge with background."""
+        text = tag.get_text().strip()
+        color_name = None
+
+        # Extract color from class (status-green, status-red, etc.)
         for cls in tag.get("class", []):
-            if cls.startswith("status-"):
-                color_class = cls.replace("status-", "")
+            if cls.startswith("status-") and cls != "status":
+                color_name = cls.replace("status-", "")
                 break
 
-        # Map colors
-        color_map = {
-            "green": RGBColor(0, 128, 0),
-            "yellow": RGBColor(204, 153, 0),
-            "red": RGBColor(204, 0, 0),
-            "blue": RGBColor(0, 0, 204),
-            "grey": RGBColor(128, 128, 128),
-            "gray": RGBColor(128, 128, 128),
+        # Get color from map, default to gray
+        color = STATUS_COLORS.get(color_name, STATUS_COLORS["gray"])
+
+        # Add space before badge
+        paragraph.add_run(" ")
+
+        # Create the badge text with styling
+        run = paragraph.add_run(f" {text} ")
+        run.bold = True
+        run.font.color.rgb = RGBColor(255, 255, 255)  # White text
+        run.font.size = Pt(9)
+
+        # Add background highlight using shading on the run
+        # Note: Word doesn't support per-run background easily,
+        # so we use a highlight color approximation
+        self._add_run_shading(run, color_name)
+
+        # Add space after badge
+        paragraph.add_run(" ")
+
+    def _add_run_shading(self, run, color_name: str) -> None:
+        """Add background shading to a run (approximated with highlight)."""
+        # Map our colors to Word highlight colors
+        highlight_map = {
+            "green": "green",
+            "yellow": "yellow",
+            "red": "red",
+            "blue": "blue",
+            "grey": "darkGray",
+            "gray": "darkGray",
+            "purple": "darkMagenta",
         }
 
-        run = paragraph.add_run(f" [{text}] ")
-        run.bold = True
-        if color_class and color_class in color_map:
-            run.font.color.rgb = color_map[color_class]
+        highlight = highlight_map.get(color_name, "darkGray")
+
+        # Apply highlight
+        rPr = run._r.get_or_add_rPr()
+        highlight_elem = OxmlElement("w:highlight")
+        highlight_elem.set(qn("w:val"), highlight)
+        rPr.append(highlight_elem)

@@ -331,6 +331,67 @@ def test_image_placeholder_without_embed():
     assert subdoc is not None
 
 
+def test_panel_macros():
+    """Test that panel macros (info, warning, note, tip) are rendered as styled boxes."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter, preprocess_markdown
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Test preprocessing
+    markdown = """:::info Important Note
+This is an info panel with a title.
+:::
+
+:::warning
+Warning without title.
+:::
+
+:::tip Pro Tip
+Here's a helpful tip.
+:::
+"""
+    # Check preprocessing converts to HTML
+    preprocessed = preprocess_markdown(markdown)
+    assert 'class="panel panel-info"' in preprocessed
+    assert 'class="panel-title"' in preprocessed
+    assert 'class="panel panel-warning"' in preprocessed
+    assert 'class="panel panel-tip"' in preprocessed
+
+    # Convert to Word
+    converter = MarkdownToWordConverter(template)
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
+def test_status_badges():
+    """Test that status badges are rendered with colors."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter, preprocess_markdown
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Test preprocessing
+    markdown = """Status: {color:green}[DONE]{color} and {color:red}[BLOCKED]{color}"""
+
+    preprocessed = preprocess_markdown(markdown)
+    assert 'class="status status-green"' in preprocessed
+    assert 'class="status status-red"' in preprocessed
+    assert ">DONE<" in preprocessed
+    assert ">BLOCKED<" in preprocessed
+
+    # Convert to Word
+    converter = MarkdownToWordConverter(template)
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
 def test_image_with_embedded_data():
     """Test that images with embedded data are inserted."""
     from docxtpl import DocxTemplate
