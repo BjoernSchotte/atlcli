@@ -72,6 +72,11 @@ md.renderer.rules.fence = (tokens, idx) => {
   const info = (token.info || "").trim();
   const content = token.content;
 
+  // Handle noformat blocks: ```noformat
+  if (info.toLowerCase() === "noformat") {
+    return `<ac:structured-macro ac:name="noformat">\n<ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>\n</ac:structured-macro>`;
+  }
+
   // Parse extended syntax: ```lang{title="..." collapse}
   const extendedMatch = info.match(/^(\w*)\{(.+)\}$/);
   if (extendedMatch) {
@@ -811,7 +816,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date"];
 
 /**
  * Valid status colors in Confluence
@@ -1284,6 +1289,16 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
       const code = bodyMatch ? bodyMatch[1] : "";
 
       return `<pre data-macro="code" data-lang="${escapeHtml(lang)}" data-title="${escapeHtml(title)}" data-collapse="${escapeHtml(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
+    }
+  );
+
+  // Convert noformat macro
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="noformat"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const bodyMatch = inner.match(/<ac:plain-text-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-body>/i);
+      const content = bodyMatch ? bodyMatch[1] : "";
+      return `<pre data-macro="noformat"><code>${escapeHtml(content)}</code></pre>`;
     }
   );
 
@@ -2121,10 +2136,16 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
     filter: (node) => node.nodeName === "PRE" && node.firstChild?.nodeName === "CODE",
     replacement: (_content, node) => {
       const codeNode = (node.firstChild as any) ?? null;
+      const macroType = (node as any).getAttribute?.("data-macro");
+
+      // Check if this is a Confluence noformat macro
+      if (macroType === "noformat") {
+        const text = codeNode?.textContent ?? "";
+        return `\n\n\`\`\`noformat\n${text}\n\`\`\`\n\n`;
+      }
 
       // Check if this is a Confluence code macro
-      const isMacro = (node as any).getAttribute?.("data-macro") === "code";
-      if (isMacro) {
+      if (macroType === "code") {
         const lang = (node as any).getAttribute?.("data-lang") || "";
         const title = (node as any).getAttribute?.("data-title") || "";
         const collapse = (node as any).getAttribute?.("data-collapse") || "";

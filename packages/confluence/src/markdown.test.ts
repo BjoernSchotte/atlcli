@@ -115,6 +115,14 @@ describe("markdownToStorage", () => {
     expect(html).toContain("<sup>2</sup>");
   });
 
+  test("converts noformat blocks to noformat macro", () => {
+    const md = "```noformat\nThis is preformatted text\nwith no highlighting\n```";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:structured-macro ac:name="noformat">');
+    expect(html).toContain("<![CDATA[This is preformatted text");
+    expect(html).toContain("</ac:plain-text-body>");
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -238,6 +246,14 @@ describe("storageToMarkdown", () => {
     const storage = "<p>E=mc<sup>2</sup></p>";
     const md = storageToMarkdown(storage);
     expect(md).toContain("E=mc^2^");
+  });
+
+  test("converts noformat macro to noformat code block", () => {
+    const storage = '<ac:structured-macro ac:name="noformat"><ac:plain-text-body><![CDATA[preformatted text]]></ac:plain-text-body></ac:structured-macro>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("```noformat");
+    expect(md).toContain("preformatted text");
+    expect(md).toContain("```");
   });
 
   test("ends with single newline", () => {
