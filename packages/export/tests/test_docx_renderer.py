@@ -1,0 +1,273 @@
+"""Tests for DOCX rendering."""
+
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+OUTPUT_DIR = Path(__file__).parent / "output"
+
+
+@pytest.fixture
+def sample_page_data():
+    """Sample Confluence page data."""
+    return {
+        "title": "Test Page Title",
+        "markdown": """# Introduction
+
+This is a **test document** with *formatted* content.
+
+## Features
+
+- Bullet point one
+- Bullet point two
+- Bullet point three
+
+## Code Example
+
+Here's some `inline code` and a code block:
+
+```python
+def hello():
+    print("Hello, World!")
+```
+
+## Table
+
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| A        | B        | C        |
+| D        | E        | F        |
+
+> This is a blockquote with important information.
+
+That's all for now!
+""",
+        "author": {"displayName": "John Doe", "email": "john@example.com"},
+        "modifier": {"displayName": "Jane Smith", "email": "jane@example.com"},
+        "created": "2025-01-10T10:00:00Z",
+        "modified": "2025-01-15T14:30:00Z",
+        "pageId": "12345678",
+        "pageUrl": "https://example.atlassian.net/wiki/spaces/TEST/pages/12345678",
+        "tinyUrl": "https://example.atlassian.net/wiki/x/abc",
+        "labels": ["documentation", "test"],
+        "spaceKey": "TEST",
+        "spaceName": "Test Space",
+        "spaceUrl": "https://example.atlassian.net/wiki/spaces/TEST",
+        "exportedBy": "Claude Code",
+        "templateName": "basic-template",
+        "attachments": [],
+        "children": [],
+    }
+
+
+def test_render_template(sample_page_data):
+    """Test basic template rendering."""
+    from atlcli_export import render_template
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    output_path = OUTPUT_DIR / "test-output.docx"
+
+    # Ensure output directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Render
+    result = render_template(template_path, sample_page_data, output_path)
+
+    assert result.exists()
+    assert result.suffix == ".docx"
+
+
+def test_cli_render(sample_page_data):
+    """Test CLI entry point."""
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    output_path = OUTPUT_DIR / "cli-output.docx"
+
+    # Ensure output directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Run CLI via subprocess
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "atlcli_export.cli",
+            "--template", str(template_path),
+            "--output", str(output_path),
+        ],
+        input=json.dumps(sample_page_data),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    response = json.loads(result.stdout)
+    assert response["success"] is True
+    assert Path(response["output"]).exists()
+
+
+def test_date_filter():
+    """Test date formatting filter."""
+    from atlcli_export.filters import date_filter
+
+    # ISO format with time and timezone
+    assert date_filter("2025-01-15T14:30:00Z", "YYYY-MM-DD") == "2025-01-15"
+    assert date_filter("2025-01-15T14:30:00Z", "DD/MM/YYYY") == "15/01/2025"
+    assert date_filter("2025-01-15T14:30:00Z", "YYYY-MM-DD HH:mm") == "2025-01-15 14:30"
+
+    # Empty string
+    assert date_filter("", "YYYY-MM-DD") == ""
+
+    # Invalid date returns original
+    assert date_filter("not-a-date", "YYYY-MM-DD") == "not-a-date"
+
+
+def test_markdown_to_word_converter(sample_page_data):
+    """Test markdown to Word conversion."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    converter = MarkdownToWordConverter(template)
+    subdoc = converter.convert(sample_page_data["markdown"])
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
+def test_render_docm_template(sample_page_data):
+    """Test rendering with .docm (macro-enabled) template."""
+    from atlcli_export import render_template
+
+    template_path = FIXTURES_DIR / "basic-template.docm"
+    output_path = OUTPUT_DIR / "docm-output.docx"
+
+    # Ensure output directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Render with .docm template
+    result = render_template(template_path, sample_page_data, output_path)
+
+    assert result.exists()
+    assert result.suffix == ".docx"
+
+
+def test_docm_conversion():
+    """Test .docm to .docx conversion."""
+    from atlcli_export import convert_docm_to_docx, is_docm_file, DocmConverter
+    import shutil
+
+    docm_path = FIXTURES_DIR / "basic-template.docm"
+
+    # Test is_docm_file
+    assert is_docm_file(docm_path)
+    assert is_docm_file("test.docm")
+    assert not is_docm_file("test.docx")
+    assert not is_docm_file("test.doc")
+
+    # Test convert_docm_to_docx
+    converted = convert_docm_to_docx(docm_path)
+    try:
+        assert converted.exists()
+        assert converted.suffix == ".docx"
+
+        # Should be openable by python-docx
+        from docx import Document
+        doc = Document(str(converted))
+        assert len(doc.paragraphs) > 0
+    finally:
+        # Clean up
+        shutil.rmtree(converted.parent, ignore_errors=True)
+
+    # Test DocmConverter context manager
+    with DocmConverter(docm_path) as usable_path:
+        assert usable_path.suffix == ".docx"
+        from docx import Document
+        doc = Document(str(usable_path))
+        assert len(doc.paragraphs) > 0
+    # Temp files should be cleaned up after exiting context
+
+    # Test DocmConverter with .docx (should return original path)
+    docx_path = FIXTURES_DIR / "basic-template.docx"
+    with DocmConverter(docx_path) as usable_path:
+        assert usable_path == docx_path  # No conversion needed
+
+
+def test_scroll_placeholder_conversion():
+    """Test Scroll placeholder to Jinja2 conversion."""
+    from atlcli_export import convert_scroll_placeholders
+
+    # Basic variable
+    assert convert_scroll_placeholders("$scroll.title") == "{{ title }}"
+    assert convert_scroll_placeholders("$scroll.content") == "{{ content }}"
+
+    # Mapped variables
+    assert convert_scroll_placeholders("$scroll.creator.fullName") == "{{ author }}"
+    assert convert_scroll_placeholders("$scroll.creator.email") == "{{ authorEmail }}"
+    assert convert_scroll_placeholders("$scroll.modifier.fullName") == "{{ modifier }}"
+    assert convert_scroll_placeholders("$scroll.pageid") == "{{ pageId }}"
+    assert convert_scroll_placeholders("$scroll.space.key") == "{{ spaceKey }}"
+
+    # Date variables
+    assert convert_scroll_placeholders("$scroll.creationdate") == "{{ created }}"
+    assert convert_scroll_placeholders("$scroll.modificationdate") == "{{ modified }}"
+    assert convert_scroll_placeholders("$scroll.exportdate") == "{{ exportDate }}"
+
+    # Null-safe variables
+    assert convert_scroll_placeholders("$!scroll.title") == "{{ title | default('') }}"
+
+    # Date formatting
+    result = convert_scroll_placeholders('$scroll.creationdate.("yyyy-MM-dd")')
+    assert result == "{{ created | date('yyyy-MM-dd') }}"
+
+    result = convert_scroll_placeholders('$scroll.modificationdate("MMMM d, yyyy")')
+    assert result == "{{ modified | date('MMMM d, yyyy') }}"
+
+    # Combined null-safe with date format
+    result = convert_scroll_placeholders('$!scroll.creationdate.("yyyy-MM-dd")')
+    assert result == "{{ created | date('yyyy-MM-dd') | default('') }}"
+
+    # In XML context (preserves XML)
+    xml = '<w:t>$scroll.title</w:t>'
+    assert convert_scroll_placeholders(xml) == '<w:t>{{ title }}</w:t>'
+
+    # Multiple placeholders
+    text = "Title: $scroll.title, Author: $scroll.creator.fullName"
+    result = convert_scroll_placeholders(text)
+    assert "{{ title }}" in result
+    assert "{{ author }}" in result
+
+    # Unknown variable (keeps original name)
+    assert convert_scroll_placeholders("$scroll.unknown") == "{{ unknown }}"
+
+    # Non-scroll text unchanged
+    assert convert_scroll_placeholders("Hello world") == "Hello world"
+    assert convert_scroll_placeholders("{{ title }}") == "{{ title }}"
+
+
+def test_normalize_split_placeholders():
+    """Test normalization of split Scroll placeholders in Word XML."""
+    from atlcli_export.docm_support import normalize_split_placeholders, convert_scroll_placeholders
+
+    # Split placeholder: <w:t>$</w:t><w:t>scroll.content</w:t>
+    xml = '<w:t>$</w:t></w:r><w:proofErr w:type="spellStart"/><w:r><w:t>scroll.content</w:t>'
+    normalized = normalize_split_placeholders(xml)
+    # After normalization, $scroll.content should be together
+    converted = convert_scroll_placeholders(normalized)
+    assert "{{ content }}" in converted
+    assert "$scroll" not in converted
+
+    # Split with null-safe: <w:t>$</w:t><w:t>!scroll.title</w:t>
+    xml2 = '<w:t>$</w:t></w:r><w:r><w:t>!scroll.title</w:t>'
+    normalized2 = normalize_split_placeholders(xml2)
+    converted2 = convert_scroll_placeholders(normalized2)
+    assert "{{ title | default('') }}" in converted2
+
+    # Normal (not split) should still work
+    xml3 = '<w:t>$scroll.title</w:t>'
+    normalized3 = normalize_split_placeholders(xml3)
+    converted3 = convert_scroll_placeholders(normalized3)
+    assert "{{ title }}" in converted3

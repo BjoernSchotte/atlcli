@@ -4,6 +4,7 @@ import { handleSpace } from "./space.js";
 import { handleDocs } from "./docs.js";
 import { handleSearch, handleRecent, handleMy } from "./search.js";
 import { handleTemplate } from "./template.js";
+import { handleExport } from "./export.js";
 
 export async function handleWiki(
   args: string[],
@@ -40,6 +41,9 @@ export async function handleWiki(
     case "template":
       await handleTemplate(rest, flags, opts);
       return;
+    case "export":
+      await handleExport(rest, flags, opts);
+      return;
     default:
       output(wikiHelp(), opts);
       return;
@@ -59,6 +63,7 @@ Commands:
   my        My pages (created or contributed)
   recent    Recently modified pages
   template  Page template management
+  export    Export page to DOCX with Word templates
 
 Options:
   --profile <name>  Use a specific auth profile
@@ -69,5 +74,6 @@ Examples:
   atlcli wiki space get --key DOCS
   atlcli wiki docs pull ./docs --space TEAM
   atlcli wiki search "API docs" --space DEV
+  atlcli wiki export 12345 --template corporate --output ./report.docx
 `;
 }
