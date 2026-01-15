@@ -2,6 +2,11 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.7.2] - 2026-01-15
+
+### Bug Fixes
+
+- **release:** Inject version at build time in CI workflow([b4dd0c5](https://github.com/bjoernschotte/atlcli/commit/b4dd0c5f0f418ed304de85ce0775d7452370a0bb))
 ## [0.7.1] - 2026-01-15
 
 ### Bug Fixes
