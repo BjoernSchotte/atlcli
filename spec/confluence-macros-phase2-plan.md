@@ -54,7 +54,7 @@ Note: `blog-posts` spaces param uses comma-separated space keys (e.g., `spaces="
 | **contributors** | Page contributors | `:::contributors` | mode, limit, showCount, order, scope |
 | **change-history** | Version history | `:::change-history` | limit |
 
-### Priority 5: Utility
+### Priority 5: Utility ✅ COMPLETE
 
 | Macro | Purpose | Syntax | Parameters |
 |-------|---------|--------|------------|

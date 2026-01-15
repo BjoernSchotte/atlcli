@@ -1713,4 +1713,45 @@ describe("Phase 2 macros - Priority 2 (Labels)", () => {
       expect(md).toContain(":::change-history");
     });
   });
+
+  describe("loremipsum macro", () => {
+    test("converts loremipsum to storage format", () => {
+      const md = `:::loremipsum
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="loremipsum"');
+    });
+
+    test("converts loremipsum with paragraphs param", () => {
+      const md = `:::loremipsum paragraphs=5
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('ac:name="loremipsum"');
+      expect(html).toContain('ac:name="paragraphs">5</ac:parameter>');
+    });
+
+    test("converts storage loremipsum to markdown", () => {
+      const storage = `<ac:structured-macro ac:name="loremipsum">
+<ac:parameter ac:name="paragraphs">3</ac:parameter>
+</ac:structured-macro>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::loremipsum");
+      expect(md).toContain("paragraphs=3");
+    });
+
+    test("round-trips loremipsum", () => {
+      const original = `:::loremipsum paragraphs=4
+:::`;
+      const storage = markdownToStorage(original);
+      const roundtrip = storageToMarkdown(storage);
+      expect(roundtrip).toContain(":::loremipsum");
+      expect(roundtrip).toContain("paragraphs=4");
+    });
+
+    test("handles self-closing loremipsum macro", () => {
+      const storage = `<ac:structured-macro ac:name="loremipsum"/>`;
+      const md = storageToMarkdown(storage);
+      expect(md).toContain(":::loremipsum");
+    });
+  });
 });

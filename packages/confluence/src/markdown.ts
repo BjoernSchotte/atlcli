@@ -888,6 +888,22 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle loremipsum macro: :::loremipsum paragraphs=3
+  processed = processed.replace(LOREMIPSUM_MACRO_REGEX, (_, params) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+
+    const paragraphsMatch = params?.match(/paragraphs=(\d+)/i);
+
+    let html = `<ac:structured-macro ac:name="loremipsum">`;
+    if (paragraphsMatch) {
+      html += `\n<ac:parameter ac:name="paragraphs">${escapeHtml(paragraphsMatch[1])}</ac:parameter>`;
+    }
+    html += `\n</ac:structured-macro>`;
+
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle preserved :::confluence blocks (restore raw XML)
   processed = processed.replace(CONFLUENCE_MACRO_REGEX, (_, macroName, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -1112,7 +1128,7 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history"];
+const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history", "loremipsum"];
 
 /**
  * Valid status colors in Confluence
@@ -1360,6 +1376,12 @@ const CONTRIBUTORS_MACRO_REGEX = /^:::contributors(?:[ \t]+(.+))?\n?:::\s*$/gm;
  * Shows page version history.
  */
 const CHANGE_HISTORY_MACRO_REGEX = /^:::change-history(?:[ \t]+(.+))?\n?:::\s*$/gm;
+
+/**
+ * Regex for loremipsum macro: :::loremipsum paragraphs=3
+ * Generates placeholder Lorem Ipsum text.
+ */
+const LOREMIPSUM_MACRO_REGEX = /^:::loremipsum(?:[ \t]+(.+))?\n?:::\s*$/gm;
 
 /**
  * Regex for local attachment image references: ![alt](./path.attachments/image.png)
@@ -2187,6 +2209,23 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     }
   );
 
+  // Convert loremipsum macro (self-closing) - MUST be before body version
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="loremipsum"[^>]*\/>/gi,
+    () => `<div data-macro="loremipsum" data-paragraphs="">*[loremipsum]*</div>`
+  );
+
+  // Convert loremipsum macro (with body)
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="loremipsum"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
+    (_, inner) => {
+      const paragraphsMatch = inner.match(/<ac:parameter\s+ac:name="paragraphs"[^>]*>([^<]*)<\/ac:parameter>/i);
+      const paragraphs = paragraphsMatch ? paragraphsMatch[1] : "";
+
+      return `<div data-macro="loremipsum" data-paragraphs="${escapeHtml(paragraphs)}">*[loremipsum]*</div>`;
+    }
+  );
+
   // Convert ac:task-list (Confluence native tasks) to HTML checkbox list
   // This allows turndown's taskList rule to convert them to markdown task syntax
   storage = storage.replace(
@@ -2898,6 +2937,16 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
         if (limit) params += ` limit=${limit}`;
 
         return `\n\n:::change-history${params}\n:::\n\n`;
+      }
+
+      // Loremipsum macro
+      if (macroType === "loremipsum") {
+        const paragraphs = (node as any).getAttribute?.("data-paragraphs") || "";
+
+        let params = "";
+        if (paragraphs) params += ` paragraphs=${paragraphs}`;
+
+        return `\n\n:::loremipsum${params}\n:::\n\n`;
       }
 
       // Preserved unknown/3rd-party macros
