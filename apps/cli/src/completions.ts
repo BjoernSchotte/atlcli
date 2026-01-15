@@ -30,6 +30,7 @@ const BUILTIN_ROOT_COMMANDS = [
 const SUBCOMMANDS: Record<string, string[]> = {
   auth: ["delete", "init", "list", "login", "logout", "rename", "status", "switch"],
   completion: ["bash", "zsh"],
+  config: ["get", "list", "set", "unset"],
   jira: [
     "analyze",
     "board",
@@ -202,6 +203,11 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki template validate": ["--global", "--local", "--space"],
   "wiki template export": ["--global", "--local", "--output", "--space"],
   "wiki template import": ["--global", "--local", "--space"],
+
+  // config flags (key completions)
+  "config get": ["defaults.board", "defaults.project", "defaults.space", "logging.global", "logging.level", "logging.project"],
+  "config set": ["defaults.board", "defaults.project", "defaults.space", "logging.global", "logging.level", "logging.project"],
+  "config unset": ["defaults.board", "defaults.project", "defaults.space", "logging.global", "logging.level", "logging.project"],
 
   // wiki search flags
   "wiki search": ["--cql", "--label", "--limit", "--space", "--type"],

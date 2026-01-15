@@ -16,6 +16,7 @@ import {
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
 import { handleCompletion } from "./commands/completion.js";
+import { handleConfig } from "./commands/config.js";
 import { handleDoctor } from "./commands/doctor.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
@@ -104,6 +105,9 @@ async function main(): Promise<void> {
         break;
       case "completion":
         await handleCompletion(rest, parsed.flags, opts);
+        break;
+      case "config":
+        await handleConfig(rest, parsed.flags, opts);
         break;
       case "doctor":
         await handleDoctor(rest, parsed.flags, opts);
@@ -239,6 +243,7 @@ atlcli <command>
 Commands:
   auth        Authenticate and manage profiles
   completion  Generate shell completion scripts
+  config      Manage CLI configuration
   doctor      Diagnose common issues
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)

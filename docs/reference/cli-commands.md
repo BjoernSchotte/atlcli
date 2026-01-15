@@ -36,6 +36,36 @@ atlcli auth delete --profile <name>     # Delete profile entirely
 atlcli auth delete --profile <name> --confirm  # Skip confirmation
 ```
 
+## Configuration
+
+```bash
+# View configuration
+atlcli config list                           # Show all config (redacted)
+atlcli config get defaults.project           # Get a specific value
+
+# Set defaults (avoids repetitive flags)
+atlcli config set defaults.project PROJ      # Default Jira project
+atlcli config set defaults.space DOCS        # Default Confluence space
+atlcli config set defaults.board 123         # Default Jira board ID
+
+# Logging settings
+atlcli config set logging.level debug        # Set log level
+atlcli config set logging.global true        # Enable global logs
+
+# Remove settings
+atlcli config unset defaults.project         # Remove a value
+```
+
+**Available keys:**
+| Key | Type | Description |
+|-----|------|-------------|
+| `defaults.project` | string | Default Jira project key |
+| `defaults.space` | string | Default Confluence space key |
+| `defaults.board` | number | Default Jira board ID |
+| `logging.level` | string | off, error, warn, info, debug |
+| `logging.global` | boolean | Enable global logs |
+| `logging.project` | boolean | Enable project logs |
+
 ## Diagnostics
 
 ```bash

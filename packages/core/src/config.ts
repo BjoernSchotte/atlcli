@@ -30,11 +30,22 @@ export type LoggingConfig = {
   project: boolean;
 };
 
+export type DefaultsConfig = {
+  /** Default Jira project key */
+  project?: string;
+  /** Default Confluence space key */
+  space?: string;
+  /** Default Jira board ID */
+  board?: number;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
   /** Logging configuration */
   logging?: LoggingConfig;
+  /** Default values for commands */
+  defaults?: DefaultsConfig;
 };
 
 const CONFIG_DIR = join(os.homedir(), ".atlcli");
