@@ -70,7 +70,50 @@ atlcli jira template import --file ./templates/bug-report.json
 
 ## Template Storage
 
-Templates are stored locally at `~/.atlcli/templates/jira/`.
+Templates support hierarchical storage at three levels:
+
+| Level | Location | Scope |
+|-------|----------|-------|
+| `global` | `~/.atlcli/templates/jira/` | Available everywhere |
+| `profile` | `~/.atlcli/profiles/<name>/templates/jira/` | Available when using profile |
+| `project` | `.atlcli/templates/jira/` | Available in project directory |
+
+### Save to Specific Level
+
+```bash
+# Save globally (default)
+atlcli jira template save my-template --issue PROJ-123
+
+# Save to profile
+atlcli jira template save my-template --issue PROJ-123 --level profile
+
+# Save to project
+atlcli jira template save my-template --issue PROJ-123 --level project
+```
+
+### List Shows All Levels
+
+```bash
+atlcli jira template list
+```
+
+Output:
+
+```
+NAME              TYPE    FIELDS  LEVEL            DESCRIPTION
+bug-report        Bug     5       [global]         Standard bug report
+feature-request   Story   4       [profile:work]   Team feature template
+sprint-task       Task    3       [project:PROJ]   Project-specific task
+```
+
+### Resolution Order
+
+When applying a template, atlcli searches in order:
+1. Project level (`.atlcli/templates/jira/`)
+2. Profile level (`~/.atlcli/profiles/<name>/templates/jira/`)
+3. Global level (`~/.atlcli/templates/jira/`)
+
+The first match wins, allowing project-specific overrides of global templates.
 
 ## Captured Fields
 
