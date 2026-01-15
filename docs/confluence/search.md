@@ -41,6 +41,32 @@ The `wiki recent` command generates CQL like:
 type = page AND lastModified >= now("-7d") ORDER BY lastModified DESC
 ```
 
+## My Pages
+
+Quick access to pages you created or contributed to:
+
+```bash
+# Pages I created (default)
+atlcli wiki my
+
+# Pages I contributed to (edited)
+atlcli wiki my --contributed
+
+# Filter by space
+atlcli wiki my --space TEAM
+
+# Filter by label
+atlcli wiki my --label api
+
+# Limit results
+atlcli wiki my --limit 50
+```
+
+The `wiki my` command generates CQL like:
+```
+type = page AND creator = currentUser() ORDER BY lastModified DESC
+```
+
 ## CQL Search
 
 Use full CQL for advanced queries:

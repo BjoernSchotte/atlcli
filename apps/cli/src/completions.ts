@@ -57,7 +57,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   ],
   log: ["clear", "list", "show", "tail"],
   plugin: ["disable", "enable", "install", "list", "remove"],
-  wiki: ["docs", "page", "recent", "search", "space", "template"],
+  wiki: ["docs", "my", "page", "recent", "search", "space", "template"],
 };
 
 // Nested subcommands (command -> subcommand -> sub-subcommands)
@@ -206,6 +206,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   // wiki search flags
   "wiki search": ["--cql", "--label", "--limit", "--space", "--type"],
   "wiki recent": ["--days", "--label", "--limit", "--space"],
+  "wiki my": ["--contributed", "--label", "--limit", "--space"],
 
   // jira search flags
   "jira search": [

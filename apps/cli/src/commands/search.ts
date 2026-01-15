@@ -442,3 +442,63 @@ export async function handleRecent(
     output(`\n${result.results.length} pages`, opts);
   }
 }
+
+/**
+ * Handle `wiki my` command - show pages created or contributed to by current user.
+ */
+export async function handleMy(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const parts: string[] = ["type = page"];
+
+  // Creator vs contributor
+  if (hasFlag(flags, "contributed")) {
+    parts.push("contributor = currentUser()");
+  } else {
+    parts.push("creator = currentUser()");
+  }
+
+  // Optional filters
+  const space = getFlag(flags, "space");
+  const label = getFlag(flags, "label");
+
+  if (space) {
+    const spaces = space.split(",").map((s) => s.trim());
+    if (spaces.length === 1) {
+      parts.push(`space = "${spaces[0]}"`);
+    } else {
+      parts.push(`space IN (${spaces.map((s) => `"${s}"`).join(", ")})`);
+    }
+  }
+
+  if (label) {
+    parts.push(`label = "${label}"`);
+  }
+
+  const cql = parts.join(" AND ") + " ORDER BY lastModified DESC";
+  const limit = Number(getFlag(flags, "limit") ?? 25);
+
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"));
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.AUTH, "No active profile. Run: atlcli auth login");
+    return;
+  }
+
+  const client = new ConfluenceClient(profile);
+  const result = await client.search(cql, { limit: Number.isNaN(limit) ? 25 : limit });
+
+  if (opts.json) {
+    output({ schemaVersion: "1", cql, results: result.results, total: result.totalSize }, opts);
+  } else {
+    if (result.results.length === 0) {
+      const mode = hasFlag(flags, "contributed") ? "contributed to" : "created";
+      output(`No pages ${mode} by you found.`, opts);
+      return;
+    }
+    formatTable(result.results, opts);
+    output(`\n${result.results.length} pages`, opts);
+  }
+}

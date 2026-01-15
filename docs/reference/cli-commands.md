@@ -167,6 +167,16 @@ atlcli wiki search --format compact          # Compact output
 atlcli wiki search --verbose                 # Detailed output
 ```
 
+### My Pages
+
+```bash
+atlcli wiki my                               # Pages I created (default)
+atlcli wiki my --contributed                 # Pages I contributed to
+atlcli wiki my --space <key>                 # Filter by space
+atlcli wiki my --label <name>                # Filter by label
+atlcli wiki my --limit <n>                   # Limit results (default 25)
+```
+
 ### Recent Pages
 
 ```bash
