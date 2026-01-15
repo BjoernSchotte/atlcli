@@ -211,6 +211,17 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle colored text: {color:red}text{color}
+  processed = processed.replace(COLOR_REGEX, (_, color, text) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const normalizedColor = color.trim();
+    // Render inner markdown and strip wrapping <p> tags for inline use
+    const innerHtml = md.render(text.trim()).replace(/^<p>|<\/p>\n?$/g, '');
+    const html = `<span style="color: ${escapeHtml(normalizedColor)};">${innerHtml}</span>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -881,6 +892,12 @@ const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
 const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
 
 /**
+ * Regex for colored text: {color:red}text{color} or {color:#FF0000}text{color}
+ * Supports CSS color names and hex codes
+ */
+const COLOR_REGEX = /\{color:([^}]+)\}([\s\S]*?)\{color\}/gi;
+
+/**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
  */
 const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
@@ -1165,6 +1182,14 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
     (_, accountId) => {
       return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}">@${escapeHtml(accountId)}</span>`;
+    }
+  );
+
+  // Convert colored spans to placeholder for turndown
+  storage = storage.replace(
+    /<span\s+style="color:\s*([^;"]+);?"[^>]*>([\s\S]*?)<\/span>/gi,
+    (_, color, content) => {
+      return `<span data-color="${escapeHtml(color.trim())}">${content}</span>`;
     }
   );
 
@@ -1686,6 +1711,18 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
       const displayName = (node as any).getAttribute?.("data-display-name") || accountId;
       if (!accountId) return "";
       return `@[${displayName}](${accountId})`;
+    },
+  });
+
+  // Handle colored text
+  service.addRule("coloredText", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).hasAttribute?.("data-color");
+    },
+    replacement: (content, node) => {
+      const color = (node as any).getAttribute?.("data-color") || "";
+      if (!color || !content.trim()) return content;
+      return `{color:${color}}${content}{color}`;
     },
   });
 

@@ -72,6 +72,25 @@ describe("markdownToStorage", () => {
     expect(html).toContain("</ac:plain-text-link-body></ac:link>");
   });
 
+  test("converts colored text to span with style", () => {
+    const md = "This is {color:red}important{color} text";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<span style="color: red;">important</span>');
+  });
+
+  test("converts hex color codes", () => {
+    const md = "Use {color:#0066cc}brand blue{color} here";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<span style="color: #0066cc;">brand blue</span>');
+  });
+
+  test("handles nested formatting in colored text", () => {
+    const md = "This is {color:green}**bold green**{color}";
+    const html = markdownToStorage(md);
+    expect(html).toContain("color: green");
+    expect(html).toContain("<strong>");
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -153,6 +172,24 @@ describe("storageToMarkdown", () => {
     const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain("@[123456:abcd-efgh](123456:abcd-efgh)");
+  });
+
+  test("converts colored span to markdown syntax", () => {
+    const storage = '<p>This is <span style="color: red;">important</span> text</p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{color:red}important{color}");
+  });
+
+  test("converts hex color from span", () => {
+    const storage = '<p>Use <span style="color: #0066cc;">brand blue</span></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{color:#0066cc}brand blue{color}");
+  });
+
+  test("converts rgb color from span", () => {
+    const storage = '<p>Text <span style="color: rgb(255, 0, 0);">in red</span></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("{color:rgb(255, 0, 0)}in red{color}");
   });
 
   test("ends with single newline", () => {
