@@ -1,12 +1,14 @@
 """Convert markdown to Word document elements."""
 
+import base64
+import io
 import re
 from typing import Optional
 import markdown
 from markdown.extensions.tables import TableExtension
 from markdown.extensions.fenced_code import FencedCodeExtension
 from bs4 import BeautifulSoup, Tag
-from docx.shared import Pt, Inches, RGBColor
+from docx.shared import Pt, Inches, RGBColor, Twips
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -16,8 +18,16 @@ from docxtpl import DocxTemplate
 class MarkdownToWordConverter:
     """Converts markdown text to Word document elements."""
 
-    def __init__(self, template: DocxTemplate):
+    def __init__(self, template: DocxTemplate, images: dict | None = None):
+        """Initialize the converter.
+
+        Args:
+            template: DocxTemplate instance for creating subdocuments
+            images: Dict of embedded images keyed by filename.
+                    Each value is {"data": base64_string, "mimeType": "image/png"}
+        """
         self.template = template
+        self.images = images or {}
         self.md = markdown.Markdown(
             extensions=[
                 TableExtension(),
@@ -74,15 +84,22 @@ class MarkdownToWordConverter:
             self._process_list(tag, subdoc, ordered=True)
 
         elif tag_name == "pre":
-            # Code block
+            # Code block with better styling
             code = tag.find("code")
             code_text = code.get_text() if code else tag.get_text()
             p = subdoc.add_paragraph()
             run = p.add_run(code_text)
             run.font.name = "Courier New"
             run.font.size = Pt(9)
-            # Light gray background via shading
-            self._add_shading(p, "E8E8E8")
+            # Light gray background and border
+            self._add_code_block_style(p)
+
+        elif tag_name == "img":
+            # Block-level image
+            src = tag.get("src", "")
+            alt = tag.get("alt", "")
+            p = subdoc.add_paragraph()
+            self._add_image(p, src, alt)
 
         elif tag_name == "blockquote":
             for child in tag.children:
@@ -135,14 +152,19 @@ class MarkdownToWordConverter:
                     run.font.size = Pt(10)
 
                 elif child_name == "a":
-                    # Hyperlink - for now just add text with blue color
+                    # Proper Word hyperlink
                     href = child.get("href", "")
-                    run = paragraph.add_run(child.get_text())
-                    run.font.color.rgb = RGBColor(0, 0, 238)
-                    run.underline = True
+                    text = child.get_text()
+                    self._add_hyperlink(paragraph, href, text)
 
                 elif child_name == "br":
                     paragraph.add_run("\n")
+
+                elif child_name == "img":
+                    # Handle inline image
+                    src = child.get("src", "")
+                    alt = child.get("alt", "")
+                    self._add_image(paragraph, src, alt)
 
                 elif child_name == "span":
                     # Check for status macro
@@ -224,6 +246,111 @@ class MarkdownToWordConverter:
         shading = OxmlElement("w:shd")
         shading.set(qn("w:fill"), color)
         paragraph._p.get_or_add_pPr().append(shading)
+
+    def _add_code_block_style(self, paragraph) -> None:
+        """Add code block styling with background and border."""
+        pPr = paragraph._p.get_or_add_pPr()
+
+        # Add light gray background
+        shading = OxmlElement("w:shd")
+        shading.set(qn("w:val"), "clear")
+        shading.set(qn("w:fill"), "F5F5F5")
+        pPr.append(shading)
+
+        # Add border around the paragraph
+        pBdr = OxmlElement("w:pBdr")
+
+        for border_name in ["top", "left", "bottom", "right"]:
+            border = OxmlElement(f"w:{border_name}")
+            border.set(qn("w:val"), "single")
+            border.set(qn("w:sz"), "4")  # 0.5pt border
+            border.set(qn("w:space"), "1")
+            border.set(qn("w:color"), "CCCCCC")
+            pBdr.append(border)
+
+        pPr.append(pBdr)
+
+        # Add padding via indentation
+        ind = OxmlElement("w:ind")
+        ind.set(qn("w:left"), "284")  # ~0.2 inch
+        ind.set(qn("w:right"), "284")
+        pPr.append(ind)
+
+    def _add_hyperlink(self, paragraph, url: str, text: str) -> None:
+        """Add a proper clickable hyperlink to a paragraph."""
+        # Get the document part for relationship
+        part = paragraph.part
+
+        # Create relationship for the hyperlink
+        r_id = part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
+
+        # Create hyperlink element
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), r_id)
+
+        # Create run with styled text
+        new_run = OxmlElement("w:r")
+        rPr = OxmlElement("w:rPr")
+
+        # Blue color
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "0563C1")
+        rPr.append(color)
+
+        # Underline
+        u = OxmlElement("w:u")
+        u.set(qn("w:val"), "single")
+        rPr.append(u)
+
+        new_run.append(rPr)
+
+        # Add text
+        t = OxmlElement("w:t")
+        t.text = text
+        new_run.append(t)
+
+        hyperlink.append(new_run)
+        paragraph._p.append(hyperlink)
+
+    def _add_image(self, paragraph, src: str, alt: str = "") -> None:
+        """Add an image to a paragraph.
+
+        Args:
+            paragraph: The paragraph to add the image to
+            src: Image source - can be filename (for embedded) or URL
+            alt: Alt text for the image
+        """
+        # Extract filename from src (may be URL path or just filename)
+        if "/" in src:
+            filename = src.split("/")[-1]
+            # Remove query parameters
+            if "?" in filename:
+                filename = filename.split("?")[0]
+        else:
+            filename = src
+
+        # Check if we have this image embedded
+        if filename in self.images:
+            image_data = self.images[filename]
+            try:
+                # Decode base64 image
+                img_bytes = base64.b64decode(image_data["data"])
+                img_stream = io.BytesIO(img_bytes)
+
+                # Add image to document
+                # Default max width of 5 inches, maintaining aspect ratio
+                run = paragraph.add_run()
+                run.add_picture(img_stream, width=Inches(5))
+
+            except Exception as e:
+                # If image fails, add placeholder text
+                run = paragraph.add_run(f"[Image: {alt or filename}]")
+                run.italic = True
+        else:
+            # No embedded image - add placeholder with alt text
+            run = paragraph.add_run(f"[Image: {alt or filename}]")
+            run.italic = True
+            run.font.color.rgb = RGBColor(128, 128, 128)
 
     def _add_status_badge(self, tag: Tag, paragraph) -> None:
         """Add a colored status badge."""

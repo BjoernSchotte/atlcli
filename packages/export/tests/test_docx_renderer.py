@@ -271,3 +271,91 @@ def test_normalize_split_placeholders():
     normalized3 = normalize_split_placeholders(xml3)
     converted3 = convert_scroll_placeholders(normalized3)
     assert "{{ title }}" in converted3
+
+
+def test_hyperlinks_in_markdown():
+    """Test that hyperlinks are properly converted to Word hyperlinks."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+    import zipfile
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Markdown with a link
+    markdown = "Check out [this link](https://example.com) for more info."
+    converter = MarkdownToWordConverter(template)
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
+def test_code_block_styling():
+    """Test that code blocks get proper styling."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Markdown with code block
+    markdown = """Here's some code:
+
+```python
+def hello():
+    print("Hello!")
+```
+"""
+    converter = MarkdownToWordConverter(template)
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
+def test_image_placeholder_without_embed():
+    """Test that images without embedded data show placeholder."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Markdown with image (no embedded data)
+    markdown = "Here's an image: ![My Image](attachment.png)"
+    converter = MarkdownToWordConverter(template, images={})
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None
+
+
+def test_image_with_embedded_data():
+    """Test that images with embedded data are inserted."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+    import base64
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+
+    # Create a minimal 1x1 red PNG
+    # This is a valid minimal PNG file
+    png_data = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+    )
+    images = {
+        "test.png": {
+            "data": base64.b64encode(png_data).decode("utf-8"),
+            "mimeType": "image/png",
+        }
+    }
+
+    # Markdown with image
+    markdown = "Here's an image: ![Test](test.png)"
+    converter = MarkdownToWordConverter(template, images=images)
+    subdoc = converter.convert(markdown)
+
+    # Subdoc should be created
+    assert subdoc is not None

@@ -18,7 +18,9 @@ def build_context(page_data: dict, template: DocxTemplate) -> dict[str, Any]:
         Dictionary with all template variables
     """
     # Convert markdown content to Word subdocument
-    converter = MarkdownToWordConverter(template)
+    # Pass embedded images if available
+    images = page_data.get("images", {})
+    converter = MarkdownToWordConverter(template, images=images)
     content_subdoc = converter.convert(page_data.get("markdown", ""))
 
     # Extract author info

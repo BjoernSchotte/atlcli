@@ -40,6 +40,7 @@ export async function handleExport(
 
   const templatePath = getFlag(flags, "template");
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
+  const embedImages = hasFlag(flags, "embed-images");
 
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
@@ -81,6 +82,28 @@ export async function handleExport(
     // Ignore - use spaceKey as name
   }
 
+  // Fetch and embed images if requested
+  const images: Record<string, { data: string; mimeType: string }> = {};
+  if (embedImages) {
+    const attachments = await client.listAttachments(pageId);
+    const imageAttachments = attachments.filter(a =>
+      a.mediaType.startsWith("image/")
+    );
+
+    for (const attachment of imageAttachments) {
+      try {
+        const data = await client.downloadAttachment(attachment);
+        const base64 = Buffer.from(data).toString("base64");
+        images[attachment.filename] = {
+          data: base64,
+          mimeType: attachment.mediaType,
+        };
+      } catch {
+        // Skip failed downloads
+      }
+    }
+  }
+
   // Build page data for Python subprocess
   const pageData = {
     title: page.title,
@@ -106,6 +129,7 @@ export async function handleExport(
     templateName: templatePath,
     attachments: [],
     children: [],
+    images,  // Embedded images keyed by filename
   };
 
   // Resolve output path
@@ -312,6 +336,7 @@ Arguments:
 Options:
   --template, -t      Template name or path (required)
   --output, -o        Output file path (required)
+  --embed-images      Download and embed images from page attachments
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:
@@ -328,6 +353,6 @@ Template Resolution:
 Examples:
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx
-  atlcli wiki export https://example.atlassian.net/wiki/pages/123 -t basic -o out.docx
+  atlcli wiki export 12345 -t basic -o out.docx --embed-images
 `;
 }
