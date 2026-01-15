@@ -203,6 +203,14 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
     return placeholder;
   });
 
+  // Handle user mentions: @[Display Name](account-id)
+  processed = processed.replace(MENTION_REGEX, (_, displayName, accountId) => {
+    const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
+    const html = `<ac:link><ri:user ri:account-id="${escapeHtml(accountId)}" /><ac:plain-text-link-body><![CDATA[${displayName}]]></ac:plain-text-link-body></ac:link>`;
+    macros.push({ placeholder, html });
+    return placeholder;
+  });
+
   // Handle panel macro with parameters: :::panel title="Title" bgColor="#fff"
   processed = processed.replace(PANEL_MACRO_REGEX, (_, params, content) => {
     const placeholder = `<!--MACRO_PLACEHOLDER_${placeholderIndex++}-->`;
@@ -867,6 +875,12 @@ const EMOTICON_ALIASES: Record<string, string> = {
 const EMOTICON_REGEX = /:([a-z0-9_][-a-z0-9_]*|[+-]1):/gi;
 
 /**
+ * Regex for user mentions: @[Display Name](account-id)
+ * The account-id is typically in format like "123456:abcd-efgh-ijkl" or "admin"
+ */
+const MENTION_REGEX = /@\[([^\]]+)\]\(([^)]+)\)/g;
+
+/**
  * Regex for panel macro with parameters: :::panel title="Title" bgColor="#fff"
  */
 const PANEL_MACRO_REGEX = /^:::panel(?:[ \t]+(.+))?\n([\s\S]*?)^:::\s*$/gm;
@@ -1134,6 +1148,23 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
     /<ac:emoticon\s+ac:name="([^"]+)"[^>]*\/>/gi,
     (_, name) => {
       return `<span data-emoticon="${escapeHtml(name)}">:${escapeHtml(name)}:</span>`;
+    }
+  );
+
+  // Convert user mentions: <ac:link><ri:user ri:account-id="..." />...</ac:link>
+  // With display name in plain-text-link-body
+  storage = storage.replace(
+    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<ac:plain-text-link-body>(?:<!\[CDATA\[)?([^\]<]+)(?:\]\]>)?<\/ac:plain-text-link-body>\s*<\/ac:link>/gi,
+    (_, accountId, displayName) => {
+      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}" data-display-name="${escapeHtml(displayName.trim())}">@${escapeHtml(displayName.trim())}</span>`;
+    }
+  );
+
+  // Convert user mentions without display name
+  storage = storage.replace(
+    /<ac:link>\s*<ri:user\s+ri:account-id="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi,
+    (_, accountId) => {
+      return `<span data-mention="true" data-account-id="${escapeHtml(accountId)}">@${escapeHtml(accountId)}</span>`;
     }
   );
 
@@ -1642,6 +1673,19 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
     replacement: (_content, node) => {
       const name = (node as any).getAttribute?.("data-emoticon") || "";
       return name ? `:${name}:` : "";
+    },
+  });
+
+  // Handle user mentions
+  service.addRule("userMention", {
+    filter: (node) => {
+      return node.nodeName === "SPAN" && (node as any).getAttribute?.("data-mention") === "true";
+    },
+    replacement: (_content, node) => {
+      const accountId = (node as any).getAttribute?.("data-account-id") || "";
+      const displayName = (node as any).getAttribute?.("data-display-name") || accountId;
+      if (!accountId) return "";
+      return `@[${displayName}](${accountId})`;
     },
   });
 

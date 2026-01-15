@@ -64,6 +64,14 @@ describe("markdownToStorage", () => {
     expect(html).toContain('<ac:emoticon ac:name="tick" />');
   });
 
+  test("converts user mentions to ac:link", () => {
+    const md = "Please review @[John Doe](123456:abcd-efgh)";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:link><ri:user ri:account-id="123456:abcd-efgh" />');
+    expect(html).toContain("<![CDATA[John Doe]]>");
+    expect(html).toContain("</ac:plain-text-link-body></ac:link>");
+  });
+
   test("converts tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = markdownToStorage(md);
@@ -133,6 +141,18 @@ describe("storageToMarkdown", () => {
     const storage = '<p>Great <ac:emoticon ac:name="thumbs-up" /> work!</p>';
     const md = storageToMarkdown(storage);
     expect(md).toContain(":thumbs-up:");
+  });
+
+  test("converts user mention with display name to markdown", () => {
+    const storage = '<p>Please review <ac:link><ri:user ri:account-id="123456:abcd-efgh" /><ac:plain-text-link-body><![CDATA[John Doe]]></ac:plain-text-link-body></ac:link></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("@[John Doe](123456:abcd-efgh)");
+  });
+
+  test("converts user mention without display name to markdown", () => {
+    const storage = '<p>CC <ac:link><ri:user ri:account-id="123456:abcd-efgh" /></ac:link></p>';
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("@[123456:abcd-efgh](123456:abcd-efgh)");
   });
 
   test("ends with single newline", () => {
