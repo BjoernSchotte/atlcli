@@ -115,6 +115,8 @@ def test_date_filter():
     assert date_filter("2025-01-15T14:30:00Z", "YYYY-MM-DD") == "2025-01-15"
     assert date_filter("2025-01-15T14:30:00Z", "DD/MM/YYYY") == "15/01/2025"
     assert date_filter("2025-01-15T14:30:00Z", "YYYY-MM-DD HH:mm") == "2025-01-15 14:30"
+    assert date_filter("2025-01-05T04:30:00Z", "yyyy-MM-dd") == "2025-01-05"
+    assert date_filter("2025-01-05T04:30:00Z", "MMMM d, yyyy") == "January 5, 2025"
 
     # Empty string
     assert date_filter("", "YYYY-MM-DD") == ""
@@ -273,6 +275,26 @@ def test_normalize_split_placeholders():
     assert "{{ title }}" in converted3
 
 
+def test_fix_content_placeholder_preserves_section_break():
+    """Ensure section breaks are preserved when moving content placeholder."""
+    from atlcli_export.docm_support import fix_content_placeholder_level
+
+    xml = (
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body>'
+        '<w:p>'
+        '<w:pPr><w:sectPr><w:pgSz w:w="12240"/></w:sectPr></w:pPr>'
+        '<w:r><w:t>{{ content }}</w:t></w:r>'
+        '</w:p>'
+        '</w:body></w:document>'
+    )
+
+    fixed = fix_content_placeholder_level(xml)
+    assert "{{p content }}" in fixed
+    assert "<w:sectPr" in fixed
+    assert fixed.index("{{p content }}") < fixed.index("<w:sectPr")
+
+
 def test_hyperlinks_in_markdown():
     """Test that hyperlinks are properly converted to Word hyperlinks."""
     from docxtpl import DocxTemplate
@@ -289,6 +311,70 @@ def test_hyperlinks_in_markdown():
 
     # Subdoc should be created
     assert subdoc is not None
+
+
+def test_toc_macro_output_toggle(tmp_path):
+    """TOC macro output should be optional and plain text when enabled."""
+    from atlcli_export.docx_renderer import render_template
+    import zipfile
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    output_path = tmp_path / "toc-export.docx"
+
+    page_data = {
+        "title": "TOC Test",
+        "markdown": ":::toc\n:::\n\n## 1. Basic Formatting\n\nSome text\n",
+        "author": {"displayName": "Tester", "email": "tester@example.com"},
+        "modifier": {"displayName": "Tester", "email": "tester@example.com"},
+        "created": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-01T00:00:00Z",
+        "pageId": "1",
+        "pageUrl": "https://example.com",
+        "tinyUrl": "https://ex",
+        "labels": [],
+        "spaceKey": "SPACE",
+        "spaceName": "Space",
+        "spaceUrl": "https://example.com/space",
+        "exportedBy": "atlcli",
+        "templateName": "basic-template",
+        "attachments": [],
+        "children": [],
+        "images": {},
+        "macroChildren": [],
+        "macroContentByLabel": [],
+        "renderTocMacro": False,
+    }
+
+    render_template(template_path, page_data, output_path)
+    with zipfile.ZipFile(output_path, "r") as zin:
+        xml = zin.read("word/document.xml").decode("utf-8")
+    count_without = xml.count("1. Basic Formatting")
+
+    page_data["renderTocMacro"] = True
+    render_template(template_path, page_data, output_path)
+    with zipfile.ZipFile(output_path, "r") as zin:
+        xml = zin.read("word/document.xml").decode("utf-8")
+    count_with = xml.count("1. Basic Formatting")
+
+    assert count_with > count_without
+
+
+def test_heading_number_prefix_stripped_when_enabled():
+    """Strip leading numeric prefix from headings when numbering is enabled."""
+    from docxtpl import DocxTemplate
+    from atlcli_export.markdown_to_word import MarkdownToWordConverter
+    from bs4 import BeautifulSoup
+
+    template_path = FIXTURES_DIR / "basic-template.docx"
+    template = DocxTemplate(template_path)
+    converter = MarkdownToWordConverter(template)
+    converter.heading_numbered[2] = True
+
+    subdoc = template.new_subdoc()
+    tag = BeautifulSoup("<h2>6. Panel Macros</h2>", "html.parser").h2
+    converter._process_tag(tag, subdoc)
+
+    assert subdoc.paragraphs[0].text == "Panel Macros"
 
 
 def test_code_block_styling():

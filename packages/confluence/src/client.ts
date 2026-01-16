@@ -11,6 +11,22 @@ export type ConfluencePage = {
   ancestors?: { id: string; title: string }[];
 };
 
+export type ConfluenceUser = {
+  accountId?: string;
+  displayName: string;
+  email?: string;
+};
+
+export type ConfluencePageDetails = ConfluencePage & {
+  storage: string;
+  created?: string;
+  createdBy?: ConfluenceUser;
+  modified?: string;
+  modifiedBy?: ConfluenceUser;
+  labels?: string[];
+  tinyUrl?: string;
+};
+
 export type ConfluenceSpace = {
   id: string;
   key: string;
@@ -360,6 +376,78 @@ export class ConfluenceClient {
       parentId,
       ancestors,
       storage: data.body?.storage?.value ?? "",
+    };
+  }
+
+  /**
+   * Get a page with metadata (history, labels, tiny URL).
+   * Used for export workflows that need author/created/labels.
+   */
+  async getPageDetails(id: string): Promise<ConfluencePageDetails> {
+    const data = (await this.request(`/content/${id}`, {
+      query: {
+        expand: [
+          "body.storage",
+          "version",
+          "space",
+          "ancestors",
+          "history.lastUpdated",
+          "history.createdBy",
+          "history.createdDate",
+          "metadata.labels",
+        ].join(","),
+      },
+    })) as any;
+
+    // Extract ancestors (array of {id, title} from root to parent)
+    const ancestors = Array.isArray(data.ancestors)
+      ? data.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+      : [];
+
+    // Parent is the last ancestor
+    const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1].id : null;
+
+    // Extract labels from metadata
+    const labels: string[] = [];
+    if (data.metadata?.labels?.results) {
+      for (const label of data.metadata.labels.results) {
+        labels.push(label.name);
+      }
+    }
+
+    const parseUser = (user: any): ConfluenceUser | undefined => {
+      if (!user) return undefined;
+      return {
+        accountId: user.accountId,
+        displayName: user.displayName ?? user.publicName ?? "",
+        email: user.email,
+      };
+    };
+
+    const createdBy = parseUser(data.history?.createdBy);
+    const modifiedBy = parseUser(data.history?.lastUpdated?.by ?? data.version?.by);
+    const created = data.history?.createdDate;
+    const modified = data.history?.lastUpdated?.when ?? data.version?.when;
+
+    const base = data._links?.base;
+    const webui = data._links?.webui;
+    const tinyui = data._links?.tinyui;
+
+    return {
+      id: data.id,
+      title: data.title,
+      url: base && webui ? `${base}${webui}` : undefined,
+      tinyUrl: base && tinyui ? `${base}${tinyui}` : undefined,
+      version: data.version?.number,
+      spaceKey: data.space?.key,
+      parentId,
+      ancestors,
+      storage: data.body?.storage?.value ?? "",
+      created,
+      createdBy,
+      modified,
+      modifiedBy,
+      labels,
     };
   }
 

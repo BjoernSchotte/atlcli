@@ -97,30 +97,19 @@ def fix_content_placeholder_level(xml_content: str) -> str:
     </w:p>{{p content }}<w:p>
 
     This function restructures the XML to move content placeholder to paragraph level.
+    It also preserves section breaks (w:sectPr) that may be attached to the original
+    paragraph (important for cover pages and multi-section templates).
     """
     # Pattern: find paragraph containing {{ content }}
     # Match: <w:p ...>...<w:t...>{{ content }}...</w:t>...</w:p>
     # We need to replace the entire paragraph with just {{p content }}
 
-    # First, find if {{ content }} exists inline
-    if '{{ content }}' not in xml_content:
-        return xml_content
-
-    # Pattern to match a paragraph containing {{ content }} in a w:t element
-    # This is complex because paragraphs can have many nested elements
-    # Strategy: find <w:t>{{ content }}</w:t> or <w:t ...>{{ content }} </w:t>
-    # and replace the entire containing <w:p>...</w:p> with {{p content }}
-
     import re
 
-    # Find the w:t element containing {{ content }}
-    content_pattern = r'<w:t[^>]*>\s*\{\{\s*content\s*\}\}\s*</w:t>'
+    content_placeholder = re.compile(r'\{\{\s*content\s*\}\}')
 
-    if not re.search(content_pattern, xml_content):
-        # Content might have extra whitespace, try broader pattern
-        content_pattern = r'<w:t[^>]*>[^<]*\{\{\s*content\s*\}\}[^<]*</w:t>'
-
-    if not re.search(content_pattern, xml_content):
+    # First, find if {{ content }} exists inline
+    if not content_placeholder.search(xml_content):
         return xml_content
 
     # Find and replace the entire paragraph containing {{ content }}
@@ -147,7 +136,7 @@ def fix_content_placeholder_level(xml_content: str) -> str:
             while j < len(xml):
                 if xml[j:j+4] == '<w:p' and (j+4 >= len(xml) or xml[j+4] in ' >'):
                     depth += 1
-                elif xml[j:j+5] == '</w:p':
+                elif xml[j:j+5] == '</w:p' and (j+5 >= len(xml) or xml[j+5] in ' >'):
                     depth -= 1
                     if depth == 0:
                         p_end = xml.find('>', j) + 1
@@ -161,9 +150,20 @@ def fix_content_placeholder_level(xml_content: str) -> str:
             paragraph = xml[p_start:p_end]
 
             # Check if this paragraph contains {{ content }}
-            if '{{ content }}' in paragraph:
+            if content_placeholder.search(paragraph):
+                # Preserve section breaks if present in paragraph properties
+                ppr_match = re.search(r'<w:pPr[\s\S]*?</w:pPr>', paragraph)
+                ppr_xml = ppr_match.group(0) if ppr_match else ""
+                has_sect = "<w:sectPr" in ppr_xml
+
                 # Replace entire paragraph with {{p content }}
-                result.append('{{p content }}')
+                replacement = "{{p content }}"
+
+                if has_sect:
+                    # Keep the section properties in a standalone paragraph
+                    replacement += f"<w:p>{ppr_xml}</w:p>"
+
+                result.append(replacement)
             else:
                 result.append(paragraph)
 

@@ -10,6 +10,7 @@ from markdown.extensions.fenced_code import FencedCodeExtension
 from bs4 import BeautifulSoup, Tag
 from docx.shared import Pt, Inches, RGBColor, Twips
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docxtpl import DocxTemplate
@@ -36,17 +37,133 @@ STATUS_COLORS = {
 }
 
 
-def preprocess_markdown(md_text: str) -> str:
+def preprocess_markdown(md_text: str, render_toc_macro: bool = False) -> str:
     """Pre-process custom markdown syntax before standard markdown conversion.
 
     Converts:
     - :::type Title\\ncontent\\n::: → <div class="panel panel-type"><div class="panel-title">Title</div>content</div>
     - {color:name}[TEXT]{color} → <span class="status status-name">TEXT</span>
     """
+    def render_markdown_fragment(text: str) -> str:
+        md = markdown.Markdown(
+            extensions=[TableExtension(), FencedCodeExtension(), "nl2br"]
+        )
+        html = md.convert(text)
+        md.reset()
+        return html
+
+    def parse_param(params: str, key: str) -> str:
+        if not params:
+            return ""
+        # key="value" or key=value
+        match = re.search(rf'{key}\s*=\s*("[^"]*"|\S+)', params)
+        if not match:
+            return ""
+        val = match.group(1)
+        return val.strip('"')
+
+    result = md_text
+
+    # Convert TOC macro to placeholder div or drop it entirely
+    if render_toc_macro:
+        result = re.sub(
+            r':::toc\s*\n:::',
+            '<div class="toc-macro"></div>',
+            result
+        )
+    else:
+        result = re.sub(r':::toc\s*\n:::', '', result)
+
+    # Convert expand macro (with body) to HTML div
+    expand_pattern = re.compile(
+        r':::expand(?: ([^\n]*))?\n(.*?)\n:::',
+        re.DOTALL
+    )
+
+    def expand_replacer(match):
+        title = (match.group(1) or "Click to expand").strip()
+        content = match.group(2).strip()
+        html = render_markdown_fragment(content)
+        return f'<div class="expand" data-title="{title}">{html}</div>'
+
+    result = expand_pattern.sub(expand_replacer, result)
+
+    # Convert excerpt macro (with body) to HTML div (content only)
+    excerpt_pattern = re.compile(
+        r':::excerpt(?: ([^\n]*))?\n(.*?)\n:::',
+        re.DOTALL
+    )
+
+    def excerpt_replacer(match):
+        params = (match.group(1) or "").strip()
+        content = match.group(2).strip()
+        name = parse_param(params, "name")
+        hidden = "hidden" in params.split()
+        html = render_markdown_fragment(content)
+        hidden_attr = ' data-hidden="true"' if hidden else ""
+        name_attr = f' data-name="{name}"' if name else ""
+        return f'<div class="excerpt"{name_attr}{hidden_attr}>{html}</div>'
+
+    result = excerpt_pattern.sub(excerpt_replacer, result)
+
+    # Convert children macro to placeholder div
+    children_pattern = re.compile(
+        r':::children(?: ([^\n]*))?\n:::',
+        re.DOTALL
+    )
+
+    def children_replacer(match):
+        params = (match.group(1) or "").strip()
+        depth = parse_param(params, "depth")
+        depth_attr = f' data-depth="{depth}"' if depth else ""
+        return f'<div class="children"{depth_attr}></div>'
+
+    result = children_pattern.sub(children_replacer, result)
+
+    # Convert content-by-label macro to placeholder div
+    cbl_pattern = re.compile(
+        r':::content-by-label(?: ([^\n]*))?\n:::',
+        re.DOTALL
+    )
+
+    def cbl_replacer(match):
+        params = (match.group(1) or "").strip()
+        labels = parse_param(params, "labels")
+        spaces = parse_param(params, "spaces")
+        max_val = parse_param(params, "max")
+        attrs = []
+        if labels:
+            attrs.append(f'data-labels="{labels}"')
+        if spaces:
+            attrs.append(f'data-spaces="{spaces}"')
+        if max_val:
+            attrs.append(f'data-max="{max_val}"')
+        attrs_str = " " + " ".join(attrs) if attrs else ""
+        return f'<div class="content-by-label"{attrs_str}></div>'
+
+    result = cbl_pattern.sub(cbl_replacer, result)
+
+    # Convert page-properties macro to HTML table
+    page_props_pattern = re.compile(
+        r':::page-properties(?: ([^\n]*))?\n(.*?)\n:::',
+        re.DOTALL
+    )
+
+    def page_props_replacer(match):
+        params = (match.group(1) or "").strip()
+        content = match.group(2).strip()
+        html = render_markdown_fragment(content)
+        data_id = parse_param(params, "id")
+        id_attr = f' data-id="{data_id}"' if data_id else ""
+        return f'<div class="page-properties"{id_attr}>{html}</div>'
+
+    result = page_props_pattern.sub(page_props_replacer, result)
+
     # Convert panel macros: :::type Title\ncontent\n:::
     # Pattern matches :::type optional-title\ncontent\n::: (non-greedy, stopping at first \n:::)
+    panel_types = "|".join(PANEL_STYLES.keys())
     panel_pattern = re.compile(
-        r':::(\w+)(?: ([^\n]*))?\n(.*?)\n:::',
+        rf':::({panel_types})(?: ([^\n]*))?\n(.*?)\n:::',
         re.DOTALL
     )
 
@@ -60,7 +177,7 @@ def preprocess_markdown(md_text: str) -> str:
         else:
             return f'<div class="panel panel-{panel_type}">\n\n{content}\n\n</div>'
 
-    result = panel_pattern.sub(panel_replacer, md_text)
+    result = panel_pattern.sub(panel_replacer, result)
 
     # Convert status badges: {color:name}[TEXT]{color} or {color:name}\[TEXT\]{color}
     # Note: brackets may be escaped in markdown from Confluence
@@ -73,13 +190,89 @@ def preprocess_markdown(md_text: str) -> str:
 
     result = status_pattern.sub(status_replacer, result)
 
+    # Convert text emoticons and Confluence-style codes to emoji
+    result = replace_emoticons(result)
+
+    # Convert single-tilde strikethrough to HTML <del>
+    result = re.sub(r'~([^~]+)~', r'<del>\1</del>', result)
+
+    # Remove anchor macros from output
+    result = re.sub(r'\{anchor:[^}]+\}', '', result)
+
     return result
+
+
+def replace_emoticons(text: str) -> str:
+    """Replace common text emoticons with emoji."""
+    # Confluence-style :name: codes
+    name_map = {
+        "smile": "😊",
+        "sad": "🙁",
+        "laugh": "😄",
+        "wink": "😉",
+        "thumbs-up": "👍",
+        "thumbs_down": "👎",
+        "information": "ℹ️",
+        "warning": "⚠️",
+        "question": "❓",
+        "check": "✅",
+        "cross": "❌",
+        "star": "⭐",
+    }
+
+    def name_replacer(match):
+        name = match.group(1).lower()
+        return name_map.get(name, match.group(0))
+
+    text = re.sub(r':([a-zA-Z0-9_-]+):', name_replacer, text)
+
+    # Simple emoticons and Confluence shorthand
+    simple_map = {
+        ":)": "😊",
+        ":-)": "😊",
+        ":(": "🙁",
+        ":-(": "🙁",
+        ":D": "😄",
+        ":-D": "😄",
+        ";)": "😉",
+        ";-)": "😉",
+    }
+
+    for key, emoji in simple_map.items():
+        text = re.sub(rf'(^|[\s]){re.escape(key)}(?=$|[\s\.,;:!\?])', rf'\1{emoji}', text)
+
+    shorthand_map = {
+        "y": "👍",
+        "n": "👎",
+        "i": "ℹ️",
+        "!": "⚠️",
+        "?": "❓",
+        "/": "✅",
+        "x": "❌",
+        "*": "⭐",
+    }
+
+    def shorthand_replacer(match):
+        prefix = match.group(1)
+        code = match.group(2).lower()
+        return prefix + shorthand_map.get(code, match.group(0))
+
+    text = re.sub(r'(^|[\s])\(\s*\\?([ynix\*/\?!])\s*\)(?=$|[\s\.,;:!\?])', shorthand_replacer, text, flags=re.IGNORECASE)
+
+    return text
 
 
 class MarkdownToWordConverter:
     """Converts markdown text to Word document elements."""
 
-    def __init__(self, template: DocxTemplate, images: dict | None = None):
+    def __init__(
+        self,
+        template: DocxTemplate,
+        images: dict | None = None,
+        macro_children: list | None = None,
+        content_by_label: list | None = None,
+        render_toc_macro: bool = False,
+    ):
         """Initialize the converter.
 
         Args:
@@ -89,6 +282,11 @@ class MarkdownToWordConverter:
         """
         self.template = template
         self.images = images or {}
+        self.macro_children = macro_children or []
+        self.content_by_label = content_by_label or []
+        self.render_toc_macro = render_toc_macro
+        self.heading_numbered = self._detect_numbered_headings()
+        self.headings: list[tuple[int, str]] = []
         self.md = markdown.Markdown(
             extensions=[
                 TableExtension(),
@@ -103,8 +301,11 @@ class MarkdownToWordConverter:
         For the vertical slice, we return the content as a subdocument
         that can be inserted into the template.
         """
+        # Extract headings for TOC generation before preprocessing
+        self.headings = self._extract_headings(md_text)
+
         # Pre-process custom syntax (panels, status badges)
-        preprocessed = preprocess_markdown(md_text)
+        preprocessed = preprocess_markdown(md_text, self.render_toc_macro)
 
         # Parse markdown to HTML
         html = self.md.convert(preprocessed)
@@ -118,6 +319,57 @@ class MarkdownToWordConverter:
         self._process_elements(soup, subdoc)
 
         return subdoc
+
+    def _extract_headings(self, md_text: str) -> list[tuple[int, str]]:
+        """Extract markdown headings for TOC generation."""
+        headings: list[tuple[int, str]] = []
+        def unescape(text: str) -> str:
+            return re.sub(r'\\([\\`*_{}\[\]()+\-\.!])', r'\1', text)
+
+        for line in md_text.splitlines():
+            if line.startswith("#"):
+                m = re.match(r'^(#{1,6})\s+(.*)$', line)
+                if not m:
+                    continue
+                level = len(m.group(1))
+                text = unescape(m.group(2).strip())
+                if not text:
+                    continue
+                headings.append((level, text))
+        return headings
+
+    def _detect_numbered_headings(self) -> dict[int, bool]:
+        """Detect whether Heading 1-6 styles are numbered in the template."""
+        numbered: dict[int, bool] = {}
+        doc = self.template.get_docx()
+        for level in range(1, 7):
+            style = self._find_heading_style(doc, level)
+            numbered[level] = self._style_has_numbering(style) if style else False
+        return numbered
+
+    def _find_heading_style(self, doc, level: int):
+        target = f"heading {level}"
+        for style in doc.styles:
+            if style.type == WD_STYLE_TYPE.PARAGRAPH and style.name.lower() == target:
+                return style
+        return None
+
+    def _style_has_numbering(self, style) -> bool:
+        current = style
+        seen = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            ppr = current.element.find(qn("w:pPr"))
+            if ppr is not None and ppr.find(qn("w:numPr")) is not None:
+                return True
+            current = current.base_style
+        return False
+
+    def _strip_heading_prefix(self, text: str) -> tuple[str, bool]:
+        """Strip leading numeric prefix like '6. ' or '1.2. '."""
+        pattern = re.compile(r'^\s*\d+(?:\.\d+)*\.\s+')
+        stripped = pattern.sub("", text, count=1)
+        return stripped, stripped != text
 
     def _process_elements(self, soup: BeautifulSoup, subdoc) -> None:
         """Process HTML elements and add to subdocument."""
@@ -135,7 +387,8 @@ class MarkdownToWordConverter:
         if tag_name in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(tag_name[1])
             p = subdoc.add_paragraph(style=f"Heading {level}")
-            self._add_inline_content(tag, p)
+            strip_number = self.heading_numbered.get(level, False)
+            self._add_inline_content(tag, p, strip_leading_number=strip_number)
 
         elif tag_name == "p":
             p = subdoc.add_paragraph()
@@ -185,6 +438,23 @@ class MarkdownToWordConverter:
         elif tag_name == "div":
             # Check for panel macro
             classes = tag.get("class", [])
+
+            if "toc-macro" in classes:
+                self._insert_toc_macro_output(subdoc)
+                return
+
+            if "expand" in classes:
+                self._process_expand(tag, subdoc)
+                return
+
+            if "children" in classes:
+                self._process_children_macro(subdoc)
+                return
+
+            if "content-by-label" in classes:
+                self._process_content_by_label_macro(tag, subdoc)
+                return
+
             panel_type = None
             for cls in classes:
                 if cls.startswith("panel-") and cls != "panel-title":
@@ -198,6 +468,8 @@ class MarkdownToWordConverter:
                 for child in tag.children:
                     if isinstance(child, Tag):
                         self._process_tag(child, subdoc)
+                    elif isinstance(child, str) and child.strip():
+                        p = subdoc.add_paragraph(child.strip())
 
         elif tag_name in ("section", "article"):
             # Container elements - process children
@@ -210,25 +482,64 @@ class MarkdownToWordConverter:
             p = subdoc.add_paragraph()
             self._add_inline_content(tag, p)
 
-    def _add_inline_content(self, tag: Tag, paragraph) -> None:
+    def _add_inline_content(
+        self,
+        tag: Tag,
+        paragraph,
+        strip_leading_number: bool = False,
+        strip_state: dict | None = None,
+    ) -> None:
         """Add inline content (text, bold, italic, links, code) to a paragraph."""
+        if strip_state is None:
+            strip_state = {"done": False}
+
+        if tag.name and tag.name.lower() == "a":
+            href = tag.get("href", "")
+            text = tag.get_text()
+            if strip_leading_number and not strip_state["done"]:
+                text, stripped = self._strip_heading_prefix(text)
+                if stripped:
+                    strip_state["done"] = True
+            self._add_hyperlink(paragraph, href, text)
+            return
+
         for child in tag.children:
             if isinstance(child, str):
-                if child.strip():
-                    paragraph.add_run(child)
+                text = child
+                if strip_leading_number and not strip_state["done"]:
+                    text, stripped = self._strip_heading_prefix(text)
+                    if stripped:
+                        strip_state["done"] = True
+                if text.strip():
+                    paragraph.add_run(text)
             elif isinstance(child, Tag):
                 child_name = child.name.lower()
 
                 if child_name in ("strong", "b"):
-                    run = paragraph.add_run(child.get_text())
+                    text = child.get_text()
+                    if strip_leading_number and not strip_state["done"]:
+                        text, stripped = self._strip_heading_prefix(text)
+                        if stripped:
+                            strip_state["done"] = True
+                    run = paragraph.add_run(text)
                     run.bold = True
 
                 elif child_name in ("em", "i"):
-                    run = paragraph.add_run(child.get_text())
+                    text = child.get_text()
+                    if strip_leading_number and not strip_state["done"]:
+                        text, stripped = self._strip_heading_prefix(text)
+                        if stripped:
+                            strip_state["done"] = True
+                    run = paragraph.add_run(text)
                     run.italic = True
 
                 elif child_name == "code":
-                    run = paragraph.add_run(child.get_text())
+                    text = child.get_text()
+                    if strip_leading_number and not strip_state["done"]:
+                        text, stripped = self._strip_heading_prefix(text)
+                        if stripped:
+                            strip_state["done"] = True
+                    run = paragraph.add_run(text)
                     run.font.name = "Courier New"
                     run.font.size = Pt(10)
 
@@ -236,6 +547,10 @@ class MarkdownToWordConverter:
                     # Proper Word hyperlink
                     href = child.get("href", "")
                     text = child.get_text()
+                    if strip_leading_number and not strip_state["done"]:
+                        text, stripped = self._strip_heading_prefix(text)
+                        if stripped:
+                            strip_state["done"] = True
                     self._add_hyperlink(paragraph, href, text)
 
                 elif child_name == "br":
@@ -254,19 +569,46 @@ class MarkdownToWordConverter:
                         self._add_status_badge(child, paragraph)
                     else:
                         # Recursively process span content
-                        self._add_inline_content(child, paragraph)
+                        self._add_inline_content(
+                            child,
+                            paragraph,
+                            strip_leading_number=strip_leading_number,
+                            strip_state=strip_state,
+                        )
+
+                elif child_name == "del":
+                    text = child.get_text()
+                    if strip_leading_number and not strip_state["done"]:
+                        text, stripped = self._strip_heading_prefix(text)
+                        if stripped:
+                            strip_state["done"] = True
+                    run = paragraph.add_run(text)
+                    run.font.strike = True
 
                 else:
                     # Recursively process other inline elements
-                    self._add_inline_content(child, paragraph)
+                    self._add_inline_content(
+                        child,
+                        paragraph,
+                        strip_leading_number=strip_leading_number,
+                        strip_state=strip_state,
+                    )
 
     def _process_list(self, tag: Tag, subdoc, ordered: bool = False, level: int = 0) -> None:
         """Process ordered or unordered list."""
         for i, li in enumerate(tag.find_all("li", recursive=False)):
             p = subdoc.add_paragraph()
 
-            # Add bullet or number
-            if ordered:
+            # Detect task list marker at start
+            task_match = re.match(r'^\s*\[([ xX])\]\s*', li.get_text(strip=True))
+            checkbox = None
+            if task_match:
+                checkbox = "\u2610 " if task_match.group(1) == " " else "\u2611 "
+
+            # Add bullet or number (skip bullet if task list to avoid double markers)
+            if checkbox:
+                prefix = checkbox
+            elif ordered:
                 prefix = f"{i + 1}. "
             else:
                 prefix = "\u2022 "  # Bullet character
@@ -281,7 +623,11 @@ class MarkdownToWordConverter:
             for child in li.children:
                 if isinstance(child, str):
                     if child.strip():
-                        p.add_run(child.strip())
+                        text = child.strip()
+                        if checkbox:
+                            text = re.sub(r'^\[[ xX]\]\s*', '', text)
+                        if text:
+                            p.add_run(text)
                 elif isinstance(child, Tag):
                     if child.name in ("ul", "ol"):
                         # Nested list
@@ -290,6 +636,10 @@ class MarkdownToWordConverter:
                             ordered=(child.name == "ol"),
                             level=level + 1
                         )
+                    elif child.name == "a":
+                        href = child.get("href", "")
+                        text = child.get_text()
+                        self._add_hyperlink(p, href, text)
                     else:
                         self._add_inline_content(child, p)
 
@@ -364,10 +714,23 @@ class MarkdownToWordConverter:
                     else:
                         p = cell.add_paragraph()
                     self._add_inline_content(child, p)
+                elif child.name in ("ul", "ol"):
+                    self._process_list_in_cell(child, cell, ordered=(child.name == "ol"))
                 else:
                     # For other elements, add as new paragraph
                     p = cell.add_paragraph()
                     self._add_inline_content(child, p)
+            elif isinstance(child, str):
+                text = child.strip()
+                if not text:
+                    continue
+                # Plain text inside panel (no wrapping <p>)
+                if not title and len(cell.paragraphs) == 1 and not cell.paragraphs[0].text.strip():
+                    p = cell.paragraphs[0]
+                    p.add_run(f"{style['icon']} ")
+                else:
+                    p = cell.add_paragraph()
+                p.add_run(text)
 
         # Add spacing after panel
         subdoc.add_paragraph()
@@ -454,6 +817,11 @@ class MarkdownToWordConverter:
         new_run = OxmlElement("w:r")
         rPr = OxmlElement("w:rPr")
 
+        # Apply hyperlink style for consistent Word rendering
+        rStyle = OxmlElement("w:rStyle")
+        rStyle.set(qn("w:val"), "Hyperlink")
+        rPr.append(rStyle)
+
         # Blue color
         color = OxmlElement("w:color")
         color.set(qn("w:val"), "0563C1")
@@ -534,7 +902,10 @@ class MarkdownToWordConverter:
         # Create the badge text with styling
         run = paragraph.add_run(f" {text} ")
         run.bold = True
-        run.font.color.rgb = RGBColor(255, 255, 255)  # White text
+        if color_name in ("gray", "grey", "yellow"):
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Dark text for light badges
+        else:
+            run.font.color.rgb = RGBColor(255, 255, 255)  # White text
         run.font.size = Pt(9)
 
         # Add background highlight using shading on the run
@@ -553,8 +924,8 @@ class MarkdownToWordConverter:
             "yellow": "yellow",
             "red": "red",
             "blue": "blue",
-            "grey": "darkGray",
-            "gray": "darkGray",
+            "grey": "lightGray",
+            "gray": "lightGray",
             "purple": "darkMagenta",
         }
 
@@ -565,3 +936,145 @@ class MarkdownToWordConverter:
         highlight_elem = OxmlElement("w:highlight")
         highlight_elem.set(qn("w:val"), highlight)
         rPr.append(highlight_elem)
+
+    def _insert_toc_macro_output(self, subdoc) -> None:
+        """Insert a plain-text TOC list (Confluence TOC macro output)."""
+        entries = []
+        for level, text in self.headings:
+            if level < 2:
+                continue
+            if "table of contents" in text.lower():
+                continue
+            entries.append((level, text))
+
+        # Field code paragraph (begin + instrText + separate)
+        if not entries:
+            return
+
+        for level, text in entries:
+            entry_p = subdoc.add_paragraph()
+            indent_level = max(level - 2, 0)
+            entry_p.paragraph_format.left_indent = Inches(0.2 * indent_level)
+            entry_p.add_run("\u2022 ")
+            entry_p.add_run(text)
+
+    def _process_expand(self, tag: Tag, subdoc) -> None:
+        """Render expand macro as a styled box with title and content."""
+        title = tag.get("data-title", "Click to expand")
+        style = {"bg": "F5F5F5", "border": "7A869A", "icon": "▸"}
+
+        table = subdoc.add_table(rows=1, cols=1)
+        cell = table.rows[0].cells[0]
+        self._style_panel_cell(cell, style)
+
+        title_p = cell.paragraphs[0]
+        title_run = title_p.add_run(f"{style['icon']} {title}")
+        title_run.bold = True
+        title_run.font.size = Pt(11)
+
+        for child in tag.children:
+            if isinstance(child, Tag):
+                if child.name == "p":
+                    p = cell.add_paragraph()
+                    self._add_inline_content(child, p)
+                elif child.name in ("ul", "ol"):
+                    self._process_list_in_cell(child, cell, ordered=(child.name == "ol"))
+                else:
+                    p = cell.add_paragraph()
+                    self._add_inline_content(child, p)
+            elif isinstance(child, str) and child.strip():
+                p = cell.add_paragraph()
+                p.add_run(child.strip())
+
+        subdoc.add_paragraph()
+
+    def _process_children_macro(self, subdoc) -> None:
+        """Render children macro as a bullet list."""
+        if not self.macro_children:
+            return
+
+        for child in self.macro_children:
+            title = child.get("title") or ""
+            url = child.get("pageUrl") or ""
+            p = subdoc.add_paragraph()
+            p.add_run("\u2022 ")
+            if url:
+                self._add_hyperlink(p, url, title or url)
+            else:
+                p.add_run(title)
+
+    def _process_content_by_label_macro(self, tag: Tag, subdoc) -> None:
+        """Render content-by-label macro as a bullet list."""
+        labels = tag.get("data-labels", "")
+        spaces = tag.get("data-spaces", "")
+
+        def normalize_list(value: str) -> list[str]:
+            return [v.strip() for v in value.split(",") if v.strip()]
+
+        labels_list = normalize_list(labels)
+        spaces_list = normalize_list(spaces)
+
+        match = None
+        for entry in self.content_by_label:
+            entry_labels = normalize_list(entry.get("labels", ""))
+            entry_spaces = normalize_list(entry.get("spaces", ""))
+            if set(entry_labels) == set(labels_list) and set(entry_spaces) == set(spaces_list):
+                match = entry
+                break
+
+        items = match.get("items", []) if match else []
+        if not items:
+            return
+
+        for item in items:
+            title = item.get("title") or ""
+            url = item.get("pageUrl") or ""
+            p = subdoc.add_paragraph()
+            p.add_run("\u2022 ")
+            if url:
+                self._add_hyperlink(p, url, title or url)
+            else:
+                p.add_run(title)
+
+    def _process_list_in_cell(self, tag: Tag, cell, ordered: bool = False, level: int = 0) -> None:
+        """Process list elements inside a table cell."""
+        for i, li in enumerate(tag.find_all("li", recursive=False)):
+            p = cell.add_paragraph()
+
+            task_match = re.match(r'^\s*\[([ xX])\]\s*', li.get_text(strip=True))
+            checkbox = None
+            if task_match:
+                checkbox = "\u2610 " if task_match.group(1) == " " else "\u2611 "
+
+            if checkbox:
+                prefix = checkbox
+            elif ordered:
+                prefix = f"{i + 1}. "
+            else:
+                prefix = "\u2022 "
+
+            p.paragraph_format.left_indent = Inches(0.25 * (level + 1))
+            p.add_run(prefix)
+
+            for child in li.children:
+                if isinstance(child, str):
+                    if child.strip():
+                        text = child.strip()
+                        if checkbox:
+                            text = re.sub(r'^\[[ xX]\]\s*', '', text)
+                        if text:
+                            p.add_run(text)
+                elif isinstance(child, Tag):
+                    if child.name in ("ul", "ol"):
+                        self._process_list_in_cell(
+                            child,
+                            cell,
+                            ordered=(child.name == "ol"),
+                            level=level + 1,
+                        )
+                    elif child.name == "a":
+                        href = child.get("href", "")
+                        text = child.get_text()
+                        self._add_hyperlink(p, href, text)
+                    else:
+                        self._add_inline_content(child, p)

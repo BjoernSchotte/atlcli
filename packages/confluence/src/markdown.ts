@@ -1539,8 +1539,13 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   );
 
   // Convert toc macro (add placeholder text so turndown doesn't drop it)
+  // Handle self-closing and body variants separately to avoid greedy matches.
   storage = storage.replace(
-    /<ac:structured-macro\s+ac:name="toc"[^>]*\/?>([\s\S]*?<\/ac:structured-macro>)?/gi,
+    /<ac:structured-macro\s+ac:name="toc"[^>]*\/>/gi,
+    () => `<div data-macro="toc">TOC</div>`
+  );
+  storage = storage.replace(
+    /<ac:structured-macro\s+ac:name="toc"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
     () => `<div data-macro="toc">TOC</div>`
   );
 

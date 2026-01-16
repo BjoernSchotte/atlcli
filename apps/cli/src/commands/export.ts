@@ -14,6 +14,7 @@ import {
   output,
 } from "@atlcli/core";
 import {
+  AttachmentInfo,
   ConfluenceClient,
   storageToMarkdown,
   ConversionOptions,
@@ -59,9 +60,16 @@ export async function handleExport(
 
   const templatePath = getFlag(flags, "template");
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
-  const embedImages = hasFlag(flags, "embed-images");
+  let embedImages = !hasFlag(flags, "no-images");
+  if (hasFlag(flags, "embed-images")) {
+    embedImages = true;
+  }
+  if (hasFlag(flags, "no-images")) {
+    embedImages = false;
+  }
   const includeChildren = hasFlag(flags, "include-children");
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
+  const renderTocMacro = hasFlag(flags, "toc-macro");
 
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
@@ -83,8 +91,10 @@ export async function handleExport(
   // Resolve page ID from reference
   const pageId = await resolvePageId(client, pageRef, opts);
 
-  // Fetch page data
-  const page = await client.getPage(pageId);
+  const baseUrl = profile.baseUrl.replace(/\/+$/, "");
+
+  // Fetch page data (with metadata for export)
+  const page = await client.getPageDetails(pageId);
   const spaceKey = page.spaceKey ?? "UNKNOWN";
 
   // Convert storage to markdown
@@ -94,19 +104,28 @@ export async function handleExport(
   };
   const markdown = storageToMarkdown(page.storage, conversionOpts);
 
+  // Detect dynamic macros that need data expansion
+  const needsChildrenMacro = /:::children\b/.test(markdown);
+  const contentByLabelQueries = extractContentByLabelQueries(markdown);
+
   // Get space info (if we have the space key)
   let spaceName = spaceKey;
+  let spaceUrl = `${baseUrl}/wiki/spaces/${spaceKey}`;
   try {
     const space = await client.getSpace(spaceKey);
     spaceName = space.name;
+    spaceUrl = space.url ?? spaceUrl;
   } catch {
     // Ignore - use spaceKey as name
   }
 
+  // Fetch attachments (used for loops and optionally image embedding)
+  const attachments = await client.listAttachments(pageId);
+  const attachmentData = mapAttachments(attachments, baseUrl);
+
   // Fetch and embed images if requested
   const images: Record<string, { data: string; mimeType: string }> = {};
   if (embedImages) {
-    const attachments = await client.listAttachments(pageId);
     const imageAttachments = attachments.filter(a =>
       a.mediaType.startsWith("image/")
     );
@@ -125,83 +144,133 @@ export async function handleExport(
     }
   }
 
-  // Fetch children if requested
+  // Fetch children if requested (for merging) or needed for children macro
   let finalMarkdown = markdown;
   const childrenData: Array<{
     title: string;
     markdown: string;
     pageId: string;
     pageUrl: string;
+    tinyUrl?: string;
+    author?: string;
+    authorEmail?: string;
+    modifier?: string;
+    modifierEmail?: string;
+    created?: string;
+    modified?: string;
+    labels?: string[];
+    attachments?: Array<{
+      id: string;
+      filename: string;
+      mediaType: string;
+      fileSize: number;
+      size: number;
+      version: number;
+      pageId: string;
+      downloadUrl: string;
+      downloadUrlFull: string;
+      url: string;
+      comment: string;
+    }>;
   }> = [];
+  let childrenMacro: Array<{ title: string; pageUrl: string; pageId: string }> = [];
 
-  if (includeChildren) {
+  if (includeChildren || needsChildrenMacro) {
     const children = await client.getChildren(pageId);
+    childrenMacro = children.map(child => ({
+      title: child.title,
+      pageId: child.id,
+      pageUrl: child.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${child.id}`,
+    }));
 
-    for (const child of children) {
-      const childPage = await client.getPage(child.id);
-      const childMarkdown = storageToMarkdown(childPage.storage, conversionOpts);
-
-      // Fetch child images if embedding
-      if (embedImages) {
+    if (includeChildren) {
+      for (const child of children) {
+        const childPage = await client.getPageDetails(child.id);
+        const childMarkdown = storageToMarkdown(childPage.storage, conversionOpts);
         const childAttachments = await client.listAttachments(child.id);
-        const childImageAttachments = childAttachments.filter(a =>
-          a.mediaType.startsWith("image/")
-        );
-        for (const attachment of childImageAttachments) {
-          try {
-            const data = await client.downloadAttachment(attachment);
-            const base64 = Buffer.from(data).toString("base64");
-            images[attachment.filename] = {
-              data: base64,
-              mimeType: attachment.mediaType,
-            };
-          } catch {
-            // Skip failed downloads
+        const childAttachmentData = mapAttachments(childAttachments, baseUrl);
+
+        // Fetch child images if embedding
+        if (embedImages) {
+          const childImageAttachments = childAttachments.filter(a =>
+            a.mediaType.startsWith("image/")
+          );
+          for (const attachment of childImageAttachments) {
+            try {
+              const data = await client.downloadAttachment(attachment);
+              const base64 = Buffer.from(data).toString("base64");
+              images[attachment.filename] = {
+                data: base64,
+                mimeType: attachment.mediaType,
+              };
+            } catch {
+              // Skip failed downloads
+            }
           }
         }
-      }
 
-      if (mergeChildren) {
-        // Merge child content into main markdown
-        finalMarkdown += `\n\n---\n\n# ${childPage.title}\n\n${childMarkdown}`;
-      } else {
-        // Add to children array for template loops
-        childrenData.push({
-          title: childPage.title,
-          markdown: childMarkdown,
-          pageId: child.id,
-          pageUrl: `${profile.baseUrl}/wiki/spaces/${spaceKey}/pages/${child.id}`,
-        });
+        if (mergeChildren) {
+          // Merge child content into main markdown
+          finalMarkdown += `\n\n---\n\n# ${childPage.title}\n\n${childMarkdown}`;
+        } else {
+          // Add to children array for template loops
+          childrenData.push({
+            title: childPage.title,
+            markdown: childMarkdown,
+            author: childPage.createdBy?.displayName ?? "",
+            authorEmail: childPage.createdBy?.email ?? "",
+            modifier: childPage.modifiedBy?.displayName ?? childPage.createdBy?.displayName ?? "",
+            modifierEmail: childPage.modifiedBy?.email ?? childPage.createdBy?.email ?? "",
+            created: childPage.created ?? "",
+            modified: childPage.modified ?? "",
+            pageId: child.id,
+            pageUrl: childPage.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${child.id}`,
+            tinyUrl: childPage.tinyUrl ?? "",
+            labels: childPage.labels ?? [],
+            attachments: childAttachmentData,
+          });
+        }
       }
     }
   }
+
+  // Resolve content-by-label macro data
+  const contentByLabelData = await resolveContentByLabel(
+    client,
+    contentByLabelQueries,
+    baseUrl,
+    spaceKey
+  );
 
   // Build page data for Python subprocess
   const pageData = {
     title: page.title,
     markdown: finalMarkdown,
     author: {
-      displayName: "Unknown",
-      email: "",
+      displayName: page.createdBy?.displayName ?? "",
+      email: page.createdBy?.email ?? "",
     },
     modifier: {
-      displayName: "Unknown",
-      email: "",
+      displayName: page.modifiedBy?.displayName ?? page.createdBy?.displayName ?? "",
+      email: page.modifiedBy?.email ?? page.createdBy?.email ?? "",
     },
-    created: new Date().toISOString(),
-    modified: new Date().toISOString(),
+    created: page.created ?? "",
+    modified: page.modified ?? "",
     pageId: page.id,
-    pageUrl: `${profile.baseUrl}/wiki/spaces/${spaceKey}/pages/${page.id}`,
-    tinyUrl: `${profile.baseUrl}/wiki/x/${page.id}`,
-    labels: [] as string[],
+    pageUrl: page.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${page.id}`,
+    tinyUrl: page.tinyUrl ?? "",
+    labels: page.labels ?? [],
     spaceKey,
     spaceName,
-    spaceUrl: `${profile.baseUrl}/wiki/spaces/${spaceKey}`,
+    spaceUrl,
     exportedBy: profile.email ?? "atlcli",
     templateName: templatePath,
-    attachments: [],
+    attachments: attachmentData,
     children: childrenData,
+    macroChildren: childrenMacro,
+    macroContentByLabel: contentByLabelData,
     images,  // Embedded images keyed by filename
+    renderTocMacro,
   };
 
   // Resolve output path
@@ -482,6 +551,106 @@ export async function deleteTemplate(
   }, opts);
 }
 
+function mapAttachments(attachments: AttachmentInfo[], baseUrl: string) {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  return attachments.map(att => {
+    const downloadUrlFull = att.downloadUrl
+      ? (att.downloadUrl.startsWith("http")
+        ? att.downloadUrl
+        : `${normalizedBase}${att.downloadUrl}`)
+      : "";
+
+    return {
+      id: att.id,
+      filename: att.filename,
+      mediaType: att.mediaType,
+      fileSize: att.fileSize,
+      size: att.fileSize,
+      version: att.version,
+      pageId: att.pageId,
+      downloadUrl: att.downloadUrl,
+      downloadUrlFull,
+      url: att.url ?? "",
+      comment: att.comment ?? "",
+    };
+  });
+}
+
+type ContentByLabelQuery = {
+  labels: string[];
+  spaces: string[];
+  max?: number;
+};
+
+function parseMacroParams(paramStr: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (!paramStr) return params;
+  const regex = /(\w+)=("([^"]*)"|[^\s"]+)/g;
+  for (const match of paramStr.matchAll(regex)) {
+    const key = match[1];
+    const raw = match[2];
+    const value = raw.startsWith("\"") ? raw.slice(1, -1) : raw;
+    params[key] = value;
+  }
+  return params;
+}
+
+function extractContentByLabelQueries(markdown: string): ContentByLabelQuery[] {
+  const queries: ContentByLabelQuery[] = [];
+  const pattern = /^:::content-by-label(?:[ \t]+([^\n]*))?$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(markdown)) !== null) {
+    const params = parseMacroParams(match[1] ?? "");
+    const labels = (params.labels ?? "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    const spaces = (params.spaces ?? "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+    const max = params.max ? Number(params.max) : undefined;
+    if (labels.length === 0) continue;
+    queries.push({ labels, spaces, max });
+  }
+  return queries;
+}
+
+async function resolveContentByLabel(
+  client: ConfluenceClient,
+  queries: ContentByLabelQuery[],
+  baseUrl: string,
+  fallbackSpaceKey: string
+): Promise<Array<{ labels: string; spaces: string; max?: number; items: Array<{ title: string; pageId: string; pageUrl: string }> }>> {
+  const results: Array<{ labels: string; spaces: string; max?: number; items: Array<{ title: string; pageId: string; pageUrl: string }> }> = [];
+  for (const query of queries) {
+    const clauses = ["type=page", ...query.labels.map(label => `label = \"${label}\"`)];
+    if (query.spaces.length > 0) {
+      const spaceList = query.spaces.map(space => `"${space}"`).join(",");
+      clauses.push(`space in (${spaceList})`);
+    } else if (fallbackSpaceKey) {
+      clauses.push(`space = \"${fallbackSpaceKey}\"`);
+    }
+
+    const cql = clauses.join(" AND ");
+    const limit = query.max ?? 25;
+    const search = await client.search(cql, { limit, detail: "minimal" });
+    const items = search.results.map(item => ({
+      title: item.title,
+      pageId: item.id,
+      pageUrl: item.url ?? `${baseUrl}/wiki/spaces/${item.spaceKey ?? fallbackSpaceKey}/pages/${item.id}`,
+    }));
+
+    results.push({
+      labels: query.labels.join(","),
+      spaces: query.spaces.join(","),
+      max: query.max,
+      items,
+    });
+  }
+  return results;
+}
+
 function findPythonExecutable(): string {
   // Check for venv in the export package directory (development mode)
   // Go up from dist/commands to find packages/export/.venv
@@ -578,9 +747,10 @@ Arguments:
 Options:
   --template, -t      Template name or path (required)
   --output, -o        Output file path (required)
-  --embed-images      Download and embed images from page attachments
+  --no-images         Do not embed images from page attachments (default embeds)
   --include-children  Include child pages in export
   --no-merge          Keep children as separate array (for loops in templates)
+  --toc-macro         Render Confluence TOC macro output as a plain list
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:
