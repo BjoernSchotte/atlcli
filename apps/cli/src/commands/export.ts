@@ -773,7 +773,7 @@ Template Management:
 Examples:
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx
-  atlcli wiki export 12345 -t basic -o out.docx --embed-images
+  atlcli wiki export 12345 -t basic -o out.docx --no-images
   atlcli wiki export 12345 -t book -o book.docx --include-children
   atlcli wiki export template save corporate --file ./template.docx --level global
   atlcli wiki export template list

@@ -39,7 +39,7 @@ Implement DOCX export feature with Word template support, achieving feature pari
 | Batch export | Single page + `--include-children` flag |
 | Templates source | Research Scroll defaults (done below) |
 | Template storage | Hierarchical (global → profile → project) |
-| Attachments | Both options: `--embed-images` flag |
+| Attachments | Embedded by default; opt-out with `--no-images` |
 | Children merge | User choice with `--merge` default |
 | Python version | 3.12+ |
 | Install | Auto pip install |
@@ -92,6 +92,14 @@ Scroll uses `$scroll.variable` syntax. We use Jinja2 `{{ variable }}` (docxtpl n
 
 The `{{ content }}` variable is special - it inserts rich Word content (not plain text).
 We'll use docxtpl's subdocument feature or RichText for this.
+
+### Table of Contents (TOC) Behavior
+
+- Word TOC fields come from the Word template (native field).
+- Confluence `:::toc` macro output is optional and rendered as a plain list with `--toc-macro`.
+- We do not auto-update TOC fields in the generated file; users update the TOC in Word.
+
+See `spec/confluence-docx-toc.md` for the technical background and UX notes.
 
 ## Implementation Plan
 
@@ -205,7 +213,7 @@ export async function handleExport(
   // 3. Convert storage to markdown (existing)
   const markdown = storageToMarkdown(page.storage);
 
-  // 4. Fetch attachments if --embed-images
+  // 4. Fetch attachments (embed images unless --no-images)
   const attachments = await client.listAttachments(pageId);
 
   // 5. Build page data JSON
@@ -467,7 +475,7 @@ atlcli confluence export 12345678 --source auto      # Local if clean, else remo
 atlcli confluence export 12345678 \
   --template corporate-report \
   --output ./reports/architecture.docx \
-  --embed-images \
+  --no-images \
   --include-children \
   --merge \
   --source local
@@ -557,7 +565,7 @@ atlcli confluence export "DOCSY:Parent" \
 
 3. **Phase 3:** Content conversion ✅
    - [x] Tables
-   - [x] Images (with --embed-images)
+   - [x] Images (default embed; --no-images to skip)
    - [x] Code blocks
    - [x] Lists
    - [x] Links
