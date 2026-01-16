@@ -8,3 +8,4 @@ dist
 site/
 .venv/
 .turbo
+spec/internal/
