@@ -51,3 +51,24 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: packages/export
+        run: uv sync
+
+      - name: Run Python tests
+        working-directory: packages/export
+        run: uv run pytest tests/ -v
