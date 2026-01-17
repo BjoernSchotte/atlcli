@@ -5,16 +5,20 @@ This package powers DOCX exports for atlcli via a Python subprocess.
 ## Requirements
 
 - Python 3.12+
+- [uv](https://docs.astral.sh/uv/) for dependency management
 
-## Local setup (recommended)
-
-Create a virtual environment in `packages/export/.venv` so the CLI can
-auto-detect it (`apps/cli/src/commands/export.ts` prefers this path).
+## Local setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+# Install uv (if not installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies and create venv
+cd packages/export
+uv sync
+
+# Run tests
+uv run pytest tests/ -v
 ```
 
 Or run the helper script from repo root:
@@ -26,5 +30,5 @@ Or run the helper script from repo root:
 ## Run tests
 
 ```bash
-python -m pytest tests/test_docx_renderer.py
+uv run pytest tests/ -v
 ```

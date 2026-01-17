@@ -11,7 +11,7 @@ dependencies = [
     "docxcompose>=1.4.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.0.0",
 ]
