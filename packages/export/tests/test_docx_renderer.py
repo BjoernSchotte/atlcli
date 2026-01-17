@@ -74,11 +74,12 @@ def test_render_template(sample_page_data):
     # Ensure output directory exists
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Render
-    result = render_template(template_path, sample_page_data, output_path)
+    # Render - returns (path, has_toc) tuple
+    result_path, has_toc = render_template(template_path, sample_page_data, output_path)
 
-    assert result.exists()
-    assert result.suffix == ".docx"
+    assert result_path.exists()
+    assert result_path.suffix == ".docx"
+    assert isinstance(has_toc, bool)
 
 
 def test_cli_render(sample_page_data):
@@ -150,11 +151,11 @@ def test_render_docm_template(sample_page_data):
     # Ensure output directory exists
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Render with .docm template
-    result = render_template(template_path, sample_page_data, output_path)
+    # Render with .docm template - returns (path, has_toc) tuple
+    result_path, has_toc = render_template(template_path, sample_page_data, output_path)
 
-    assert result.exists()
-    assert result.suffix == ".docx"
+    assert result_path.exists()
+    assert result_path.suffix == ".docx"
 
 
 def test_docm_conversion():
@@ -313,14 +314,15 @@ def test_hyperlinks_in_markdown():
     assert subdoc is not None
 
 
-def test_toc_macro_output_toggle(tmp_path):
-    """TOC macro output should be optional and plain text when enabled."""
+def test_toc_macro_injects_word_toc_field(tmp_path):
+    """TOC macro should inject a Word-native TOC field in SDT container."""
     from atlcli_export.docx_renderer import render_template
     import zipfile
 
     template_path = FIXTURES_DIR / "basic-template.docx"
     output_path = tmp_path / "toc-export.docx"
 
+    # Page with TOC macro
     page_data = {
         "title": "TOC Test",
         "markdown": ":::toc\n:::\n\n## 1. Basic Formatting\n\nSome text\n",
@@ -342,21 +344,24 @@ def test_toc_macro_output_toggle(tmp_path):
         "images": {},
         "macroChildren": [],
         "macroContentByLabel": [],
-        "renderTocMacro": False,
     }
 
-    render_template(template_path, page_data, output_path)
+    result_path, has_toc = render_template(template_path, page_data, output_path)
     with zipfile.ZipFile(output_path, "r") as zin:
         xml = zin.read("word/document.xml").decode("utf-8")
-    count_without = xml.count("1. Basic Formatting")
 
-    page_data["renderTocMacro"] = True
-    render_template(template_path, page_data, output_path)
-    with zipfile.ZipFile(output_path, "r") as zin:
-        xml = zin.read("word/document.xml").decode("utf-8")
-    count_with = xml.count("1. Basic Formatting")
-
-    assert count_with > count_without
+    # Should contain TOC field instruction
+    assert "TOC" in xml and "instrtext" in xml.lower()
+    # Should contain placeholder text
+    assert "Table of Contents" in xml
+    # Should be wrapped in SDT container (for dirty flag support)
+    assert "w:sdt" in xml
+    assert "docPartGallery" in xml
+    # Should report has_toc=True
+    assert has_toc is True
+    # Should be marked dirty on fldChar element (default behavior)
+    # Per OOXML spec, dirty is on fldChar with fldCharType="begin", not on sdtPr
+    assert 'w:dirty="true"' in xml or "w:dirty='true'" in xml
 
 
 def test_heading_number_prefix_stripped_when_enabled():

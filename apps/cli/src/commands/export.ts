@@ -69,7 +69,7 @@ export async function handleExport(
   }
   const includeChildren = hasFlag(flags, "include-children");
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
-  const renderTocMacro = hasFlag(flags, "toc-macro");
+  const noTocPrompt = hasFlag(flags, "no-toc-prompt");
 
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
@@ -270,7 +270,7 @@ export async function handleExport(
     macroChildren: childrenMacro,
     macroContentByLabel: contentByLabelData,
     images,  // Embedded images keyed by filename
-    renderTocMacro,
+    noTocPrompt,
   };
 
   // Resolve output path
@@ -284,15 +284,23 @@ export async function handleExport(
     opts
   );
 
-  output({
+  // Build output response
+  const response: Record<string, unknown> = {
     success: true,
-    output: result,
+    output: result.output,
     page: {
       id: page.id,
       title: page.title,
       space: spaceKey,
     },
-  }, opts);
+  };
+
+  // Add note when --no-toc-prompt is used and document has TOC
+  if (noTocPrompt && result.hasToc) {
+    response.note = "Document contains TOC. Update manually: right-click TOC → Update Field";
+  }
+
+  output(response, opts);
 }
 
 async function getClient(
@@ -665,12 +673,17 @@ function findPythonExecutable(): string {
   return process.platform === "win32" ? "python" : "python3";
 }
 
+interface ExportResult {
+  output: string;
+  hasToc: boolean;
+}
+
 async function callExportSubprocess(
   pageData: object,
   templatePath: string,
   outputPath: string,
   opts: OutputOptions
-): Promise<string> {
+): Promise<ExportResult> {
   return new Promise((resolve, reject) => {
     // Find Python executable
     const pythonCmd = findPythonExecutable();
@@ -715,7 +728,10 @@ async function callExportSubprocess(
       try {
         const response = JSON.parse(stdout);
         if (response.success) {
-          resolve(response.output);
+          resolve({
+            output: response.output,
+            hasToc: response.hasToc ?? false,
+          });
         } else {
           fail(opts, 1, ERROR_CODES.IO, `Export failed: ${response.error}`);
         }
@@ -750,7 +766,7 @@ Options:
   --no-images         Do not embed images from page attachments (default embeds)
   --include-children  Include child pages in export
   --no-merge          Keep children as separate array (for loops in templates)
-  --toc-macro         Render Confluence TOC macro output as a plain list
+  --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:

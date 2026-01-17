@@ -37,7 +37,7 @@ STATUS_COLORS = {
 }
 
 
-def preprocess_markdown(md_text: str, render_toc_macro: bool = False) -> str:
+def preprocess_markdown(md_text: str) -> str:
     """Pre-process custom markdown syntax before standard markdown conversion.
 
     Converts:
@@ -64,15 +64,12 @@ def preprocess_markdown(md_text: str, render_toc_macro: bool = False) -> str:
 
     result = md_text
 
-    # Convert TOC macro to placeholder div or drop it entirely
-    if render_toc_macro:
-        result = re.sub(
-            r':::toc\s*\n:::',
-            '<div class="toc-macro"></div>',
-            result
-        )
-    else:
-        result = re.sub(r':::toc\s*\n:::', '', result)
+    # Convert TOC macro to placeholder div - always inject Word-native TOC field
+    result = re.sub(
+        r':::toc\s*\n:::',
+        '<div class="toc-macro"></div>',
+        result
+    )
 
     # Convert expand macro (with body) to HTML div
     expand_pattern = re.compile(
@@ -271,7 +268,6 @@ class MarkdownToWordConverter:
         images: dict | None = None,
         macro_children: list | None = None,
         content_by_label: list | None = None,
-        render_toc_macro: bool = False,
     ):
         """Initialize the converter.
 
@@ -284,7 +280,6 @@ class MarkdownToWordConverter:
         self.images = images or {}
         self.macro_children = macro_children or []
         self.content_by_label = content_by_label or []
-        self.render_toc_macro = render_toc_macro
         self.heading_numbered = self._detect_numbered_headings()
         self.headings: list[tuple[int, str]] = []
         self.md = markdown.Markdown(
@@ -305,7 +300,7 @@ class MarkdownToWordConverter:
         self.headings = self._extract_headings(md_text)
 
         # Pre-process custom syntax (panels, status badges)
-        preprocessed = preprocess_markdown(md_text, self.render_toc_macro)
+        preprocessed = preprocess_markdown(md_text)
 
         # Parse markdown to HTML
         html = self.md.convert(preprocessed)
@@ -938,25 +933,74 @@ class MarkdownToWordConverter:
         rPr.append(highlight_elem)
 
     def _insert_toc_macro_output(self, subdoc) -> None:
-        """Insert a plain-text TOC list (Confluence TOC macro output)."""
-        entries = []
-        for level, text in self.headings:
-            if level < 2:
-                continue
-            if "table of contents" in text.lower():
-                continue
-            entries.append((level, text))
+        """Insert a Word-native TOC field wrapped in SDT container.
 
-        # Field code paragraph (begin + instrText + separate)
-        if not entries:
-            return
+        The SDT (Structured Document Tag) wrapper allows the TOC to be marked
+        as dirty so Word prompts the user to update fields on open.
+        """
+        # Create SDT container structure
+        sdt = OxmlElement("w:sdt")
 
-        for level, text in entries:
-            entry_p = subdoc.add_paragraph()
-            indent_level = max(level - 2, 0)
-            entry_p.paragraph_format.left_indent = Inches(0.2 * indent_level)
-            entry_p.add_run("\u2022 ")
-            entry_p.add_run(text)
+        # SDT properties - identifies this as a Table of Contents
+        sdt_pr = OxmlElement("w:sdtPr")
+        doc_part_obj = OxmlElement("w:docPartObj")
+        doc_part_gallery = OxmlElement("w:docPartGallery")
+        doc_part_gallery.set(qn("w:val"), "Table of Contents")
+        doc_part_unique = OxmlElement("w:docPartUnique")
+        doc_part_obj.append(doc_part_gallery)
+        doc_part_obj.append(doc_part_unique)
+        sdt_pr.append(doc_part_obj)
+        sdt.append(sdt_pr)
+
+        # SDT content - contains the actual TOC field
+        sdt_content = OxmlElement("w:sdtContent")
+
+        # Create paragraph for TOC field
+        p_elem = OxmlElement("w:p")
+
+        # Field begin run
+        begin_run = OxmlElement("w:r")
+        fld_begin = OxmlElement("w:fldChar")
+        fld_begin.set(qn("w:fldCharType"), "begin")
+        begin_run.append(fld_begin)
+        p_elem.append(begin_run)
+
+        # Field instruction run: TOC with outline levels 1-3, hyperlinks
+        instr_run = OxmlElement("w:r")
+        instr_text = OxmlElement("w:instrText")
+        instr_text.set(qn("xml:space"), "preserve")
+        instr_text.text = ' TOC \\o "1-3" \\h \\z \\u '
+        instr_run.append(instr_text)
+        p_elem.append(instr_run)
+
+        # Field separate run
+        sep_run = OxmlElement("w:r")
+        fld_sep = OxmlElement("w:fldChar")
+        fld_sep.set(qn("w:fldCharType"), "separate")
+        sep_run.append(fld_sep)
+        p_elem.append(sep_run)
+
+        # Placeholder text (will be replaced when Word updates the field)
+        placeholder_run = OxmlElement("w:r")
+        placeholder_text = OxmlElement("w:t")
+        placeholder_text.text = "Table of Contents - Update to populate"
+        placeholder_run.append(placeholder_text)
+        p_elem.append(placeholder_run)
+
+        # Field end run
+        end_run = OxmlElement("w:r")
+        fld_end = OxmlElement("w:fldChar")
+        fld_end.set(qn("w:fldCharType"), "end")
+        end_run.append(fld_end)
+        p_elem.append(end_run)
+
+        # Assemble: paragraph into content, content into SDT
+        sdt_content.append(p_elem)
+        sdt.append(sdt_content)
+
+        # Add a paragraph to subdoc and replace its XML with our SDT
+        p = subdoc.add_paragraph()
+        p._p.getparent().replace(p._p, sdt)
 
     def _process_expand(self, tag: Tag, subdoc) -> None:
         """Render expand macro as a styled box with title and content."""

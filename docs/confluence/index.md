@@ -23,6 +23,7 @@ atlcli wiki docs sync ./team-docs --watch
 ## Key Features
 
 - **Bidirectional Sync** - Pull from Confluence, push local changes
+- **DOCX Export** - Export pages to Word with customizable templates
 - **Conflict Detection** - Warns when both local and remote changed
 - **Markdown Format** - Write in markdown, atlcli handles conversion
 - **Macro Support** - Use Confluence macros like info panels and TOC
@@ -71,6 +72,7 @@ atlcli wiki docs push ./docs
 - [Sync](sync.md) - Bidirectional sync, conflict handling, daemon mode
 - [Pages](pages.md) - Create, update, delete, move, sort pages
 - [Spaces](spaces.md) - Space operations
+- [Export](export.md) - Export pages to DOCX with Word templates
 - [Templates](templates.md) - Page templates with variables
 - [Macros](macros.md) - Info panels, notes, warnings, TOC
 - [Attachments](attachments.md) - Sync images and files

@@ -54,7 +54,7 @@ def main() -> int:
             return 1
 
         # Render document
-        output_path = render_template(
+        output_path, has_toc = render_template(
             template_path=template_path,
             page_data=page_data,
             output_path=args.output,
@@ -63,7 +63,8 @@ def main() -> int:
         # Output success response
         print(json.dumps({
             "success": True,
-            "output": str(output_path)
+            "output": str(output_path),
+            "hasToc": has_toc,
         }))
         return 0
 

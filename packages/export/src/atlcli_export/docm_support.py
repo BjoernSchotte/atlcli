@@ -93,6 +93,8 @@ def fix_content_placeholder_level(xml_content: str) -> str:
     Scroll templates have $scroll.content inline within a paragraph:
     <w:p>...<w:r><w:t>{{ content }}</w:t></w:r></w:p>
 
+    Some templates may also use {{r content }} (run-level) which is incorrect for subdocs.
+
     But docxtpl subdocuments need paragraph-level placement:
     </w:p>{{p content }}<w:p>
 
@@ -100,13 +102,14 @@ def fix_content_placeholder_level(xml_content: str) -> str:
     It also preserves section breaks (w:sectPr) that may be attached to the original
     paragraph (important for cover pages and multi-section templates).
     """
-    # Pattern: find paragraph containing {{ content }}
+    # Pattern: find paragraph containing {{ content }} or {{r content }}
     # Match: <w:p ...>...<w:t...>{{ content }}...</w:t>...</w:p>
     # We need to replace the entire paragraph with just {{p content }}
 
     import re
 
-    content_placeholder = re.compile(r'\{\{\s*content\s*\}\}')
+    # Match {{ content }}, {{r content }}, or {{p content }} (case insensitive for r/p)
+    content_placeholder = re.compile(r'\{\{\s*[rp]?\s*content\s*\}\}')
 
     # First, find if {{ content }} exists inline
     if not content_placeholder.search(xml_content):
@@ -324,6 +327,29 @@ def has_scroll_placeholders(docx_path: str | Path) -> bool:
     return False
 
 
+def needs_content_placeholder_fix(docx_path: str | Path) -> bool:
+    """Check if template has inline content placeholder that needs paragraph-level fix.
+
+    Templates with {{ content }} or {{r content }} inside a paragraph need to be
+    fixed to use {{p content }} at paragraph level for subdocument insertion.
+    """
+    import re
+    # Match {{ content }}, {{r content }} but NOT {{p content }} (already fixed)
+    inline_content = re.compile(r'\{\{\s*r?\s*content\s*\}\}')
+    already_fixed = re.compile(r'\{\{\s*p\s*content\s*\}\}')
+
+    try:
+        with zipfile.ZipFile(docx_path, 'r') as zin:
+            if 'word/document.xml' in zin.namelist():
+                content = zin.read('word/document.xml').decode('utf-8')
+                # Has inline content placeholder but not already paragraph-level
+                if inline_content.search(content) and not already_fixed.search(content):
+                    return True
+    except (zipfile.BadZipFile, UnicodeDecodeError, KeyError):
+        pass
+    return False
+
+
 class DocmConverter:
     """Context manager for .docm to .docx conversion with automatic cleanup.
 
@@ -346,8 +372,11 @@ class DocmConverter:
             )
             self.temp_dir = str(self.converted_path.parent)
             return self.converted_path
-        elif self.convert_placeholders and has_scroll_placeholders(self.original_path):
-            # .docx file with Scroll placeholders - convert placeholders only
+        elif self.convert_placeholders and (
+            has_scroll_placeholders(self.original_path) or
+            needs_content_placeholder_fix(self.original_path)
+        ):
+            # .docx file with Scroll placeholders or inline content placeholder
             self.converted_path = convert_docx_placeholders(self.original_path)
             self.temp_dir = str(self.converted_path.parent)
             return self.converted_path

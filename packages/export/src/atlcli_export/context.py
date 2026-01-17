@@ -20,13 +20,11 @@ def build_context(page_data: dict, template: DocxTemplate) -> dict[str, Any]:
     # Convert markdown content to Word subdocument
     # Pass embedded images if available
     images = page_data.get("images", {})
-    render_toc_macro = bool(page_data.get("renderTocMacro"))
     converter = MarkdownToWordConverter(
         template,
         images=images,
         macro_children=page_data.get("macroChildren", []),
         content_by_label=page_data.get("macroContentByLabel", []),
-        render_toc_macro=render_toc_macro,
     )
     content_subdoc = converter.convert(page_data.get("markdown", ""))
 
