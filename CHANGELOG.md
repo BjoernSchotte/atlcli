@@ -2,6 +2,26 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.10.0] - 2026-01-17
+
+### Documentation
+
+- **reference:** Add missing CLI commands to reference([3a69070](https://github.com/bjoernschotte/atlcli/commit/3a690700c1f791e3b23a2e2e811f6bf264f2a29f))
+- **spec:** Add text formatting features to Phase 1 status([71bba3b](https://github.com/bjoernschotte/atlcli/commit/71bba3be1184d0df0b8ae5ea7084e4574e196612))
+
+### Features
+
+- **export:** Add DOCX export with Word template support([16eb224](https://github.com/bjoernschotte/atlcli/commit/16eb224f933d36147f38ae1663cbd3d79bd5b9cb))
+- **export:** Add Phase 2 features - images, hyperlinks, code styling([3c41d6c](https://github.com/bjoernschotte/atlcli/commit/3c41d6cfeb3297aadf63ff0535dc21954b5f0ff2))
+- **export:** Add Phase 3 - panels, badges, template storage, children([ffaed26](https://github.com/bjoernschotte/atlcli/commit/ffaed263796f07bb6146b5bb7db917661fe08ae7))
+- **core:** Add feature flag system([d123941](https://github.com/bjoernschotte/atlcli/commit/d1239411d80de01a206a6f2bd159a8b92dd078e3))
+- **export:** Add Word-native TOC with proper OOXML dirty flag([0bd9cad](https://github.com/bjoernschotte/atlcli/commit/0bd9cad92690255b246b54407bbffb191ae11312))
+- **cli:** Add helloworld command gated by feature flag([a88752d](https://github.com/bjoernschotte/atlcli/commit/a88752db816537359ff2ccd45647a6679ff5cadb))
+
+### Miscellaneous
+
+- Add Python tests for export package([77efced](https://github.com/bjoernschotte/atlcli/commit/77efced3fe0275c79325b8d824b49f7a21d27840))
+- **export:** Switch local Python testing to uv([6cafc7f](https://github.com/bjoernschotte/atlcli/commit/6cafc7f27a4d17512ad2055c07f2bf028a0a51f6))
 ## [0.9.0] - 2026-01-15
 
 ### Bug Fixes
