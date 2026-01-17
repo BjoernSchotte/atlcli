@@ -47,6 +47,44 @@ export type DefaultsConfig = {
 
 export type FlagValue = boolean | string | number;
 
+/**
+ * Storage adapter configuration for sync operations.
+ */
+export type StorageConfig = {
+  /** Adapter type: sqlite (default), postgres, json */
+  adapter?: "sqlite" | "postgres" | "json";
+
+  /** SQLite-specific options */
+  sqlite?: {
+    /** Enable vector support via sqlite-vec extension */
+    enableVectors?: boolean;
+    /** Custom SQLite library path (macOS only, for sqlite-vec) */
+    customSqlitePath?: string;
+  };
+
+  /** PostgreSQL-specific options (future) */
+  postgres?: {
+    /** Connection string */
+    connectionString: string;
+    /** Schema name (default: 'atlcli') */
+    schema?: string;
+    /** Enable SSL */
+    ssl?: boolean;
+    /** Connection pool size (default: 5) */
+    poolSize?: number;
+  };
+};
+
+/**
+ * Sync behavior configuration.
+ */
+export type SyncConfig = {
+  /** User status cache TTL in days (default: 7) */
+  userStatusTtlDays?: number;
+  /** Skip user status checks during pull (default: false) */
+  skipUserStatusCheck?: boolean;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
@@ -56,6 +94,10 @@ export type Config = {
   global?: DefaultsConfig;
   /** Feature flags */
   flags?: Record<string, FlagValue>;
+  /** Storage adapter configuration */
+  storage?: StorageConfig;
+  /** Sync behavior configuration */
+  sync?: SyncConfig;
   /** @deprecated Use 'global' instead. Kept for migration. */
   defaults?: DefaultsConfig;
 };

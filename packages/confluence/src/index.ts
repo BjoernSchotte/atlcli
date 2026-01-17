@@ -11,5 +11,6 @@ export * from "./merge.js";
 export * from "./poller.js";
 export * from "./reorder.js";
 export * from "./scope.js";
+export * from "./sync-db/index.js";
 export * from "./validation.js";
 export * from "./webhook-server.js";
