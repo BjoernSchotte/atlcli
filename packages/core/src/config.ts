@@ -45,6 +45,8 @@ export type DefaultsConfig = {
   board?: number;
 };
 
+export type FlagValue = boolean | string | number;
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
@@ -52,6 +54,8 @@ export type Config = {
   logging?: LoggingConfig;
   /** Global default values for commands */
   global?: DefaultsConfig;
+  /** Feature flags */
+  flags?: Record<string, FlagValue>;
   /** @deprecated Use 'global' instead. Kept for migration. */
   defaults?: DefaultsConfig;
 };

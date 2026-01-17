@@ -18,6 +18,7 @@ import { handleAuth } from "./commands/auth.js";
 import { handleCompletion } from "./commands/completion.js";
 import { handleConfig } from "./commands/config.js";
 import { handleDoctor } from "./commands/doctor.js";
+import { handleFlag } from "./commands/flag.js";
 import { handleUpdate } from "./commands/update.js";
 import { handleWiki } from "./commands/wiki.js";
 import { handleLog } from "./commands/log.js";
@@ -127,6 +128,9 @@ async function main(): Promise<void> {
       case "doctor":
         await handleDoctor(rest, parsed.flags, opts);
         break;
+      case "flag":
+        await handleFlag(rest, parsed.flags, opts);
+        break;
       case "wiki":
         await handleWiki(rest, parsed.flags, opts);
         break;
@@ -216,6 +220,9 @@ function showCommandHelp(
       break;
     case "doctor":
       handleDoctor(subArgs, helpFlags, opts);
+      break;
+    case "flag":
+      handleFlag(subArgs, helpFlags, opts);
       break;
     case "wiki":
       handleWiki(subArgs, helpFlags, opts);
@@ -314,6 +321,7 @@ Commands:
   completion  Generate shell completion scripts
   config      Manage CLI configuration
   doctor      Diagnose common issues
+  flag        Manage feature flags
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
   log         Query and manage logs
