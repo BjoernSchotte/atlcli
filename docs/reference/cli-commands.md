@@ -570,3 +570,71 @@ atlcli plugin disable <name>
 atlcli plugin install <path>            # Install from local path
 atlcli plugin remove <name>
 ```
+
+## Feature Flags
+
+Feature flags control experimental or optional functionality. Flags can be set at three levels with decreasing precedence: environment variables, project config, global config.
+
+```bash
+atlcli flag list                        # List all flags with sources
+atlcli flag ls                          # Alias for list
+
+atlcli flag get <name>                  # Get a flag value
+atlcli flag get helloworld
+
+atlcli flag set <name> <value>          # Set flag (project-level)
+atlcli flag set helloworld true
+atlcli flag set export.backend libreoffice --global  # Set globally
+
+atlcli flag unset <name>                # Remove flag (project-level)
+atlcli flag rm <name>                   # Alias for unset
+atlcli flag unset helloworld --global   # Remove from global config
+```
+
+**Flag value types:** boolean (`true`/`false`), string, number
+
+**Precedence (highest to lowest):**
+
+| Level | Location | Environment Variable |
+|-------|----------|---------------------|
+| 1. Environment | `FLAG_*` | `FLAG_HELLOWORLD=true` |
+| 2. Project | `.atlcli/config.json` | - |
+| 3. Global | `~/.atlcli/config.json` | - |
+
+**Environment variable format:** `FLAG_` prefix + uppercase name with dots replaced by underscores.
+Example: `helloworld` → `FLAG_HELLOWORLD`, `export.backend` → `FLAG_EXPORT_BACKEND`
+
+## Utility Commands
+
+### Helloworld
+
+Test command to verify the feature flag system works. Only available when `flag.helloworld` is `true`.
+
+```bash
+# Enable the command
+atlcli flag set helloworld true
+
+# Run it
+atlcli helloworld
+# Output: Hello dear user, thank you that you use me! Star me at https://github.com/BjoernSchotte/atlcli
+
+# Disable (command will no longer be available)
+atlcli flag set helloworld false
+```
+
+**Purpose:** Simple test to verify feature flags work correctly. When the flag is not set or `false`, the command behaves as if it doesn't exist.
+
+### Update
+
+```bash
+atlcli update                           # Check for and install updates
+atlcli update --check                   # Check only, don't install
+```
+
+### Version
+
+```bash
+atlcli version                          # Show version
+atlcli --version                        # Same as above
+atlcli -v                               # Short form
+```

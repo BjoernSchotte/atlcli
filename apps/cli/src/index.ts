@@ -12,6 +12,7 @@ import {
   loadUpdateState,
   saveUpdateState,
   shouldCheckForUpdates,
+  getFlagValue,
 } from "@atlcli/core";
 import type { CommandContext } from "@atlcli/plugin-api";
 import { handleAuth } from "./commands/auth.js";
@@ -24,6 +25,7 @@ import { handleWiki } from "./commands/wiki.js";
 import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
+import { handleHelloworld } from "./commands/helloworld.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = getCurrentVersion();
@@ -149,6 +151,15 @@ async function main(): Promise<void> {
       case "version":
         output({ version: VERSION }, opts);
         break;
+      case "helloworld": {
+        const helloworldEnabled = await getFlagValue<boolean>("helloworld", false);
+        if (helloworldEnabled) {
+          await handleHelloworld(rest, parsed.flags, opts);
+        } else {
+          output(rootHelp(registry), opts);
+        }
+        break;
+      }
       default:
         // Check for plugin commands
         const pluginCmd = registry.getCommand(command);
