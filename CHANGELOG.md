@@ -2,38 +2,21 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
-
-### Features
-
-- **confluence:** Add folder support for Confluence Cloud
-  - **Pull**: Detect folders and create directory structure with `index.md` files (`type: folder`)
-  - **Push**: Preserve folder hierarchy when pushing pages; warn on unsupported folder rename
-  - **Sync**: Real-time folder detection via polling; handle folder renames and page moves
-  - **Diff**: Compare folder titles (folders have no content body)
-  - **Validation**: New `FOLDER_EMPTY` and `FOLDER_MISSING_INDEX` warning codes in `docs check`
-  - **Audit**: New `--folders` flag for folder structure analysis
+## [0.12.0] - 2026-01-18
 
 ### Documentation
 
-- **confluence:** Add comprehensive folder documentation
-- **confluence:** Update file-format, sync, validation, and audit docs for folder support
+- **audit:** Add feature flag prerequisite to audit documentation([876de8b](https://github.com/bjoernschotte/atlcli/commit/876de8b9997161c4b3a35fe50b3c8365131ef95b))
+- Add planning guideline for unresolved questions([46d399b](https://github.com/bjoernschotte/atlcli/commit/46d399bac389dff620618fedb62876cd5a861ddb))
+- **confluence:** Add comprehensive folder documentation([c31d26c](https://github.com/bjoernschotte/atlcli/commit/c31d26cd4c173692af9d397ad03e140ee92866fa))
 
+### Features
+
+- **confluence:** Add folder pull support([9aa760f](https://github.com/bjoernschotte/atlcli/commit/9aa760f3146116ab68c998cfd73b36df3ee62fcc))
+- **confluence:** Add folder push support([e67d43e](https://github.com/bjoernschotte/atlcli/commit/e67d43ea941f1472707690a6d7bffc2fd6a61e5b))
+- **confluence:** Add folder support to sync mode([519d9d8](https://github.com/bjoernschotte/atlcli/commit/519d9d80e02942d496d18200d6aea6ca25539d22))
+- **confluence:** Add folder validation and diff support([b064daa](https://github.com/bjoernschotte/atlcli/commit/b064daa277b44c0ee8034acde07cc63069c176fb))
 ## [0.11.0] - 2026-01-18
-
-### Highlights
-
-**SQLite Sync Foundation** - Major backend upgrade replacing the JSON-based sync state with SQLite. This enables advanced features like link graph tracking, contributor analysis, and content auditing. **Automatic migration**: Existing users with `state.json` will be automatically migrated to the new SQLite format on first sync operation - a backup is created at `state.json.bak` before migration.
-
-**Wiki Audit Command** - New `atlcli audit wiki` command for comprehensive content health analysis:
-- Detect stale pages with configurable thresholds (high/medium/low risk)
-- Find orphaned pages with no incoming links
-- Identify broken internal links
-- Analyze contributor risks (bus factor, inactive maintainers)
-- Validate external URLs via HTTP
-- Check content compliance (missing labels, drafts, restrictions)
-- Output as table, JSON, or markdown report
-- Fix mode to auto-label stale pages and generate reports
 
 ### Bug Fixes
 
