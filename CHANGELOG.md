@@ -2,6 +2,18 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.13.1] - 2026-01-18
+
+### Bug Fixes
+
+- **confluence:** Quote space key in CQL queries([73a6118](https://github.com/bjoernschotte/atlcli/commit/73a61184bb82ee19a5b32ae949b3ef6bd8d88750))
+- **confluence:** Use cursor-based pagination for large spaces([f69b20b](https://github.com/bjoernschotte/atlcli/commit/f69b20bfd5f7ef84f7c87be96ff876ad3b2d9964))
+- **audit:** Fix directory detection and parser quirk([dde6437](https://github.com/bjoernschotte/atlcli/commit/dde643754f2530d309933c7969bb8b98f42d17b5))
+
+### Features
+
+- **confluence:** Fetch editor version with page data and add pagination([dc3c07e](https://github.com/bjoernschotte/atlcli/commit/dc3c07edccb30b407cbd264cadb8e8b4d9fead2d))
+- **docs:** Add progress logging during pull([b9beff4](https://github.com/bjoernschotte/atlcli/commit/b9beff494cb972f1d9131bfb29775f3f08a48438))
 ## [0.13.0] - 2026-01-18
 
 ### Bug Fixes
@@ -17,11 +29,6 @@ All notable changes to atlcli will be documented in this file.
 ### Features
 
 - **confluence:** Add editor format support for v2/legacy editor([146a082](https://github.com/bjoernschotte/atlcli/commit/146a0823cc92376c286484017c8d7885cdbe6e50))
-
-### Important Notes
-
-- **Editor Format Support:** This release adds proper handling for Confluence's editor format (v2/v1). New pages now default to the v2 editor (with colored callouts). Use `docs status` to audit editor formats across your space, and `docs convert` to migrate pages between editor versions. Pages created before this release may show as "unknown" format until re-pulled or converted.
-
 ## [0.12.0] - 2026-01-18
 
 ### Documentation
