@@ -1060,7 +1060,7 @@ export class ConfluenceClient {
         cql = `ancestor=${scope.ancestorId} AND type=page AND lastModified >= "${dateStr}"`;
         break;
       case "space":
-        cql = `space=${scope.spaceKey} AND type=page AND lastModified >= "${dateStr}"`;
+        cql = `space="${scope.spaceKey}" AND type=page AND lastModified >= "${dateStr}"`;
         break;
     }
 
@@ -1096,7 +1096,7 @@ export class ConfluenceClient {
         cql = `ancestor=${scope.ancestorId} AND type=page`;
         break;
       case "space":
-        cql = `space=${scope.spaceKey} AND type=page`;
+        cql = `space="${scope.spaceKey}" AND type=page`;
         break;
     }
 

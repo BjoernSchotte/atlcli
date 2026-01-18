@@ -78,7 +78,7 @@ export function buildCqlFromScope(scope: SyncScope): string | null {
     case "tree":
       return `ancestor=${scope.ancestorId} AND type=page`;
     case "space":
-      return `space=${scope.spaceKey} AND type=page`;
+      return `space="${scope.spaceKey}" AND type=page`;
   }
 }
 

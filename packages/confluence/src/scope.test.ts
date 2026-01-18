@@ -83,7 +83,7 @@ describe("scope utilities", () => {
 
     test("returns CQL for space scope", () => {
       const scope: SyncScope = { type: "space", spaceKey: "TEAM" };
-      expect(buildCqlFromScope(scope)).toBe("space=TEAM AND type=page");
+      expect(buildCqlFromScope(scope)).toBe('space="TEAM" AND type=page');
     });
   });
 
