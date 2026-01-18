@@ -141,6 +141,12 @@ interface AuditOptions {
   checkInactiveContributors: boolean;
   checkExternalLinks: boolean;
   checkExternalBroken: boolean; // Actually verify external links via HTTP
+  // New audit checks
+  missingLabel?: string; // Find pages missing this label
+  checkRestricted: boolean; // Find pages with restrictions
+  checkDrafts: boolean; // Find draft pages
+  checkArchived: boolean; // Find archived pages
+  highChurnThreshold?: number; // Find pages with >= N versions
   // Output
   json: boolean;
   markdown: boolean;
@@ -183,6 +189,25 @@ interface ExternalLinkInfo {
   isBroken?: boolean;
 }
 
+interface MissingLabelInfo {
+  page: PageRecord;
+  currentLabels: string[];
+}
+
+interface RestrictedPageInfo {
+  page: PageRecord;
+}
+
+interface ContentStatusInfo {
+  page: PageRecord;
+  status: "draft" | "archived";
+}
+
+interface HighChurnInfo {
+  page: PageRecord;
+  versionCount: number;
+}
+
 interface AuditResult {
   space: string | null;
   generatedAt: string;
@@ -193,12 +218,24 @@ interface AuditResult {
     contributorRisks: number;
     externalLinks: number;
     brokenExternalLinks: number;
+    // New summary fields
+    missingLabel: number;
+    restricted: number;
+    drafts: number;
+    archived: number;
+    highChurn: number;
   };
   stalePages: StalePageInfo[];
   orphanedPages: OrphanedPageInfo[];
   brokenLinks: BrokenLinkInfo[];
   contributorRisks: ContributorRiskInfo[];
   externalLinks: ExternalLinkInfo[];
+  // New result arrays
+  missingLabelPages: MissingLabelInfo[];
+  restrictedPages: RestrictedPageInfo[];
+  draftPages: ContentStatusInfo[];
+  archivedPages: ContentStatusInfo[];
+  highChurnPages: HighChurnInfo[];
   userCacheAge: string | null;
 }
 
@@ -241,6 +278,11 @@ export async function handleAuditWiki(
     options.checkSingleContributor ||
     options.checkInactiveContributors ||
     options.checkExternalLinks ||
+    options.missingLabel !== undefined ||
+    options.checkRestricted ||
+    options.checkDrafts ||
+    options.checkArchived ||
+    options.highChurnThreshold !== undefined ||
     options.rebuildGraph ||
     options.refreshUsers ||
     options.exportGraph;
@@ -342,12 +384,26 @@ async function parseOptions(
     checkInactiveContributors: all || hasFlag(flags, "inactive-contributors"),
     checkExternalLinks: hasFlag(flags, "external-links") || hasFlag(flags, "check-external"),
     checkExternalBroken: hasFlag(flags, "check-external"), // Actually verify via HTTP
+    // New audit checks
+    missingLabel: getFlag(flags, "missing-label") as string | undefined,
+    checkRestricted: all || hasFlag(flags, "restricted"),
+    checkDrafts: all || hasFlag(flags, "drafts"),
+    checkArchived: all || hasFlag(flags, "archived"),
+    highChurnThreshold: parseHighChurn(flags),
+    // Output
     json: hasFlag(flags, "json"),
     markdown: hasFlag(flags, "markdown"),
     exportGraph: hasFlag(flags, "export-graph"),
     rebuildGraph: hasFlag(flags, "rebuild-graph"),
     refreshUsers: hasFlag(flags, "refresh-users"),
   };
+}
+
+function parseHighChurn(flags: Record<string, string | boolean | string[]>): number | undefined {
+  const value = getFlag(flags, "high-churn") as string | undefined;
+  if (!value) return undefined;
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? undefined : parsed;
 }
 
 // ============================================================================
@@ -365,12 +421,22 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
       contributorRisks: 0,
       externalLinks: 0,
       brokenExternalLinks: 0,
+      missingLabel: 0,
+      restricted: 0,
+      drafts: 0,
+      archived: 0,
+      highChurn: 0,
     },
     stalePages: [],
     orphanedPages: [],
     brokenLinks: [],
     contributorRisks: [],
     externalLinks: [],
+    missingLabelPages: [],
+    restrictedPages: [],
+    draftPages: [],
+    archivedPages: [],
+    highChurnPages: [],
     userCacheAge: null,
   };
 
@@ -456,6 +522,36 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
 
     result.externalLinks = externalLinkInfos;
     result.summary.externalLinks = externalLinks.length;
+  }
+
+  // Missing label check
+  if (options.missingLabel) {
+    result.missingLabelPages = await detectMissingLabel(adapter, options.missingLabel);
+    result.summary.missingLabel = result.missingLabelPages.length;
+  }
+
+  // Restricted pages
+  if (options.checkRestricted) {
+    result.restrictedPages = await detectRestrictedPages(adapter);
+    result.summary.restricted = result.restrictedPages.length;
+  }
+
+  // Draft pages
+  if (options.checkDrafts) {
+    result.draftPages = await detectDraftPages(adapter);
+    result.summary.drafts = result.draftPages.length;
+  }
+
+  // Archived pages
+  if (options.checkArchived) {
+    result.archivedPages = await detectArchivedPages(adapter);
+    result.summary.archived = result.archivedPages.length;
+  }
+
+  // High churn pages
+  if (options.highChurnThreshold !== undefined) {
+    result.highChurnPages = await detectHighChurnPages(adapter, options.highChurnThreshold);
+    result.summary.highChurn = result.highChurnPages.length;
   }
 
   return result;
@@ -554,6 +650,48 @@ async function detectContributorRisks(
   return risks;
 }
 
+async function detectMissingLabel(
+  adapter: SyncDbAdapter,
+  requiredLabel: string
+): Promise<MissingLabelInfo[]> {
+  const pages = await adapter.listPages({});
+  const missingPages: MissingLabelInfo[] = [];
+
+  for (const page of pages) {
+    const labels = await adapter.getPageLabels(page.pageId);
+    if (!labels.includes(requiredLabel)) {
+      missingPages.push({ page, currentLabels: labels });
+    }
+  }
+
+  return missingPages;
+}
+
+async function detectRestrictedPages(adapter: SyncDbAdapter): Promise<RestrictedPageInfo[]> {
+  const pages = await adapter.listPages({ isRestricted: true });
+  return pages.map((page) => ({ page }));
+}
+
+async function detectDraftPages(adapter: SyncDbAdapter): Promise<ContentStatusInfo[]> {
+  const pages = await adapter.listPages({ contentStatus: "draft" });
+  return pages.map((page) => ({ page, status: "draft" as const }));
+}
+
+async function detectArchivedPages(adapter: SyncDbAdapter): Promise<ContentStatusInfo[]> {
+  const pages = await adapter.listPages({ contentStatus: "archived" });
+  return pages.map((page) => ({ page, status: "archived" as const }));
+}
+
+async function detectHighChurnPages(
+  adapter: SyncDbAdapter,
+  threshold: number
+): Promise<HighChurnInfo[]> {
+  const pages = await adapter.listPages({ minVersionCount: threshold });
+  return pages
+    .map((page) => ({ page, versionCount: page.versionCount }))
+    .sort((a, b) => b.versionCount - a.versionCount);
+}
+
 // ============================================================================
 // Special Actions
 // ============================================================================
@@ -616,7 +754,12 @@ function formatTable(result: AuditResult, options: AuditOptions): string {
     result.summary.stale.low +
     result.summary.orphans +
     result.summary.brokenLinks +
-    result.summary.contributorRisks;
+    result.summary.contributorRisks +
+    result.summary.missingLabel +
+    result.summary.restricted +
+    result.summary.drafts +
+    result.summary.archived +
+    result.summary.highChurn;
 
   if (totalIssues === 0 && result.summary.externalLinks === 0) {
     lines.push("No issues found.");
@@ -732,6 +875,69 @@ function formatTable(result: AuditResult, options: AuditOptions): string {
     lines.push("");
   }
 
+  // Missing label pages
+  if (result.missingLabelPages.length > 0) {
+    lines.push(`MISSING LABEL (${result.summary.missingLabel} pages)`);
+    for (const info of result.missingLabelPages.slice(0, 10)) {
+      const currentLabels = info.currentLabels.length > 0
+        ? `current: ${info.currentLabels.join(", ")}`
+        : "no labels";
+      lines.push(`  - ${info.page.title} (${currentLabels})`);
+    }
+    if (result.missingLabelPages.length > 10) {
+      lines.push(`  ... and ${result.missingLabelPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
+  // Restricted pages
+  if (result.restrictedPages.length > 0) {
+    lines.push(`RESTRICTED PAGES (${result.summary.restricted} pages)`);
+    for (const info of result.restrictedPages.slice(0, 10)) {
+      lines.push(`  - ${info.page.title} (${info.page.path})`);
+    }
+    if (result.restrictedPages.length > 10) {
+      lines.push(`  ... and ${result.restrictedPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
+  // Draft pages
+  if (result.draftPages.length > 0) {
+    lines.push(`DRAFT PAGES (${result.summary.drafts} pages)`);
+    for (const info of result.draftPages.slice(0, 10)) {
+      lines.push(`  - ${info.page.title} (${info.page.path})`);
+    }
+    if (result.draftPages.length > 10) {
+      lines.push(`  ... and ${result.draftPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
+  // Archived pages
+  if (result.archivedPages.length > 0) {
+    lines.push(`ARCHIVED PAGES (${result.summary.archived} pages)`);
+    for (const info of result.archivedPages.slice(0, 10)) {
+      lines.push(`  - ${info.page.title} (${info.page.path})`);
+    }
+    if (result.archivedPages.length > 10) {
+      lines.push(`  ... and ${result.archivedPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
+  // High churn pages
+  if (result.highChurnPages.length > 0) {
+    lines.push(`HIGH CHURN PAGES (${result.summary.highChurn} pages)`);
+    for (const info of result.highChurnPages.slice(0, 10)) {
+      lines.push(`  - ${info.page.title} (${info.versionCount} versions)`);
+    }
+    if (result.highChurnPages.length > 10) {
+      lines.push(`  ... and ${result.highChurnPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
   // Footer
   if (result.userCacheAge) {
     lines.push(`User status as of ${result.userCacheAge}`);
@@ -773,6 +979,21 @@ function formatMarkdown(result: AuditResult): string {
   }
   if (result.summary.externalLinks > 0) {
     lines.push(`| External links | ${result.summary.externalLinks} |`);
+  }
+  if (result.summary.missingLabel > 0) {
+    lines.push(`| Missing label | ${result.summary.missingLabel} |`);
+  }
+  if (result.summary.restricted > 0) {
+    lines.push(`| Restricted pages | ${result.summary.restricted} |`);
+  }
+  if (result.summary.drafts > 0) {
+    lines.push(`| Draft pages | ${result.summary.drafts} |`);
+  }
+  if (result.summary.archived > 0) {
+    lines.push(`| Archived pages | ${result.summary.archived} |`);
+  }
+  if (result.summary.highChurn > 0) {
+    lines.push(`| High churn pages | ${result.summary.highChurn} |`);
   }
   lines.push("");
 
@@ -874,6 +1095,69 @@ function formatMarkdown(result: AuditResult): string {
       }
       lines.push("");
     }
+  }
+
+  // Missing label pages
+  if (result.missingLabelPages.length > 0) {
+    lines.push("## Pages Missing Required Label");
+    lines.push("");
+    lines.push("| Page | Current Labels |");
+    lines.push("|------|----------------|");
+    for (const info of result.missingLabelPages) {
+      const currentLabels = info.currentLabels.length > 0
+        ? info.currentLabels.join(", ")
+        : "(none)";
+      lines.push(`| ${info.page.title} | ${currentLabels} |`);
+    }
+    lines.push("");
+  }
+
+  // Restricted pages
+  if (result.restrictedPages.length > 0) {
+    lines.push("## Restricted Pages");
+    lines.push("");
+    lines.push("| Page | Path |");
+    lines.push("|------|------|");
+    for (const info of result.restrictedPages) {
+      lines.push(`| ${info.page.title} | \`${info.page.path}\` |`);
+    }
+    lines.push("");
+  }
+
+  // Draft pages
+  if (result.draftPages.length > 0) {
+    lines.push("## Draft Pages");
+    lines.push("");
+    lines.push("| Page | Path |");
+    lines.push("|------|------|");
+    for (const info of result.draftPages) {
+      lines.push(`| ${info.page.title} | \`${info.page.path}\` |`);
+    }
+    lines.push("");
+  }
+
+  // Archived pages
+  if (result.archivedPages.length > 0) {
+    lines.push("## Archived Pages");
+    lines.push("");
+    lines.push("| Page | Path |");
+    lines.push("|------|------|");
+    for (const info of result.archivedPages) {
+      lines.push(`| ${info.page.title} | \`${info.page.path}\` |`);
+    }
+    lines.push("");
+  }
+
+  // High churn pages
+  if (result.highChurnPages.length > 0) {
+    lines.push("## High Churn Pages");
+    lines.push("");
+    lines.push("| Page | Version Count |");
+    lines.push("|------|---------------|");
+    for (const info of result.highChurnPages) {
+      lines.push(`| ${info.page.title} | ${info.versionCount} |`);
+    }
+    lines.push("");
   }
 
   // Footer

@@ -518,4 +518,258 @@ describe("audit-wiki", () => {
       expect(oldest).toBe(oldDate.toISOString());
     });
   });
+
+  describe("missing label detection", () => {
+    test("detects pages missing required label", async () => {
+      const pageWithLabel: PageRecord = {
+        pageId: "page-1",
+        path: "page1.md",
+        title: "Page With Label",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const pageWithoutLabel: PageRecord = {
+        ...pageWithLabel,
+        pageId: "page-2",
+        path: "page2.md",
+        title: "Page Without Label",
+      };
+
+      await adapter.upsertPage(pageWithLabel);
+      await adapter.upsertPage(pageWithoutLabel);
+
+      // Add label to page-1
+      await adapter.setPageLabels("page-1", ["reviewed", "documentation"]);
+      await adapter.setPageLabels("page-2", ["documentation"]);
+
+      // Check page-1 has the reviewed label
+      const labels1 = await adapter.getPageLabels("page-1");
+      expect(labels1).toContain("reviewed");
+
+      // Check page-2 does NOT have the reviewed label
+      const labels2 = await adapter.getPageLabels("page-2");
+      expect(labels2).not.toContain("reviewed");
+      expect(labels2).toContain("documentation");
+    });
+  });
+
+  describe("restricted page detection", () => {
+    test("filters restricted pages", async () => {
+      const publicPage: PageRecord = {
+        pageId: "public-1",
+        path: "public.md",
+        title: "Public Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const restrictedPage: PageRecord = {
+        ...publicPage,
+        pageId: "restricted-1",
+        path: "restricted.md",
+        title: "Restricted Page",
+        isRestricted: true,
+      };
+
+      await adapter.upsertPage(publicPage);
+      await adapter.upsertPage(restrictedPage);
+
+      // Filter restricted pages
+      const restricted = await adapter.listPages({ isRestricted: true });
+      expect(restricted.length).toBe(1);
+      expect(restricted[0].pageId).toBe("restricted-1");
+
+      // Filter non-restricted pages
+      const nonRestricted = await adapter.listPages({ isRestricted: false });
+      expect(nonRestricted.length).toBe(1);
+      expect(nonRestricted[0].pageId).toBe("public-1");
+    });
+  });
+
+  describe("content status detection", () => {
+    test("filters draft pages", async () => {
+      const currentPage: PageRecord = {
+        pageId: "current-1",
+        path: "current.md",
+        title: "Current Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const draftPage: PageRecord = {
+        ...currentPage,
+        pageId: "draft-1",
+        path: "draft.md",
+        title: "Draft Page",
+        contentStatus: "draft",
+      };
+
+      await adapter.upsertPage(currentPage);
+      await adapter.upsertPage(draftPage);
+
+      const drafts = await adapter.listPages({ contentStatus: "draft" });
+      expect(drafts.length).toBe(1);
+      expect(drafts[0].pageId).toBe("draft-1");
+    });
+
+    test("filters archived pages", async () => {
+      const currentPage: PageRecord = {
+        pageId: "current-1",
+        path: "current.md",
+        title: "Current Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const archivedPage: PageRecord = {
+        ...currentPage,
+        pageId: "archived-1",
+        path: "archived.md",
+        title: "Archived Page",
+        contentStatus: "archived",
+      };
+
+      await adapter.upsertPage(currentPage);
+      await adapter.upsertPage(archivedPage);
+
+      const archived = await adapter.listPages({ contentStatus: "archived" });
+      expect(archived.length).toBe(1);
+      expect(archived[0].pageId).toBe("archived-1");
+    });
+  });
+
+  describe("high churn detection", () => {
+    test("filters pages by minimum version count", async () => {
+      const lowChurnPage: PageRecord = {
+        pageId: "low-churn-1",
+        path: "low-churn.md",
+        title: "Low Churn Page",
+        spaceKey: "TEST",
+        version: 3,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 3,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const highChurnPage: PageRecord = {
+        ...lowChurnPage,
+        pageId: "high-churn-1",
+        path: "high-churn.md",
+        title: "High Churn Page",
+        version: 50,
+        versionCount: 50,
+      };
+
+      await adapter.upsertPage(lowChurnPage);
+      await adapter.upsertPage(highChurnPage);
+
+      // Find pages with >= 10 versions
+      const highChurn = await adapter.listPages({ minVersionCount: 10 });
+      expect(highChurn.length).toBe(1);
+      expect(highChurn[0].pageId).toBe("high-churn-1");
+      expect(highChurn[0].versionCount).toBe(50);
+
+      // Find pages with >= 3 versions (both should match)
+      const all = await adapter.listPages({ minVersionCount: 3 });
+      expect(all.length).toBe(2);
+    });
+  });
 });
