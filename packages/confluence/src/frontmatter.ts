@@ -136,8 +136,14 @@ function parseYaml(yaml: string): AtlcliFrontmatter | null {
     }
   }
 
-  if (!id) {
+  // Return frontmatter if we have an id, OR if we have a type (for new folders)
+  if (!id && !type) {
     return null;
+  }
+
+  // For new items (no id), return partial frontmatter with type and title
+  if (!id) {
+    return { id: undefined as unknown as string, title, type };
   }
 
   return { id, title, type };

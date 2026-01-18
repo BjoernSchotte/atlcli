@@ -129,6 +129,11 @@ export class ConfluenceClient {
     this.authHeader = `Basic ${encoded}`;
   }
 
+  /** Get the Confluence instance base URL */
+  getInstanceUrl(): string {
+    return this.baseUrl;
+  }
+
   /** Sleep utility for rate limiting */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
