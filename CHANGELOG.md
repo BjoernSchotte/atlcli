@@ -2,6 +2,26 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.13.0] - 2026-01-18
+
+### Bug Fixes
+
+- **confluence:** Strip quotes from macro titles([9bf4d7a](https://github.com/bjoernschotte/atlcli/commit/9bf4d7a0789d26993ae2e748e6ed1d7357de1c79))
+
+### Documentation
+
+- Add missing pages to sidebar navigation([80be639](https://github.com/bjoernschotte/atlcli/commit/80be6393be439f9f2dfb4ae4e517adc898a2ea63))
+- **confluence:** Add editor format audit documentation([519fd83](https://github.com/bjoernschotte/atlcli/commit/519fd83cad0b9986583da88119f8ce8391ddcab1))
+- **reference:** Add editor format commands to CLI reference([cdfe6e8](https://github.com/bjoernschotte/atlcli/commit/cdfe6e8c9aca589e91f340ddf5ac59df85208dfc))
+
+### Features
+
+- **confluence:** Add editor format support for v2/legacy editor([146a082](https://github.com/bjoernschotte/atlcli/commit/146a0823cc92376c286484017c8d7885cdbe6e50))
+
+### Important Notes
+
+- **Editor Format Support:** This release adds proper handling for Confluence's editor format (v2/v1). New pages now default to the v2 editor (with colored callouts). Use `docs status` to audit editor formats across your space, and `docs convert` to migrate pages between editor versions. Pages created before this release may show as "unknown" format until re-pulled or converted.
+
 ## [0.12.0] - 2026-01-18
 
 ### Documentation
