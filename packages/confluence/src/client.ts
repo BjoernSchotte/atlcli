@@ -2255,53 +2255,37 @@ export class ConfluenceClient {
   }
 
   /**
-   * Get all folders in a space.
+   * Get all folders in a space by walking from the space homepage.
    *
-   * GET /wiki/api/v2/spaces/{spaceId}/folders
+   * Since Confluence Cloud v2 API doesn't have a direct endpoint to list all
+   * folders in a space, we traverse from the homepage using getPageDirectChildren.
+   *
+   * @param spaceKey - The space key (e.g., "DOCSY")
    */
-  async getSpaceFolders(
-    spaceId: string,
-    options: { limit?: number } = {}
-  ): Promise<ConfluenceFolder[]> {
-    const { limit = 100 } = options;
-    const folders: ConfluenceFolder[] = [];
-    let cursor: string | undefined;
+  async getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]> {
+    // Find homepage using CQL (page with no parent in the space)
+    const searchResults = await this.searchPages(
+      `space = "${spaceKey}" AND type = page ORDER BY created ASC`,
+      50
+    );
 
-    while (true) {
-      const query: Record<string, string | number | undefined> = { limit };
-      if (cursor) {
-        query.cursor = cursor;
-      }
+    let homepageId: string | undefined;
 
-      const data = (await this.requestV2(`/spaces/${spaceId}/folders`, {
-        query,
-      })) as any;
-
-      const results = Array.isArray(data.results) ? data.results : [];
-
-      for (const item of results) {
-        folders.push({
-          id: item.id,
-          title: item.title,
-          spaceId: item.spaceId,
-          parentId: item.parentId ?? null,
-          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
-          createdAt: item.createdAt,
-        });
-      }
-
-      // v2 API uses cursor-based pagination
-      if (data._links?.next) {
-        const nextUrl = new URL(data._links.next, this.baseUrl);
-        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
-      } else {
+    for (const result of searchResults) {
+      // Check if this page has no parent (homepage)
+      const pageDetails = await this.getPage(result.id);
+      if (!pageDetails.parentId && (!pageDetails.ancestors || pageDetails.ancestors.length === 0)) {
+        homepageId = result.id;
         break;
       }
-
-      if (results.length < limit) break;
     }
 
-    return folders;
+    if (!homepageId) {
+      return []; // No homepage found, return empty
+    }
+
+    // Walk the tree from homepage to find all folders
+    return this.getFoldersInTree(homepageId);
   }
 
   /**
@@ -2349,6 +2333,92 @@ export class ConfluenceClient {
     await this.requestV2(`/folders/${folderId}`, {
       method: "DELETE",
     });
+  }
+
+  /**
+   * Get folder version using v1 content API.
+   *
+   * The v2 folder API doesn't expose version numbers, so we use the v1 API.
+   */
+  async getFolderVersion(folderId: string): Promise<number> {
+    const data = (await this.request(`/content/${folderId}`, {
+      query: { expand: "version" },
+    })) as any;
+    return data.version?.number ?? 1;
+  }
+
+  /**
+   * Get all folders in scope with their versions.
+   *
+   * Used by the poller to track folder changes.
+   */
+  async getAllFoldersWithVersions(params: {
+    scope: SyncScope;
+  }): Promise<Array<{ id: string; title: string; version: number }>> {
+    const { scope } = params;
+    let folders: ConfluenceFolder[] = [];
+
+    if (scope.type === "space") {
+      folders = await this.getSpaceFolders(scope.spaceKey);
+    } else if (scope.type === "tree") {
+      // Get folders recursively under ancestor
+      folders = await this.getFoldersInTree(scope.ancestorId);
+    }
+    // For single page scope, no folders to track
+
+    // Get versions for each folder
+    const results: Array<{ id: string; title: string; version: number }> = [];
+    for (const folder of folders) {
+      try {
+        const version = await this.getFolderVersion(folder.id);
+        results.push({ id: folder.id, title: folder.title, version });
+      } catch {
+        // Folder may have been deleted
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get folders recursively under a parent (page or folder).
+   *
+   * Traverses the hierarchy to find all nested folders.
+   */
+  async getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]> {
+    const folders: ConfluenceFolder[] = [];
+    const visited = new Set<string>();
+
+    const traverse = async (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+
+      // Get direct children (can include folders)
+      let children: FolderChild[];
+      try {
+        children = await this.getPageDirectChildren(id);
+      } catch (err) {
+        // Parent may have been deleted or access denied
+        return;
+      }
+
+      for (const child of children) {
+        if (child.type === "folder") {
+          // Fetch full folder info
+          try {
+            const folder = await this.getFolder(child.id);
+            folders.push(folder);
+            // Recurse into folder
+            await traverse(child.id);
+          } catch {
+            // Folder may have been deleted
+          }
+        }
+      }
+    };
+
+    await traverse(parentId);
+    return folders;
   }
 
   /**
