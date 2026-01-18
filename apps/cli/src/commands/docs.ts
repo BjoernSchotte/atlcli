@@ -120,6 +120,7 @@ import {
   // Sync database
   createSyncDb,
   hasSyncDb,
+  createPageRecord,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
@@ -494,20 +495,32 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
   for (const page of pages) {
     // Use getPageDetails to include user information for Phase 2
-    const detail = await client.getPageDetails(page.id);
-    pageDetails.push({
-      id: detail.id,
-      title: detail.title,
-      storage: detail.storage,
-      version: detail.version ?? 1,
-      spaceKey: detail.spaceKey ?? space!,
-      parentId: detail.parentId ?? null,
-      ancestors: detail.ancestors ?? [],
-      createdBy: detail.createdBy,
-      modifiedBy: detail.modifiedBy,
-      created: detail.created,
-      modified: detail.modified,
-    });
+    try {
+      const detail = await client.getPageDetails(page.id);
+      pageDetails.push({
+        id: detail.id,
+        title: detail.title,
+        storage: detail.storage,
+        version: detail.version ?? 1,
+        spaceKey: detail.spaceKey ?? space!,
+        parentId: detail.parentId ?? null,
+        ancestors: detail.ancestors ?? [],
+        createdBy: detail.createdBy,
+        modifiedBy: detail.modifiedBy,
+        created: detail.created,
+        modified: detail.modified,
+      });
+    } catch (err) {
+      // Skip pages that are inaccessible (404 = deleted/trashed/no permission)
+      const is404 = err instanceof Error && err.message.includes("404");
+      if (is404) {
+        if (!opts.json) {
+          output(`Skipping inaccessible page ${page.id} (may be deleted or moved to trash)`, opts);
+        }
+        continue;
+      }
+      throw err; // Re-throw other errors
+    }
   }
 
   // Build hierarchy info for path computation
@@ -856,6 +869,44 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     const { createSyncDb } = await import("@atlcli/confluence");
     const adapter = await createSyncDb(getAtlcliPath(atlcliDir), { autoMigrate: false });
     try {
+      // Upsert all pages to sync.db (populates last_modified for stale detection)
+      for (const detail of pageDetails) {
+        const computed = pathMap.get(detail.id);
+        if (!computed) continue;
+
+        const pageRecord = createPageRecord({
+          pageId: detail.id,
+          path: computed.relativePath,
+          title: detail.title,
+          spaceKey: detail.spaceKey,
+          version: detail.version,
+          lastSyncedAt: new Date().toISOString(),
+          localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
+            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            basename(computed.relativePath, ".md")
+          ))),
+          remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
+            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            basename(computed.relativePath, ".md")
+          ))),
+          baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
+            storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
+            basename(computed.relativePath, ".md")
+          ))),
+          syncState: "synced",
+          parentId: detail.parentId,
+          ancestors: detail.ancestors.map((a) => a.id),
+          hasAttachments: false, // Updated later if attachments exist
+          createdBy: detail.createdBy?.accountId ?? null,
+          createdAt: detail.created ?? new Date().toISOString(),
+          lastModifiedBy: detail.modifiedBy?.accountId ?? null,
+          lastModified: detail.modified ?? null,
+          contentStatus: "current",
+          versionCount: detail.version,
+        });
+        await adapter.upsertPage(pageRecord);
+      }
+
       // Check user statuses (respects TTL caching)
       // Use type assertion since checkUsersFromPull handles optional values via optional chaining
       const userCheckOpts: UserCheckOptions = {
