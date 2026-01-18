@@ -2,6 +2,61 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.11.0] - 2026-01-18
+
+### Highlights
+
+**SQLite Sync Foundation** - Major backend upgrade replacing the JSON-based sync state with SQLite. This enables advanced features like link graph tracking, contributor analysis, and content auditing. **Automatic migration**: Existing users with `state.json` will be automatically migrated to the new SQLite format on first sync operation - a backup is created at `state.json.bak` before migration.
+
+**Wiki Audit Command** - New `atlcli audit wiki` command for comprehensive content health analysis:
+- Detect stale pages with configurable thresholds (high/medium/low risk)
+- Find orphaned pages with no incoming links
+- Identify broken internal links
+- Analyze contributor risks (bus factor, inactive maintainers)
+- Validate external URLs via HTTP
+- Check content compliance (missing labels, drafts, restrictions)
+- Output as table, JSON, or markdown report
+- Fix mode to auto-label stale pages and generate reports
+
+### Bug Fixes
+
+- **sync:** Change default directory from ./docs to current directory([5ec6523](https://github.com/bjoernschotte/atlcli/commit/5ec65234fb4bfc6485f6c1a75d70213db561b9d0))
+- **cli:** Warn when .atlcli found inside source tree([26946b8](https://github.com/bjoernschotte/atlcli/commit/26946b881754ad82105a0cc3f00aaf0bdd84347f))
+- **cli:** Simplify external link error messages in audit([903263d](https://github.com/bjoernschotte/atlcli/commit/903263d34249633e857c939afba68433e55266ac))
+- **cli:** Add missing audit flags and shared link-validator module([97969e7](https://github.com/bjoernschotte/atlcli/commit/97969e711f2ece09c67fc471a8cec15ecd351c2a))
+- **audit:** Spec compliance fixes for link validation and formatters([032c554](https://github.com/bjoernschotte/atlcli/commit/032c554b968e0bb373faa7f0719cbc0f5f3634bc))
+
+### Documentation
+
+- **claude:** Add rule for regression tests on bug fixes([ae59a61](https://github.com/bjoernschotte/atlcli/commit/ae59a61d133ba4e39846bd182f81bd6c66f51d1e))
+- Add SQLite storage and wiki audit documentation([f9b3d1c](https://github.com/bjoernschotte/atlcli/commit/f9b3d1ca3bb315f4a7954bdf6f339e396807d12f))
+
+### Features
+
+- **spec:** Add SQLite sync foundation specification([2f686a1](https://github.com/bjoernschotte/atlcli/commit/2f686a124e492fe6319dd1c45779100900eaddef))
+- **confluence:** Implement sync-db adapter infrastructure (Phase 0)([2455f98](https://github.com/bjoernschotte/atlcli/commit/2455f9810d57e1d4374d07c830bb616e0d5030f9))
+- **confluence:** Add link extraction for storage and markdown formats (Phase 1)([367edd0](https://github.com/bjoernschotte/atlcli/commit/367edd0759229f9d9b6fa5f1c5f2eddb826189eb))
+- **confluence:** Integrate link graph and user/contributor tracking (Phase 1 & 2)([31bee50](https://github.com/bjoernschotte/atlcli/commit/31bee5044b93a4a4d156904d10b76ee9f36675cf))
+- **confluence:** Add getAtlcliPath helper function([d22a1d0](https://github.com/bjoernschotte/atlcli/commit/d22a1d0d224a5ee226c6cd47e03b002a715aba66))
+- **confluence:** Add Phase 3 improvements to SQLite sync foundation([36db87c](https://github.com/bjoernschotte/atlcli/commit/36db87ce0334b165dbdc56daff9b573466d5c85e))
+- **cli:** Add audit command for wiki content analysis (Phase 3)([dce7b0d](https://github.com/bjoernschotte/atlcli/commit/dce7b0dd5c9c5c82fe1b33f5c230f12850aa1cf2))
+- **core:** Add audit config schema for threshold defaults([d5cfa59](https://github.com/bjoernschotte/atlcli/commit/d5cfa59c5ee85a10fd61e9f703a04db0bdbab0bb))
+- **cli:** Populate sync.db pages table during pull([d9f66ee](https://github.com/bjoernschotte/atlcli/commit/d9f66ee464b63e25ed01fc02504d63fd9f4f8826))
+- **cli:** Add external link HTTP validation to audit([5bdd506](https://github.com/bjoernschotte/atlcli/commit/5bdd506004a996b6f666cadd9f9a8263de1cebb6))
+- **cli:** Add extended audit checks for wiki content([2027ae2](https://github.com/bjoernschotte/atlcli/commit/2027ae243c19c5bfd359c10b7ba26bd3dcdb0e52))
+- **cli:** Add scope filtering to audit command([81a9ee6](https://github.com/bjoernschotte/atlcli/commit/81a9ee6390f43c1c45e2ce62d0f52cf18db9f0e7))
+- **cli:** Add fix mode to audit command([25f3e66](https://github.com/bjoernschotte/atlcli/commit/25f3e662eeabac8274530d381fcada33bb02e467))
+- **cli:** Add API-based audit enhancements([5123ba5](https://github.com/bjoernschotte/atlcli/commit/5123ba5e9a53f2fe1359ee8a4261c4627274e7b2))
+- **cli:** Add defaultChecks config and link-validator tests([db3f028](https://github.com/bjoernschotte/atlcli/commit/db3f028ffb8548cb7b66641ac81457c43caaa7e1))
+
+### Refactoring
+
+- **cli:** Extract audit formatters and optimize stale detection([64c9d1b](https://github.com/bjoernschotte/atlcli/commit/64c9d1b224556826bec1ebdfa389b3fe47f3e0e9))
+
+### Testing
+
+- **sync:** Add regression test for default directory bug([0d77d8a](https://github.com/bjoernschotte/atlcli/commit/0d77d8a708abb61acf6aea17800b46a04fa381d1))
+- **confluence:** Add comprehensive migration tests and fix migration bug([833b68a](https://github.com/bjoernschotte/atlcli/commit/833b68a7806c57775fab5c88a67c269611c4b7da))
 ## [0.10.0] - 2026-01-17
 
 ### Documentation
