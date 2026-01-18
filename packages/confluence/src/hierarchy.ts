@@ -1,19 +1,29 @@
 /**
  * Hierarchy utilities for nested directory structure.
  *
- * Maps Confluence page hierarchy to local directory structure:
+ * Maps Confluence page/folder hierarchy to local directory structure
+ * using the "index pattern":
  *
  * Confluence:
- *   Parent Page (id: 100)
- *     └── Child Page (id: 101)
- *           └── Grandchild Page (id: 102)
+ *   Folder (id: 50)
+ *     └── Parent Page (id: 100)
+ *           └── Child Page (id: 101)
+ *                 └── Grandchild Page (id: 102)
  *
- * Local:
- *   ./parent-page.md
- *   ./parent-page/
- *     └── child-page.md
- *     └── child-page/
- *           └── grandchild-page.md
+ * Local (index pattern):
+ *   ./my-folder/
+ *     └── index.md (type: folder)
+ *     └── parent-page/
+ *           └── index.md (parent content)
+ *           └── child-page/
+ *                 └── index.md (child content)
+ *                 └── grandchild-page.md (leaf page)
+ *
+ * Rules:
+ * - Folders always use: {slug}/index.md (with type: folder frontmatter)
+ * - Pages with children use: {slug}/index.md
+ * - Leaf pages (no children) use: {slug}.md
+ * - When a leaf page gains children, transform {slug}.md → {slug}/index.md
  */
 
 import { join, dirname, basename, extname, relative, resolve } from "path";
@@ -21,12 +31,19 @@ import { mkdir, rename, rmdir, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import { slugifyTitle } from "./atlcli-dir.js";
 
+/** Content type for hierarchy computation */
+export type HierarchyContentType = "page" | "folder";
+
 /** Page info needed for hierarchy computation */
 export interface PageHierarchyInfo {
   id: string;
   title: string;
   parentId: string | null;
   ancestors: string[]; // Array of ancestor IDs from root to parent
+  /** Content type: page or folder (defaults to "page") */
+  contentType?: HierarchyContentType;
+  /** Whether this item has children (folders/pages with children use index.md) */
+  hasChildren?: boolean;
 }
 
 /** Computed file path info */
@@ -39,6 +56,8 @@ export interface ComputedPath {
   filename: string;
   /** Slug used for the file/directory */
   slug: string;
+  /** Whether this is an index file (used for pages with children or folders) */
+  isIndex: boolean;
 }
 
 /** Options for computing file paths */
@@ -54,15 +73,17 @@ export interface ComputeFilePathOptions {
 }
 
 /**
- * Compute the file path for a page based on its ancestors.
+ * Compute the file path for a page/folder based on its ancestors.
  *
- * Rules:
- * - Page file: `{slug}.md`
+ * Index Pattern Rules:
+ * - Folders always use: `{slug}/index.md`
+ * - Pages with children use: `{slug}/index.md`
+ * - Leaf pages (no children) use: `{slug}.md`
  * - Child pages go in: `{parent-slug}/` directory
- * - Root pages (no parent in scope) go in sync root
- * - If rootAncestorId is set, children of that page go in sync root
+ * - Root items (no parent in scope) go in sync root
+ * - If rootAncestorId is set, children of that item go in sync root
  *
- * @param page - Page info with title, parentId, and ancestors
+ * @param page - Page info with title, parentId, ancestors, contentType, hasChildren
  * @param ancestorTitles - Map of ancestor ID to title (for slug generation)
  * @param options - Optional settings for path computation
  * @returns Computed path info
@@ -79,6 +100,12 @@ export function computeFilePath(
   const rootAncestorId = opts.rootAncestorId;
 
   const slug = slugifyTitle(page.title) || "page";
+  const contentType = page.contentType ?? "page";
+  const hasChildren = page.hasChildren ?? false;
+
+  // Determine if this should be an index file
+  // Folders and pages with children use index.md
+  const isIndex = contentType === "folder" || hasChildren;
 
   // Build directory path from ancestors
   const dirParts: string[] = [];
@@ -102,16 +129,30 @@ export function computeFilePath(
     }
   }
 
+  // For index pattern: if isIndex, add slug to directory path
+  if (isIndex) {
+    dirParts.push(slug);
+  }
+
   const directory = dirParts.join("/");
 
-  // Generate unique filename
-  let filename = `${slug}.md`;
+  // Generate filename: index.md for folders/parents, {slug}.md for leaves
+  let filename = isIndex ? "index.md" : `${slug}.md`;
   let relativePath = directory ? `${directory}/${filename}` : filename;
   let counter = 2;
 
   while (existingPaths.has(relativePath)) {
-    filename = `${slug}-${counter}.md`;
-    relativePath = directory ? `${directory}/${filename}` : filename;
+    if (isIndex) {
+      // For index files, modify the directory instead
+      const newSlug = `${slug}-${counter}`;
+      const newDirParts = dirParts.slice(0, -1);
+      newDirParts.push(newSlug);
+      const newDir = newDirParts.join("/");
+      relativePath = newDir ? `${newDir}/index.md` : "index.md";
+    } else {
+      filename = `${slug}-${counter}.md`;
+      relativePath = directory ? `${directory}/${filename}` : filename;
+    }
     counter++;
   }
 
@@ -120,11 +161,17 @@ export function computeFilePath(
     directory,
     filename,
     slug,
+    isIndex,
   };
 }
 
 /**
  * Parse a file path to extract hierarchy information.
+ *
+ * Handles both index pattern and legacy sibling pattern:
+ * - Index pattern: `parent/index.md` → slug is "parent"
+ * - Index pattern: `parent/child.md` → slug is "child", parent is "parent"
+ * - Legacy pattern: `parent.md` → slug is "parent"
  *
  * @param relativePath - Relative path from root dir (e.g., "parent/child.md")
  * @returns Extracted hierarchy info
@@ -133,28 +180,49 @@ export function parseFilePath(relativePath: string): {
   slug: string;
   parentSlug: string | null;
   ancestorSlugs: string[];
+  isIndex: boolean;
 } {
   const parts = relativePath.split("/");
   const filename = parts[parts.length - 1];
-  const slug = basename(filename, extname(filename));
+  const isIndex = filename === "index.md";
 
-  if (parts.length === 1) {
-    // Root level file
+  // For index files, the slug comes from the directory name
+  // For regular files, the slug comes from the filename
+  let slug: string;
+  let ancestorSlugs: string[];
+
+  if (isIndex) {
+    if (parts.length === 1) {
+      // Edge case: just "index.md" at root
+      slug = "index";
+      ancestorSlugs = [];
+    } else {
+      // index.md - slug is the parent directory
+      slug = parts[parts.length - 2];
+      ancestorSlugs = parts.slice(0, -2);
+    }
+  } else {
+    slug = basename(filename, extname(filename));
+    ancestorSlugs = parts.slice(0, -1);
+  }
+
+  if (ancestorSlugs.length === 0) {
+    // Root level item
     return {
       slug,
       parentSlug: null,
       ancestorSlugs: [],
+      isIndex,
     };
   }
 
-  // Extract ancestor slugs from directory path
-  const ancestorSlugs = parts.slice(0, -1);
   const parentSlug = ancestorSlugs[ancestorSlugs.length - 1];
 
   return {
     slug,
     parentSlug,
     ancestorSlugs,
+    isIndex,
   };
 }
 
@@ -213,12 +281,23 @@ async function cleanupEmptyDirs(rootDir: string, dir: string): Promise<void> {
 
 /**
  * Compute the directory path for a page's children.
- * Children go in a directory named after the parent's slug.
  *
- * @param parentPath - Parent file's relative path (e.g., "parent.md")
+ * With index pattern:
+ * - If parent is `parent/index.md`, children go in `parent/`
+ * - If parent is `parent.md` (legacy), children go in `parent/`
+ *
+ * @param parentPath - Parent file's relative path (e.g., "parent/index.md" or "parent.md")
  * @returns Directory path for children (e.g., "parent/")
  */
 export function getChildDirectory(parentPath: string): string {
+  const parsed = parseFilePath(parentPath);
+
+  if (parsed.isIndex) {
+    // For index.md, children go in the same directory
+    return dirname(parentPath);
+  }
+
+  // Legacy: for regular files, children go in a directory named after the file
   const dir = dirname(parentPath);
   const slug = basename(parentPath, extname(parentPath));
 
@@ -317,4 +396,99 @@ export function validatePathHierarchy(
 ): boolean {
   const { parentSlug } = parseFilePath(relativePath);
   return parentSlug === expectedParentSlug;
+}
+
+// ============ Pattern Migration Utilities ============
+
+/**
+ * Detect if a path uses the sibling pattern (needs migration to index pattern).
+ *
+ * Sibling pattern indicators:
+ * - File `parent.md` exists AND directory `parent/` exists with children
+ *
+ * @param relativePath - Relative path to check (e.g., "parent.md")
+ * @param existingPaths - Set of all existing paths in the sync
+ * @returns True if this path uses sibling pattern and needs migration
+ */
+export function usesSiblingPattern(
+  relativePath: string,
+  existingPaths: Set<string>
+): boolean {
+  const parsed = parseFilePath(relativePath);
+
+  // Already using index pattern
+  if (parsed.isIndex) {
+    return false;
+  }
+
+  // Check if there's a corresponding directory with children
+  const potentialChildDir = getChildDirectory(relativePath);
+
+  for (const path of existingPaths) {
+    if (path.startsWith(potentialChildDir + "/")) {
+      // Found a child in the sibling directory - this uses sibling pattern
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Convert a path from sibling pattern to index pattern.
+ *
+ * Sibling: `parent.md` → Index: `parent/index.md`
+ *
+ * @param relativePath - Current sibling-pattern path (e.g., "parent.md")
+ * @returns New index-pattern path (e.g., "parent/index.md")
+ */
+export function siblingToIndexPath(relativePath: string): string {
+  const dir = dirname(relativePath);
+  const slug = basename(relativePath, extname(relativePath));
+
+  if (dir === ".") {
+    return `${slug}/index.md`;
+  }
+
+  return `${dir}/${slug}/index.md`;
+}
+
+/**
+ * Detect files that need migration from sibling to index pattern.
+ *
+ * @param existingPaths - Set of all existing paths in the sync
+ * @returns Array of paths that need migration, with their new paths
+ */
+export function detectSiblingPatternMigrations(
+  existingPaths: Set<string>
+): Array<{ oldPath: string; newPath: string }> {
+  const migrations: Array<{ oldPath: string; newPath: string }> = [];
+
+  for (const path of existingPaths) {
+    if (usesSiblingPattern(path, existingPaths)) {
+      migrations.push({
+        oldPath: path,
+        newPath: siblingToIndexPath(path),
+      });
+    }
+  }
+
+  return migrations;
+}
+
+/**
+ * Migrate a page from sibling pattern to index pattern.
+ * Moves `{slug}.md` to `{slug}/index.md`.
+ *
+ * @param rootDir - Root sync directory
+ * @param relativePath - Current sibling-pattern path
+ * @returns New path after migration
+ */
+export async function migrateSiblingToIndex(
+  rootDir: string,
+  relativePath: string
+): Promise<string> {
+  const newPath = siblingToIndexPath(relativePath);
+  await moveFile(rootDir, relativePath, newPath);
+  return newPath;
 }

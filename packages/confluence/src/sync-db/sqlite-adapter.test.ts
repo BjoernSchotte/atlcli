@@ -25,7 +25,7 @@ describe("SqliteAdapter", () => {
 
   describe("lifecycle", () => {
     test("init creates database and tables", async () => {
-      expect(adapter.version).toBe(1);
+      expect(adapter.version).toBe(2); // Updated with content_type migration
       expect(adapter.adapterType).toBe("sqlite");
     });
 

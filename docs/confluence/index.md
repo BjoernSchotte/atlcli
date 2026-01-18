@@ -75,6 +75,7 @@ atlcli wiki docs push ./docs
 - [Audit](audit.md) - Content health analysis, stale pages, broken links
 - [Pages](pages.md) - Create, update, delete, move, sort pages
 - [Spaces](spaces.md) - Space operations
+- [Folders](folders.md) - Organize pages with folders (Cloud only)
 - [Export](export.md) - Export pages to DOCX with Word templates
 - [Templates](templates.md) - Page templates with variables
 - [Macros](macros.md) - Info panels, notes, warnings, TOC

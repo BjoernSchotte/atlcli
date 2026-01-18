@@ -29,6 +29,7 @@ const createTestPage = (overrides?: Partial<PageRecord>): PageRecord => ({
   parentId: null,
   ancestors: [],
   hasAttachments: false,
+  contentType: "page",
   createdBy: null,
   createdAt: new Date().toISOString(),
   lastModifiedBy: null,

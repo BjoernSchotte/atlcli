@@ -65,6 +65,31 @@ export interface PageChangeInfo {
   spaceKey?: string;
 }
 
+/**
+ * Confluence Cloud folder (introduced Sept 2024).
+ * Folders are containers with no content body, used to organize pages.
+ */
+export type ConfluenceFolder = {
+  id: string;
+  title: string;
+  spaceId: string;
+  parentId: string | null;
+  url?: string;
+  createdAt?: string;
+};
+
+/**
+ * Child content within a folder (can be page or folder).
+ */
+export type FolderChild = {
+  id: string;
+  title: string;
+  type: "page" | "folder";
+  spaceId?: string;
+  parentId?: string | null;
+  url?: string;
+};
+
 /** Attachment metadata from Confluence API */
 export interface AttachmentInfo {
   /** Attachment ID (content ID) */
@@ -780,6 +805,59 @@ export class ConfluenceClient {
     const { limit = 100 } = options;
     const cql = `parent=${pageId} AND type=page`;
     return this.searchPages(cql, limit);
+  }
+
+  /**
+   * Get all direct children of a page (including folders, whiteboards, etc.).
+   *
+   * GET /wiki/api/v2/pages/{id}/direct-children
+   *
+   * Unlike getChildren(), this returns ALL content types, not just pages.
+   * Useful for detecting folders nested under pages.
+   */
+  async getPageDirectChildren(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<FolderChild[]> {
+    const { limit = 100 } = options;
+    const children: FolderChild[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const query: Record<string, string | number | undefined> = { limit };
+      if (cursor) {
+        query.cursor = cursor;
+      }
+
+      const data = (await this.requestV2(`/pages/${pageId}/direct-children`, {
+        query,
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      for (const item of results) {
+        children.push({
+          id: item.id,
+          title: item.title,
+          type: item.type === "folder" ? "folder" : item.type === "page" ? "page" : item.type,
+          spaceId: item.spaceId,
+          parentId: pageId,
+          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
+        });
+      }
+
+      // v2 API uses cursor-based pagination
+      if (data._links?.next) {
+        const nextUrl = new URL(data._links.next, this.baseUrl);
+        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
+      } else {
+        break;
+      }
+
+      if (results.length < limit) break;
+    }
+
+    return children;
   }
 
   /**
@@ -2055,6 +2133,233 @@ export class ConfluenceClient {
     await this.requestV2(`/${endpoint}/${commentId}`, {
       method: "DELETE",
     });
+  }
+
+  // ============ Folder Operations (v2 API) ============
+
+  /**
+   * Get a folder by ID.
+   *
+   * GET /wiki/api/v2/folders/{id}
+   *
+   * Note: Folders are a Confluence Cloud feature introduced in Sept 2024.
+   */
+  async getFolder(folderId: string): Promise<ConfluenceFolder> {
+    const data = (await this.requestV2(`/folders/${folderId}`, {})) as any;
+
+    return {
+      id: data.id,
+      title: data.title,
+      spaceId: data.spaceId,
+      parentId: data.parentId ?? null,
+      url: data._links?.webui ? `${this.baseUrl}/wiki${data._links.webui}` : undefined,
+      createdAt: data.createdAt,
+    };
+  }
+
+  /**
+   * Update a folder (rename).
+   *
+   * Uses v1 content API: PUT /content/{id}
+   * The v2 folder API doesn't support updates, only create/get/delete.
+   *
+   * Note: Folders are a Confluence Cloud feature introduced in Sept 2024.
+   */
+  async updateFolder(folderId: string, title: string): Promise<ConfluenceFolder> {
+    // First get current folder to get version number
+    const current = await this.getFolder(folderId);
+
+    // Get current version from v1 API
+    const currentContent = (await this.request(`/content/${folderId}`, {
+      query: { expand: "version" },
+    })) as any;
+    const version = (currentContent.version?.number ?? 1) + 1;
+
+    // Use v1 content API to update folder title
+    const data = (await this.request(`/content/${folderId}`, {
+      method: "PUT",
+      body: {
+        id: folderId,
+        type: "folder",
+        title,
+        version: { number: version },
+      },
+    })) as any;
+
+    return {
+      id: data.id,
+      title: data.title,
+      spaceId: current.spaceId,
+      parentId: current.parentId,
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+      createdAt: current.createdAt,
+    };
+  }
+
+  /**
+   * Get direct children of a folder.
+   *
+   * GET /wiki/api/v2/folders/{id}/direct-children
+   *
+   * Returns mixed content types (pages and folders).
+   */
+  async getFolderChildren(
+    folderId: string,
+    options: { limit?: number } = {}
+  ): Promise<FolderChild[]> {
+    const { limit = 100 } = options;
+    const children: FolderChild[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const query: Record<string, string | number | undefined> = { limit };
+      if (cursor) {
+        query.cursor = cursor;
+      }
+
+      const data = (await this.requestV2(`/folders/${folderId}/direct-children`, {
+        query,
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      for (const item of results) {
+        children.push({
+          id: item.id,
+          title: item.title,
+          type: item.type === "folder" ? "folder" : "page",
+          spaceId: item.spaceId,
+          parentId: folderId,
+          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
+        });
+      }
+
+      // v2 API uses cursor-based pagination
+      if (data._links?.next) {
+        // Extract cursor from next link
+        const nextUrl = new URL(data._links.next, this.baseUrl);
+        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
+      } else {
+        break;
+      }
+
+      if (results.length < limit) break;
+    }
+
+    return children;
+  }
+
+  /**
+   * Get all folders in a space.
+   *
+   * GET /wiki/api/v2/spaces/{spaceId}/folders
+   */
+  async getSpaceFolders(
+    spaceId: string,
+    options: { limit?: number } = {}
+  ): Promise<ConfluenceFolder[]> {
+    const { limit = 100 } = options;
+    const folders: ConfluenceFolder[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const query: Record<string, string | number | undefined> = { limit };
+      if (cursor) {
+        query.cursor = cursor;
+      }
+
+      const data = (await this.requestV2(`/spaces/${spaceId}/folders`, {
+        query,
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      for (const item of results) {
+        folders.push({
+          id: item.id,
+          title: item.title,
+          spaceId: item.spaceId,
+          parentId: item.parentId ?? null,
+          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
+          createdAt: item.createdAt,
+        });
+      }
+
+      // v2 API uses cursor-based pagination
+      if (data._links?.next) {
+        const nextUrl = new URL(data._links.next, this.baseUrl);
+        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
+      } else {
+        break;
+      }
+
+      if (results.length < limit) break;
+    }
+
+    return folders;
+  }
+
+  /**
+   * Create a folder in a space.
+   *
+   * POST /wiki/api/v2/folders
+   */
+  async createFolder(params: {
+    spaceId: string;
+    title: string;
+    parentFolderId?: string;
+  }): Promise<ConfluenceFolder> {
+    const { spaceId, title, parentFolderId } = params;
+
+    const body: Record<string, unknown> = {
+      spaceId,
+      title,
+    };
+
+    if (parentFolderId) {
+      body.parentId = parentFolderId;
+    }
+
+    const data = (await this.requestV2("/folders", {
+      method: "POST",
+      body,
+    })) as any;
+
+    return {
+      id: data.id,
+      title: data.title,
+      spaceId: data.spaceId,
+      parentId: data.parentId ?? null,
+      url: data._links?.webui ? `${this.baseUrl}/wiki${data._links.webui}` : undefined,
+      createdAt: data.createdAt,
+    };
+  }
+
+  /**
+   * Delete a folder.
+   *
+   * DELETE /wiki/api/v2/folders/{id}
+   */
+  async deleteFolder(folderId: string): Promise<void> {
+    await this.requestV2(`/folders/${folderId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Move a page into a folder.
+   *
+   * Note: v2 API doesn't support folder as parent directly. We use
+   * PUT /wiki/rest/api/content/{id}/move to move into a folder.
+   */
+  async movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage> {
+    // Use the v1 move endpoint - move page to be a child of the folder
+    await this.request(`/content/${pageId}/move/append/${folderId}`, {
+      method: "PUT",
+    });
+
+    // Fetch the updated page
+    return this.getPage(pageId);
   }
 
   // ============ User API ============

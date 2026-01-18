@@ -46,6 +46,7 @@ nav:
     - Sync: confluence/sync.md
     - Pages: confluence/pages.md
     - Spaces: confluence/spaces.md
+    - Folders: confluence/folders.md
     - Search: confluence/search.md
     - Comments: confluence/comments.md
     - Labels: confluence/labels.md

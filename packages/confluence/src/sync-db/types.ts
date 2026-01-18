@@ -26,6 +26,14 @@ export type ContentStatus =
   | "archived" // Archived (Cloud feature)
   | "historical"; // Previous version (shouldn't be stored, but handle gracefully)
 
+/**
+ * Content type - distinguishes pages from folders.
+ * Folders are Confluence Cloud feature (Sept 2024) - containers with no content.
+ */
+export type ContentType =
+  | "page" // Regular Confluence page with content body
+  | "folder"; // Confluence Cloud folder (container only, no content)
+
 // Import SyncState from atlcli-dir to avoid duplication
 // Re-export for convenience
 import type { SyncState as BaseSyncState } from "../atlcli-dir.js";
@@ -53,8 +61,9 @@ export interface PageRecord {
   baseHash: string;
   syncState: SyncState;
   parentId: string | null;
-  ancestors: string[]; // Array of ancestor page IDs
+  ancestors: string[]; // Array of ancestor page/folder IDs
   hasAttachments: boolean;
+  contentType: ContentType; // 'page' or 'folder'
 
   // Author and timestamps from Confluence
   createdBy: string | null; // User ID who created page
@@ -166,6 +175,7 @@ export interface PageFilter {
   createdAfter?: string;
   pathPrefix?: string; // For subtree queries
   contentStatus?: ContentStatus | ContentStatus[];
+  contentType?: ContentType | ContentType[]; // Filter by page/folder
   isRestricted?: boolean;
   includeInaccessible?: boolean; // Include pages marked as inaccessible (default: false)
   createdBy?: string; // User ID filter
@@ -408,6 +418,7 @@ export function createPageRecord(
     parentId: partial.parentId ?? null,
     ancestors: partial.ancestors ?? [],
     hasAttachments: partial.hasAttachments ?? false,
+    contentType: partial.contentType ?? "page",
     createdBy: partial.createdBy ?? null,
     createdAt: partial.createdAt ?? now,
     lastModifiedBy: partial.lastModifiedBy ?? null,

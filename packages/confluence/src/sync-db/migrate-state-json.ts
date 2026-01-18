@@ -220,6 +220,7 @@ export function convertLegacyStateToExport(state: LegacyState): SyncDbExport {
       parentId: pageState.parentId ?? null,
       ancestors: pageState.ancestors || [],
       hasAttachments: pageState.hasAttachments ?? false,
+      contentType: "page", // Legacy state only had pages, not folders
 
       // New fields - set to defaults during migration
       // Will be populated with real data on next pull

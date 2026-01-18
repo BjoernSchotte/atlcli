@@ -580,6 +580,7 @@ function pageStateToRecord(
     parentId: state.parentId ?? null,
     ancestors: state.ancestors || [],
     hasAttachments: state.hasAttachments ?? false,
+    contentType: existingRecord?.contentType ?? "page",
     // Preserve existing metadata or use defaults
     createdBy: existingRecord?.createdBy ?? null,
     createdAt: existingRecord?.createdAt ?? now,

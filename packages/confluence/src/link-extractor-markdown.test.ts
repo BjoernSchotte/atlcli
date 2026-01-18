@@ -31,6 +31,7 @@ function createMockPageRecord(overrides: Partial<PageRecord> = {}): PageRecord {
     parentId: null,
     ancestors: [],
     hasAttachments: false,
+    contentType: "page",
     createdBy: "user-123",
     createdAt: now,
     lastModifiedBy: "user-123",

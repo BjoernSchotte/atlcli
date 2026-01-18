@@ -40,6 +40,7 @@ describe("link-validator", () => {
     parentId: null,
     ancestors: [],
     hasAttachments: false,
+    contentType: "page",
     createdBy: null,
     createdAt: new Date().toISOString(),
     lastModifiedBy: null,
