@@ -17,7 +17,12 @@ import {
   AtlcliConfigV1,
   AtlcliConfigV2,
   ConfigScope,
+  setPageEditorVersion,
+  getPageEditorVersion,
+  getAllEditorVersions,
 } from "./atlcli-dir.js";
+import { createSyncDb } from "./sync-db/index.js";
+import { createPageRecord } from "./sync-db/types.js";
 
 describe("atlcli-dir", () => {
   let tempDir: string;
@@ -257,6 +262,114 @@ describe("atlcli-dir", () => {
       const atlcliPath = getAtlcliPath(projectRoot!);
       expect(atlcliPath).toBe(join(tempDir, ".atlcli"));
       expect(existsSync(atlcliPath)).toBe(true);
+    });
+  });
+
+  describe("editor version tracking", () => {
+    beforeEach(async () => {
+      await initAtlcliDir(tempDir, {
+        space: "TEAM",
+        baseUrl: "https://example.atlassian.net",
+      });
+      const atlcliPath = getAtlcliPath(tempDir);
+
+      // Create sync.db and add a test page
+      const adapter = await createSyncDb(atlcliPath, { autoMigrate: true });
+      await adapter.upsertPage(
+        createPageRecord({
+          pageId: "123",
+          path: "test.md",
+          title: "Test Page",
+          spaceKey: "TEAM",
+        })
+      );
+      await adapter.close();
+    });
+
+    test("setPageEditorVersion stores v2 editor version", async () => {
+      await setPageEditorVersion(tempDir, "123", "v2");
+      const version = await getPageEditorVersion(tempDir, "123");
+      expect(version).toBe("v2");
+    });
+
+    test("setPageEditorVersion stores v1 editor version", async () => {
+      await setPageEditorVersion(tempDir, "123", "v1");
+      const version = await getPageEditorVersion(tempDir, "123");
+      expect(version).toBe("v1");
+    });
+
+    test("getPageEditorVersion returns null when not set", async () => {
+      const version = await getPageEditorVersion(tempDir, "123");
+      expect(version).toBeNull();
+    });
+
+    test("setPageEditorVersion with null removes the property", async () => {
+      await setPageEditorVersion(tempDir, "123", "v2");
+      expect(await getPageEditorVersion(tempDir, "123")).toBe("v2");
+
+      await setPageEditorVersion(tempDir, "123", null);
+      expect(await getPageEditorVersion(tempDir, "123")).toBeNull();
+    });
+
+    test("getAllEditorVersions returns map of all pages", async () => {
+      // Add another page
+      const atlcliPath = getAtlcliPath(tempDir);
+      const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+      await adapter.upsertPage(
+        createPageRecord({
+          pageId: "456",
+          path: "another.md",
+          title: "Another Page",
+          spaceKey: "TEAM",
+        })
+      );
+      await adapter.close();
+
+      // Set editor versions
+      await setPageEditorVersion(tempDir, "123", "v2");
+      await setPageEditorVersion(tempDir, "456", "v1");
+
+      const versions = await getAllEditorVersions(tempDir);
+      expect(versions.get("123")).toBe("v2");
+      expect(versions.get("456")).toBe("v1");
+    });
+
+    test("getAllEditorVersions returns null for pages without editor property", async () => {
+      // Only set one page's editor version
+      await setPageEditorVersion(tempDir, "123", "v2");
+
+      // Add another page without setting editor version
+      const atlcliPath = getAtlcliPath(tempDir);
+      const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+      await adapter.upsertPage(
+        createPageRecord({
+          pageId: "789",
+          path: "noeditor.md",
+          title: "No Editor",
+          spaceKey: "TEAM",
+        })
+      );
+      await adapter.close();
+
+      const versions = await getAllEditorVersions(tempDir);
+      expect(versions.get("123")).toBe("v2");
+      expect(versions.get("789")).toBeNull();
+    });
+
+    test("functions handle missing sync.db gracefully", async () => {
+      // Use a directory without sync.db
+      const noDbDir = await mkdtemp(join(tmpdir(), "atlcli-nodb-test-"));
+      await mkdir(join(noDbDir, ".atlcli"), { recursive: true });
+
+      // Should not throw, just return default values (pass project root, not .atlcli)
+      const version = await getPageEditorVersion(noDbDir, "123");
+      expect(version).toBeNull();
+
+      const versions = await getAllEditorVersions(noDbDir);
+      expect(versions.size).toBe(0);
+
+      // Cleanup
+      await rm(noDbDir, { recursive: true, force: true });
     });
   });
 });

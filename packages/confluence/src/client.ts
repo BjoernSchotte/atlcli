@@ -2554,6 +2554,62 @@ export class ConfluenceClient {
       latest,
     };
   }
+
+  // ============ Editor Version API ============
+
+  /**
+   * Get the editor version for a page.
+   *
+   * GET /wiki/rest/api/content/{id}?expand=metadata.properties.editor
+   *
+   * @param pageId - The page ID
+   * @returns 'v2' for new editor, 'v1' for legacy, or null if not set
+   */
+  async getEditorVersion(pageId: string): Promise<"v2" | "v1" | null> {
+    const data = (await this.request(`/content/${pageId}`, {
+      query: { expand: "metadata.properties.editor" },
+    })) as any;
+    const value = data.metadata?.properties?.editor?.value;
+    if (value === "v2") return "v2";
+    if (value === "v1") return "v1";
+    return null;
+  }
+
+  /**
+   * Set the editor version for a page.
+   *
+   * Creates or updates the 'editor' content property.
+   *
+   * @param pageId - The page ID
+   * @param version - 'v2' for new editor, 'v1' for legacy
+   */
+  async setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void> {
+    // Try to get existing property to determine if we need POST or PUT
+    try {
+      const existing = (await this.request(
+        `/content/${pageId}/property/editor`
+      )) as any;
+      // Property exists, update it
+      await this.request(`/content/${pageId}/property/editor`, {
+        method: "PUT",
+        body: {
+          key: "editor",
+          value: version,
+          version: { number: existing.version.number + 1 },
+        },
+      });
+    } catch (error) {
+      // Property doesn't exist, create it
+      if (error instanceof Error && error.message.includes("404")) {
+        await this.request(`/content/${pageId}/property/editor`, {
+          method: "POST",
+          body: { key: "editor", value: version },
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
 }
 
 /** Webhook registration info */

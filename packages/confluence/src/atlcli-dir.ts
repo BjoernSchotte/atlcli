@@ -1290,3 +1290,101 @@ export async function detectLinkChangesBatch(
     await adapter.close();
   }
 }
+
+// ============ Editor Version Tracking ============
+
+export type EditorVersion = "v2" | "v1" | null;
+
+/**
+ * Store the editor version for a page in the sync database.
+ * Uses content_properties table with key "editor".
+ * @param dir - Project root directory containing .atlcli/
+ */
+export async function setPageEditorVersion(
+  dir: string,
+  pageId: string,
+  version: EditorVersion
+): Promise<void> {
+  const atlcliPath = join(dir, ".atlcli");
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return; // No sync.db, skip
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    if (version === null) {
+      // Remove the property if null
+      await adapter.deleteContentProperties(pageId);
+    } else {
+      await adapter.setContentProperties(pageId, [
+        {
+          pageId,
+          key: "editor",
+          valueJson: version,
+          version: 1,
+          lastSyncedAt: new Date().toISOString(),
+        },
+      ]);
+    }
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get the editor version for a page from the sync database.
+ * Returns "v2", "v1", or null if not set.
+ * @param dir - Project root directory containing .atlcli/
+ */
+export async function getPageEditorVersion(
+  dir: string,
+  pageId: string
+): Promise<EditorVersion> {
+  const atlcliPath = join(dir, ".atlcli");
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return null;
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    const prop = await adapter.getContentProperty(pageId, "editor");
+    if (prop && (prop.valueJson === "v2" || prop.valueJson === "v1")) {
+      return prop.valueJson as EditorVersion;
+    }
+    return null;
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get editor versions for all pages in the sync database.
+ * Returns a map of pageId -> EditorVersion.
+ * @param dir - Project root directory containing .atlcli/
+ */
+export async function getAllEditorVersions(
+  dir: string
+): Promise<Map<string, EditorVersion>> {
+  const result = new Map<string, EditorVersion>();
+  const atlcliPath = join(dir, ".atlcli");
+
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return result;
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    const pages = await adapter.listPages();
+    for (const page of pages) {
+      const prop = await adapter.getContentProperty(page.pageId, "editor");
+      if (prop && (prop.valueJson === "v2" || prop.valueJson === "v1")) {
+        result.set(page.pageId, prop.valueJson as EditorVersion);
+      } else {
+        result.set(page.pageId, null);
+      }
+    }
+    return result;
+  } finally {
+    await adapter.close();
+  }
+}

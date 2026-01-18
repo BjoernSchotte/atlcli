@@ -698,4 +698,186 @@ describe("ConfluenceClient", () => {
       expect(capturedBody.version.message).toContain("Restored to version 2");
     });
   });
+
+  describe("editor version operations", () => {
+    test("getEditorVersion returns v2 for new editor", async () => {
+      globalThis.fetch = mock((url: string) => {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Test",
+              body: { storage: { value: "" } },
+              version: { number: 1 },
+              space: { key: "TEST" },
+              metadata: {
+                properties: {
+                  editor: { value: "v2" },
+                },
+              },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const version = await client.getEditorVersion("123");
+
+      expect(version).toBe("v2");
+    });
+
+    test("getEditorVersion returns v1 for legacy editor", async () => {
+      globalThis.fetch = mock((url: string) => {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Test",
+              body: { storage: { value: "" } },
+              version: { number: 1 },
+              space: { key: "TEST" },
+              metadata: {
+                properties: {
+                  editor: { value: "v1" },
+                },
+              },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const version = await client.getEditorVersion("123");
+
+      expect(version).toBe("v1");
+    });
+
+    test("getEditorVersion returns null when not set", async () => {
+      globalThis.fetch = mock((url: string) => {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Test",
+              body: { storage: { value: "" } },
+              version: { number: 1 },
+              space: { key: "TEST" },
+              metadata: { properties: {} },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const version = await client.getEditorVersion("123");
+
+      expect(version).toBeNull();
+    });
+
+    test("getEditorVersion expands metadata.properties.editor", async () => {
+      let capturedUrl = "";
+
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "123",
+              title: "Test",
+              metadata: { properties: {} },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.getEditorVersion("123");
+
+      expect(capturedUrl).toContain("expand=metadata.properties.editor");
+    });
+
+    test("setEditorVersion creates property when it does not exist", async () => {
+      let capturedMethod = "";
+      let capturedUrl = "";
+      let capturedBody: any;
+      let callCount = 0;
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        capturedUrl = url;
+        capturedMethod = options.method ?? "GET";
+        callCount++;
+
+        // First call: GET property - returns 404
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ message: "Not found" }), { status: 404 })
+          );
+        }
+
+        // Second call: POST to create property
+        if (options.body) {
+          capturedBody = JSON.parse(options.body as string);
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ key: "editor", value: "v2" }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.setEditorVersion("123", "v2");
+
+      expect(callCount).toBe(2);
+      expect(capturedMethod).toBe("POST");
+      expect(capturedBody.key).toBe("editor");
+      expect(capturedBody.value).toBe("v2");
+    });
+
+    test("setEditorVersion updates property when it exists", async () => {
+      let capturedMethod = "";
+      let capturedBody: any;
+      let callCount = 0;
+
+      globalThis.fetch = mock((url: string, options: RequestInit) => {
+        capturedMethod = options.method ?? "GET";
+        callCount++;
+
+        // First call: GET property - returns existing
+        if (callCount === 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ key: "editor", value: "v1", version: { number: 1 } }),
+              { status: 200 }
+            )
+          );
+        }
+
+        // Second call: PUT to update property
+        if (options.body) {
+          capturedBody = JSON.parse(options.body as string);
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ key: "editor", value: "v2", version: { number: 2 } }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.setEditorVersion("123", "v2");
+
+      expect(callCount).toBe(2);
+      expect(capturedMethod).toBe("PUT");
+      expect(capturedBody.key).toBe("editor");
+      expect(capturedBody.value).toBe("v2");
+      expect(capturedBody.version.number).toBe(2);
+    });
+  });
 });

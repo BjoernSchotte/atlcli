@@ -126,6 +126,10 @@ import {
   createSyncDb,
   hasSyncDb,
   createPageRecord,
+  // Editor version tracking
+  setPageEditorVersion,
+  getAllEditorVersions,
+  type EditorVersion,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
@@ -246,6 +250,9 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
       return;
     case "check":
       await handleCheck(args.slice(1), flags, opts);
+      return;
+    case "convert":
+      await handleDocsConvert(args.slice(1), flags, opts);
       return;
     default:
       output(docsHelp(), opts);
@@ -1105,6 +1112,18 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     });
   }
 
+  // Fetch and store editor versions for pulled pages
+  if (atlcliDir && pageDetails.length > 0) {
+    for (const detail of pageDetails) {
+      try {
+        const editorVersion = await client.getEditorVersion(detail.id);
+        await setPageEditorVersion(atlcliDir, detail.id, editorVersion);
+      } catch {
+        // Silently ignore - editor version is not critical
+      }
+    }
+  }
+
   // Write folder index.md files
   let foldersPulled = 0;
   let foldersRenamed = 0;
@@ -1573,7 +1592,7 @@ atlcli:
   let skipped = 0;
 
   for (const filePath of files) {
-    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl });
+    const result = await pushFile({ client, filePath, space, opts, atlcliDir: atlcliDir || undefined, state, baseUrl: dirConfig?.baseUrl, legacyEditor: hasFlag(flags, "legacy-editor") });
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
     else skipped += 1;
@@ -1762,6 +1781,15 @@ async function handleAdd(args: string[], flags: Record<string, string | boolean 
     parentId: parentId || dirConfig.settings?.defaultParentId || undefined,
   });
 
+  // Set editor version to v2 (new editor) by default, unless --legacy-editor flag is set
+  if (!hasFlag(flags, "legacy-editor")) {
+    try {
+      await client.setEditorVersion(page.id, "v2");
+    } catch {
+      // Silently ignore - editor version is not critical
+    }
+  }
+
   // Add labels if template specified them
   if (labels && labels.length > 0) {
     await client.addLabels(page.id, labels);
@@ -1889,8 +1917,9 @@ async function pushFile(params: {
   atlcliDir?: string;
   state?: AtlcliState;
   baseUrl?: string;
+  legacyEditor?: boolean;
 }): Promise<PushResult> {
-  const { client, filePath, space, opts, atlcliDir, state, baseUrl } = params;
+  const { client, filePath, space, opts, atlcliDir, state, baseUrl, legacyEditor } = params;
 
   // Read file and parse frontmatter
   const rawContent = await readTextFile(filePath);
@@ -2293,6 +2322,15 @@ async function pushFile(params: {
   }
 
   const page = await client.createPage({ spaceKey: targetSpace, title, storage, parentId });
+
+  // Set editor version to v2 (new editor) by default, unless --legacy-editor flag is set
+  if (!legacyEditor) {
+    try {
+      await client.setEditorVersion(page.id, "v2");
+    } catch {
+      // Silently ignore - editor version is not critical
+    }
+  }
 
   // Upload attachments after creating the page
   if (attachmentRefs.length > 0) {
@@ -2710,12 +2748,35 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     }
   }
 
+  // Get editor format stats
+  const editorStats = { v2: 0, v1: 0, unknown: 0 };
+  const legacyPages: Array<{ path: string; id: string; title: string }> = [];
+  if (atlcliDir) {
+    const editorVersions = await getAllEditorVersions(atlcliDir);
+    for (const [pageId, version] of editorVersions) {
+      const pageState = state?.pages[pageId];
+      if (!pageState || pageState.contentType === "folder") continue;
+
+      if (version === "v2") {
+        editorStats.v2++;
+      } else if (version === "v1") {
+        editorStats.v1++;
+        legacyPages.push({ path: pageState.path, id: pageId, title: pageState.title });
+      } else {
+        editorStats.unknown++;
+        legacyPages.push({ path: pageState.path, id: pageId, title: pageState.title });
+      }
+    }
+  }
+
   if (opts.json) {
     const result: Record<string, unknown> = {
       schemaVersion: "1",
       dir,
       stats,
       folderCount,
+      editorFormat: editorStats,
+      legacyPages: legacyPages.length > 0 ? legacyPages : undefined,
       conflicts,
       modified,
       untracked,
@@ -2748,6 +2809,24 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     output(`  conflict:        ${stats.conflict} files`, opts);
     output(`  untracked:       ${stats.untracked} files`, opts);
     output(`  folders:         ${folderCount}`, opts);
+
+    // Editor format stats
+    const totalEditorPages = editorStats.v2 + editorStats.v1 + editorStats.unknown;
+    if (totalEditorPages > 0) {
+      output(`\nEditor format:`, opts);
+      output(`  new editor (v2):    ${editorStats.v2} pages`, opts);
+      output(`  legacy editor (v1): ${editorStats.v1} pages`, opts);
+      output(`  unknown:            ${editorStats.unknown} pages`, opts);
+
+      if (legacyPages.length > 0 && legacyPages.length <= 10) {
+        output(`\nLegacy/unknown editor pages:`, opts);
+        for (const p of legacyPages) {
+          output(`  ${p.path}`, opts);
+        }
+      } else if (legacyPages.length > 10) {
+        output(`\nLegacy/unknown editor: ${legacyPages.length} pages (use --json for full list)`, opts);
+      }
+    }
 
     if (state?.lastSync) {
       output(`\nLast sync: ${state.lastSync}`, opts);
@@ -3051,6 +3130,140 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
   }
 }
 
+/**
+ * Convert pages to a different editor format.
+ * Supports single file, directory (all tracked pages), or by page ID.
+ *
+ * --to-new-editor     Convert to new editor (v2)
+ * --to-legacy-editor  Convert to legacy editor (v1)
+ * --dry-run           Show what would be converted without making changes
+ * --confirm           Required for bulk operations (directory/space)
+ */
+async function handleDocsConvert(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const targetPath = args[0] || ".";
+  const toNewEditor = hasFlag(flags, "to-new-editor");
+  const toLegacyEditor = hasFlag(flags, "to-legacy-editor");
+  const dryRun = hasFlag(flags, "dry-run");
+  const confirm = hasFlag(flags, "confirm");
+
+  if (!toNewEditor && !toLegacyEditor) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Either --to-new-editor or --to-legacy-editor is required.");
+  }
+
+  if (toNewEditor && toLegacyEditor) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Cannot specify both --to-new-editor and --to-legacy-editor.");
+  }
+
+  const targetVersion: "v2" | "v1" = toNewEditor ? "v2" : "v1";
+  const client = await getClient(flags, opts);
+
+  // Resolve path
+  const absPath = resolve(targetPath);
+  const isFile = absPath.endsWith(".md");
+
+  // Find .atlcli directory
+  const atlcliDir = findAtlcliDir(isFile ? dirname(absPath) : absPath);
+  if (!atlcliDir) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Not in an initialized directory. Run 'docs init' first.");
+  }
+
+  const state = await readState(atlcliDir);
+
+  // Collect pages to convert
+  let pagesToConvert: Array<{ pageId: string; path: string; title: string }> = [];
+
+  if (isFile) {
+    // Single file mode
+    const content = await readTextFile(absPath);
+    const { frontmatter } = parseFrontmatter(content);
+
+    if (!frontmatter?.id) {
+      fail(opts, 1, ERROR_CODES.USAGE, "File is not tracked (no page ID in frontmatter).");
+    }
+
+    const relativePath = getRelativePath(atlcliDir, absPath);
+    const title = frontmatter.title || relativePath;
+    pagesToConvert.push({ pageId: frontmatter.id, path: relativePath, title });
+  } else {
+    // Directory mode - all tracked pages
+    if (!confirm && !dryRun) {
+      fail(opts, 1, ERROR_CODES.USAGE, "Bulk conversion requires --confirm flag (or use --dry-run to preview).");
+    }
+
+    for (const [pageId, pageState] of Object.entries(state.pages)) {
+      // Skip folders - they don't have editor format
+      if (pageState.contentType === "folder") continue;
+      pagesToConvert.push({ pageId, path: pageState.path, title: pageState.title });
+    }
+  }
+
+  if (pagesToConvert.length === 0) {
+    output(
+      opts.json
+        ? { schemaVersion: "1", converted: 0, skipped: 0, message: "No pages to convert" }
+        : "No pages to convert.",
+      opts
+    );
+    return;
+  }
+
+  let converted = 0;
+  let skipped = 0;
+  const results: Array<{ pageId: string; path: string; title: string; status: string; fromVersion?: string | null }> = [];
+
+  for (const page of pagesToConvert) {
+    try {
+      const currentVersion = await client.getEditorVersion(page.pageId);
+
+      if (currentVersion === targetVersion) {
+        skipped++;
+        results.push({ pageId: page.pageId, path: page.path, title: page.title, status: "skipped", fromVersion: currentVersion });
+        if (!opts.json && !dryRun) {
+          output(`  ${page.path}: already in ${targetVersion === "v2" ? "new" : "legacy"} format`, opts);
+        }
+        continue;
+      }
+
+      if (dryRun) {
+        results.push({ pageId: page.pageId, path: page.path, title: page.title, status: "would-convert", fromVersion: currentVersion });
+        if (!opts.json) {
+          output(`  [dry-run] ${page.path}: would convert from ${currentVersion ?? "legacy"} to ${targetVersion}`, opts);
+        }
+        converted++;
+        continue;
+      }
+
+      await client.setEditorVersion(page.pageId, targetVersion);
+
+      // Also update local database
+      await setPageEditorVersion(atlcliDir, page.pageId, targetVersion);
+
+      converted++;
+      results.push({ pageId: page.pageId, path: page.path, title: page.title, status: "converted", fromVersion: currentVersion });
+      if (!opts.json) {
+        output(`  ${page.path}: converted from ${currentVersion ?? "legacy"} to ${targetVersion}`, opts);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      results.push({ pageId: page.pageId, path: page.path, title: page.title, status: "error", fromVersion: message });
+      if (!opts.json) {
+        output(`  ${page.path}: error - ${message}`, opts);
+      }
+    }
+  }
+
+  output(
+    opts.json
+      ? { schemaVersion: "1", targetVersion, converted, skipped, dryRun, results }
+      : `\n${dryRun ? "[dry-run] " : ""}Conversion complete: ${converted} converted, ${skipped} skipped`,
+    opts
+  );
+}
+
 function docsHelp(): string {
   return `atlcli wiki docs <command>
 
@@ -3065,6 +3278,8 @@ Commands:
   resolve <file> --accept local|remote|merged        Resolve conflicts
   diff <file>                                        Compare local vs remote
   check [path] [--strict] [--json]                   Validate markdown files
+  convert <path> --to-new-editor [--dry-run]         Convert to new editor (v2)
+  convert <path> --to-legacy-editor [--confirm]      Convert to legacy editor (v1)
 
 Scope options (one required for init/pull/sync):
   --page-id <id>     Single page by ID
@@ -3082,10 +3297,15 @@ Options:
   --strict           Treat warnings as errors (for check and --validate)
   --delete-folders   Confirm deletion of folders removed locally (push)
   --no-auto-create-folders  Don't auto-create folders for directories without index.md
+  --legacy-editor    Create pages in legacy editor format (default: new editor v2)
   --links            Analyze link changes vs stored links (status command)
   --skip-user-check  Skip user status checks during pull (faster)
   --refresh-users    Force re-check all users regardless of cache TTL
   --fetch-contributors  Fetch full contributor history (extra API calls)
+  --to-new-editor    Convert pages to new editor format (v2)
+  --to-legacy-editor Convert pages to legacy editor format (v1)
+  --confirm          Required for bulk conversion operations
+  --dry-run          Preview conversion without making changes
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.
@@ -3117,6 +3337,9 @@ Examples:
   atlcli wiki docs check ./docs                          Check for broken links
   atlcli wiki docs check ./docs --strict                 Treat warnings as errors
   atlcli wiki docs check ./docs --json                   JSON output for CI/agents
+  atlcli wiki docs convert ./docs/page.md --to-new-editor Convert single page
+  atlcli wiki docs convert ./docs --to-new-editor --dry-run Preview bulk conversion
+  atlcli wiki docs convert ./docs --to-new-editor --confirm Bulk convert directory
 
 For sync command options: atlcli wiki docs sync --help
 `;

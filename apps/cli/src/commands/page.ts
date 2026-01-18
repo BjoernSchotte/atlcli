@@ -111,6 +111,9 @@ export async function handlePage(args: string[], flags: Record<string, string | 
     case "unlink-issue":
       await handleUnlinkIssue(flags, opts);
       return;
+    case "convert":
+      await handleConvert(flags, opts);
+      return;
     default:
       output(pageHelp(), opts);
       return;
@@ -1892,6 +1895,67 @@ async function handleUnlinkIssue(
   }
 }
 
+/**
+ * Convert a single page to a different editor format.
+ * --id <id>           Page ID to convert
+ * --to-new-editor     Convert to new editor (v2)
+ * --to-legacy-editor  Convert to legacy editor (v1)
+ */
+async function handleConvert(
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const pageId = getFlag(flags, "id");
+  const toNewEditor = hasFlag(flags, "to-new-editor");
+  const toLegacyEditor = hasFlag(flags, "to-legacy-editor");
+
+  if (!pageId) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--id is required.");
+  }
+
+  if (!toNewEditor && !toLegacyEditor) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Either --to-new-editor or --to-legacy-editor is required.");
+  }
+
+  if (toNewEditor && toLegacyEditor) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Cannot specify both --to-new-editor and --to-legacy-editor.");
+  }
+
+  const targetVersion = toNewEditor ? "v2" : "v1";
+  const client = await getClient(flags, opts);
+
+  try {
+    // Check current editor version
+    const currentVersion = await client.getEditorVersion(pageId);
+
+    if (currentVersion === targetVersion) {
+      output(
+        opts.json
+          ? { schemaVersion: "1", pageId, status: "skipped", reason: `Already in ${targetVersion} format` }
+          : `Page ${pageId} is already in ${targetVersion === "v2" ? "new" : "legacy"} editor format.`,
+        opts
+      );
+      return;
+    }
+
+    // Convert to target version
+    await client.setEditorVersion(pageId, targetVersion);
+
+    // Get page title for output
+    const page = await client.getPage(pageId);
+
+    output(
+      opts.json
+        ? { schemaVersion: "1", pageId, title: page.title, status: "converted", fromVersion: currentVersion, toVersion: targetVersion }
+        : `Converted "${page.title}" to ${targetVersion === "v2" ? "new" : "legacy"} editor format.`,
+      opts
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail(opts, 1, ERROR_CODES.API, `Failed to convert page: ${message}`);
+  }
+}
+
 function pageHelp(): string {
   return `atlcli wiki page <command>
 
@@ -1924,6 +1988,8 @@ Commands:
   link-issue --id <id> --issue <key>   Link a Jira issue to this page
   issues --id <id> [--project <key>]   List Jira issues linked to this page
   unlink-issue --issue <key> --id <id> Remove Jira issue link from page
+  convert --id <id> --to-new-editor    Convert page to new editor (v2)
+  convert --id <id> --to-legacy-editor Convert page to legacy editor (v1)
 
 Options:
   --profile <name>   Use a specific auth profile
@@ -1962,6 +2028,8 @@ Examples:
   atlcli wiki page issues --id 12345
   atlcli wiki page issues --id 12345 --project PROJ
   atlcli wiki page unlink-issue --id 12345 --issue PROJ-100
+  atlcli wiki page convert --id 12345 --to-new-editor
+  atlcli wiki page convert --id 12345 --to-legacy-editor
 
 Run 'atlcli wiki page label' or 'atlcli wiki page comments' for subcommand help.
 `;
