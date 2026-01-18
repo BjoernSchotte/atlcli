@@ -538,7 +538,17 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     editorVersion?: "v2" | "v1" | null;
   }> = [];
 
-  for (const page of pages) {
+  const totalPages = pages.length;
+  const progressInterval = Math.max(1, Math.floor(totalPages / 10)); // Log every 10%
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+
+    // Log progress every 10% (or every page if small set)
+    if (!opts.json && totalPages > 10 && (i + 1) % progressInterval === 0) {
+      output(`Fetching page details... ${i + 1}/${totalPages}`, opts);
+    }
+
     // Use getPageDetails to include user information for Phase 2
     try {
       const detail = await client.getPageDetails(page.id);
