@@ -7,7 +7,7 @@ import {
   getBrokenLinksFromDb,
   getBrokenLinksByPage,
   getBrokenLinkSummary,
-  validatePageLinks,
+  validatePageLinksQuick,
   getExternalLinks,
 } from "./link-validator.js";
 
@@ -185,7 +185,7 @@ describe("link-validator", () => {
     });
   });
 
-  describe("validatePageLinks", () => {
+  describe("validatePageLinksQuick", () => {
     test("returns broken and external links for a page", async () => {
       const page = createTestPage("page-1", "Test Page");
       await adapter.upsertPage(page);
@@ -223,7 +223,7 @@ describe("link-validator", () => {
         },
       ]);
 
-      const result = await validatePageLinks(adapter, page);
+      const result = await validatePageLinksQuick(adapter, page);
       expect(result.broken.length).toBe(1);
       expect(result.external.length).toBe(1);
       expect(result.broken[0].targetPath).toBe("./missing.md");

@@ -8,7 +8,10 @@
  * @module link-validator
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { SyncDbAdapter, LinkRecord, PageRecord } from "./sync-db/types.js";
+import { extractLinksFromMarkdownToRecords } from "./link-extractor-markdown.js";
 
 // Re-export types for backwards compatibility
 export { detectLinkChanges, detectLinkChangesBatch, type LinkChangeResult } from "./atlcli-dir.js";
@@ -107,16 +110,88 @@ export async function getBrokenLinkSummary(adapter: SyncDbAdapter): Promise<Brok
 }
 
 /**
- * Validate all links for a page against the filesystem.
+ * Validate all links for a page by comparing database state with current markdown.
  *
- * This is a higher-level function that combines database queries
- * with filesystem checks for comprehensive validation.
+ * This is the spec-compliant validation function that:
+ * - Extracts links from current markdown content
+ * - Compares with links stored in sync.db
+ * - Identifies added, removed, and broken links
+ *
+ * Used by both `wiki docs status --links` and `audit wiki --broken-links`.
+ *
+ * @param adapter - The sync database adapter
+ * @param pagePath - Absolute path to the markdown file
+ * @param markdownContent - Current markdown content
+ * @param rootDir - Root directory for relative path resolution
+ * @returns Full validation result with stored, current, added, removed, broken links
+ */
+export async function validatePageLinks(
+  adapter: SyncDbAdapter,
+  pagePath: string,
+  markdownContent: string,
+  rootDir: string
+): Promise<LinkValidationResult> {
+  // Get page from database by path
+  const page = await adapter.getPageByPath(pagePath.replace(rootDir + "/", ""));
+  const pageId = page?.pageId ?? "";
+
+  // Get stored links from database
+  const stored = pageId ? await adapter.getOutgoingLinks(pageId) : [];
+
+  // Extract current links from markdown
+  const current = await extractLinksFromMarkdownToRecords(markdownContent, pageId, {
+    filePath: pagePath,
+    rootDir,
+    adapter,
+    includeExternal: true,
+    includeAttachments: true,
+    includeAnchors: false,
+  });
+
+  // Build sets for comparison (by target path for internal, by URL for external)
+  const storedSet = new Set(
+    stored.map((l) => l.targetPageId ?? l.targetPath ?? "")
+  );
+  const currentSet = new Set(
+    current.map((l) => l.targetPageId ?? l.targetPath ?? "")
+  );
+
+  // Find added links (in current but not in stored)
+  const added = current.filter(
+    (l) => !storedSet.has(l.targetPageId ?? l.targetPath ?? "")
+  );
+
+  // Find removed links (in stored but not in current)
+  const removed = stored.filter(
+    (l) => !currentSet.has(l.targetPageId ?? l.targetPath ?? "")
+  );
+
+  // Find broken links (from current extraction)
+  const broken = current.filter((l) => l.isBroken);
+
+  return {
+    pageId,
+    pagePath: pagePath.replace(rootDir + "/", ""),
+    links: {
+      stored,
+      current,
+      added,
+      removed,
+      broken,
+    },
+  };
+}
+
+/**
+ * Simple validation that only queries the database for broken/external links.
+ *
+ * Use this for quick checks when you don't need full link drift detection.
  *
  * @param adapter - The sync database adapter
  * @param page - The page to validate
- * @returns Validation result with broken links
+ * @returns Quick validation result with broken and external links
  */
-export async function validatePageLinks(
+export async function validatePageLinksQuick(
   adapter: SyncDbAdapter,
   page: PageRecord
 ): Promise<{ broken: LinkRecord[]; external: LinkRecord[] }> {
@@ -126,6 +201,38 @@ export async function validatePageLinks(
   const external = outgoing.filter((l) => l.linkType === "external");
 
   return { broken, external };
+}
+
+/**
+ * Validate all links across all pages in a directory.
+ *
+ * Batch validation for comprehensive audit reports.
+ *
+ * @param adapter - The sync database adapter
+ * @param localDir - Root directory containing markdown files
+ * @returns Array of validation results for all pages
+ */
+export async function validateAllLinks(
+  adapter: SyncDbAdapter,
+  localDir: string
+): Promise<LinkValidationResult[]> {
+  const pages = await adapter.listPages({});
+  const results: LinkValidationResult[] = [];
+
+  for (const page of pages) {
+    const filePath = join(localDir, page.path);
+
+    try {
+      const markdownContent = await readFile(filePath, "utf-8");
+      const result = await validatePageLinks(adapter, filePath, markdownContent, localDir);
+      results.push(result);
+    } catch {
+      // File might not exist locally (remote-only page)
+      // Skip silently
+    }
+  }
+
+  return results;
 }
 
 /**

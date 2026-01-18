@@ -115,6 +115,20 @@ export type AuditConfig = {
   >;
 };
 
+/**
+ * Registered project configuration for --global audit flag.
+ */
+export type ProjectConfig = {
+  /** Path to the project's .atlcli directory */
+  path: string;
+  /** Confluence space key */
+  space?: string;
+  /** Jira project key */
+  project?: string;
+  /** Optional label to identify this project */
+  label?: string;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
@@ -130,6 +144,8 @@ export type Config = {
   sync?: SyncConfig;
   /** Audit feature configuration */
   audit?: AuditConfig;
+  /** Registered projects for --global audit flag */
+  projects?: ProjectConfig[];
   /** @deprecated Use 'global' instead. Kept for migration. */
   defaults?: DefaultsConfig;
 };

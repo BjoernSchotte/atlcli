@@ -154,7 +154,11 @@ export function formatTable(result: AuditResult): string {
     result.summary.restricted +
     result.summary.drafts +
     result.summary.archived +
-    result.summary.highChurn;
+    result.summary.highChurn +
+    result.summary.unsynced +
+    result.summary.unsyncedStale.high +
+    result.summary.unsyncedStale.medium +
+    result.summary.unsyncedStale.low;
 
   if (totalIssues === 0 && result.summary.externalLinks === 0) {
     lines.push("No issues found.");
