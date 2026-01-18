@@ -26,6 +26,7 @@ import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
+import { handleAudit } from "./commands/audit.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = getCurrentVersion();
@@ -138,6 +139,9 @@ async function main(): Promise<void> {
         break;
       case "jira":
         await handleJira(rest, parsed.flags, opts);
+        break;
+      case "audit":
+        await handleAudit(rest, parsed.flags, opts);
         break;
       case "log":
         await handleLog(rest, parsed.flags, opts);
