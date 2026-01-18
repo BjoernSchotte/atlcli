@@ -65,6 +65,7 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 - Save feature plans to `spec/` directory for complex features
 - Spawn multiple research agents in parallel for complex topics
 - Use plan mode for non-trivial features before implementing
+- At the end of each plan, give me a list of unresolved questions to answer, if any. Use AskUserQuestion tool.
 
 ### Releasing
 
