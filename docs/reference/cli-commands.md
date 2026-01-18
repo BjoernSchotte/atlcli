@@ -97,6 +97,7 @@ atlcli wiki docs pull <dir> --label <name>   # Pull pages with label
 atlcli wiki docs push <dir>                  # Push to Confluence
 atlcli wiki docs push <dir> --dry-run        # Preview changes
 atlcli wiki docs push <dir> --force          # Force overwrite
+atlcli wiki docs push <dir> --legacy-editor  # Use legacy editor (v1)
 atlcli wiki docs sync <dir> --watch          # Watch and sync
 atlcli wiki docs status <dir>                # Show sync status
 atlcli wiki docs add <dir> --template <name> # Add page from template
@@ -104,6 +105,10 @@ atlcli wiki docs diff <dir>                  # Show local vs remote diff (title 
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
 atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
 atlcli wiki docs preview <dir>               # Preview markdown rendering
+atlcli wiki docs convert <file> --to-new-editor    # Convert to v2 editor
+atlcli wiki docs convert <file> --to-legacy-editor # Convert to v1 editor
+atlcli wiki docs convert <dir> --to-new-editor --dry-run  # Preview bulk conversion
+atlcli wiki docs convert <dir> --to-new-editor --confirm  # Bulk convert directory
 ```
 
 ### Audit
@@ -182,6 +187,8 @@ atlcli wiki page sort --id <id> --by modified --reverse
 atlcli wiki page archive --id <id> --confirm
 atlcli wiki page archive --cql <query> --dry-run
 atlcli wiki page open <id>              # Open page in browser
+atlcli wiki page convert --id <id> --to-new-editor    # Convert to v2 editor
+atlcli wiki page convert --id <id> --to-legacy-editor # Convert to v1 editor
 
 # Cross-product linking (Confluence ↔ Jira)
 atlcli wiki page link-issue --id <id> --issue <key>  # Link Jira issue to page
