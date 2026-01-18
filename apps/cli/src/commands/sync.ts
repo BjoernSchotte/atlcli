@@ -104,7 +104,7 @@ export async function handleSync(
   let resolvedSpaceKey: string | undefined;
 
   // Get directory path first to check for config
-  const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
+  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
 
   if (parsedScope) {
     // Use scope from flags
