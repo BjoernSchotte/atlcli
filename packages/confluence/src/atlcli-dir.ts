@@ -11,10 +11,15 @@
 import { join, dirname, relative, resolve } from "path";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile, unlink } from "fs/promises";
+import { createSyncDb, hasSyncDb, getStorageType } from "./sync-db/index.js";
+import type { SyncDbAdapter, PageRecord, AttachmentRecord, LinkRecord } from "./sync-db/types.js";
+import { extractLinksFromStorage } from "./link-extractor-storage.js";
+import { extractLinksFromMarkdown, compareLinkSets, type MarkdownLinkWithResolution } from "./link-extractor-markdown.js";
 
 const ATLCLI_DIR = ".atlcli";
 const CONFIG_FILE = "config.json";
 const STATE_FILE = "state.json";
+const SYNC_DB_FILE = "sync.db";
 const CACHE_DIR = "cache";
 
 /** Threshold for large file warnings (10MB) */
@@ -328,10 +333,22 @@ export function migrateConfigToV2(config: AtlcliConfigV1): AtlcliConfigV2 {
 }
 
 /**
- * Read state from .atlcli/state.json
+ * Read state from sync database (preferred) or .atlcli/state.json (fallback).
+ *
+ * Uses SQLite sync.db when available, falls back to state.json for legacy directories.
+ * Auto-migration from state.json to sync.db happens on first write.
  */
 export async function readState(dir: string): Promise<AtlcliState> {
-  const statePath = join(dir, ATLCLI_DIR, STATE_FILE);
+  const atlcliPath = join(dir, ATLCLI_DIR);
+  const syncDbPath = join(atlcliPath, SYNC_DB_FILE);
+  const statePath = join(atlcliPath, STATE_FILE);
+
+  // Prefer sync.db if it exists
+  if (existsSync(syncDbPath)) {
+    return readStateFromAdapter(atlcliPath);
+  }
+
+  // Fall back to state.json
   try {
     const content = await readFile(statePath, "utf-8");
     return JSON.parse(content) as AtlcliState;
@@ -347,14 +364,196 @@ export async function readState(dir: string): Promise<AtlcliState> {
 }
 
 /**
- * Write state to .atlcli/state.json
+ * Read state from sync-db adapter.
+ */
+async function readStateFromAdapter(atlcliPath: string): Promise<AtlcliState> {
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+
+  try {
+    const pages = await adapter.listPages();
+    const lastSync = await adapter.getMeta("lastSync");
+
+    const state: AtlcliState = {
+      schemaVersion: 1,
+      lastSync,
+      pages: {},
+      pathIndex: {},
+    };
+
+    for (const page of pages) {
+      state.pages[page.pageId] = pageRecordToState(page);
+      state.pathIndex[page.path] = page.pageId;
+
+      // Load attachments
+      const attachments = await adapter.getAttachmentsByPage(page.pageId);
+      for (const att of attachments) {
+        state.pages[page.pageId].attachments = state.pages[page.pageId].attachments || {};
+        state.pages[page.pageId].attachments![att.attachmentId] = {
+          attachmentId: att.attachmentId,
+          filename: att.filename,
+          localPath: att.localPath,
+          mediaType: att.mediaType,
+          fileSize: att.fileSize,
+          version: att.version,
+          localHash: att.localHash,
+          remoteHash: att.remoteHash,
+          baseHash: att.baseHash,
+          lastSyncedAt: att.lastSyncedAt,
+          syncState: att.syncState,
+        };
+      }
+    }
+
+    return state;
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Convert PageRecord to PageState format.
+ */
+function pageRecordToState(record: PageRecord): PageState {
+  return {
+    path: record.path,
+    title: record.title,
+    spaceKey: record.spaceKey,
+    version: record.version,
+    lastSyncedAt: record.lastSyncedAt,
+    localHash: record.localHash,
+    remoteHash: record.remoteHash,
+    baseHash: record.baseHash,
+    syncState: record.syncState,
+    parentId: record.parentId,
+    ancestors: record.ancestors,
+    hasAttachments: record.hasAttachments,
+    attachments: {},
+  };
+}
+
+/**
+ * Write state to sync database (preferred) or .atlcli/state.json (fallback).
+ *
+ * Automatically migrates to sync.db on first write if state.json exists.
  */
 export async function writeState(
   dir: string,
   state: AtlcliState
 ): Promise<void> {
-  const statePath = join(dir, ATLCLI_DIR, STATE_FILE);
-  await writeFile(statePath, JSON.stringify(state, null, 2) + "\n");
+  const atlcliPath = join(dir, ATLCLI_DIR);
+  const syncDbPath = join(atlcliPath, SYNC_DB_FILE);
+  const statePath = join(atlcliPath, STATE_FILE);
+
+  // Always use sync.db (creates it if needed, auto-migrates from state.json)
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: true });
+
+  try {
+    await writeStateToAdapter(adapter, state);
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Write state to sync-db adapter.
+ */
+async function writeStateToAdapter(
+  adapter: SyncDbAdapter,
+  state: AtlcliState
+): Promise<void> {
+  // Update lastSync metadata
+  if (state.lastSync) {
+    await adapter.setMeta("lastSync", state.lastSync);
+  }
+
+  // Get existing pages to detect deletions
+  const existingPages = await adapter.listPages();
+  const existingPageIds = new Set(existingPages.map((p) => p.pageId));
+  const newPageIds = new Set(Object.keys(state.pages));
+
+  // Delete removed pages
+  for (const pageId of existingPageIds) {
+    if (!newPageIds.has(pageId)) {
+      await adapter.deletePage(pageId);
+    }
+  }
+
+  // Upsert pages and attachments
+  for (const [pageId, pageState] of Object.entries(state.pages)) {
+    const existing = await adapter.getPage(pageId);
+    const record = pageStateToRecord(pageId, pageState, existing);
+    await adapter.upsertPage(record);
+
+    // Handle attachments
+    const existingAttachments = await adapter.getAttachmentsByPage(pageId);
+    const existingAttIds = new Set(existingAttachments.map((a) => a.attachmentId));
+    const newAttIds = new Set(Object.keys(pageState.attachments || {}));
+
+    // Delete removed attachments
+    for (const attId of existingAttIds) {
+      if (!newAttIds.has(attId)) {
+        await adapter.deleteAttachment(attId);
+      }
+    }
+
+    // Upsert attachments
+    for (const [attId, attState] of Object.entries(pageState.attachments || {})) {
+      const attRecord: AttachmentRecord = {
+        attachmentId: attId,
+        pageId,
+        filename: attState.filename,
+        localPath: attState.localPath,
+        mediaType: attState.mediaType,
+        fileSize: attState.fileSize,
+        version: attState.version,
+        localHash: attState.localHash,
+        remoteHash: attState.remoteHash,
+        baseHash: attState.baseHash,
+        lastSyncedAt: attState.lastSyncedAt,
+        syncState: attState.syncState,
+      };
+      await adapter.upsertAttachment(attRecord);
+    }
+  }
+}
+
+/**
+ * Convert PageState to PageRecord format.
+ */
+function pageStateToRecord(
+  pageId: string,
+  state: PageState,
+  existingRecord?: PageRecord | null
+): PageRecord {
+  const now = new Date().toISOString();
+  return {
+    pageId,
+    path: state.path,
+    title: state.title,
+    spaceKey: state.spaceKey,
+    version: state.version,
+    lastSyncedAt: state.lastSyncedAt,
+    localHash: state.localHash,
+    remoteHash: state.remoteHash,
+    baseHash: state.baseHash,
+    syncState: state.syncState,
+    parentId: state.parentId ?? null,
+    ancestors: state.ancestors || [],
+    hasAttachments: state.hasAttachments ?? false,
+    // Preserve existing metadata or use defaults
+    createdBy: existingRecord?.createdBy ?? null,
+    createdAt: existingRecord?.createdAt ?? now,
+    lastModifiedBy: existingRecord?.lastModifiedBy ?? null,
+    lastModified: existingRecord?.lastModified ?? null,
+    contentStatus: existingRecord?.contentStatus ?? "current",
+    versionCount: existingRecord?.versionCount ?? state.version,
+    wordCount: existingRecord?.wordCount ?? null,
+    isRestricted: existingRecord?.isRestricted ?? false,
+    syncCreatedAt: existingRecord?.syncCreatedAt ?? now,
+    syncUpdatedAt: now,
+    remoteInaccessibleAt: existingRecord?.remoteInaccessibleAt ?? null,
+    remoteInaccessibleReason: existingRecord?.remoteInaccessibleReason ?? null,
+  };
 }
 
 /**
@@ -702,4 +901,348 @@ export function getAttachmentsDirName(pageFilename: string): string {
  */
 export function getAttachmentsDir(pageDir: string, pageFilename: string): string {
   return join(pageDir, getAttachmentsDirName(pageFilename));
+}
+
+// ============ Link Storage Functions ============
+
+/**
+ * Store extracted links for a page in the sync database.
+ *
+ * Extracts links from Confluence storage format and stores them in the database.
+ * This should be called during pull operations when page content is fetched.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param pageId - ID of the source page
+ * @param storage - Confluence storage format content (XHTML)
+ */
+export async function storePageLinks(
+  dir: string,
+  pageId: string,
+  storage: string
+): Promise<void> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  // Only store links if using sync.db (not legacy state.json)
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return;
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    const links = extractLinksFromStorage(storage, pageId);
+    await adapter.setPageLinks(pageId, links);
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Store links for multiple pages in a batch.
+ * More efficient than calling storePageLinks repeatedly.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param pages - Array of { pageId, storage } objects
+ */
+export async function storePageLinksBatch(
+  dir: string,
+  pages: Array<{ pageId: string; storage: string }>
+): Promise<void> {
+  if (pages.length === 0) return;
+
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  // Only store links if using sync.db (not legacy state.json)
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return;
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    for (const { pageId, storage } of pages) {
+      const links = extractLinksFromStorage(storage, pageId);
+      await adapter.setPageLinks(pageId, links);
+    }
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get outgoing links from a page.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param pageId - ID of the source page
+ * @returns Array of link records, or empty array if not using sync.db
+ */
+export async function getOutgoingLinks(
+  dir: string,
+  pageId: string
+): Promise<LinkRecord[]> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return [];
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    return await adapter.getOutgoingLinks(pageId);
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get incoming links to a page.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param pageId - ID of the target page
+ * @returns Array of link records, or empty array if not using sync.db
+ */
+export async function getIncomingLinks(
+  dir: string,
+  pageId: string
+): Promise<LinkRecord[]> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return [];
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    return await adapter.getIncomingLinks(pageId);
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get orphaned pages (pages with no incoming links).
+ *
+ * @param dir - Directory containing .atlcli/
+ * @returns Array of page records that have no incoming links
+ */
+export async function getOrphanedPages(
+  dir: string
+): Promise<PageRecord[]> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return [];
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    return await adapter.getOrphanedPages();
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Get broken links (links pointing to non-existent pages).
+ *
+ * @param dir - Directory containing .atlcli/
+ * @returns Array of link records that are broken
+ */
+export async function getBrokenLinks(
+  dir: string
+): Promise<LinkRecord[]> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return [];
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    return await adapter.getBrokenLinks();
+  } finally {
+    await adapter.close();
+  }
+}
+
+// ============ Link Change Detection Functions ============
+
+/**
+ * Result of comparing current links with stored links.
+ */
+export interface LinkChangeResult {
+  /** Page ID being checked */
+  pageId: string;
+  /** File path relative to root */
+  filePath: string;
+  /** Links added locally (not in stored links) */
+  added: MarkdownLinkWithResolution[];
+  /** Links removed locally (in stored but not current) */
+  removed: LinkRecord[];
+  /** Whether there are any link changes */
+  hasChanges: boolean;
+  /** Links that are broken (target not found) */
+  broken: MarkdownLinkWithResolution[];
+}
+
+/**
+ * Detect link changes between current markdown and stored links.
+ *
+ * Used during `wiki docs status` and `wiki docs push` for local change detection.
+ * Compares links extracted from current markdown with links stored in the database.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param filePath - Absolute path to the markdown file
+ * @param pageId - Page ID for the file
+ * @param markdownContent - Current markdown content
+ * @returns Link change result
+ */
+export async function detectLinkChanges(
+  dir: string,
+  filePath: string,
+  pageId: string,
+  markdownContent: string
+): Promise<LinkChangeResult> {
+  const atlcliPath = join(dir, ATLCLI_DIR);
+  const result: LinkChangeResult = {
+    pageId,
+    filePath: relative(dir, filePath),
+    added: [],
+    removed: [],
+    hasChanges: false,
+    broken: [],
+  };
+
+  // Only works if sync.db exists
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return result;
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    // Extract current links from markdown (with path resolution)
+    const currentLinks = await extractLinksFromMarkdown(markdownContent, {
+      filePath,
+      rootDir: dir,
+      adapter,
+      includeExternal: false, // Only internal links for change detection
+      includeAttachments: false,
+      includeAnchors: false,
+    });
+
+    // Get stored links from database
+    const storedLinks = await adapter.getOutgoingLinks(pageId);
+
+    // Filter stored links to only internal links
+    const storedInternalLinks = storedLinks.filter((l) => l.linkType === "internal");
+
+    // Compare links by target page ID
+    const currentTargetIds = new Set(
+      currentLinks
+        .filter((l) => l.resolvedPageId)
+        .map((l) => l.resolvedPageId!)
+    );
+    const storedTargetIds = new Set(
+      storedInternalLinks
+        .filter((l) => l.targetPageId)
+        .map((l) => l.targetPageId!)
+    );
+
+    // Find added links (in current but not in stored)
+    result.added = currentLinks.filter(
+      (l) => l.resolvedPageId && !storedTargetIds.has(l.resolvedPageId)
+    );
+
+    // Find removed links (in stored but not in current)
+    result.removed = storedInternalLinks.filter(
+      (l) => l.targetPageId && !currentTargetIds.has(l.targetPageId)
+    );
+
+    // Find broken links
+    result.broken = currentLinks.filter((l) => l.isBroken);
+
+    result.hasChanges = result.added.length > 0 || result.removed.length > 0;
+
+    return result;
+  } finally {
+    await adapter.close();
+  }
+}
+
+/**
+ * Detect link changes for multiple files in a batch.
+ *
+ * @param dir - Directory containing .atlcli/
+ * @param files - Array of { filePath, pageId, markdownContent } objects
+ * @returns Array of link change results (only files with changes or broken links)
+ */
+export async function detectLinkChangesBatch(
+  dir: string,
+  files: Array<{ filePath: string; pageId: string; markdownContent: string }>
+): Promise<LinkChangeResult[]> {
+  if (files.length === 0) return [];
+
+  const atlcliPath = join(dir, ATLCLI_DIR);
+
+  // Only works if sync.db exists
+  if (!existsSync(join(atlcliPath, SYNC_DB_FILE))) {
+    return [];
+  }
+
+  const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+  try {
+    const results: LinkChangeResult[] = [];
+
+    for (const { filePath, pageId, markdownContent } of files) {
+      // Extract current links from markdown (with path resolution)
+      const currentLinks = await extractLinksFromMarkdown(markdownContent, {
+        filePath,
+        rootDir: dir,
+        adapter,
+        includeExternal: false,
+        includeAttachments: false,
+        includeAnchors: false,
+      });
+
+      // Get stored links from database
+      const storedLinks = await adapter.getOutgoingLinks(pageId);
+      const storedInternalLinks = storedLinks.filter((l) => l.linkType === "internal");
+
+      // Compare links
+      const currentTargetIds = new Set(
+        currentLinks
+          .filter((l) => l.resolvedPageId)
+          .map((l) => l.resolvedPageId!)
+      );
+      const storedTargetIds = new Set(
+        storedInternalLinks
+          .filter((l) => l.targetPageId)
+          .map((l) => l.targetPageId!)
+      );
+
+      const added = currentLinks.filter(
+        (l) => l.resolvedPageId && !storedTargetIds.has(l.resolvedPageId)
+      );
+      const removed = storedInternalLinks.filter(
+        (l) => l.targetPageId && !currentTargetIds.has(l.targetPageId)
+      );
+      const broken = currentLinks.filter((l) => l.isBroken);
+
+      const hasChanges = added.length > 0 || removed.length > 0;
+
+      // Only include files with changes or broken links
+      if (hasChanges || broken.length > 0) {
+        results.push({
+          pageId,
+          filePath: relative(dir, filePath),
+          added,
+          removed,
+          hasChanges,
+          broken,
+        });
+      }
+    }
+
+    return results;
+  } finally {
+    await adapter.close();
+  }
 }

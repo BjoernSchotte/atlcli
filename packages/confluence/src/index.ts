@@ -14,5 +14,7 @@ export * from "./poller.js";
 export * from "./reorder.js";
 export * from "./scope.js";
 export * from "./sync-db/index.js";
+export * from "./sync-state-manager.js";
+export * from "./user-fetcher.js";
 export * from "./validation.js";
 export * from "./webhook-server.js";

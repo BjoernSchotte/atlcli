@@ -8,6 +8,7 @@ import {
   type MarkdownLink,
 } from "./links.js";
 import type { AtlcliState } from "./atlcli-dir.js";
+import type { SyncDbAdapter } from "./sync-db/types.js";
 
 /** Severity of validation issues */
 export type ValidationSeverity = "error" | "warning";
@@ -54,6 +55,8 @@ export interface ValidationOptions {
   checkMacroSyntax?: boolean;
   checkPageSize?: boolean;
   maxPageSizeKb?: number;
+  /** Database adapter for enhanced link validation (resolves paths to page IDs) */
+  adapter?: SyncDbAdapter;
 }
 
 const DEFAULT_OPTIONS: ValidationOptions = {
@@ -79,7 +82,7 @@ export function validateFile(
 
   // Check broken links
   if (opts.checkBrokenLinks) {
-    const linkIssues = validateLinks(filePath, content, state, atlcliDir);
+    const linkIssues = validateLinks(filePath, content, state, atlcliDir, opts.adapter);
     issues.push(...linkIssues);
   }
 
@@ -153,7 +156,8 @@ function validateLinks(
   filePath: string,
   content: string,
   state: AtlcliState | null,
-  atlcliDir: string | null
+  atlcliDir: string | null,
+  adapter?: SyncDbAdapter
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const links = extractLinks(content);
@@ -173,7 +177,7 @@ function validateLinks(
 
     // Validate relative-path links
     if (link.type === "relative-path") {
-      const issue = validateRelativeLink(link, filePath, baseDir, state, relPath);
+      const issue = validateRelativeLink(link, filePath, baseDir, state, relPath, adapter);
       if (issue) {
         issues.push(issue);
       }
@@ -191,7 +195,8 @@ function validateRelativeLink(
   fromFile: string,
   baseDir: string,
   state: AtlcliState | null,
-  relPath: string
+  relPath: string,
+  _adapter?: SyncDbAdapter
 ): ValidationIssue | null {
   const targetPath = getPathWithoutAnchor(link.target);
 

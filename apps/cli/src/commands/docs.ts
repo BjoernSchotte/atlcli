@@ -106,6 +106,16 @@ import {
   validateDirectory,
   formatValidationReport,
   ValidationResult,
+  // Link storage
+  storePageLinksBatch,
+  // Link change detection
+  detectLinkChangesBatch,
+  type LinkChangeResult,
+  // User and contributor handling
+  checkUsersFromPull,
+  createContributorRecords,
+  fetchAllContributorsForPages,
+  type UserCheckOptions,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
@@ -321,6 +331,11 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const force = hasFlag(flags, "force");
   const labelFilter = getFlag(flags, "label");
 
+  // Phase 2: User and contributor flags
+  const skipUserCheck = hasFlag(flags, "skip-user-check");
+  const refreshUsers = hasFlag(flags, "refresh-users");
+  const fetchContributors = hasFlag(flags, "fetch-contributors");
+
   // Check if directory is initialized
   let atlcliDir = findAtlcliDir(outDir);
   let dirConfig: AtlcliConfig | null = null;
@@ -444,10 +459,15 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     spaceKey: string;
     parentId: string | null;
     ancestors: { id: string; title: string }[];
+    createdBy?: { accountId?: string; displayName?: string };
+    modifiedBy?: { accountId?: string; displayName?: string };
+    created?: string;
+    modified?: string;
   }> = [];
 
   for (const page of pages) {
-    const detail = await client.getPage(page.id);
+    // Use getPageDetails to include user information for Phase 2
+    const detail = await client.getPageDetails(page.id);
     pageDetails.push({
       id: detail.id,
       title: detail.title,
@@ -456,6 +476,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       spaceKey: detail.spaceKey ?? space!,
       parentId: detail.parentId ?? null,
       ancestors: detail.ancestors ?? [],
+      createdBy: detail.createdBy,
+      modifiedBy: detail.modifiedBy,
+      created: detail.created,
+      modified: detail.modified,
     });
   }
 
@@ -794,6 +818,73 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   if (state && atlcliDir) {
     state.lastSync = new Date().toISOString();
     await writeState(atlcliDir, state);
+
+    // Extract and store links from all pulled pages (Phase 1 link graph population)
+    // Uses batch operation for efficiency - only runs if sync.db exists
+    const linksData = pageDetails.map((p) => ({ pageId: p.id, storage: p.storage }));
+    await storePageLinksBatch(atlcliDir, linksData);
+
+    // Phase 2: User and contributor handling
+    // Open adapter once for all Phase 2 operations
+    const { createSyncDb } = await import("@atlcli/confluence");
+    const adapter = await createSyncDb(join(atlcliDir, ".atlcli"), { autoMigrate: false });
+    try {
+      // Check user statuses (respects TTL caching)
+      // Use type assertion since checkUsersFromPull handles optional values via optional chaining
+      const userCheckOpts: UserCheckOptions = {
+        skipUserCheck,
+        refreshUsers,
+      };
+      const userCheckResult = await checkUsersFromPull(
+        pageDetails as import("@atlcli/confluence").ConfluencePageDetails[],
+        client,
+        adapter,
+        userCheckOpts
+      );
+
+      if (!opts.json && userCheckResult.checked > 0) {
+        output(`Checked ${userCheckResult.checked} user(s)`, opts);
+      }
+
+      // Populate contributors table (default: creator + last modifier)
+      // This uses data already in pageDetails, no extra API calls
+      for (const page of pageDetails) {
+        const contributors = createContributorRecords(
+          page as import("@atlcli/confluence").ConfluencePageDetails,
+          page.id
+        );
+        if (contributors.length > 0) {
+          await adapter.setPageContributors(page.id, contributors);
+        }
+      }
+
+      // Fetch full contributor history if requested (requires additional API calls)
+      if (fetchContributors) {
+        if (!opts.json) {
+          output(`Fetching full contributor history...`, opts);
+        }
+        const contributorResults = await fetchAllContributorsForPages(
+          pageDetails.map((p) => p.id),
+          client,
+          { concurrency: 3 }
+        );
+
+        // Store full contributor data in database
+        for (const [pageId, result] of contributorResults) {
+          if (result.contributors.length > 0) {
+            await adapter.setPageContributors(pageId, result.contributors);
+          }
+        }
+
+        if (!opts.json) {
+          const totalContributors = Array.from(contributorResults.values())
+            .reduce((sum, r) => sum + r.contributors.length, 0);
+          output(`Found ${totalContributors} contributor(s) across ${contributorResults.size} page(s)`, opts);
+        }
+      }
+    } finally {
+      await adapter.close();
+    }
   }
 
   const pullResults: Record<string, unknown> = { pulled, skipped, moved, outDir };
@@ -1643,6 +1734,7 @@ function titleFromFilename(path: string): string {
  */
 async function handleStatus(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
+  const checkLinks = hasFlag(flags, "links");
 
   // Check for .atlcli directory
   const atlcliDir = findAtlcliDir(dir);
@@ -1666,6 +1758,9 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
   const conflicts: { file: string; id?: string }[] = [];
   const modified: { file: string; type: string }[] = [];
   const untracked: string[] = [];
+
+  // Collect file data for link change detection
+  const trackedFiles: Array<{ filePath: string; pageId: string; markdownContent: string }> = [];
 
   for (const filePath of files) {
     const relativePath = atlcliDir ? getRelativePath(atlcliDir, filePath) : filePath;
@@ -1691,6 +1786,11 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       stats.untracked++;
       untracked.push(relativePath);
       continue;
+    }
+
+    // Collect tracked files for link change detection
+    if (checkLinks && frontmatter?.id) {
+      trackedFiles.push({ filePath, pageId: frontmatter.id, markdownContent });
     }
 
     if (pageState) {
@@ -1730,8 +1830,23 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     }
   }
 
+  // Detect link changes if --links flag is set
+  let linkChanges: LinkChangeResult[] = [];
+  if (checkLinks && atlcliDir && trackedFiles.length > 0) {
+    linkChanges = await detectLinkChangesBatch(atlcliDir, trackedFiles);
+  }
+
+  // Compute link stats
+  const linkStats = {
+    filesWithChanges: linkChanges.filter((l) => l.hasChanges).length,
+    filesWithBrokenLinks: linkChanges.filter((l) => l.broken.length > 0).length,
+    totalAdded: linkChanges.reduce((sum, l) => sum + l.added.length, 0),
+    totalRemoved: linkChanges.reduce((sum, l) => sum + l.removed.length, 0),
+    totalBroken: linkChanges.reduce((sum, l) => sum + l.broken.length, 0),
+  };
+
   if (opts.json) {
-    output({
+    const result: Record<string, unknown> = {
       schemaVersion: "1",
       dir,
       stats,
@@ -1743,7 +1858,21 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
         hasAtlcliIgnore: ignoreResult.hasAtlcliIgnore,
         hasGitIgnore: ignoreResult.hasGitIgnore,
       },
-    }, opts);
+    };
+
+    // Include link changes if --links flag was used
+    if (checkLinks) {
+      result.linkStats = linkStats;
+      result.linkChanges = linkChanges.map((l) => ({
+        file: l.filePath,
+        pageId: l.pageId,
+        added: l.added.map((a) => ({ target: a.target, resolvedPageId: a.resolvedPageId })),
+        removed: l.removed.map((r) => ({ targetPageId: r.targetPageId, targetPath: r.targetPath })),
+        broken: l.broken.map((b) => ({ target: b.target, line: b.line })),
+      }));
+    }
+
+    output(result, opts);
   } else {
     output(`Sync status for ${dir}:\n`, opts);
     output(`  synced:          ${stats.synced} files`, opts);
@@ -1777,6 +1906,38 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       }
     } else if (untracked.length > 10) {
       output(`\nUntracked: ${untracked.length} files (use --json for full list)`, opts);
+    }
+
+    // Show link changes if --links flag was used
+    if (checkLinks) {
+      output(`\nLink analysis:`, opts);
+      output(`  files with link changes: ${linkStats.filesWithChanges}`, opts);
+      output(`  files with broken links: ${linkStats.filesWithBrokenLinks}`, opts);
+
+      if (linkStats.totalAdded > 0 || linkStats.totalRemoved > 0) {
+        output(`  links added:   ${linkStats.totalAdded}`, opts);
+        output(`  links removed: ${linkStats.totalRemoved}`, opts);
+      }
+
+      if (linkStats.totalBroken > 0) {
+        output(`  broken links:  ${linkStats.totalBroken}`, opts);
+      }
+
+      // Show details for files with changes or broken links
+      for (const change of linkChanges) {
+        if (change.hasChanges || change.broken.length > 0) {
+          output(`\n  ${change.filePath}:`, opts);
+          for (const added of change.added) {
+            output(`    + ${added.target}`, opts);
+          }
+          for (const removed of change.removed) {
+            output(`    - ${removed.targetPath || removed.targetPageId}`, opts);
+          }
+          for (const broken of change.broken) {
+            output(`    ! broken: ${broken.target} (line ${broken.line})`, opts);
+          }
+        }
+      }
     }
   }
 }
@@ -1975,7 +2136,7 @@ Commands:
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
-  status [dir]                                       Show sync state
+  status [dir] [--links]                             Show sync state (--links for link analysis)
   resolve <file> --accept local|remote|merged        Resolve conflicts
   diff <file>                                        Compare local vs remote
   check [path] [--strict] [--json]                   Validate markdown files
@@ -1994,6 +2155,10 @@ Options:
   --no-attachments   Skip downloading attachments
   --validate         Run validation before push (fail on errors)
   --strict           Treat warnings as errors (for check and --validate)
+  --links            Analyze link changes vs stored links (status command)
+  --skip-user-check  Skip user status checks during pull (faster)
+  --refresh-users    Force re-check all users regardless of cache TTL
+  --fetch-contributors  Fetch full contributor history (extra API calls)
 
 Files use YAML frontmatter for page ID. Directory structure matches Confluence hierarchy.
 State is stored in .atlcli/ directory.

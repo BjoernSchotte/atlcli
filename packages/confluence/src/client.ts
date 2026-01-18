@@ -2056,6 +2056,124 @@ export class ConfluenceClient {
       method: "DELETE",
     });
   }
+
+  // ============ User API ============
+
+  /**
+   * Get user information by account ID.
+   *
+   * GET /wiki/rest/api/user?accountId=xxx
+   *
+   * @param accountId - Atlassian account ID
+   * @returns User info or null if not found
+   */
+  async getUser(accountId: string): Promise<UserInfo | null> {
+    try {
+      const data = (await this.request("/user", {
+        query: { accountId },
+      })) as any;
+
+      return {
+        accountId: data.accountId,
+        displayName: data.displayName ?? data.publicName ?? null,
+        email: data.email ?? null,
+        isActive: data.accountStatus === "active",
+        profilePicture: data.profilePicture?.path ?? null,
+      };
+    } catch (error) {
+      // User not found or no permission
+      if (error instanceof Error && error.message.includes("404")) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get multiple users by account IDs.
+   * Uses individual requests since Confluence doesn't have a bulk user endpoint.
+   *
+   * @param accountIds - List of Atlassian account IDs
+   * @param options - Options for batch processing
+   * @returns Map of accountId to UserInfo (missing users have null value)
+   */
+  async getUsersBulk(
+    accountIds: string[],
+    options: { concurrency?: number } = {}
+  ): Promise<Map<string, UserInfo | null>> {
+    const { concurrency = 5 } = options;
+    const results = new Map<string, UserInfo | null>();
+    const uniqueIds = [...new Set(accountIds)];
+
+    // Process in batches to avoid overwhelming the API
+    for (let i = 0; i < uniqueIds.length; i += concurrency) {
+      const batch = uniqueIds.slice(i, i + concurrency);
+      const promises = batch.map(async (id) => {
+        const user = await this.getUser(id);
+        results.set(id, user);
+      });
+      await Promise.all(promises);
+    }
+
+    return results;
+  }
+
+  // ============ Version History API ============
+
+  /**
+   * Get version history for a page.
+   *
+   * GET /content/{id}/version
+   *
+   * @param pageId - Page ID
+   * @param options - Pagination options
+   * @returns Page version history
+   */
+  async getVersionHistory(
+    pageId: string,
+    options: { limit?: number } = {}
+  ): Promise<PageHistory> {
+    const { limit = 100 } = options;
+    const versions: PageVersion[] = [];
+    let start = 0;
+    let latest = 0;
+
+    while (true) {
+      const data = (await this.request(`/content/${pageId}/version`, {
+        query: { limit, start },
+      })) as any;
+
+      if (!data.results || data.results.length === 0) break;
+
+      for (const item of data.results) {
+        const version: PageVersion = {
+          number: item.number,
+          by: {
+            accountId: item.by?.accountId,
+            displayName: item.by?.displayName ?? item.by?.publicName ?? "Unknown",
+            email: item.by?.email,
+          },
+          when: item.when,
+          message: item.message,
+          minorEdit: item.minorEdit ?? false,
+        };
+        versions.push(version);
+
+        if (item.number > latest) {
+          latest = item.number;
+        }
+      }
+
+      if (data.results.length < limit) break;
+      start += limit;
+    }
+
+    return {
+      pageId,
+      versions,
+      latest,
+    };
+  }
 }
 
 /** Webhook registration info */
@@ -2083,6 +2201,7 @@ export interface PageVersion {
   number: number;
   /** User who created this version */
   by: {
+    accountId?: string;
     displayName: string;
     email?: string;
   };
@@ -2190,4 +2309,18 @@ export interface BulkOperationResult {
     title?: string;
     error: string;
   }>;
+}
+
+/** User information from Confluence API */
+export interface UserInfo {
+  /** Atlassian account ID */
+  accountId: string;
+  /** Display name */
+  displayName: string | null;
+  /** Email address (may be hidden based on privacy settings) */
+  email: string | null;
+  /** Whether the user account is active */
+  isActive: boolean;
+  /** Profile picture URL path */
+  profilePicture: string | null;
 }

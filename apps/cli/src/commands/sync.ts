@@ -57,6 +57,8 @@ import {
   extractAttachmentRefs,
   getAttachmentsDirName,
   AttachmentInfo,
+  // Link storage
+  storePageLinks,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
 
@@ -796,6 +798,9 @@ class SyncEngine {
 
       // Save state
       await writeState(this.atlcliDir, this.state!);
+
+      // Extract and store links from pulled page (Phase 1 link graph population)
+      await storePageLinks(this.atlcliDir, pageId, page.storage);
 
       this.emit({
         type: "pull",
