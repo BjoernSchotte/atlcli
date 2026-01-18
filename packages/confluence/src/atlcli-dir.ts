@@ -139,6 +139,8 @@ export interface PageState {
   attachments?: Record<string, AttachmentState>;
   /** Flag if page has any attachments (for quick filtering) */
   hasAttachments?: boolean;
+  /** Content type: 'page' or 'folder' */
+  contentType?: "page" | "folder";
 }
 
 /** Possible sync states for a page */
@@ -468,6 +470,7 @@ function pageRecordToState(record: PageRecord): PageState {
     ancestors: record.ancestors,
     hasAttachments: record.hasAttachments,
     attachments: {},
+    contentType: record.contentType,
   };
 }
 
@@ -580,6 +583,7 @@ function pageStateToRecord(
     parentId: state.parentId ?? null,
     ancestors: state.ancestors || [],
     hasAttachments: state.hasAttachments ?? false,
+    contentType: existingRecord?.contentType ?? "page",
     // Preserve existing metadata or use defaults
     createdBy: existingRecord?.createdBy ?? null,
     createdAt: existingRecord?.createdAt ?? now,

@@ -17,8 +17,10 @@ import {
 } from "@atlcli/core";
 import {
   ConfluenceClient,
+  ConfluenceFolder,
   SyncScope,
   ConfluencePoller,
+  PollChangeEvent,
   hashContent,
   markdownToStorage,
   normalizeMarkdown,
@@ -444,6 +446,52 @@ class SyncEngine {
       }
     }
 
+    // Fetch and sync folders (for space and tree scopes)
+    if (this.opts.scope.type !== "page") {
+      let folders: ConfluenceFolder[] = [];
+
+      if (this.opts.scope.type === "space") {
+        // Get all folders in space using space key
+        folders = await this.client.getSpaceFolders(this.opts.scope.spaceKey);
+      } else if (this.opts.scope.type === "tree") {
+        // Get folders in tree using recursive traversal
+        folders = await this.client.getFoldersInTree(this.opts.scope.ancestorId);
+      }
+
+      if (folders.length > 0) {
+        this.emit({ type: "status", message: `Found ${folders.length} folders in scope` });
+
+        // Sort folders by depth (parent folders first)
+        // Folders without parentId come first, then by presence of parentId
+        const sortedFolders = folders.sort((a, b) => {
+          if (!a.parentId && b.parentId) return -1;
+          if (a.parentId && !b.parentId) return 1;
+          return 0;
+        });
+
+        // Sync each folder
+        for (const folder of sortedFolders) {
+          const folderState = this.state!.pages[folder.id];
+
+          if (folderState) {
+            // Check for changes using version if available
+            try {
+              const version = await this.client.getFolderVersion(folder.id);
+              if (version > folderState.version) {
+                const existingFile = folderState.path;
+                await this.pullFolder(folder.id, existingFile);
+              }
+            } catch {
+              // Version check failed, skip
+            }
+          } else {
+            // New folder - pull it
+            await this.pullFolder(folder.id);
+          }
+        }
+      }
+    }
+
     this.emit({ type: "status", message: "Initial sync complete" });
   }
 
@@ -549,16 +597,27 @@ class SyncEngine {
         intervalMs: this.opts.pollIntervalMs,
       });
 
-      this.poller.on(async (event) => {
+      this.poller.on(async (event: PollChangeEvent) => {
         const file = this.getFileByPageId(event.pageId);
-        if (event.type === "changed" || event.type === "created") {
-          await this.handleRemoteChange(event.pageId, file);
-        } else if (event.type === "deleted" && file) {
-          this.emit({
-            type: "status",
-            message: `Remote page deleted: ${event.title}`,
-            details: { pageId: event.pageId, file },
-          });
+
+        if (event.contentType === "folder") {
+          // Handle folder events
+          if (event.type === "changed" || event.type === "created") {
+            await this.pullFolder(event.pageId, file);
+          } else if (event.type === "deleted" && file) {
+            await this.handleFolderDeletion(event.pageId, file);
+          }
+        } else {
+          // Handle page events
+          if (event.type === "changed" || event.type === "created") {
+            await this.handleRemoteChange(event.pageId, file);
+          } else if (event.type === "deleted" && file) {
+            this.emit({
+              type: "status",
+              message: `Remote page deleted: ${event.title}`,
+              details: { pageId: event.pageId, file },
+            });
+          }
         }
       });
 
@@ -817,6 +876,190 @@ class SyncEngine {
     }
   }
 
+  /** Pull a folder from Confluence (creates folder-name/index.md) */
+  private async pullFolder(folderId: string, existingFile?: string): Promise<void> {
+    try {
+      const folder = await this.client.getFolder(folderId);
+
+      // Build path for folder: parent-folders/folder-name/index.md
+      // Get parent chain for hierarchy path
+      const ancestorTitles = new Map<string, string>();
+      let parentId = folder.parentId;
+      const ancestorIds: string[] = [];
+
+      // Walk up parent chain to build hierarchy
+      while (parentId) {
+        try {
+          const parentFolder = await this.client.getFolder(parentId);
+          ancestorIds.unshift(parentId);
+          ancestorTitles.set(parentId, parentFolder.title);
+          parentId = parentFolder.parentId;
+        } catch {
+          break; // Parent might be a page, not a folder
+        }
+      }
+
+      // Compute file path using folder title
+      const folderInfo: PageHierarchyInfo = {
+        id: folder.id,
+        title: folder.title,
+        parentId: folder.parentId ?? null,
+        ancestors: ancestorIds,
+        contentType: "folder",
+      };
+
+      const existingPaths = new Set<string>(Object.keys(this.state?.pathIndex || {}));
+      const computed = computeFilePath(folderInfo, ancestorTitles, {
+        existingPaths,
+        rootAncestorId: this.homePageId,
+      });
+
+      let filePath = join(this.opts.dir, computed.relativePath);
+
+      // Handle folder move if path changed
+      if (existingFile && existingFile !== computed.relativePath) {
+        const existingState = this.state?.pages[folderId];
+        if (existingState?.ancestors) {
+          const oldAncestors = existingState.ancestors;
+          if (hasPageMoved(oldAncestors, ancestorIds)) {
+            if (!this.opts.dryRun) {
+              await moveFile(this.opts.dir, existingFile, computed.relativePath);
+              this.emit({
+                type: "status",
+                message: `Moved folder: ${existingFile} → ${computed.relativePath}`,
+                file: filePath,
+                pageId: folder.id,
+              });
+            }
+          }
+        }
+      } else if (existingFile) {
+        filePath = join(this.opts.dir, existingFile);
+      }
+
+      if (this.opts.dryRun) {
+        this.emit({
+          type: "pull",
+          message: `Would pull folder: ${folder.title}`,
+          file: filePath,
+          pageId: folder.id,
+        });
+        return;
+      }
+
+      // Ensure directory exists
+      const dir = dirname(filePath);
+      await ensureDir(dir);
+
+      // Write folder index.md with frontmatter only (no content)
+      const frontmatter: AtlcliFrontmatter = {
+        id: folder.id,
+        title: folder.title,
+        type: "folder",
+      };
+      await writeTextFile(filePath, addFrontmatter("", frontmatter));
+
+      // Get folder version using v1 API
+      let version = 1;
+      try {
+        version = await this.client.getFolderVersion(folderId);
+      } catch {
+        // Version API might fail, default to 1
+      }
+
+      const relativePath = computed.relativePath;
+      const contentHash = hashContent("");
+
+      // Update state
+      updatePageState(this.state!, folderId, {
+        path: relativePath,
+        title: folder.title,
+        spaceKey: folder.spaceId,
+        version,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: folder.parentId ?? null,
+        ancestors: ancestorIds,
+        contentType: "folder",
+      });
+
+      // Save state
+      await writeState(this.atlcliDir, this.state!);
+
+      this.emit({
+        type: "pull",
+        message: `Pulled folder: ${folder.title}`,
+        file: filePath,
+        pageId: folder.id,
+      });
+    } catch (err) {
+      this.emit({
+        type: "error",
+        message: `Failed to pull folder ${folderId}: ${err instanceof Error ? err.message : String(err)}`,
+        pageId: folderId,
+      });
+    }
+  }
+
+  /** Handle folder deletion from Confluence */
+  private async handleFolderDeletion(folderId: string, localFile: string): Promise<void> {
+    const absolutePath = join(this.opts.dir, localFile);
+
+    try {
+      // Check if folder has local children (pages or subfolders)
+      const folderDir = dirname(absolutePath);
+      const entries = await readdir(folderDir);
+      const hasChildren = entries.filter((f) => f !== "index.md").length > 0;
+
+      if (hasChildren) {
+        this.emit({
+          type: "status",
+          message: `Warning: Remote folder deleted but has local children. Manual cleanup needed: ${folderDir}`,
+          pageId: folderId,
+        });
+        return;
+      }
+
+      if (this.opts.dryRun) {
+        this.emit({
+          type: "status",
+          message: `Would delete folder: ${localFile}`,
+          pageId: folderId,
+        });
+        return;
+      }
+
+      // Safe to delete - folder is empty
+      await unlink(absolutePath); // Delete index.md
+      try {
+        const { rmdirSync } = await import("node:fs");
+        rmdirSync(folderDir); // Delete empty directory
+      } catch {
+        // Directory might not be empty or other error
+      }
+
+      // Remove from state
+      delete this.state!.pages[folderId];
+      delete this.state!.pathIndex[localFile];
+      await writeState(this.atlcliDir, this.state!);
+
+      this.emit({
+        type: "status",
+        message: `Deleted folder: ${localFile}`,
+        pageId: folderId,
+      });
+    } catch (err) {
+      this.emit({
+        type: "error",
+        message: `Failed to delete folder ${localFile}: ${err instanceof Error ? err.message : String(err)}`,
+        pageId: folderId,
+      });
+    }
+  }
+
   /** Check if file content has changed from last synced state (hash-based) */
   private async hasContentChanged(filePath: string): Promise<boolean> {
     try {
@@ -869,6 +1112,12 @@ class SyncEngine {
       // Parse frontmatter to get page ID and clean content
       const { frontmatter, content: markdownContent } = parseFrontmatter(localContent);
       const relativePath = this.getRelativePath(filePath);
+
+      // Check if this is a folder index.md file
+      if (frontmatter?.type === "folder") {
+        await this.pushFolder(filePath, frontmatter);
+        return;
+      }
 
       // Get page ID from state or frontmatter
       let pageId = this.state?.pathIndex[relativePath];
@@ -1086,6 +1335,126 @@ class SyncEngine {
       this.emit({
         type: "error",
         message: `Failed to push ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        file: filePath,
+      });
+    }
+  }
+
+  /** Push a local folder to Confluence (create if new) */
+  private async pushFolder(filePath: string, frontmatter: AtlcliFrontmatter): Promise<void> {
+    const relativePath = this.getRelativePath(filePath);
+    const folderId = frontmatter.id;
+
+    if (folderId) {
+      // Existing folder - check for rename (not supported by API)
+      const existingState = this.state?.pages[folderId];
+      if (existingState && frontmatter.title !== existingState.title) {
+        this.emit({
+          type: "status",
+          message: `Warning: Folder rename not supported by Confluence API. Rename in Confluence UI.`,
+          file: filePath,
+          pageId: folderId,
+        });
+      }
+      // Folder content unchanged (folders have no content) - skip
+      return;
+    }
+
+    // New folder - create in Confluence
+    try {
+      // Get space info
+      let spaceId: string;
+      if (this.opts.scope.type === "space") {
+        const spaceInfo = await this.client.getSpace(this.opts.scope.spaceKey);
+        spaceId = spaceInfo.id;
+      } else {
+        // For tree scope, get space from ancestor
+        const ancestorPage = await this.client.getPage(
+          this.opts.scope.type === "tree" ? this.opts.scope.ancestorId : this.opts.scope.pageId
+        );
+        const spaceInfo = await this.client.getSpace(ancestorPage.spaceKey!);
+        spaceId = spaceInfo.id;
+      }
+
+      // Determine parent folder from file path
+      // e.g., for path "parent-folder/new-folder/index.md", parent is "parent-folder"
+      const folderDir = dirname(filePath);
+      const parentDir = dirname(folderDir);
+      let parentFolderId: string | undefined;
+
+      // Try to find parent folder in state
+      const parentIndexPath = join(parentDir, "index.md");
+      const parentRelativePath = this.getRelativePath(parentIndexPath);
+      const parentId = this.state?.pathIndex[parentRelativePath];
+      if (parentId) {
+        const parentState = this.state?.pages[parentId];
+        if (parentState?.contentType === "folder") {
+          parentFolderId = parentId;
+        }
+      }
+
+      if (this.opts.dryRun) {
+        this.emit({
+          type: "push",
+          message: `Would create folder: ${frontmatter.title || basename(folderDir)}`,
+          file: filePath,
+        });
+        return;
+      }
+
+      // Create the folder
+      const folder = await this.client.createFolder({
+        spaceId,
+        title: frontmatter.title || basename(folderDir),
+        parentFolderId,
+      });
+
+      // Update frontmatter with new ID
+      const updatedFrontmatter: AtlcliFrontmatter = {
+        ...frontmatter,
+        id: folder.id,
+      };
+      await writeTextFile(filePath, addFrontmatter("", updatedFrontmatter));
+
+      // Get version
+      let version = 1;
+      try {
+        version = await this.client.getFolderVersion(folder.id);
+      } catch {
+        // Version API might fail
+      }
+
+      const contentHash = hashContent("");
+
+      // Update state
+      updatePageState(this.state!, folder.id, {
+        path: relativePath,
+        title: folder.title,
+        spaceKey: this.spaceKey,
+        version,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: contentHash,
+        remoteHash: contentHash,
+        baseHash: contentHash,
+        syncState: "synced",
+        parentId: parentFolderId ?? null,
+        ancestors: [],
+        contentType: "folder",
+      });
+
+      // Save state
+      await writeState(this.atlcliDir, this.state!);
+
+      this.emit({
+        type: "push",
+        message: `Created folder: ${folder.title} (ID: ${folder.id})`,
+        file: filePath,
+        pageId: folder.id,
+      });
+    } catch (err) {
+      this.emit({
+        type: "error",
+        message: `Failed to create folder: ${err instanceof Error ? err.message : String(err)}`,
         file: filePath,
       });
     }

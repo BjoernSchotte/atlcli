@@ -9,10 +9,15 @@
  * ---
  */
 
+/** Content type for frontmatter */
+export type FrontmatterContentType = "page" | "folder";
+
 /** Frontmatter data structure */
 export interface AtlcliFrontmatter {
   id: string;
   title?: string;
+  /** Content type: "page" (default) or "folder" */
+  type?: FrontmatterContentType;
 }
 
 /** Result of parsing a markdown file with frontmatter */
@@ -100,6 +105,7 @@ function parseYaml(yaml: string): AtlcliFrontmatter | null {
   let inAtlcli = false;
   let id: string | undefined;
   let title: string | undefined;
+  let type: FrontmatterContentType | undefined;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -117,17 +123,30 @@ function parseYaml(yaml: string): AtlcliFrontmatter | null {
       title = parseYamlValue(trimmed.slice(6));
     }
 
+    if (inAtlcli && trimmed.startsWith("type:")) {
+      const typeValue = parseYamlValue(trimmed.slice(5));
+      if (typeValue === "page" || typeValue === "folder") {
+        type = typeValue;
+      }
+    }
+
     // Exit atlcli block if we hit a non-indented line
     if (inAtlcli && !line.startsWith(" ") && !line.startsWith("\t") && trimmed !== "") {
       inAtlcli = false;
     }
   }
 
-  if (!id) {
+  // Return frontmatter if we have an id, OR if we have a type (for new folders)
+  if (!id && !type) {
     return null;
   }
 
-  return { id, title };
+  // For new items (no id), return partial frontmatter with type and title
+  if (!id) {
+    return { id: undefined as unknown as string, title, type };
+  }
+
+  return { id, title, type };
 }
 
 /**
@@ -156,6 +175,10 @@ function serializeYaml(frontmatter: AtlcliFrontmatter): string {
     // Escape quotes in title
     const escapedTitle = frontmatter.title.replace(/"/g, '\\"');
     yaml += `  title: "${escapedTitle}"\n`;
+  }
+
+  if (frontmatter.type) {
+    yaml += `  type: "${frontmatter.type}"\n`;
   }
 
   return yaml;

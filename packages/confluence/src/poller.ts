@@ -3,16 +3,18 @@ import { ConfluenceClient, SyncScope, PageChangeInfo } from "./client.js";
 /** Event emitted when polling detects changes */
 export interface PollChangeEvent {
   type: "changed" | "created" | "deleted";
+  contentType: "page" | "folder";
   pageId: string;
   title: string;
   version: number;
   previousVersion?: number;
 }
 
-/** Polling state for tracking known pages */
+/** Polling state for tracking known pages and folders */
 export interface PollerState {
   lastPollAt: string;
   knownPages: Map<string, { version: number; title: string }>;
+  knownFolders: Map<string, { version: number; title: string }>;
 }
 
 /** Callback for handling poll events */
@@ -21,6 +23,7 @@ export type PollEventHandler = (event: PollChangeEvent) => void | Promise<void>;
 /**
  * Confluence Poller - detects remote changes at configurable intervals.
  * Supports three scopes: single page, page tree, whole space.
+ * Tracks both pages and folders.
  */
 export class ConfluencePoller {
   private client: ConfluenceClient;
@@ -42,6 +45,7 @@ export class ConfluencePoller {
     this.state = {
       lastPollAt: new Date().toISOString(),
       knownPages: new Map(),
+      knownFolders: new Map(),
     };
   }
 
@@ -62,8 +66,9 @@ export class ConfluencePoller {
     }
   }
 
-  /** Initialize state with current pages (call before starting) */
+  /** Initialize state with current pages and folders (call before starting) */
   async initialize(): Promise<void> {
+    // Initialize pages
     const pages = await this.client.getAllPages({ scope: this.scope });
     this.state.knownPages.clear();
     for (const page of pages) {
@@ -72,6 +77,19 @@ export class ConfluencePoller {
         title: page.title,
       });
     }
+
+    // Initialize folders (for space and tree scopes)
+    this.state.knownFolders.clear();
+    if (this.scope.type !== "page") {
+      const folders = await this.client.getAllFoldersWithVersions({ scope: this.scope });
+      for (const folder of folders) {
+        this.state.knownFolders.set(folder.id, {
+          version: folder.version,
+          title: folder.title,
+        });
+      }
+    }
+
     this.state.lastPollAt = new Date().toISOString();
   }
 
@@ -104,21 +122,23 @@ export class ConfluencePoller {
     const events: PollChangeEvent[] = [];
 
     try {
+      // Poll for page changes
       const pages = await this.client.getPagesSince({
         scope: this.scope,
         since: this.state.lastPollAt,
       });
 
-      const currentIds = new Set<string>();
+      const currentPageIds = new Set<string>();
 
       for (const page of pages) {
-        currentIds.add(page.id);
+        currentPageIds.add(page.id);
         const known = this.state.knownPages.get(page.id);
 
         if (!known) {
           // New page
           const event: PollChangeEvent = {
             type: "created",
+            contentType: "page",
             pageId: page.id,
             title: page.title,
             version: page.version,
@@ -129,6 +149,7 @@ export class ConfluencePoller {
           // Updated page
           const event: PollChangeEvent = {
             type: "changed",
+            contentType: "page",
             pageId: page.id,
             title: page.title,
             version: page.version,
@@ -145,16 +166,17 @@ export class ConfluencePoller {
         });
       }
 
-      // For space/tree scope, check for deleted pages
-      // (Only if we're doing a full poll, not incremental)
+      // For space/tree scope, check for deleted pages and poll folders
       if (this.scope.type !== "page") {
+        // Check for deleted pages
         const allPages = await this.client.getAllPages({ scope: this.scope });
-        const allIds = new Set(allPages.map((p) => p.id));
+        const allPageIds = new Set(allPages.map((p) => p.id));
 
         for (const [id, info] of this.state.knownPages) {
-          if (!allIds.has(id)) {
+          if (!allPageIds.has(id)) {
             const event: PollChangeEvent = {
               type: "deleted",
+              contentType: "page",
               pageId: id,
               title: info.title,
               version: info.version,
@@ -162,6 +184,62 @@ export class ConfluencePoller {
             events.push(event);
             await this.emit(event);
             this.state.knownPages.delete(id);
+          }
+        }
+
+        // Poll for folder changes
+        const folders = await this.client.getAllFoldersWithVersions({ scope: this.scope });
+        const currentFolderIds = new Set<string>();
+
+        for (const folder of folders) {
+          currentFolderIds.add(folder.id);
+          const known = this.state.knownFolders.get(folder.id);
+
+          if (!known) {
+            // New folder
+            const event: PollChangeEvent = {
+              type: "created",
+              contentType: "folder",
+              pageId: folder.id,
+              title: folder.title,
+              version: folder.version,
+            };
+            events.push(event);
+            await this.emit(event);
+          } else if (folder.version > known.version) {
+            // Updated folder (renamed)
+            const event: PollChangeEvent = {
+              type: "changed",
+              contentType: "folder",
+              pageId: folder.id,
+              title: folder.title,
+              version: folder.version,
+              previousVersion: known.version,
+            };
+            events.push(event);
+            await this.emit(event);
+          }
+
+          // Update known state
+          this.state.knownFolders.set(folder.id, {
+            version: folder.version,
+            title: folder.title,
+          });
+        }
+
+        // Check for deleted folders
+        for (const [id, info] of this.state.knownFolders) {
+          if (!currentFolderIds.has(id)) {
+            const event: PollChangeEvent = {
+              type: "deleted",
+              contentType: "folder",
+              pageId: id,
+              title: info.title,
+              version: info.version,
+            };
+            events.push(event);
+            await this.emit(event);
+            this.state.knownFolders.delete(id);
           }
         }
       }
@@ -179,6 +257,7 @@ export class ConfluencePoller {
     return {
       lastPollAt: this.state.lastPollAt,
       knownPages: new Map(this.state.knownPages),
+      knownFolders: new Map(this.state.knownFolders),
     };
   }
 

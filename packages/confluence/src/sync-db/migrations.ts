@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current schema version. Increment when adding new migrations.
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 /**
  * All migrations in order.
@@ -197,9 +197,31 @@ export const migrations: Migration[] = [
       DROP TABLE IF EXISTS schema_info;
     `,
   },
+  {
+    version: 2,
+    description: "Add content_type column for folder support",
+    up: `
+      -- Add content_type column to distinguish pages from folders
+      -- 'page' = regular Confluence page with content
+      -- 'folder' = Confluence Cloud folder (container only, no content)
+      ALTER TABLE pages ADD COLUMN content_type TEXT NOT NULL DEFAULT 'page'
+          CHECK(content_type IN ('page', 'folder'));
+
+      -- Index for filtering by content type
+      CREATE INDEX IF NOT EXISTS idx_pages_content_type ON pages(content_type);
+
+      -- Record this migration
+      INSERT INTO schema_info (version, migrated_at) VALUES (2, datetime('now'));
+    `,
+    down: `
+      DROP INDEX IF EXISTS idx_pages_content_type;
+      -- SQLite doesn't support DROP COLUMN directly, would need table recreation
+      -- For development rollback, just drop and recreate the database
+    `,
+  },
   // Future migrations will be added here:
   // {
-  //   version: 2,
+  //   version: 3,
   //   description: "Add embeddings table for vector search",
   //   up: `
   //     CREATE TABLE IF NOT EXISTS embeddings (
@@ -211,7 +233,7 @@ export const migrations: Migration[] = [
   //       updated_at TEXT NOT NULL,
   //       FOREIGN KEY (page_id) REFERENCES pages(page_id) ON DELETE CASCADE
   //     );
-  //     INSERT INTO schema_info (version, migrated_at) VALUES (2, datetime('now'));
+  //     INSERT INTO schema_info (version, migrated_at) VALUES (3, datetime('now'));
   //   `,
   //   down: `DROP TABLE IF EXISTS embeddings;`,
   // },

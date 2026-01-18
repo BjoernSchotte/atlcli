@@ -231,13 +231,13 @@ export class SqliteAdapter implements SyncDbAdapter {
       INSERT INTO pages (
         page_id, path, title, space_key, version, last_synced_at,
         local_hash, remote_hash, base_hash, sync_state, parent_id,
-        ancestors, has_attachments, created_by, created_at, last_modified_by,
+        ancestors, has_attachments, content_type, created_by, created_at, last_modified_by,
         last_modified, content_status, version_count, word_count, is_restricted,
         sync_created_at, sync_updated_at, remote_inaccessible_at, remote_inaccessible_reason
       ) VALUES (
         $pageId, $path, $title, $spaceKey, $version, $lastSyncedAt,
         $localHash, $remoteHash, $baseHash, $syncState, $parentId,
-        $ancestors, $hasAttachments, $createdBy, $createdAt, $lastModifiedBy,
+        $ancestors, $hasAttachments, $contentType, $createdBy, $createdAt, $lastModifiedBy,
         $lastModified, $contentStatus, $versionCount, $wordCount, $isRestricted,
         $syncCreatedAt, $syncUpdatedAt, $remoteInaccessibleAt, $remoteInaccessibleReason
       )
@@ -254,6 +254,7 @@ export class SqliteAdapter implements SyncDbAdapter {
         parent_id = $parentId,
         ancestors = $ancestors,
         has_attachments = $hasAttachments,
+        content_type = $contentType,
         created_by = $createdBy,
         created_at = $createdAt,
         last_modified_by = $lastModifiedBy,
@@ -279,6 +280,7 @@ export class SqliteAdapter implements SyncDbAdapter {
       $parentId: page.parentId,
       $ancestors: JSON.stringify(page.ancestors),
       $hasAttachments: page.hasAttachments ? 1 : 0,
+      $contentType: page.contentType,
       $createdBy: page.createdBy,
       $createdAt: page.createdAt,
       $lastModifiedBy: page.lastModifiedBy,
@@ -395,6 +397,18 @@ export class SqliteAdapter implements SyncDbAdapter {
       } else {
         conditions.push("content_status = ?");
         params.push(filter.contentStatus);
+      }
+    }
+
+    if (filter?.contentType) {
+      if (Array.isArray(filter.contentType)) {
+        conditions.push(
+          `content_type IN (${filter.contentType.map(() => "?").join(",")})`
+        );
+        params.push(...filter.contentType);
+      } else {
+        conditions.push("content_type = ?");
+        params.push(filter.contentType);
       }
     }
 
@@ -1061,6 +1075,7 @@ export class SqliteAdapter implements SyncDbAdapter {
       parentId: row.parent_id,
       ancestors: JSON.parse(row.ancestors || "[]"),
       hasAttachments: !!row.has_attachments,
+      contentType: (row.content_type || "page") as PageRecord["contentType"],
       createdBy: row.created_by,
       createdAt: row.created_at,
       lastModifiedBy: row.last_modified_by,
@@ -1156,6 +1171,7 @@ interface RawPageRow {
   parent_id: string | null;
   ancestors: string;
   has_attachments: number;
+  content_type: string;
   created_by: string | null;
   created_at: string;
   last_modified_by: string | null;

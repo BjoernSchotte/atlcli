@@ -24,6 +24,7 @@ function createMockClient(initialPages: PageChangeInfo[] = []): {
       const page = pages.find(p => p.id === id);
       return page ?? { id, title: "Unknown", version: 1 };
     },
+    getAllFoldersWithVersions: async () => [], // No folders in basic tests
   } as unknown as ConfluenceClient;
 
   return {

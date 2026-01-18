@@ -1,4 +1,4 @@
-import { readdir, writeFile, readFile, mkdir, stat, unlink } from "node:fs/promises";
+import { readdir, writeFile, readFile, mkdir, stat, unlink, rename, rm } from "node:fs/promises";
 import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname, relative, resolve } from "node:path";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@atlcli/core";
 import {
   ConfluenceClient,
+  type ConfluenceFolder,
   type ConversionOptions,
   hashContent,
   markdownToStorage,
@@ -80,6 +81,9 @@ import {
   moveFile,
   hasPageMoved,
   PageHierarchyInfo,
+  // Index pattern migration
+  detectSiblingPatternMigrations,
+  migrateSiblingToIndex,
   // Scope
   parseScope,
   buildCqlFromScope,
@@ -105,6 +109,7 @@ import {
   // Validation
   validateFile,
   validateDirectory,
+  validateFolders,
   formatValidationReport,
   ValidationResult,
   // Link storage
@@ -385,7 +390,8 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
 }
 
 async function handlePull(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const outDir = args[0] || getFlag(flags, "out") || ".";
+  const outDirArg = args[0] || getFlag(flags, "out") || ".";
+  const outDir = resolve(outDirArg); // Resolve to absolute path
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const force = hasFlag(flags, "force");
   const labelFilter = getFlag(flags, "label");
@@ -554,13 +560,165 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
+  // Detect and fetch folders (Confluence Cloud feature)
+  // Folders are detected by checking if page parents are not in the page set
+  let folders: ConfluenceFolder[] = [];
+  const pageIdSet = new Set(pageDetails.map((p) => p.id));
+  const potentialFolderIds = new Set<string>();
+
+  // Collect parent IDs that might be folders (not in page set)
+  for (const page of pageDetails) {
+    if (page.parentId && !pageIdSet.has(page.parentId)) {
+      potentialFolderIds.add(page.parentId);
+    }
+    // Also check ancestors
+    for (const ancestor of page.ancestors) {
+      if (!pageIdSet.has(ancestor.id)) {
+        potentialFolderIds.add(ancestor.id);
+      }
+    }
+  }
+
+  // Fetch folder details for potential folder IDs
+  if (potentialFolderIds.size > 0) {
+    for (const folderId of potentialFolderIds) {
+      try {
+        const folder = await client.getFolder(folderId);
+        folders.push(folder);
+      } catch {
+        // Not a folder or not accessible - skip
+      }
+    }
+  }
+
+  // Also check for folder children of pages (empty folders wouldn't be detected above)
+  // This catches folders nested under pages that have no page children yet
+  // Performance optimization: Only scan if < 100 pages to avoid N+1 queries
+  const folderIdSet = new Set(folders.map((f) => f.id));
+  const EMPTY_FOLDER_SCAN_THRESHOLD = 100;
+
+  if (pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
+    for (const page of pageDetails) {
+      try {
+        const children = await client.getPageDirectChildren(page.id);
+        for (const child of children) {
+          if (child.type === "folder" && !folderIdSet.has(child.id)) {
+            // Found a folder child - fetch full details
+            try {
+              const folder = await client.getFolder(child.id);
+              folders.push(folder);
+              folderIdSet.add(folder.id);
+            } catch {
+              // Skip if can't fetch folder details
+            }
+          }
+        }
+      } catch {
+        // Skip if can't fetch children (might be permission issue)
+      }
+    }
+  }
+
+  // Also check for nested folders (folder inside folder)
+  // Recursively check folder children until no new folders found
+  let foldersToCheck = [...folders];
+  while (foldersToCheck.length > 0) {
+    const newFolders: ConfluenceFolder[] = [];
+    for (const folder of foldersToCheck) {
+      try {
+        const children = await client.getFolderChildren(folder.id);
+        for (const child of children) {
+          if (child.type === "folder" && !folderIdSet.has(child.id)) {
+            try {
+              const nestedFolder = await client.getFolder(child.id);
+              folders.push(nestedFolder);
+              folderIdSet.add(nestedFolder.id);
+              newFolders.push(nestedFolder);
+            } catch {
+              // Skip if can't fetch folder details
+            }
+          }
+        }
+      } catch {
+        // Skip if can't fetch children
+      }
+    }
+    foldersToCheck = newFolders; // Continue with newly found folders
+  }
+
+  if (folders.length > 0 && !opts.json) {
+    output(`Found ${folders.length} folder(s) in hierarchy`, opts);
+  }
+
+  // Build set of parent IDs to determine which items have children
+  const parentIds = new Set<string>();
+  for (const page of pageDetails) {
+    if (page.parentId) {
+      parentIds.add(page.parentId);
+    }
+  }
+  for (const folder of folders) {
+    if (folder.parentId) {
+      parentIds.add(folder.parentId);
+    }
+  }
+
+  // Build maps for ancestor lookup
+  const pageAncestorsMap = new Map<string, string[]>();
+  for (const page of pageDetails) {
+    pageAncestorsMap.set(page.id, page.ancestors.map((a) => a.id));
+  }
+  const folderMap = new Map<string, ConfluenceFolder>();
+  for (const folder of folders) {
+    folderMap.set(folder.id, folder);
+  }
+
+  // Compute ancestors for folders based on their parent (recursive for nested folders)
+  const computeFolderAncestors = (folder: ConfluenceFolder, visited = new Set<string>()): string[] => {
+    if (!folder.parentId) return [];
+
+    // Prevent infinite loops
+    if (visited.has(folder.id)) return [];
+    visited.add(folder.id);
+
+    // If parent is a page, use its ancestors + parent ID
+    const parentPageAncestors = pageAncestorsMap.get(folder.parentId);
+    if (parentPageAncestors) {
+      return [...parentPageAncestors, folder.parentId];
+    }
+
+    // If parent is a folder, recursively get its ancestors
+    const parentFolder = folderMap.get(folder.parentId);
+    if (parentFolder) {
+      return [...computeFolderAncestors(parentFolder, visited), folder.parentId];
+    }
+
+    // Unknown parent (possibly space root or not fetched)
+    return [folder.parentId];
+  };
+
   // Build hierarchy info for path computation
-  const hierarchyPages: PageHierarchyInfo[] = pageDetails.map((p) => ({
-    id: p.id,
-    title: p.title,
-    parentId: p.parentId,
-    ancestors: p.ancestors.map((a) => a.id),
-  }));
+  // Include both pages and folders
+  const hierarchyPages: PageHierarchyInfo[] = [
+    // Pages
+    ...pageDetails.map((p) => ({
+      id: p.id,
+      title: p.title,
+      parentId: p.parentId,
+      ancestors: p.ancestors.map((a) => a.id),
+      contentType: "page" as const,
+      hasChildren: parentIds.has(p.id),
+    })),
+    // Folders (always have hasChildren behavior for index.md pattern)
+    ...folders.map((f) => ({
+      id: f.id,
+      title: f.title,
+      parentId: f.parentId,
+      ancestors: computeFolderAncestors(f),
+      contentType: "folder" as const,
+      hasChildren: true, // Folders always use index.md pattern
+    })),
+  ];
 
   // Build ancestor title map (include all ancestors)
   const ancestorTitles = new Map<string, string>();
@@ -569,6 +727,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     for (const ancestor of page.ancestors) {
       ancestorTitles.set(ancestor.id, ancestor.title);
     }
+  }
+  for (const folder of folders) {
+    ancestorTitles.set(folder.id, folder.title);
   }
 
   // Detect space home page for flattening hierarchy
@@ -580,6 +741,65 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       homePageId = homePage.id;
       if (!opts.json) {
         output(`Using "${homePage.title}" as space home page (children will be at root level)`, opts);
+      }
+    }
+  }
+
+  // Run sibling-to-index pattern migration if needed
+  // This converts existing `page.md` + `page/` to `page/index.md`
+  // IMPORTANT: Scan actual file system, not stored paths (they may be out of sync)
+  if (atlcliDir) {
+    // Scan actual .md files on disk
+    const actualFilePaths = new Set<string>();
+    const scanDir = async (dir: string, prefix: string = "") => {
+      try {
+        const entries = await readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue; // Skip hidden files/dirs
+          const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            await scanDir(join(dir, entry.name), relativePath);
+          } else if (entry.name.endsWith(".md")) {
+            actualFilePaths.add(relativePath);
+          }
+        }
+      } catch {
+        // Ignore errors (directory may not exist)
+      }
+    };
+    await scanDir(outDir);
+
+    if (actualFilePaths.size > 0) {
+      const migrations = detectSiblingPatternMigrations(actualFilePaths);
+      if (migrations.length > 0) {
+        if (!opts.json) {
+          output(`Migrating ${migrations.length} file(s) to index pattern...`, opts);
+        }
+        for (const { oldPath, newPath } of migrations) {
+          try {
+            await migrateSiblingToIndex(outDir, oldPath);
+            // Update existingPaths set (for path computation)
+            existingPaths.delete(oldPath);
+            existingPaths.add(newPath);
+            // Update state if we have it
+            if (state) {
+              // Find the page ID for this path
+              const pageId = state.pathIndex[oldPath];
+              if (pageId && state.pages[pageId]) {
+                state.pages[pageId].path = newPath;
+                delete state.pathIndex[oldPath];
+                state.pathIndex[newPath] = pageId;
+              }
+            }
+            if (!opts.json) {
+              output(`  Migrated: ${oldPath} → ${newPath}`, opts);
+            }
+          } catch (err) {
+            if (!opts.json) {
+              output(`  Warning: Could not migrate ${oldPath}: ${err}`, opts);
+            }
+          }
+        }
       }
     }
   }
@@ -885,6 +1105,117 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     });
   }
 
+  // Write folder index.md files
+  let foldersPulled = 0;
+  let foldersRenamed = 0;
+  for (const folder of folders) {
+    const computed = pathMap.get(folder.id);
+    if (!computed) continue;
+
+    const folderPath = join(outDir, computed.relativePath);
+    const folderDir = dirname(folderPath);
+
+    // Check if folder was renamed (title changed, not just path computation difference)
+    const existingFolderState = state?.pages[folder.id];
+    const titleChanged = existingFolderState && existingFolderState.title !== folder.title;
+
+    // Determine the path to use:
+    // - If title changed and computed path differs: use computed path (rename)
+    // - If folder exists and title unchanged: preserve existing path
+    // - Otherwise: use computed path (new folder)
+    let folderRelativePath = computed.relativePath;
+
+    if (titleChanged && existingFolderState.path !== computed.relativePath) {
+      // Folder title changed - move entire directory to new slug
+      const oldFolderDir = dirname(join(outDir, existingFolderState.path));
+      const newFolderDir = folderDir;
+
+      if (existsSync(oldFolderDir) && oldFolderDir !== newFolderDir) {
+        try {
+          // Ensure parent of new location exists
+          await ensureDir(dirname(newFolderDir));
+          // Move entire folder directory
+          await rename(oldFolderDir, newFolderDir);
+          if (!opts.json) {
+            output(`Renamed folder: ${dirname(existingFolderState.path)} → ${dirname(computed.relativePath)}`, opts);
+          }
+          foldersRenamed++;
+
+          // Update paths for all child pages in state
+          if (state) {
+            const oldDirPrefix = dirname(existingFolderState.path) + "/";
+            const newDirPrefix = dirname(computed.relativePath) + "/";
+            for (const pageId of Object.keys(state.pages)) {
+              const pageState = state.pages[pageId];
+              if (pageState.path.startsWith(oldDirPrefix)) {
+                const newPath = newDirPrefix + pageState.path.slice(oldDirPrefix.length);
+                delete state.pathIndex[pageState.path];
+                pageState.path = newPath;
+                state.pathIndex[newPath] = pageId;
+              }
+            }
+          }
+        } catch (err) {
+          if (!opts.json) {
+            output(`Warning: Could not rename folder directory: ${err}`, opts);
+          }
+        }
+      }
+    } else if (existingFolderState && !titleChanged) {
+      // Folder exists and title unchanged - preserve existing path
+      folderRelativePath = existingFolderState.path;
+    }
+
+    // Recompute folderPath and folderDir based on final path
+    const finalFolderPath = join(outDir, folderRelativePath);
+    const finalFolderDir = dirname(finalFolderPath);
+
+    // Create folder frontmatter (type: folder indicates no content body)
+    const folderFrontmatter: AtlcliFrontmatter = {
+      id: folder.id,
+      title: folder.title,
+      type: "folder",
+    };
+
+    // Folder index.md has only frontmatter, no content body
+    const folderContent = addFrontmatter("", folderFrontmatter);
+
+    await ensureDir(finalFolderDir);
+    await writeTextFile(finalFolderPath, folderContent);
+
+    // Update state for folder
+    if (state && atlcliDir) {
+      updatePageState(state, folder.id, {
+        path: folderRelativePath,
+        title: folder.title,
+        spaceKey: space!,
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: hashContent(""),
+        remoteHash: hashContent(""),
+        baseHash: hashContent(""),
+        syncState: "synced",
+        parentId: folder.parentId,
+        ancestors: [],
+        hasAttachments: false,
+      });
+
+      // Write empty base content for folder
+      await writeBaseContent(atlcliDir, folder.id, "");
+    }
+
+    foldersPulled++;
+
+    // Log sync event for folder
+    getLogger().sync({
+      eventType: "pull",
+      file: folderRelativePath,
+      pageId: folder.id,
+      title: folder.title,
+      details: { type: "folder" },
+    });
+  }
+
   // Save state
   if (state && atlcliDir) {
     state.lastSync = new Date().toISOString();
@@ -936,6 +1267,36 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           versionCount: detail.version,
         });
         await adapter.upsertPage(pageRecord);
+      }
+
+      // Upsert folder records to sync.db
+      for (const folder of folders) {
+        const computed = pathMap.get(folder.id);
+        if (!computed) continue;
+
+        const folderRecord = createPageRecord({
+          pageId: folder.id,
+          path: computed.relativePath,
+          title: folder.title,
+          spaceKey: space!,
+          version: 1,
+          lastSyncedAt: new Date().toISOString(),
+          localHash: hashContent(""),
+          remoteHash: hashContent(""),
+          baseHash: hashContent(""),
+          syncState: "synced",
+          parentId: folder.parentId,
+          ancestors: [],
+          hasAttachments: false,
+          contentType: "folder",
+          createdBy: null,
+          createdAt: folder.createdAt ?? new Date().toISOString(),
+          lastModifiedBy: null,
+          lastModified: null,
+          contentStatus: "current",
+          versionCount: 1,
+        });
+        await adapter.upsertPage(folderRecord);
       }
 
       // Check user statuses (respects TTL caching)
@@ -997,6 +1358,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
 
   const pullResults: Record<string, unknown> = { pulled, skipped, moved, outDir };
+  if (foldersPulled > 0) {
+    pullResults.folders = foldersPulled;
+  }
   if (pullAttachments && attachmentsPulled > 0) {
     pullResults.attachments = attachmentsPulled;
   }
@@ -1119,6 +1483,91 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     }
   }
 
+  // Phase 3: Auto-create folder index.md files for directories without them
+  let foldersAutoCreated = 0;
+  const autoCreateFolders = !hasFlag(flags, "no-auto-create-folders");
+  if (!isSingleFile && atlcliDir && autoCreateFolders) {
+    const dirsNeedingIndex = new Set<string>();
+
+    // Scan all files to find directories that need folder index.md
+    for (const filePath of files) {
+      let dir = dirname(filePath);
+      const atlcliDirResolved = resolve(atlcliDir);
+
+      while (dir !== atlcliDirResolved && dir !== "/" && dir !== ".") {
+        const indexPath = join(dir, "index.md");
+
+        if (!existsSync(indexPath)) {
+          // No index.md at all - needs folder creation
+          dirsNeedingIndex.add(dir);
+        } else {
+          // Check if existing index.md is a folder type
+          try {
+            const content = await readTextFile(indexPath);
+            const parsed = parseFrontmatter(content);
+            if (parsed && parsed.frontmatter?.type === "folder") {
+              // It's already a folder - don't need to create, but check parents
+              dir = dirname(dir);
+              continue;
+            }
+            // It's a page index (or no frontmatter), don't create folder here
+            break;
+          } catch {
+            // Can't read file - skip
+            break;
+          }
+        }
+        dir = dirname(dir);
+      }
+    }
+
+    // Sort directories by depth (shallowest first) so parent folders are created before children
+    const sortedDirs = [...dirsNeedingIndex].sort(
+      (a, b) => a.split("/").length - b.split("/").length
+    );
+
+    // Create missing folder index.md files
+    for (const dir of sortedDirs) {
+      const dirName = basename(dir);
+      // Convert directory name to title (kebab-case to Title Case)
+      const title = dirName
+        .split(/[-_]/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+
+      const indexPath = join(dir, "index.md");
+      const content = `---
+atlcli:
+  title: "${title}"
+  type: "folder"
+---
+
+`;
+      await writeTextFile(indexPath, content);
+
+      // Add to files list so it gets pushed
+      files.push(indexPath);
+      foldersAutoCreated++;
+
+      if (!opts.json) {
+        output(`Auto-created folder: ${relative(atlcliDir, indexPath)}`, opts);
+      }
+    }
+
+    // Sort files so folder index.md files come first, then by depth (shallower first)
+    files.sort((a, b) => {
+      const aIsIndex = basename(a) === "index.md";
+      const bIsIndex = basename(b) === "index.md";
+
+      // Indexes first
+      if (aIsIndex && !bIsIndex) return -1;
+      if (!aIsIndex && bIsIndex) return 1;
+
+      // Then by depth (shallower first) - ensures parent folders created before children
+      return a.split("/").length - b.split("/").length;
+    });
+  }
+
   let updated = 0;
   let created = 0;
   let skipped = 0;
@@ -1128,6 +1577,50 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
     if (result === "updated") updated += 1;
     else if (result === "created") created += 1;
     else skipped += 1;
+  }
+
+  // Check for deleted folders (in state but index.md removed locally)
+  let foldersDeleted = 0;
+  if (state && atlcliDir && !isSingleFile) {
+    const deletedFolders: { id: string; title: string; path: string }[] = [];
+
+    for (const [pageId, pageState] of Object.entries(state.pages)) {
+      if (pageState.contentType === "folder") {
+        // Check if folder's index.md still exists
+        const folderPath = join(atlcliDir, pageState.path);
+        if (!existsSync(folderPath)) {
+          deletedFolders.push({ id: pageId, title: pageState.title, path: pageState.path });
+        }
+      }
+    }
+
+    if (deletedFolders.length > 0) {
+      // Check for --delete-folders flag
+      const deleteConfirmed = hasFlag(flags, "delete-folders");
+
+      for (const folder of deletedFolders) {
+        if (deleteConfirmed) {
+          try {
+            await client.deleteFolder(folder.id);
+            if (!opts.json) {
+              output(`Deleted folder: ${folder.title} (${folder.id})`, opts);
+            }
+            // Remove from state
+            delete state.pages[folder.id];
+            delete state.pathIndex[folder.path];
+            foldersDeleted++;
+          } catch (err: any) {
+            if (!opts.json) {
+              output(`Warning: Could not delete folder "${folder.title}": ${err.message}`, opts);
+            }
+          }
+        } else {
+          if (!opts.json) {
+            output(`Skipping folder deletion: "${folder.title}" (use --delete-folders to confirm)`, opts);
+          }
+        }
+      }
+    }
   }
 
   // Save state if we have one
@@ -1146,10 +1639,14 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
       opts
     );
   } else {
+    const results: Record<string, number> = { updated, created, skipped };
+    if (foldersDeleted > 0) {
+      results.foldersDeleted = foldersDeleted;
+    }
     output(
       {
         schemaVersion: "1",
-        results: { updated, created, skipped },
+        results,
         note: "Frontmatter stripped before push. State saved to .atlcli/",
       },
       opts
@@ -1405,6 +1902,124 @@ async function pushFile(params: {
   // Get page ID from frontmatter or legacy meta
   const pageId = frontmatter?.id || legacyMeta?.id;
 
+  // Handle folder files (type: folder in frontmatter)
+  if (frontmatter?.type === "folder") {
+    const relativePath = atlcliDir ? getRelativePath(atlcliDir, filePath) : basename(filePath);
+    const dirName = basename(dirname(filePath));
+    // Derive title from directory name if not in frontmatter
+    const titleFromDir = dirName
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+    if (!pageId) {
+      // NEW FOLDER: Create folder in Confluence
+      const folderTitle = frontmatter.title || titleFromDir;
+
+      if (!space) {
+        if (!opts.json) {
+          output(`Error: Cannot create folder - no space specified`, opts);
+        }
+        return "skipped";
+      }
+
+      // Determine parent folder/page ID from directory structure
+      // Walk up the directory tree to find parent
+      const parentDir = dirname(dirname(filePath)); // Go up from folder/index.md
+      let parentFolderId: string | undefined;
+
+      // Check if parent directory has an index.md with folder type
+      const parentIndexPath = join(parentDir, "index.md");
+      if (existsSync(parentIndexPath)) {
+        try {
+          const parentContent = await readTextFile(parentIndexPath);
+          const { frontmatter: parentFrontmatter } = parseFrontmatter(parentContent);
+          if (parentFrontmatter?.id) {
+            parentFolderId = parentFrontmatter.id;
+          }
+        } catch {
+          // Parent index doesn't exist or can't be read
+        }
+      }
+
+      // Get space ID for folder creation
+      const spaceInfo = await client.getSpace(space);
+
+      try {
+        const newFolder = await client.createFolder({
+          spaceId: spaceInfo.id,
+          title: folderTitle,
+          parentFolderId,
+        });
+
+        if (!opts.json) {
+          output(`Created folder: ${folderTitle} (${newFolder.id})`, opts);
+        }
+
+        // Update frontmatter with new folder ID
+        const updatedFrontmatter: AtlcliFrontmatter = {
+          ...frontmatter,
+          id: newFolder.id,
+          title: newFolder.title,
+        };
+        const updatedContent = addFrontmatter("", updatedFrontmatter);
+        await writeTextFile(filePath, updatedContent);
+
+        // Update state
+        if (state && atlcliDir) {
+          updatePageState(state, newFolder.id, {
+            path: relativePath,
+            title: newFolder.title,
+            spaceKey: space,
+            version: 1,
+            lastSyncedAt: new Date().toISOString(),
+            localHash: hashContent(""),
+            remoteHash: hashContent(""),
+            baseHash: hashContent(""),
+            syncState: "synced",
+            parentId: parentFolderId ?? null,
+            ancestors: [],
+            hasAttachments: false,
+            contentType: "folder",
+          });
+          await writeBaseContent(atlcliDir, newFolder.id, "");
+        }
+
+        return "created";
+      } catch (err: any) {
+        if (!opts.json) {
+          output(`Error creating folder: ${err.message}`, opts);
+        }
+        return "skipped";
+      }
+    }
+
+    // EXISTING FOLDER: Check for rename
+    const existingFolderState = state?.pages[pageId];
+
+    // Use directory name as title if path changed (folder was renamed locally)
+    let newTitle = frontmatter.title;
+    if (existingFolderState && existingFolderState.path !== relativePath) {
+      // Directory was renamed - use directory name as new title (unless frontmatter was manually changed)
+      if (frontmatter.title === existingFolderState.title) {
+        newTitle = titleFromDir;
+      }
+    }
+
+    if (newTitle && newTitle !== existingFolderState?.title) {
+      // Confluence API doesn't support folder rename (returns 501)
+      // User must rename in Confluence UI, then pull
+      if (!opts.json) {
+        const folderUrl = `${client.getInstanceUrl()}/wiki/spaces/${space}/folder/${pageId}`;
+        output(`Warning: Folder rename not supported by Confluence API. Rename "${existingFolderState?.title}" in Confluence UI, then pull: ${folderUrl}`, opts);
+      }
+      return "skipped";
+    }
+
+    // Folder exists and hasn't changed - skip
+    return "skipped";
+  }
+
   // Strip frontmatter before converting to storage format
   const conversionOptions = buildConversionOptions(baseUrl);
   const storage = markdownToStorage(markdownContent, conversionOptions);
@@ -1532,6 +2147,66 @@ async function pushFile(params: {
       }
     }
 
+    // Check if page was moved to a different location (directory changed)
+    // Skip move detection for folder index files (they're handled separately)
+    const relativePath = atlcliDir ? getRelativePath(atlcliDir, filePath) : basename(filePath);
+    const existingPageState = state?.pages[pageId];
+    let pageMoved = false;
+    let newParentId: string | null = null;
+
+    // Skip move detection if this is a folder (contentType === "folder")
+    const isFolder = existingPageState?.contentType === "folder";
+
+    if (existingPageState && atlcliDir && !isFolder) {
+      const oldDir = dirname(existingPageState.path);
+      const newDir = dirname(relativePath);
+
+      if (oldDir !== newDir) {
+        // Page directory changed - determine new parent
+        // Check if new directory has a parent index.md with a folder/page ID
+        const parentIndexPath = join(atlcliDir, newDir, "index.md");
+        if (existsSync(parentIndexPath)) {
+          try {
+            const parentContent = await readTextFile(parentIndexPath);
+            const { frontmatter: parentFrontmatter } = parseFrontmatter(parentContent);
+            if (parentFrontmatter?.id) {
+              newParentId = parentFrontmatter.id;
+            }
+          } catch {
+            // Can't read parent index
+          }
+        }
+
+        // Move the page in Confluence
+        if (newParentId) {
+          try {
+            // Check if new parent is a folder or page
+            const parentState = state?.pages[newParentId];
+            if (parentState?.contentType === "folder") {
+              await client.movePageToFolder(pageId, newParentId);
+            } else {
+              // Move under a page
+              await client.movePage(pageId, newParentId);
+            }
+            pageMoved = true;
+            if (!opts.json) {
+              output(`Moved page to ${newDir}/`, opts);
+            }
+          } catch (err: any) {
+            if (!opts.json) {
+              output(`Warning: Could not move page: ${err.message}`, opts);
+            }
+          }
+        } else if (newDir === ".") {
+          // Moved to root - find space home page as parent
+          // For now, just warn - moving to root requires knowing the home page ID
+          if (!opts.json) {
+            output(`Warning: Moving page to root not yet supported. Move in Confluence UI.`, opts);
+          }
+        }
+      }
+    }
+
     // Update existing page
     const current = await client.getPage(pageId);
     const title = frontmatter?.title || legacyMeta?.title || current.title;
@@ -1540,13 +2215,20 @@ async function pushFile(params: {
 
     // Update state if available
     if (atlcliDir && state) {
-      const relativePath = getRelativePath(atlcliDir, filePath);
       const normalizedMd = normalizeMarkdown(markdownContent);
       const contentHash = hashContent(normalizedMd);
 
-      // Preserve ancestors from existing state
-      const existingPageState = state.pages[page.id];
-      const ancestors = existingPageState?.ancestors ?? [];
+      // Update ancestors if page was moved
+      let ancestors = existingPageState?.ancestors ?? [];
+      let parentId = existingPageState?.parentId ?? null;
+      if (pageMoved && newParentId) {
+        // Get new parent's ancestors and add parent to chain
+        const newParentState = state.pages[newParentId];
+        if (newParentState) {
+          ancestors = [...(newParentState.ancestors ?? []), newParentId];
+          parentId = newParentId;
+        }
+      }
 
       updatePageState(state, page.id, {
         path: relativePath,
@@ -1558,7 +2240,7 @@ async function pushFile(params: {
         remoteHash: contentHash,
         baseHash: contentHash,
         syncState: "synced",
-        parentId: existingPageState?.parentId ?? null,
+        parentId,
         ancestors,
       });
 
@@ -1592,7 +2274,25 @@ async function pushFile(params: {
 
   // For backwards compatibility, still create if legacy meta exists with space
   const title = legacyMeta?.title ?? titleFromFilename(filePath);
-  const page = await client.createPage({ spaceKey: targetSpace, title, storage });
+
+  // Determine parent folder ID from directory structure
+  let parentId: string | undefined;
+  const newPageDir = dirname(filePath);
+  const parentIndexPath = join(newPageDir, "index.md");
+  if (existsSync(parentIndexPath)) {
+    try {
+      const parentContent = await readTextFile(parentIndexPath);
+      const { frontmatter: parentFrontmatter } = parseFrontmatter(parentContent);
+      // Only use as parent if it's a folder type with an ID
+      if (parentFrontmatter?.type === "folder" && parentFrontmatter.id) {
+        parentId = parentFrontmatter.id;
+      }
+    } catch {
+      // Parent index doesn't exist or can't be read
+    }
+  }
+
+  const page = await client.createPage({ spaceKey: targetSpace, title, storage, parentId });
 
   // Upload attachments after creating the page
   if (attachmentRefs.length > 0) {
@@ -2000,11 +2700,22 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     totalBroken: linkChanges.reduce((sum, l) => sum + l.broken.length, 0),
   };
 
+  // Count folders from state
+  let folderCount = 0;
+  if (state) {
+    for (const pageState of Object.values(state.pages)) {
+      if (pageState.contentType === "folder") {
+        folderCount++;
+      }
+    }
+  }
+
   if (opts.json) {
     const result: Record<string, unknown> = {
       schemaVersion: "1",
       dir,
       stats,
+      folderCount,
       conflicts,
       modified,
       untracked,
@@ -2036,6 +2747,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     output(`  remote-modified: ${stats.remoteModified} files`, opts);
     output(`  conflict:        ${stats.conflict} files`, opts);
     output(`  untracked:       ${stats.untracked} files`, opts);
+    output(`  folders:         ${folderCount}`, opts);
 
     if (state?.lastSync) {
       output(`\nLast sync: ${state.lastSync}`, opts);
@@ -2191,6 +2903,37 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
   const pageId = frontmatter.id;
   const client = await getClient(flags, opts);
 
+  // Handle folders differently - they have no content to diff
+  if (frontmatter?.type === "folder") {
+    const folder = await client.getFolder(pageId);
+    const localTitle = frontmatter.title || "";
+    const remoteTitle = folder.title;
+    const hasChanges = localTitle !== remoteTitle;
+
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        file: filePath,
+        pageId,
+        title: remoteTitle,
+        type: "folder",
+        hasChanges,
+        localTitle,
+        remoteTitle,
+      }, opts);
+    } else {
+      output(`Folder: "${remoteTitle}"`, opts);
+      if (hasChanges) {
+        output(`  Title mismatch:`, opts);
+        output(`    Local:  "${localTitle}"`, opts);
+        output(`    Remote: "${remoteTitle}"`, opts);
+      } else {
+        output(`  No changes (folder has no content to diff)`, opts);
+      }
+    }
+    return;
+  }
+
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
   const remoteMarkdown = storageToMarkdown(remotePage.storage, conversionOptions);
@@ -2256,6 +2999,28 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     maxPageSizeKb: 500,
   });
 
+  // Run folder validation
+  const folderIssues = validateFolders(absPath);
+  if (folderIssues.length > 0) {
+    // Add folder issues to result
+    for (const issue of folderIssues) {
+      result.totalWarnings++;
+      // Find or create file result entry
+      let fileResult = result.files.find((f) => f.path === issue.file);
+      if (!fileResult) {
+        fileResult = {
+          path: issue.file,
+          issues: [],
+          hasErrors: false,
+          hasWarnings: false,
+        };
+        result.files.push(fileResult);
+      }
+      fileResult.issues.push(issue);
+      fileResult.hasWarnings = true;
+    }
+  }
+
   // JSON output
   if (opts.json) {
     output({
@@ -2292,7 +3057,7 @@ function docsHelp(): string {
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
   pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
-  push [dir|file] [--page-id <id>] [--validate]     Push changes to Confluence
+  push [dir|file] [--validate] [--delete-folders]   Push changes to Confluence
   add <file> [--title <t>] [--parent <id>]          Add file to Confluence
   watch <dir> [--space <key>] [--debounce <ms>]
   sync <dir> [scope options] [--poll-interval <ms>] [--label <label>]
@@ -2315,6 +3080,8 @@ Options:
   --no-attachments   Skip downloading attachments
   --validate         Run validation before push (fail on errors)
   --strict           Treat warnings as errors (for check and --validate)
+  --delete-folders   Confirm deletion of folders removed locally (push)
+  --no-auto-create-folders  Don't auto-create folders for directories without index.md
   --links            Analyze link changes vs stored links (status command)
   --skip-user-check  Skip user status checks during pull (faster)
   --refresh-users    Force re-check all users regardless of cache TTL

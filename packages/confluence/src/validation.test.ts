@@ -5,6 +5,7 @@ import {
   validateFile,
   validateDirectory,
   validateMacros,
+  validateFolders,
   formatValidationReport,
   type ValidationResult,
 } from "./validation.js";
@@ -353,5 +354,201 @@ describe("formatValidationReport", () => {
     expect(report).toContain("0 errors");
     expect(report).toContain("0 warnings");
     expect(report).toContain("5 passed");
+  });
+});
+
+describe("validateFolders", () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  test("detects empty folder", () => {
+    // Create folder with just index.md (no children)
+    mkdirSync(join(TEST_DIR, "empty-folder"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "empty-folder", "index.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Empty Folder"
+  type: "folder"
+---
+
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: "warning",
+      code: "FOLDER_EMPTY",
+    });
+    expect(issues[0].message).toContain("Empty Folder");
+  });
+
+  test("no warning for folder with children", () => {
+    // Create folder with index.md and a child page
+    mkdirSync(join(TEST_DIR, "populated-folder"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "populated-folder", "index.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Populated Folder"
+  type: "folder"
+---
+
+`
+    );
+    writeFileSync(
+      join(TEST_DIR, "populated-folder", "child.md"),
+      `---
+atlcli:
+  id: "456"
+  title: "Child Page"
+---
+
+# Child Page
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues.filter((i) => i.code === "FOLDER_EMPTY")).toHaveLength(0);
+  });
+
+  test("no warning for folder with subdirectories", () => {
+    // Create folder with index.md and a subdirectory
+    mkdirSync(join(TEST_DIR, "parent-folder", "sub-folder"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "parent-folder", "index.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Parent Folder"
+  type: "folder"
+---
+
+`
+    );
+    writeFileSync(
+      join(TEST_DIR, "parent-folder", "sub-folder", "index.md"),
+      `---
+atlcli:
+  id: "456"
+  title: "Sub Folder"
+  type: "folder"
+---
+
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    // Parent folder has child (sub-folder), so no FOLDER_EMPTY
+    // Sub folder is empty, so one FOLDER_EMPTY
+    const emptyIssues = issues.filter((i) => i.code === "FOLDER_EMPTY");
+    expect(emptyIssues).toHaveLength(1);
+    expect(emptyIssues[0].message).toContain("Sub Folder");
+  });
+
+  test("detects directory without index.md", () => {
+    // Create directory with pages but no index.md
+    mkdirSync(join(TEST_DIR, "orphan-dir"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "orphan-dir", "page.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Orphan Page"
+---
+
+# Orphan Page
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: "warning",
+      code: "FOLDER_MISSING_INDEX",
+    });
+    expect(issues[0].message).toContain("orphan-dir");
+  });
+
+  test("no warning when directory has index.md", () => {
+    // Create directory with index.md and pages
+    mkdirSync(join(TEST_DIR, "proper-folder"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "proper-folder", "index.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Proper Folder"
+  type: "folder"
+---
+
+`
+    );
+    writeFileSync(
+      join(TEST_DIR, "proper-folder", "page.md"),
+      `---
+atlcli:
+  id: "456"
+  title: "Child Page"
+---
+
+# Child Page
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues.filter((i) => i.code === "FOLDER_MISSING_INDEX")).toHaveLength(0);
+  });
+
+  test("ignores root directory pages", () => {
+    // Pages at root level don't need an index.md
+    writeFileSync(
+      join(TEST_DIR, "root-page.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Root Page"
+---
+
+# Root Page
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues.filter((i) => i.code === "FOLDER_MISSING_INDEX")).toHaveLength(0);
+  });
+
+  test("ignores non-folder index.md", () => {
+    // index.md without type: folder should not be checked for children
+    mkdirSync(join(TEST_DIR, "not-folder"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "not-folder", "index.md"),
+      `---
+atlcli:
+  id: "123"
+  title: "Not A Folder"
+---
+
+# Not A Folder
+`
+    );
+
+    const issues = validateFolders(TEST_DIR);
+
+    expect(issues.filter((i) => i.code === "FOLDER_EMPTY")).toHaveLength(0);
   });
 });

@@ -96,6 +96,28 @@ Configure limits:
 atlcli wiki docs validate ./docs --max-page-size 1MB --max-code-block 200KB
 ```
 
+### Folder Validation
+
+Checks folder structure for issues:
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `FOLDER_EMPTY` | Warning | Folder index.md exists but has no child pages or subfolders |
+| `FOLDER_MISSING_INDEX` | Warning | Directory contains .md files but has no index.md |
+
+```
+WARNINGS (2):
+  empty-folder/index.md:1 - Folder "Empty" has no children [FOLDER_EMPTY]
+  orphan-dir - Directory "orphan-dir" contains pages but has no folder index.md [FOLDER_MISSING_INDEX]
+```
+
+**FOLDER_EMPTY**: A folder exists in Confluence but has no content. Consider adding pages or removing the empty folder.
+
+**FOLDER_MISSING_INDEX**: A local directory contains markdown files but isn't a synced Confluence folder. Either:
+- Create an index.md with `type: folder` to make it a folder
+- Move the files to an existing folder
+- This may indicate pages that were moved but the folder wasn't synced
+
 ### Frontmatter Validation
 
 Checks required YAML frontmatter:
