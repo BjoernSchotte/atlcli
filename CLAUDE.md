@@ -53,6 +53,7 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 
 - **Never push** until explicitly told to do so
 - **Always write tests** for new functionality
+- **Always add regression tests for bug fixes** - when fixing a bug, add 1+ tests that would have caught it to prevent recurrence
 - **Always E2E test before committing** (profile: `mayflower`, space: `DOCSY`, project: `ATLCLI`, dir: `~/wikisynctest/docs` or as specified)
 - **Run typecheck before pushing**: `bun run typecheck`
 - **Clean up test resources** - delete test pages/issues after E2E testing
