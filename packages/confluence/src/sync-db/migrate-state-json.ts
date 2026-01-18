@@ -108,16 +108,15 @@ export async function migrateFromStateJson(
   const stateJsonPath = join(atlcliDir, "state.json");
   const backupPath = join(atlcliDir, "state.json.bak");
 
-  // Check if migration is needed
+  // Check if state.json exists
   if (!existsSync(stateJsonPath)) {
     return { migrated: false, reason: "no-state-json" };
   }
 
-  // Check if already migrated (sync.db exists)
-  const syncDbPath = join(atlcliDir, "sync.db");
-  if (existsSync(syncDbPath)) {
-    return { migrated: false, reason: "already-migrated" };
-  }
+  // Note: We don't check for sync.db existence here because:
+  // 1. The caller (createSyncDb) checks needsMigration() BEFORE initializing the adapter
+  // 2. The adapter is initialized (creating sync.db) before this function is called
+  // 3. If this function is called, the caller has already determined migration is needed
 
   try {
     // Read existing state

@@ -165,11 +165,16 @@ export async function createSyncDb(
       throw new Error(`Unknown adapter type: ${adapterType}`);
   }
 
-  // Initialize adapter
+  // Check for migration BEFORE initializing (which creates sync.db)
+  // This must be done before init() because init() creates the sync.db file
+  const shouldMigrate =
+    autoMigrate && adapterType === "sqlite" && needsMigration(atlcliDir);
+
+  // Initialize adapter (creates sync.db if sqlite)
   await adapter.init();
 
-  // Auto-migrate from state.json if needed
-  if (autoMigrate && adapterType === "sqlite" && needsMigration(atlcliDir)) {
+  // Now migrate if needed (sync.db now exists but is empty)
+  if (shouldMigrate) {
     const result = await migrateFromStateJson(atlcliDir, adapter);
     if (!result.migrated && result.reason !== "no-state-json") {
       console.warn(
