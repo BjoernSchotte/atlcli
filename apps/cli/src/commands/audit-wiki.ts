@@ -64,12 +64,30 @@ async function checkUrl(url: string, timeoutMs = 10000): Promise<LinkCheckResult
     };
   } catch (err) {
     clearTimeout(timeout);
-    const message = err instanceof Error ? err.message : String(err);
+    const rawMessage = err instanceof Error ? err.message : String(err);
+
+    // Simplify common error messages
+    let error: string;
+    if (rawMessage.includes("abort")) {
+      error = "Timeout";
+    } else if (rawMessage.includes("ENOTFOUND") || rawMessage.includes("getaddrinfo")) {
+      error = "DNS lookup failed";
+    } else if (rawMessage.includes("ECONNREFUSED")) {
+      error = "Connection refused";
+    } else if (rawMessage.includes("ECONNRESET")) {
+      error = "Connection reset";
+    } else if (rawMessage.includes("unable to connect") || rawMessage.includes("Unable to connect")) {
+      error = "Connection failed";
+    } else if (rawMessage.includes("certificate")) {
+      error = "SSL error";
+    } else {
+      error = "Connection failed";
+    }
 
     return {
       url,
       status: "error",
-      error: message.includes("abort") ? "Timeout" : message,
+      error,
       isBroken: true,
     };
   }
