@@ -222,8 +222,16 @@ export async function handleAuditWiki(
     return;
   }
 
-  // Find .atlcli directory
-  const dir = (getFlag(flags, "dir") as string) ?? ".";
+  // Find .atlcli directory (positional arg or --dir flag)
+  // Handle case where path was consumed by --no-external flag (parser quirk)
+  const noExternalValue = flags["no-external"];
+  const pathFromNoExternal = typeof noExternalValue === "string" && noExternalValue.startsWith("/")
+    ? noExternalValue
+    : undefined;
+  if (pathFromNoExternal) {
+    flags["no-external"] = true; // Reset to boolean
+  }
+  const dir = args[0] ?? pathFromNoExternal ?? (getFlag(flags, "dir") as string) ?? ".";
   const atlcliDir = findAtlcliDir(dir);
 
   if (!atlcliDir) {
