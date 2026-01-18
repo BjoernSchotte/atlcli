@@ -112,6 +112,7 @@ export type AuditConfig = {
     | "single-contributor"
     | "inactive-contributors"
     | "external-links"
+    | "folders"
   >;
 };
 

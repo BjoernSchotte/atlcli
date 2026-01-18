@@ -48,6 +48,7 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 - Commands in `apps/cli/src/commands/` use `output(data, opts)` for results, `fail()` for errors
 - Config: `~/.atlcli/config.json`, profile-based auth, helpers: `loadConfig()`, `getActiveProfile()`
 - API clients (`ConfluenceClient`, `JiraClient`) take Profile, handle REST + errors, return typed responses
+- Design for testability using "functional core, imperative shell": keep pure business logic separate from code that does IO (like CLI interaction)
 
 ## Workflow Rules
 

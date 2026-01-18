@@ -5,6 +5,7 @@ import {
   createSyncDb,
   hasSyncDb,
   ConfluenceClient,
+  validateFolders,
   type SyncDbAdapter,
   type PageRecord,
   type LinkRecord,
@@ -27,6 +28,7 @@ import {
   type RestrictedPageInfo,
   type ContentStatusInfo,
   type HighChurnInfo,
+  type FolderIssueInfo,
   type RemotePageInfo,
 } from "./audit-formatters.js";
 
@@ -161,6 +163,7 @@ interface AuditOptions {
   checkInactiveContributors: boolean;
   checkExternalLinks: boolean;
   checkExternalBroken: boolean; // Actually verify external links via HTTP
+  checkFolders: boolean; // Check for folder structure issues
   // New audit checks
   missingLabel?: string; // Find pages missing this label
   checkRestricted: boolean; // Find pages with restrictions
@@ -243,6 +246,7 @@ export async function handleAuditWiki(
     options.checkSingleContributor ||
     options.checkInactiveContributors ||
     options.checkExternalLinks ||
+    options.checkFolders ||
     options.missingLabel !== undefined ||
     options.checkRestricted ||
     options.checkDrafts ||
@@ -294,7 +298,7 @@ export async function handleAuditWiki(
     }
 
     // Run audit
-    const result = await runAudit(adapter, options, client);
+    const result = await runAudit(adapter, options, atlcliDir, client);
 
     // Output results
     if (options.json || opts.json) {
@@ -402,6 +406,7 @@ async function parseOptions(
     checkInactiveContributors: shouldEnableCheck("inactive-contributors", "inactive-contributors"),
     checkExternalLinks: hasFlag(flags, "external-links") || hasFlag(flags, "check-external") || (useDefaults && defaultChecks.includes("external-links")),
     checkExternalBroken: hasFlag(flags, "check-external"), // Actually verify via HTTP
+    checkFolders: all || hasFlag(flags, "folders") || (useDefaults && defaultChecks.includes("folders")),
     // New audit checks
     missingLabel: getFlag(flags, "missing-label") as string | undefined,
     checkRestricted: all || hasFlag(flags, "restricted"),
@@ -490,6 +495,7 @@ function filterByPageScope<T extends { page: PageRecord }>(
 async function runAudit(
   adapter: SyncDbAdapter,
   options: AuditOptions,
+  atlcliDir: string,
   client: ConfluenceClient | null = null
 ): Promise<AuditResult> {
   const spaceKey = await adapter.getMeta("space_key");
@@ -508,6 +514,7 @@ async function runAudit(
       drafts: 0,
       archived: 0,
       highChurn: 0,
+      folderIssues: 0,
       unsynced: 0,
       unsyncedStale: { high: 0, medium: 0, low: 0 },
     },
@@ -521,6 +528,7 @@ async function runAudit(
     draftPages: [],
     archivedPages: [],
     highChurnPages: [],
+    folderIssues: [],
     userCacheAge: null,
     unsyncedPages: [],
     unsyncedStalePages: [],
@@ -671,6 +679,19 @@ async function runAudit(
     highChurnPages = filterByPageScope(highChurnPages, filteredPageIds);
     result.highChurnPages = highChurnPages;
     result.summary.highChurn = highChurnPages.length;
+  }
+
+  // Folder structure issues
+  if (options.checkFolders) {
+    // Get parent directory of .atlcli folder (the sync root)
+    const syncRoot = dirname(atlcliDir);
+    const folderValidationIssues = validateFolders(syncRoot);
+    result.folderIssues = folderValidationIssues.map((issue) => ({
+      file: issue.file,
+      code: issue.code as "FOLDER_EMPTY" | "FOLDER_MISSING_INDEX",
+      message: issue.message,
+    }));
+    result.summary.folderIssues = result.folderIssues.length;
   }
 
   // Include remote (unsynced) pages if requested
@@ -1343,6 +1364,7 @@ Check Options:
   --drafts                  Find unpublished draft pages
   --archived                Find archived pages
   --high-churn <N>          Find pages with N+ versions (heavily edited)
+  --folders                 Check for folder structure issues (empty folders, missing index.md)
 
 Scope Filtering:
   --label <label>           Only audit pages with this label
@@ -1380,7 +1402,7 @@ Configuration:
   }
 
   Valid defaultChecks: stale, orphans, broken-links, single-contributor,
-                       inactive-contributors, external-links
+                       inactive-contributors, external-links, folders
 
 Examples:
   # Run all checks with 12-month high threshold

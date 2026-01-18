@@ -63,6 +63,12 @@ export interface HighChurnInfo {
   versionCount: number;
 }
 
+export interface FolderIssueInfo {
+  file: string;
+  code: "FOLDER_EMPTY" | "FOLDER_MISSING_INDEX";
+  message: string;
+}
+
 export interface RemotePageInfo {
   pageId: string;
   title: string;
@@ -85,6 +91,7 @@ export interface AuditSummary {
   drafts: number;
   archived: number;
   highChurn: number;
+  folderIssues: number;
   unsynced: number;
   unsyncedStale: { high: number; medium: number; low: number };
 }
@@ -103,6 +110,7 @@ export interface AuditResult {
   draftPages: ContentStatusInfo[];
   archivedPages: ContentStatusInfo[];
   highChurnPages: HighChurnInfo[];
+  folderIssues: FolderIssueInfo[];
   userCacheAge: string | null;
   unsyncedPages: RemotePageInfo[];
   unsyncedStalePages: RemotePageInfo[];
@@ -155,6 +163,7 @@ export function formatTable(result: AuditResult): string {
     result.summary.drafts +
     result.summary.archived +
     result.summary.highChurn +
+    result.summary.folderIssues +
     result.summary.unsynced +
     result.summary.unsyncedStale.high +
     result.summary.unsyncedStale.medium +
@@ -336,6 +345,19 @@ export function formatTable(result: AuditResult): string {
     lines.push("");
   }
 
+  // Folder issues
+  if (result.folderIssues.length > 0) {
+    lines.push(`FOLDER ISSUES (${result.summary.folderIssues} issues)`);
+    for (const info of result.folderIssues.slice(0, 10)) {
+      const label = info.code === "FOLDER_EMPTY" ? "Empty" : "Missing index";
+      lines.push(`  - ${info.file} [${label}] - ${info.message}`);
+    }
+    if (result.folderIssues.length > 10) {
+      lines.push(`  ... and ${result.folderIssues.length - 10} more`);
+    }
+    lines.push("");
+  }
+
   // Unsynced pages (remote only)
   if (result.unsyncedPages.length > 0) {
     lines.push(
@@ -436,6 +458,9 @@ export function formatMarkdown(result: AuditResult): string {
   }
   if (result.summary.highChurn > 0) {
     lines.push(`| High churn pages | ${result.summary.highChurn} |`);
+  }
+  if (result.summary.folderIssues > 0) {
+    lines.push(`| Folder issues | ${result.summary.folderIssues} |`);
   }
   if (result.summary.unsynced > 0) {
     lines.push(`| Unsynced pages | ${result.summary.unsynced} |`);
@@ -608,6 +633,19 @@ export function formatMarkdown(result: AuditResult): string {
     lines.push("|------|---------------|");
     for (const info of result.highChurnPages) {
       lines.push(`| ${info.page.title} | ${info.versionCount} |`);
+    }
+    lines.push("");
+  }
+
+  // Folder issues
+  if (result.folderIssues.length > 0) {
+    lines.push("## Folder Issues");
+    lines.push("");
+    lines.push("| Path | Issue | Message |");
+    lines.push("|------|-------|---------|");
+    for (const info of result.folderIssues) {
+      const issue = info.code === "FOLDER_EMPTY" ? "Empty folder" : "Missing index.md";
+      lines.push(`| \`${info.file}\` | ${issue} | ${info.message} |`);
     }
     lines.push("");
   }

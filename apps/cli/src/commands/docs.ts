@@ -109,6 +109,7 @@ import {
   // Validation
   validateFile,
   validateDirectory,
+  validateFolders,
   formatValidationReport,
   ValidationResult,
   // Link storage
@@ -2902,6 +2903,37 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
   const pageId = frontmatter.id;
   const client = await getClient(flags, opts);
 
+  // Handle folders differently - they have no content to diff
+  if (frontmatter?.type === "folder") {
+    const folder = await client.getFolder(pageId);
+    const localTitle = frontmatter.title || "";
+    const remoteTitle = folder.title;
+    const hasChanges = localTitle !== remoteTitle;
+
+    if (opts.json) {
+      output({
+        schemaVersion: "1",
+        file: filePath,
+        pageId,
+        title: remoteTitle,
+        type: "folder",
+        hasChanges,
+        localTitle,
+        remoteTitle,
+      }, opts);
+    } else {
+      output(`Folder: "${remoteTitle}"`, opts);
+      if (hasChanges) {
+        output(`  Title mismatch:`, opts);
+        output(`    Local:  "${localTitle}"`, opts);
+        output(`    Remote: "${remoteTitle}"`, opts);
+      } else {
+        output(`  No changes (folder has no content to diff)`, opts);
+      }
+    }
+    return;
+  }
+
   // Fetch remote page
   const remotePage = await client.getPage(pageId);
   const remoteMarkdown = storageToMarkdown(remotePage.storage, conversionOptions);
@@ -2966,6 +2998,28 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     checkPageSize: true,
     maxPageSizeKb: 500,
   });
+
+  // Run folder validation
+  const folderIssues = validateFolders(absPath);
+  if (folderIssues.length > 0) {
+    // Add folder issues to result
+    for (const issue of folderIssues) {
+      result.totalWarnings++;
+      // Find or create file result entry
+      let fileResult = result.files.find((f) => f.path === issue.file);
+      if (!fileResult) {
+        fileResult = {
+          path: issue.file,
+          issues: [],
+          hasErrors: false,
+          hasWarnings: false,
+        };
+        result.files.push(fileResult);
+      }
+      fileResult.issues.push(issue);
+      fileResult.hasWarnings = true;
+    }
+  }
 
   // JSON output
   if (opts.json) {

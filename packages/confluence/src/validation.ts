@@ -7,6 +7,7 @@ import {
   getPathWithoutAnchor,
   type MarkdownLink,
 } from "./links.js";
+import { parseFrontmatter } from "./frontmatter.js";
 import type { AtlcliState } from "./atlcli-dir.js";
 import type { SyncDbAdapter } from "./sync-db/types.js";
 
@@ -20,7 +21,9 @@ export type ValidationCode =
   | "LINK_PAGE_DELETED"
   | "MACRO_UNCLOSED"
   | "MACRO_INVALID_PARAMS"
-  | "PAGE_SIZE_EXCEEDED";
+  | "PAGE_SIZE_EXCEEDED"
+  | "FOLDER_EMPTY"
+  | "FOLDER_MISSING_INDEX";
 
 /** A single validation issue */
 export interface ValidationIssue {
@@ -399,4 +402,78 @@ export function formatValidationReport(result: ValidationResult): string {
   );
 
   return lines.join("\n");
+}
+
+/**
+ * Validate folder structure in a directory.
+ * Used by both `docs check` and `docs audit` commands.
+ *
+ * Checks for:
+ * - FOLDER_EMPTY: Folders that contain no pages or subfolders
+ * - FOLDER_MISSING_INDEX: Directories with .md files but no folder index.md
+ */
+export function validateFolders(dir: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const absDir = resolve(dir);
+
+  // Collect all markdown files with relative paths
+  const files = collectMarkdownFiles(absDir).map((f) => relative(absDir, f));
+
+  // Find all index.md files with type: folder
+  for (const file of files) {
+    if (!file.endsWith("index.md")) continue;
+
+    const fullPath = join(absDir, file);
+    const content = readFileSync(fullPath, "utf-8");
+    const { frontmatter } = parseFrontmatter(content);
+
+    if (frontmatter?.type !== "folder") continue;
+
+    // Check if folder has children
+    const folderDir = dirname(fullPath);
+    const entries = readdirSync(folderDir, { withFileTypes: true });
+    const children = entries.filter(
+      (e) =>
+        e.name !== "index.md" &&
+        !e.name.startsWith(".") &&
+        (e.isDirectory() || (e.isFile() && isMarkdownPath(e.name)))
+    );
+
+    if (children.length === 0) {
+      const title = frontmatter.title || dirname(file) || "root";
+      issues.push({
+        severity: "warning",
+        code: "FOLDER_EMPTY",
+        message: `Folder "${title}" has no children`,
+        file,
+        line: 1,
+      });
+    }
+  }
+
+  // Find directories with .md files but no index.md
+  const dirsWithPages = new Set<string>();
+  for (const file of files) {
+    if (file.endsWith(".md") && !file.endsWith("index.md")) {
+      const dir = dirname(file);
+      if (dir !== ".") {
+        dirsWithPages.add(dir);
+      }
+    }
+  }
+
+  for (const dirPath of dirsWithPages) {
+    const indexPath = join(dirPath, "index.md");
+    if (!files.includes(indexPath)) {
+      issues.push({
+        severity: "warning",
+        code: "FOLDER_MISSING_INDEX",
+        message: `Directory "${dirPath}" contains pages but has no folder index.md`,
+        file: dirPath,
+        line: 1,
+      });
+    }
+  }
+
+  return issues;
 }
