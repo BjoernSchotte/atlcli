@@ -11,6 +11,103 @@ import {
 } from "@atlcli/confluence";
 
 // ============================================================================
+// HTTP Link Checking
+// ============================================================================
+
+interface LinkCheckResult {
+  url: string;
+  status: number | "error";
+  error?: string;
+  isBroken: boolean;
+}
+
+/**
+ * Check if a URL is accessible via HTTP HEAD request.
+ * Falls back to GET if HEAD fails (some servers don't support HEAD).
+ */
+async function checkUrl(url: string, timeoutMs = 10000): Promise<LinkCheckResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    // Try HEAD first (faster, less data)
+    let response = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "atlcli-link-checker/1.0",
+      },
+    });
+
+    // Some servers return 405 for HEAD, try GET
+    if (response.status === 405) {
+      response = await fetch(url, {
+        method: "GET",
+        signal: controller.signal,
+        redirect: "follow",
+        headers: {
+          "User-Agent": "atlcli-link-checker/1.0",
+        },
+      });
+    }
+
+    clearTimeout(timeout);
+
+    // Consider 4xx and 5xx as broken (except 401/403 which may just need auth)
+    const isBroken = response.status >= 400 && response.status !== 401 && response.status !== 403;
+
+    return {
+      url,
+      status: response.status,
+      isBroken,
+    };
+  } catch (err) {
+    clearTimeout(timeout);
+    const message = err instanceof Error ? err.message : String(err);
+
+    return {
+      url,
+      status: "error",
+      error: message.includes("abort") ? "Timeout" : message,
+      isBroken: true,
+    };
+  }
+}
+
+/**
+ * Check multiple URLs concurrently with rate limiting.
+ */
+async function checkUrls(
+  urls: string[],
+  opts: { concurrency?: number; timeoutMs?: number; onProgress?: (checked: number, total: number) => void }
+): Promise<Map<string, LinkCheckResult>> {
+  const { concurrency = 5, timeoutMs = 10000, onProgress } = opts;
+  const results = new Map<string, LinkCheckResult>();
+  const uniqueUrls = [...new Set(urls)]; // Dedupe
+  let checked = 0;
+
+  // Process in batches
+  for (let i = 0; i < uniqueUrls.length; i += concurrency) {
+    const batch = uniqueUrls.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map((url) => checkUrl(url, timeoutMs))
+    );
+
+    for (const result of batchResults) {
+      results.set(result.url, result);
+      checked++;
+    }
+
+    if (onProgress) {
+      onProgress(checked, uniqueUrls.length);
+    }
+  }
+
+  return results;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -25,6 +122,7 @@ interface AuditOptions {
   checkSingleContributor: boolean;
   checkInactiveContributors: boolean;
   checkExternalLinks: boolean;
+  checkExternalBroken: boolean; // Actually verify external links via HTTP
   // Output
   json: boolean;
   markdown: boolean;
@@ -61,6 +159,10 @@ interface ExternalLinkInfo {
   link: LinkRecord;
   sourcePage: PageRecord | null;
   domain: string;
+  // HTTP validation results (only populated if --check-external is used)
+  httpStatus?: number | "error";
+  httpError?: string;
+  isBroken?: boolean;
 }
 
 interface AuditResult {
@@ -72,6 +174,7 @@ interface AuditResult {
     brokenLinks: number;
     contributorRisks: number;
     externalLinks: number;
+    brokenExternalLinks: number;
   };
   stalePages: StalePageInfo[];
   orphanedPages: OrphanedPageInfo[];
@@ -219,7 +322,8 @@ async function parseOptions(
     checkBrokenLinks: all || hasFlag(flags, "broken-links"),
     checkSingleContributor: all || hasFlag(flags, "single-contributor"),
     checkInactiveContributors: all || hasFlag(flags, "inactive-contributors"),
-    checkExternalLinks: hasFlag(flags, "external-links"), // Not included in --all by default
+    checkExternalLinks: hasFlag(flags, "external-links") || hasFlag(flags, "check-external"),
+    checkExternalBroken: hasFlag(flags, "check-external"), // Actually verify via HTTP
     json: hasFlag(flags, "json"),
     markdown: hasFlag(flags, "markdown"),
     exportGraph: hasFlag(flags, "export-graph"),
@@ -242,6 +346,7 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
       brokenLinks: 0,
       contributorRisks: 0,
       externalLinks: 0,
+      brokenExternalLinks: 0,
     },
     stalePages: [],
     orphanedPages: [],
@@ -293,13 +398,45 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
   // External links
   if (options.checkExternalLinks) {
     const externalLinks = await adapter.getExternalLinks();
-    result.externalLinks = await Promise.all(
+
+    // Build basic info for all external links
+    const externalLinkInfos: ExternalLinkInfo[] = await Promise.all(
       externalLinks.map(async (link) => ({
         link,
         sourcePage: await adapter.getPage(link.sourcePageId),
         domain: extractDomain(link.targetPath),
       }))
     );
+
+    // If --check-external, verify URLs via HTTP
+    if (options.checkExternalBroken) {
+      const urls = externalLinks
+        .map((l) => l.targetPath)
+        .filter((url): url is string => url !== null);
+
+      const checkResults = await checkUrls(urls, {
+        concurrency: 5,
+        timeoutMs: 10000,
+      });
+
+      // Update external link info with HTTP results
+      for (const info of externalLinkInfos) {
+        const url = info.link.targetPath;
+        if (url) {
+          const checkResult = checkResults.get(url);
+          if (checkResult) {
+            info.httpStatus = checkResult.status;
+            info.httpError = checkResult.error;
+            info.isBroken = checkResult.isBroken;
+          }
+        }
+      }
+
+      // Count broken external links
+      result.summary.brokenExternalLinks = externalLinkInfos.filter((i) => i.isBroken).length;
+    }
+
+    result.externalLinks = externalLinkInfos;
     result.summary.externalLinks = externalLinks.length;
   }
 
@@ -542,6 +679,22 @@ function formatTable(result: AuditResult, options: AuditOptions): string {
 
   // External links
   if (result.externalLinks.length > 0) {
+    // Show broken external links first if any
+    const brokenExternal = result.externalLinks.filter((i) => i.isBroken);
+    if (brokenExternal.length > 0) {
+      lines.push(`BROKEN EXTERNAL LINKS (${brokenExternal.length} links)`);
+      for (const info of brokenExternal.slice(0, 10)) {
+        const source = info.sourcePage?.title ?? info.link.sourcePageId;
+        const url = info.link.targetPath ?? "unknown";
+        const status = info.httpStatus === "error" ? info.httpError : `HTTP ${info.httpStatus}`;
+        lines.push(`  - ${source} -> ${url} (${status})`);
+      }
+      if (brokenExternal.length > 10) {
+        lines.push(`  ... and ${brokenExternal.length - 10} more`);
+      }
+      lines.push("");
+    }
+
     lines.push(`EXTERNAL LINKS (${result.summary.externalLinks} links)`);
 
     // Group by domain
@@ -660,6 +813,22 @@ function formatMarkdown(result: AuditResult): string {
     lines.push("");
   }
 
+  // Broken external links
+  const brokenExternal = result.externalLinks.filter((i) => i.isBroken);
+  if (brokenExternal.length > 0) {
+    lines.push("## Broken External Links");
+    lines.push("");
+    lines.push("| URL | Source | Status |");
+    lines.push("|-----|--------|--------|");
+    for (const info of brokenExternal) {
+      const source = info.sourcePage?.title ?? info.link.sourcePageId;
+      const url = info.link.targetPath ?? "unknown";
+      const status = info.httpStatus === "error" ? info.httpError : `HTTP ${info.httpStatus}`;
+      lines.push(`| ${url} | ${source} | ${status} |`);
+    }
+    lines.push("");
+  }
+
   // External links
   if (result.externalLinks.length > 0) {
     lines.push("## External Links");
@@ -679,7 +848,8 @@ function formatMarkdown(result: AuditResult): string {
       lines.push("");
       for (const info of links.slice(0, 5)) {
         const source = info.sourcePage?.title ?? info.link.sourcePageId;
-        lines.push(`- ${info.link.targetPath} (from ${source})`);
+        const statusStr = info.isBroken ? " ❌" : info.httpStatus ? " ✓" : "";
+        lines.push(`- ${info.link.targetPath} (from ${source})${statusStr}`);
       }
       if (links.length > 5) {
         lines.push(`- ... and ${links.length - 5} more`);
@@ -746,7 +916,7 @@ export function auditWikiHelp(): string {
 Audit Confluence wiki content for stale pages, orphans, and broken links.
 
 Check Options:
-  --all                     Run all checks (except --external-links)
+  --all                     Run all checks (except external link options)
   --stale-high <months>     Flag pages not edited in N+ months as high risk
   --stale-medium <months>   Flag pages not edited in N+ months as medium risk
   --stale-low <months>      Flag pages not edited in N+ months as low risk
@@ -755,6 +925,7 @@ Check Options:
   --single-contributor      Find pages with only one contributor (bus factor risk)
   --inactive-contributors   Find pages where all contributors are inactive
   --external-links          List all external URLs (inventory only)
+  --check-external          Verify external links via HTTP (finds broken URLs)
 
 Output Options:
   --json                    Output as JSON
