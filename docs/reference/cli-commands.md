@@ -100,9 +100,9 @@ atlcli wiki docs push <dir> --force          # Force overwrite
 atlcli wiki docs sync <dir> --watch          # Watch and sync
 atlcli wiki docs status <dir>                # Show sync status
 atlcli wiki docs add <dir> --template <name> # Add page from template
-atlcli wiki docs diff <dir>                  # Show local vs remote diff
+atlcli wiki docs diff <dir>                  # Show local vs remote diff (title only for folders)
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
-atlcli wiki docs check <dir>                 # Validate docs
+atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
 atlcli wiki docs preview <dir>               # Preview markdown rendering
 ```
 
@@ -126,6 +126,7 @@ atlcli audit wiki --restricted               # Pages with restrictions
 atlcli audit wiki --drafts                   # Unpublished drafts
 atlcli audit wiki --archived                 # Archived pages
 atlcli audit wiki --high-churn <n>           # Pages with N+ versions
+atlcli audit wiki --folders                  # Check folder structure
 
 # Scope filtering
 atlcli audit wiki --label <label>            # Only audit pages with label

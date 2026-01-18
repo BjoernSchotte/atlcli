@@ -64,6 +64,23 @@ atlcli audit wiki --stale-high 12 --stale-medium 6 --stale-low 3
 atlcli audit wiki --orphans --broken-links --check-external
 ```
 
+### Folder Structure
+
+| Flag | Description |
+|------|-------------|
+| `--folders` | Check folder structure issues |
+
+```bash
+# Folder audit
+atlcli audit wiki --folders
+```
+
+Folder checks detect:
+- **FOLDER_EMPTY** - Folders with no child pages or subfolders
+- **FOLDER_MISSING_INDEX** - Directories with pages but no folder index.md
+
+See [Folders](folders.md#validating-folders) for details.
+
 ### Contributor Analysis
 
 | Flag | Description |
@@ -170,11 +187,16 @@ atlcli audit wiki --all --json > audit.json
     "orphans": 3,
     "brokenLinks": 8,
     "contributorRisks": 2,
-    "externalLinks": 42
+    "externalLinks": 42,
+    "folderIssues": 2
   },
   "stalePages": [...],
   "orphanedPages": [...],
-  "brokenLinks": [...]
+  "brokenLinks": [...],
+  "folderIssues": [
+    { "file": "empty-folder/index.md", "code": "FOLDER_EMPTY", "message": "..." },
+    { "file": "orphan-dir", "code": "FOLDER_MISSING_INDEX", "message": "..." }
+  ]
 }
 ```
 
@@ -274,6 +296,7 @@ Valid `defaultChecks` values:
 - `single-contributor`
 - `inactive-contributors`
 - `external-links`
+- `folders` - Check folder structure issues
 
 ## Common Patterns
 

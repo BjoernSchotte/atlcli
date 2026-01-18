@@ -611,6 +611,20 @@ Confluence:                    Local:
 
 When pages move in Confluence, sync detects this and moves local files to match.
 
+### Folders
+
+Confluence Cloud folders (introduced September 2024) are supported:
+
+```
+Confluence:                    Local:
+├── My Folder (folder)        ├── my-folder/
+│   ├── Page A                │   ├── index.md      (type: folder)
+│   └── Page B                │   ├── page-a.md
+                              │   └── page-b.md
+```
+
+Folders are represented as directories with an `index.md` file containing `type: folder` in frontmatter. See [Folders](folders.md) for full details on folder support and limitations.
+
 ## JSON Output
 
 Most commands support `--json` for scripting:

@@ -2,6 +2,23 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **confluence:** Add folder support for Confluence Cloud
+  - **Pull**: Detect folders and create directory structure with `index.md` files (`type: folder`)
+  - **Push**: Preserve folder hierarchy when pushing pages; warn on unsupported folder rename
+  - **Sync**: Real-time folder detection via polling; handle folder renames and page moves
+  - **Diff**: Compare folder titles (folders have no content body)
+  - **Validation**: New `FOLDER_EMPTY` and `FOLDER_MISSING_INDEX` warning codes in `docs check`
+  - **Audit**: New `--folders` flag for folder structure analysis
+
+### Documentation
+
+- **confluence:** Add comprehensive folder documentation
+- **confluence:** Update file-format, sync, validation, and audit docs for folder support
+
 ## [0.11.0] - 2026-01-18
 
 ### Highlights

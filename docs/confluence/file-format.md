@@ -2,18 +2,15 @@
 
 Structure and format of local Confluence files.
 
-## Frontmatter
+## Page Frontmatter
 
-Each file has YAML frontmatter with metadata:
+Each page file has YAML frontmatter under the `atlcli` namespace:
 
 ```markdown
 ---
-id: "12345"
-title: "Page Title"
-space: "TEAM"
-parent: "67890"
-version: 5
-lastModified: "2025-01-14T10:00:00Z"
+atlcli:
+  id: "12345"
+  title: "Page Title"
 ---
 
 # Page Title
@@ -25,36 +22,68 @@ Content here...
 
 | Field | Description |
 |-------|-------------|
-| `id` | Confluence page ID (generated on create) |
+| `id` | Confluence page ID (set automatically on pull/create) |
 | `title` | Page title |
-| `space` | Space key |
 
 ### Optional Fields
 
 | Field | Description |
 |-------|-------------|
-| `parent` | Parent page ID |
+| `type` | Content type: `page` (default) or `folder` |
 | `version` | Page version number |
 | `lastModified` | Last modification timestamp |
-| `labels` | Array of page labels |
+
+## Folder Frontmatter
+
+Folders use `index.md` files with `type: folder`:
+
+```markdown
+---
+atlcli:
+  id: "123456789"
+  title: "My Folder"
+  type: "folder"
+---
+```
+
+Key differences from pages:
+
+- **No content body** - folder index.md files contain only frontmatter
+- **type field required** - must be `"folder"` to identify as folder
+- **Directory structure** - the folder's children are sibling files and subdirectories
+
+See [Folders](folders.md) for full details.
 
 ## Directory Structure
 
 ```
 docs/
-├── .atlcli.json          # Project config
+├── .atlcli/              # Sync state directory
+│   ├── config.json       # Sync configuration
+│   └── sync.db           # SQLite sync database
 ├── index.md              # Space home page
 ├── getting-started.md    # Top-level page
-└── guides/
-    ├── _index.md         # "Guides" parent page
-    ├── installation.md   # Child page
-    └── configuration.md  # Child page
+├── guides/               # Confluence folder
+│   ├── index.md          # Folder metadata (type: folder)
+│   ├── installation.md   # Page inside folder
+│   └── configuration.md  # Page inside folder
+└── api/                  # Nested folder
+    ├── index.md          # Folder metadata
+    └── endpoints.md      # Page inside folder
 ```
 
-Directories with `_index.md` create parent-child relationships.
+### Hierarchy Mapping
+
+| Confluence | Local |
+|------------|-------|
+| Page | `page-name.md` |
+| Page with children | `page-name.md` + `page-name/` directory |
+| Folder | `folder-name/index.md` (type: folder) |
+| Page in folder | `folder-name/page-name.md` |
 
 ## Naming Conventions
 
 - Use lowercase with hyphens: `api-reference.md`
-- `_index.md` becomes the parent page for a directory
+- Folder metadata is always `index.md` (not the page name)
+- File names are derived from page titles (sanitized)
 - File names don't affect page titles (title comes from frontmatter)

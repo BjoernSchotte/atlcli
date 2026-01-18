@@ -121,8 +121,115 @@ Since the v2 API's `getSpaceFolders` endpoint is unreliable, atlcli detects fold
 
 This ensures folders are discovered even when nested or when API endpoints behave unexpectedly.
 
+## Sync Mode
+
+Folders are fully supported in watch mode (`docs sync`):
+
+```bash
+atlcli wiki docs sync ./docs --space TEAM
+```
+
+### How Sync Handles Folders
+
+| Event | Detection | Action |
+|-------|-----------|--------|
+| Folder created remotely | Polling detects new folder ID | Creates directory + index.md |
+| Folder renamed remotely | Polling detects title change | Moves entire directory |
+| Page moved into folder | Polling detects parent change | Moves local file to folder directory |
+| Page moved out of folder | Polling detects parent change | Moves local file to new location |
+
+### Example Sync Output
+
+```
+[poll] Detected folder rename: "Old Name" → "New Name"
+[sync] Moving directory: old-name/ → new-name/
+[sync] Moved 5 files with directory
+```
+
+## Diffing Folders
+
+Compare a folder's local metadata with Confluence:
+
+```bash
+atlcli wiki docs diff ./docs/my-folder/index.md
+```
+
+Since folders have no content body, diff only compares the **title**:
+
+```
+Folder: "My Folder"
+  No changes (folder has no content to diff)
+```
+
+If the title differs:
+
+```
+Folder: "My Folder"
+  Title mismatch:
+    Local:  "My Folder"
+    Remote: "My Renamed Folder"
+```
+
+### JSON Output
+
+```bash
+atlcli wiki docs diff ./docs/my-folder/index.md --json
+```
+
+```json
+{
+  "schemaVersion": "1",
+  "file": "./docs/my-folder/index.md",
+  "pageId": "123456789",
+  "title": "My Folder",
+  "type": "folder",
+  "hasChanges": false,
+  "localTitle": "My Folder",
+  "remoteTitle": "My Folder"
+}
+```
+
+## Validating Folders
+
+The `docs check` command validates folder structure:
+
+```bash
+atlcli wiki docs check ./docs
+```
+
+### Folder Validation Codes
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `FOLDER_EMPTY` | Warning | Folder index.md exists but has no child pages or subfolders |
+| `FOLDER_MISSING_INDEX` | Warning | Directory contains .md files but has no index.md (not a synced folder) |
+
+### Example Output
+
+```
+Validating 24 files...
+
+WARNINGS (2):
+  empty-folder/index.md:1 - Folder "Empty Folder" has no children [FOLDER_EMPTY]
+  orphan-dir - Directory "orphan-dir" contains pages but has no folder index.md [FOLDER_MISSING_INDEX]
+
+Validation complete: 0 errors, 2 warnings
+```
+
+### Audit Integration
+
+Folder validation is also available in the audit command:
+
+```bash
+atlcli audit wiki --folders
+```
+
+This adds folder structure issues to the audit report alongside stale pages, orphans, and broken links.
+
 ## See Also
 
 - [Sync Documentation](sync.md) - Full sync workflow details
+- [Validation](validation.md) - All validation rules
+- [Wiki Audit](audit.md) - Content health analysis
 - [File Format](file-format.md) - Frontmatter specification
 - [Atlassian: Use folders to organize your work](https://support.atlassian.com/confluence-cloud/docs/use-folders-to-organize-your-work/)
