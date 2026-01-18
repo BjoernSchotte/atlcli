@@ -30,9 +30,10 @@ atlcli audit wiki --all --json
 
 Before running audits, you need:
 
-1. Initialized `.atlcli` directory: `atlcli wiki docs init ./docs --space TEAM`
-2. Synced content: `atlcli wiki docs pull ./docs`
-3. Active profile: `atlcli auth login`
+1. **Enable the feature flag**: `atlcli flag set audit true --global`
+2. Initialized `.atlcli` directory: `atlcli wiki docs init ./docs --space TEAM`
+3. Synced content: `atlcli wiki docs pull ./docs`
+4. Active profile: `atlcli auth login`
 
 ## Check Types
 
