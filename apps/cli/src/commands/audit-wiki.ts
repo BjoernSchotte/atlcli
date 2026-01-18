@@ -162,6 +162,7 @@ interface AuditOptions {
   // Actions
   rebuildGraph: boolean;
   refreshUsers: boolean;
+  includeRemote: boolean; // Include unsynced pages via API
   // Fix mode
   fix: boolean;
   dryRun: boolean;
@@ -221,6 +222,16 @@ interface HighChurnInfo {
   versionCount: number;
 }
 
+interface RemotePageInfo {
+  pageId: string;
+  title: string;
+  lastModified: string | null;
+  version: number;
+  spaceKey: string;
+  monthsStale?: number;
+  severity?: "high" | "medium" | "low";
+}
+
 // Fix action types
 interface FixAction {
   type: "add-label" | "generate-report" | "archive" | "delete";
@@ -254,6 +265,9 @@ interface AuditResult {
     drafts: number;
     archived: number;
     highChurn: number;
+    // Remote-only pages
+    unsynced: number;
+    unsyncedStale: { high: number; medium: number; low: number };
   };
   stalePages: StalePageInfo[];
   orphanedPages: OrphanedPageInfo[];
@@ -267,6 +281,9 @@ interface AuditResult {
   archivedPages: ContentStatusInfo[];
   highChurnPages: HighChurnInfo[];
   userCacheAge: string | null;
+  // Remote-only pages (unsynced)
+  unsyncedPages: RemotePageInfo[];
+  unsyncedStalePages: RemotePageInfo[];
 }
 
 // ============================================================================
@@ -329,6 +346,17 @@ export async function handleAuditWiki(
   // Open adapter
   const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
 
+  // Create client if needed for API operations
+  let client: ConfluenceClient | null = null;
+  if (options.includeRemote || options.refreshUsers) {
+    const config = await loadConfig();
+    const profile = getActiveProfile(config);
+    if (!profile) {
+      fail(opts, 1, ERROR_CODES.VALIDATION, "No active profile. Run 'atlcli auth login' first.");
+    }
+    client = new ConfluenceClient(profile);
+  }
+
   try {
     // Handle special actions first
     if (options.rebuildGraph) {
@@ -339,8 +367,7 @@ export async function handleAuditWiki(
     }
 
     if (options.refreshUsers) {
-      output("User refresh not yet implemented (requires API calls)", opts);
-      // TODO: Implement user refresh via Confluence API
+      await handleRefreshUsers(adapter, client!, opts);
     }
 
     if (options.exportGraph) {
@@ -349,7 +376,7 @@ export async function handleAuditWiki(
     }
 
     // Run audit
-    const result = await runAudit(adapter, options);
+    const result = await runAudit(adapter, options, client);
 
     // Output results
     if (options.json || opts.json) {
@@ -439,6 +466,7 @@ async function parseOptions(
     exportGraph: hasFlag(flags, "export-graph"),
     rebuildGraph: hasFlag(flags, "rebuild-graph"),
     refreshUsers: hasFlag(flags, "refresh-users"),
+    includeRemote: hasFlag(flags, "include-remote"),
     // Fix mode
     fix: hasFlag(flags, "fix"),
     dryRun: hasFlag(flags, "dry-run"),
@@ -506,9 +534,14 @@ function filterByPageScope<T extends { page: PageRecord }>(
   return items.filter((item) => allowedPageIds.has(item.page.pageId));
 }
 
-async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<AuditResult> {
+async function runAudit(
+  adapter: SyncDbAdapter,
+  options: AuditOptions,
+  client: ConfluenceClient | null = null
+): Promise<AuditResult> {
+  const spaceKey = await adapter.getMeta("space_key");
   const result: AuditResult = {
-    space: await adapter.getMeta("space_key"),
+    space: spaceKey,
     generatedAt: new Date().toISOString(),
     summary: {
       stale: { high: 0, medium: 0, low: 0 },
@@ -522,6 +555,8 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
       drafts: 0,
       archived: 0,
       highChurn: 0,
+      unsynced: 0,
+      unsyncedStale: { high: 0, medium: 0, low: 0 },
     },
     stalePages: [],
     orphanedPages: [],
@@ -534,6 +569,8 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
     archivedPages: [],
     highChurnPages: [],
     userCacheAge: null,
+    unsyncedPages: [],
+    unsyncedStalePages: [],
   };
 
   // Get scope-filtered page IDs (null if no filtering)
@@ -683,7 +720,90 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
     result.summary.highChurn = highChurnPages.length;
   }
 
+  // Include remote (unsynced) pages if requested
+  if (options.includeRemote && client && spaceKey) {
+    const remoteResult = await detectUnsyncedPages(adapter, client, spaceKey, options);
+    result.unsyncedPages = remoteResult.unsyncedPages;
+    result.unsyncedStalePages = remoteResult.unsyncedStalePages;
+    result.summary.unsynced = remoteResult.unsyncedPages.length;
+    result.summary.unsyncedStale.high = remoteResult.unsyncedStalePages.filter(
+      (p) => p.severity === "high"
+    ).length;
+    result.summary.unsyncedStale.medium = remoteResult.unsyncedStalePages.filter(
+      (p) => p.severity === "medium"
+    ).length;
+    result.summary.unsyncedStale.low = remoteResult.unsyncedStalePages.filter(
+      (p) => p.severity === "low"
+    ).length;
+  }
+
   return result;
+}
+
+/**
+ * Detect pages that exist in Confluence but are not synced locally.
+ */
+async function detectUnsyncedPages(
+  adapter: SyncDbAdapter,
+  client: ConfluenceClient,
+  spaceKey: string,
+  options: AuditOptions
+): Promise<{ unsyncedPages: RemotePageInfo[]; unsyncedStalePages: RemotePageInfo[] }> {
+  // Get all pages from Confluence API
+  const remotePages = await client.getAllPages({
+    scope: { type: "space", spaceKey },
+    limit: 500,
+  });
+
+  // Get all synced page IDs
+  const syncedPages = await adapter.listPages({});
+  const syncedPageIds = new Set(syncedPages.map((p) => p.pageId));
+
+  // Find unsynced pages
+  const now = new Date();
+  const unsyncedPages: RemotePageInfo[] = [];
+  const unsyncedStalePages: RemotePageInfo[] = [];
+
+  for (const remotePage of remotePages) {
+    if (syncedPageIds.has(remotePage.id)) {
+      continue; // Already synced
+    }
+
+    const pageInfo: RemotePageInfo = {
+      pageId: remotePage.id,
+      title: remotePage.title,
+      lastModified: remotePage.lastModified ?? null,
+      version: remotePage.version,
+      spaceKey: remotePage.spaceKey ?? spaceKey,
+    };
+
+    unsyncedPages.push(pageInfo);
+
+    // Check if stale
+    if (remotePage.lastModified && options.staleHigh !== undefined) {
+      const lastModified = new Date(remotePage.lastModified);
+      const monthsStale = monthsDiff(lastModified, now);
+
+      let severity: "high" | "medium" | "low" | undefined;
+      if (monthsStale >= options.staleHigh) {
+        severity = "high";
+      } else if (options.staleMedium !== undefined && monthsStale >= options.staleMedium) {
+        severity = "medium";
+      } else if (options.staleLow !== undefined && monthsStale >= options.staleLow) {
+        severity = "low";
+      }
+
+      if (severity) {
+        unsyncedStalePages.push({
+          ...pageInfo,
+          monthsStale,
+          severity,
+        });
+      }
+    }
+  }
+
+  return { unsyncedPages, unsyncedStalePages };
 }
 
 async function detectStalePages(
@@ -835,6 +955,56 @@ async function handleRebuildGraph(
   // This would re-extract links from all local markdown files
   // For now, just indicate it's not fully implemented
   output("Note: Full rebuild requires re-reading all markdown files. Use 'wiki docs pull' to refresh from remote.", opts);
+}
+
+async function handleRefreshUsers(
+  adapter: SyncDbAdapter,
+  client: ConfluenceClient,
+  opts: OutputOptions
+): Promise<void> {
+  output("Refreshing user status from Confluence API...", opts);
+
+  // Get all unique user IDs from pages and contributors
+  const pages = await adapter.listPages({});
+  const userIds = new Set<string>();
+
+  for (const page of pages) {
+    if (page.createdBy) userIds.add(page.createdBy);
+    if (page.lastModifiedBy) userIds.add(page.lastModifiedBy);
+
+    const contributors = await adapter.getPageContributors(page.pageId);
+    for (const c of contributors) {
+      userIds.add(c.userId);
+    }
+  }
+
+  const uniqueIds = [...userIds];
+  output(`  Found ${uniqueIds.length} unique users to refresh...`, opts);
+
+  // Fetch user info from API
+  const userMap = await client.getUsersBulk(uniqueIds, { concurrency: 5 });
+
+  // Update users in database
+  let updated = 0;
+  let notFound = 0;
+
+  for (const [userId, userInfo] of userMap) {
+    if (userInfo) {
+      await adapter.upsertUser({
+        userId: userInfo.accountId,
+        displayName: userInfo.displayName ?? null,
+        email: userInfo.email ?? null,
+        isActive: userInfo.isActive,
+        lastCheckedAt: new Date().toISOString(),
+      });
+      updated++;
+    } else {
+      // User not found - might be deleted or no permission
+      notFound++;
+    }
+  }
+
+  output(`  ✓ Updated ${updated} users (${notFound} not found)`, opts);
 }
 
 async function handleExportGraph(adapter: SyncDbAdapter, opts: OutputOptions): Promise<void> {
@@ -1365,6 +1535,44 @@ function formatTable(result: AuditResult, options: AuditOptions): string {
     lines.push("");
   }
 
+  // Unsynced pages (remote only)
+  if (result.unsyncedPages.length > 0) {
+    lines.push(`UNSYNCED PAGES (${result.summary.unsynced} pages) - Remote only, not synced locally`);
+    for (const info of result.unsyncedPages.slice(0, 10)) {
+      lines.push(`  - ${info.title} (v${info.version})`);
+    }
+    if (result.unsyncedPages.length > 10) {
+      lines.push(`  ... and ${result.unsyncedPages.length - 10} more`);
+    }
+    lines.push("");
+  }
+
+  // Unsynced stale pages
+  if (result.unsyncedStalePages.length > 0) {
+    const highCount = result.summary.unsyncedStale.high;
+    const medCount = result.summary.unsyncedStale.medium;
+    const lowCount = result.summary.unsyncedStale.low;
+
+    lines.push(`UNSYNCED STALE PAGES (${result.unsyncedStalePages.length} pages)`);
+    if (highCount > 0) lines.push(`  High risk:   ${highCount} pages`);
+    if (medCount > 0) lines.push(`  Medium risk: ${medCount} pages`);
+    if (lowCount > 0) lines.push(`  Low risk:    ${lowCount} pages`);
+    lines.push("");
+
+    // Show details for high-risk unsynced pages
+    const highRisk = result.unsyncedStalePages.filter((p) => p.severity === "high");
+    if (highRisk.length > 0) {
+      lines.push("High Risk (oldest first):");
+      for (const info of highRisk.slice(0, 10)) {
+        lines.push(`  - ${info.title} (${info.monthsStale} months)`);
+      }
+      if (highRisk.length > 10) {
+        lines.push(`  ... and ${highRisk.length - 10} more`);
+      }
+      lines.push("");
+    }
+  }
+
   // Footer
   if (result.userCacheAge) {
     lines.push(`User status as of ${result.userCacheAge}`);
@@ -1421,6 +1629,18 @@ function formatMarkdown(result: AuditResult): string {
   }
   if (result.summary.highChurn > 0) {
     lines.push(`| High churn pages | ${result.summary.highChurn} |`);
+  }
+  if (result.summary.unsynced > 0) {
+    lines.push(`| Unsynced pages | ${result.summary.unsynced} |`);
+  }
+  const totalUnsyncedStale =
+    result.summary.unsyncedStale.high +
+    result.summary.unsyncedStale.medium +
+    result.summary.unsyncedStale.low;
+  if (totalUnsyncedStale > 0) {
+    lines.push(
+      `| Unsynced stale | ${totalUnsyncedStale} (High: ${result.summary.unsyncedStale.high}, Med: ${result.summary.unsyncedStale.medium}, Low: ${result.summary.unsyncedStale.low}) |`
+    );
   }
   lines.push("");
 
@@ -1587,6 +1807,33 @@ function formatMarkdown(result: AuditResult): string {
     lines.push("");
   }
 
+  // Unsynced pages (remote only)
+  if (result.unsyncedPages.length > 0) {
+    lines.push("## Unsynced Pages (Remote Only)");
+    lines.push("");
+    lines.push("| Page | Version | Last Modified |");
+    lines.push("|------|---------|---------------|");
+    for (const info of result.unsyncedPages) {
+      const lastMod = info.lastModified
+        ? new Date(info.lastModified).toLocaleDateString()
+        : "unknown";
+      lines.push(`| ${info.title} | ${info.version} | ${lastMod} |`);
+    }
+    lines.push("");
+  }
+
+  // Unsynced stale pages
+  if (result.unsyncedStalePages.length > 0) {
+    lines.push("## Unsynced Stale Pages");
+    lines.push("");
+    lines.push("| Page | Months Stale | Severity |");
+    lines.push("|------|--------------|----------|");
+    for (const info of result.unsyncedStalePages) {
+      lines.push(`| ${info.title} | ${info.monthsStale ?? "-"} | ${info.severity ?? "-"} |`);
+    }
+    lines.push("");
+  }
+
   // Footer
   if (result.userCacheAge) {
     lines.push("---");
@@ -1674,6 +1921,7 @@ Output Options:
 Action Options:
   --rebuild-graph           Rebuild link graph from synced markdown files
   --refresh-users           Refresh user active/inactive status from API
+  --include-remote          Include unsynced Confluence pages via API
 
 Fix Options:
   --fix                     Apply fixes (safe actions auto-apply, unsafe prompt)
@@ -1720,5 +1968,11 @@ Examples:
   atlcli audit wiki --all --stale-high 12 --fix
 
   # Use custom label for stale pages
-  atlcli audit wiki --stale-high 12 --fix --fix-label stale-content`;
+  atlcli audit wiki --stale-high 12 --fix --fix-label stale-content
+
+  # Include unsynced remote pages in audit
+  atlcli audit wiki --all --include-remote
+
+  # Refresh user status from Confluence API
+  atlcli audit wiki --refresh-users --inactive-contributors`;
 }
