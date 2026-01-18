@@ -91,6 +91,30 @@ export type SyncConfig = {
   postPullAuditSummary?: boolean;
 };
 
+/**
+ * Audit feature configuration.
+ */
+export type AuditConfig = {
+  /** Stale content thresholds in months */
+  staleThresholds?: {
+    /** High risk threshold (months since last edit) */
+    high?: number;
+    /** Medium risk threshold (months since last edit) */
+    medium?: number;
+    /** Low risk threshold (months since last edit) */
+    low?: number;
+  };
+  /** Default checks to run when --all is not specified */
+  defaultChecks?: Array<
+    | "stale"
+    | "orphans"
+    | "broken-links"
+    | "single-contributor"
+    | "inactive-contributors"
+    | "external-links"
+  >;
+};
+
 export type Config = {
   currentProfile?: string;
   profiles: Record<string, Profile>;
@@ -104,6 +128,8 @@ export type Config = {
   storage?: StorageConfig;
   /** Sync behavior configuration */
   sync?: SyncConfig;
+  /** Audit feature configuration */
+  audit?: AuditConfig;
   /** @deprecated Use 'global' instead. Kept for migration. */
   defaults?: DefaultsConfig;
 };

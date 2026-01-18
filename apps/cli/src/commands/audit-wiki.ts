@@ -110,7 +110,7 @@ export async function handleAuditWiki(
   }
 
   // Parse options
-  const options = parseOptions(flags, opts);
+  const options = await parseOptions(flags, opts);
 
   // Validate that at least one check is requested
   const hasAnyCheck =
@@ -175,20 +175,30 @@ export async function handleAuditWiki(
 // Option Parsing
 // ============================================================================
 
-function parseOptions(
+async function parseOptions(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
-): AuditOptions {
+): Promise<AuditOptions> {
   const all = hasFlag(flags, "all");
 
-  // Parse thresholds
+  // Load config for defaults
+  const config = await loadConfig();
+  const auditConfig = config.audit;
+
+  // Parse thresholds (flags override config)
   const staleHighStr = getFlag(flags, "stale-high") as string | undefined;
   const staleMediumStr = getFlag(flags, "stale-medium") as string | undefined;
   const staleLowStr = getFlag(flags, "stale-low") as string | undefined;
 
-  const staleHigh = staleHighStr ? parseInt(staleHighStr, 10) : undefined;
-  const staleMedium = staleMediumStr ? parseInt(staleMediumStr, 10) : undefined;
-  const staleLow = staleLowStr ? parseInt(staleLowStr, 10) : undefined;
+  const staleHigh = staleHighStr
+    ? parseInt(staleHighStr, 10)
+    : auditConfig?.staleThresholds?.high;
+  const staleMedium = staleMediumStr
+    ? parseInt(staleMediumStr, 10)
+    : auditConfig?.staleThresholds?.medium;
+  const staleLow = staleLowStr
+    ? parseInt(staleLowStr, 10)
+    : auditConfig?.staleThresholds?.low;
 
   // Validate thresholds
   if (staleHigh !== undefined && isNaN(staleHigh)) {
