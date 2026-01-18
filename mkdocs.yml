@@ -56,8 +56,11 @@ nav:
     - Attachments: confluence/attachments.md
     - Webhooks: confluence/webhooks.md
     - Validation: confluence/validation.md
+    - Audit: confluence/audit.md
+    - Export: confluence/export.md
     - Ignore Patterns: confluence/ignore.md
     - File Format: confluence/file-format.md
+    - Storage Format: confluence/storage.md
   - Jira:
     - jira/index.md
     - Issues: jira/issues.md
