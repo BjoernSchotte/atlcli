@@ -535,6 +535,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     modifiedBy?: { accountId?: string; displayName?: string };
     created?: string;
     modified?: string;
+    editorVersion?: "v2" | "v1" | null;
   }> = [];
 
   for (const page of pages) {
@@ -553,6 +554,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
         modifiedBy: detail.modifiedBy,
         created: detail.created,
         modified: detail.modified,
+        editorVersion: detail.editorVersion,
       });
     } catch (err) {
       // Skip pages that are inaccessible (404 = deleted/trashed/no permission)
@@ -1112,18 +1114,6 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     });
   }
 
-  // Fetch and store editor versions for pulled pages
-  if (atlcliDir && pageDetails.length > 0) {
-    for (const detail of pageDetails) {
-      try {
-        const editorVersion = await client.getEditorVersion(detail.id);
-        await setPageEditorVersion(atlcliDir, detail.id, editorVersion);
-      } catch {
-        // Silently ignore - editor version is not critical
-      }
-    }
-  }
-
   // Write folder index.md files
   let foldersPulled = 0;
   let foldersRenamed = 0;
@@ -1316,6 +1306,29 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           versionCount: 1,
         });
         await adapter.upsertPage(folderRecord);
+      }
+
+      // Store editor versions for pulled pages (after pages exist in DB)
+      for (const detail of pageDetails) {
+        // Use editorVersion from page details if available (fetched in same request)
+        if (detail.editorVersion !== undefined) {
+          await setPageEditorVersion(atlcliDir!, detail.id, detail.editorVersion);
+        } else {
+          // Fallback: fetch separately (for backward compatibility with older API)
+          try {
+            const editorVersion = await client.getEditorVersion(detail.id);
+            await setPageEditorVersion(atlcliDir!, detail.id, editorVersion);
+          } catch (err) {
+            // Log error but don't fail pull - editor version is not critical
+            getLogger().sync({
+              eventType: "error",
+              pageId: detail.id,
+              title: detail.title,
+              message: "Failed to fetch editor version",
+              details: { error: err instanceof Error ? err.message : String(err) },
+            });
+          }
+        }
       }
 
       // Check user statuses (respects TTL caching)

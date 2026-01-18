@@ -25,6 +25,8 @@ export type ConfluencePageDetails = ConfluencePage & {
   modifiedBy?: ConfluenceUser;
   labels?: string[];
   tinyUrl?: string;
+  /** Editor version: 'v2' (new editor), 'v1' (legacy), or null (unknown) */
+  editorVersion?: "v2" | "v1" | null;
 };
 
 export type ConfluenceSpace = {
@@ -410,7 +412,7 @@ export class ConfluenceClient {
   }
 
   /**
-   * Get a page with metadata (history, labels, tiny URL).
+   * Get a page with metadata (history, labels, tiny URL, editor version).
    * Used for export workflows that need author/created/labels.
    */
   async getPageDetails(id: string): Promise<ConfluencePageDetails> {
@@ -425,6 +427,7 @@ export class ConfluenceClient {
           "history.createdBy",
           "history.createdDate",
           "metadata.labels",
+          "metadata.properties.editor",
         ].join(","),
       },
     })) as any;
@@ -444,6 +447,11 @@ export class ConfluenceClient {
         labels.push(label.name);
       }
     }
+
+    // Extract editor version from metadata properties
+    const editorProp = data.metadata?.properties?.editor?.value;
+    const editorVersion: "v2" | "v1" | null =
+      editorProp === "v2" ? "v2" : editorProp === "v1" ? "v1" : null;
 
     const parseUser = (user: any): ConfluenceUser | undefined => {
       if (!user) return undefined;
@@ -478,6 +486,7 @@ export class ConfluenceClient {
       modified,
       modifiedBy,
       labels,
+      editorVersion,
     };
   }
 
@@ -554,11 +563,25 @@ export class ConfluenceClient {
   }
 
   /**
-   * Legacy method - use search() for full features.
+   * Search pages with automatic pagination.
+   *
+   * Paginates through all results to handle spaces with >200 pages.
+   * Uses result count to detect last page (since totalSize may not be returned).
    */
   async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
-    const result = await this.search(cql, { limit });
-    return result.results;
+    const allResults: ConfluenceSearchResult[] = [];
+    let start = 0;
+
+    while (true) {
+      const result = await this.search(cql, { limit, start });
+      allResults.push(...result.results);
+
+      // Stop if fewer results than limit (last page) or no results
+      if (result.results.length < limit || result.results.length === 0) break;
+      start += result.results.length;
+    }
+
+    return allResults;
   }
 
   /**
@@ -1039,6 +1062,8 @@ export class ConfluenceClient {
   /**
    * Get pages modified since a given date using CQL.
    * Used for efficient polling of spaces or page trees.
+   *
+   * Paginates through all results to handle spaces with >200 modified pages.
    */
   async getPagesSince(params: {
     scope: SyncScope;
@@ -1047,15 +1072,18 @@ export class ConfluenceClient {
   }): Promise<PageChangeInfo[]> {
     const { scope, since, limit = 100 } = params;
 
+    // Single page: direct fetch
+    if (scope.type === "page") {
+      const pageInfo = await this.getPageVersion(scope.pageId);
+      return [pageInfo];
+    }
+
     // Format date for CQL (YYYY-MM-DD)
     const dateStr = since.split("T")[0];
 
+    // Build CQL for tree or space scope
     let cql: string;
     switch (scope.type) {
-      case "page":
-        // For single page, just fetch the page directly
-        const pageInfo = await this.getPageVersion(scope.pageId);
-        return [pageInfo];
       case "tree":
         cql = `ancestor=${scope.ancestorId} AND type=page AND lastModified >= "${dateStr}"`;
         break;
@@ -1064,22 +1092,40 @@ export class ConfluenceClient {
         break;
     }
 
-    const data = (await this.request("/content/search", {
-      query: { cql, limit, expand: "version,space,history.lastUpdated" },
-    })) as any;
+    // Paginate through all results
+    const allResults: PageChangeInfo[] = [];
+    let start = 0;
 
-    const results = Array.isArray(data.results) ? data.results : [];
-    return results.map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      version: item.version?.number ?? 1,
-      lastModified: item.history?.lastUpdated?.when,
-      spaceKey: item.space?.key,
-    }));
+    while (true) {
+      const data = (await this.request("/content/search", {
+        query: { cql, limit, start, expand: "version,space,history.lastUpdated" },
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (results.length === 0) break;
+
+      for (const item of results) {
+        allResults.push({
+          id: item.id,
+          title: item.title,
+          version: item.version?.number ?? 1,
+          lastModified: item.history?.lastUpdated?.when,
+          spaceKey: item.space?.key,
+        });
+      }
+
+      // Stop if fewer results than limit (last page)
+      if (results.length < limit) break;
+      start += limit;
+    }
+
+    return allResults;
   }
 
   /**
    * Get all pages in a scope (initial sync).
+   *
+   * Paginates through all results to handle spaces with >200 pages.
    */
   async getAllPages(params: {
     scope: SyncScope;
@@ -1087,11 +1133,15 @@ export class ConfluenceClient {
   }): Promise<PageChangeInfo[]> {
     const { scope, limit = 100 } = params;
 
+    // Single page: direct fetch
+    if (scope.type === "page") {
+      const pageInfo = await this.getPageVersion(scope.pageId);
+      return [pageInfo];
+    }
+
+    // Build CQL for tree or space scope
     let cql: string;
     switch (scope.type) {
-      case "page":
-        const pageInfo = await this.getPageVersion(scope.pageId);
-        return [pageInfo];
       case "tree":
         cql = `ancestor=${scope.ancestorId} AND type=page`;
         break;
@@ -1100,18 +1150,34 @@ export class ConfluenceClient {
         break;
     }
 
-    const data = (await this.request("/content/search", {
-      query: { cql, limit, expand: "version,space,history.lastUpdated" },
-    })) as any;
+    // Paginate through all results
+    const allResults: PageChangeInfo[] = [];
+    let start = 0;
 
-    const results = Array.isArray(data.results) ? data.results : [];
-    return results.map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      version: item.version?.number ?? 1,
-      lastModified: item.history?.lastUpdated?.when,
-      spaceKey: item.space?.key,
-    }));
+    while (true) {
+      const data = (await this.request("/content/search", {
+        query: { cql, limit, start, expand: "version,space,history.lastUpdated" },
+      })) as any;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (results.length === 0) break;
+
+      for (const item of results) {
+        allResults.push({
+          id: item.id,
+          title: item.title,
+          version: item.version?.number ?? 1,
+          lastModified: item.history?.lastUpdated?.when,
+          spaceKey: item.space?.key,
+        });
+      }
+
+      // Stop if fewer results than limit (last page)
+      if (results.length < limit) break;
+      start += limit;
+    }
+
+    return allResults;
   }
 
   /**
