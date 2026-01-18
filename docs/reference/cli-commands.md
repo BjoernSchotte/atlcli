@@ -106,6 +106,49 @@ atlcli wiki docs check <dir>                 # Validate docs
 atlcli wiki docs preview <dir>               # Preview markdown rendering
 ```
 
+### Audit
+
+```bash
+# Basic audit
+atlcli audit wiki --all                      # Run all checks
+atlcli audit wiki --all --stale-high 12      # With 12-month stale threshold
+
+# Check types
+atlcli audit wiki --stale-high 12 --stale-medium 6 --stale-low 3  # Stale content
+atlcli audit wiki --orphans                  # Orphaned pages (no incoming links)
+atlcli audit wiki --broken-links             # Broken internal links
+atlcli audit wiki --single-contributor       # Bus factor risk
+atlcli audit wiki --inactive-contributors    # Pages with inactive authors
+atlcli audit wiki --external-links           # List external URLs
+atlcli audit wiki --check-external           # Verify external URLs via HTTP
+atlcli audit wiki --missing-label <label>    # Pages missing required label
+atlcli audit wiki --restricted               # Pages with restrictions
+atlcli audit wiki --drafts                   # Unpublished drafts
+atlcli audit wiki --archived                 # Archived pages
+atlcli audit wiki --high-churn <n>           # Pages with N+ versions
+
+# Scope filtering
+atlcli audit wiki --label <label>            # Only audit pages with label
+atlcli audit wiki --under-page <id>          # Only pages under ancestor
+atlcli audit wiki --exclude-label <label>    # Exclude pages with label
+atlcli audit wiki --dir <path>               # Audit specific directory
+
+# Output formats
+atlcli audit wiki --all --json               # JSON output
+atlcli audit wiki --all --markdown           # Markdown report
+
+# Fix mode
+atlcli audit wiki --all --fix --dry-run      # Preview fixes
+atlcli audit wiki --all --fix                # Apply fixes
+atlcli audit wiki --all --fix --fix-label <label>  # Custom stale label
+
+# Advanced
+atlcli audit wiki --include-remote           # Include unsynced remote pages
+atlcli audit wiki --refresh-users            # Refresh user status from API
+atlcli audit wiki --rebuild-graph            # Rebuild link graph from markdown
+atlcli audit wiki --export-graph             # Export link graph as JSON
+```
+
 ### Pages
 
 ```bash
