@@ -172,6 +172,37 @@ function formatTimeAgo(isoDate: string): string {
   }
 }
 
+/**
+ * Check if a path is inside the atlcli source tree.
+ * Used to warn about stale test data that might interfere with operations.
+ */
+function isInsideAtlcliSourceTree(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/");
+  // Check for common atlcli source tree patterns
+  return (
+    normalized.includes("/atlcli/apps/") ||
+    normalized.includes("/atlcli/packages/") ||
+    // Also catch the root if someone puts .atlcli directly in the project
+    /\/atlcli\/?$/.test(normalized)
+  );
+}
+
+/**
+ * Find .atlcli directory with warning for source tree pollution.
+ * Wraps findAtlcliDir to warn when .atlcli is found inside atlcli source tree.
+ */
+function findAtlcliDirWithWarning(
+  startPath: string,
+  opts: OutputOptions
+): string | null {
+  const atlcliDir = findAtlcliDir(startPath);
+  if (atlcliDir && isInsideAtlcliSourceTree(atlcliDir) && !opts.json) {
+    output(`Warning: Found .atlcli inside atlcli source tree: ${atlcliDir}`, opts);
+    output(`This may be stale test data. Consider removing it or specifying an explicit path.`, opts);
+  }
+  return atlcliDir;
+}
+
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
@@ -365,7 +396,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const fetchContributors = hasFlag(flags, "fetch-contributors");
 
   // Check if directory is initialized
-  let atlcliDir = findAtlcliDir(outDir);
+  let atlcliDir = findAtlcliDirWithWarning(outDir, opts);
   let dirConfig: AtlcliConfig | null = null;
 
   if (atlcliDir) {
@@ -1023,7 +1054,7 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
 
   if (pageIdFlag) {
     // Push by page ID - find the file in state
-    atlcliDir = findAtlcliDir(pathArg);
+    atlcliDir = findAtlcliDirWithWarning(pathArg, opts);
     if (!atlcliDir) {
       fail(opts, 1, ERROR_CODES.USAGE, "Not in an initialized directory. Run 'docs init' first.");
     }
@@ -1037,11 +1068,11 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   } else if (pathArg.endsWith(".md")) {
     // Single file push
     files = [resolve(pathArg)];
-    atlcliDir = findAtlcliDir(dirname(pathArg));
+    atlcliDir = findAtlcliDirWithWarning(dirname(pathArg), opts);
     isSingleFile = true;
   } else {
     // Directory push - collect all markdown files, respecting ignore patterns
-    atlcliDir = findAtlcliDir(pathArg);
+    atlcliDir = findAtlcliDirWithWarning(pathArg, opts);
     const ignoreResult = await loadIgnorePatterns(atlcliDir ?? pathArg);
     files = await collectMarkdownFiles(pathArg, {
       ignore: ignoreResult.ignore,
@@ -1296,7 +1327,7 @@ async function handleWatch(args: string[], flags: Record<string, string | boolea
   const dir = args[0] ?? getFlag(flags, "dir") ?? "./docs";
   const space = getFlag(flags, "space") ?? defaults.space;
   const debounceMs = Number(getFlag(flags, "debounce") ?? 500);
-  const atlcliDir = findAtlcliDir(dir);
+  const atlcliDir = findAtlcliDirWithWarning(dir, opts);
   const dirConfig = atlcliDir ? await readConfig(atlcliDir) : null;
 
   if (!opts.json) {
@@ -1843,7 +1874,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
   const checkLinks = hasFlag(flags, "links");
 
   // Check for .atlcli directory
-  const atlcliDir = findAtlcliDir(dir);
+  const atlcliDir = findAtlcliDirWithWarning(dir, opts);
   const state = atlcliDir ? await readState(atlcliDir) : null;
 
   // Get user cache age from sync.db if available
