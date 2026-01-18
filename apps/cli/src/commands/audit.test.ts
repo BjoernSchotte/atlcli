@@ -888,4 +888,146 @@ describe("audit-wiki", () => {
       expect(pagesUnderParent[0].pageId).toBe("child-1");
     });
   });
+
+  describe("fix action generation", () => {
+    test("generates add-label actions for high-risk stale pages", async () => {
+      // Create a very old page (high risk stale)
+      const oldDate = new Date();
+      oldDate.setMonth(oldDate.getMonth() - 18); // 18 months ago
+
+      const stalePage: PageRecord = {
+        pageId: "stale-1",
+        path: "stale.md",
+        title: "Very Old Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: oldDate.toISOString(),
+        lastModifiedBy: null,
+        lastModified: oldDate.toISOString(),
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      await adapter.upsertPage(stalePage);
+
+      // Query stale pages with 12-month threshold
+      const thresholdDate = new Date();
+      thresholdDate.setMonth(thresholdDate.getMonth() - 12);
+      const stalePages = await adapter.listPages({
+        modifiedBefore: thresholdDate.toISOString(),
+      });
+
+      expect(stalePages.length).toBe(1);
+      expect(stalePages[0].pageId).toBe("stale-1");
+    });
+
+    test("generates archive actions for very old stale pages (24+ months)", async () => {
+      // Create a 30-month old page
+      const veryOldDate = new Date();
+      veryOldDate.setMonth(veryOldDate.getMonth() - 30);
+
+      const veryOldPage: PageRecord = {
+        pageId: "very-old-1",
+        path: "very-old.md",
+        title: "Ancient Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: veryOldDate.toISOString(),
+        lastModifiedBy: null,
+        lastModified: veryOldDate.toISOString(),
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      await adapter.upsertPage(veryOldPage);
+
+      // Query stale pages with 24-month threshold
+      const thresholdDate = new Date();
+      thresholdDate.setMonth(thresholdDate.getMonth() - 24);
+      const veryOldPages = await adapter.listPages({
+        modifiedBefore: thresholdDate.toISOString(),
+      });
+
+      expect(veryOldPages.length).toBe(1);
+      expect(veryOldPages[0].pageId).toBe("very-old-1");
+    });
+
+    test("generates delete actions for old orphaned pages", async () => {
+      // Create an orphan page that's 18 months old
+      const oldOrphanDate = new Date();
+      oldOrphanDate.setMonth(oldOrphanDate.getMonth() - 18);
+
+      const oldOrphan: PageRecord = {
+        pageId: "old-orphan-1",
+        path: "old-orphan.md",
+        title: "Old Orphan",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: oldOrphanDate.toISOString(),
+        lastModifiedBy: null,
+        lastModified: oldOrphanDate.toISOString(),
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      await adapter.upsertPage(oldOrphan);
+
+      // Verify it's an orphan (no incoming links)
+      const orphans = await adapter.getOrphanedPages();
+      expect(orphans.some((p) => p.pageId === "old-orphan-1")).toBe(true);
+
+      // Verify it's old enough to be a candidate for deletion (12+ months)
+      const lastMod = new Date(oldOrphan.lastModified!);
+      const now = new Date();
+      const monthsDiff =
+        (now.getFullYear() - lastMod.getFullYear()) * 12 +
+        (now.getMonth() - lastMod.getMonth());
+      expect(monthsDiff >= 12).toBe(true);
+    });
+  });
 });

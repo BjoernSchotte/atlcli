@@ -1,14 +1,18 @@
-import { ERROR_CODES, OutputOptions, fail, hasFlag, getFlag, output, loadConfig } from "@atlcli/core";
+import { ERROR_CODES, OutputOptions, fail, hasFlag, getFlag, output, loadConfig, getActiveProfile } from "@atlcli/core";
 import {
   findAtlcliDir,
   getAtlcliPath,
   createSyncDb,
   hasSyncDb,
+  ConfluenceClient,
   type SyncDbAdapter,
   type PageRecord,
   type LinkRecord,
   type UserRecord,
 } from "@atlcli/confluence";
+import { writeFile, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import * as readline from "node:readline";
 
 // ============================================================================
 // HTTP Link Checking
@@ -158,6 +162,11 @@ interface AuditOptions {
   // Actions
   rebuildGraph: boolean;
   refreshUsers: boolean;
+  // Fix mode
+  fix: boolean;
+  dryRun: boolean;
+  fixLabel: string; // Label to add to stale pages (default: "needs-review")
+  reportPath?: string; // Path to write report file
 }
 
 interface StalePageInfo {
@@ -210,6 +219,23 @@ interface ContentStatusInfo {
 interface HighChurnInfo {
   page: PageRecord;
   versionCount: number;
+}
+
+// Fix action types
+interface FixAction {
+  type: "add-label" | "generate-report" | "archive" | "delete";
+  pageId?: string;
+  pageTitle?: string;
+  label?: string;
+  reportPath?: string;
+  safe: boolean; // Safe actions auto-apply, unsafe require confirmation
+}
+
+interface FixResult {
+  action: FixAction;
+  success: boolean;
+  error?: string;
+  skipped?: boolean; // For dry-run or user declined
 }
 
 interface AuditResult {
@@ -333,6 +359,15 @@ export async function handleAuditWiki(
     } else {
       output(formatTable(result, options), opts);
     }
+
+    // Handle fix mode
+    if (options.fix) {
+      const fixResults = await handleFixActions(result, options, atlcliDir, opts);
+      if (fixResults.length > 0) {
+        output("", opts);
+        outputFixResults(fixResults, options.dryRun, opts);
+      }
+    }
   } finally {
     await adapter.close();
   }
@@ -404,6 +439,11 @@ async function parseOptions(
     exportGraph: hasFlag(flags, "export-graph"),
     rebuildGraph: hasFlag(flags, "rebuild-graph"),
     refreshUsers: hasFlag(flags, "refresh-users"),
+    // Fix mode
+    fix: hasFlag(flags, "fix"),
+    dryRun: hasFlag(flags, "dry-run"),
+    fixLabel: (getFlag(flags, "fix-label") as string) ?? "needs-review",
+    reportPath: getFlag(flags, "report") as string | undefined,
   };
 }
 
@@ -823,6 +863,304 @@ async function handleExportGraph(adapter: SyncDbAdapter, opts: OutputOptions): P
   };
 
   output(graph, { ...opts, json: true });
+}
+
+// ============================================================================
+// Fix Actions
+// ============================================================================
+
+/**
+ * Prompt user for confirmation (yes/no/all/skip).
+ */
+async function promptConfirm(question: string): Promise<"yes" | "no" | "all" | "skip"> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(`${question} [y/n/a(ll)/s(kip all)]: `, (answer) => {
+      rl.close();
+      const normalized = answer.trim().toLowerCase();
+      if (normalized === "y" || normalized === "yes") {
+        resolve("yes");
+      } else if (normalized === "a" || normalized === "all") {
+        resolve("all");
+      } else if (normalized === "s" || normalized === "skip") {
+        resolve("skip");
+      } else {
+        resolve("no");
+      }
+    });
+  });
+}
+
+/**
+ * Generate fix actions based on audit results.
+ */
+function generateFixActions(result: AuditResult, options: AuditOptions, atlcliDir: string): FixAction[] {
+  const actions: FixAction[] = [];
+
+  // Safe action: Add "needs-review" label to high-risk stale pages
+  const highRiskStale = result.stalePages.filter((p) => p.severity === "high");
+  for (const staleInfo of highRiskStale) {
+    actions.push({
+      type: "add-label",
+      pageId: staleInfo.page.pageId,
+      pageTitle: staleInfo.page.title,
+      label: options.fixLabel,
+      safe: true,
+    });
+  }
+
+  // Safe action: Generate markdown report if there are any issues
+  const totalIssues =
+    result.summary.stale.high +
+    result.summary.stale.medium +
+    result.summary.stale.low +
+    result.summary.orphans +
+    result.summary.brokenLinks +
+    result.summary.contributorRisks;
+
+  if (totalIssues > 0) {
+    const reportPath = options.reportPath ?? join(atlcliDir, "audit-report.md");
+    actions.push({
+      type: "generate-report",
+      reportPath,
+      safe: true,
+    });
+  }
+
+  // Interactive action: Archive very old stale pages (24+ months)
+  const veryOldPages = result.stalePages.filter((p) => p.monthsStale >= 24);
+  for (const staleInfo of veryOldPages) {
+    actions.push({
+      type: "archive",
+      pageId: staleInfo.page.pageId,
+      pageTitle: staleInfo.page.title,
+      safe: false,
+    });
+  }
+
+  // Interactive action: Delete orphaned pages (with no links and very old)
+  const oldOrphans = result.orphanedPages.filter((o) => {
+    if (!o.page.lastModified) return false;
+    const lastMod = new Date(o.page.lastModified);
+    const monthsOld = monthsDiff(lastMod, new Date());
+    return monthsOld >= 12; // Only suggest deleting orphans older than 12 months
+  });
+  for (const orphanInfo of oldOrphans) {
+    actions.push({
+      type: "delete",
+      pageId: orphanInfo.page.pageId,
+      pageTitle: orphanInfo.page.title,
+      safe: false,
+    });
+  }
+
+  return actions;
+}
+
+/**
+ * Handle fix actions - apply safe actions automatically, prompt for interactive ones.
+ */
+async function handleFixActions(
+  result: AuditResult,
+  options: AuditOptions,
+  atlcliDir: string,
+  opts: OutputOptions
+): Promise<FixResult[]> {
+  const actions = generateFixActions(result, options, atlcliDir);
+  if (actions.length === 0) {
+    return [];
+  }
+
+  const results: FixResult[] = [];
+  let client: ConfluenceClient | null = null;
+  let skipAllInteractive = false;
+  let applyAllInteractive = false;
+
+  // Create Confluence client for API operations (if not dry-run and have unsafe actions)
+  const hasApiActions = actions.some(
+    (a) => (a.type === "add-label" || a.type === "archive" || a.type === "delete") && !options.dryRun
+  );
+
+  if (hasApiActions) {
+    const config = await loadConfig();
+    const profile = getActiveProfile(config);
+    if (!profile) {
+      output("Warning: No active profile - skipping API operations", opts);
+    } else {
+      client = new ConfluenceClient(profile);
+    }
+  }
+
+  // Process safe actions first
+  const safeActions = actions.filter((a) => a.safe);
+  const unsafeActions = actions.filter((a) => !a.safe);
+
+  if (safeActions.length > 0) {
+    if (options.dryRun) {
+      output(`\n[DRY RUN] Would apply ${safeActions.length} safe action(s):`, opts);
+    } else {
+      output(`\nApplying ${safeActions.length} safe action(s)...`, opts);
+    }
+
+    for (const action of safeActions) {
+      const actionResult = await executeFixAction(action, client, result, options.dryRun, opts);
+      results.push(actionResult);
+    }
+  }
+
+  // Process interactive actions
+  if (unsafeActions.length > 0) {
+    if (options.dryRun) {
+      output(`\n[DRY RUN] Would prompt for ${unsafeActions.length} interactive action(s):`, opts);
+      for (const action of unsafeActions) {
+        results.push({
+          action,
+          success: false,
+          skipped: true,
+        });
+        outputActionDescription(action, true, opts);
+      }
+    } else {
+      output(`\n${unsafeActions.length} interactive action(s) require confirmation:`, opts);
+
+      for (const action of unsafeActions) {
+        if (skipAllInteractive) {
+          results.push({ action, success: false, skipped: true });
+          continue;
+        }
+
+        outputActionDescription(action, false, opts);
+
+        let proceed = false;
+        if (applyAllInteractive) {
+          proceed = true;
+        } else {
+          const answer = await promptConfirm("  Apply this action?");
+          if (answer === "all") {
+            applyAllInteractive = true;
+            proceed = true;
+          } else if (answer === "skip") {
+            skipAllInteractive = true;
+            results.push({ action, success: false, skipped: true });
+            continue;
+          } else {
+            proceed = answer === "yes";
+          }
+        }
+
+        if (proceed) {
+          const actionResult = await executeFixAction(action, client, result, false, opts);
+          results.push(actionResult);
+        } else {
+          results.push({ action, success: false, skipped: true });
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Execute a single fix action.
+ */
+async function executeFixAction(
+  action: FixAction,
+  client: ConfluenceClient | null,
+  result: AuditResult,
+  dryRun: boolean,
+  opts: OutputOptions
+): Promise<FixResult> {
+  if (dryRun) {
+    outputActionDescription(action, true, opts);
+    return { action, success: true, skipped: true };
+  }
+
+  try {
+    switch (action.type) {
+      case "add-label":
+        if (!client) {
+          return { action, success: false, error: "No Confluence client available" };
+        }
+        await client.addLabels(action.pageId!, [action.label!]);
+        output(`  ✓ Added label "${action.label}" to "${action.pageTitle}"`, opts);
+        return { action, success: true };
+
+      case "generate-report":
+        const markdown = formatMarkdown(result);
+        await mkdir(dirname(action.reportPath!), { recursive: true });
+        await writeFile(action.reportPath!, markdown, "utf-8");
+        output(`  ✓ Generated report: ${action.reportPath}`, opts);
+        return { action, success: true };
+
+      case "archive":
+        if (!client) {
+          return { action, success: false, error: "No Confluence client available" };
+        }
+        await client.archivePage(action.pageId!);
+        output(`  ✓ Archived "${action.pageTitle}"`, opts);
+        return { action, success: true };
+
+      case "delete":
+        if (!client) {
+          return { action, success: false, error: "No Confluence client available" };
+        }
+        await client.deletePage(action.pageId!);
+        output(`  ✓ Deleted "${action.pageTitle}"`, opts);
+        return { action, success: true };
+
+      default:
+        return { action, success: false, error: `Unknown action type: ${(action as FixAction).type}` };
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    output(`  ✗ Failed: ${errorMsg}`, opts);
+    return { action, success: false, error: errorMsg };
+  }
+}
+
+/**
+ * Output a description of what an action will do.
+ */
+function outputActionDescription(action: FixAction, isDryRun: boolean, opts: OutputOptions): void {
+  const prefix = isDryRun ? "  [DRY RUN]" : " ";
+  switch (action.type) {
+    case "add-label":
+      output(`${prefix} Add label "${action.label}" to "${action.pageTitle}"`, opts);
+      break;
+    case "generate-report":
+      output(`${prefix} Generate report: ${action.reportPath}`, opts);
+      break;
+    case "archive":
+      output(`${prefix} Archive page: "${action.pageTitle}"`, opts);
+      break;
+    case "delete":
+      output(`${prefix} Delete page: "${action.pageTitle}"`, opts);
+      break;
+  }
+}
+
+/**
+ * Output fix results summary.
+ */
+function outputFixResults(results: FixResult[], dryRun: boolean, opts: OutputOptions): void {
+  const successful = results.filter((r) => r.success && !r.skipped).length;
+  const failed = results.filter((r) => !r.success && !r.skipped).length;
+  const skipped = results.filter((r) => r.skipped).length;
+
+  if (dryRun) {
+    output(`Fix Summary (DRY RUN): ${results.length} action(s) would be applied`, opts);
+  } else {
+    const parts: string[] = [];
+    if (successful > 0) parts.push(`${successful} applied`);
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    output(`Fix Summary: ${parts.join(", ")}`, opts);
+  }
 }
 
 // ============================================================================
@@ -1337,6 +1675,12 @@ Action Options:
   --rebuild-graph           Rebuild link graph from synced markdown files
   --refresh-users           Refresh user active/inactive status from API
 
+Fix Options:
+  --fix                     Apply fixes (safe actions auto-apply, unsafe prompt)
+  --dry-run                 Preview fixes without applying (use with --fix)
+  --fix-label <label>       Label to add to stale pages (default: "needs-review")
+  --report <path>           Path for generated report (default: .atlcli/audit-report.md)
+
 Other:
   --dir <path>              Directory to audit (default: current)
   --help, -h                Show this help
@@ -1367,5 +1711,14 @@ Examples:
   atlcli audit wiki --all --under-page 12345678
 
   # Exclude archived pages from audit
-  atlcli audit wiki --all --exclude-label archived`;
+  atlcli audit wiki --all --exclude-label archived
+
+  # Preview fixes without applying (dry run)
+  atlcli audit wiki --all --stale-high 12 --fix --dry-run
+
+  # Apply fixes (adds labels to stale pages, generates report)
+  atlcli audit wiki --all --stale-high 12 --fix
+
+  # Use custom label for stale pages
+  atlcli audit wiki --stale-high 12 --fix --fix-label stale-content`;
 }
