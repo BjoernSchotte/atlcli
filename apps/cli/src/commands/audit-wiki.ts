@@ -147,6 +147,10 @@ interface AuditOptions {
   checkDrafts: boolean; // Find draft pages
   checkArchived: boolean; // Find archived pages
   highChurnThreshold?: number; // Find pages with >= N versions
+  // Scope filtering
+  filterLabel?: string; // Only audit pages with this label
+  filterAncestor?: string; // Only audit pages under this ancestor (pageId)
+  excludeLabel?: string; // Exclude pages with this label
   // Output
   json: boolean;
   markdown: boolean;
@@ -390,6 +394,10 @@ async function parseOptions(
     checkDrafts: all || hasFlag(flags, "drafts"),
     checkArchived: all || hasFlag(flags, "archived"),
     highChurnThreshold: parseHighChurn(flags),
+    // Scope filtering
+    filterLabel: getFlag(flags, "label") as string | undefined,
+    filterAncestor: getFlag(flags, "under-page") as string | undefined,
+    excludeLabel: getFlag(flags, "exclude-label") as string | undefined,
     // Output
     json: hasFlag(flags, "json"),
     markdown: hasFlag(flags, "markdown"),
@@ -409,6 +417,54 @@ function parseHighChurn(flags: Record<string, string | boolean | string[]>): num
 // ============================================================================
 // Audit Logic
 // ============================================================================
+
+/**
+ * Get filtered page IDs based on scope options.
+ * Returns null if no filtering is needed, or a Set of page IDs to include.
+ */
+async function getFilteredPageIds(
+  adapter: SyncDbAdapter,
+  options: AuditOptions
+): Promise<Set<string> | null> {
+  const hasFilter = options.filterLabel || options.filterAncestor || options.excludeLabel;
+  if (!hasFilter) return null;
+
+  let pages = await adapter.listPages({});
+
+  // Filter by label (only include pages with this label)
+  if (options.filterLabel) {
+    const pagesWithLabel = await adapter.getPagesWithLabel(options.filterLabel);
+    const labelPageIds = new Set(pagesWithLabel.map((p) => p.pageId));
+    pages = pages.filter((p) => labelPageIds.has(p.pageId));
+  }
+
+  // Filter by ancestor (only include pages under this page)
+  if (options.filterAncestor) {
+    pages = pages.filter(
+      (p) => p.ancestors?.includes(options.filterAncestor!) || p.parentId === options.filterAncestor
+    );
+  }
+
+  // Exclude by label
+  if (options.excludeLabel) {
+    const pagesWithExcludeLabel = await adapter.getPagesWithLabel(options.excludeLabel);
+    const excludePageIds = new Set(pagesWithExcludeLabel.map((p) => p.pageId));
+    pages = pages.filter((p) => !excludePageIds.has(p.pageId));
+  }
+
+  return new Set(pages.map((p) => p.pageId));
+}
+
+/**
+ * Filter an array of items that have a page property by allowed page IDs.
+ */
+function filterByPageScope<T extends { page: PageRecord }>(
+  items: T[],
+  allowedPageIds: Set<string> | null
+): T[] {
+  if (!allowedPageIds) return items;
+  return items.filter((item) => allowedPageIds.has(item.page.pageId));
+}
 
 async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<AuditResult> {
   const result: AuditResult = {
@@ -440,6 +496,9 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
     userCacheAge: null,
   };
 
+  // Get scope-filtered page IDs (null if no filtering)
+  const filteredPageIds = await getFilteredPageIds(adapter, options);
+
   // Get user cache age
   const oldestCheck = await adapter.getOldestUserCheck();
   if (oldestCheck) {
@@ -448,35 +507,48 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
 
   // Stale detection
   if (options.staleHigh !== undefined) {
-    result.stalePages = await detectStalePages(adapter, options);
-    result.summary.stale.high = result.stalePages.filter((p) => p.severity === "high").length;
-    result.summary.stale.medium = result.stalePages.filter((p) => p.severity === "medium").length;
-    result.summary.stale.low = result.stalePages.filter((p) => p.severity === "low").length;
+    let stalePages = await detectStalePages(adapter, options);
+    stalePages = filterByPageScope(stalePages, filteredPageIds);
+    result.stalePages = stalePages;
+    result.summary.stale.high = stalePages.filter((p) => p.severity === "high").length;
+    result.summary.stale.medium = stalePages.filter((p) => p.severity === "medium").length;
+    result.summary.stale.low = stalePages.filter((p) => p.severity === "low").length;
   }
 
   // Orphan detection
   if (options.checkOrphans) {
     const orphans = await adapter.getOrphanedPages();
-    result.orphanedPages = orphans.map((page) => ({ page }));
-    result.summary.orphans = orphans.length;
+    let orphanedPages = orphans.map((page) => ({ page }));
+    orphanedPages = filterByPageScope(orphanedPages, filteredPageIds);
+    result.orphanedPages = orphanedPages;
+    result.summary.orphans = orphanedPages.length;
   }
 
   // Broken links
   if (options.checkBrokenLinks) {
     const brokenLinks = await adapter.getBrokenLinks();
-    result.brokenLinks = await Promise.all(
+    let brokenLinkInfos = await Promise.all(
       brokenLinks.map(async (link) => ({
         link,
         sourcePage: await adapter.getPage(link.sourcePageId),
       }))
     );
-    result.summary.brokenLinks = brokenLinks.length;
+    // Filter by source page scope
+    if (filteredPageIds) {
+      brokenLinkInfos = brokenLinkInfos.filter(
+        (info) => info.sourcePage && filteredPageIds.has(info.sourcePage.pageId)
+      );
+    }
+    result.brokenLinks = brokenLinkInfos;
+    result.summary.brokenLinks = brokenLinkInfos.length;
   }
 
   // Contributor risks
   if (options.checkSingleContributor || options.checkInactiveContributors) {
-    result.contributorRisks = await detectContributorRisks(adapter, options);
-    result.summary.contributorRisks = result.contributorRisks.length;
+    let risks = await detectContributorRisks(adapter, options);
+    risks = filterByPageScope(risks, filteredPageIds);
+    result.contributorRisks = risks;
+    result.summary.contributorRisks = risks.length;
   }
 
   // External links
@@ -484,7 +556,7 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
     const externalLinks = await adapter.getExternalLinks();
 
     // Build basic info for all external links
-    const externalLinkInfos: ExternalLinkInfo[] = await Promise.all(
+    let externalLinkInfos: ExternalLinkInfo[] = await Promise.all(
       externalLinks.map(async (link) => ({
         link,
         sourcePage: await adapter.getPage(link.sourcePageId),
@@ -492,10 +564,17 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
       }))
     );
 
+    // Filter by source page scope
+    if (filteredPageIds) {
+      externalLinkInfos = externalLinkInfos.filter(
+        (info) => info.sourcePage && filteredPageIds.has(info.sourcePage.pageId)
+      );
+    }
+
     // If --check-external, verify URLs via HTTP
     if (options.checkExternalBroken) {
-      const urls = externalLinks
-        .map((l) => l.targetPath)
+      const urls = externalLinkInfos
+        .map((i) => i.link.targetPath)
         .filter((url): url is string => url !== null);
 
       const checkResults = await checkUrls(urls, {
@@ -521,37 +600,47 @@ async function runAudit(adapter: SyncDbAdapter, options: AuditOptions): Promise<
     }
 
     result.externalLinks = externalLinkInfos;
-    result.summary.externalLinks = externalLinks.length;
+    result.summary.externalLinks = externalLinkInfos.length;
   }
 
   // Missing label check
   if (options.missingLabel) {
-    result.missingLabelPages = await detectMissingLabel(adapter, options.missingLabel);
-    result.summary.missingLabel = result.missingLabelPages.length;
+    let missingPages = await detectMissingLabel(adapter, options.missingLabel);
+    missingPages = filterByPageScope(missingPages, filteredPageIds);
+    result.missingLabelPages = missingPages;
+    result.summary.missingLabel = missingPages.length;
   }
 
   // Restricted pages
   if (options.checkRestricted) {
-    result.restrictedPages = await detectRestrictedPages(adapter);
-    result.summary.restricted = result.restrictedPages.length;
+    let restrictedPages = await detectRestrictedPages(adapter);
+    restrictedPages = filterByPageScope(restrictedPages, filteredPageIds);
+    result.restrictedPages = restrictedPages;
+    result.summary.restricted = restrictedPages.length;
   }
 
   // Draft pages
   if (options.checkDrafts) {
-    result.draftPages = await detectDraftPages(adapter);
-    result.summary.drafts = result.draftPages.length;
+    let draftPages = await detectDraftPages(adapter);
+    draftPages = filterByPageScope(draftPages, filteredPageIds);
+    result.draftPages = draftPages;
+    result.summary.drafts = draftPages.length;
   }
 
   // Archived pages
   if (options.checkArchived) {
-    result.archivedPages = await detectArchivedPages(adapter);
-    result.summary.archived = result.archivedPages.length;
+    let archivedPages = await detectArchivedPages(adapter);
+    archivedPages = filterByPageScope(archivedPages, filteredPageIds);
+    result.archivedPages = archivedPages;
+    result.summary.archived = archivedPages.length;
   }
 
   // High churn pages
   if (options.highChurnThreshold !== undefined) {
-    result.highChurnPages = await detectHighChurnPages(adapter, options.highChurnThreshold);
-    result.summary.highChurn = result.highChurnPages.length;
+    let highChurnPages = await detectHighChurnPages(adapter, options.highChurnThreshold);
+    highChurnPages = filterByPageScope(highChurnPages, filteredPageIds);
+    result.highChurnPages = highChurnPages;
+    result.summary.highChurn = highChurnPages.length;
   }
 
   return result;
@@ -1228,6 +1317,16 @@ Check Options:
   --inactive-contributors   Find pages where all contributors are inactive
   --external-links          List all external URLs (inventory only)
   --check-external          Verify external links via HTTP (finds broken URLs)
+  --missing-label <label>   Find pages missing a required label
+  --restricted              Find pages with view/edit restrictions
+  --drafts                  Find unpublished draft pages
+  --archived                Find archived pages
+  --high-churn <N>          Find pages with N+ versions (heavily edited)
+
+Scope Filtering:
+  --label <label>           Only audit pages with this label
+  --under-page <pageId>     Only audit pages under this ancestor
+  --exclude-label <label>   Exclude pages with this label
 
 Output Options:
   --json                    Output as JSON
@@ -1259,5 +1358,14 @@ Examples:
   atlcli audit wiki --all --stale-high 12 --markdown > AUDIT-REPORT.md
 
   # Export link graph for visualization
-  atlcli audit wiki --export-graph > graph.json`;
+  atlcli audit wiki --export-graph > graph.json
+
+  # Audit only pages with a specific label
+  atlcli audit wiki --all --label documentation
+
+  # Audit only pages under a specific parent
+  atlcli audit wiki --all --under-page 12345678
+
+  # Exclude archived pages from audit
+  atlcli audit wiki --all --exclude-label archived`;
 }

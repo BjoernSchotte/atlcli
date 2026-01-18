@@ -772,4 +772,120 @@ describe("audit-wiki", () => {
       expect(all.length).toBe(2);
     });
   });
+
+  describe("scope filtering", () => {
+    test("filters by label", async () => {
+      const page1: PageRecord = {
+        pageId: "page-1",
+        path: "page1.md",
+        title: "Page 1",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const page2: PageRecord = {
+        ...page1,
+        pageId: "page-2",
+        path: "page2.md",
+        title: "Page 2",
+      };
+
+      await adapter.upsertPage(page1);
+      await adapter.upsertPage(page2);
+
+      // Add label to page-1 only
+      await adapter.setPageLabels("page-1", ["important"]);
+
+      // Get pages with label
+      const pagesWithLabel = await adapter.getPagesWithLabel("important");
+      expect(pagesWithLabel.length).toBe(1);
+      expect(pagesWithLabel[0].pageId).toBe("page-1");
+
+      // Get pages without the label
+      const allPages = await adapter.listPages({});
+      const pagesWithoutLabel = allPages.filter(
+        (p) => !pagesWithLabel.some((l) => l.pageId === p.pageId)
+      );
+      expect(pagesWithoutLabel.length).toBe(1);
+      expect(pagesWithoutLabel[0].pageId).toBe("page-2");
+    });
+
+    test("filters by ancestor", async () => {
+      const parentPage: PageRecord = {
+        pageId: "parent-1",
+        path: "parent.md",
+        title: "Parent Page",
+        spaceKey: "TEST",
+        version: 1,
+        lastSyncedAt: new Date().toISOString(),
+        localHash: "abc",
+        remoteHash: "abc",
+        baseHash: "abc",
+        syncState: "synced",
+        parentId: null,
+        ancestors: [],
+        hasAttachments: false,
+        createdBy: null,
+        createdAt: new Date().toISOString(),
+        lastModifiedBy: null,
+        lastModified: null,
+        contentStatus: "current",
+        versionCount: 1,
+        wordCount: null,
+        isRestricted: false,
+        syncCreatedAt: new Date().toISOString(),
+        syncUpdatedAt: new Date().toISOString(),
+        remoteInaccessibleAt: null,
+        remoteInaccessibleReason: null,
+      };
+
+      const childPage: PageRecord = {
+        ...parentPage,
+        pageId: "child-1",
+        path: "parent/child.md",
+        title: "Child Page",
+        parentId: "parent-1",
+        ancestors: ["parent-1"],
+      };
+
+      const unrelatedPage: PageRecord = {
+        ...parentPage,
+        pageId: "unrelated-1",
+        path: "unrelated.md",
+        title: "Unrelated Page",
+      };
+
+      await adapter.upsertPage(parentPage);
+      await adapter.upsertPage(childPage);
+      await adapter.upsertPage(unrelatedPage);
+
+      // Filter pages under parent-1
+      const allPages = await adapter.listPages({});
+      const pagesUnderParent = allPages.filter(
+        (p) => p.ancestors?.includes("parent-1") || p.parentId === "parent-1"
+      );
+      expect(pagesUnderParent.length).toBe(1);
+      expect(pagesUnderParent[0].pageId).toBe("child-1");
+    });
+  });
 });
