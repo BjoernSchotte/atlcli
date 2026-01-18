@@ -8,6 +8,7 @@ export * from "./ignore.js";
 export * from "./links.js";
 export * from "./link-extractor-storage.js";
 export * from "./link-extractor-markdown.js";
+export * from "./link-validator.js";
 export * from "./markdown.js";
 export * from "./merge.js";
 export * from "./poller.js";

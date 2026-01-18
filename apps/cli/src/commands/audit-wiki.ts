@@ -163,6 +163,7 @@ interface AuditOptions {
   rebuildGraph: boolean;
   refreshUsers: boolean;
   includeRemote: boolean; // Include unsynced pages via API
+  localOnly: boolean; // Only audit synced pages (default: true)
   // Fix mode
   fix: boolean;
   dryRun: boolean;
@@ -467,6 +468,7 @@ async function parseOptions(
     rebuildGraph: hasFlag(flags, "rebuild-graph"),
     refreshUsers: hasFlag(flags, "refresh-users"),
     includeRemote: hasFlag(flags, "include-remote"),
+    localOnly: !hasFlag(flags, "include-remote"), // Default true, false if --include-remote
     // Fix mode
     fix: hasFlag(flags, "fix"),
     dryRun: hasFlag(flags, "dry-run"),
@@ -1921,6 +1923,7 @@ Output Options:
 Action Options:
   --rebuild-graph           Rebuild link graph from synced markdown files
   --refresh-users           Refresh user active/inactive status from API
+  --local-only              Only audit synced pages (default)
   --include-remote          Include unsynced Confluence pages via API
 
 Fix Options:
