@@ -340,7 +340,7 @@ export async function handleAuditWiki(
       opts,
       1,
       ERROR_CODES.VALIDATION,
-      "No audit checks specified. Use --all or specify individual checks (--orphans, --broken-links, etc.)"
+      "No audit checks specified. Use --all, specify individual checks (--orphans, --broken-links, etc.), or configure audit.defaultChecks in ~/.atlcli/config.json"
     );
   }
 
@@ -414,21 +414,50 @@ async function parseOptions(
   // Load config for defaults
   const config = await loadConfig();
   const auditConfig = config.audit;
+  const defaultChecks = auditConfig?.defaultChecks ?? [];
+
+  // Detect if user specified any explicit check flags
+  const hasExplicitCheckFlags =
+    hasFlag(flags, "orphans") ||
+    hasFlag(flags, "broken-links") ||
+    hasFlag(flags, "single-contributor") ||
+    hasFlag(flags, "inactive-contributors") ||
+    hasFlag(flags, "external-links") ||
+    hasFlag(flags, "check-external") ||
+    hasFlag(flags, "restricted") ||
+    hasFlag(flags, "drafts") ||
+    hasFlag(flags, "archived") ||
+    getFlag(flags, "stale-high") !== undefined ||
+    getFlag(flags, "stale-medium") !== undefined ||
+    getFlag(flags, "stale-low") !== undefined ||
+    getFlag(flags, "missing-label") !== undefined ||
+    getFlag(flags, "high-churn") !== undefined;
+
+  // Use defaultChecks from config when no explicit checks specified
+  const useDefaults = !all && !hasExplicitCheckFlags && defaultChecks.length > 0;
 
   // Parse thresholds (flags override config)
   const staleHighStr = getFlag(flags, "stale-high") as string | undefined;
   const staleMediumStr = getFlag(flags, "stale-medium") as string | undefined;
   const staleLowStr = getFlag(flags, "stale-low") as string | undefined;
 
+  // Use config thresholds if "stale" is in defaultChecks and no explicit threshold flags
+  const staleFromDefaults = useDefaults && defaultChecks.includes("stale");
   const staleHigh = staleHighStr
     ? parseInt(staleHighStr, 10)
-    : auditConfig?.staleThresholds?.high;
+    : staleFromDefaults || all
+      ? auditConfig?.staleThresholds?.high
+      : undefined;
   const staleMedium = staleMediumStr
     ? parseInt(staleMediumStr, 10)
-    : auditConfig?.staleThresholds?.medium;
+    : staleFromDefaults || all
+      ? auditConfig?.staleThresholds?.medium
+      : undefined;
   const staleLow = staleLowStr
     ? parseInt(staleLowStr, 10)
-    : auditConfig?.staleThresholds?.low;
+    : staleFromDefaults || all
+      ? auditConfig?.staleThresholds?.low
+      : undefined;
 
   // Validate thresholds
   if (staleHigh !== undefined && isNaN(staleHigh)) {
@@ -441,15 +470,20 @@ async function parseOptions(
     fail(opts, 1, ERROR_CODES.VALIDATION, "--stale-low must be a number (months)");
   }
 
+  // Helper to check if a check should be enabled
+  const shouldEnableCheck = (flagName: string, defaultCheckName: string): boolean => {
+    return all || hasFlag(flags, flagName) || (useDefaults && defaultChecks.includes(defaultCheckName as typeof defaultChecks[number]));
+  };
+
   return {
-    staleHigh: all ? staleHigh : staleHigh,
+    staleHigh,
     staleMedium,
     staleLow,
-    checkOrphans: all || hasFlag(flags, "orphans"),
-    checkBrokenLinks: all || hasFlag(flags, "broken-links"),
-    checkSingleContributor: all || hasFlag(flags, "single-contributor"),
-    checkInactiveContributors: all || hasFlag(flags, "inactive-contributors"),
-    checkExternalLinks: hasFlag(flags, "external-links") || hasFlag(flags, "check-external"),
+    checkOrphans: shouldEnableCheck("orphans", "orphans"),
+    checkBrokenLinks: shouldEnableCheck("broken-links", "broken-links"),
+    checkSingleContributor: shouldEnableCheck("single-contributor", "single-contributor"),
+    checkInactiveContributors: shouldEnableCheck("inactive-contributors", "inactive-contributors"),
+    checkExternalLinks: hasFlag(flags, "external-links") || hasFlag(flags, "check-external") || (useDefaults && defaultChecks.includes("external-links")),
     checkExternalBroken: hasFlag(flags, "check-external"), // Actually verify via HTTP
     // New audit checks
     missingLabel: getFlag(flags, "missing-label") as string | undefined,
@@ -1935,6 +1969,18 @@ Fix Options:
 Other:
   --dir <path>              Directory to audit (default: current)
   --help, -h                Show this help
+
+Configuration:
+  Configure default checks in ~/.atlcli/config.json:
+  {
+    "audit": {
+      "defaultChecks": ["stale", "orphans", "broken-links"],
+      "staleThresholds": { "high": 12, "medium": 6, "low": 3 }
+    }
+  }
+
+  Valid defaultChecks: stale, orphans, broken-links, single-contributor,
+                       inactive-contributors, external-links
 
 Examples:
   # Run all checks with 12-month high threshold
