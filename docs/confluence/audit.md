@@ -12,6 +12,7 @@ The `audit wiki` command helps you maintain documentation quality by detecting:
 - **Contributor risks** - Bus factor and inactive maintainer issues
 - **External link health** - Broken external URLs
 - **Compliance issues** - Missing labels, restricted pages, drafts
+- **Editor format** - Pages using legacy vs new Confluence editor
 
 ## Quick Start
 
@@ -80,6 +81,62 @@ Folder checks detect:
 - **FOLDER_MISSING_INDEX** - Directories with pages but no folder index.md
 
 See [Folders](folders.md#validating-folders) for details.
+
+### Editor Format
+
+The `docs status` command reports on Confluence editor formats:
+
+```bash
+# View editor format breakdown
+atlcli wiki docs status ./docs
+```
+
+Output includes:
+
+```
+Editor format:
+  new editor (v2):    25 pages
+  legacy editor (v1): 3 pages
+  unknown:            2 pages
+
+Legacy/unknown editor pages:
+  old-page.md
+  imported-doc.md
+```
+
+| Format | Description |
+|--------|-------------|
+| **v2 (new editor)** | Pages using Confluence's new editor with colored callouts |
+| **v1 (legacy)** | Pages explicitly set to legacy editor (grey callouts) |
+| **unknown** | Pages without editor property (typically older pages) |
+
+#### Converting Editor Formats
+
+Convert pages between editor formats:
+
+```bash
+# Convert a single page to new editor
+atlcli wiki docs convert ./docs/old-page.md --to-new-editor
+
+# Convert all pages in directory to new editor (preview first)
+atlcli wiki docs convert ./docs --to-new-editor --dry-run
+
+# Apply conversion to all pages
+atlcli wiki docs convert ./docs --to-new-editor --confirm
+
+# Convert back to legacy editor if needed
+atlcli wiki docs convert ./docs/page.md --to-legacy-editor
+```
+
+| Flag | Description |
+|------|-------------|
+| `--to-new-editor` | Convert to v2 (new editor) |
+| `--to-legacy-editor` | Convert to v1 (legacy editor) |
+| `--dry-run` | Preview changes without applying |
+| `--confirm` | Required for directory-wide conversion |
+
+!!! tip "New pages default to v2"
+    Pages created with `atlcli wiki docs push` or `atlcli wiki docs add` automatically use the new editor. Use `--legacy-editor` flag to opt out.
 
 ### Contributor Analysis
 
@@ -190,6 +247,14 @@ atlcli audit wiki --all --json > audit.json
     "externalLinks": 42,
     "folderIssues": 2
   },
+  "editorFormat": {
+    "v2": 25,
+    "v1": 3,
+    "unknown": 2
+  },
+  "legacyPages": [
+    { "path": "old-page.md", "id": "123456", "title": "Old Page" }
+  ],
   "stalePages": [...],
   "orphanedPages": [...],
   "brokenLinks": [...],
@@ -328,6 +393,23 @@ atlcli audit wiki --single-contributor --inactive-contributors --refresh-users
 ```bash
 # Check required labels and restrictions
 atlcli audit wiki --missing-label "approved" --restricted --drafts
+```
+
+### Editor Migration
+
+```bash
+# Check current editor format status
+atlcli wiki docs status ./docs
+
+# Preview conversion to new editor
+atlcli wiki docs convert ./docs --to-new-editor --dry-run
+
+# Convert all pages to new editor
+atlcli wiki docs convert ./docs --to-new-editor --confirm
+
+# Verify migration
+atlcli wiki docs pull ./docs
+atlcli wiki docs status ./docs
 ```
 
 ### CI/CD Integration
