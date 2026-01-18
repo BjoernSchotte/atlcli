@@ -927,10 +927,18 @@ export function markdownToStorage(markdown: string, options?: ConversionOptions)
 
     let html: string;
 
+    // Helper to strip surrounding quotes from macro titles
+    const stripQuotes = (t: string | undefined): string | undefined => {
+      if (!t) return t;
+      const trimmed = t.trim();
+      const match = trimmed.match(/^["'](.*)["']$/);
+      return match ? match[1] : trimmed;
+    };
+
     if (macro === "toc") {
       html = `<ac:structured-macro ac:name="toc"/>`;
     } else if (macro === "expand") {
-      const expandTitle = title?.trim() || "Click to expand";
+      const expandTitle = stripQuotes(title) || "Click to expand";
       html = `<ac:structured-macro ac:name="expand">
 <ac:parameter ac:name="title">${escapeHtml(expandTitle)}</ac:parameter>
 <ac:rich-text-body>
@@ -940,8 +948,9 @@ ${md.render(trimmedContent).trim()}
     } else if (PANEL_MACROS.includes(macro)) {
       // Panel macros: info, note, warning, tip
       let panelHtml = `<ac:structured-macro ac:name="${macro}">`;
-      if (title?.trim()) {
-        panelHtml += `\n<ac:parameter ac:name="title">${escapeHtml(title.trim())}</ac:parameter>`;
+      const panelTitle = stripQuotes(title);
+      if (panelTitle) {
+        panelHtml += `\n<ac:parameter ac:name="title">${escapeHtml(panelTitle)}</ac:parameter>`;
       }
       panelHtml += `
 <ac:rich-text-body>

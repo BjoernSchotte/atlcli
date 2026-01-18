@@ -1754,4 +1754,50 @@ describe("Phase 2 macros - Priority 2 (Labels)", () => {
       expect(md).toContain(":::loremipsum");
     });
   });
+
+  describe("macro title quote stripping", () => {
+    test("strips double quotes from panel macro titles", () => {
+      const md = `:::info "Quoted Title"
+Content here
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('<ac:parameter ac:name="title">Quoted Title</ac:parameter>');
+      expect(html).not.toContain('"Quoted Title"');
+    });
+
+    test("strips single quotes from panel macro titles", () => {
+      const md = `:::warning 'Single Quoted'
+Content here
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('<ac:parameter ac:name="title">Single Quoted</ac:parameter>');
+      expect(html).not.toContain("'Single Quoted'");
+    });
+
+    test("strips double quotes from expand macro titles", () => {
+      const md = `:::expand "Expand Title"
+Hidden content
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('<ac:parameter ac:name="title">Expand Title</ac:parameter>');
+      expect(html).not.toContain('"Expand Title"');
+    });
+
+    test("preserves unquoted titles", () => {
+      const md = `:::tip Unquoted Title
+Content
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('<ac:parameter ac:name="title">Unquoted Title</ac:parameter>');
+    });
+
+    test("handles panel without title", () => {
+      const md = `:::note
+Just content
+:::`;
+      const html = markdownToStorage(md);
+      expect(html).toContain('<ac:structured-macro ac:name="note">');
+      expect(html).not.toContain('<ac:parameter ac:name="title">');
+    });
+  });
 });
