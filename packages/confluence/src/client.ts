@@ -551,6 +551,7 @@ export class ConfluenceClient {
     })) as any;
 
     const results = Array.isArray(data.results) ? data.results : [];
+    const nextLink = data._links?.next;
 
     return {
       results: results.map((item: any) => this.parseSearchResult(item)),
@@ -558,30 +559,64 @@ export class ConfluenceClient {
       limit: data.limit ?? limit,
       size: data.size ?? results.length,
       totalSize: data.totalSize,
-      hasMore: (data.start ?? 0) + (data.size ?? results.length) < (data.totalSize ?? 0),
+      hasMore: !!nextLink || (data.start ?? 0) + (data.size ?? results.length) < (data.totalSize ?? 0),
+      nextLink,
     };
   }
 
   /**
    * Search pages with automatic pagination.
    *
-   * Paginates through all results to handle spaces with >200 pages.
-   * Uses result count to detect last page (since totalSize may not be returned).
+   * Paginates through all results using cursor-based pagination via _links.next.
+   * Note: The start parameter is deprecated and ignored by Confluence Cloud.
    */
   async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
     const allResults: ConfluenceSearchResult[] = [];
-    let start = 0;
+    let nextLink: string | undefined;
+    let isFirstRequest = true;
 
     while (true) {
-      const result = await this.search(cql, { limit, start });
+      let result: SearchResults;
+
+      if (isFirstRequest) {
+        result = await this.search(cql, { limit });
+        isFirstRequest = false;
+      } else if (nextLink) {
+        result = await this.searchByUrl(nextLink);
+      } else {
+        break;
+      }
+
       allResults.push(...result.results);
 
-      // Stop if fewer results than limit (last page) or no results
-      if (result.results.length < limit || result.results.length === 0) break;
-      start += result.results.length;
+      // Stop if no more results or no next link
+      if (result.results.length === 0 || !result.nextLink) break;
+      nextLink = result.nextLink;
     }
 
     return allResults;
+  }
+
+  /**
+   * Follow a pagination URL to get the next page of search results.
+   * Strips the /rest/api prefix from the URL since request() adds it.
+   */
+  private async searchByUrl(url: string): Promise<SearchResults> {
+    // Strip /rest/api prefix since request() adds it
+    const path = url.replace(/^\/rest\/api/, "");
+    const data = (await this.request(path)) as any;
+    const results = Array.isArray(data.results) ? data.results : [];
+    const nextLink = data._links?.next;
+
+    return {
+      results: results.map((item: any) => this.parseSearchResult(item)),
+      start: data.start ?? 0,
+      limit: data.limit ?? results.length,
+      size: data.size ?? results.length,
+      totalSize: data.totalSize,
+      hasMore: !!nextLink,
+      nextLink,
+    };
   }
 
   /**
@@ -749,6 +784,7 @@ export class ConfluenceClient {
   /**
    * Get direct child pages with position information for ordering.
    *
+   * Uses cursor-based pagination via _links.next (start parameter is deprecated).
    * GET /content/{id}/child/page?expand=extensions.position,version
    */
   async getChildrenWithPosition(
@@ -757,12 +793,24 @@ export class ConfluenceClient {
   ): Promise<Array<ConfluencePage & { position: number | null }>> {
     const { limit = 100 } = options;
     const results: Array<ConfluencePage & { position: number | null }> = [];
-    let start = 0;
+    let nextLink: string | undefined;
+    let isFirstRequest = true;
 
     while (true) {
-      const data = (await this.request(
-        `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}&start=${start}`
-      )) as any;
+      let data: any;
+
+      if (isFirstRequest) {
+        data = await this.request(
+          `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`
+        );
+        isFirstRequest = false;
+      } else if (nextLink) {
+        // Strip /rest/api prefix since request() adds it
+        const path = nextLink.replace(/^\/rest\/api/, "");
+        data = await this.request(path);
+      } else {
+        break;
+      }
 
       if (!data.results || data.results.length === 0) break;
 
@@ -783,8 +831,8 @@ export class ConfluenceClient {
         });
       }
 
-      if (data.results.length < limit) break;
-      start += limit;
+      nextLink = data._links?.next;
+      if (!nextLink || data.results.length < limit) break;
     }
 
     // Sort by position (nulls go to end, then alphabetical fallback)
@@ -1063,7 +1111,7 @@ export class ConfluenceClient {
    * Get pages modified since a given date using CQL.
    * Used for efficient polling of spaces or page trees.
    *
-   * Paginates through all results to handle spaces with >200 modified pages.
+   * Uses cursor-based pagination via _links.next (start parameter is deprecated).
    */
   async getPagesSince(params: {
     scope: SyncScope;
@@ -1092,40 +1140,15 @@ export class ConfluenceClient {
         break;
     }
 
-    // Paginate through all results
-    const allResults: PageChangeInfo[] = [];
-    let start = 0;
-
-    while (true) {
-      const data = (await this.request("/content/search", {
-        query: { cql, limit, start, expand: "version,space,history.lastUpdated" },
-      })) as any;
-
-      const results = Array.isArray(data.results) ? data.results : [];
-      if (results.length === 0) break;
-
-      for (const item of results) {
-        allResults.push({
-          id: item.id,
-          title: item.title,
-          version: item.version?.number ?? 1,
-          lastModified: item.history?.lastUpdated?.when,
-          spaceKey: item.space?.key,
-        });
-      }
-
-      // Stop if fewer results than limit (last page)
-      if (results.length < limit) break;
-      start += limit;
-    }
-
-    return allResults;
+    // Use cursor-based pagination
+    return this.searchPagesAsChangeInfo(cql, limit);
   }
 
   /**
    * Get all pages in a scope (initial sync).
    *
-   * Paginates through all results to handle spaces with >200 pages.
+   * For space scope: uses v2 API with reliable cursor-based pagination.
+   * For tree scope: uses cursor-based CQL search via _links.next.
    */
   async getAllPages(params: {
     scope: SyncScope;
@@ -1139,25 +1162,85 @@ export class ConfluenceClient {
       return [pageInfo];
     }
 
-    // Build CQL for tree or space scope
-    let cql: string;
-    switch (scope.type) {
-      case "tree":
-        cql = `ancestor=${scope.ancestorId} AND type=page`;
-        break;
-      case "space":
-        cql = `space="${scope.spaceKey}" AND type=page`;
-        break;
+    // Space scope: use v2 API for reliable pagination
+    if (scope.type === "space") {
+      return this.getAllPagesInSpaceV2(scope.spaceKey, limit);
     }
 
-    // Paginate through all results
+    // Tree scope: use cursor-based CQL search
+    const cql = `ancestor=${scope.ancestorId} AND type=page`;
+    return this.searchPagesAsChangeInfo(cql, limit);
+  }
+
+  /**
+   * Get all pages in a space using v2 API with cursor-based pagination.
+   */
+  private async getAllPagesInSpaceV2(
+    spaceKey: string,
+    limit: number
+  ): Promise<PageChangeInfo[]> {
+    const space = await this.getSpace(spaceKey);
     const allResults: PageChangeInfo[] = [];
-    let start = 0;
+    let cursor: string | undefined;
 
     while (true) {
-      const data = (await this.request("/content/search", {
-        query: { cql, limit, start, expand: "version,space,history.lastUpdated" },
-      })) as any;
+      const query: Record<string, string | number | undefined> = { limit };
+      if (cursor) query.cursor = cursor;
+
+      const data = (await this.requestV2(`/spaces/${space.id}/pages`, { query })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (results.length === 0) break;
+
+      for (const item of results) {
+        allResults.push({
+          id: item.id,
+          title: item.title,
+          version: item.version?.number ?? 1,
+          lastModified: item.version?.createdAt,
+          spaceKey,
+        });
+      }
+
+      if (data._links?.next) {
+        const nextUrl = new URL(data._links.next, this.baseUrl);
+        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
+      } else {
+        break;
+      }
+
+      if (results.length < limit) break;
+    }
+
+    return allResults;
+  }
+
+  /**
+   * Search pages using CQL with cursor-based pagination, returning PageChangeInfo.
+   * Uses _links.next for pagination since 'start' parameter is deprecated.
+   */
+  private async searchPagesAsChangeInfo(
+    cql: string,
+    limit: number
+  ): Promise<PageChangeInfo[]> {
+    const allResults: PageChangeInfo[] = [];
+    let nextLink: string | undefined;
+    let isFirstRequest = true;
+
+    while (true) {
+      let data: any;
+
+      if (isFirstRequest) {
+        data = await this.request("/content/search", {
+          query: { cql, limit, expand: "version,space,history.lastUpdated" },
+        });
+        isFirstRequest = false;
+      } else if (nextLink) {
+        // Strip /rest/api prefix since request() adds it
+        const path = nextLink.replace(/^\/rest\/api/, "");
+        data = await this.request(path);
+      } else {
+        break;
+      }
 
       const results = Array.isArray(data.results) ? data.results : [];
       if (results.length === 0) break;
@@ -1172,9 +1255,8 @@ export class ConfluenceClient {
         });
       }
 
-      // Stop if fewer results than limit (last page)
-      if (results.length < limit) break;
-      start += limit;
+      nextLink = data._links?.next;
+      if (!nextLink || results.length < limit) break;
     }
 
     return allResults;
@@ -2739,6 +2821,8 @@ export interface SearchResults {
   totalSize?: number;
   /** Whether there are more results */
   hasMore: boolean;
+  /** URL for next page of results (cursor-based pagination) */
+  nextLink?: string;
 }
 
 /** Comment author info */

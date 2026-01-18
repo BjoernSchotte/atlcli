@@ -683,9 +683,8 @@ async function runAudit(
 
   // Folder structure issues
   if (options.checkFolders) {
-    // Get parent directory of .atlcli folder (the sync root)
-    const syncRoot = dirname(atlcliDir);
-    const folderValidationIssues = validateFolders(syncRoot);
+    // atlcliDir is the project root (directory containing .atlcli)
+    const folderValidationIssues = validateFolders(atlcliDir);
     result.folderIssues = folderValidationIssues.map((issue) => ({
       file: issue.file,
       code: issue.code as "FOLDER_EMPTY" | "FOLDER_MISSING_INDEX",
