@@ -83,6 +83,12 @@ export type SyncConfig = {
   userStatusTtlDays?: number;
   /** Skip user status checks during pull (default: false) */
   skipUserStatusCheck?: boolean;
+  /**
+   * Show quick audit summary after pull if audit feature is available (default: false).
+   * Only triggers if `flags.audit` is enabled.
+   * Shows: orphan count, broken link count, user cache age.
+   */
+  postPullAuditSummary?: boolean;
 };
 
 export type Config = {

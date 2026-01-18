@@ -601,6 +601,35 @@ export class SqliteAdapter implements SyncDbAdapter {
     return rows.map((row) => this.rowToLinkRecord(row));
   }
 
+  async getExternalLinks(pageId?: string): Promise<LinkRecord[]> {
+    const db = this.ensureDb();
+    if (pageId) {
+      const rows = db
+        .prepare(
+          `
+          SELECT l.*
+          FROM links l
+          WHERE l.link_type = 'external' AND l.source_page_id = ?
+          ORDER BY l.line_number
+        `
+        )
+        .all(pageId) as RawLinkRow[];
+      return rows.map((row) => this.rowToLinkRecord(row));
+    } else {
+      const rows = db
+        .prepare(
+          `
+          SELECT l.*
+          FROM links l
+          WHERE l.link_type = 'external'
+          ORDER BY l.source_page_id, l.line_number
+        `
+        )
+        .all() as RawLinkRow[];
+      return rows.map((row) => this.rowToLinkRecord(row));
+    }
+  }
+
   // ============ Users ============
 
   async getUser(userId: string): Promise<UserRecord | null> {
@@ -633,6 +662,16 @@ export class SqliteAdapter implements SyncDbAdapter {
     const stmt = this.statements.get("listUsers")!;
     const rows = stmt.all() as RawUserRow[];
     return rows.map((row) => this.rowToUserRecord(row));
+  }
+
+  async getOldestUserCheck(): Promise<string | null> {
+    const db = this.ensureDb();
+    const result = db
+      .prepare(
+        `SELECT MIN(last_checked_at) as oldest FROM users WHERE last_checked_at IS NOT NULL`
+      )
+      .get() as { oldest: string | null } | null;
+    return result?.oldest ?? null;
   }
 
   // ============ Labels ============

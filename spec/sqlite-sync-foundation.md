@@ -155,6 +155,7 @@ export interface SyncDbAdapter {
   getIncomingLinks(pageId: string): Promise<LinkRecord[]>;
   getOrphanedPages(): Promise<PageRecord[]>;
   getBrokenLinks(): Promise<LinkRecord[]>;
+  getExternalLinks(pageId?: string): Promise<LinkRecord[]>;  // All external URLs, optionally filtered by page
 
   // Users (for audit/author tracking)
   getUser(userId: string): Promise<UserRecord | null>;
@@ -578,6 +579,19 @@ FROM links l
 JOIN pages p ON l.source_page_id = p.page_id
 WHERE l.is_broken = 1 AND l.link_type = 'internal';
 
+-- Get all external links (for inventory, HTTP validation is separate Phase 6 feature)
+SELECT l.*, p.title as source_title, p.path as source_path
+FROM links l
+JOIN pages p ON l.source_page_id = p.page_id
+WHERE l.link_type = 'external'
+ORDER BY p.path, l.line_number;
+
+-- Get external links for a specific page
+SELECT l.*
+FROM links l
+WHERE l.source_page_id = ? AND l.link_type = 'external'
+ORDER BY l.line_number;
+
 -- Find pages with deactivated creators
 SELECT p.*, u.display_name as creator_name
 FROM pages p
@@ -749,11 +763,17 @@ interface AtlcliConfig {
   sync?: {
     // User status cache TTL in days (default: 7)
     // Users are re-checked via API when cache expires
+    // Note: Audit commands use cached status and show "as of" date
     userStatusTtlDays?: number;
 
     // Skip user status checks entirely during pull (default: false)
     // Equivalent to always using --skip-user-check flag
     skipUserStatusCheck?: boolean;
+
+    // Run quick audit summary after pull if audit feature is available (default: false)
+    // Only triggers if `flag.audit` is enabled (audit may be a separate plugin)
+    // Shows: orphan count, broken link count, stale page warnings
+    postPullAuditSummary?: boolean;
   };
 }
 ```
@@ -863,6 +883,17 @@ function getStorageAdapter(config: AtlcliConfig): 'sqlite' | 'postgres' | 'json'
     "skipUserStatusCheck": false   // Set true to never check user status
   }
 }
+
+// Post-pull audit summary (requires audit feature/plugin)
+{
+  "sync": {
+    "postPullAuditSummary": true   // Show audit warnings after each pull
+  }
+}
+// Output after pull:
+//   [PULL] Pulled 18 pages
+//   [AUDIT] 2 orphaned pages, 1 broken link (user status as of 3 days ago)
+//          Run 'atlcli audit wiki --all' for details
 ```
 
 ### Embeddings Model Management
@@ -1144,6 +1175,22 @@ Compare with stored links to detect changes
 - Attachment links have proper IDs and versions
 - Consistent with other metadata (title, author, etc.) coming from API directly
 
+**Link graph maintenance:**
+
+| Scenario | Solution |
+|----------|----------|
+| Links stale from Confluence changes | Run `wiki docs pull` - re-extracts links from remote storage format |
+| Links stale from local file edits | Run `wiki docs status --links` - re-analyzes local markdown |
+| Link extraction logic was fixed | Run `wiki docs pull` to re-extract with fixed logic |
+| Need full rebuild from local | Use `--rebuild-graph` flag (audit command) |
+
+**Key decision**: No separate `--refresh-links` command. If remote links are stale, `pull` already handles it by extracting links from Confluence storage format during the pull process. This keeps the workflow simple: `pull` refreshes everything from remote, including links.
+
+The `--rebuild-graph` flag (in audit command) is only needed when:
+1. Local markdown was edited outside of sync workflow
+2. Link extraction from markdown logic changed
+3. Database was corrupted or manually edited
+
 ### Phase 2: Users and Contributors
 
 **Users table population:**
@@ -1184,6 +1231,23 @@ User status is cached with configurable TTL (default: 7 days). Users are only re
 - Cache expired (`lastCheckedAt` older than TTL)
 - Explicit `--refresh-users` flag
 
+**Cache staleness visibility:**
+
+Commands consuming user data should indicate cache freshness:
+```
+# Status output shows cache age
+User status: 3 users checked (as of 2 days ago)
+
+# Audit output shows when user data may be stale
+[AUDIT] 2 pages with inactive authors (user status as of 5 days ago)
+        Run with --refresh-users for fresh data
+```
+
+The `lastCheckedAt` field in users table enables this. Commands can query:
+```sql
+SELECT MIN(last_checked_at) as oldest_check FROM users WHERE last_checked_at IS NOT NULL
+```
+
 **CLI flags:**
 
 ```bash
@@ -1213,6 +1277,24 @@ atlcli wiki docs pull --fetch-contributors
 ```
 
 This fetches full version history (`/content/{id}/version`) and extracts all unique contributors. **Warning:** This requires N API calls per page where N = version count.
+
+**Post-pull audit integration:**
+
+When `sync.postPullAuditSummary` is enabled AND the audit feature is available (via `flag.audit`), pull shows a quick summary:
+
+```
+[PULL] Pulled 18 pages, 3 modified
+[AUDIT] 2 orphaned pages, 1 broken link (user status as of 2 days ago)
+        Run 'atlcli audit wiki --all' for details
+```
+
+Implementation approach:
+1. After pull completes, check if audit feature is available (dynamic import or flag check)
+2. If available, run quick queries: `getOrphanedPages().length`, `getBrokenLinks().length`
+3. Show summary line with counts and cache age
+4. This is lightweight - no threshold calculations, just counts
+
+This allows the sync workflow to benefit from audit insights without hard-coupling to the audit feature, which may be a separate plugin/repo.
 
 ### Phase 3: Audit Feature
 

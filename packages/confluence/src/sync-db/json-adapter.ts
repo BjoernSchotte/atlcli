@@ -370,6 +370,19 @@ export class JsonAdapter implements SyncDbAdapter {
     return this.storage.links.filter((l) => l.isBroken);
   }
 
+  async getExternalLinks(pageId?: string): Promise<LinkRecord[]> {
+    let links = this.storage.links.filter((l) => l.linkType === "external");
+    if (pageId) {
+      links = links.filter((l) => l.sourcePageId === pageId);
+    }
+    return links.sort((a, b) => {
+      if (a.sourcePageId !== b.sourcePageId) {
+        return a.sourcePageId.localeCompare(b.sourcePageId);
+      }
+      return (a.lineNumber ?? 0) - (b.lineNumber ?? 0);
+    });
+  }
+
   // ============ Users ============
 
   async getUser(userId: string): Promise<UserRecord | null> {
@@ -383,6 +396,16 @@ export class JsonAdapter implements SyncDbAdapter {
 
   async listUsers(): Promise<UserRecord[]> {
     return Object.values(this.storage.users);
+  }
+
+  async getOldestUserCheck(): Promise<string | null> {
+    const users = Object.values(this.storage.users);
+    const checkedUsers = users.filter((u) => u.lastCheckedAt);
+    if (checkedUsers.length === 0) return null;
+    return checkedUsers.reduce((oldest, u) => {
+      if (!oldest) return u.lastCheckedAt!;
+      return u.lastCheckedAt! < oldest ? u.lastCheckedAt! : oldest;
+    }, null as string | null);
   }
 
   // ============ Labels ============

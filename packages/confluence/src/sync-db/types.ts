@@ -248,11 +248,13 @@ export interface SyncDbAdapter {
   getIncomingLinks(pageId: string): Promise<LinkRecord[]>;
   getOrphanedPages(): Promise<PageRecord[]>;
   getBrokenLinks(): Promise<LinkRecord[]>;
+  getExternalLinks(pageId?: string): Promise<LinkRecord[]>; // All external URLs, optionally filtered by page
 
   // Users (for audit/author tracking)
   getUser(userId: string): Promise<UserRecord | null>;
   upsertUser(user: UserRecord): Promise<void>;
   listUsers(): Promise<UserRecord[]>;
+  getOldestUserCheck(): Promise<string | null>; // Oldest lastCheckedAt for cache age display
 
   // Labels
   setPageLabels(pageId: string, labels: string[]): Promise<void>;

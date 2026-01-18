@@ -36,6 +36,7 @@ import {
   isImageFile,
   // Local storage
   findAtlcliDir,
+  getAtlcliPath,
   initAtlcliDir,
   isInitialized,
   readConfig,
@@ -116,6 +117,9 @@ import {
   createContributorRecords,
   fetchAllContributorsForPages,
   type UserCheckOptions,
+  // Sync database
+  createSyncDb,
+  hasSyncDb,
 } from "@atlcli/confluence";
 import type { Ignore } from "@atlcli/confluence";
 import { handleSync, syncHelp } from "./sync.js";
@@ -142,6 +146,29 @@ interface LegacyMeta {
   title?: string;
   spaceKey?: string;
   version?: number;
+}
+
+/**
+ * Format a date as a human-readable time ago string.
+ * Used for user cache age display.
+ */
+function formatTimeAgo(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffDays > 0) {
+    return diffDays === 1 ? "1 day ago" : `${diffDays} days ago`;
+  } else if (diffHours > 0) {
+    return diffHours === 1 ? "1 hour ago" : `${diffHours} hours ago`;
+  } else if (diffMinutes > 0) {
+    return diffMinutes === 1 ? "1 minute ago" : `${diffMinutes} minutes ago`;
+  } else {
+    return "just now";
+  }
 }
 
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -827,7 +854,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     // Phase 2: User and contributor handling
     // Open adapter once for all Phase 2 operations
     const { createSyncDb } = await import("@atlcli/confluence");
-    const adapter = await createSyncDb(join(atlcliDir, ".atlcli"), { autoMigrate: false });
+    const adapter = await createSyncDb(getAtlcliPath(atlcliDir), { autoMigrate: false });
     try {
       // Check user statuses (respects TTL caching)
       // Use type assertion since checkUsersFromPull handles optional values via optional chaining
@@ -893,6 +920,34 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
   if (pullComments && commentsPulled > 0) {
     pullResults.comments = commentsPulled;
+  }
+
+  // Post-pull audit summary (if enabled and audit feature is available)
+  if (atlcliDir && !opts.json) {
+    const globalConfig = await loadConfig();
+    const postPullAuditEnabled = globalConfig.sync?.postPullAuditSummary;
+    const auditFeatureEnabled = globalConfig.flags?.audit === true;
+
+    if (postPullAuditEnabled && auditFeatureEnabled) {
+      const atlcliPath = getAtlcliPath(atlcliDir);
+      if (hasSyncDb(atlcliPath)) {
+        try {
+          const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+          const orphanedPages = await adapter.getOrphanedPages();
+          const brokenLinks = await adapter.getBrokenLinks();
+          const oldestCheck = await adapter.getOldestUserCheck();
+          await adapter.close();
+
+          const cacheAgeStr = oldestCheck ? ` (user status as of ${formatTimeAgo(oldestCheck)})` : "";
+          output(`[AUDIT] ${orphanedPages.length} orphaned pages, ${brokenLinks.length} broken links${cacheAgeStr}`, opts);
+          if (orphanedPages.length > 0 || brokenLinks.length > 0) {
+            output(`        Run 'atlcli audit wiki --all' for details`, opts);
+          }
+        } catch {
+          // Ignore errors - audit summary is optional
+        }
+      }
+    }
   }
 
   output(
@@ -1740,6 +1795,24 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
   const atlcliDir = findAtlcliDir(dir);
   const state = atlcliDir ? await readState(atlcliDir) : null;
 
+  // Get user cache age from sync.db if available
+  let userCacheAge: string | null = null;
+  if (atlcliDir) {
+    const atlcliPath = getAtlcliPath(atlcliDir);
+    if (hasSyncDb(atlcliPath)) {
+      try {
+        const adapter = await createSyncDb(atlcliPath, { autoMigrate: false });
+        const oldestCheck = await adapter.getOldestUserCheck();
+        if (oldestCheck) {
+          userCacheAge = formatTimeAgo(oldestCheck);
+        }
+        await adapter.close();
+      } catch {
+        // Ignore errors - cache age is optional
+      }
+    }
+  }
+
   // Load ignore patterns and collect files
   const ignoreResult = await loadIgnorePatterns(atlcliDir ?? dir);
   const files = await collectMarkdownFiles(dir, {
@@ -1854,6 +1927,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       modified,
       untracked,
       lastSync: state?.lastSync,
+      userCacheAge: userCacheAge,
       ignorePatterns: {
         hasAtlcliIgnore: ignoreResult.hasAtlcliIgnore,
         hasGitIgnore: ignoreResult.hasGitIgnore,
@@ -1883,6 +1957,10 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
 
     if (state?.lastSync) {
       output(`\nLast sync: ${state.lastSync}`, opts);
+    }
+
+    if (userCacheAge) {
+      output(`User status: cached (as of ${userCacheAge})`, opts);
     }
 
     if (modified.length > 0) {

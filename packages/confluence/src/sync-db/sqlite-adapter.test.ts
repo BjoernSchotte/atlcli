@@ -459,6 +459,76 @@ describe("SqliteAdapter", () => {
       expect(broken.length).toBe(1);
       expect(broken[0].targetPath).toBe("./missing.md");
     });
+
+    test("getExternalLinks returns all external links", async () => {
+      await adapter.upsertPage(
+        createPageRecord({
+          pageId: "page-1",
+          path: "page1.md",
+          title: "Page 1",
+          spaceKey: "TEST",
+        })
+      );
+      await adapter.upsertPage(
+        createPageRecord({
+          pageId: "page-2",
+          path: "page2.md",
+          title: "Page 2",
+          spaceKey: "TEST",
+        })
+      );
+
+      await adapter.setPageLinks("page-1", [
+        {
+          sourcePageId: "page-1",
+          targetPageId: null,
+          targetPath: "https://github.com/example",
+          linkType: "external",
+          linkText: "GitHub",
+          lineNumber: 10,
+          isBroken: false,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          sourcePageId: "page-1",
+          targetPageId: "page-2",
+          targetPath: "./page2.md",
+          linkType: "internal",
+          linkText: "Page 2",
+          lineNumber: 15,
+          isBroken: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+
+      await adapter.setPageLinks("page-2", [
+        {
+          sourcePageId: "page-2",
+          targetPageId: null,
+          targetPath: "https://docs.atlassian.com",
+          linkType: "external",
+          linkText: "Atlassian Docs",
+          lineNumber: 5,
+          isBroken: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+
+      // Get all external links
+      const allExternal = await adapter.getExternalLinks();
+      expect(allExternal.length).toBe(2);
+      expect(allExternal.map((l) => l.targetPath)).toContain("https://github.com/example");
+      expect(allExternal.map((l) => l.targetPath)).toContain("https://docs.atlassian.com");
+
+      // Get external links for specific page
+      const page1External = await adapter.getExternalLinks("page-1");
+      expect(page1External.length).toBe(1);
+      expect(page1External[0].targetPath).toBe("https://github.com/example");
+
+      const page2External = await adapter.getExternalLinks("page-2");
+      expect(page2External.length).toBe(1);
+      expect(page2External[0].targetPath).toBe("https://docs.atlassian.com");
+    });
   });
 
   describe("users", () => {
@@ -530,6 +600,65 @@ describe("SqliteAdapter", () => {
       expect((await adapter.getUser("unknown"))?.isActive).toBeNull();
       expect((await adapter.getUser("active"))?.isActive).toBe(true);
       expect((await adapter.getUser("inactive"))?.isActive).toBe(false);
+    });
+
+    test("getOldestUserCheck returns oldest lastCheckedAt", async () => {
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const yesterday = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+      // User with no lastCheckedAt should be excluded
+      await adapter.upsertUser({
+        userId: "unchecked",
+        displayName: "Unchecked",
+        email: null,
+        isActive: null,
+        lastCheckedAt: null,
+      });
+
+      // User checked 3 days ago
+      await adapter.upsertUser({
+        userId: "recent",
+        displayName: "Recent",
+        email: null,
+        isActive: true,
+        lastCheckedAt: threeDaysAgo,
+      });
+
+      // User checked 1 week ago (oldest)
+      await adapter.upsertUser({
+        userId: "old",
+        displayName: "Old",
+        email: null,
+        isActive: true,
+        lastCheckedAt: oneWeekAgo,
+      });
+
+      // User checked yesterday
+      await adapter.upsertUser({
+        userId: "yesterday",
+        displayName: "Yesterday",
+        email: null,
+        isActive: false,
+        lastCheckedAt: yesterday,
+      });
+
+      const oldest = await adapter.getOldestUserCheck();
+      expect(oldest).toBe(oneWeekAgo);
+    });
+
+    test("getOldestUserCheck returns null when no users have been checked", async () => {
+      await adapter.upsertUser({
+        userId: "unchecked1",
+        displayName: "Unchecked 1",
+        email: null,
+        isActive: null,
+        lastCheckedAt: null,
+      });
+
+      const oldest = await adapter.getOldestUserCheck();
+      expect(oldest).toBeNull();
     });
   });
 
