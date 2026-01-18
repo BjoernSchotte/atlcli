@@ -13,6 +13,7 @@ import {
   migrateConfigToV2,
   isInitialized,
   findAtlcliDir,
+  getAtlcliPath,
   AtlcliConfigV1,
   AtlcliConfigV2,
   ConfigScope,
@@ -231,6 +232,31 @@ describe("atlcli-dir", () => {
       if (isConfigV2(updated)) {
         expect(updated.scope).toEqual({ type: "tree", ancestorId: "67890" });
       }
+    });
+  });
+
+  describe("getAtlcliPath", () => {
+    test("returns .atlcli path from project root", () => {
+      const projectRoot = "/home/user/project";
+      const atlcliPath = getAtlcliPath(projectRoot);
+      expect(atlcliPath).toBe("/home/user/project/.atlcli");
+    });
+
+    test("works with findAtlcliDir result", async () => {
+      // Initialize a project
+      await initAtlcliDir(tempDir, {
+        space: "TEAM",
+        baseUrl: "https://example.atlassian.net",
+      });
+
+      // findAtlcliDir returns project root
+      const projectRoot = findAtlcliDir(tempDir);
+      expect(projectRoot).toBe(tempDir);
+
+      // getAtlcliPath converts to .atlcli path
+      const atlcliPath = getAtlcliPath(projectRoot!);
+      expect(atlcliPath).toBe(join(tempDir, ".atlcli"));
+      expect(existsSync(atlcliPath)).toBe(true);
     });
   });
 });

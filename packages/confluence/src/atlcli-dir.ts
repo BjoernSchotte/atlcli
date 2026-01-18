@@ -158,8 +158,24 @@ export interface AtlcliState {
 }
 
 /**
- * Find the .atlcli directory starting from a path and walking up.
- * Returns the directory containing .atlcli/, or null if not found.
+ * Find the project root containing .atlcli/ starting from a path and walking up.
+ *
+ * @param startPath - Starting path to search from
+ * @returns The project root directory (parent of .atlcli/), or null if not found
+ *
+ * @example
+ * ```typescript
+ * const projectRoot = findAtlcliDir("/home/user/project/docs");
+ * // Returns: "/home/user/project" (if .atlcli exists there)
+ *
+ * // To get the .atlcli path itself, use getAtlcliPath:
+ * const atlcliPath = getAtlcliPath(projectRoot);
+ * // Returns: "/home/user/project/.atlcli"
+ * ```
+ *
+ * Note: Most functions like readState(), readConfig() expect the project root.
+ * Use getAtlcliPath() when you need the .atlcli directory path itself
+ * (e.g., for createSyncDb(), hasSyncDb()).
  */
 export function findAtlcliDir(startPath: string): string | null {
   let current = resolve(startPath);
@@ -178,6 +194,30 @@ export function findAtlcliDir(startPath: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * Get the .atlcli directory path from a project root.
+ *
+ * Use this when you need the actual .atlcli directory path
+ * (e.g., for createSyncDb(), hasSyncDb()).
+ *
+ * @param projectRoot - The project root directory (from findAtlcliDir)
+ * @returns The path to the .atlcli directory
+ *
+ * @example
+ * ```typescript
+ * const projectRoot = findAtlcliDir(".");
+ * if (projectRoot) {
+ *   const atlcliPath = getAtlcliPath(projectRoot);
+ *   if (hasSyncDb(atlcliPath)) {
+ *     const adapter = await createSyncDb(atlcliPath);
+ *   }
+ * }
+ * ```
+ */
+export function getAtlcliPath(projectRoot: string): string {
+  return join(projectRoot, ATLCLI_DIR);
 }
 
 /**
