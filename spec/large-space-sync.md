@@ -54,12 +54,13 @@ Retry-After: Seconds to wait (on 429)
 
 **1.1 Generic batch operation helper**
 
-Handles partial failures gracefully (unlike `Promise.all` which fails entirely):
+Handles partial failures gracefully with retry support:
 
 ```typescript
 interface BatchResult<T> {
-  successes: T[];
-  failures: Array<{ id: string; error: Error }>;
+  successes: Array<{ id: string; value: T }>;
+  failures: Array<{ id: string; error: Error; retryable: boolean }>;
+  skipped: string[];  // 404s when skipOn404=true
 }
 
 async batchOperation<T>(
@@ -67,82 +68,126 @@ async batchOperation<T>(
   operation: (id: string) => Promise<T>,
   options: {
     concurrency?: number;
-    onProgress?: (done: number, total: number) => void;
+    onProgress?: (done: number, succeeded: number, failed: number, total: number) => void;
     skipOn404?: boolean;
+    signal?: AbortSignal;  // For cancellation
   } = {}
 ): Promise<BatchResult<T>> {
-  const { concurrency = 5, onProgress, skipOn404 = true } = options;
-  const successes: T[] = [];
-  const failures: Array<{ id: string; error: Error }> = [];
+  const { concurrency = 5, onProgress, skipOn404 = true, signal } = options;
+  const successes: Array<{ id: string; value: T }> = [];
+  const failures: Array<{ id: string; error: Error; retryable: boolean }> = [];
+  const skipped: string[] = [];
 
   for (let i = 0; i < ids.length; i += concurrency) {
+    // Check for cancellation
+    if (signal?.aborted) {
+      throw new Error('Operation cancelled');
+    }
+
     const chunk = ids.slice(i, i + concurrency);
     const results = await Promise.allSettled(
       chunk.map(id => operation(id))
     );
 
     results.forEach((result, idx) => {
+      const id = chunk[idx];
       if (result.status === 'fulfilled') {
-        successes.push(result.value);
+        successes.push({ id, value: result.value });
       } else {
         const error = result.reason;
         const is404 = error?.message?.includes('404');
+        const is429 = error?.message?.includes('429');
+        const is5xx = /5\d{2}/.test(error?.message || '');
+
         if (is404 && skipOn404) {
-          // Skip silently (matches current behavior)
+          skipped.push(id);
         } else {
-          failures.push({ id: chunk[idx], error });
+          failures.push({
+            id,
+            error,
+            retryable: is429 || is5xx  // Can retry rate limits and server errors
+          });
         }
       }
     });
 
-    onProgress?.(i + chunk.length, ids.length);
+    onProgress?.(
+      i + chunk.length,
+      successes.length,
+      failures.length,
+      ids.length
+    );
   }
 
-  return { successes, failures };
+  return { successes, failures, skipped };
 }
 ```
 
-**1.2 Specific batch methods**
+**1.2 Retry failed items**
+
+```typescript
+async batchWithRetry<T>(
+  ids: string[],
+  operation: (id: string) => Promise<T>,
+  options: BatchOptions & { maxRetries?: number } = {}
+): Promise<BatchResult<T>> {
+  const { maxRetries = 1, ...batchOptions } = options;
+
+  let result = await this.batchOperation(ids, operation, batchOptions);
+  let retryCount = 0;
+
+  while (retryCount < maxRetries && result.failures.some(f => f.retryable)) {
+    const retryIds = result.failures.filter(f => f.retryable).map(f => f.id);
+
+    // Wait before retry with exponential backoff
+    await sleep(1000 * Math.pow(2, retryCount));
+
+    const retryResult = await this.batchOperation(
+      retryIds,
+      operation,
+      { ...batchOptions, concurrency: Math.max(1, (batchOptions.concurrency ?? 5) - 2) }
+    );
+
+    // Merge results
+    result.successes.push(...retryResult.successes);
+    result.skipped.push(...retryResult.skipped);
+    result.failures = [
+      ...result.failures.filter(f => !f.retryable),
+      ...retryResult.failures
+    ];
+
+    retryCount++;
+  }
+
+  return result;
+}
+```
+
+**1.3 Specific batch methods**
 
 ```typescript
 // Page details
 async getPageDetailsBatch(
   ids: string[],
-  options?: { concurrency?: number; onProgress?: ProgressCallback }
+  options?: BatchOptions
 ): Promise<BatchResult<ConfluencePageDetails>> {
-  return this.batchOperation(ids, id => this.getPageDetails(id), options);
+  return this.batchWithRetry(ids, id => this.getPageDetails(id), options);
 }
 
-// Folders
+// Folders - use Map for O(1) lookup
 async getFoldersBatch(
   ids: string[],
-  options?: { concurrency?: number }
+  options?: BatchOptions
 ): Promise<BatchResult<ConfluenceFolder>> {
-  return this.batchOperation(ids, id => this.getFolder(id), options);
-}
-
-// Attachments (per page, then batch download)
-async downloadAttachmentsBatch(
-  attachments: AttachmentInfo[],
-  options?: { concurrency?: number; onProgress?: ProgressCallback }
-): Promise<BatchResult<{ attachment: AttachmentInfo; data: Buffer }>> {
-  return this.batchOperation(
-    attachments.map(a => a.id),
-    async (id) => {
-      const attachment = attachments.find(a => a.id === id)!;
-      const data = await this.downloadAttachment(attachment);
-      return { attachment, data };
-    },
-    options
-  );
+  return this.batchWithRetry(ids, id => this.getFolder(id), options);
 }
 
 // Comments
 async getCommentsBatch(
   pageIds: string[],
-  options?: { concurrency?: number }
+  options?: BatchOptions
 ): Promise<BatchResult<{ pageId: string; comments: PageComments }>> {
-  return this.batchOperation(
+  return this.batchWithRetry(
     pageIds,
     async (pageId) => {
       const comments = await this.getAllComments(pageId);
@@ -153,40 +198,122 @@ async getCommentsBatch(
 }
 ```
 
-**1.3 Update handlePull() to use batch operations**
+**1.4 Attachment batching - preserve page context**
+
+Don't batch all attachments globally. Instead, parallelize at page level:
+
+```typescript
+interface PageAttachmentJob {
+  pageId: string;
+  pageDir: string;
+  attachments: AttachmentInfo[];
+}
+
+async downloadAttachmentsForPages(
+  jobs: PageAttachmentJob[],
+  options?: {
+    pageConcurrency?: number;      // How many pages to process in parallel
+    attachmentConcurrency?: number; // How many attachments per page in parallel
+    onProgress?: (pagesComplete: number, total: number) => void;
+  }
+): Promise<{
+  succeeded: number;
+  failed: Array<{ pageId: string; attachment: string; error: Error }>
+}> {
+  const { pageConcurrency = 3, attachmentConcurrency = 2, onProgress } = options ?? {};
+  const failed: Array<{ pageId: string; attachment: string; error: Error }> = [];
+  let succeeded = 0;
+  let pagesComplete = 0;
+
+  // Process pages in parallel (limited concurrency)
+  for (let i = 0; i < jobs.length; i += pageConcurrency) {
+    const pageChunk = jobs.slice(i, i + pageConcurrency);
+
+    await Promise.all(pageChunk.map(async (job) => {
+      // For each page, process its attachments with limited concurrency
+      for (let j = 0; j < job.attachments.length; j += attachmentConcurrency) {
+        const attChunk = job.attachments.slice(j, j + attachmentConcurrency);
+
+        const results = await Promise.allSettled(
+          attChunk.map(async (att) => {
+            const data = await this.downloadAttachment(att);
+            await writeFile(join(job.pageDir, att.filename), data);
+            return att;
+          })
+        );
+
+        results.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            succeeded++;
+          } else {
+            failed.push({
+              pageId: job.pageId,
+              attachment: attChunk[idx].filename,
+              error: result.reason
+            });
+          }
+        });
+      }
+
+      pagesComplete++;
+    }));
+
+    onProgress?.(pagesComplete, jobs.length);
+  }
+
+  return { succeeded, failed };
+}
+```
+
+**1.5 Update handlePull() to use batch operations**
 
 ```typescript
 // Replace sequential page details loop
-const { successes: pageDetails, failures } = await client.getPageDetailsBatch(
+const { successes, failures, skipped } = await client.getPageDetailsBatch(
   pages.map(p => p.id),
   {
     concurrency: getFlag(flags, "concurrency") ?? 5,
-    onProgress: (done, total) => {
+    onProgress: (done, succeeded, failed, total) => {
       if (!opts.json && total > 10 && done % Math.floor(total / 10) === 0) {
-        output(`Fetching page details... ${done}/${total}`, opts);
+        output(`Fetching page details... ${done}/${total} (${failed} failed)`, opts);
       }
     }
   }
 );
 
-if (failures.length > 0 && !opts.json) {
-  output(`Warning: ${failures.length} pages could not be fetched`, opts);
+const pageDetails = successes.map(s => s.value);
+
+if (skipped.length > 0 && !opts.json) {
+  output(`Skipped ${skipped.length} inaccessible pages (deleted or no permission)`, opts);
 }
 
-// Replace sequential folder fetching
-const { successes: folders } = await client.getFoldersBatch(
-  Array.from(potentialFolderIds),
-  { concurrency: 5 }
-);
+if (failures.length > 0) {
+  if (!opts.json) {
+    output(`Warning: ${failures.length} pages failed to fetch`, opts);
+  }
+  // Include in JSON output for automation
+  if (opts.json) {
+    // Add to result object
+  }
+}
+
+// Clean up state for skipped (deleted) pages
+for (const pageId of skipped) {
+  if (state?.pages[pageId]) {
+    delete state.pages[pageId];
+    // Optionally delete local file
+  }
+}
 ```
 
-**1.4 Add CLI flag**
+**1.6 Add CLI flags**
 
 ```
-atlcli wiki docs pull [dir] --concurrency 5
+atlcli wiki docs pull [dir] --concurrency 5        # Page/folder operations
+atlcli wiki docs pull [dir] --attachment-concurrency 2  # Attachment downloads (lower default)
 ```
 
-Default: 5 (safe for all tiers)
+Attachments are larger payloads, so default to lower concurrency.
 
 ### Phase 2: Resilience
 
@@ -220,6 +347,29 @@ private checkRateLimitHeaders(headers: Headers): void {
 }
 ```
 
+**2.3 Cancellation support**
+
+```typescript
+// In CLI command handler
+const controller = new AbortController();
+
+process.on('SIGINT', () => {
+  output('Cancelling... (saving progress)', opts);
+  controller.abort();
+});
+
+try {
+  await client.getPageDetailsBatch(ids, { signal: controller.signal });
+} catch (err) {
+  if (err.message === 'Operation cancelled') {
+    // Save checkpoint before exit
+    await writeState(atlcliDir, { ...state, checkpoint: currentCheckpoint });
+    process.exit(130);  // Standard SIGINT exit code
+  }
+  throw err;
+}
+```
+
 ### Phase 3: Delta Sync
 
 **3.1 Track last sync time**
@@ -231,14 +381,32 @@ interface AtlcliState {
 }
 ```
 
-**3.2 Use lastModified filter**
+**3.2 Use lastModified filter with deletion detection**
 
 ```typescript
-if (state?.lastFullSync && !flags.force) {
-  // Incremental: only changed pages since last sync
+if (state?.lastFullSync && !flags.full) {
   const sinceDate = state.lastFullSync.split('T')[0];  // Date only for CQL
-  const cql = `${baseCql} AND lastModified >= "${sinceDate}"`;
-  pages = await client.searchPages(cql);
+
+  // Fetch modified pages
+  const modifiedCql = `${baseCql} AND lastModified >= "${sinceDate}"`;
+  const modifiedPages = await client.searchPages(modifiedCql);
+
+  // Detect deletions: compare state with current remote
+  // Only do this periodically or when --check-deletions flag is set
+  if (flags['check-deletions']) {
+    const allRemotePages = await client.searchPages(baseCql);
+    const remoteIds = new Set(allRemotePages.map(p => p.id));
+
+    const deletedIds = Object.keys(state.pages).filter(id => !remoteIds.has(id));
+    if (deletedIds.length > 0) {
+      output(`Found ${deletedIds.length} deleted pages`, opts);
+      for (const id of deletedIds) {
+        await handleDeletedPage(id, state, outDir, opts);
+      }
+    }
+  }
+
+  pages = modifiedPages;
 } else {
   pages = await client.searchPages(baseCql);
 }
@@ -247,55 +415,116 @@ if (state?.lastFullSync && !flags.force) {
 await writeState(atlcliDir, { ...state, lastFullSync: new Date().toISOString() });
 ```
 
-**3.3 Add --force flag**
+**3.3 Handle deleted pages**
+
+```typescript
+async function handleDeletedPage(
+  pageId: string,
+  state: AtlcliState,
+  outDir: string,
+  opts: OutputOptions
+): Promise<void> {
+  const pageState = state.pages[pageId];
+  if (!pageState) return;
+
+  const filePath = join(outDir, pageState.relativePath);
+
+  if (existsSync(filePath)) {
+    if (!opts.json) {
+      output(`Removing deleted page: ${pageState.relativePath}`, opts);
+    }
+    await unlink(filePath);
+
+    // Also remove attachments directory if exists
+    const attDir = join(dirname(filePath), getAttachmentsDirName(basename(filePath)));
+    if (existsSync(attDir)) {
+      await rm(attDir, { recursive: true });
+    }
+  }
+
+  delete state.pages[pageId];
+}
+```
+
+**3.4 CLI flags**
 
 ```
-atlcli wiki docs pull [dir] --force  # Ignore lastFullSync, do full pull
+atlcli wiki docs pull [dir]                    # Delta sync (if lastFullSync exists)
+atlcli wiki docs pull [dir] --full             # Force full sync
+atlcli wiki docs pull [dir] --check-deletions  # Also detect deleted pages (slower)
 ```
-
-**3.4 Verification needed**
-
-- [ ] Test `lastModified >= "date"` with cursor pagination
-- [ ] Verify timezone handling (use UTC)
-- [ ] Handle deleted pages (separate query or local cleanup)
 
 ### Phase 4: Checkpointing (Resume)
 
-**4.1 Lightweight checkpoint (cursor + count only)**
-
-Don't store all processedIds (bloats state.json for large spaces).
+**4.1 Simplified checkpoint (no phase tracking)**
 
 ```typescript
 interface SyncCheckpoint {
   scope: string;           // Stringified scope for matching
-  phase: 'pages' | 'folders' | 'attachments' | 'comments';
-  cursor?: string;         // Pagination cursor (if mid-pagination)
   processedCount: number;  // For progress display
   totalCount?: number;     // If known
   startedAt: string;       // For stale detection (24h TTL)
+  failedIds?: string[];    // Track failures for retry on resume
 }
 ```
 
 **4.2 Resume strategy**
 
-On resume, re-fetch page list but skip processing for pages already in state:
+On resume, re-fetch page list but skip pages already in state with matching version:
 
 ```typescript
-if (state.checkpoint?.scope === scopeKey) {
+const scopeKey = scopeToString(scope);
+
+if (state?.checkpoint?.scope === scopeKey) {
   const age = Date.now() - new Date(state.checkpoint.startedAt).getTime();
+
   if (age < 24 * 60 * 60 * 1000) {  // Less than 24h old
-    // Skip pages that already exist in state with matching version
-    const existingPageIds = new Set(Object.keys(state.pages));
+    // Skip pages already synced (exist in state with same version)
+    const originalCount = pages.length;
     pages = pages.filter(p => {
       const existing = state.pages[p.id];
-      return !existing || existing.remoteVersion !== p.version;
+      // Skip if exists and version matches (or if version unavailable, trust state)
+      return !existing || (p.version && existing.remoteVersion !== p.version);
     });
-    output(`Resuming: skipping ${existingPageIds.size} already synced pages`, opts);
+
+    // Also retry previously failed pages
+    if (state.checkpoint.failedIds?.length) {
+      const failedToRetry = state.checkpoint.failedIds.filter(id =>
+        !pages.some(p => p.id === id)
+      );
+      // Add failed pages back for retry
+      const failedPages = await client.searchPages(`id in (${failedToRetry.join(',')})`);
+      pages.push(...failedPages);
+    }
+
+    if (!opts.json) {
+      output(`Resuming: ${originalCount - pages.length} already synced, ${pages.length} remaining`, opts);
+    }
+  } else {
+    // Checkpoint too old, start fresh
+    if (!opts.json) {
+      output(`Checkpoint expired (>24h), starting fresh sync`, opts);
+    }
+    state.checkpoint = undefined;
   }
 }
 ```
 
-**4.3 Clear checkpoint on completion**
+**4.3 Update checkpoint during sync**
+
+```typescript
+// After each batch of pages
+state.checkpoint = {
+  scope: scopeKey,
+  processedCount: successCount,
+  totalCount: totalPages,
+  startedAt: state.checkpoint?.startedAt ?? new Date().toISOString(),
+  failedIds: failures.map(f => f.id)
+};
+await writeState(atlcliDir, state);
+```
+
+**4.4 Clear checkpoint on completion**
 
 ```typescript
 await writeState(atlcliDir, {
@@ -335,31 +564,31 @@ class AdaptiveConcurrency {
 
 ### Phase 6: Streaming (Memory Optimization)
 
-For extremely large spaces (50k+ pages), process and write incrementally:
+For extremely large spaces (50k+ pages), streaming requires architectural changes because path computation needs ancestor information. Two approaches:
+
+**Option A: Two-pass approach**
+1. First pass: fetch all page metadata (id, title, ancestors) - lightweight
+2. Build path map from metadata
+3. Second pass: stream full page content and write directly
+
+**Option B: Deferred path computation**
+1. Stream pages with full content
+2. Write to temp location with page ID as filename
+3. After all pages fetched, compute paths and move files
+
+Option A is recommended as it's less disruptive:
 
 ```typescript
-async* fetchPagesStream(
-  ids: string[],
-  concurrency = 5
-): AsyncGenerator<ConfluencePageDetails> {
-  for (let i = 0; i < ids.length; i += concurrency) {
-    const chunk = ids.slice(i, i + concurrency);
-    const results = await Promise.allSettled(
-      chunk.map(id => this.getPageDetails(id))
-    );
+// Phase 1: Lightweight metadata fetch
+const pageMetadata = await client.searchPages(cql, { detail: 'minimal' });
 
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        yield result.value;  // Process immediately, don't accumulate
-      }
-    }
-  }
-}
+// Build hierarchy map
+const pathMap = buildPathMap(pageMetadata);
 
-// Usage: write to disk as pages arrive
-for await (const page of client.fetchPagesStream(pageIds, 5)) {
-  await writePageToDisk(page);
-  processedCount++;
+// Phase 2: Stream full content with known paths
+for await (const page of client.fetchPagesStream(pageMetadata.map(p => p.id), 5)) {
+  const path = pathMap.get(page.id);
+  await writePageToDisk(page, path);
 }
 ```
 
@@ -374,16 +603,28 @@ time atlcli wiki docs pull ~/test --concurrency 3
 time atlcli wiki docs pull ~/test --concurrency 5
 time atlcli wiki docs pull ~/test --concurrency 10
 
+# Test attachment concurrency
+time atlcli wiki docs pull ~/test --attachment-concurrency 1
+time atlcli wiki docs pull ~/test --attachment-concurrency 3
+
 # Test delta sync
 atlcli wiki docs pull ~/test              # Full sync, note time
 sleep 60                                   # Wait
 atlcli wiki docs pull ~/test              # Should be faster (delta)
-atlcli wiki docs pull ~/test --force      # Full sync again
+atlcli wiki docs pull ~/test --full       # Force full sync
+
+# Test deletion detection
+atlcli wiki docs pull ~/test --check-deletions
 
 # Test resume
 atlcli wiki docs pull ~/test &
-sleep 10 && kill %1                        # Interrupt mid-sync
+sleep 10 && kill -INT %1                   # Interrupt mid-sync (SIGINT)
 atlcli wiki docs pull ~/test              # Should resume
+
+# Test cancellation saves state
+atlcli wiki docs pull ~/test &
+sleep 5 && kill -INT %1
+cat ~/test/.atlcli/state.json | jq '.checkpoint'  # Should have checkpoint
 
 # Memory profiling
 node --max-old-space-size=256 $(which atlcli) wiki docs pull ~/test
@@ -393,31 +634,42 @@ node --max-old-space-size=256 $(which atlcli) wiki docs pull ~/test
 
 | Phase | Feature | Effort | Impact | Priority |
 |-------|---------|--------|--------|----------|
-| 1 | Generic `batchOperation()` helper | 2h | Foundation | Critical |
+| 1 | Generic `batchOperation()` with retry | 3h | Foundation | Critical |
 | 1 | `getPageDetailsBatch()` | 1h | 5-10x faster | Critical |
 | 1 | `getFoldersBatch()` | 1h | Faster folder detection | High |
-| 1 | `downloadAttachmentsBatch()` | 2h | Major for attachment-heavy spaces | High |
+| 1 | `downloadAttachmentsForPages()` | 2h | Major for attachment-heavy | High |
 | 1 | `--concurrency` flag | 1h | User control | High |
+| 1 | `--attachment-concurrency` flag | 0.5h | Fine-grained control | Medium |
 | 2 | Jittered backoff | 1h | Better 429 handling | High |
 | 2 | Rate limit monitoring | 2h | Visibility | Medium |
-| 3 | Delta sync | 3h | 10-50x faster repeats | High |
-| 4 | Lightweight checkpointing | 3h | Resume interrupted | Medium |
+| 2 | Cancellation support (AbortController) | 2h | Clean interrupts | Medium |
+| 3 | Delta sync | 2h | 10-50x faster repeats | High |
+| 3 | Deletion detection | 2h | Data consistency | Medium |
+| 4 | Checkpointing with failure tracking | 3h | Resume interrupted | Medium |
 | 5 | Adaptive concurrency | 3h | Auto-optimization | Low |
-| 6 | Streaming fetch | 4h | Memory for 50k+ | Low |
+| 6 | Streaming (two-pass) | 6h | Memory for 50k+ | Low |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `packages/confluence/src/client.ts` | Add `batchOperation()`, batch methods, jittered backoff, header monitoring |
-| `apps/cli/src/commands/docs.ts` | Use batch fetch, `--concurrency` flag, delta sync, checkpointing |
-| `packages/confluence/src/index.ts` | Export `BatchResult` type |
+| `packages/confluence/src/client.ts` | Add `batchOperation()`, `batchWithRetry()`, batch methods, jittered backoff, header monitoring |
+| `apps/cli/src/commands/docs.ts` | Use batch fetch, CLI flags, delta sync, deletion handling, checkpointing, cancellation |
+| `packages/confluence/src/index.ts` | Export `BatchResult`, `BatchOptions` types |
 | `packages/confluence/src/types.ts` | Add `SyncCheckpoint`, `BatchResult` interfaces |
+
+## Resolved Questions
+
+| Question | Decision |
+|----------|----------|
+| Store concurrency in config? | No, CLI flag only. Different operations need different values. |
+| Checkpoint TTL | 24h, not configurable (simple is better) |
+| Delta sync verification | CQL `lastModified` works with cursor pagination (verified) |
+| Progress display | Percentage with success/fail counts: `50/100 (2 failed)` |
+| Attachment parallelization | Per-page batching (preserves context), separate concurrency flag |
 
 ## Open Questions
 
-1. Should `--concurrency` be stored in project config for persistence?
-2. Checkpoint TTL: 24h reasonable? Make configurable?
-3. Delta sync: Verify CQL `lastModified` works with cursor pagination
-4. Progress display: percentage, ETA, or progress bar?
-5. Attachment parallelization: per-page or global pool?
+1. Should `--check-deletions` be default behavior? (adds extra API call for full page list)
+2. Streaming: Is two-pass approach acceptable for 50k+ page spaces?
+3. Should failed pages be automatically retried on next `pull`, or require `--retry-failed` flag?
