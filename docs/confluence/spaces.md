@@ -2,6 +2,11 @@
 
 Manage Confluence spaces.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Permission**: View for listing, Space Admin for creating spaces
+
 ## List Spaces
 
 ```bash
@@ -92,3 +97,9 @@ atlcli wiki space list --json
   ]
 }
 ```
+
+## Related Topics
+
+- [Sync](sync.md) - Initialize sync with `--space` flag
+- [Pages](pages.md) - List and manage pages in a space
+- [Search](search.md) - Search within spaces

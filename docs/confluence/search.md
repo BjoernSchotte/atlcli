@@ -2,6 +2,13 @@
 
 Search Confluence content using CQL (Confluence Query Language).
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: View permission on spaces to search
+
 ## Quick Start
 
 ```bash
@@ -282,3 +289,30 @@ while true; do
   START=$((START + 100))
 done
 ```
+
+## Troubleshooting
+
+### No Results Found
+
+**Symptom**: Search returns empty results for content you know exists.
+
+**Causes**:
+- Content hasn't been indexed yet (newly created pages)
+- Search query syntax error
+- Space filter excludes the target space
+
+**Fix**: Wait a few minutes for indexing, or check CQL syntax. Try without space filter to verify.
+
+### CQL Syntax Error
+
+**Symptom**: `Error: CQL parse error`
+
+**Cause**: Invalid CQL query syntax.
+
+**Fix**: Check operators and field names. Use quotes around values with spaces.
+
+## Related Topics
+
+- [Labels](labels.md) - Search by label
+- [Pages](pages.md) - Page operations after finding results
+- [Audit](audit.md) - Find stale or orphaned content

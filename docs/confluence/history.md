@@ -2,6 +2,11 @@
 
 View version history, compare changes, and restore previous versions.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: View to see history, Edit to restore versions
+
 ## Overview
 
 Confluence tracks every edit as a version. atlcli provides:
@@ -105,7 +110,7 @@ Options:
 | `--confirm` | Skip confirmation prompt |
 
 !!! warning "Restoration Creates New Version"
-    Restoring creates a new version (e.g., v6) with the content from the old version. The history is preserved.
+    When you restore, atlcli creates a new version (e.g., v6) with the old content. atlcli preserves the full history.
 
 ### Restore with Message
 
@@ -161,7 +166,7 @@ atlcli wiki docs pull ./docs --page-id 12345 --version 3
 
 ### Version in Frontmatter
 
-The current version is tracked in frontmatter:
+atlcli tracks the current version in frontmatter:
 
 ```markdown
 ---
@@ -208,3 +213,9 @@ for id in $(atlcli wiki page list --space TEAM --json | jq -r '.pages[].id'); do
   atlcli wiki page history $id --json > "history-$id.json"
 done
 ```
+
+## Related Topics
+
+- [Pages](pages.md) - Page operations
+- [Sync](sync.md) - Version tracking in frontmatter
+- [Audit](audit.md) - Analyze contributor history

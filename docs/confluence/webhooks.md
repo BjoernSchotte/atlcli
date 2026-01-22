@@ -2,6 +2,14 @@
 
 Set up webhooks to receive real-time notifications when Confluence content changes.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile with admin permissions (`atlcli auth login`)
+- **For receiving webhooks**: Public URL accessible from Atlassian servers
+- **Space permission**: Space Admin to register webhooks
+
 ## Overview
 
 Webhooks allow external systems to be notified when events occur in Confluence:
@@ -276,3 +284,29 @@ atlcli webhook server --port 8080 --handler ./audit-log.sh
 # audit-log.sh
 cat >> /var/log/confluence-audit.jsonl
 ```
+
+## Troubleshooting
+
+### Webhook Not Receiving Events
+
+**Symptom**: Registered webhook doesn't receive events.
+
+**Causes**:
+- URL not publicly accessible
+- Firewall blocking incoming requests
+- Webhook registration failed silently
+
+**Fix**: Verify URL is reachable from the internet. Check `atlcli webhook list` to confirm registration.
+
+### Signature Verification Failing
+
+**Symptom**: `X-Atlcli-Signature` header doesn't match.
+
+**Cause**: Secret mismatch between registration and verification code.
+
+**Fix**: Ensure the same secret is used when registering and verifying. Check for encoding issues.
+
+## Related Topics
+
+- [Sync](sync.md) - Use webhooks with sync for real-time updates
+- [Configuration](../configuration.md) - Webhook configuration options

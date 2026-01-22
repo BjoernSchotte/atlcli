@@ -2,6 +2,13 @@
 
 Create Confluence pages from reusable templates with variable substitution and Handlebars syntax.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: Edit permission to create pages from templates
+
 ## Overview
 
 The template system provides:
@@ -121,7 +128,7 @@ Built-in variables use the `@` prefix:
 
 ## Storage Locations
 
-Templates are stored at three levels with precedence (space > profile > global):
+atlcli stores templates at three levels with precedence (space > profile > global):
 
 ### Global Templates
 ```
@@ -431,3 +438,30 @@ This is published content.
 3. **Use tags** to organize templates by category
 4. **Export templates** to share with your team or back up
 5. **Track sources** with import to enable easy updates
+
+## Troubleshooting
+
+### Variable Not Replaced
+
+**Symptom**: `{{variable}}` appears literally in output.
+
+**Causes**:
+- Variable name typo
+- Variable not passed with `--var`
+- Missing `@` prefix for built-in variables
+
+**Fix**: Check variable names match frontmatter definitions. Use `--interactive` to see prompts.
+
+### Template Not Found
+
+**Symptom**: `Error: Template 'name' not found`
+
+**Cause**: Template doesn't exist at any storage level.
+
+**Fix**: List available templates with `atlcli wiki template list --all` and check the name.
+
+## Related Topics
+
+- [Pages](pages.md) - Create pages from templates with `--template` flag
+- [Macros](macros.md) - Use macros within template content
+- [Configuration](../configuration.md) - Template storage paths

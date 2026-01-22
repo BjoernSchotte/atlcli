@@ -69,16 +69,10 @@ Your content here...
 atlcli wiki docs push ./docs
 ```
 
-## Sections
+## Related Topics
 
-- [Sync](sync.md) - Bidirectional sync, conflict handling, daemon mode
-- [Audit](audit.md) - Content health analysis, stale pages, broken links
-- [Pages](pages.md) - Create, update, delete, move, sort pages
-- [Spaces](spaces.md) - Space operations
-- [Folders](folders.md) - Organize pages with folders (Cloud only)
-- [Export](export.md) - Export pages to DOCX with Word templates
-- [Templates](templates.md) - Page templates with variables
-- [Macros](macros.md) - Info panels, notes, warnings, TOC
-- [Attachments](attachments.md) - Sync images and files
-- [Storage](storage.md) - Sync database and migration from JSON
-- [File Format](file-format.md) - Frontmatter and directory structure
+- [Authentication](../authentication.md) - Set up profiles and API tokens
+- [Configuration](../configuration.md) - Global and project configuration options
+- [Jira Integration](../jira/index.md) - Link Confluence pages to Jira issues
+- [Recipes](../recipes/index.md) - Real-world workflows combining Confluence and Jira
+- [Troubleshooting](../reference/troubleshooting.md) - Common issues and solutions

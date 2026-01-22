@@ -2,6 +2,13 @@
 
 atlcli provides extensive Confluence macro support with bidirectional conversion between markdown and Confluence Storage Format.
 
+::: toc
+
+## Prerequisites
+
+- Basic understanding of markdown syntax
+- For push operations: Edit permission on target Confluence space
+
 ## Panel Macros
 
 ### Info Panel
@@ -105,7 +112,7 @@ Options:
 
 ## Code Blocks
 
-Standard fenced code blocks are converted to Confluence code macros:
+atlcli converts standard fenced code blocks to Confluence code macros:
 
 ````markdown
 ```javascript
@@ -264,7 +271,7 @@ Atlassian smart links are rich links to Jira issues, Confluence pages, and other
 
 ### Markdown Format
 
-When pulling pages, smart links are converted to standard markdown URLs:
+When pulling pages, atlcli converts smart links to standard markdown URLs:
 
 ```markdown
 # Inline link (default)
@@ -301,7 +308,7 @@ When pulling pages, smart links are converted to standard markdown URLs:
 
 ### Profile-Based Conversion
 
-Only URLs matching your active profile's Atlassian instance are converted to smart links. External URLs remain as regular markdown links.
+atlcli converts only URLs matching your active profile's Atlassian instance to smart links. External URLs remain as regular markdown links.
 
 ```markdown
 # Converted to smart link (same instance)
@@ -640,7 +647,7 @@ For compatibility, Confluence wiki attachment syntax is also supported:
 
 ## Unknown Macros
 
-**Macros that atlcli doesn't recognize are preserved as-is.** This ensures no information loss during sync:
+**atlcli preserves unrecognized macros as-is.** This ensures no information loss during sync:
 
 ```markdown
 ::: unknown-macro param1=value1 param2=value2
@@ -648,7 +655,7 @@ Content inside the unknown macro.
 :::
 ```
 
-On push, this is converted to Confluence's storage format and preserved. On pull, it's converted back exactly.
+On push, atlcli converts this to Confluence's storage format and preserves it. On pull, atlcli converts it back exactly.
 
 ## Conversion Details
 
@@ -682,3 +689,31 @@ Some complex macros render to placeholder text with a note:
 2. **Reserve macros** for Confluence-specific features (panels, toc, jira)
 3. **Test round-trips** for complex pages before relying on sync
 4. **Check preview** with `atlcli wiki docs preview` before pushing
+
+## Troubleshooting
+
+### Macro Not Rendering
+
+**Symptom**: Macro appears as raw text in Confluence.
+
+**Cause**: Unclosed macro block or incorrect syntax.
+
+**Fix**: Ensure every `:::macro` has a matching `:::` closing tag. Validate with:
+```bash
+atlcli wiki docs check ./docs/page.md
+```
+
+### Unknown Macro Warning
+
+**Symptom**: Warning about unrecognized macro during push.
+
+**Cause**: The macro isn't in atlcli's supported list.
+
+**Fix**: This is safe—atlcli preserves unknown macros as-is, and they render correctly in Confluence.
+
+## Related Topics
+
+- [Sync](sync.md) - Push and pull pages with macro content
+- [Validation](validation.md) - Pre-push checks including macro syntax
+- [File Format](file-format.md) - Frontmatter and markdown structure
+- [Pages](pages.md) - Create and update pages

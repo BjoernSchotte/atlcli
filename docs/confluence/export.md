@@ -2,6 +2,14 @@
 
 Export Confluence pages to Microsoft Word (DOCX) format using customizable templates.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: View permission on pages to export
+- Word-compatible template file (`.docx` or `.docm`)
+
 ## Quick Start
 
 ```bash
@@ -43,7 +51,7 @@ Templates are resolved in order (first match wins):
 3. Profile: `~/.atlcli/profiles/<profile>/templates/confluence/<name>.docx`
 4. Global: `~/.atlcli/templates/confluence/<name>.docx`
 
-Both `.docx` and `.docm` (macro-enabled) templates are supported.
+atlcli supports both `.docx` and `.docm` (macro-enabled) templates.
 
 ### Template Management
 
@@ -184,7 +192,7 @@ atlcli wiki export 12345 -t report -o report.docx --no-toc-prompt
 
 ## Scroll Word Exporter Compatibility
 
-Templates created for Scroll Word Exporter are supported. Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the equivalent atlcli variables.
+atlcli supports templates created for Scroll Word Exporter. Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the equivalent atlcli variables.
 
 ## Troubleshooting
 
@@ -205,3 +213,9 @@ Templates created for Scroll Word Exporter are supported. Scroll placeholders (`
 - Verify images are attached to the Confluence page
 - Check that `--no-images` flag is not set
 - Embedded images use the template's image placeholder styling
+
+## Related Topics
+
+- [Pages](pages.md) - Page operations and finding page IDs
+- [Attachments](attachments.md) - Managing page attachments for export
+- [Templates](templates.md) - Page templates (different from export templates)

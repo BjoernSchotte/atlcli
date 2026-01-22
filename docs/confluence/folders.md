@@ -2,6 +2,14 @@
 
 Confluence Cloud introduced folders in September 2024 as a way to organize content without creating additional pages. atlcli supports syncing folders bidirectionally with your local filesystem.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Confluence Cloud** - Folders are not available on Data Center/Server
+- **Space permission**: View for pull, Edit for push operations
+
 ## How Folders Work
 
 Folders in Confluence are organizational containers that can hold pages, other folders, whiteboards, and databases. Unlike pages, folders have no content body - they exist purely for organization.
@@ -51,7 +59,7 @@ atlcli wiki docs pull ~/docs
 
 ### Folder Renames (Pull)
 
-If a folder is renamed in Confluence, pull detects this and moves the entire local directory:
+If a folder is renamed in Confluence, atlcli detects this on pull and moves the entire local directory:
 
 ```
 Renamed folder: old-name → new-name
@@ -84,7 +92,7 @@ Rename "Old Name" in Confluence UI, then pull.
 
 - **Creating pages in folders**: Push new pages inside folder directories
 - **Updating pages in folders**: Content changes sync normally
-- **Folder structure**: The hierarchy is preserved
+- **Folder structure**: atlcli preserves the hierarchy
 
 ### What Doesn't Work
 
@@ -226,7 +234,7 @@ atlcli audit wiki --folders
 
 This adds folder structure issues to the audit report alongside stale pages, orphans, and broken links.
 
-## See Also
+## Related Topics
 
 - [Sync Documentation](sync.md) - Full sync workflow details
 - [Validation](validation.md) - All validation rules

@@ -85,5 +85,52 @@ docs/
 
 - Use lowercase with hyphens: `api-reference.md`
 - Folder metadata is always `index.md` (not the page name)
-- File names are derived from page titles (sanitized)
+- atlcli derives file names from page titles (sanitized)
 - File names don't affect page titles (title comes from frontmatter)
+
+## Examples
+
+### Minimal: New Page
+
+Create a file with basic frontmatter:
+
+```markdown
+---
+atlcli:
+  title: "Getting Started"
+---
+
+# Getting Started
+
+Welcome to our documentation.
+```
+
+After push, atlcli adds the `id` field automatically.
+
+### Advanced: Full Metadata
+
+A synced page with all metadata:
+
+```markdown
+---
+atlcli:
+  id: "123456789"
+  title: "API Authentication"
+  version: 12
+  lastModified: "2025-01-14T10:30:00Z"
+  labels:
+    - api
+    - security
+    - v2
+---
+
+# API Authentication
+
+This guide covers authentication methods...
+```
+
+## Related Topics
+
+- [Folders](folders.md) - Folder structure and index.md files
+- [Sync](sync.md) - How atlcli syncs files with Confluence
+- [Macros](macros.md) - Markdown syntax for Confluence macros

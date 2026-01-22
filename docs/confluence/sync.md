@@ -2,6 +2,14 @@
 
 Bidirectional synchronization between local markdown files and Confluence pages.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile with Confluence access (`atlcli auth login`)
+- **Space permission**: View for pull, Edit for push operations
+- Initialized sync directory (`atlcli wiki docs init`)
+
 ## Overview
 
 atlcli provides powerful sync capabilities:
@@ -191,7 +199,7 @@ atlcli wiki docs sync ./docs --space TEAM --auto-create
 
 Auto-create triggers in two scenarios:
 
-1. **During initial sync**: Untracked local files (no frontmatter ID) are created as new pages
+1. **During initial sync**: atlcli creates untracked local files (no frontmatter ID) as new pages
 2. **During file watching**: New files added while sync is running are automatically created
 
 **How it works:**
@@ -231,10 +239,13 @@ atlcli:
 
 ### Lock File
 
-When sync is running, a lock file is created at `.atlcli/.sync.lock`. This:
+When sync runs, atlcli creates a lock file at `.atlcli/.sync.lock`. This:
 - Prevents concurrent sync operations
 - Signals to other tools that sync is active
 - Is automatically removed on clean shutdown
+
+!!! tip "Stale lock file?"
+    If sync fails to start with "lock file exists" but no sync is running, the lock may be stale from a crash. Remove it with `rm ./docs/.atlcli/.sync.lock`.
 
 ## Pull
 
@@ -324,6 +335,9 @@ atlcli wiki docs push ./docs --validate
 # Strict validation (fail on warnings)
 atlcli wiki docs push ./docs --validate --strict
 ```
+
+!!! warning "Permission errors on push?"
+    If you see "You don't have permission to edit page", verify your Confluence space/page permissions. You need Edit permission for push operations.
 
 ### Validation
 
@@ -457,6 +471,9 @@ atlcli wiki docs resolve docs/api.md --accept local
 atlcli wiki docs resolve docs/api.md --accept remote
 atlcli wiki docs resolve docs/api.md --accept merged  # After manual edit
 ```
+
+!!! tip "Stuck in merge conflicts?"
+    Reset to remote version with `atlcli wiki docs pull ./docs --force`, or force your local version with `--accept local` followed by push.
 
 ## Status
 
@@ -613,7 +630,7 @@ When pages move in Confluence, sync detects this and moves local files to match.
 
 ### Folders
 
-Confluence Cloud folders (introduced September 2024) are supported:
+atlcli supports Confluence Cloud folders (introduced September 2024):
 
 ```
 Confluence:                    Local:
@@ -623,7 +640,7 @@ Confluence:                    Local:
                               │   └── page-b.md
 ```
 
-Folders are represented as directories with an `index.md` file containing `type: folder` in frontmatter. See [Folders](folders.md) for full details on folder support and limitations.
+atlcli represents folders as directories with an `index.md` file containing `type: folder` in frontmatter. See [Folders](folders.md) for full details on folder support and limitations.
 
 ## JSON Output
 
@@ -711,3 +728,12 @@ If you see 429 errors, increase poll interval:
 ```bash
 atlcli wiki docs sync ./docs --poll-interval 60000
 ```
+
+## Related Topics
+
+- [File Format](file-format.md) - Frontmatter structure and directory conventions
+- [Ignore Patterns](ignore.md) - Exclude files from sync with `.atlcliignore`
+- [Validation](validation.md) - Pre-push validation rules
+- [Attachments](attachments.md) - Sync images and file attachments
+- [Webhooks](webhooks.md) - Real-time sync without polling
+- [Pages](pages.md) - Direct page operations (create, move, delete)

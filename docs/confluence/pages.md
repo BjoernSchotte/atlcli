@@ -2,6 +2,13 @@
 
 Create, read, update, delete, move, copy, and organize Confluence pages.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile with Confluence access (`atlcli auth login`)
+- **Space permission**: View for read operations, Edit for create/update/delete
+
 ## List Pages
 
 List pages in a space:
@@ -421,3 +428,40 @@ for parent in 12345 12346 12347; do
   atlcli wiki page sort --id $parent --natural --dry-run
 done
 ```
+
+## Troubleshooting
+
+### Page Not Found
+
+**Symptom**: `Error: Page 12345 not found`
+
+**Causes**:
+- Page was deleted or moved to trash
+- Page ID is incorrect
+- You don't have View permission for the page
+
+**Fix**: Verify the page exists in Confluence and you have access.
+
+### Cannot Delete Page
+
+**Symptom**: `Error: Cannot delete page with children`
+
+**Cause**: The page has child pages that must be deleted first.
+
+**Fix**: Delete child pages first, then delete the parent:
+```bash
+# List children
+atlcli wiki page children --id 12345
+
+# Delete children first, then parent
+atlcli wiki page delete --id <child-id> --confirm
+atlcli wiki page delete --id 12345 --confirm
+```
+
+## Related Topics
+
+- [Sync](sync.md) - Bidirectional sync between local files and Confluence
+- [Folders](folders.md) - Organize pages with folders (Cloud only)
+- [Labels](labels.md) - Tag and filter pages with labels
+- [History](history.md) - View and restore page versions
+- [Attachments](attachments.md) - Manage page attachments

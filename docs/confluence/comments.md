@@ -2,6 +2,11 @@
 
 Manage Confluence page comments - footer comments, inline comments, replies, and resolution.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: View to list comments, Edit to add/modify comments
+
 ## Overview
 
 Confluence supports two types of comments:
@@ -135,7 +140,7 @@ During `docs pull` and `docs push`:
 
 - Comments are **not** synced by default (they're metadata, not content)
 - Use `--include-comments` to export comments alongside pages
-- Comment IDs are preserved in a `.comments.json` sidecar file when exported
+- atlcli preserves comment IDs in a `.comments.json` sidecar file when exported
 
 ### Export with Comments
 
@@ -231,3 +236,8 @@ for page in $(atlcli wiki page list --space TEAM --json | jq -r '.pages[].id'); 
   fi
 done
 ```
+
+## Related Topics
+
+- [Pages](pages.md) - Page operations
+- [Sync](sync.md) - Export comments with `--include-comments`

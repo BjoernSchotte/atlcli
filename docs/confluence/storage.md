@@ -2,6 +2,8 @@
 
 atlcli uses SQLite to store sync state, enabling advanced features like link tracking, contributor analysis, and content auditing.
 
+::: toc
+
 ## Overview
 
 When you sync pages with Confluence, atlcli stores metadata in a local SQLite database (`.atlcli/sync.db`). This enables:
@@ -168,7 +170,7 @@ Configure sync-related settings:
 
 ## Database Location
 
-The sync database is stored at:
+atlcli stores the sync database at:
 
 ```
 <project>/.atlcli/sync.db
@@ -230,7 +232,7 @@ This will enable:
 - Centralized audit dashboards
 - Server-side link validation
 
-## See Also
+## Related Topics
 
 - [Audit](audit.md) - Content health auditing
 - [Sync](sync.md) - Syncing pages with Confluence

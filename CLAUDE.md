@@ -50,6 +50,19 @@ Bun workspaces monorepo with Turbo. Dependencies: `apps/cli` → `packages/*`
 - API clients (`ConfluenceClient`, `JiraClient`) take Profile, handle REST + errors, return typed responses
 - Design for testability using "functional core, imperative shell": keep pure business logic separate from code that does IO (like CLI interaction)
 
+## Docs standards (docs/)
+- Organize docs by user journey and domain: Getting Started, Concepts/Glossary, Feature Guides, Reference, Troubleshooting, and Operations (backups, security, upgrades).
+- Every long page must include an in-page TOC and clear “Related topics” links to keep navigation flowing (maybe comes from the doc generator system we use).
+- Use a consistent page template: short intro → prerequisites → steps → configuration/options → examples → troubleshooting  related topics → feedback/edit link.
+- Provide both UI-first and config-first guidance where relevant; separate them clearly and label which path each step applies to.
+- For reference pages, list configuration variables with type, default, required/optional, and constraints; follow with minimal and advanced examples.
+- Example policy: at least one minimal working example and one realistic/advanced example per feature.
+- Tone and formatting: concise, task-focused, active voice; UI labels in **bold**, file paths/inputs in `code`, and consistent naming for concepts.
+- Media: screenshots with captions for UI flows; optional short videos for complex workflows; use callouts for tips/warnings.
+- Troubleshooting is embedded where issues occur; include symptoms, likely causes, and fixes.
+- Keep docs aligned with product changes; add or update docs in the same PR when behavior changes.
+
+
 ## Workflow Rules
 
 - **Never push** until explicitly told to do so

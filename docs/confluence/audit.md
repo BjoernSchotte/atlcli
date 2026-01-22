@@ -2,6 +2,8 @@
 
 Analyze your Confluence wiki for content health issues like stale pages, broken links, orphaned content, and contributor risks.
 
+::: toc
+
 ## Overview
 
 The `audit wiki` command helps you maintain documentation quality by detecting:
@@ -455,9 +457,9 @@ Run with `--refresh-users` to fetch current user status from Confluence API.
 
 ### Stale Detection Not Working
 
-Ensure pages have been synced with `atlcli wiki docs pull`. The `lastModified` date comes from Confluence metadata.
+Sync pages first with `atlcli wiki docs pull`. atlcli reads the `lastModified` date from Confluence metadata.
 
-## See Also
+## Related Topics
 
 - [Storage](storage.md) - How sync data is stored
 - [Sync](sync.md) - Syncing pages with Confluence

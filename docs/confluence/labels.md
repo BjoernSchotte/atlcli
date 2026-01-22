@@ -2,6 +2,11 @@
 
 Add, remove, and manage labels on Confluence pages.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Space permission**: Edit permission to add/remove labels
+
 ## Overview
 
 Labels help organize and categorize pages. Use them for:
@@ -85,7 +90,7 @@ atlcli wiki search --label "api,v2"
 
 ## Sync Behavior
 
-Labels are synced as part of page metadata:
+atlcli syncs labels as part of page metadata:
 
 ### In Frontmatter
 
@@ -114,7 +119,7 @@ atlcli wiki docs pull ./docs
 
 ### During Push
 
-Labels from frontmatter are synced to Confluence:
+atlcli syncs labels from frontmatter to Confluence:
 
 ```bash
 atlcli wiki docs push ./docs
@@ -181,3 +186,9 @@ atlcli wiki page label add v2.0 --id 12345
 # Find all v2 docs
 atlcli wiki search --label "v2.0"
 ```
+
+## Related Topics
+
+- [Search](search.md) - Find pages by label
+- [Audit](audit.md) - Check for missing required labels
+- [Sync](sync.md) - Labels in frontmatter sync behavior

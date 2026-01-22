@@ -2,99 +2,95 @@
 
 Validate Confluence pages before pushing to catch errors early.
 
+::: toc
+
+## Prerequisites
+
+- Initialized sync directory with `.atlcli/` folder
+- Local markdown files to validate
+
 ## Overview
 
-atlcli can validate your local markdown files to detect issues before pushing to Confluence:
+atlcli validates your local markdown files to detect issues before pushing to Confluence:
 
 - Broken internal links
-- Invalid macro syntax
-- Page size limits
-- Missing required frontmatter
-- Orphaned pages
+- Unclosed macro blocks
+- Page size warnings
+- Folder structure issues
 
-## Validate Command
+## Check Command
 
 Run validation on a sync directory:
 
 ```bash
-atlcli wiki docs validate ./docs
+atlcli wiki docs check ./docs
 ```
 
 Output:
 
 ```
-Validating 24 files...
+Checking 24 files...
 
-ERRORS (2):
-  getting-started.md:45 - Broken link: [Setup Guide](./setup.md) - file not found
-  api-reference.md:12 - Invalid macro: ::: unknown-macro - unrecognized macro type
+getting-started.md
+  line 45: ERROR - Broken link to "./setup.md" [LINK_FILE_NOT_FOUND]
 
-WARNINGS (3):
-  large-guide.md - Page size 485 KB (limit: 500 KB) - consider splitting
-  old-docs/legacy.md - Orphaned: not linked from any page
-  config.md:78 - Deprecated macro: ::: note - use ::: info instead
+api-reference.md
+  line 12: ERROR - Unclosed macro ":::info" starting at line 12 [MACRO_UNCLOSED]
 
-Validation complete: 2 errors, 3 warnings
+large-guide.md
+  WARNING - Page size (485KB) exceeds 500KB limit [PAGE_SIZE_EXCEEDED]
+
+Summary: 2 errors, 1 warning in 3 files (21 passed)
 ```
 
-Options:
+### Options
 
 | Flag | Description |
 |------|-------------|
-| `--fix` | Auto-fix issues where possible |
-| `--strict` | Treat warnings as errors |
-| `--ignore` | Patterns to ignore |
-| `--format` | Output format: `text`, `json` |
+| `--strict` | Treat warnings as errors (exit code 1 for warnings) |
+| `--json` | Output results as JSON |
 
 ## Validation Rules
 
 ### Link Validation
 
-Checks all internal links resolve to existing files:
+Checks that internal links resolve to existing files:
 
 ```markdown
-[Valid Link](./existing-page.md)     ✓
-[Broken Link](./missing-page.md)     ✗ File not found
-[Anchor Link](./page.md#section)     ✓ (if section exists)
+[Valid Link](./existing-page.md)     ✓ File exists
+[Broken Link](./missing-page.md)     ✗ LINK_FILE_NOT_FOUND
+[Untracked](./new-page.md)           ⚠ LINK_UNTRACKED_PAGE (warning)
 ```
 
-Configure link checking:
-
-```bash
-# Skip external link validation
-atlcli wiki docs validate ./docs --skip-external
-
-# Check external links too (slower)
-atlcli wiki docs validate ./docs --check-external
-```
+| Code | Severity | Description |
+|------|----------|-------------|
+| `LINK_FILE_NOT_FOUND` | Error | Target file does not exist |
+| `LINK_UNTRACKED_PAGE` | Warning | Target file exists but has no page ID in frontmatter |
 
 ### Macro Validation
 
-Validates macro syntax and parameters:
+Checks that macro blocks are properly closed:
 
 ```markdown
-::: info                             ✓ Valid panel
-::: info "Title"                     ✓ Valid panel with title
-::: unknown                          ✗ Unknown macro type
-::: expand                           ✗ Missing required title
-::: toc minLevel=abc                 ✗ Invalid parameter value
+::: info
+This panel is properly closed.
+:::                                   ✓ Valid
+
+::: warning
+This panel is never closed...         ✗ MACRO_UNCLOSED
 ```
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `MACRO_UNCLOSED` | Error | Macro opened with `:::name` but no closing `:::` |
 
 ### Size Validation
 
-Checks page content size against limits:
+Warns when page content exceeds 500KB:
 
-| Check | Default Limit |
-|-------|---------------|
-| Page content | 500 KB |
-| Single code block | 100 KB |
-| Total attachments | 10 MB |
-
-Configure limits:
-
-```bash
-atlcli wiki docs validate ./docs --max-page-size 1MB --max-code-block 200KB
-```
+| Code | Severity | Description |
+|------|----------|-------------|
+| `PAGE_SIZE_EXCEEDED` | Warning | Page content exceeds 500KB |
 
 ### Folder Validation
 
@@ -102,138 +98,35 @@ Checks folder structure for issues:
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| `FOLDER_EMPTY` | Warning | Folder index.md exists but has no child pages or subfolders |
-| `FOLDER_MISSING_INDEX` | Warning | Directory contains .md files but has no index.md |
-
-```
-WARNINGS (2):
-  empty-folder/index.md:1 - Folder "Empty" has no children [FOLDER_EMPTY]
-  orphan-dir - Directory "orphan-dir" contains pages but has no folder index.md [FOLDER_MISSING_INDEX]
-```
-
-**FOLDER_EMPTY**: A folder exists in Confluence but has no content. Consider adding pages or removing the empty folder.
-
-**FOLDER_MISSING_INDEX**: A local directory contains markdown files but isn't a synced Confluence folder. Either:
-- Create an index.md with `type: folder` to make it a folder
-- Move the files to an existing folder
-- This may indicate pages that were moved but the folder wasn't synced
-
-### Frontmatter Validation
-
-Checks required YAML frontmatter:
-
-```yaml
----
-id: "12345"        # Required for existing pages
-title: "Page Title" # Required
-space: "TEAM"       # Optional, inherited from config
----
-```
-
-### Orphan Detection
-
-Finds pages not linked from any other page:
-
-```bash
-atlcli wiki docs validate ./docs --check-orphans
-```
-
-## Auto-Fix
-
-Some issues can be automatically fixed:
-
-```bash
-atlcli wiki docs validate ./docs --fix
-```
-
-Auto-fixable issues:
-
-| Issue | Fix |
-|-------|-----|
-| Deprecated macro | Replace with current equivalent |
-| Missing frontmatter title | Extract from first heading |
-| Relative link case mismatch | Correct case |
-| Trailing whitespace in links | Trim |
+| `FOLDER_EMPTY` | Warning | Folder index.md exists but has no child pages |
+| `FOLDER_MISSING_INDEX` | Warning | Directory contains .md files but no index.md |
 
 ## Strict Mode
 
-Fail on any issue (useful in CI):
+Use `--strict` to fail on warnings (useful in CI):
 
 ```bash
-atlcli wiki docs validate ./docs --strict
+atlcli wiki docs check ./docs --strict
 ```
 
 Exit codes:
-- `0` - No errors
-- `1` - Errors found
-- `2` - Warnings found (in strict mode)
 
-## Ignore Patterns
-
-Skip certain files or rules:
-
-```bash
-# Ignore drafts folder
-atlcli wiki docs validate ./docs --ignore "drafts/**"
-
-# Ignore specific rules
-atlcli wiki docs validate ./docs --ignore-rules orphan,deprecated-macro
-```
-
-Or configure in `.atlcli/config.json`:
-
-```json
-{
-  "validation": {
-    "ignore": ["drafts/**", "*.draft.md"],
-    "ignoreRules": ["orphan"],
-    "maxPageSize": "1MB"
-  }
-}
-```
+- `0` - No errors (and no warnings in strict mode)
+- `1` - Errors found (or warnings in strict mode)
 
 ## JSON Output
 
 ```bash
-atlcli wiki docs validate ./docs --json
+atlcli wiki docs check ./docs --json
 ```
 
-```json
-{
-  "schemaVersion": "1",
-  "valid": false,
-  "files": 24,
-  "errors": [
-    {
-      "file": "getting-started.md",
-      "line": 45,
-      "rule": "broken-link",
-      "message": "Broken link: [Setup Guide](./setup.md) - file not found",
-      "severity": "error"
-    }
-  ],
-  "warnings": [
-    {
-      "file": "large-guide.md",
-      "rule": "page-size",
-      "message": "Page size 485 KB approaching limit (500 KB)",
-      "severity": "warning"
-    }
-  ],
-  "summary": {
-    "errors": 2,
-    "warnings": 3
-  }
-}
-```
+## Pre-Push Validation
 
-## Pre-Push Hook
-
-Validate before pushing:
+Use the `--validate` flag with push to run checks before pushing:
 
 ```bash
-# In package.json or git hooks
-atlcli wiki docs validate ./docs --strict && atlcli wiki docs push ./docs
+atlcli wiki docs push ./docs --validate
+atlcli wiki docs push ./docs --validate --strict  # Fail on warnings
 ```
 
 ## CI Integration
@@ -242,13 +135,7 @@ atlcli wiki docs validate ./docs --strict && atlcli wiki docs push ./docs
 
 ```yaml
 - name: Validate Confluence docs
-  run: |
-    atlcli wiki docs validate ./docs --strict --json > validation.json
-    if [ $? -ne 0 ]; then
-      echo "::error::Documentation validation failed"
-      cat validation.json | jq -r '.errors[] | "::error file=\(.file),line=\(.line)::\(.message)"'
-      exit 1
-    fi
+  run: atlcli wiki docs check ./docs --strict
 ```
 
 ### GitLab CI
@@ -256,32 +143,36 @@ atlcli wiki docs validate ./docs --strict && atlcli wiki docs push ./docs
 ```yaml
 validate-docs:
   script:
-    - atlcli wiki docs validate ./docs --strict
+    - atlcli wiki docs check ./docs --strict
   allow_failure: false
 ```
 
-## Use Cases
+## Examples
 
-### Pre-Commit Validation
+### Validate Before Commit
 
 ```bash
 # .git/hooks/pre-commit
 #!/bin/bash
 if git diff --cached --name-only | grep -q "^docs/"; then
-  atlcli wiki docs validate ./docs --strict
+  atlcli wiki docs check ./docs --strict
 fi
-```
-
-### Find All Issues
-
-```bash
-# Get complete report
-atlcli wiki docs validate ./docs --json | jq '.errors + .warnings | sort_by(.file)'
 ```
 
 ### Validate Single File
 
 ```bash
-# Check specific file
-atlcli wiki docs validate ./docs/api-reference.md
+atlcli wiki docs check ./docs/api-reference.md
 ```
+
+### Validate and Push
+
+```bash
+atlcli wiki docs check ./docs --strict && atlcli wiki docs push ./docs
+```
+
+## Related Topics
+
+- [Sync](sync.md) - Run validation before push with `--validate`
+- [Macros](macros.md) - Supported macro syntax
+- [Audit](audit.md) - Content health analysis beyond validation
