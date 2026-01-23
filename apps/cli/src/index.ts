@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
   // Global version: show version if --version/-v flag
   if (versionRequested) {
-    output({ version: VERSION }, opts);
+    output(versionInfo(), opts);
     return;
   }
 
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
         await handleUpdate(rest, parsed.flags, opts);
         break;
       case "version":
-        output({ version: VERSION }, opts);
+        output(versionInfo(), opts);
         break;
       case "helloworld": {
         const helloworldEnabled = await getFlagValue<boolean>("helloworld", false);
@@ -255,7 +255,7 @@ function showCommandHelp(
       handleUpdate(subArgs, helpFlags, opts);
       break;
     case "version":
-      output({ version: VERSION }, opts);
+      output(versionInfo(), opts);
       break;
     default:
       // Check for plugin commands
@@ -316,6 +316,14 @@ function pluginCommandHelp(cmd: import("@atlcli/plugin-api").CommandDefinition):
   }
 
   return lines.join("\n");
+}
+
+function versionInfo(): string {
+  return `atlcli v${VERSION}
+https://atlcli.sh
+
+Jira and Confluence are trademarks of Atlassian Corporation Plc.
+atlcli is not affiliated with, endorsed by, or sponsored by Atlassian.`;
 }
 
 function rootHelp(registry: import("./plugins/loader.js").PluginRegistry): string {
