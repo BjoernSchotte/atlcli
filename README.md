@@ -1,5 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
+[![Version](https://img.shields.io/github/v/release/BjoernSchotte/atlcli)](https://github.com/BjoernSchotte/atlcli/releases)
 [![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://atlcli.sh/)
 
 ```
@@ -58,6 +59,14 @@ cd atlcli
 bun install && bun run build
 ```
 
+## Requirements
+
+- macOS, Linux, or WSL (Windows native not supported)
+- Atlassian Cloud instance (Server/Data Center not supported)
+- API token from [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+See [Getting Started](https://atlcli.sh/getting-started/) for detailed setup instructions.
+
 ## Quick Example
 
 ```bash
@@ -88,26 +97,38 @@ Full documentation: **https://atlcli.sh/**
 - [Jira Guide](https://atlcli.sh/jira/)
 - [CLI Reference](https://atlcli.sh/reference/cli-commands/)
 - [Plugin Development](https://atlcli.sh/plugins/)
+- [Contributing](https://atlcli.sh/contributing/)
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
 ```bash
 bun install        # Install dependencies
-bun run build      # Build
+bun run build      # Build all packages
 bun run start      # Run development version
 bun test           # Run tests
 ```
+
+See [Contributing Guide](https://atlcli.sh/contributing/) for detailed development setup.
 
 ### Project Structure
 
 ```
 atlcli/
-├── apps/cli/           # CLI application
+├── apps/
+│   ├── cli/              # CLI entry point and commands
+│   └── uno-dashboard/    # UNO dashboard web app
 ├── packages/
-│   ├── core/           # Shared utilities
-│   ├── confluence/     # Confluence API client
-│   └── jira/           # Jira API client
-└── src/content/docs/   # Documentation (Astro Starlight)
+│   ├── core/             # Shared utilities (config, logging, templates)
+│   ├── confluence/       # Confluence API client + markdown conversion
+│   ├── jira/             # Jira API client
+│   ├── export/           # PDF/Word export (Python)
+│   └── plugin-api/       # Plugin type definitions
+├── plugins/              # Built-in plugins (git, example)
+├── scripts/              # Build and release scripts
+├── services/             # Background services (UNO)
+├── spec/                 # Feature specifications
+└── src/content/docs/     # Documentation (Astro Starlight)
 ```
 
 ## License
