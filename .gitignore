@@ -9,3 +9,4 @@ site/
 .venv/
 .turbo
 spec/internal/
+.astro/

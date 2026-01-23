@@ -1,0 +1,79 @@
+---
+title: "atlcli"
+description: "Extensible CLI for Atlassian products - bidirectional Confluence sync, Jira management, and more"
+template: splash
+hero:
+  title: atlcli
+  tagline: A blazingly fast CLI for Atlassian products
+  actions:
+    - text: Get Started
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/BjoernSchotte/atlcli
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+**Core feature:** True bidirectional sync between local markdown files and Confluence wiki pages - edit locally in your favorite editor, push to Confluence, or pull remote changes. Conflict detection included.
+
+**Extensive macro support:** Full conversion of Confluence macros to markdown and back:
+
+- **Simple macros:** info, note, warning, tip panels, expand/collapse, table of contents
+- **Complex macros:** code blocks with syntax highlighting, tables, task lists, layouts
+- **Unknown macros:** Preserved as-is during sync - no information loss
+
+## Features
+
+<CardGrid>
+  <Card title="Confluence" icon="document">
+    **Bidirectional markdown/wiki sync** - write in your editor, sync to Confluence. Pull, push, watch mode with conflict detection. Plus macro support and templates.
+
+    [Confluence Guide →](/confluence/)
+  </Card>
+  <Card title="Jira" icon="list-format">
+    Full issue lifecycle, JQL search, sprint analytics, and timer-based time tracking.
+
+    [Jira Guide →](/jira/)
+  </Card>
+  <Card title="Plugins" icon="puzzle">
+    Extensible plugin system for custom workflows and integrations.
+
+    [Plugin Guide →](/plugins/)
+  </Card>
+  <Card title="Recipes" icon="open-book">
+    Real-world workflows for team docs, sprint reporting, and CI/CD integration.
+
+    [Recipes →](/recipes/)
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+```bash
+# Install (macOS/Linux)
+curl -fsSL https://atlcli.sh/install.sh | bash
+
+# Or via Homebrew
+brew install bjoernschotte/tap/atlcli
+
+# Authenticate
+atlcli auth init
+
+# Sync Confluence docs
+atlcli wiki docs pull ./my-docs --space TEAM
+
+# Search Jira issues
+atlcli jira search --assignee me --status "In Progress"
+```
+
+[Full Getting Started Guide →](/getting-started/)
+
+## Why atlcli?
+
+- **Fast** - Built with Bun for maximum performance
+- **Developer-friendly** - Git-like workflows, markdown everywhere
+- **Scriptable** - JSON output, exit codes, CI/CD ready
+- **Extensible** - Plugin system for custom workflows

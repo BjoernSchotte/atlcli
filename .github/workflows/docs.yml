@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
+      - 'src/content/**'
+      - 'src/styles/**'
+      - 'astro.config.mjs'
+      - 'package.json'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -15,7 +17,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -24,29 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          python-version: '3.x'
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-mkdocs-material
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          bun-version: latest
 
       - name: Install dependencies
-        run: pip install mkdocs-material mkdocs-minify-plugin
+        run: bun install
 
       - name: Build docs
-        run: mkdocs build --strict
+        run: bun run docs:build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site/
+          path: dist/
 
   deploy:
     environment:

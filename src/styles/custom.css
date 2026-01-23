@@ -1,0 +1,186 @@
+/* ============================================
+   atlcli Documentation Theme
+   Atlassian Blue color scheme for Starlight
+   ============================================ */
+
+/* ============================================
+   Color Palette
+   ============================================ */
+
+:root {
+  /* Atlassian Blue accent colors */
+  --sl-color-accent-low: #0747a6;
+  --sl-color-accent: #0052cc;
+  --sl-color-accent-high: #4c9aff;
+
+  /* Typography - JetBrains Mono for body, Space Grotesk for headings */
+  --sl-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --sl-font-system-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* Dark mode accent adjustments */
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #0747a6;
+  --sl-color-accent: #4c9aff;
+  --sl-color-accent-high: #79e2f2;
+
+  /* Dark mode backgrounds - Atlassian dark neutral */
+  --sl-color-bg: #1d2125;
+  --sl-color-bg-nav: #22272b;
+  --sl-color-bg-sidebar: #22272b;
+}
+
+/* Light mode backgrounds */
+:root[data-theme='light'] {
+  --sl-color-bg: #fafbfc;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+/* Headings - Space Grotesk font */
+h1, h2, h3, h4, h5, h6,
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+.sl-markdown-content h5,
+.sl-markdown-content h6 {
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================
+   Code Blocks
+   ============================================ */
+
+/* Code block styling */
+:root[data-theme='dark'] pre {
+  background: #161a1d !important;
+  border: 1px solid rgba(76, 154, 255, 0.15);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.25),
+    0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Inline code */
+:root[data-theme='dark'] code:not(pre code) {
+  background: rgba(76, 154, 255, 0.1);
+  color: #4c9aff;
+}
+
+:root[data-theme='light'] code:not(pre code) {
+  background: rgba(0, 82, 204, 0.08);
+  color: #0747a6;
+}
+
+/* ============================================
+   Admonitions / Asides
+   ============================================ */
+
+.starlight-aside {
+  border-radius: 10px;
+  border-left-width: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.starlight-aside--note {
+  border-left-color: #00b8d9;
+}
+
+.starlight-aside--tip {
+  border-left-color: #79e2f2;
+}
+
+.starlight-aside--caution {
+  border-left-color: #0052cc;
+}
+
+.starlight-aside--danger {
+  border-left-color: #ff4f40;
+}
+
+/* ============================================
+   Tables
+   ============================================ */
+
+table {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+th {
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+:root[data-theme='dark'] th {
+  background: rgba(76, 154, 255, 0.1);
+}
+
+:root[data-theme='light'] th {
+  background: rgba(0, 82, 204, 0.08);
+}
+
+/* ============================================
+   Links
+   ============================================ */
+
+.sl-markdown-content a:not(.card-grid a) {
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  transition: all 0.2s ease;
+}
+
+.sl-markdown-content a:not(.card-grid a):hover {
+  border-bottom-style: solid;
+}
+
+/* ============================================
+   Scrollbar (dark mode)
+   ============================================ */
+
+:root[data-theme='dark'] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: var(--sl-color-bg);
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgba(76, 154, 255, 0.25);
+  border-radius: 5px;
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(76, 154, 255, 0.4);
+}
+
+/* ============================================
+   Misc
+   ============================================ */
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid #00b8d9;
+  border-radius: 0 10px 10px 0;
+  background: rgba(0, 184, 217, 0.05);
+}
+
+/* Selection highlight */
+::selection {
+  background: rgba(0, 82, 204, 0.3);
+}
+
+:root[data-theme='dark'] ::selection {
+  background: rgba(76, 154, 255, 0.3);
+}
