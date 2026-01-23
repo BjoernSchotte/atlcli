@@ -2,6 +2,11 @@
 
 Real-world workflows and use cases for atlcli.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- Appropriate Jira and/or Confluence permissions for the operations
+
 ## Workflows
 
 - [Team Docs Sync](team-docs.md) - Sync team documentation with Confluence
@@ -18,13 +23,13 @@ Real-world workflows and use cases for atlcli.
 # standup.sh - Show what you worked on yesterday and today's plan
 
 echo "=== Yesterday ==="
-atlcli jira search --assignee me --updated 1d --status Done
+atlcli jira search --jql "assignee = currentUser() AND updated > -1d AND status = Done"
 
 echo "=== In Progress ==="
 atlcli jira search --assignee me --status "In Progress"
 
 echo "=== Time Logged ==="
-atlcli jira worklog report --user me --from yesterday
+atlcli jira worklog report --since 1d
 ```
 
 ### Release Notes
@@ -45,7 +50,12 @@ atlcli jira search --jql "fixVersion = '$VERSION' AND status = Done" --json | \
 # sprint-health.sh - Check current sprint status
 
 BOARD_ID=$1
-atlcli jira analytics velocity --board $BOARD_ID
+atlcli jira analyze velocity --board $BOARD_ID
 atlcli jira sprint list --board $BOARD_ID --state active
 atlcli jira search --sprint current --status Open --json | jq '.total'
 ```
+
+## Related Topics
+
+- [Jira](../jira/index.md) - Full Jira CLI reference
+- [Confluence](../confluence/index.md) - Full Confluence CLI reference

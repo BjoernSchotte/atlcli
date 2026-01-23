@@ -2,6 +2,13 @@
 
 Manage epics and their child issues.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (read), Edit Issues (write)
+
 ## List Epics
 
 ```bash
@@ -126,3 +133,9 @@ atlcli jira epic list --project ATLCLI --json
   ]
 }
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Work with individual issues
+- [Boards & Sprints](boards-sprints.md) - Sprint management
+- [Analytics](analytics.md) - Epic progress tracking

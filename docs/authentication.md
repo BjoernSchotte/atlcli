@@ -2,6 +2,8 @@
 
 atlcli uses Atlassian API tokens for authentication, supporting multiple profiles for different instances.
 
+::: toc
+
 ## Quick Start
 
 ```bash
@@ -240,7 +242,7 @@ For CI/CD pipelines, use environment variables or secrets:
 ```yaml
 jira-update:
   script:
-    - atlcli jira transition $ISSUE_KEY --status Done
+    - atlcli jira issue transition --key $ISSUE_KEY --to Done
   variables:
     ATLCLI_SITE: $ATLASSIAN_URL
     ATLCLI_EMAIL: $ATLASSIAN_EMAIL
@@ -305,3 +307,9 @@ Atlassian API tokens can expire. Regenerate and update:
 # Then update
 atlcli auth init --profile work
 ```
+
+## Related Topics
+
+- [Getting Started](getting-started.md) - Initial setup and first commands
+- [Configuration](configuration.md) - Config file options
+- [Doctor](reference/doctor.md) - Diagnose authentication issues

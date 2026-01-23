@@ -2,6 +2,8 @@
 
 Structure and format of local Confluence files.
 
+::: toc
+
 ## Page Frontmatter
 
 Each page file has YAML frontmatter under the `atlcli` namespace:

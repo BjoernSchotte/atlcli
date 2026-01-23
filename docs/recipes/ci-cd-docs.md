@@ -2,6 +2,12 @@
 
 Publish documentation from CI/CD pipelines.
 
+## Prerequisites
+
+- Atlassian API token stored as CI/CD secret
+- atlcli installed in CI environment
+- **Confluence permission**: Edit Pages
+
 ## Use Case
 
 Automatically publish documentation to Confluence when:
@@ -129,3 +135,9 @@ pipeline {
 3. **Dry run first** - Test with `--dry-run` flag
 4. **Version tagging** - Include version in doc pages
 5. **Failure handling** - Don't block releases on doc failures
+
+## Related Topics
+
+- [Authentication](../authentication.md) - Environment variable authentication
+- [Confluence Sync](../confluence/sync.md) - Full sync documentation
+- [Team Docs](team-docs.md) - Manual workflow

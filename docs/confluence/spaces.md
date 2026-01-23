@@ -2,6 +2,8 @@
 
 Manage Confluence spaces.
 
+::: toc
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)

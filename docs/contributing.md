@@ -2,6 +2,8 @@
 
 Guidelines for contributing to atlcli.
 
+::: toc
+
 ## Development Setup
 
 ### Prerequisites
@@ -175,3 +177,8 @@ Include:
 ## License
 
 atlcli is MIT licensed. By contributing, you agree your contributions will be under the same license.
+
+## Related Topics
+
+- [Getting Started](getting-started.md) - Installation and setup
+- [Creating Plugins](plugins/creating-plugins.md) - Extend atlcli with plugins

@@ -2,6 +2,13 @@
 
 Search Jira issues using JQL or convenient shortcuts.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects
+
 ## My Issues
 
 Quick access to your assigned issues:
@@ -62,21 +69,17 @@ Convenience flags that expand to JQL:
 | Flag | JQL Equivalent |
 |------|----------------|
 | `--assignee me` | `assignee = currentUser()` |
-| `--reporter me` | `reporter = currentUser()` |
 | `--status Open` | `status = "Open"` |
 | `--type Bug` | `issuetype = Bug` |
 | `--project PROJ` | `project = PROJ` |
+| `--label backend` | `labels = "backend"` |
 | `--sprint current` | `sprint in openSprints()` |
-| `--updated 7d` | `updated >= -7d` |
 
 ## Output Options
 
 ```bash
 # Limit results
 atlcli jira search --jql "..." --limit 50
-
-# Specific fields
-atlcli jira search --jql "..." --fields key,summary,status
 
 # JSON output
 atlcli jira search --jql "..." --json
@@ -85,12 +88,21 @@ atlcli jira search --jql "..." --json
 ## Examples
 
 ```bash
-# My bugs from this week
-atlcli jira search --assignee me --type Bug --updated 7d
+# My bugs
+atlcli jira search --assignee me --type Bug
 
 # Unassigned high priority
 atlcli jira search --jql "assignee is EMPTY AND priority = High"
 
-# Sprint issues by status
+# Current sprint issues
 atlcli jira search --sprint current --project PROJ
+
+# Issues with specific label
+atlcli jira search --label backend --status "In Progress"
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Work with individual issues
+- [Filters](filters.md) - Save and reuse JQL queries
+- [Bulk Operations](bulk-operations.md) - Batch updates on search results

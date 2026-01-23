@@ -2,6 +2,14 @@
 
 Build custom plugins for atlcli.
 
+::: toc
+
+## Prerequisites
+
+- Node.js or Bun runtime
+- TypeScript knowledge
+- atlcli installed
+
 ## Plugin Structure
 
 ```
@@ -143,3 +151,9 @@ Users can then install:
 ```bash
 atlcli plugin install @atlcli/plugin-example
 ```
+
+## Related Topics
+
+- [Using Plugins](using-plugins.md) - Install and manage plugins
+- [Git Plugin](plugin-git.md) - Example of a bundled plugin
+- [Configuration](../configuration.md) - Plugin configuration options

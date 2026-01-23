@@ -2,6 +2,13 @@
 
 Create, read, update, and delete Jira issues.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects for read, Edit Issues for write operations
+
 ## Get Issue
 
 ```bash
@@ -13,18 +20,13 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--key` | Issue key (required) |
-| `--fields` | Specific fields to return |
 | `--expand` | Expand: `changelog`, `comments`, `transitions` |
-| `--format` | Output format: `table`, `json`, `yaml` |
 
 ### Examples
 
 ```bash
-# Get issue with all details
-atlcli jira issue get --key PROJ-123 --expand all
-
-# Get specific fields only
-atlcli jira issue get --key PROJ-123 --fields summary,status,assignee
+# Get issue with changelog
+atlcli jira issue get --key PROJ-123 --expand changelog
 
 # JSON output
 atlcli jira issue get --key PROJ-123 --json
@@ -44,13 +46,10 @@ Options:
 | `--type` | Issue type (required) |
 | `--summary` | Issue summary (required) |
 | `--description` | Issue description |
-| `--assignee` | Assignee account ID or email |
+| `--assignee` | Assignee account ID |
 | `--priority` | Priority name |
 | `--labels` | Comma-separated labels |
 | `--parent` | Parent issue key (for subtasks) |
-| `--epic` | Epic key to add issue to |
-| `--sprint` | Sprint ID to add issue to |
-| `--template` | Use saved template |
 
 ### Examples
 
@@ -62,14 +61,14 @@ atlcli jira issue create --project PROJ --type Bug \
   --priority High \
   --labels bug,mobile,urgent
 
-# Create from template
-atlcli jira issue create --project PROJ --template bug-report
-
 # Create and assign
 atlcli jira issue create --project PROJ --type Task \
   --summary "Update docs" \
-  --assignee alice@company.com
+  --assignee 557058:abc123
 ```
+
+!!! tip "Adding to Epics or Sprints"
+    Use `atlcli jira epic add` or `atlcli jira sprint add` after creating the issue. For templates, use `atlcli jira template apply`.
 
 ## Update Issue
 
@@ -85,11 +84,9 @@ Options:
 | `--summary` | New summary |
 | `--description` | New description |
 | `--priority` | New priority |
-| `--labels` | Replace labels |
-| `--add-labels` | Add labels |
-| `--remove-labels` | Remove labels |
-| `--assignee` | New assignee |
-| `--set` | Set field value: `field=value` |
+| `--add-labels` | Add labels (comma-separated) |
+| `--remove-labels` | Remove labels (comma-separated) |
+| `--assignee` | New assignee (account ID or `none` to unassign) |
 
 ### Examples
 
@@ -100,11 +97,14 @@ atlcli jira issue update --key PROJ-123 \
   --priority Critical
 
 # Modify labels
-atlcli jira issue update --key PROJ-123 --add-labels reviewed
+atlcli jira issue update --key PROJ-123 --add-labels reviewed,verified
 
-# Set custom field
-atlcli jira issue update --key PROJ-123 --set "customfield_10001=value"
+# Unassign issue
+atlcli jira issue update --key PROJ-123 --assignee none
 ```
+
+!!! tip "Setting Custom Fields"
+    Use `atlcli jira bulk edit --issues PROJ-123 --set field=value` to set custom fields on a single issue.
 
 ## Delete Issue
 
@@ -300,3 +300,10 @@ atlcli jira issue get --key PROJ-123 --json
   "url": "https://company.atlassian.net/browse/PROJ-123"
 }
 ```
+
+## Related Topics
+
+- [Search](search.md) - Find issues with JQL
+- [Bulk Operations](bulk-operations.md) - Update multiple issues
+- [Subtasks](subtasks.md) - Break down issues into subtasks
+- [Epics](epics.md) - Organize issues into epics

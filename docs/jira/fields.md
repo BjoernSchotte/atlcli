@@ -2,6 +2,13 @@
 
 Work with Jira custom and system fields.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects
+
 ## List Fields
 
 ```bash
@@ -142,3 +149,10 @@ atlcli jira field list --json
   ]
 }
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Set field values on issues
+- [Bulk Operations](bulk-operations.md) - Set fields on multiple issues
+- [Search](search.md) - Query by custom fields
+- [Analytics](analytics.md) - Story points for velocity tracking

@@ -2,6 +2,8 @@
 
 This guide walks you through installing atlcli, authenticating with Atlassian, and running your first commands.
 
+::: toc
+
 ## Installation
 
 ### Quick Install (Recommended)
@@ -193,13 +195,13 @@ atlcli jira search --jql "project = PROJ AND sprint in openSprints()"
 ### View an Issue
 
 ```bash
-atlcli jira get PROJ-123
+atlcli jira issue get --key PROJ-123
 ```
 
 ### Create an Issue
 
 ```bash
-atlcli jira create --project PROJ --type Task --summary "Fix login bug"
+atlcli jira issue create --project PROJ --type Task --summary "Fix login bug"
 ```
 
 ### Track Time

@@ -2,6 +2,8 @@
 
 Quick reference for all atlcli commands.
 
+::: toc
+
 ## Global Options
 
 | Flag | Description |
@@ -179,7 +181,7 @@ atlcli wiki page move --id <id> --position <n>   # Specific position
 atlcli wiki page copy --id <id> --title <title>
 atlcli wiki page copy --id <id> --title <title> --space <key>
 atlcli wiki page children --id <id>          # List child pages
-atlcli wiki page children --id <id> --depth <n> --format tree
+atlcli wiki page children --id <id> --limit <n> --json
 atlcli wiki page sort <file> --alphabetical
 atlcli wiki page sort <file> --natural       # Natural sort (Chapter 2 < Chapter 10)
 atlcli wiki page sort <file> --by created
@@ -309,9 +311,9 @@ atlcli jira issue create --project <key> --type <type> --summary <text> \
   --description <text> --assignee <email> --labels <labels>
 atlcli jira issue update --key <key> --summary <text>
 atlcli jira issue update --key <key> --priority <name>
-atlcli jira issue update --key <key> --labels <labels>
-atlcli jira issue update --key <key> --assignee <email>
-atlcli jira issue update --key <key> --set <field>=<value>
+atlcli jira issue update --key <key> --add-labels <labels>
+atlcli jira issue update --key <key> --remove-labels <labels>
+atlcli jira issue update --key <key> --assignee <account-id>
 atlcli jira issue delete --key <key> --confirm
 atlcli jira issue transition --key <key> --to <status>
 atlcli jira issue transitions --key <key>  # List available transitions
@@ -344,11 +346,7 @@ atlcli jira search --type Bug
 atlcli jira search --type Bug,Task      # Multiple types
 atlcli jira search --label <label>      # Filter by label
 atlcli jira search --sprint <id>        # Filter by sprint
-atlcli jira search --epic <key>
-atlcli jira search --created-since <duration>
-atlcli jira search --updated-since <duration>
-atlcli jira search --limit <n> --start <n>
-atlcli jira search --fields key,summary,status
+atlcli jira search --limit <n>
 ```
 
 ### Current User
@@ -420,14 +418,12 @@ atlcli jira sprint get --id <id>
 atlcli jira sprint create --board <id> --name <name>
 atlcli jira sprint create --board <id> --name <name> \
   --start <date> --end <date> --goal <text>
-atlcli jira sprint update --id <id> --name <name>
 atlcli jira sprint start --id <id>
-atlcli jira sprint complete --id <id>
-atlcli jira sprint complete --id <id> --move-to <sprint-id>
-atlcli jira sprint add --id <id> --issues <keys>
-atlcli jira sprint remove --id <id> --issues <keys>
-atlcli jira sprint report --id <id>     # Sprint metrics report
-atlcli jira sprint report --id <id> --format markdown
+atlcli jira sprint close --id <id>
+atlcli jira sprint delete --id <id> --confirm
+atlcli jira sprint add <issues...> --sprint <id>
+atlcli jira sprint remove <issues...>   # Move to backlog
+atlcli jira sprint report <id>          # Sprint metrics report
 ```
 
 ### Epics
@@ -689,3 +685,9 @@ atlcli version                          # Show version
 atlcli --version                        # Same as above
 atlcli -v                               # Short form
 ```
+
+## Related Topics
+
+- [Shell Completions](shell-completions.md) - Tab completion setup
+- [Environment Variables](environment.md) - Environment configuration
+- [Troubleshooting](troubleshooting.md) - Common issues

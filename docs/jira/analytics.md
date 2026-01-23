@@ -2,6 +2,14 @@
 
 Sprint velocity, burndown, and predictability metrics.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects
+- Board with sprint history for velocity/predictability metrics
+
 ## Velocity
 
 View story points completed per sprint:
@@ -16,8 +24,8 @@ Options:
 |------|-------------|
 | `--board` | Board ID (required) |
 | `--sprints` | Number of sprints to analyze (default: 5) |
-| `--field` | Story points field name (auto-detected) |
-| `--format` | Output format: `table`, `json`, `chart` |
+| `--points-field` | Story points field ID (auto-detected) |
+| `--json` | JSON output |
 
 Output:
 
@@ -60,8 +68,8 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--sprint` | Sprint ID (required) |
-| `--ideal` | Include ideal burndown line |
-| `--format` | Output format: `table`, `json`, `chart` |
+| `--points-field` | Story points field ID (auto-detected) |
+| `--json` | JSON output |
 
 Output:
 
@@ -74,29 +82,6 @@ DATE         REMAINING    IDEAL
 2025-01-10   20           18
 2025-01-13   12           12
 2025-01-14   5            6
-```
-
-### Chart Output
-
-```bash
-atlcli jira analyze burndown --sprint 456 --format chart
-```
-
-Outputs ASCII chart:
-
-```
-Points
-42 |*
-36 |  \  *
-30 |    \   *
-24 |      \    *
-18 |        \     *
-12 |          \      *
- 6 |            \       *
- 0 +--+--+--+--+--+--+--+--
-   M  T  W  T  F  M  T  W
-
-* Actual   \ Ideal
 ```
 
 ## Predictability
@@ -145,15 +130,15 @@ Scope change is calculated by tracking:
 Comprehensive sprint analysis:
 
 ```bash
-atlcli jira sprint report --sprint 456
+atlcli jira sprint report 456
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--sprint` | Sprint ID (required) |
-| `--format` | Output format: `table`, `json`, `markdown` |
+| `--points-field` | Story points field ID (auto-detected) |
+| `--json` | JSON output |
 
 Output:
 
@@ -188,10 +173,10 @@ Bob:              6 issues completed
 Carol:            4 issues completed
 ```
 
-### Markdown Export
+### JSON Export
 
 ```bash
-atlcli jira sprint report --sprint 456 --format markdown > sprint-14-report.md
+atlcli jira sprint report 456 --json > sprint-14-report.json
 ```
 
 ## JSON Output
@@ -229,3 +214,9 @@ atlcli jira analyze velocity --board 123 --json
 2. **Regular analysis** - Review velocity trends weekly
 3. **Scope discipline** - Track scope changes to improve planning
 4. **Historical data** - Analyze at least 5 sprints for meaningful trends
+
+## Related Topics
+
+- [Boards & Sprints](boards-sprints.md) - Sprint management
+- [Fields](fields.md) - Story points field configuration
+- [Time Tracking](time-tracking.md) - Worklog reports

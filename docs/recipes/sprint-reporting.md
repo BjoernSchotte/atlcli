@@ -2,6 +2,12 @@
 
 Generate automated sprint reports with atlcli.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects
+- Board with sprint history
+
 ## Use Case
 
 At the end of each sprint, generate a report including:
@@ -26,7 +32,7 @@ echo ""
 
 # Sprint info
 echo "## Sprint Info"
-atlcli jira sprint get $SPRINT_ID
+atlcli jira sprint get --id $SPRINT_ID
 
 # Completed issues
 echo ""
@@ -43,7 +49,7 @@ atlcli jira search --jql "sprint = $SPRINT_ID AND status != Done" --json | \
 # Velocity
 echo ""
 echo "## Velocity"
-atlcli jira analytics velocity --board $BOARD_ID --sprints 1
+atlcli jira analyze velocity --board $BOARD_ID --sprints 1
 ```
 
 ## Detailed Report
@@ -63,18 +69,18 @@ cat > $OUTPUT << EOF
 
 ## Summary
 
-$(atlcli jira sprint get $SPRINT_ID --json | jq -r '"- Start: \(.startDate)\n- End: \(.endDate)\n- Goal: \(.goal // "None")"')
+$(atlcli jira sprint get --id $SPRINT_ID --json | jq -r '"- Start: \(.startDate)\n- End: \(.endDate)\n- Goal: \(.goal // "None")"')
 
 ## Metrics
 
 ### Velocity (Last 5 Sprints)
 \`\`\`
-$(atlcli jira analytics velocity --board $BOARD_ID)
+$(atlcli jira analyze velocity --board $BOARD_ID)
 \`\`\`
 
 ### Burndown
 \`\`\`
-$(atlcli jira analytics burndown --sprint $SPRINT_ID)
+$(atlcli jira analyze burndown --sprint $SPRINT_ID)
 \`\`\`
 
 ## Completed Issues
@@ -128,3 +134,9 @@ jobs:
           name: sprint-report
           path: report.md
 ```
+
+## Related Topics
+
+- [Analytics](../jira/analytics.md) - Velocity, burndown, predictability
+- [Boards & Sprints](../jira/boards-sprints.md) - Sprint management
+- [CI/CD Docs](ci-cd-docs.md) - CI/CD pipeline integration

@@ -2,6 +2,11 @@
 
 atlcli provides full issue lifecycle management, search, sprints, and analytics from the command line.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects for read, Edit Issues for write operations
+
 ## Overview
 
 ```bash
@@ -9,10 +14,10 @@ atlcli provides full issue lifecycle management, search, sprints, and analytics 
 atlcli jira search --assignee me --status "In Progress"
 
 # View an issue
-atlcli jira get PROJ-123
+atlcli jira issue get --key PROJ-123
 
 # Create an issue
-atlcli jira create --project PROJ --type Task --summary "Fix bug"
+atlcli jira issue create --project PROJ --type Task --summary "Fix bug"
 
 # Track time
 atlcli jira worklog timer start PROJ-123
@@ -49,13 +54,13 @@ atlcli jira search --jql "sprint in openSprints() AND assignee = currentUser()"
 
 ```bash
 # Get issue details
-atlcli jira get PROJ-123
+atlcli jira issue get --key PROJ-123
 
 # Add a comment
-atlcli jira comment add PROJ-123 --body "Working on this"
+atlcli jira issue comment --key PROJ-123 --body "Working on this"
 
 # Transition status
-atlcli jira transition PROJ-123 --status "In Progress"
+atlcli jira issue transition --key PROJ-123 --to "In Progress"
 ```
 
 ### Track Time
@@ -71,17 +76,9 @@ atlcli jira worklog timer stop PROJ-123
 atlcli jira worklog add PROJ-123 --time 2h
 ```
 
-## Sections
+## Related Topics
 
-- [Issues](issues.md) - CRUD, transitions, comments, links
-- [Search](search.md) - JQL search and shortcuts
-- [Boards & Sprints](boards-sprints.md) - Board and sprint management
-- [Time Tracking](time-tracking.md) - Worklogs and timer mode
-- [Epics](epics.md) - Epic management
-- [Analytics](analytics.md) - Velocity, burndown, metrics
-- [Bulk Operations](bulk-operations.md) - Batch issue changes
-- [Filters](filters.md) - Saved JQL filters
-- [Templates](templates.md) - Issue templates
-- [Import/Export](import-export.md) - CSV and JSON
-- [Webhooks](webhooks.md) - Webhook server
-- [Fields](fields.md) - Custom fields, components, versions
+- [Authentication](../authentication.md) - Set up profiles and API tokens
+- [Configuration](../configuration.md) - Global and project configuration options
+- [Confluence Integration](../confluence/index.md) - Link issues to Confluence pages
+- [Recipes](../recipes/index.md) - Real-world workflows combining Jira and Confluence

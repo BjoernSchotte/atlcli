@@ -2,6 +2,8 @@
 
 Add, remove, and manage labels on Confluence pages.
 
+::: toc
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)

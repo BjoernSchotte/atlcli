@@ -2,6 +2,8 @@
 
 atlcli includes a built-in update mechanism that checks for new versions and can self-update.
 
+::: toc
+
 ## Quick Update
 
 ```bash
@@ -152,3 +154,8 @@ The previous version is saved at `~/.atlcli/bin/atlcli.bak`:
 ```bash
 mv ~/.atlcli/bin/atlcli.bak ~/.atlcli/bin/atlcli
 ```
+
+## Related Topics
+
+- [Getting Started](../getting-started.md) - Installation
+- [Doctor](doctor.md) - Health checks after update

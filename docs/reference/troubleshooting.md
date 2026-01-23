@@ -2,6 +2,8 @@
 
 Common issues and solutions for atlcli.
 
+::: toc
+
 ## Authentication Errors
 
 ### 401 Unauthorized
@@ -130,7 +132,7 @@ Error: Field 'status' cannot be set directly
 - Some fields are read-only
 
 ```bash
-atlcli jira transition PROJ-123 --status "Done"
+atlcli jira issue transition --key PROJ-123 --to "Done"
 ```
 
 ## Performance
@@ -165,3 +167,9 @@ ATLCLI_LOG_LEVEL=debug atlcli jira search --assignee me
    - Command that failed
    - Full error message
    - Steps to reproduce
+
+## Related Topics
+
+- [Doctor](doctor.md) - Automated health checks
+- [Logging](logging.md) - Debug with logs
+- [Authentication](../authentication.md) - Profile setup

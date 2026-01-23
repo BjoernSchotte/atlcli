@@ -2,6 +2,14 @@
 
 Git integration for Confluence sync.
 
+::: toc
+
+## Prerequisites
+
+- atlcli installed and configured
+- Git repository initialized
+- Git plugin enabled (`atlcli plugin enable git`)
+
 ## Overview
 
 The Git plugin adds Git-aware features to Confluence sync:
@@ -121,3 +129,9 @@ Disable hooks:
   }
 }
 ```
+
+## Related Topics
+
+- [Using Plugins](using-plugins.md) - Plugin management
+- [Creating Plugins](creating-plugins.md) - Build custom plugins
+- [Sync Workflow](../confluence/sync.md) - Confluence sync operations

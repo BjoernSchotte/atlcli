@@ -2,6 +2,14 @@
 
 Run a local webhook server for Jira events.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Administer Projects (to configure webhooks in Jira)
+- Publicly accessible URL (use ngrok or similar for local development)
+
 ## Start Server
 
 ```bash
@@ -58,3 +66,8 @@ read -r event_data
 key=$(echo "$event_data" | jq -r '.issue.key')
 echo "Issue created: $key"
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Issue events and lifecycle
+- [Boards & Sprints](boards-sprints.md) - Sprint events

@@ -2,6 +2,13 @@
 
 Perform batch operations on multiple issues.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Edit Issues for all matched issues
+
 ## Bulk Edit
 
 Update multiple issues at once using `--set field=value` syntax:
@@ -217,3 +224,9 @@ atlcli jira bulk edit --jql "..." --set "priority=High" --json
 2. **Use specific JQL** - Narrow your query to avoid unintended updates
 3. **Batch appropriately** - Use `--limit` for very large result sets
 4. **Check permissions** - Ensure you have edit rights for all matched issues
+
+## Related Topics
+
+- [Search](search.md) - JQL query syntax
+- [Issues](issues.md) - Single issue operations
+- [Filters](filters.md) - Save and reuse JQL queries

@@ -2,6 +2,13 @@
 
 Import and export issues in CSV and JSON formats.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (export), Create Issues (import)
+
 ## Export
 
 ### Export to CSV
@@ -69,3 +76,9 @@ Map CSV columns to Jira fields:
 ```bash
 atlcli jira import --file data.csv --map-field "Title=summary" --map-field "Bug Type=issuetype"
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Work with individual issues
+- [Bulk Operations](bulk-operations.md) - Batch updates
+- [Search](search.md) - JQL for selecting issues to export

@@ -2,6 +2,8 @@
 
 Sync images and files with Confluence pages.
 
+::: toc
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)

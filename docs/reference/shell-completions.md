@@ -2,6 +2,13 @@
 
 atlcli provides tab completion support for Bash and Zsh shells. Completions work for commands, subcommands, flags, and plugin commands.
 
+::: toc
+
+## Prerequisites
+
+- Bash or Zsh shell
+- atlcli installed and in PATH
+
 ## Quick Setup
 
 ### Zsh
@@ -113,3 +120,8 @@ echo 'source ~/.atlcli-completion.zsh' >> ~/.zshrc
 ## Fish Shell
 
 Fish shell completion is not yet supported. Track progress in [GitHub Issues](https://github.com/BjoernSchotte/atlcli/issues).
+
+## Related Topics
+
+- [CLI Commands](cli-commands.md) - Full command reference
+- [Plugins](../plugins/index.md) - Plugin commands are also completed

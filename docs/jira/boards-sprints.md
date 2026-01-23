@@ -2,6 +2,13 @@
 
 Manage Scrum and Kanban boards, sprints, and backlogs.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (read), Manage Sprints (sprint operations)
+
 ## Boards
 
 ### List Boards
@@ -66,7 +73,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Board ID (required) |
-| `--status` | Filter by status |
+| `--jql` | Filter with JQL query |
 | `--limit` | Maximum results |
 
 ### Backlog
@@ -159,14 +166,6 @@ atlcli jira sprint create --board 123 --name "Sprint 15" \
   --goal "Complete user authentication feature"
 ```
 
-### Update Sprint
-
-```bash
-atlcli jira sprint update --id 456 --name "Sprint 14 - Extended"
-atlcli jira sprint update --id 456 --goal "Updated goal"
-atlcli jira sprint update --id 456 --end "2025-01-20"
-```
-
 ### Start Sprint
 
 Start a planned sprint:
@@ -175,12 +174,12 @@ Start a planned sprint:
 atlcli jira sprint start --id 456
 ```
 
-### Complete Sprint
+### Close Sprint
 
-Complete an active sprint:
+Close an active sprint:
 
 ```bash
-atlcli jira sprint complete --id 456
+atlcli jira sprint close --id 456
 ```
 
 Options:
@@ -188,29 +187,34 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Sprint ID (required) |
-| `--move-to` | Sprint ID for incomplete issues |
-
-```bash
-# Move incomplete issues to next sprint
-atlcli jira sprint complete --id 456 --move-to 457
-
-# Move to backlog (default behavior)
-atlcli jira sprint complete --id 456
-```
+| `--confirm` | Skip confirmation prompt |
 
 ### Add Issues to Sprint
 
 ```bash
-atlcli jira sprint add --id 456 --issues PROJ-1,PROJ-2,PROJ-3
+atlcli jira sprint add PROJ-1 PROJ-2 PROJ-3 --sprint 456
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--sprint` | Sprint ID (required) |
+| `--issues` | Comma-separated issue keys (alternative to positional args) |
 
 ### Remove Issues from Sprint
 
 Move issues back to backlog:
 
 ```bash
-atlcli jira sprint remove --id 456 --issues PROJ-1,PROJ-2
+atlcli jira sprint remove PROJ-1 PROJ-2
 ```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--issues` | Comma-separated issue keys (alternative to positional args) |
 
 ### Sprint Report
 
@@ -225,7 +229,8 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Sprint ID (required) |
-| `--format` | Output: `table`, `json`, `markdown` |
+| `--points-field` | Custom story points field ID |
+| `--json` | JSON output |
 
 Output:
 
@@ -263,25 +268,8 @@ Carol:            4 issues completed
 ### Export Sprint Report
 
 ```bash
-# Markdown for documentation
-atlcli jira sprint report --id 456 --format markdown > sprint-report.md
-
-# JSON for automation
-atlcli jira sprint report --id 456 --json
-```
-
-## Ranking
-
-### Rank Issues
-
-Change issue order in backlog or sprint:
-
-```bash
-# Move before another issue
-atlcli jira rank PROJ-1 --before PROJ-2
-
-# Move after another issue
-atlcli jira rank PROJ-1 --after PROJ-3
+# JSON for automation or documentation
+atlcli jira sprint report --id 456 --json > sprint-report.json
 ```
 
 ## JSON Output
@@ -314,4 +302,9 @@ atlcli jira sprint list --board 123 --json
 1. **Plan sprints in advance** - Create future sprints so issues can be assigned
 2. **Set sprint goals** - Clear goals improve focus
 3. **Use sprint reports** - Review metrics to improve velocity
-4. **Move incomplete work** - Use `--move-to` when completing sprints
+
+## Related Topics
+
+- [Analytics](analytics.md) - Velocity and burndown charts
+- [Issues](issues.md) - Work with individual issues
+- [Bulk Operations](bulk-operations.md) - Batch updates on sprint issues

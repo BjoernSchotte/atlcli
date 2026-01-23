@@ -2,6 +2,8 @@
 
 atlcli includes comprehensive JSONL logging for observability, debugging, and enterprise audit requirements.
 
+::: toc
+
 ## Log Locations
 
 | Location | Path | Purpose |
@@ -243,3 +245,9 @@ atlcli log list --type api.response --json | \
 REQUEST_ID="ada26fed-45b8-42f1-881b-2034f6f9b6bd"
 atlcli log list --json | jq ".entries[] | select(.data.requestId == \"$REQUEST_ID\")"
 ```
+
+## Related Topics
+
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
+- [Configuration](../configuration.md) - Logging configuration options
+- [Doctor](doctor.md) - Health checks and diagnostics

@@ -50,7 +50,7 @@ Options:
 | `--id` | Page ID (required) |
 | `--version` | Get specific version |
 | `--expand` | Include: `body`, `version`, `ancestors` |
-| `--format` | Output format: `markdown`, `html`, `json` |
+| `--json` | JSON output |
 
 ## Create Page
 
@@ -205,22 +205,15 @@ Options:
 |------|-------------|
 | `--id` | Parent page ID (required) |
 | `--limit` | Maximum results |
-| `--depth` | Include grandchildren (default: 1) |
-| `--format` | Output format: `table`, `json`, `tree` |
+| `--json` | JSON output |
 
-### Tree View
-
-```bash
-atlcli wiki page children --id 12345 --depth 3 --format tree
-```
+Output:
 
 ```
-├── Getting Started (12346)
-│   ├── Installation (12350)
-│   └── Configuration (12351)
-├── API Reference (12347)
-│   ├── Authentication (12352)
-│   └── Endpoints (12353)
+Child pages (3):
+  12346  Getting Started
+  12347  API Reference
+  12348  Troubleshooting
 └── Troubleshooting (12348)
 ```
 

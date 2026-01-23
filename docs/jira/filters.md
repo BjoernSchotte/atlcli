@@ -2,6 +2,13 @@
 
 Save and manage JQL filters.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (read), Manage Filters (create/update)
+
 ## List Filters
 
 ```bash
@@ -72,3 +79,8 @@ Options:
 | `--group` | Share with group |
 | `--project` | Share with project |
 | `--role` | Share with project role |
+
+## Related Topics
+
+- [Search](search.md) - JQL search and shortcuts
+- [Bulk Operations](bulk-operations.md) - Use filters for batch updates

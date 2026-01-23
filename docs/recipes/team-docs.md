@@ -2,6 +2,12 @@
 
 Keep team documentation in sync between local files and Confluence.
 
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Confluence permission**: View Space (pull), Edit Pages (push)
+- Git installed for version control
+
 ## Use Case
 
 Your team maintains documentation in a Git repository. You want to:
@@ -103,3 +109,9 @@ atlcli wiki docs sync ./team-docs --watch
 - Keep images in `./team-docs/images/`
 - Use frontmatter for page metadata
 - Review `git diff` before pushing to Confluence
+
+## Related Topics
+
+- [Confluence Sync](../confluence/sync.md) - Full sync documentation
+- [File Format](../confluence/file-format.md) - Frontmatter and markdown
+- [CI/CD Docs](ci-cd-docs.md) - Automated publishing

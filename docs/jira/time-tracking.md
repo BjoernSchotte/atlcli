@@ -2,6 +2,13 @@
 
 Log work on issues with direct entry or timer mode.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Work on Issues
+
 ## Timer Mode
 
 Start a timer, work, then stop to log time automatically:
@@ -265,3 +272,9 @@ atlcli jira worklog list --issue PROJ-123 --json
 3. **Round consistently** - Use same interval across team
 4. **Log daily** - Don't let work accumulate
 5. **Review reports** - Track where time is spent
+
+## Related Topics
+
+- [Issues](issues.md) - Work with individual issues
+- [Analytics](analytics.md) - Sprint velocity and metrics
+- [Boards & Sprints](boards-sprints.md) - Sprint management

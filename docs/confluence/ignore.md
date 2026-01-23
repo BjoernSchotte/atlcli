@@ -2,6 +2,8 @@
 
 Control which files are excluded from Confluence sync.
 
+::: toc
+
 ## Overview
 
 atlcli supports ignore patterns to exclude files from sync operations:

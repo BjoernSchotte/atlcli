@@ -2,6 +2,8 @@
 
 Manage Confluence page comments - footer comments, inline comments, replies, and resolution.
 
+::: toc
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)
@@ -29,7 +31,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--id` | Page ID (required) |
-| `--format` | Output format: `table`, `json` |
+| `--json` | JSON output |
 
 ### Add Comment
 

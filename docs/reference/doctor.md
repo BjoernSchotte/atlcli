@@ -2,6 +2,8 @@
 
 The `doctor` command diagnoses common issues with your atlcli setup, authentication, and connectivity.
 
+::: toc
+
 ## Quick Start
 
 ```bash
@@ -208,3 +210,9 @@ Or let doctor create it:
 ```bash
 atlcli doctor --fix
 ```
+
+## Related Topics
+
+- [Troubleshooting](troubleshooting.md) - Manual troubleshooting steps
+- [Authentication](../authentication.md) - Profile setup
+- [Configuration](../configuration.md) - Config file options

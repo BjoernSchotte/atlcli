@@ -2,6 +2,13 @@
 
 Save issue configurations as templates for quick reuse.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (to save from existing issues)
+
 ## List Templates
 
 ```bash
@@ -129,3 +136,8 @@ Templates capture:
 - Custom fields
 
 Templates never capture project, assignee, status, or system fields.
+
+## Related Topics
+
+- [Issues](issues.md) - Create and manage issues
+- [Projects](projects.md) - Project configuration

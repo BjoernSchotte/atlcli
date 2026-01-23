@@ -149,7 +149,8 @@ atlcli wiki search --created-since "30d"
 | `--created-since` | Created after date/duration |
 | `--limit` | Max results (default: 25) |
 | `--start` | Pagination offset |
-| `--format` | Output: table, json |
+| `--format` | Output format: `table` (default), `compact` |
+| `--json` | JSON output |
 
 ## Output Formats
 

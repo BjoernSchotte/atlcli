@@ -2,6 +2,8 @@
 
 Environment variables for configuring atlcli.
 
+::: toc
+
 ## Authentication
 
 | Variable | Description |
@@ -84,3 +86,9 @@ variables:
 ```bash
 docker run -e ATLCLI_SITE -e ATLCLI_EMAIL -e ATLCLI_API_TOKEN atlcli jira search
 ```
+
+## Related Topics
+
+- [Authentication](../authentication.md) - Profile-based authentication
+- [Configuration](../configuration.md) - Config file options
+- [CI/CD Docs](../recipes/ci-cd-docs.md) - Using environment variables in CI/CD

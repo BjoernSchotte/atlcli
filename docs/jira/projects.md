@@ -2,6 +2,13 @@
 
 View and manage Jira projects.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (read), Administer Projects (create/update)
+
 ## List Projects
 
 View all accessible projects:
@@ -23,9 +30,9 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `--format` | Output format: `table`, `json` |
 | `--type` | Filter by project type |
 | `--limit` | Maximum results |
+| `--json` | JSON output |
 
 ### Filter Projects
 
@@ -281,3 +288,9 @@ atlcli jira version create --project PROJ --name "v2.1" --start-date $(date +%Y-
 atlcli jira component list --project PROJ --json | \
   jq -r '.components[] | "\(.name): \(.issueCount) issues"'
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Work with issues in projects
+- [Fields](fields.md) - Custom fields per project
+- [Boards & Sprints](boards-sprints.md) - Boards associated with projects

@@ -2,6 +2,8 @@
 
 atlcli can be configured through config files, environment variables, and command-line flags.
 
+::: toc
+
 ## Config File
 
 Global configuration is stored at `~/.atlcli/config.json`:
@@ -231,3 +233,9 @@ Settings are applied in this order (later overrides earlier):
   "defaultProfile": "dev"
 }
 ```
+
+## Related Topics
+
+- [Authentication](authentication.md) - Profile and credential setup
+- [Using Plugins](plugins/using-plugins.md) - Plugin configuration
+- [Environment Variables](reference/environment.md) - Full environment variable reference

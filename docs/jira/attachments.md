@@ -2,6 +2,13 @@
 
 Upload, download, and manage file attachments on Jira issues.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Browse Projects (view), Create Attachments (upload), Delete Attachments (delete)
+
 ## List Attachments
 
 View attachments on an issue:
@@ -19,11 +26,7 @@ ID          FILENAME           SIZE      CREATED
 10003       requirements.pdf   1.2 MB    2025-01-10
 ```
 
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--format` | Output format: `table`, `json` |
+Use `--json` for JSON output.
 
 ## Upload Attachment
 
@@ -170,3 +173,8 @@ atlcli jira issue attachments PROJ-100 --json | \
 # Upload to target issue
 atlcli jira issue attach PROJ-200 /tmp/migrate/*
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Work with issues
+- [Import/Export](import-export.md) - Bulk data operations

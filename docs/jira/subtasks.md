@@ -2,6 +2,13 @@
 
 Create and manage subtasks for breaking down work into smaller pieces.
 
+::: toc
+
+## Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **Jira permission**: Create Issues, Edit Issues
+
 ## Overview
 
 Subtasks are child issues that belong to a parent issue. They're useful for:
@@ -27,12 +34,7 @@ PROJ-125    To Do         bob           Write unit tests
 PROJ-126    Done          alice         Update documentation
 ```
 
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--format` | Output format: `table`, `json` |
-| `--fields` | Fields to display |
+Use `--json` for JSON output.
 
 ## Create Subtask
 
@@ -79,46 +81,15 @@ atlcli automatically detects the correct subtask issue type for your project. Di
 
 The CLI handles this automatically - just use `subtask create` and it will find the right type.
 
-## View Parent Issue
+## View Subtask Details
 
-When viewing a subtask, the parent is shown:
-
-```bash
-atlcli jira get PROJ-124
-```
-
-Output includes:
-
-```
-Parent: PROJ-123 - Implement user authentication
-```
-
-## Move Subtask
-
-Move a subtask to a different parent:
+View a subtask with its parent information:
 
 ```bash
-atlcli jira update PROJ-124 --parent PROJ-200
+atlcli jira issue get --key PROJ-124
 ```
 
-## Convert Issue to Subtask
-
-Convert a standalone issue into a subtask:
-
-```bash
-atlcli jira update PROJ-150 --parent PROJ-123
-```
-
-!!! warning "Type Change"
-    Converting to a subtask changes the issue type. Some fields may be lost if they're not available on the subtask type.
-
-## Convert Subtask to Issue
-
-Promote a subtask to a standalone issue:
-
-```bash
-atlcli jira update PROJ-124 --remove-parent
-```
+Output includes the parent issue reference.
 
 ## JSON Output
 
@@ -178,7 +149,7 @@ echo "Progress: $DONE / $TOTAL subtasks done"
 # Mark all subtasks as done when parent is resolved
 atlcli jira subtask list PROJ-123 --json | \
   jq -r '.subtasks[] | select(.status != "Done") | .key' | \
-  xargs -I {} atlcli jira transition {} --status Done
+  xargs -I {} atlcli jira issue transition --key {} --to Done
 ```
 
 ### Create Subtasks from Template
@@ -192,3 +163,9 @@ for task in "${SUBTASKS[@]}"; do
   atlcli jira subtask create $BUG --summary "$task"
 done
 ```
+
+## Related Topics
+
+- [Issues](issues.md) - Parent issue operations
+- [Projects](projects.md) - Subtask issue types per project
+- [Boards & Sprints](boards-sprints.md) - Sprint planning with subtasks

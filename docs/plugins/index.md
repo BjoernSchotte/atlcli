@@ -35,8 +35,7 @@ atlcli plugin disable git
 atlcli plugin list
 ```
 
-## Sections
+## Related Topics
 
-- [Using Plugins](using-plugins.md) - Install, enable, configure plugins
-- [Creating Plugins](creating-plugins.md) - Build your own plugins
-- [Git Plugin](plugin-git.md) - Git integration documentation
+- [CLI Commands](../reference/cli-commands.md) - Plugin commands reference
+- [Configuration](../configuration.md) - Plugin configuration

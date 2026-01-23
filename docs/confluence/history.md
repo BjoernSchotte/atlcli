@@ -2,6 +2,8 @@
 
 View version history, compare changes, and restore previous versions.
 
+::: toc
+
 ## Prerequisites
 
 - Authenticated profile (`atlcli auth login`)
@@ -39,7 +41,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--limit` | Number of versions to show |
-| `--format` | Output: table, json |
+| `--json` | JSON output |
 
 ## View Specific Version
 

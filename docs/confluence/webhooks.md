@@ -91,11 +91,7 @@ wh-001    https://ci.company.com/hook           page_created,updated   DOCS
 wh-002    https://notify.company.com/hook       page_updated           (all)
 ```
 
-Options:
-
-| Flag | Description |
-|------|-------------|
-| `--format` | Output format: `table`, `json` |
+Use `--json` for JSON output.
 
 ## Delete Webhook
 

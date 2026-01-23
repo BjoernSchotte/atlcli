@@ -2,6 +2,13 @@
 
 Install, enable, and configure atlcli plugins.
 
+::: toc
+
+## Prerequisites
+
+- atlcli installed and configured
+- Write access to `~/.atlcli/` directory
+
 ## Plugin Location
 
 Plugins are stored at `~/.atlcli/plugins/`.
@@ -20,7 +27,7 @@ atlcli plugin install @atlcli/plugin-git
 atlcli plugin install ./my-plugin
 ```
 
-### From Git Repository
+### From Git Repository (future)
 
 ```bash
 atlcli plugin install https://github.com/user/atlcli-plugin-custom.git
@@ -92,17 +99,19 @@ Some plugins have their own configuration:
 
 ## Plugin Commands
 
-Plugins can add new commands:
+Plugins can add new commands. Use `atlcli plugin list` to see what commands each plugin provides:
 
 ```bash
-# Git plugin adds commit command
-atlcli wiki docs commit -m "Update documentation"
+atlcli plugin list
 ```
 
-List available commands from a plugin:
+Output includes commands from each plugin:
 
-```bash
-atlcli plugin commands git
+```
+  git@1.0.0 (enabled)
+    Git integration for Confluence sync
+    Source: local (~/.atlcli/plugins/git)
+    Commands: commit, status
 ```
 
 ## Troubleshooting
@@ -120,3 +129,9 @@ If two plugins define the same command, the first enabled wins. Disable conflict
 ```bash
 atlcli git:commit  # Namespaced command
 ```
+
+## Related Topics
+
+- [Creating Plugins](creating-plugins.md) - Build custom plugins
+- [Git Plugin](plugin-git.md) - Git integration for Confluence sync
+- [Configuration](../configuration.md) - Plugin configuration options
