@@ -108,9 +108,9 @@ export default defineConfig({
         { label: 'Contributing', link: '/contributing/' },
       ],
       // i18n infrastructure (English only for now)
-      defaultLocale: 'en',
+      defaultLocale: 'root',
       locales: {
-        en: { label: 'English', lang: 'en' },
+        root: { label: 'English', lang: 'en' },
         // de: { label: 'Deutsch', lang: 'de' },  // Future
       },
     }),
