@@ -7,5 +7,6 @@
     "noEmit": true,
     "types": ["bun-types"]
   },
-  "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"]
+  "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"],
+  "exclude": ["src", "astro.config.mjs"]
 }
