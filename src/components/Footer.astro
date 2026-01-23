@@ -1,0 +1,23 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+
+<Default {...Astro.props}>
+  <slot />
+</Default>
+
+<div class="trademark-disclaimer">
+  Jira and Confluence are trademarks of Atlassian Corporation Plc.
+  atlcli is not affiliated with, endorsed by, or sponsored by Atlassian.
+</div>
+
+<style>
+  .trademark-disclaimer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--sl-color-gray-3);
+    padding: 1rem 0;
+    margin-top: 1rem;
+    border-top: 1px solid var(--sl-color-gray-6);
+  }
+</style>

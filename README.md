@@ -107,9 +107,14 @@ atlcli/
 │   ├── core/           # Shared utilities
 │   ├── confluence/     # Confluence API client
 │   └── jira/           # Jira API client
-└── docs/               # Documentation
+└── src/content/docs/   # Documentation (Astro Starlight)
 ```
 
 ## License
 
 MIT - see [LICENSE](LICENSE)
+
+---
+
+Jira and Confluence are trademarks of Atlassian Corporation Plc, registered in the US and other countries.
+atlcli is not affiliated with, endorsed by, or sponsored by Atlassian.

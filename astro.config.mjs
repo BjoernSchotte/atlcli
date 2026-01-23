@@ -9,6 +9,9 @@ export default defineConfig({
     starlight({
       title: 'atlcli',
       description: 'Extensible CLI for Atlassian products',
+      components: {
+        Footer: './src/components/Footer.astro',
+      },
       social: [
         {
           icon: 'github',
