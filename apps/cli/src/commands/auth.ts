@@ -2,20 +2,25 @@ import {
   ERROR_CODES,
   OutputOptions,
   clearProfileAuth,
+  deleteKeychainToken,
   fail,
   getActiveProfile,
   getConfigPath,
   getFlag,
+  getKeychainService,
   getLogger,
   hasFlag,
+  hasKeychainToken,
   loadConfig,
   normalizeBaseUrl,
   output,
+  promptConfirm,
   promptInput,
   removeProfile,
   renameProfile,
   saveConfig,
   setCurrentProfile,
+  setKeychainToken,
   setProfile,
   slugify,
 } from "@atlcli/core";
@@ -75,34 +80,22 @@ async function handleLoginWithMode(
 ): Promise<void> {
   const { interactive, forceTokenPrompt } = mode;
   if (flags.oauth) {
-    fail(opts, 1, ERROR_CODES.AUTH, "OAuth login is not implemented yet. Use --api-token.");
+    fail(opts, 1, ERROR_CODES.AUTH, "OAuth login is not implemented yet. Use --api-token or --bearer.");
   }
+
+  const useBearer = hasFlag(flags, "bearer");
 
   const baseUrl = normalizeBaseUrl(
     getFlag(flags, "site") ||
       process.env.ATLCLI_SITE ||
-      (interactive ? await promptInput("Confluence site URL (e.g. https://example.atlassian.net): ") : "")
+      (interactive ? await promptInput(
+        useBearer
+          ? "Jira/Confluence site URL (e.g. https://jira.company.com): "
+          : "Confluence site URL (e.g. https://example.atlassian.net): "
+      ) : "")
   );
   if (!baseUrl) {
     fail(opts, 1, ERROR_CODES.AUTH, "Site URL is required.");
-  }
-
-  const email =
-    getFlag(flags, "email") ||
-    process.env.ATLCLI_EMAIL ||
-    (interactive ? await promptInput("Atlassian account email: ") : "");
-  if (!email) {
-    fail(opts, 1, ERROR_CODES.AUTH, "Email is required.");
-  }
-
-  let token = getFlag(flags, "token") || (forceTokenPrompt ? "" : process.env.ATLCLI_API_TOKEN || "");
-
-  if (!token && interactive) {
-    token = await promptInput("API token: ");
-  }
-
-  if (!token) {
-    fail(opts, 1, ERROR_CODES.AUTH, "API token is required.");
   }
 
   const profileName =
@@ -111,35 +104,123 @@ async function handleLoginWithMode(
     "default";
 
   const config = await loadConfig();
-  setProfile(config, {
-    name: profileName,
-    baseUrl,
-    auth: {
-      type: "apiToken",
-      email,
-      token,
-    },
-  });
-  setCurrentProfile(config, profileName);
-  await saveConfig(config);
 
-  // Log auth change
-  getLogger().auth({
-    action: "login",
-    profile: profileName,
-    email,
-    baseUrl,
-  });
+  if (useBearer) {
+    // Bearer/PAT auth for Server/Data Center
+    const username =
+      getFlag(flags, "username") ||
+      (interactive ? await promptInput("Username (for keychain lookup, optional): ") : "");
 
-  output(
-    {
-      ok: true,
+    // Token can come from flag, env, or interactive prompt
+    let pat = getFlag(flags, "token") || (forceTokenPrompt ? "" : process.env.ATLCLI_API_TOKEN || "");
+    let storedInKeychain = false;
+
+    if (!pat && interactive) {
+      // Check if we should use keychain
+      if (username && process.platform === "darwin") {
+        const useKeychain = await promptConfirm("Store token in Mac Keychain?", true);
+        pat = await promptInput("Personal Access Token (PAT): ");
+        if (useKeychain && pat) {
+          setKeychainToken(getKeychainService(), username, pat);
+          storedInKeychain = true;
+          pat = ""; // Don't store in config if using keychain
+        }
+      } else {
+        pat = await promptInput("Personal Access Token (PAT): ");
+      }
+    }
+
+    if (!pat && !storedInKeychain && !process.env.ATLCLI_API_TOKEN) {
+      // No token in config, keychain, or env - this will fail at runtime
+      // Allow it but warn if no username for keychain
+      if (!username) {
+        fail(opts, 1, ERROR_CODES.AUTH, "Personal Access Token is required. Provide via --token, ATLCLI_API_TOKEN env var, or store in keychain.");
+      }
+    }
+
+    setProfile(config, {
+      name: profileName,
+      baseUrl,
+      auth: {
+        type: "bearer",
+        username: username || undefined,
+        pat: pat || undefined, // Only set if not using keychain
+      },
+    });
+    setCurrentProfile(config, profileName);
+    await saveConfig(config);
+
+    // Log auth change
+    getLogger().auth({
+      action: "login",
       profile: profileName,
-      site: baseUrl,
-      configPath: getConfigPath(),
-    },
-    opts
-  );
+      username: username || undefined,
+      baseUrl,
+      authType: "bearer",
+      keychainUsed: storedInKeychain,
+    });
+
+    output(
+      {
+        ok: true,
+        profile: profileName,
+        site: baseUrl,
+        authType: "bearer",
+        keychainUsed: storedInKeychain,
+        configPath: getConfigPath(),
+      },
+      opts
+    );
+  } else {
+    // Basic auth (apiToken) for Cloud
+    const email =
+      getFlag(flags, "email") ||
+      process.env.ATLCLI_EMAIL ||
+      (interactive ? await promptInput("Atlassian account email: ") : "");
+    if (!email) {
+      fail(opts, 1, ERROR_CODES.AUTH, "Email is required.");
+    }
+
+    let token = getFlag(flags, "token") || (forceTokenPrompt ? "" : process.env.ATLCLI_API_TOKEN || "");
+
+    if (!token && interactive) {
+      token = await promptInput("API token: ");
+    }
+
+    if (!token) {
+      fail(opts, 1, ERROR_CODES.AUTH, "API token is required.");
+    }
+
+    setProfile(config, {
+      name: profileName,
+      baseUrl,
+      auth: {
+        type: "apiToken",
+        email,
+        token,
+      },
+    });
+    setCurrentProfile(config, profileName);
+    await saveConfig(config);
+
+    // Log auth change
+    getLogger().auth({
+      action: "login",
+      profile: profileName,
+      email,
+      baseUrl,
+    });
+
+    output(
+      {
+        ok: true,
+        profile: profileName,
+        site: baseUrl,
+        configPath: getConfigPath(),
+      },
+      opts
+    );
+  }
 }
 
 async function handleStatus(flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -149,14 +230,28 @@ async function handleStatus(flags: Record<string, string | boolean | string[]>, 
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`." , { profile: profileName });
   }
-  output(
-    {
-      profile: profile.name,
-      site: profile.baseUrl,
-      authType: profile.auth.type,
-    },
-    opts
-  );
+
+  const result: Record<string, unknown> = {
+    profile: profile.name,
+    site: profile.baseUrl,
+    authType: profile.auth.type,
+  };
+
+  // Show auth details based on type
+  if (profile.auth.type === "bearer") {
+    result.username = profile.auth.username;
+    result.hasPatInConfig = !!profile.auth.pat;
+    if (profile.auth.username && process.platform === "darwin") {
+      result.hasKeychainToken = hasKeychainToken(getKeychainService(), profile.auth.username);
+    }
+    result.hasEnvToken = !!process.env.ATLCLI_API_TOKEN;
+  } else if (profile.auth.type === "apiToken") {
+    result.email = profile.auth.email;
+    result.hasTokenInConfig = !!profile.auth.token;
+    result.hasEnvToken = !!process.env.ATLCLI_API_TOKEN;
+  }
+
+  output(result, opts);
 }
 
 async function handleList(opts: OutputOptions): Promise<void> {
@@ -230,6 +325,13 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${target}`);
   }
   const profile = config.profiles[target];
+
+  // Delete keychain token if present
+  let keychainDeleted = false;
+  if (profile.auth.username && process.platform === "darwin") {
+    keychainDeleted = deleteKeychainToken(getKeychainService(), profile.auth.username);
+  }
+
   clearProfileAuth(config, target);
   await saveConfig(config);
 
@@ -238,9 +340,15 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
     action: "logout",
     profile: target,
     baseUrl: profile.baseUrl,
+    keychainDeleted,
   });
 
-  output({ ok: true, profile: target, message: "Logged out (credentials cleared)" }, opts);
+  output({
+    ok: true,
+    profile: target,
+    message: "Logged out (credentials cleared)",
+    keychainDeleted,
+  }, opts);
 }
 
 async function handleDelete(args: string[], opts: OutputOptions): Promise<void> {
@@ -269,10 +377,10 @@ async function handleDelete(args: string[], opts: OutputOptions): Promise<void> 
 function authHelp(): string {
   return `atlcli auth <command>
 
-Manage authentication profiles for Atlassian Cloud.
+Manage authentication profiles for Atlassian Cloud and Server/Data Center.
 
 Commands:
-  login             Authenticate with API token (interactive)
+  login             Authenticate with API token or PAT (interactive)
   init              Initialize auth by pasting credentials
   status            Show current profile status
   list              List all profiles
@@ -282,14 +390,32 @@ Commands:
   delete <name>     Delete profile entirely
 
 Options:
-  --site <url>      Atlassian site URL
-  --email <email>   Account email
-  --token <token>   API token (or use interactive prompt)
-  --profile <name>  Profile name for new login
+  --site <url>       Atlassian site URL
+  --bearer           Use Bearer auth with PAT (for Server/Data Center)
+  --token <token>    API token or PAT
+  --username <user>  Username (for keychain lookup with --bearer)
+  --email <email>    Email (for Cloud Basic auth)
+  --profile <name>   Profile name for new login
+
+Token Resolution Priority:
+  1. ATLCLI_API_TOKEN environment variable (highest)
+  2. Mac Keychain entry (if username provided)
+  3. Config file (lowest)
 
 Examples:
-  atlcli auth login
+  # Cloud (Basic auth with email + API token)
   atlcli auth login --site https://mycompany.atlassian.net
+
+  # Server/Data Center (Bearer auth with PAT)
+  atlcli auth login --bearer --site https://jira.company.com
+
+  # Server with keychain storage
+  atlcli auth login --bearer --site https://jira.company.com --username myuser
+
+  # Using environment variable (CI/scripts)
+  export ATLCLI_API_TOKEN=your-pat-here
+  atlcli jira issue get PROJ-123
+
   atlcli auth status
   atlcli auth list
   atlcli auth switch work

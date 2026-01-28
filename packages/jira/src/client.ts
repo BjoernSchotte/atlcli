@@ -1,5 +1,4 @@
-import { Buffer } from "node:buffer";
-import { Profile, getLogger, generateRequestId, redactSensitive } from "@atlcli/core";
+import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader } from "@atlcli/core";
 import type {
   JiraProject,
   JiraIssue,
@@ -47,13 +46,10 @@ export class JiraClient {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
     this.isCloud = this.baseUrl.includes(".atlassian.net");
 
-    if (profile.auth.type !== "apiToken") {
-      throw new Error("OAuth is not implemented yet. Use API token auth.");
+    if (profile.auth.type === "oauth") {
+      throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
-    const email = profile.auth.email ?? "";
-    const token = profile.auth.token ?? "";
-    const encoded = Buffer.from(`${email}:${token}`).toString("base64");
-    this.authHeader = `Basic ${encoded}`;
+    this.authHeader = buildAuthHeader(profile);
   }
 
   /** API version path - v3 for Cloud, v2 for Server */

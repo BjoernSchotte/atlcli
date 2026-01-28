@@ -3,12 +3,17 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import os from "node:os";
 
-export type AuthType = "apiToken" | "oauth";
+export type AuthType = "apiToken" | "bearer" | "oauth";
 
 export type AuthConfig = {
   type: AuthType;
+  // Basic auth (Cloud)
   email?: string;
   token?: string;
+  // Bearer auth (Server/Data Center)
+  pat?: string;
+  username?: string; // For keychain lookup
+  // OAuth (future)
   clientId?: string;
 };
 
