@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 /**
  * Mac Keychain integration for secure token storage.
@@ -20,11 +20,14 @@ export function getKeychainToken(service: string, account: string): string | nul
   }
 
   try {
-    const result = execSync(
-      `security find-generic-password -s "${service}" -a "${account}" -w`,
-      { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
-    );
-    return result.trim();
+    const result = spawnSync("security", [
+      "find-generic-password", "-s", service, "-a", account, "-w"
+    ], { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+
+    if (result.status !== 0) {
+      return null;
+    }
+    return result.stdout.trim();
   } catch {
     return null;
   }
@@ -45,11 +48,11 @@ export function setKeychainToken(service: string, account: string, token: string
 
   try {
     // -U flag updates existing entry or creates new one
-    execSync(
-      `security add-generic-password -s "${service}" -a "${account}" -w "${token}" -U`,
-      { stdio: "pipe" }
-    );
-    return true;
+    const result = spawnSync("security", [
+      "add-generic-password", "-s", service, "-a", account, "-w", token, "-U"
+    ], { stdio: "pipe" });
+
+    return result.status === 0;
   } catch {
     return false;
   }
@@ -68,11 +71,11 @@ export function deleteKeychainToken(service: string, account: string): boolean {
   }
 
   try {
-    execSync(
-      `security delete-generic-password -s "${service}" -a "${account}"`,
-      { stdio: "pipe" }
-    );
-    return true;
+    const result = spawnSync("security", [
+      "delete-generic-password", "-s", service, "-a", account
+    ], { stdio: "pipe" });
+
+    return result.status === 0;
   } catch {
     return false;
   }
