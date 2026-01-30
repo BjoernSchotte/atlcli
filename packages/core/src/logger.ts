@@ -100,7 +100,11 @@ export interface AuthChangeData {
   action: "login" | "logout" | "switch" | "init" | "delete" | "rename";
   profile?: string;
   email?: string;
+  username?: string;
   baseUrl?: string;
+  authType?: string;
+  keychainUsed?: boolean;
+  keychainDeleted?: boolean;
   details?: unknown;
 }
 

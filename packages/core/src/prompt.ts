@@ -13,3 +13,10 @@ export async function promptInput(question: string): Promise<string> {
   rl.close();
   return answer.trim();
 }
+
+export async function promptConfirm(question: string, defaultValue = false): Promise<boolean> {
+  const hint = defaultValue ? "[Y/n]" : "[y/N]";
+  const answer = await promptInput(`${question} ${hint} `);
+  if (!answer) return defaultValue;
+  return answer.toLowerCase().startsWith("y");
+}
