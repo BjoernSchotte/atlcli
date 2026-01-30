@@ -34,6 +34,11 @@ All notable changes to atlcli will be documented in this file.
 ### Miscellaneous
 
 - Add .playwright-cli and opensrc to gitignore([20f098a](https://github.com/bjoernschotte/atlcli/commit/20f098ac81b7512e140b8126ffa2abce038dcec6))
+
+### New Contributors
+
+- [@sttts](https://github.com/sttts) (Dr. Stefan Schimanski) - Bearer/PAT authentication for Server/Data Center (#1)
+
 ## [0.13.1] - 2026-01-18
 
 ### Bug Fixes
