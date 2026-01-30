@@ -10,3 +10,5 @@ site/
 .turbo
 spec/internal/
 .astro/
+.playwright-cli/
+opensrc/
