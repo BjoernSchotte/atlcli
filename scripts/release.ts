@@ -174,7 +174,7 @@ async function commitRelease(newVersion: string): Promise<void> {
 
 async function createTag(newVersion: string): Promise<void> {
   console.log(`Creating tag v${newVersion}...`);
-  await $`git tag v${newVersion}`;
+  await $`git tag -a v${newVersion} -m ${"Release v" + newVersion}`;
   console.log("  Tag created");
 }
 
