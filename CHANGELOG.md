@@ -2,14 +2,38 @@
 
 All notable changes to atlcli will be documented in this file.
 
-## [Unreleased]
+## [0.14.0] - 2026-01-30
+
+### Bug Fixes
+
+- **docs:** Use root locale to avoid /en/ URL prefix([a979d9a](https://github.com/bjoernschotte/atlcli/commit/a979d9adda1cdaea2f662b0134217be1c77c73cb))
+- **release:** Use annotated tags with message([22bef59](https://github.com/bjoernschotte/atlcli/commit/22bef594fc35a99b8ffd05cfc3ff5e4d1366d7a5))
+
+### Documentation
+
+- **spec:** Add Confluence metadata enhancement spec([b78cbef](https://github.com/bjoernschotte/atlcli/commit/b78cbef415791193dec68ce9ff7b0ca2c3a6b3a9))
+- **spec:** Add large space sync optimization spec([ce2ea28](https://github.com/bjoernschotte/atlcli/commit/ce2ea28723a51f37281cf02ac894dd3c1b553787))
+- **spec:** Expand large space sync spec after self-critique([a86ae41](https://github.com/bjoernschotte/atlcli/commit/a86ae4185fae33c0d39d8f96315040a378921651))
+- **spec:** Fix architectural flaws in large space sync spec([e4248ea](https://github.com/bjoernschotte/atlcli/commit/e4248eae5ff2ab6107f3e4efe6b4b82821936b15))
+- **spec:** Fix confluence metadata spec after self-critique([efb7b7c](https://github.com/bjoernschotte/atlcli/commit/efb7b7cc7addde37d6cde5778e5d0389f49957f0))
+- **confluence:** Improve structure and consistency per new doc standards([626cbb0](https://github.com/bjoernschotte/atlcli/commit/626cbb04dedac36eea6abfec7d5a547f4eec9c50))
+- Comprehensive documentation improvements([6f4943a](https://github.com/bjoernschotte/atlcli/commit/6f4943a73008e2df3b48afe751ce3b21ed1b382d))
+- Add Atlassian trademark disclaimer to footer and README([4d3b4a1](https://github.com/bjoernschotte/atlcli/commit/4d3b4a14992a59a2a0bd9adb2f81b2cadfe25936))
+- **readme:** Improve structure and add missing sections([3b05aa7](https://github.com/bjoernschotte/atlcli/commit/3b05aa7b4b78366d51e10b9edd15a79ac08e88bc))
+- **spec:** Add jira-cli competitive analysis and milestones([f42c241](https://github.com/bjoernschotte/atlcli/commit/f42c241a32439912ec273ca3ab452c82a5dae6f1))
+- **changelog:** Add Bearer/PAT auth feature from PR #1([6405796](https://github.com/bjoernschotte/atlcli/commit/640579659507c91439efd38482c753232919d2a1))
+- **auth:** Document Bearer/PAT authentication for Server/Data Center([795f188](https://github.com/bjoernschotte/atlcli/commit/795f188edd52432eea67e5c11a854cc13a8f2a74))
+- Add Confluence & Jira features section to start page([645ffaf](https://github.com/bjoernschotte/atlcli/commit/645ffaf85ff58e18814499c157e2b323a3a0bb5f))
 
 ### Features
 
-- **auth:** Add Bearer/PAT authentication for Atlassian Server/Data Center ([#1](https://github.com/BjoernSchotte/atlcli/pull/1)) - thanks [@sttts](https://github.com/sttts)!
-- **auth:** Add Mac Keychain integration for secure token storage ([#1](https://github.com/BjoernSchotte/atlcli/pull/1))
-- **auth:** Add token resolution priority: env var > keychain > config ([#1](https://github.com/BjoernSchotte/atlcli/pull/1))
+- **docs:** Migrate documentation from MkDocs to Astro Starlight([d9c3eec](https://github.com/bjoernschotte/atlcli/commit/d9c3eeca184e1a7d03150488408a9ed78bdf003f))
+- **cli:** Add Atlassian trademark disclaimer to version output([74c25ba](https://github.com/bjoernschotte/atlcli/commit/74c25ba04bde3c02ccb71180a2f794263d9fc162))
+- **auth:** Add Bearer/PAT auth for Server/Data Center (#1)([59711b2](https://github.com/bjoernschotte/atlcli/commit/59711b23f0dc965682aed7671d89cf6ae8605738))
 
+### Miscellaneous
+
+- Add .playwright-cli and opensrc to gitignore([20f098a](https://github.com/bjoernschotte/atlcli/commit/20f098ac81b7512e140b8126ffa2abce038dcec6))
 ## [0.13.1] - 2026-01-18
 
 ### Bug Fixes
@@ -168,19 +192,26 @@ All notable changes to atlcli will be documented in this file.
 
 ### Bug Fixes
 
+- **release:** Use correct gh workflow run command([eea10c1](https://github.com/bjoernschotte/atlcli/commit/eea10c1b724d15dc6f0b96dbd27fb4b4843bc107))
+- **update:** Instruct Homebrew users to run brew update first([7f02fb4](https://github.com/bjoernschotte/atlcli/commit/7f02fb4c25f71eec720be638557128e89efd71c9))
+
+### Documentation
+
+- Add release process to CLAUDE.md([0e47c04](https://github.com/bjoernschotte/atlcli/commit/0e47c04871323cf4e166e5f6b2c7cd268852bbfa))
+## [0.7.0] - 2026-01-15
+
+### Bug Fixes
+
 - Remove unreachable architecture cases in detectPlatform([0a9684e](https://github.com/bjoernschotte/atlcli/commit/0a9684ecc3388dfa55e86cbbc9cfceb818f68a7a))
 - **update:** Inject version at build time and reduce check interval([09eff71](https://github.com/bjoernschotte/atlcli/commit/09eff71b6022b8fd3fba67e34a35c198c89ec0e9))
 - **doctor:** Fix TypeScript errors in doctor command([d7a1d07](https://github.com/bjoernschotte/atlcli/commit/d7a1d076bb737c23019c1c6fce539497a24dd0eb))
 - **release:** Make dry-run a true preview with no changes([cb04305](https://github.com/bjoernschotte/atlcli/commit/cb04305d0aa5bbcaa3aa053ac53da54dbc37c20c))
-- **release:** Use correct gh workflow run command([eea10c1](https://github.com/bjoernschotte/atlcli/commit/eea10c1b724d15dc6f0b96dbd27fb4b4843bc107))
-- **update:** Instruct Homebrew users to run brew update first([7f02fb4](https://github.com/bjoernschotte/atlcli/commit/7f02fb4c25f71eec720be638557128e89efd71c9))
 
 ### Documentation
 
 - Add doctor command to CLI reference([ac05565](https://github.com/bjoernschotte/atlcli/commit/ac05565d99dd81206b260b87f4fcbd8b205ebd86))
 - **jira:** Add 'my' command to search documentation([36a61c7](https://github.com/bjoernschotte/atlcli/commit/36a61c74d94af6119ac4965ea3fea5ce196212d5))
 - Add CLAUDE.md for AI assistant guidance([ca935ee](https://github.com/bjoernschotte/atlcli/commit/ca935ee0727d2ee563269c0158ed37283ba2e5cc))
-- Add release process to CLAUDE.md([0e47c04](https://github.com/bjoernschotte/atlcli/commit/0e47c04871323cf4e166e5f6b2c7cd268852bbfa))
 
 ### Features
 
