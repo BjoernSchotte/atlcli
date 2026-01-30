@@ -108,14 +108,26 @@ Restart your shell or run `source ~/.zshrc` (or `~/.bashrc`) to activate.
 
 ## Authentication
 
-atlcli uses API tokens for authentication. You can manage multiple profiles for different Atlassian instances.
+atlcli supports both Atlassian Cloud and Server/Data Center instances. You can manage multiple profiles for different instances.
 
-### Create an API Token
+### Cloud Instances
+
+For Cloud (`*.atlassian.net`), you need an API token:
 
 1. Go to [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
 2. Click **Create API token**
 3. Give it a descriptive name (e.g., "atlcli")
 4. Copy the token
+
+### Server/Data Center Instances
+
+For Server or Data Center, create a Personal Access Token (PAT) in your instance's user settings, then use `--bearer` when logging in:
+
+```bash
+atlcli auth login --bearer --site https://jira.company.com --token YOUR_PAT
+```
+
+See [Authentication](/authentication/) for details on token storage and Mac Keychain integration.
 
 ### Initialize Authentication
 

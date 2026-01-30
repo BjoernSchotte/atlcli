@@ -5,7 +5,7 @@ description: "Manage API tokens and authentication profiles for Atlassian servic
 
 # Authentication
 
-atlcli uses Atlassian API tokens for authentication, supporting multiple profiles for different instances.
+atlcli supports authentication for both Atlassian Cloud and Server/Data Center installations, with multiple profiles for different instances.
 
 ## Quick Start
 
@@ -19,6 +19,19 @@ atlcli auth status
 # List all profiles
 atlcli auth list
 ```
+
+## Cloud vs Server/Data Center
+
+atlcli supports both Atlassian deployment types with different authentication methods:
+
+| Deployment | Auth Method | Token Type |
+|------------|-------------|------------|
+| Cloud (`*.atlassian.net`) | Basic Auth | API Token |
+| Server / Data Center | Bearer Auth | Personal Access Token (PAT) |
+
+**Cloud** instances use your email address and an API token for authentication. This is the default mode.
+
+**Server/Data Center** instances use Bearer authentication with a Personal Access Token (PAT). Use the `--bearer` flag when logging in.
 
 ## API Tokens
 
@@ -49,11 +62,25 @@ atlcli auth init --profile work
 
 ### Login (Non-Interactive)
 
-Login with credentials provided via flags or environment:
+Login with credentials provided via flags or environment.
+
+#### Cloud (Default)
 
 ```bash
 atlcli auth login --site https://company.atlassian.net --email you@company.com --token YOUR_TOKEN
 atlcli auth login --profile work --site https://work.atlassian.net
+```
+
+#### Server/Data Center
+
+Use the `--bearer` flag for PAT authentication:
+
+```bash
+# With token provided directly
+atlcli auth login --bearer --site https://jira.company.com --token YOUR_PAT
+
+# With keychain lookup (macOS)
+atlcli auth login --bearer --site https://jira.company.com --username myuser
 ```
 
 Options:
@@ -61,8 +88,10 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `--site` | Atlassian instance URL |
-| `--email` | Account email |
-| `--token` | API token |
+| `--email` | Account email (Cloud) |
+| `--token` | API token (Cloud) or PAT (Server/DC) |
+| `--bearer` | Use Bearer auth with PAT (for Server/DC) |
+| `--username` | Username for keychain lookup (Server/DC) |
 | `--profile` | Profile name to create/update |
 
 ### Status
@@ -166,7 +195,9 @@ atlcli wiki docs pull ./docs --profile client-acme
 atlcli wiki page list --space TEAM --profile work
 ```
 
-## Credential Storage
+## Token Storage
+
+### Config File
 
 Credentials are stored at `~/.atlcli/credentials.json`:
 
@@ -190,12 +221,51 @@ Credentials are stored at `~/.atlcli/credentials.json`:
 }
 ```
 
+For Server/Data Center profiles using Bearer auth, the profile includes `authType: "bearer"` and may include a `username` for keychain lookup.
+
 :::caution[Security]
 Protect this file with appropriate permissions:
 ```bash
 chmod 600 ~/.atlcli/credentials.json
 ```
 :::
+
+### Mac Keychain (macOS)
+
+On macOS, you can store tokens securely in the system Keychain instead of the config file. When you provide a `--username` during login, atlcli stores the token in Keychain and looks it up automatically:
+
+```bash
+# Store token in Keychain during login
+atlcli auth login --bearer --site https://jira.company.com --username myuser --token YOUR_PAT
+
+# Token is now stored in Keychain - subsequent logins can use keychain lookup
+atlcli auth login --bearer --site https://jira.company.com --username myuser
+```
+
+The token is stored with:
+- **Service**: `atlcli`
+- **Account**: Your username
+
+### Token Resolution Priority
+
+Tokens are resolved in this order (first found wins):
+
+1. `ATLCLI_API_TOKEN` environment variable
+2. Mac Keychain (if username is configured in profile)
+3. Config file (`~/.atlcli/credentials.json`)
+
+### Checking Token Source
+
+Use `--json` to see where your token is coming from:
+
+```bash
+atlcli auth status --json
+```
+
+The output includes:
+- `hasEnvToken`: Token is set via environment variable
+- `hasKeychainToken`: Token is available from Keychain
+- `hasPatInConfig`: Token is stored in config file
 
 ## Environment Variables
 
@@ -204,9 +274,13 @@ Override credentials with environment variables:
 | Variable | Description |
 |----------|-------------|
 | `ATLCLI_SITE` | Atlassian instance URL |
-| `ATLCLI_EMAIL` | Account email |
-| `ATLCLI_API_TOKEN` | API token |
+| `ATLCLI_EMAIL` | Account email (Cloud) |
+| `ATLCLI_API_TOKEN` | API token (Cloud) or PAT (Server/DC) |
 | `ATLCLI_PROFILE` | Default profile name |
+
+:::tip
+`ATLCLI_API_TOKEN` works for both Cloud API tokens and Server/Data Center Personal Access Tokens. The authentication method is determined by the profile's `authType` setting.
+:::
 
 Environment variables take precedence over config files:
 
@@ -311,6 +385,33 @@ Atlassian API tokens can expire. Regenerate and update:
 # Then update
 atlcli auth init --profile work
 ```
+
+### Server/Data Center Auth Failures
+
+```
+Error: Authentication failed (401)
+```
+
+For Server/Data Center instances:
+
+- Verify you used `--bearer` flag when logging in
+- Check that your PAT hasn't expired (Server/DC PATs have expiration dates)
+- Confirm the PAT has the required permissions in your Atlassian admin settings
+- Ensure the instance URL is correct and accessible
+
+To re-authenticate:
+
+```bash
+atlcli auth login --bearer --site https://jira.company.com --token YOUR_NEW_PAT
+```
+
+### Keychain Issues (macOS)
+
+If Keychain lookup fails:
+
+- Verify the token was stored: `security find-generic-password -s atlcli -a <username>`
+- Re-store the token: `atlcli auth login --bearer --site <url> --username <user> --token <pat>`
+- Check Keychain Access app for any access issues
 
 ## Related Topics
 

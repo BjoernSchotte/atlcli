@@ -24,9 +24,13 @@ Quick reference for all atlcli commands.
 atlcli auth init                        # Initialize default profile
 atlcli auth init --profile work         # Initialize named profile
 
-# Non-interactive login
+# Non-interactive login (Cloud)
 atlcli auth login --site <url> --email <email> --token <token>
 atlcli auth login --profile work --site <url>
+
+# Non-interactive login (Server/Data Center with PAT)
+atlcli auth login --bearer --site <url> --token <token>
+atlcli auth login --bearer --site <url> --username <user>  # Uses keychain
 
 # Profile management
 atlcli auth status                      # Show current profile status
