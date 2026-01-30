@@ -2,6 +2,14 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **auth:** Add Bearer/PAT authentication for Atlassian Server/Data Center ([#1](https://github.com/BjoernSchotte/atlcli/pull/1)) - thanks [@sttts](https://github.com/sttts)!
+- **auth:** Add Mac Keychain integration for secure token storage ([#1](https://github.com/BjoernSchotte/atlcli/pull/1))
+- **auth:** Add token resolution priority: env var > keychain > config ([#1](https://github.com/BjoernSchotte/atlcli/pull/1))
+
 ## [0.13.1] - 2026-01-18
 
 ### Bug Fixes
