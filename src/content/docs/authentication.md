@@ -156,8 +156,10 @@ Remove a profile entirely:
 
 ```bash
 atlcli auth delete old-profile
-atlcli auth delete --profile staging --confirm
+atlcli auth delete old-profile --delete-keychain   # macOS only
 ```
+
+When deleting a profile with a keychain-backed token, use `--delete-keychain` to remove the stored credentials. Without it, keychain credentials (if any) are left intact.
 
 ## Profiles
 
@@ -280,6 +282,8 @@ Override credentials with environment variables:
 
 :::tip
 `ATLCLI_API_TOKEN` works for both Cloud API tokens and Server/Data Center Personal Access Tokens. The authentication method is determined by the profile's `authType` setting.
+
+For Cloud profiles, `ATLCLI_EMAIL` (or a saved profile email) is still required to build Basic auth headers, even if the token comes from `ATLCLI_API_TOKEN`.
 :::
 
 Environment variables take precedence over config files:

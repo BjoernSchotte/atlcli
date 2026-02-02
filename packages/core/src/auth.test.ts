@@ -129,6 +129,12 @@ describe("auth", () => {
       expect(header).toBe(expected);
     });
 
+    test("throws when email is missing for Basic auth", () => {
+      process.env.ATLCLI_API_TOKEN = "env-token";
+      const profile = createApiTokenProfile({ email: undefined, token: undefined });
+      expect(() => buildAuthHeader(profile)).toThrow(/email/i);
+    });
+
     test("uses env token for Bearer auth", () => {
       process.env.ATLCLI_API_TOKEN = "env-pat";
       const profile = createBearerProfile();

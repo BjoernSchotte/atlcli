@@ -62,7 +62,12 @@ export function buildAuthHeader(profile: Profile): string {
   }
 
   // Basic auth for Cloud (apiToken type)
-  const email = profile.auth.email ?? "";
+  const email = profile.auth.email;
+  if (!email) {
+    throw new Error(
+      "Email is required for Basic auth. Set email in profile or re-run `atlcli auth login`."
+    );
+  }
   const encoded = Buffer.from(`${email}:${token}`).toString("base64");
   return `Basic ${encoded}`;
 }

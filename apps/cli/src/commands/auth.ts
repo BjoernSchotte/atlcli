@@ -57,7 +57,7 @@ export async function handleAuth(args: string[], flags: Record<string, string | 
       await handleLogout(args.slice(1), opts);
       return;
     case "delete":
-      await handleDelete(args.slice(1), opts);
+      await handleDelete(args.slice(1), flags, opts);
       return;
     default:
       output(authHelp(), opts);
@@ -121,9 +121,11 @@ async function handleLoginWithMode(
         const useKeychain = await promptConfirm("Store token in Mac Keychain?", true);
         pat = await promptInput("Personal Access Token (PAT): ");
         if (useKeychain && pat) {
-          setKeychainToken(getKeychainService(), username, pat);
-          storedInKeychain = true;
-          pat = ""; // Don't store in config if using keychain
+          const stored = setKeychainToken(getKeychainService(), username, pat);
+          if (stored) {
+            storedInKeychain = true;
+            pat = ""; // Don't store in config if using keychain
+          }
         }
       } else {
         pat = await promptInput("Personal Access Token (PAT): ");
@@ -132,8 +134,13 @@ async function handleLoginWithMode(
 
     if (!pat && !storedInKeychain && !process.env.ATLCLI_API_TOKEN) {
       // No token in config, keychain, or env - this will fail at runtime
-      // Allow it but warn if no username for keychain
-      if (!username) {
+      // Allow it if a keychain entry already exists for this username
+      const hasExistingKeychain =
+        username && process.platform === "darwin"
+          ? hasKeychainToken(getKeychainService(), username)
+          : false;
+
+      if (!hasExistingKeychain) {
         fail(opts, 1, ERROR_CODES.AUTH, "Personal Access Token is required. Provide via --token, ATLCLI_API_TOKEN env var, or store in keychain.");
       }
     }
@@ -325,14 +332,21 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${target}`);
   }
   const profile = config.profiles[target];
+  const keychainUsername = profile.auth.username;
 
   // Delete keychain token if present
   let keychainDeleted = false;
-  if (profile.auth.username && process.platform === "darwin") {
-    keychainDeleted = deleteKeychainToken(getKeychainService(), profile.auth.username);
+  if (keychainUsername && process.platform === "darwin") {
+    keychainDeleted = deleteKeychainToken(getKeychainService(), keychainUsername);
   }
 
   clearProfileAuth(config, target);
+  if (!keychainDeleted && keychainUsername) {
+    const updatedProfile = config.profiles[target];
+    if (updatedProfile) {
+      updatedProfile.auth.username = keychainUsername;
+    }
+  }
   await saveConfig(config);
 
   // Log auth change
@@ -351,7 +365,11 @@ async function handleLogout(args: string[], opts: OutputOptions): Promise<void> 
   }, opts);
 }
 
-async function handleDelete(args: string[], opts: OutputOptions): Promise<void> {
+async function handleDelete(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
   const name = args[0];
   if (!name) {
     fail(opts, 1, ERROR_CODES.USAGE, "Profile name is required.");
@@ -361,6 +379,23 @@ async function handleDelete(args: string[], opts: OutputOptions): Promise<void> 
     fail(opts, 1, ERROR_CODES.AUTH, `Profile not found: ${name}`);
   }
   const profile = config.profiles[name];
+  const deleteKeychain = hasFlag(flags, "delete-keychain");
+  let keychainDeleted = false;
+  let warning: string | undefined;
+
+  if (deleteKeychain && profile.auth.username) {
+    if (process.platform === "darwin") {
+      keychainDeleted = deleteKeychainToken(getKeychainService(), profile.auth.username);
+      if (!keychainDeleted) {
+        warning = "Failed to delete keychain credentials. Delete them manually if needed.";
+      }
+    } else {
+      warning = "Keychain deletion is only supported on macOS.";
+    }
+  } else if (profile.auth.username) {
+    warning = "Keychain credentials (if any) were not removed. Use --delete-keychain to remove them.";
+  }
+
   removeProfile(config, name);
   await saveConfig(config);
 
@@ -369,9 +404,18 @@ async function handleDelete(args: string[], opts: OutputOptions): Promise<void> 
     action: "delete",
     profile: name,
     baseUrl: profile.baseUrl,
+    keychainDeleted: deleteKeychain ? keychainDeleted : undefined,
   });
 
-  output({ ok: true, profile: name, message: "Profile deleted" }, opts);
+  output(
+    {
+      ok: true,
+      profile: name,
+      message: "Profile deleted",
+      warning,
+    },
+    opts
+  );
 }
 
 function authHelp(): string {
@@ -396,6 +440,7 @@ Options:
   --username <user>  Username (for keychain lookup with --bearer)
   --email <email>    Email (for Cloud Basic auth)
   --profile <name>   Profile name for new login
+  --delete-keychain  Delete keychain credentials when deleting a profile
 
 Token Resolution Priority:
   1. ATLCLI_API_TOKEN environment variable (highest)

@@ -41,8 +41,8 @@ atlcli auth rename <old> <new>          # Rename profile
 # Cleanup
 atlcli auth logout                      # Clear active profile credentials
 atlcli auth logout <name>               # Clear specific profile credentials
-atlcli auth delete --profile <name>     # Delete profile entirely
-atlcli auth delete --profile <name> --confirm  # Skip confirmation
+atlcli auth delete <name>               # Delete profile entirely
+atlcli auth delete <name> --delete-keychain  # Also delete keychain creds (macOS)
 ```
 
 ## Configuration
