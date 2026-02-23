@@ -6,6 +6,7 @@ import {
   fail,
   getActiveProfile,
   getFlag,
+  getFlags,
   hasFlag,
   loadConfig,
   output,
@@ -328,6 +329,43 @@ Options:
 
 // ============ Issue Operations ============
 
+/**
+ * Parses repeated --field key=value flags into a fields object suitable for the Jira API.
+ *
+ * Type coercion rules:
+ *   - "null"           → null
+ *   - numeric strings  → number
+ *   - valid JSON       → parsed value (enables objects like {"value":"High"} and arrays)
+ *   - everything else  → string
+ *
+ * Examples:
+ *   --field customfield_10028=5          → { customfield_10028: 5 }
+ *   --field customfield_10077={"value":"Feature"}  → { customfield_10077: { value: "Feature" } }
+ *   --field customfield_10194=Some text  → { customfield_10194: "Some text" }
+ */
+function parseCustomFields(rawFields: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const raw of rawFields) {
+    const eqIdx = raw.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = raw.slice(0, eqIdx).trim();
+    const value = raw.slice(eqIdx + 1);
+    if (!key) continue;
+    if (value === "null") {
+      result[key] = null;
+    } else if (/^-?\d+(\.\d+)?$/.test(value)) {
+      result[key] = parseFloat(value);
+    } else {
+      try {
+        result[key] = JSON.parse(value);
+      } catch {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 async function handleIssue(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -412,6 +450,7 @@ async function handleIssueCreate(
   const assignee = getFlag(flags, "assignee");
   const labels = getFlag(flags, "labels");
   const parent = getFlag(flags, "parent"); // For subtasks or epic children
+  const customFields = parseCustomFields(getFlags(flags, "field"));
 
   if (!project || !type || !summary) {
     fail(opts, 1, ERROR_CODES.USAGE, "--project, --type, and --summary are required (or set defaults.project in config).");
@@ -426,6 +465,7 @@ async function handleIssueCreate(
       assignee: assignee ? { accountId: assignee } : undefined,
       labels: labels ? labels.split(",").map((l) => l.trim()) : undefined,
       parent: parent ? { key: parent } : undefined,
+      ...customFields,
     },
   });
 
@@ -447,10 +487,11 @@ async function handleIssueUpdate(
   const assignee = getFlag(flags, "assignee");
   const addLabels = getFlag(flags, "add-labels");
   const removeLabels = getFlag(flags, "remove-labels");
+  const customFields = parseCustomFields(getFlags(flags, "field"));
 
   const client = await getClient(flags, opts);
 
-  const fields: Record<string, unknown> = {};
+  const fields: Record<string, unknown> = { ...customFields };
   if (summary) fields.summary = summary;
   if (description) fields.description = client.textToAdf(description);
   if (priority) fields.priority = { name: priority };
@@ -722,8 +763,8 @@ function issueHelp(): string {
 
 Commands:
   get --key <key> [--expand <fields>]
-  create --project <key> --type <name> --summary <text> [--description <text>] [--priority <name>] [--assignee <accountId>] [--labels <a,b,c>] [--parent <key>]
-  update --key <key> [--summary <text>] [--description <text>] [--priority <name>] [--assignee <accountId>|none] [--add-labels <a,b>] [--remove-labels <c,d>]
+  create --project <key> --type <name> --summary <text> [--description <text>] [--priority <name>] [--assignee <accountId>] [--labels <a,b,c>] [--parent <key>] [--field <id>=<value> ...]
+  update --key <key> [--summary <text>] [--description <text>] [--priority <name>] [--assignee <accountId>|none] [--add-labels <a,b>] [--remove-labels <c,d>] [--field <id>=<value> ...]
   delete --key <key> --confirm [--delete-subtasks]
   transition --key <key> --to <status>
   transitions --key <key>              List available transitions
@@ -740,6 +781,9 @@ Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
   --comment          Add comment when linking (link-page only)
+  --field <id>=<value>  Set a custom field (repeatable). Value is auto-coerced:
+                         numbers → number, JSON strings → parsed, plain text → string.
+                         Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}
 `;
 }
 
