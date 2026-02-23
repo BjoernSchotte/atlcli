@@ -94,16 +94,23 @@ ID       VALUE
 
 ### Set Custom Fields
 
-When creating or updating issues:
+Use the `--field <id>=<value>` flag on `issue create` and `issue update`. The flag is repeatable for multiple fields:
 
 ```bash
 # Create with custom field
 atlcli jira issue create --project PROJ --type Story --summary "Feature" \
-  --set "customfield_10001=5"
+  --field customfield_10001=5
 
 # Update custom field
-atlcli jira issue update --key PROJ-123 --set "customfield_10001=8"
+atlcli jira issue update --key PROJ-123 --field customfield_10001=8
+
+# Set multiple fields at once
+atlcli jira issue update --key PROJ-123 \
+  --field customfield_10001=8 \
+  --field customfield_10002='{"value":"Backend"}'
 ```
+
+See [Issues → Custom Fields](issues.md#custom-fields) for full type coercion rules and examples.
 
 ### Query by Custom Fields
 

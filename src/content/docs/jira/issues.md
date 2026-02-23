@@ -53,6 +53,7 @@ Options:
 | `--priority` | Priority name |
 | `--labels` | Comma-separated labels |
 | `--parent` | Parent issue key (for subtasks) |
+| `--field` | Set a custom field — `<id>=<value>`, repeatable |
 
 ### Examples
 
@@ -75,6 +76,59 @@ Use `atlcli jira epic add` or `atlcli jira sprint add` after creating the issue.
 
 :::
 
+## Custom Fields
+
+Use `--field <id>=<value>` to set custom fields when creating or updating issues. The flag can be repeated for multiple fields.
+
+```bash
+atlcli jira issue create --project PROJ --type Story --summary "My story" \
+  --field customfield_10028=5 \
+  --field customfield_10077='{"value":"Feature"}' \
+  --field customfield_10194="As a user I want to..."
+
+atlcli jira issue update --key PROJ-123 \
+  --field customfield_10028=8 \
+  --field customfield_10079=3
+```
+
+### Value Type Coercion
+
+Values are automatically coerced to the correct type:
+
+| Input | Resulting type | Example |
+|-------|----------------|---------|
+| Numeric string | `number` | `--field customfield_10028=5` |
+| `null` | `null` | `--field customfield_10028=null` |
+| Valid JSON | Parsed value | `--field customfield_10077='{"value":"Bug"}'` |
+| Everything else | `string` | `--field customfield_10194="Some text"` |
+
+Use JSON syntax for Jira option, multi-select, and array fields:
+
+```bash
+# Single select (option)
+--field customfield_10077='{"value":"Feature"}'
+
+# Multi-select (array of options)
+--field customfield_10195='[{"value":"Goal A"},{"value":"Goal B"}]'
+
+# User field
+--field customfield_10050='{"accountId":"557058:abc123"}'
+```
+
+### Finding Field IDs
+
+Use `atlcli jira field search` to look up the ID for a custom field:
+
+```bash
+atlcli jira field search "story points"
+atlcli jira field options customfield_10077   # list allowed option values
+```
+
+:::note[Field availability]
+Custom fields must be on the issue's create or edit screen in Jira. If you receive a "field cannot be set" error, the field is not configured for that issue type or project screen.
+
+:::
+
 ## Update Issue
 
 ```bash
@@ -92,6 +146,7 @@ Options:
 | `--add-labels` | Add labels (comma-separated) |
 | `--remove-labels` | Remove labels (comma-separated) |
 | `--assignee` | New assignee (account ID or `none` to unassign) |
+| `--field` | Set a custom field — `<id>=<value>`, repeatable |
 
 ### Examples
 
@@ -107,11 +162,6 @@ atlcli jira issue update --key PROJ-123 --add-labels reviewed,verified
 # Unassign issue
 atlcli jira issue update --key PROJ-123 --assignee none
 ```
-
-:::tip[Setting Custom Fields]
-Use `atlcli jira bulk edit --issues PROJ-123 --set field=value` to set custom fields on a single issue.
-
-:::
 
 ## Delete Issue
 
