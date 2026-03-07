@@ -23,7 +23,7 @@ type Config = {
   profiles: Record<string, Profile>;
 };
 
-const utils = await import("../../../../packages/core/src/utils.ts");
+const utils = await import("../../../../packages/core/src/utils");
 const { ERROR_CODES, getFlag, hasFlag, normalizeBaseUrl, slugify } = utils;
 
 let config: Config;
