@@ -24,6 +24,13 @@ interface Args {
   skipTests: boolean;
 }
 
+interface ContributorInfo {
+  login: string;
+  name: string;
+  prNumber: number;
+  prTitle: string;
+}
+
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     type: "patch",
@@ -165,6 +172,96 @@ async function generateChangelog(newVersion: string): Promise<void> {
   console.log("  CHANGELOG.md updated");
 }
 
+async function getPreviousTag(): Promise<string> {
+  const tag = await $`git describe --tags --abbrev=0 HEAD`.text();
+  return tag.trim();
+}
+
+async function findNewContributors(previousTag: string): Promise<ContributorInfo[]> {
+  const log = await $`git log ${previousTag}..HEAD --oneline`.text();
+  const prNumbers = [...log.matchAll(/\(#(\d+)\)/g)].map((m) => Number(m[1]));
+
+  if (prNumbers.length === 0) return [];
+
+  const tagDate = (await $`git tag -l --format=${"%(creatordate:short)"} ${previousTag}`.text()).trim();
+  const seen = new Set<string>();
+  const contributors: ContributorInfo[] = [];
+
+  for (const prNumber of prNumbers) {
+    try {
+      const prData = await $`gh pr view ${prNumber} --json author,title`.json();
+      const pr = prData as { author: { login: string; name?: string }; title: string };
+      const login = pr.author.login;
+
+      if (login === REPO_OWNER || seen.has(login)) continue;
+      seen.add(login);
+
+      // Check if author has any PRs merged before the previous tag date
+      const existing =
+        await $`gh pr list --state merged --author ${login} --search ${"merged:<" + tagDate} --limit 1 --json number`.json();
+      const existingPRs = existing as { number: number }[];
+
+      if (existingPRs.length === 0) {
+        contributors.push({
+          login,
+          name: pr.author.name || login,
+          prNumber,
+          prTitle: pr.title,
+        });
+      }
+    } catch {
+      // Skip PRs that can't be fetched (e.g., from forks that were deleted)
+      console.log(`  Warning: Could not fetch PR #${prNumber}, skipping`);
+    }
+  }
+
+  return contributors;
+}
+
+async function injectNewContributors(newVersion: string): Promise<void> {
+  let previousTag: string;
+  try {
+    previousTag = await getPreviousTag();
+  } catch {
+    console.log("  No previous tag found, skipping contributor detection");
+    return;
+  }
+
+  const contributors = await findNewContributors(previousTag);
+
+  if (contributors.length === 0) {
+    console.log("  No new contributors found");
+    return;
+  }
+
+  console.log(`  Found ${contributors.length} new contributor(s)`);
+
+  const lines = [
+    "",
+    "### New Contributors",
+    "",
+    ...contributors.map(
+      (c) =>
+        `- [@${c.login}](https://github.com/${c.login})${c.name !== c.login ? ` (${c.name})` : ""} - ${c.prTitle} (#${c.prNumber})`,
+    ),
+  ];
+
+  const changelog = await readFile("CHANGELOG.md", "utf8");
+  const previousVersion = previousTag.replace(/^v/, "");
+  const heading = `## [${previousVersion}]`;
+  const headingIndex = changelog.indexOf(heading);
+
+  if (headingIndex === -1) {
+    console.log(`  Warning: Could not find "${heading}" in CHANGELOG.md, skipping injection`);
+    return;
+  }
+
+  const updated =
+    changelog.slice(0, headingIndex) + lines.join("\n") + "\n\n" + changelog.slice(headingIndex);
+  await writeFile("CHANGELOG.md", updated);
+  console.log("  New Contributors section added to CHANGELOG.md");
+}
+
 async function commitRelease(newVersion: string): Promise<void> {
   console.log("Creating release commit...");
   await $`git add package.json CHANGELOG.md`;
@@ -229,11 +326,12 @@ Steps that would be executed:
   1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun test
   2. Update version: package.json (version: "${newVersion}")
   3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
-  4. Commit: git commit -m "chore(release): v${newVersion}"
-  5. Tag: git tag v${newVersion}
-  6. Push: git push origin main && git push origin v${newVersion}
-  7. Wait for GitHub Actions to build release artifacts
-  8. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
+  4. Detect new contributors and add to CHANGELOG.md (via GitHub API)
+  5. Commit: git commit -m "chore(release): v${newVersion}"
+  6. Tag: git tag v${newVersion}
+  7. Push: git push origin main && git push origin v${newVersion}
+  8. Wait for GitHub Actions to build release artifacts
+  9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
 
 To execute this release, run without --dry-run:
@@ -289,6 +387,10 @@ async function main(): Promise<void> {
 
     // 5. Generate changelog
     await generateChangelog(newVersion);
+
+    // 5b. Detect and inject new contributors
+    console.log("Checking for new contributors...");
+    await injectNewContributors(newVersion);
 
     // 6. Commit changes
     await commitRelease(newVersion);
