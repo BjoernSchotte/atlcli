@@ -1,42 +1,32 @@
-import { describe, expect, test } from "bun:test";
-import { handleHelloworld } from "./helloworld";
+import { describe, expect, test, mock, beforeEach } from "bun:test";
+
+const outputMock = mock<(data: unknown, opts: { json: boolean }) => void>(() => {});
+
+mock.module("@atlcli/core", () => ({
+  output: outputMock,
+}));
+
+const { handleHelloworld } = await import("./helloworld");
 
 describe("helloworld command", () => {
+  beforeEach(() => {
+    outputMock.mockReset();
+  });
+
   test("outputs greeting with repo URL", async () => {
-    const originalWrite = process.stdout.write;
-    const captured: string[] = [];
-    process.stdout.write = ((chunk: string) => {
-      captured.push(chunk);
-      return true;
-    }) as typeof process.stdout.write;
+    await handleHelloworld([], {}, { json: false });
 
-    try {
-      await handleHelloworld([], {}, { json: false });
-    } finally {
-      process.stdout.write = originalWrite;
-    }
-
-    expect(captured.length).toBe(1);
-    expect(captured[0]).toContain("Hello dear user");
-    expect(captured[0]).toContain("https://github.com/BjoernSchotte/atlcli");
+    expect(outputMock).toHaveBeenCalledTimes(1);
+    const message = outputMock.mock.calls[0]?.[0];
+    expect(String(message)).toContain("Hello dear user");
+    expect(String(message)).toContain("https://github.com/BjoernSchotte/atlcli");
   });
 
   test("outputs JSON when json flag is set", async () => {
-    const originalWrite = process.stdout.write;
-    const captured: string[] = [];
-    process.stdout.write = ((chunk: string) => {
-      captured.push(chunk);
-      return true;
-    }) as typeof process.stdout.write;
+    await handleHelloworld([], {}, { json: true });
 
-    try {
-      await handleHelloworld([], {}, { json: true });
-    } finally {
-      process.stdout.write = originalWrite;
-    }
-
-    expect(captured.length).toBe(1);
-    const parsed = JSON.parse(captured[0]);
-    expect(parsed).toContain("Hello dear user");
+    expect(outputMock).toHaveBeenCalledTimes(1);
+    const message = outputMock.mock.calls[0]?.[0];
+    expect(String(message)).toContain("Hello dear user");
   });
 });
