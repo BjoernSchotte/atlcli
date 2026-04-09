@@ -2,11 +2,42 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.16.0] - 2026-04-09
+
+### Bug Fixes
+
+- **release:** Track windows-x64 asset in release script([065215c](https://github.com/bjoernschotte/atlcli/commit/065215c0ff9261f01a4aef2dd28f795423bf0e27))
+
+### Documentation
+
+- **reference:** Add --field examples to CLI reference([067c85a](https://github.com/bjoernschotte/atlcli/commit/067c85a28d6da7bde29470799aabfb98d1480ab8))
+- **install:** Document Windows binary and unsigned-binary warnings([6734fb2](https://github.com/bjoernschotte/atlcli/commit/6734fb2aa0261b0b890f9ae65852abc589f287e3))
+- **release:** Draft v0.16.0 release notes([1f0871a](https://github.com/bjoernschotte/atlcli/commit/1f0871a652733cceded2382c7306a2b9c070758e))
+- **auth:** Document TLS/CA certificate support (#7)([9421cd1](https://github.com/bjoernschotte/atlcli/commit/9421cd165662d79d5538f148ba99235c8c9eaa29))
+
+### Features
+
+- **release:** Auto-detect new contributors in changelog([c716904](https://github.com/bjoernschotte/atlcli/commit/c7169041e0cebf0ddd63efe4e281a9e551f0a5a3))
+
+### Miscellaneous
+
+- **release:** Cross-compile all binaries from Linux, add Windows x64 (#6)([d5931ba](https://github.com/bjoernschotte/atlcli/commit/d5931ba175316a20b6118027af608aa314d308a5))
+- **ci:** Bump actions/checkout to v6 across all workflows([92fdb70](https://github.com/bjoernschotte/atlcli/commit/92fdb70f75e786c7b4a10192c69d5748d7ec23cc))
+
+### Testing
+
+- **cli:** Fix helloworld test isolation (#5)([2b3c786](https://github.com/bjoernschotte/atlcli/commit/2b3c786e0052d16ddb1ddb4dc803cef39dca2c4f))
+
+### New Contributors
+
+- [@twogood](https://github.com/twogood) (David Eriksson) - feat(core): add TLS/CA certificate support for self-signed certificates (#7)
+
 ## [0.15.0] - 2026-03-07
 
 ### Bug Fixes
 
 - **auth:** Harden credential handling([ca542fb](https://github.com/bjoernschotte/atlcli/commit/ca542fb742a4669fd3934af24981efa13265914f))
+- **auth:** Remove .ts extension from test import([15716d5](https://github.com/bjoernschotte/atlcli/commit/15716d53008b463999bcf8c1e864809b62d44e03))
 
 ### Documentation
 
@@ -19,11 +50,6 @@ All notable changes to atlcli will be documented in this file.
 ### Miscellaneous
 
 - Add typescript dev dependency([871d4eb](https://github.com/bjoernschotte/atlcli/commit/871d4ebfe268418b9b53e5c8c2f453cb6fbf6d40))
-
-### New Contributors
-
-- [@andinger](https://github.com/andinger) (Andi Keßler) - Custom field support for Jira issue create and update (#2)
-
 ## [0.14.0] - 2026-01-30
 
 ### Bug Fixes
@@ -56,11 +82,6 @@ All notable changes to atlcli will be documented in this file.
 ### Miscellaneous
 
 - Add .playwright-cli and opensrc to gitignore([20f098a](https://github.com/bjoernschotte/atlcli/commit/20f098ac81b7512e140b8126ffa2abce038dcec6))
-
-### New Contributors
-
-- [@sttts](https://github.com/sttts) (Dr. Stefan Schimanski) - Bearer/PAT authentication for Server/Data Center (#1)
-
 ## [0.13.1] - 2026-01-18
 
 ### Bug Fixes
