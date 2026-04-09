@@ -51,6 +51,10 @@ curl -fsSL https://atlcli.sh/install.sh | bash
 brew install bjoernschotte/tap/atlcli
 ```
 
+### Windows
+
+Download `atlcli-windows-x64.zip` from the [latest release](https://github.com/BjoernSchotte/atlcli/releases/latest), extract it, and add the folder containing `atlcli.exe` to your `PATH`. The binary is unsigned, so Windows SmartScreen may show a warning on first run — click **More info** → **Run anyway**.
+
 ### From Source
 
 ```bash
@@ -61,7 +65,7 @@ bun install && bun run build
 
 ## Requirements
 
-- macOS, Linux, or WSL (Windows native not supported)
+- macOS, Linux, or Windows (x64)
 - Atlassian Cloud instance (Server/Data Center not supported)
 - API token from [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens)
 

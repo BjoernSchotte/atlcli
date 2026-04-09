@@ -51,13 +51,27 @@ Download the latest release for your platform from the [releases page](https://g
 | macOS (Intel) | `atlcli-darwin-x64.tar.gz` |
 | Linux (ARM64) | `atlcli-linux-arm64.tar.gz` |
 | Linux (x64) | `atlcli-linux-x64.tar.gz` |
+| Windows (x64) | `atlcli-windows-x64.zip` |
 
-Extract and add to your PATH:
+On macOS/Linux, extract and add to your PATH:
 
 ```bash
 tar -xzf atlcli-*.tar.gz
 sudo mv atlcli /usr/local/bin/
 ```
+
+On Windows, extract the `.zip` and add the folder containing `atlcli.exe` to your `PATH`.
+
+:::note[Windows SmartScreen]
+The Windows binary is unsigned, so SmartScreen may show a warning on first run. Click **More info** → **Run anyway** to continue. Signed releases are not currently provided.
+:::
+
+:::note[macOS Gatekeeper]
+The macOS binaries are not notarized. On first run you may need to remove the quarantine attribute:
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/atlcli
+```
+:::
 
 ### From Source
 
