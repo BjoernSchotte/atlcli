@@ -14,18 +14,14 @@ env:
   BUN_VERSION: "1.3.5"
 
 jobs:
-  # Build binaries for all platforms
+  # Build one binary per target platform, all cross-compiled from Ubuntu via bun
   build:
     strategy:
       matrix:
-        include:
-          - runner: ubuntu-latest
-            targets: linux-x64,linux-arm64
-          - runner: macos-latest
-            targets: darwin-x64,darwin-arm64
-    runs-on: ${{ matrix.runner }}
+        target: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -46,60 +42,49 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build binaries
+      - name: Build binary
         run: |
           mkdir -p release
           VERSION="${{ steps.version.outputs.version }}"
+          TARGET="${{ matrix.target }}"
 
-          for target in $(echo "${{ matrix.targets }}" | tr ',' ' '); do
-            echo "Building for $target (v$VERSION)..."
-
-            # Build the binary with version injected
+          if [[ "$TARGET" == windows-* ]]; then
+            # Cross-compile Windows binary; bun appends .exe when targeting windows
             bun build apps/cli/src/index.ts \
               --compile \
-              --target "bun-$target" \
+              --target "bun-$TARGET" \
+              --define "__ATLCLI_VERSION__=\"$VERSION\"" \
+              --outfile "release/atlcli.exe"
+            cd release
+            zip "atlcli-$TARGET.zip" atlcli.exe
+            rm atlcli.exe
+            cd ..
+          else
+            bun build apps/cli/src/index.ts \
+              --compile \
+              --target "bun-$TARGET" \
               --define "__ATLCLI_VERSION__=\"$VERSION\"" \
               --outfile "release/atlcli"
-
-            # Package as tar.gz (binary is named 'atlcli' inside)
             cd release
-            tar -czvf "atlcli-$target.tar.gz" atlcli
+            tar -czvf "atlcli-$TARGET.tar.gz" atlcli
             rm atlcli
             cd ..
-
-            echo "Built atlcli-$target.tar.gz"
-          done
-
-      - name: Generate checksums
-        run: |
-          cd release
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            for f in *.tar.gz; do shasum -a 256 "$f" >> checksums.txt; done
-          else
-            sha256sum *.tar.gz >> checksums.txt
           fi
-          cat checksums.txt
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: binaries-${{ matrix.runner }}
-          path: release/*.tar.gz
-
-      - name: Upload checksums
-        uses: actions/upload-artifact@v4
-        with:
-          name: checksums-${{ matrix.runner }}
-          path: release/checksums.txt
+          name: binary-${{ matrix.target }}
+          path: release/
 
   # Create GitHub Release
   release:
-    needs: build
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -113,16 +98,29 @@ jobs:
           fi
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
       - name: Prepare release files
         run: |
           mkdir -p release
-          cp artifacts/binaries-*/*.tar.gz release/
-          cat artifacts/checksums-*/checksums.txt > release/checksums.txt
-          ls -la release/
+          for dir in artifacts/binary-*/; do
+            cp "$dir"*.tar.gz release/ 2>/dev/null || cp "$dir"*.zip release/ 2>/dev/null || true
+          done
+
+          # Generate combined checksums
+          cd release
+          shopt -s nullglob
+          for f in *.tar.gz *.zip; do sha256sum "$f" >> checksums.txt; done
+          shopt -u nullglob
+
+          if [[ ! -s checksums.txt ]]; then
+            echo "ERROR: no release archives found" >&2
+            exit 1
+          fi
+          cat checksums.txt
+          ls -la
 
       - name: Generate changelog
         id: changelog
@@ -172,6 +170,7 @@ jobs:
           body_path: release_notes.md
           files: |
             release/*.tar.gz
+            release/*.zip
             release/checksums.txt
           draft: false
           prerelease: false
