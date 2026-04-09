@@ -103,6 +103,10 @@ async function handleLoginWithMode(
     slugify(new URL(baseUrl).hostname || "default") ||
     "default";
 
+  // TLS options (optional, for on-premises / self-signed certificates)
+  const tlsCaFile = getFlag(flags, "ca-file");
+  const tlsSkipVerify = hasFlag(flags, "insecure") || undefined;
+
   const config = await loadConfig();
 
   if (useBearer) {
@@ -153,6 +157,8 @@ async function handleLoginWithMode(
         username: username || undefined,
         pat: pat || undefined, // Only set if not using keychain
       },
+      tlsCaFile,
+      tlsSkipVerify,
     });
     setCurrentProfile(config, profileName);
     await saveConfig(config);
@@ -206,6 +212,8 @@ async function handleLoginWithMode(
         email,
         token,
       },
+      tlsCaFile,
+      tlsSkipVerify,
     });
     setCurrentProfile(config, profileName);
     await saveConfig(config);
@@ -256,6 +264,14 @@ async function handleStatus(flags: Record<string, string | boolean | string[]>, 
     result.email = profile.auth.email;
     result.hasTokenInConfig = !!profile.auth.token;
     result.hasEnvToken = !!process.env.ATLCLI_API_TOKEN;
+  }
+
+  // Show TLS settings if configured
+  if (profile.tlsCaFile) {
+    result.tlsCaFile = profile.tlsCaFile;
+  }
+  if (profile.tlsSkipVerify) {
+    result.tlsSkipVerify = profile.tlsSkipVerify;
   }
 
   output(result, opts);
@@ -441,6 +457,10 @@ Options:
   --email <email>    Email (for Cloud Basic auth)
   --profile <name>   Profile name for new login
   --delete-keychain  Delete keychain credentials when deleting a profile
+  --ca-file <path>   Path to a custom CA certificate file (PEM) for
+                     self-signed or private CA certificates
+  --insecure         Skip TLS certificate verification (not recommended
+                     for production use)
 
 Token Resolution Priority:
   1. ATLCLI_API_TOKEN environment variable (highest)
@@ -453,6 +473,12 @@ Examples:
 
   # Server/Data Center (Bearer auth with PAT)
   atlcli auth login --bearer --site https://jira.company.com
+
+  # Server with self-signed certificate (Linux/macOS)
+  atlcli auth login --bearer --site https://jira.company.com --ca-file /etc/ssl/certs/company-ca.pem
+
+  # Server with self-signed certificate (Windows)
+  atlcli auth login --bearer --site https://jira.company.com --ca-file C:\certs\company-ca.pem
 
   # Server with keychain storage
   atlcli auth login --bearer --site https://jira.company.com --username myuser

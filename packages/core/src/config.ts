@@ -28,6 +28,10 @@ export type Profile = {
   space?: string;
   /** Profile-specific Jira board ID */
   board?: number;
+  /** Path to a custom CA certificate file (PEM format) for self-signed/private CA certificates */
+  tlsCaFile?: string;
+  /** Skip TLS certificate verification. Not recommended for production use. */
+  tlsSkipVerify?: boolean;
 };
 
 import type { LogLevel } from "./logger.js";

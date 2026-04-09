@@ -16,6 +16,8 @@ type Profile = {
   name: string;
   baseUrl: string;
   auth: AuthConfig;
+  tlsCaFile?: string;
+  tlsSkipVerify?: boolean;
 };
 
 type Config = {
@@ -223,5 +225,42 @@ describe("auth command", () => {
     expect(deleteKeychainToken).toHaveBeenCalledWith("atlcli", "testuser");
     const result = lastOutput as { warning?: string };
     expect(result?.warning).toBeUndefined();
+  });
+
+  test("saves tlsCaFile to profile when --ca-file is provided", async () => {
+    await handleAuth(
+      ["login"],
+      { bearer: true, site: "https://jira.company.com", token: "mytoken", "ca-file": "/path/to/ca.pem" },
+      opts
+    );
+
+    const profiles = Object.values(config.profiles);
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.tlsCaFile).toBe("/path/to/ca.pem");
+  });
+
+  test("saves tlsSkipVerify to profile when --insecure is provided", async () => {
+    await handleAuth(
+      ["login"],
+      { bearer: true, site: "https://jira.company.com", token: "mytoken", insecure: true },
+      opts
+    );
+
+    const profiles = Object.values(config.profiles);
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.tlsSkipVerify).toBe(true);
+  });
+
+  test("does not set tlsCaFile or tlsSkipVerify when TLS flags are absent", async () => {
+    await handleAuth(
+      ["login"],
+      { bearer: true, site: "https://jira.company.com", token: "mytoken" },
+      opts
+    );
+
+    const profiles = Object.values(config.profiles);
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.tlsCaFile).toBeUndefined();
+    expect(profiles[0]?.tlsSkipVerify).toBeUndefined();
   });
 });

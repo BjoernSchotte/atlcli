@@ -1,4 +1,4 @@
-import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader } from "@atlcli/core";
+import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader, buildTlsOptions, TlsOptions } from "@atlcli/core";
 import type {
   JiraProject,
   JiraIssue,
@@ -41,6 +41,7 @@ export class JiraClient {
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private isCloud: boolean;
+  private tlsOptions: TlsOptions | undefined;
 
   constructor(profile: Profile) {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
@@ -50,6 +51,7 @@ export class JiraClient {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
     this.authHeader = buildAuthHeader(profile);
+    this.tlsOptions = buildTlsOptions(profile);
   }
 
   /** API version path - v3 for Cloud, v2 for Server */
@@ -65,6 +67,12 @@ export class JiraClient {
   /** Sleep utility for rate limiting */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Merge TLS options into fetch RequestInit when a custom TLS config is present. */
+  private applyTls(init: RequestInit): RequestInit {
+    if (!this.tlsOptions) return init;
+    return { ...init, tls: this.tlsOptions } as RequestInit;
   }
 
   /**
@@ -111,7 +119,7 @@ export class JiraClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -119,7 +127,7 @@ export class JiraClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
-      });
+      }));
 
       // Handle rate limiting (429)
       if (res.status === 429) {
@@ -1545,12 +1553,12 @@ export class JiraClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const res = await fetch(contentUrl, {
+        const res = await fetch(contentUrl, this.applyTls({
           method: "GET",
           headers: {
             Authorization: this.authHeader,
           },
-        });
+        }));
 
         if (res.status === 429) {
           const retryAfter = res.headers.get("Retry-After");
@@ -1620,14 +1628,14 @@ export class JiraClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const res = await fetch(url, {
+        const res = await fetch(url, this.applyTls({
           method: "POST",
           headers: {
             Authorization: this.authHeader,
             "X-Atlassian-Token": "no-check", // Required for attachment uploads
           },
           body: formData,
-        });
+        }));
 
         if (res.status === 429) {
           const retryAfter = res.headers.get("Retry-After");

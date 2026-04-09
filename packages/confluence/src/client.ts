@@ -1,4 +1,4 @@
-import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader } from "@atlcli/core";
+import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader, buildTlsOptions, TlsOptions } from "@atlcli/core";
 
 export type ConfluencePage = {
   id: string;
@@ -118,6 +118,7 @@ export class ConfluenceClient {
   private authHeader: string;
   private maxRetries = 3;
   private baseDelayMs = 1000;
+  private tlsOptions: TlsOptions | undefined;
 
   constructor(profile: Profile) {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
@@ -125,6 +126,7 @@ export class ConfluenceClient {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
     this.authHeader = buildAuthHeader(profile);
+    this.tlsOptions = buildTlsOptions(profile);
   }
 
   /** Get the Confluence instance base URL */
@@ -135,6 +137,12 @@ export class ConfluenceClient {
   /** Sleep utility for rate limiting */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Merge TLS options into fetch RequestInit when a custom TLS config is present. */
+  private applyTls(init: RequestInit): RequestInit {
+    if (!this.tlsOptions) return init;
+    return { ...init, tls: this.tlsOptions } as RequestInit;
   }
 
   private async request(
@@ -175,7 +183,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -183,7 +191,7 @@ export class ConfluenceClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
-      });
+      }));
 
       // Handle rate limiting (429)
       if (res.status === 429) {
@@ -294,7 +302,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -302,7 +310,7 @@ export class ConfluenceClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
-      });
+      }));
 
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");
@@ -1434,7 +1442,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method: "POST",
         headers: {
           Authorization: this.authHeader,
@@ -1443,7 +1451,7 @@ export class ConfluenceClient {
           // Note: Do NOT set Content-Type - fetch will set it with boundary
         },
         body: formData,
-      });
+      }));
 
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");
@@ -1534,12 +1542,12 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method: "GET",
         headers: {
           Authorization: this.authHeader,
         },
-      });
+      }));
 
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");
@@ -1720,7 +1728,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), {
+      const res = await fetch(url.toString(), this.applyTls({
         method: options.method ?? "GET",
         headers: {
           Authorization: this.authHeader,
@@ -1728,7 +1736,7 @@ export class ConfluenceClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
-      });
+      }));
 
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");

@@ -207,4 +207,41 @@ describe("config", () => {
       expect(profile).toBeUndefined();
     });
   });
+
+  describe("Profile TLS fields", () => {
+    test("profile accepts tlsCaFile field", () => {
+      const profile: Profile = {
+        name: "dc",
+        baseUrl: "https://jira.company.com",
+        auth: { type: "bearer", pat: "token" },
+        tlsCaFile: "/etc/ssl/certs/company-ca.pem",
+      };
+      expect(profile.tlsCaFile).toBe("/etc/ssl/certs/company-ca.pem");
+    });
+
+    test("profile accepts tlsSkipVerify field", () => {
+      const profile: Profile = {
+        name: "dc",
+        baseUrl: "https://jira.company.com",
+        auth: { type: "bearer", pat: "token" },
+        tlsSkipVerify: true,
+      };
+      expect(profile.tlsSkipVerify).toBe(true);
+    });
+
+    test("TLS fields are preserved through setProfile and getProfile", () => {
+      const config = createTestConfig();
+      const newProfile: Profile = {
+        name: "dc",
+        baseUrl: "https://jira.company.com",
+        auth: { type: "bearer", pat: "token" },
+        tlsCaFile: "/path/to/ca.pem",
+        tlsSkipVerify: false,
+      };
+      setProfile(config, newProfile);
+      const retrieved = getProfile(config, "dc");
+      expect(retrieved?.tlsCaFile).toBe("/path/to/ca.pem");
+      expect(retrieved?.tlsSkipVerify).toBe(false);
+    });
+  });
 });
