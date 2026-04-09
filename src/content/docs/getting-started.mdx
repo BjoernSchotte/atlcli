@@ -141,7 +141,14 @@ For Server or Data Center, create a Personal Access Token (PAT) in your instance
 atlcli auth login --bearer --site https://jira.company.com --token YOUR_PAT
 ```
 
-See [Authentication](/authentication/) for details on token storage and Mac Keychain integration.
+If your instance uses a self-signed certificate or an internal Certificate Authority, pass `--ca-file` to point atlcli at your CA bundle:
+
+```bash
+atlcli auth login --bearer --site https://jira.company.internal \
+  --token YOUR_PAT --ca-file /etc/ssl/certs/company-ca.pem
+```
+
+See [Authentication](/authentication/) for details on token storage, Mac Keychain integration, and [TLS / self-signed certificates](/authentication/#tls-and-self-signed-certificates).
 
 ### Initialize Authentication
 

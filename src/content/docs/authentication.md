@@ -81,6 +81,10 @@ atlcli auth login --bearer --site https://jira.company.com --token YOUR_PAT
 
 # With keychain lookup (macOS)
 atlcli auth login --bearer --site https://jira.company.com --username myuser
+
+# With a custom CA certificate (self-signed or internal CA)
+atlcli auth login --bearer --site https://jira.company.internal \
+  --token YOUR_PAT --ca-file /etc/ssl/certs/company-ca.pem
 ```
 
 Options:
@@ -93,6 +97,8 @@ Options:
 | `--bearer` | Use Bearer auth with PAT (for Server/DC) |
 | `--username` | Username for keychain lookup (Server/DC) |
 | `--profile` | Profile name to create/update |
+| `--ca-file` | Path to a custom CA certificate (PEM) for self-signed or internal CAs |
+| `--insecure` | Skip TLS certificate verification (not recommended for production) |
 
 ### Status
 
@@ -197,6 +203,60 @@ atlcli wiki docs pull ./docs --profile client-acme
 atlcli wiki page list --space TEAM --profile work
 ```
 
+## TLS and Self-Signed Certificates
+
+On-premises Jira and Confluence Data Center deployments often use certificates issued by an internal Certificate Authority or self-signed certificates. atlcli supports both scenarios via per-profile TLS settings.
+
+### Custom CA certificate (recommended)
+
+If your instance uses an internal CA, point atlcli at the CA certificate bundle with `--ca-file`:
+
+```bash
+atlcli auth login --bearer \
+  --site https://jira.company.internal \
+  --token YOUR_PAT \
+  --ca-file /etc/ssl/certs/company-ca.pem
+```
+
+The path to the CA file is stored per-profile as `tlsCaFile` and applied to every subsequent Jira and Confluence request for that profile. The file is read on each request, so rotating the CA bundle is as simple as replacing the file on disk — no re-login needed.
+
+Accepted format: PEM-encoded certificates. You can concatenate multiple CAs into a single file.
+
+```bash
+# Windows path example
+atlcli auth login --bearer --site https://jira.company.internal \
+  --token YOUR_PAT --ca-file C:\certs\company-ca.pem
+```
+
+### Skip TLS verification (testing only)
+
+As a last resort — for example, when debugging on a disposable test instance — you can skip TLS verification entirely with `--insecure`:
+
+```bash
+atlcli auth login --bearer --site https://jira.test.local --token YOUR_PAT --insecure
+```
+
+This stores `tlsSkipVerify: true` on the profile.
+
+:::danger[Do not use in production]
+`--insecure` disables TLS certificate validation. Any attacker with network access between you and the Atlassian instance can intercept your PAT and issue traffic. **Always prefer `--ca-file`** unless you are knowingly working against an ephemeral test system.
+:::
+
+### Inspecting TLS settings
+
+Profile TLS settings are visible in `~/.atlcli/credentials.json` under the profile entry:
+
+```json
+{
+  "name": "onprem",
+  "baseUrl": "https://jira.company.internal",
+  "authType": "bearer",
+  "tlsCaFile": "/etc/ssl/certs/company-ca.pem"
+}
+```
+
+To remove TLS settings from a profile, delete and re-create it without the TLS flags.
+
 ## Token Storage
 
 ### Config File
@@ -218,12 +278,19 @@ Credentials are stored at `~/.atlcli/credentials.json`:
       "baseUrl": "https://work.atlassian.net",
       "email": "work@company.com",
       "apiToken": "ATATT3x..."
+    },
+    "onprem": {
+      "name": "onprem",
+      "baseUrl": "https://jira.company.internal",
+      "authType": "bearer",
+      "username": "myuser",
+      "tlsCaFile": "/etc/ssl/certs/company-ca.pem"
     }
   }
 }
 ```
 
-For Server/Data Center profiles using Bearer auth, the profile includes `authType: "bearer"` and may include a `username` for keychain lookup.
+For Server/Data Center profiles using Bearer auth, the profile includes `authType: "bearer"` and may include a `username` for keychain lookup and optional `tlsCaFile` / `tlsSkipVerify` fields for TLS configuration.
 
 :::caution[Security]
 Protect this file with appropriate permissions:

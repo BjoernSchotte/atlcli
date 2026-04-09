@@ -32,6 +32,10 @@ atlcli auth login --profile work --site <url>
 atlcli auth login --bearer --site <url> --token <token>
 atlcli auth login --bearer --site <url> --username <user>  # Uses keychain
 
+# Server/Data Center with self-signed or internal CA certificate
+atlcli auth login --bearer --site <url> --token <token> --ca-file /path/to/ca.pem
+atlcli auth login --bearer --site <url> --token <token> --insecure  # Skip verify (testing only)
+
 # Profile management
 atlcli auth status                      # Show current profile status
 atlcli auth list                        # List all profiles

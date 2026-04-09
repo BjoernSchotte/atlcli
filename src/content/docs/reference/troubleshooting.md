@@ -59,12 +59,33 @@ Error: Request timeout
 ### SSL Certificate Error
 
 ```
+Error: self signed certificate in certificate chain
+Error: unable to verify the first certificate
 Error: Unable to verify certificate
 ```
 
+**Causes:**
+- On-premises Jira/Confluence Data Center using a self-signed certificate
+- Instance certificate issued by an internal / enterprise Certificate Authority not in the system trust store
+- Corporate TLS-intercepting proxy
+
 **Solutions:**
-1. Update system certificates
-2. Check for corporate proxy/firewall
+
+1. **Point atlcli at your internal CA** (recommended). Re-run login with `--ca-file`:
+   ```bash
+   atlcli auth login --bearer --site https://jira.company.internal \
+     --token YOUR_PAT --ca-file /etc/ssl/certs/company-ca.pem
+   ```
+   The CA file path is persisted on the profile and used for every subsequent request. See [TLS and Self-Signed Certificates](/authentication/#tls-and-self-signed-certificates).
+
+2. **Install the CA into your system trust store** (alternative) — appropriate when many tools on the machine need it, not just atlcli.
+
+3. **Check for a corporate TLS-intercepting proxy** — if traffic is being MITM'd by a proxy, you'll need its root CA from your IT team.
+
+4. **Last resort: skip verification with `--insecure`** — only appropriate for disposable test instances. **Never use in production**, as it disables protection against MITM attacks:
+   ```bash
+   atlcli auth login --bearer --site https://jira.test.local --token YOUR_PAT --insecure
+   ```
 
 ## Confluence Issues
 
