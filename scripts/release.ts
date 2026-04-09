@@ -16,7 +16,12 @@ import { readFile, writeFile } from "node:fs/promises";
 const REPO_OWNER = "BjoernSchotte";
 const REPO_NAME = "atlcli";
 const HOMEBREW_TAP = "bjoernschotte/homebrew-tap";
-const TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"];
+const TARGETS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"];
+
+function assetNameFor(target: string): string {
+  const ext = target.startsWith("windows-") ? "zip" : "tar.gz";
+  return `atlcli-${target}.${ext}`;
+}
 
 interface Args {
   type: "patch" | "minor" | "major";
@@ -294,7 +299,7 @@ async function waitForRelease(newVersion: string): Promise<void> {
       const result = await $`gh api repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${tag}`.json();
       const release = result as { assets: { name: string }[] };
       const assets = release.assets.map((a) => a.name);
-      const expected = TARGETS.map((t) => `atlcli-${t}.tar.gz`);
+      const expected = TARGETS.map(assetNameFor);
 
       if (expected.every((e) => assets.includes(e))) {
         console.log("  All release artifacts ready");
