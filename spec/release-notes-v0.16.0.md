@@ -1,8 +1,8 @@
-# atlcli v0.16.0 — Release Notes Draft
-
-> Draft release notes for the GitHub release page. Paste into `gh release edit v0.16.0 --notes-file spec/release-notes-v0.16.0.md` after cutting the release, or into the GitHub release UI directly.
-
----
+<!--
+Release notes for atlcli v0.16.0. Uploaded to the GitHub release page via:
+  gh release edit v0.16.0 --notes-file spec/release-notes-v0.16.0.md
+Starts at "## Highlights" below — the HTML comment is hidden by GitHub.
+-->
 
 ## Highlights
 
