@@ -118,6 +118,22 @@ describe("hierarchy utilities", () => {
 
       expect(result.relativePath).toBe("page.md");
     });
+
+    test("handles undefined title without crashing (API may omit title)", () => {
+      // Simulates a page returned from the Confluence API with a missing title,
+      // which causes: "undefined is not an object (evaluating 'title.toLowerCase')"
+      const page = {
+        id: "100",
+        title: undefined as unknown as string,
+        parentId: null,
+        ancestors: [],
+      } as PageHierarchyInfo;
+      const ancestorTitles = new Map<string, string>();
+
+      const result = computeFilePath(page, ancestorTitles);
+
+      expect(result.relativePath).toBe("page.md");
+    });
   });
 
   describe("parseFilePath", () => {
