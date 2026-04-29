@@ -15,7 +15,7 @@
 
 # atlcli
 
-A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, manage Jira issues from your terminal.
+A blazingly fast CLI for Atlassian products. Sync Confluence pages as markdown, manage Jira issues from your terminal. Works with both Atlassian Cloud and Data Center (on-premises) deployments.
 
 ## Key Features
 
@@ -66,8 +66,8 @@ bun install && bun run build
 ## Requirements
 
 - macOS, Linux, or Windows (x64)
-- Atlassian Cloud instance (Server/Data Center not supported)
-- API token from [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens)
+- Atlassian Cloud **or** Data Center (on-premises) instance
+- API token from [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens) (Cloud) or a Personal Access Token from your Data Center instance
 
 See [Getting Started](https://atlcli.sh/getting-started/) for detailed setup instructions.
 
