@@ -45,7 +45,7 @@ verify_checksum() {
   }
 
   local expected
-  expected=$(echo "$checksums" | grep "$(basename "$file")" | awk '{print $1}')
+  expected=$(echo "$checksums" | grep -F "$(basename "$file")" | awk '{print $1}')
   if [ -z "$expected" ]; then
     warn "No checksum found for $(basename "$file") — skipping verification"
     return 0
@@ -81,7 +81,7 @@ install_atlcli() {
 
   local tmpdir
   tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
+  trap "rm -rf '$tmpdir'" EXIT
 
   if ! curl -fsSL -o "$tmpdir/$asset" "$base_url/$asset"; then
     error "Failed to download from $base_url/$asset"
