@@ -736,7 +736,8 @@ export async function deleteBaseContent(
 /**
  * Convert a page title to a clean filename (slug).
  */
-export function slugifyTitle(title: string): string {
+export function slugifyTitle(title: string | undefined | null): string {
+  if (!title) return "";
   return title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-") // Replace non-alphanumeric with dash
