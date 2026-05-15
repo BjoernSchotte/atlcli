@@ -203,13 +203,27 @@ async function getPreviousTag(): Promise<string> {
   return tag.trim();
 }
 
-async function findNewContributors(previousTag: string): Promise<ContributorInfo[]> {
+/**
+ * Extracts the numbers of PRs merged since `previousTag`. Catches both squashed
+ * commits (`... (#12)`) and merge commits (`Merge pull request #12`).
+ */
+async function getMergedPrNumbers(previousTag: string): Promise<number[]> {
   const log = await $`git log ${previousTag}..HEAD --oneline`.text();
-  const prNumbers = [...log.matchAll(/\(#(\d+)\)/g)].map((m) => Number(m[1]));
+  const numbers = new Set<number>();
+  for (const m of log.matchAll(/\(#(\d+)\)/g)) numbers.add(Number(m[1]));
+  for (const m of log.matchAll(/Merge pull request #(\d+)/g)) numbers.add(Number(m[1]));
+  return [...numbers].sort((a, b) => a - b);
+}
 
+async function findNewContributors(previousTag: string): Promise<ContributorInfo[]> {
+  const prNumbers = await getMergedPrNumbers(previousTag);
   if (prNumbers.length === 0) return [];
 
-  const tagDate = (await $`git tag -l --format=${"%(creatordate:short)"} ${previousTag}`.text()).trim();
+  // A contributor is "new" if every merged PR they have authored falls within
+  // this release. Checking PR membership (rather than comparing merge dates to
+  // the tag date) avoids same-day boundary errors where a prior PR merged on
+  // the exact day of the previous tag would be missed.
+  const releasePrs = new Set(prNumbers);
   const seen = new Set<string>();
   const contributors: ContributorInfo[] = [];
 
@@ -222,12 +236,12 @@ async function findNewContributors(previousTag: string): Promise<ContributorInfo
       if (login === REPO_OWNER || seen.has(login)) continue;
       seen.add(login);
 
-      // Check if author has any PRs merged before the previous tag date
-      const existing =
-        await $`gh pr list --state merged --author ${login} --search ${"merged:<" + tagDate} --limit 1 --json number`.json();
-      const existingPRs = existing as { number: number }[];
+      const allMergedRaw =
+        await $`gh pr list --state merged --author ${login} --limit 100 --json number`.json();
+      const allMerged = (allMergedRaw as { number: number }[]).map((p) => p.number);
+      const hasPriorPR = allMerged.some((n) => !releasePrs.has(n));
 
-      if (existingPRs.length === 0) {
+      if (!hasPriorPR) {
         contributors.push({
           login,
           name: pr.author.name || login,
@@ -242,6 +256,24 @@ async function findNewContributors(previousTag: string): Promise<ContributorInfo
   }
 
   return contributors;
+}
+
+/**
+ * Inserts a section before `heading`, normalizing whitespace to exactly one
+ * blank line on each side so repeated insertions (New Contributors, then
+ * Thanks) do not accumulate blank lines. Returns null if the heading is absent.
+ */
+function insertBeforeHeading(
+  changelog: string,
+  heading: string,
+  sectionLines: string[],
+): string | null {
+  const idx = changelog.indexOf(heading);
+  if (idx === -1) return null;
+
+  const before = changelog.slice(0, idx).replace(/\n+$/, "\n");
+  const section = sectionLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+  return `${before}\n${section}\n\n${changelog.slice(idx)}`;
 }
 
 async function injectNewContributors(
@@ -276,17 +308,14 @@ async function injectNewContributors(
   ];
 
   const changelog = await readFile(changelogPath, "utf8");
-  const previousVersion = previousTag.replace(/^v/, "");
-  const heading = `## [${previousVersion}]`;
-  const headingIndex = changelog.indexOf(heading);
+  const heading = `## [${previousTag.replace(/^v/, "")}]`;
+  const updated = insertBeforeHeading(changelog, heading, lines);
 
-  if (headingIndex === -1) {
+  if (updated === null) {
     console.log(`  Warning: Could not find "${heading}" in ${changelogPath}, skipping injection`);
     return;
   }
 
-  const updated =
-    changelog.slice(0, headingIndex) + lines.join("\n") + "\n\n" + changelog.slice(headingIndex);
   await writeFile(changelogPath, updated);
   console.log("  New Contributors section added");
 }
@@ -301,19 +330,13 @@ const CLOSING_KEYWORD_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)
  * own PRs closed are still credited to whoever reported them.
  */
 async function findReleaseAcknowledgments(previousTag: string): Promise<ReleaseAcknowledgments> {
-  const log = await $`git log ${previousTag}..HEAD --oneline`.text();
-
-  // PR references appear either as "(#12)" in squashed commits or as
-  // "Merge pull request #12" in merge commits — collect both.
-  const prNumbers = new Set<number>();
-  for (const m of log.matchAll(/\(#(\d+)\)/g)) prNumbers.add(Number(m[1]));
-  for (const m of log.matchAll(/Merge pull request #(\d+)/g)) prNumbers.add(Number(m[1]));
+  const prNumbers = await getMergedPrNumbers(previousTag);
 
   const prByLogin = new Map<string, Set<number>>();
   const issueByLogin = new Map<string, Set<number>>();
   const seenIssues = new Set<number>();
 
-  for (const prNumber of [...prNumbers].sort((a, b) => a - b)) {
+  for (const prNumber of prNumbers) {
     let pr: { author: { login: string }; body: string | null };
     try {
       pr = await $`gh pr view ${prNumber} --json author,body`.json();
@@ -404,17 +427,14 @@ async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md")
   ];
 
   const changelog = await readFile(changelogPath, "utf8");
-  const previousVersion = previousTag.replace(/^v/, "");
-  const heading = `## [${previousVersion}]`;
-  const headingIndex = changelog.indexOf(heading);
+  const heading = `## [${previousTag.replace(/^v/, "")}]`;
+  const updated = insertBeforeHeading(changelog, heading, lines);
 
-  if (headingIndex === -1) {
+  if (updated === null) {
     console.log(`  Warning: Could not find "${heading}" in ${changelogPath}, skipping injection`);
     return;
   }
 
-  const updated =
-    changelog.slice(0, headingIndex) + lines.join("\n") + "\n\n" + changelog.slice(headingIndex);
   await writeFile(changelogPath, updated);
   console.log(
     `  Thanks section added (${prContributors.length} contributor(s), ${issueReporters.length} reporter(s))`,
