@@ -125,9 +125,9 @@ async function handleCommand(args: string[], flags: Flags, opts: Options): Promi
 Releases are automated via the release script:
 
 ```bash
-bun scripts/release.ts patch    # 0.6.0 → 0.6.1
-bun scripts/release.ts minor    # 0.6.0 → 0.7.0
-bun scripts/release.ts major    # 0.6.0 → 1.0.0
+bun scripts/release.ts patch    # 0.16.0 → 0.16.1
+bun scripts/release.ts minor    # 0.16.0 → 0.17.0
+bun scripts/release.ts major    # 0.16.0 → 1.0.0
 ```
 
 ### What the Release Script Does
@@ -135,7 +135,7 @@ bun scripts/release.ts major    # 0.6.0 → 1.0.0
 1. Validates clean working directory and main branch
 2. Runs tests and type checking
 3. Bumps version in `package.json`
-4. Generates changelog with git-cliff
+4. Generates the changelog with git-cliff, crediting contributors and issue reporters
 5. Creates commit and tag
 6. Pushes to origin (triggers GitHub release workflow)
 7. Waits for release artifacts
@@ -143,7 +143,8 @@ bun scripts/release.ts major    # 0.6.0 → 1.0.0
 
 ### Options
 
-- `--dry-run` - Create commits/tags locally without pushing
+- `--dry-run` - Print the release plan and exit; makes no changes
+- `--preview` - Render the changelog entry (including the Thanks section) and exit; makes no changes
 - `--skip-tests` - Skip test step (use with caution)
 
 ### Prerequisites
@@ -151,15 +152,16 @@ bun scripts/release.ts major    # 0.6.0 → 1.0.0
 - GitHub CLI authenticated (`gh auth login`)
 - On main branch with clean working directory
 
-### Example: Dry Run
+### Example: Preview a Release
+
+Both `--dry-run` and `--preview` print and exit without changing anything, so no rollback is needed:
 
 ```bash
-# Preview release without pushing
-bun scripts/release.ts patch --dry-run
+# Show the step-by-step release plan
+bun scripts/release.ts minor --dry-run
 
-# Review changes, then rollback
-git reset --hard HEAD~1
-git tag -d v0.6.1
+# Render the changelog entry, including the Thanks section
+bun scripts/release.ts minor --preview
 ```
 
 ## Reporting Issues

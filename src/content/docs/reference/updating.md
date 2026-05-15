@@ -17,7 +17,7 @@ atlcli update
 atlcli update --check
 
 # Install specific version
-atlcli update v0.5.0
+atlcli update v0.16.0
 ```
 
 ## Automatic Update Checks
@@ -25,7 +25,7 @@ atlcli update v0.5.0
 By default, atlcli checks for updates once per day when running commands in an interactive terminal. If an update is available, you'll see a notification:
 
 ```
-Update available: 0.5.1 → 0.6.0. Run: atlcli update
+Update available: 0.16.0 → 0.17.0. Run: atlcli update
 ```
 
 ### When Auto-Check is Disabled
@@ -67,7 +67,7 @@ Shows Homebrew update instructions:
 
 ```bash
 $ atlcli update
-Update available: 0.5.1 → 0.6.0
+Update available: 0.16.0 → 0.17.0
 
 Installed via Homebrew. To update, run:
   brew update && brew upgrade atlcli
@@ -79,7 +79,7 @@ Shows source update instructions:
 
 ```bash
 $ atlcli update
-atlcli 0.5.1 is up to date.
+atlcli 0.17.0 is up to date.
 
 Running from source. To update, run:
   git pull && bun run build
@@ -91,10 +91,10 @@ Install a specific version (useful for testing or rollback):
 
 ```bash
 # Install specific version
-atlcli update v0.5.0
+atlcli update v0.16.0
 
 # Or reinstall via install script
-curl -fsSL https://atlcli.sh/install.sh | bash -s v0.5.0
+curl -fsSL https://atlcli.sh/install.sh | bash -s v0.16.0
 ```
 
 ## JSON Output
@@ -110,8 +110,8 @@ Output:
 ```json
 {
   "schemaVersion": "1",
-  "currentVersion": "0.5.1",
-  "latestVersion": "0.6.0",
+  "currentVersion": "0.16.0",
+  "latestVersion": "0.17.0",
   "updateAvailable": true,
   "installMethod": "script"
 }

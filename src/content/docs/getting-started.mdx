@@ -22,10 +22,14 @@ curl -fsSL https://atlcli.sh/install.sh | bash
 Install a specific version:
 
 ```bash
-curl -fsSL https://atlcli.sh/install.sh | bash -s v0.5.1
+curl -fsSL https://atlcli.sh/install.sh | bash -s v0.16.0
 ```
 
 This installs to `~/.atlcli/bin` and updates your shell PATH automatically.
+
+:::note[Verified downloads]
+The install script downloads the release archive, verifies its SHA-256 checksum against the `checksums.txt` published with each release, and only then installs. If the checksums file is unavailable — for example, for a pre-release — it warns and continues.
+:::
 
 ### Homebrew
 
