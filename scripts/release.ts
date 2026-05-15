@@ -3,10 +3,11 @@
  * Release script for atlcli.
  *
  * Usage:
- *   bun scripts/release.ts patch          # 0.6.0 → 0.6.1
- *   bun scripts/release.ts minor          # 0.6.0 → 0.7.0
- *   bun scripts/release.ts major          # 0.6.0 → 1.0.0
- *   bun scripts/release.ts --dry-run      # Preview what would happen (no changes)
+ *   bun scripts/release.ts patch          # 0.16.0 → 0.16.1
+ *   bun scripts/release.ts minor          # 0.16.0 → 0.17.0
+ *   bun scripts/release.ts major          # 0.16.0 → 1.0.0
+ *   bun scripts/release.ts minor --dry-run   # Print the release plan (no changes)
+ *   bun scripts/release.ts minor --preview   # Render the changelog entry (no changes)
  *   bun scripts/release.ts --skip-tests   # Skip test step
  */
 
@@ -84,9 +85,9 @@ function showHelp(): void {
 Usage: bun scripts/release.ts [type] [options]
 
 Types:
-  patch          Bump patch version (0.6.0 → 0.6.1) [default]
-  minor          Bump minor version (0.6.0 → 0.7.0)
-  major          Bump major version (0.6.0 → 1.0.0)
+  patch          Bump patch version (0.16.0 → 0.16.1) [default]
+  minor          Bump minor version (0.16.0 → 0.17.0)
+  major          Bump major version (0.16.0 → 1.0.0)
 
 Options:
   --dry-run      Print the release plan and exit (no changes made)
