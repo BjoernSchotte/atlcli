@@ -27,6 +27,7 @@ interface Args {
   type: "patch" | "minor" | "major";
   dryRun: boolean;
   skipTests: boolean;
+  preview: boolean;
 }
 
 interface ContributorInfo {
@@ -36,11 +37,24 @@ interface ContributorInfo {
   prTitle: string;
 }
 
+/** A contributor or reporter to credit in the changelog's "Thanks" section. */
+interface Acknowledgment {
+  login: string;
+  /** PR numbers authored, or issue numbers reported. */
+  numbers: number[];
+}
+
+interface ReleaseAcknowledgments {
+  prContributors: Acknowledgment[];
+  issueReporters: Acknowledgment[];
+}
+
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     type: "patch",
     dryRun: false,
     skipTests: false,
+    preview: false,
   };
 
   for (const arg of argv) {
@@ -48,6 +62,8 @@ function parseArgs(argv: string[]): Args {
       args.type = arg;
     } else if (arg === "--dry-run") {
       args.dryRun = true;
+    } else if (arg === "--preview") {
+      args.preview = true;
     } else if (arg === "--skip-tests") {
       args.skipTests = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -73,13 +89,15 @@ Types:
   major          Bump major version (0.6.0 → 1.0.0)
 
 Options:
-  --dry-run      Preview what would happen (no changes made)
+  --dry-run      Print the release plan and exit (no changes made)
+  --preview      Render the changelog entry (incl. Thanks section) and exit
   --skip-tests   Skip running tests before release
   --help, -h     Show this help message
 
 Examples:
   bun scripts/release.ts patch
   bun scripts/release.ts minor --dry-run
+  bun scripts/release.ts minor --preview
   bun scripts/release.ts major --skip-tests
 `);
 }
@@ -171,10 +189,13 @@ async function updateVersion(newVersion: string): Promise<void> {
   console.log("  package.json updated");
 }
 
-async function generateChangelog(newVersion: string): Promise<void> {
+async function generateChangelog(
+  newVersion: string,
+  changelogPath = "CHANGELOG.md",
+): Promise<void> {
   console.log("Generating changelog...");
-  await $`bunx git-cliff --tag v${newVersion} -o CHANGELOG.md`;
-  console.log("  CHANGELOG.md updated");
+  await $`bunx git-cliff --tag v${newVersion} -o ${changelogPath}`;
+  console.log(`  ${changelogPath} updated`);
 }
 
 async function getPreviousTag(): Promise<string> {
@@ -223,7 +244,10 @@ async function findNewContributors(previousTag: string): Promise<ContributorInfo
   return contributors;
 }
 
-async function injectNewContributors(newVersion: string): Promise<void> {
+async function injectNewContributors(
+  newVersion: string,
+  changelogPath = "CHANGELOG.md",
+): Promise<void> {
   let previousTag: string;
   try {
     previousTag = await getPreviousTag();
@@ -251,20 +275,185 @@ async function injectNewContributors(newVersion: string): Promise<void> {
     ),
   ];
 
-  const changelog = await readFile("CHANGELOG.md", "utf8");
+  const changelog = await readFile(changelogPath, "utf8");
   const previousVersion = previousTag.replace(/^v/, "");
   const heading = `## [${previousVersion}]`;
   const headingIndex = changelog.indexOf(heading);
 
   if (headingIndex === -1) {
-    console.log(`  Warning: Could not find "${heading}" in CHANGELOG.md, skipping injection`);
+    console.log(`  Warning: Could not find "${heading}" in ${changelogPath}, skipping injection`);
     return;
   }
 
   const updated =
     changelog.slice(0, headingIndex) + lines.join("\n") + "\n\n" + changelog.slice(headingIndex);
-  await writeFile("CHANGELOG.md", updated);
-  console.log("  New Contributors section added to CHANGELOG.md");
+  await writeFile(changelogPath, updated);
+  console.log("  New Contributors section added");
+}
+
+/** Regex matching GitHub issue-closing keywords (fixes #4, closes #12, …). */
+const CLOSING_KEYWORD_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
+
+/**
+ * Collects everyone worth thanking for a release: authors of PRs merged since
+ * `previousTag`, and reporters of the issues those PRs closed. The repo owner
+ * is excluded from both lists (you don't thank yourself), but issues the owner's
+ * own PRs closed are still credited to whoever reported them.
+ */
+async function findReleaseAcknowledgments(previousTag: string): Promise<ReleaseAcknowledgments> {
+  const log = await $`git log ${previousTag}..HEAD --oneline`.text();
+
+  // PR references appear either as "(#12)" in squashed commits or as
+  // "Merge pull request #12" in merge commits — collect both.
+  const prNumbers = new Set<number>();
+  for (const m of log.matchAll(/\(#(\d+)\)/g)) prNumbers.add(Number(m[1]));
+  for (const m of log.matchAll(/Merge pull request #(\d+)/g)) prNumbers.add(Number(m[1]));
+
+  const prByLogin = new Map<string, Set<number>>();
+  const issueByLogin = new Map<string, Set<number>>();
+  const seenIssues = new Set<number>();
+
+  for (const prNumber of [...prNumbers].sort((a, b) => a - b)) {
+    let pr: { author: { login: string }; body: string | null };
+    try {
+      pr = await $`gh pr view ${prNumber} --json author,body`.json();
+    } catch {
+      console.log(`  Warning: Could not fetch PR #${prNumber}, skipping`);
+      continue;
+    }
+
+    const login = pr.author?.login;
+    if (login && login !== REPO_OWNER) {
+      const set = prByLogin.get(login) ?? new Set<number>();
+      set.add(prNumber);
+      prByLogin.set(login, set);
+    }
+
+    // Credit reporters of the issues this PR closed.
+    for (const m of (pr.body ?? "").matchAll(CLOSING_KEYWORD_RE)) {
+      const issueNumber = Number(m[1]);
+      if (issueNumber === prNumber || seenIssues.has(issueNumber)) continue;
+      seenIssues.add(issueNumber);
+      try {
+        const issue = (await $`gh issue view ${issueNumber} --json author`.json()) as {
+          author: { login: string };
+        };
+        const reporter = issue.author?.login;
+        if (reporter && reporter !== REPO_OWNER) {
+          const set = issueByLogin.get(reporter) ?? new Set<number>();
+          set.add(issueNumber);
+          issueByLogin.set(reporter, set);
+        }
+      } catch {
+        console.log(`  Warning: Could not fetch issue #${issueNumber}, skipping`);
+      }
+    }
+  }
+
+  const toSortedList = (map: Map<string, Set<number>>): Acknowledgment[] =>
+    [...map.entries()]
+      .map(([login, nums]) => ({ login, numbers: [...nums].sort((a, b) => a - b) }))
+      .sort((a, b) => a.login.localeCompare(b.login));
+
+  return {
+    prContributors: toSortedList(prByLogin),
+    issueReporters: toSortedList(issueByLogin),
+  };
+}
+
+/**
+ * Adds a "Thanks" section to the new release's changelog entry, crediting PR
+ * contributors and issue reporters. Inserted directly before the previous
+ * version's heading, so it lands under the new version.
+ */
+async function injectThanks(_newVersion: string, changelogPath = "CHANGELOG.md"): Promise<void> {
+  let previousTag: string;
+  try {
+    previousTag = await getPreviousTag();
+  } catch {
+    console.log("  No previous tag found, skipping thanks section");
+    return;
+  }
+
+  const { prContributors, issueReporters } = await findReleaseAcknowledgments(previousTag);
+
+  if (prContributors.length === 0 && issueReporters.length === 0) {
+    console.log("  No external contributors or reporters to thank");
+    return;
+  }
+
+  const refs = (nums: number[]) => nums.map((n) => `#${n}`).join(", ");
+  const entries = [
+    ...prContributors.map(
+      (c) =>
+        `- [@${c.login}](https://github.com/${c.login}) — ${c.numbers.length > 1 ? "PRs" : "PR"} ${refs(c.numbers)}`,
+    ),
+    ...issueReporters.map(
+      (r) =>
+        `- [@${r.login}](https://github.com/${r.login}) — reported ${r.numbers.length > 1 ? "issues" : "issue"} ${refs(r.numbers)}`,
+    ),
+  ];
+
+  const lines = [
+    "",
+    "### Thanks",
+    "",
+    "A big thank you to everyone who helped shape this release 🙏",
+    "",
+    ...entries,
+  ];
+
+  const changelog = await readFile(changelogPath, "utf8");
+  const previousVersion = previousTag.replace(/^v/, "");
+  const heading = `## [${previousVersion}]`;
+  const headingIndex = changelog.indexOf(heading);
+
+  if (headingIndex === -1) {
+    console.log(`  Warning: Could not find "${heading}" in ${changelogPath}, skipping injection`);
+    return;
+  }
+
+  const updated =
+    changelog.slice(0, headingIndex) + lines.join("\n") + "\n\n" + changelog.slice(headingIndex);
+  await writeFile(changelogPath, updated);
+  console.log(
+    `  Thanks section added (${prContributors.length} contributor(s), ${issueReporters.length} reporter(s))`,
+  );
+}
+
+/**
+ * Renders the changelog entry for `newVersion` to a temp file — including the
+ * New Contributors and Thanks sections — and prints just that entry. Touches
+ * neither CHANGELOG.md nor git, so it is safe to run anytime.
+ */
+async function previewChangelog(newVersion: string): Promise<void> {
+  const previewPath = `${(await $`mktemp`.text()).trim()}`;
+  try {
+    console.log(`\nRendering changelog entry for v${newVersion}...\n`);
+    await generateChangelog(newVersion, previewPath);
+    await injectNewContributors(newVersion, previewPath);
+    await injectThanks(newVersion, previewPath);
+
+    const full = await readFile(previewPath, "utf8");
+    const start = full.indexOf(`## [${newVersion}]`);
+    let previousTag = "";
+    try {
+      previousTag = await getPreviousTag();
+    } catch {
+      /* no previous tag — print to end */
+    }
+    const end = previousTag
+      ? full.indexOf(`## [${previousTag.replace(/^v/, "")}]`)
+      : full.length;
+
+    const entry =
+      start === -1 ? full : full.slice(start, end > start ? end : full.length).trimEnd();
+    const rule = "─".repeat(70);
+    console.log(`\n${rule}\n${entry}\n${rule}`);
+    console.log("\nPREVIEW ONLY — CHANGELOG.md and git are untouched.");
+  } finally {
+    await $`rm -f ${previewPath}`.quiet();
+  }
 }
 
 async function commitRelease(newVersion: string): Promise<void> {
@@ -331,7 +520,7 @@ Steps that would be executed:
   1. ${skipTests ? "[SKIP] " : ""}Run tests: bun run typecheck && bun test
   2. Update version: package.json (version: "${newVersion}")
   3. Generate changelog: bunx git-cliff --tag v${newVersion} -o CHANGELOG.md
-  4. Detect new contributors and add to CHANGELOG.md (via GitHub API)
+  4. Add "New Contributors" + "Thanks" sections to CHANGELOG.md (via GitHub API)
   5. Commit: git commit -m "chore(release): v${newVersion}"
   6. Tag: git tag v${newVersion}
   7. Push: git push origin main && git push origin v${newVersion}
@@ -378,6 +567,12 @@ async function main(): Promise<void> {
       return;
     }
 
+    // PREVIEW: Render the changelog entry (incl. Thanks section) and exit
+    if (args.preview) {
+      await previewChangelog(newVersion);
+      return;
+    }
+
     console.log(`\nReleasing: ${currentVersion} → ${newVersion}\n`);
 
     // 3. Run tests (unless skipped)
@@ -396,6 +591,10 @@ async function main(): Promise<void> {
     // 5b. Detect and inject new contributors
     console.log("Checking for new contributors...");
     await injectNewContributors(newVersion);
+
+    // 5c. Thank PR contributors and issue reporters
+    console.log("Collecting contributors to thank...");
+    await injectThanks(newVersion);
 
     // 6. Commit changes
     await commitRelease(newVersion);
