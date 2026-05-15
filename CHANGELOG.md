@@ -2,6 +2,32 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.17.0] - 2026-05-15
+
+### Bug Fixes
+
+- **confluence:** Handle undefined page title crash in slugifyTitle (#9)([46d0c81](https://github.com/bjoernschotte/atlcli/commit/46d0c81f4cad0697cd31cd141054aee2a0831e10))
+- Serve install.sh via docs site and add checksum verification([d52b7b9](https://github.com/bjoernschotte/atlcli/commit/d52b7b97eeee1adf7bd50e197a4a87a683104cf5))
+- Fix tmpdir cleanup leak and harden checksum grep in install.sh([3e05f4e](https://github.com/bjoernschotte/atlcli/commit/3e05f4e9fa62572c84c4f3ac727167a6d59be735))
+- **release:** Correct new-contributor detection across tag-day boundary([94d4996](https://github.com/bjoernschotte/atlcli/commit/94d4996a430ea77349682584c546cecd461d6455))
+
+### Documentation
+
+- **release:** Clean meta header out of v0.16.0 release notes([a7d4bd0](https://github.com/bjoernschotte/atlcli/commit/a7d4bd0e10005e6322108c9e13b16c827fe883ac))
+- Note that Confluence appends /wiki to site URL in auth help text (#10)([58f742c](https://github.com/bjoernschotte/atlcli/commit/58f742cbb6af990ef27d4f052a560324a1b48575))
+- Update README to note Jira and Confluence Data Center (on-prem) support (#11)([c5142cd](https://github.com/bjoernschotte/atlcli/commit/c5142cdcf28f0ff8c15e6031a60216d92f0d816c))
+
+### Features
+
+- **release:** Credit PR contributors and issue reporters in changelog([4bdf47d](https://github.com/bjoernschotte/atlcli/commit/4bdf47d3f44843bfa64bb1f2dda9f74756335d07))
+
+### Thanks
+
+A big thank you to everyone who helped shape this release 🙏
+
+- [@twogood](https://github.com/twogood) — PRs #9, #10, #11
+- [@byteboon](https://github.com/byteboon) — reported issue #4
+
 ## [0.16.0] - 2026-04-09
 
 ### Bug Fixes
@@ -27,11 +53,6 @@ All notable changes to atlcli will be documented in this file.
 ### Testing
 
 - **cli:** Fix helloworld test isolation (#5)([2b3c786](https://github.com/bjoernschotte/atlcli/commit/2b3c786e0052d16ddb1ddb4dc803cef39dca2c4f))
-
-### New Contributors
-
-- [@twogood](https://github.com/twogood) (David Eriksson) - feat(core): add TLS/CA certificate support for self-signed certificates (#7)
-
 ## [0.15.0] - 2026-03-07
 
 ### Bug Fixes
