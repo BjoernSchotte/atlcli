@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/content/**'
       - 'src/styles/**'
+      - 'src/components/**'
+      - 'public/**'
       - 'astro.config.mjs'
       - 'package.json'
       - '.github/workflows/docs.yml'
