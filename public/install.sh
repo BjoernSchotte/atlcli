@@ -34,17 +34,63 @@ get_latest_version() {
     | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
+verify_checksum() {
+  local file="$1"
+  local checksums_url="$2"
+
+  local checksums
+  checksums=$(curl -fsSL "$checksums_url" 2>/dev/null) || {
+    warn "Could not download checksums — skipping verification"
+    return 0
+  }
+
+  local expected
+  expected=$(echo "$checksums" | grep -F "$(basename "$file")" | awk '{print $1}')
+  if [ -z "$expected" ]; then
+    warn "No checksum found for $(basename "$file") — skipping verification"
+    return 0
+  fi
+
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$file" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$file" | awk '{print $1}')
+  else
+    warn "Neither sha256sum nor shasum available — skipping verification"
+    return 0
+  fi
+
+  if [ "$actual" != "$expected" ]; then
+    rm -f "$file"
+    error "Checksum mismatch (expected $expected, got $actual)"
+  fi
+
+  info "Checksum verified ✓"
+}
+
 install_atlcli() {
   local version="${1:-$(get_latest_version)}"
   local target=$(detect_platform)
-  local url="https://github.com/$REPO/releases/download/$version/atlcli-$target.tar.gz"
+  local asset="atlcli-$target.tar.gz"
+  local base_url="https://github.com/$REPO/releases/download/$version"
 
   info "Installing atlcli $version ($target)..."
 
   mkdir -p "$BIN_DIR"
 
-  if ! curl -fsSL "$url" | tar -xz -C "$BIN_DIR"; then
-    error "Failed to download from $url"
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap "rm -rf '$tmpdir'" EXIT
+
+  if ! curl -fsSL -o "$tmpdir/$asset" "$base_url/$asset"; then
+    error "Failed to download from $base_url/$asset"
+  fi
+
+  verify_checksum "$tmpdir/$asset" "$base_url/checksums.txt"
+
+  if ! tar -xzf "$tmpdir/$asset" -C "$BIN_DIR"; then
+    error "Failed to extract archive"
   fi
 
   chmod +x "$BIN_DIR/atlcli"
