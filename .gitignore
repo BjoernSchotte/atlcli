@@ -12,3 +12,7 @@ spec/internal/
 .astro/
 .playwright-cli/
 opensrc/
+
+# SonarQube coverage artifact
+coverage/
+.scannerwork/
