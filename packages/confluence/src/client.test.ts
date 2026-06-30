@@ -317,6 +317,101 @@ describe("ConfluenceClient", () => {
     });
   });
 
+  describe("context path handling (Cloud vs Data Center)", () => {
+    // Regression coverage for the hardcoded `/wiki` path. Atlassian Cloud
+    // serves Confluence under `/wiki`, while Server/Data Center instances are
+    // served from their own context path (e.g. `/confluence`) that is already
+    // part of the configured site URL. The client must not blindly append
+    // `/wiki` for the latter, otherwise REST requests hit a non-existent path
+    // (manifesting as 404/405 page create/update failures).
+
+    // Mock fetch to return `body`, run `call` against a client for `baseUrl`,
+    // and return the URL the client actually requested.
+    async function captureRequestUrl(
+      baseUrl: string,
+      body: unknown,
+      call: (client: ConfluenceClient) => Promise<unknown>
+    ): Promise<string> {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      await call(new ConfluenceClient({ ...mockProfile, baseUrl }));
+      return capturedUrl;
+    }
+
+    const pageBody = { id: "123", title: "Test", version: { number: 1 }, space: { key: "TEST" } };
+
+    // REST v1 path building: Cloud appends /wiki; a DC context path is honored
+    // verbatim; trailing slashes are normalized.
+    for (const { name, baseUrl } of [
+      { name: "Cloud bare host appends /wiki", baseUrl: "https://test.atlassian.net" },
+      { name: "DC context path is honored", baseUrl: "https://confluence.example.com/confluence" },
+      { name: "DC trailing slash is normalized", baseUrl: "https://confluence.example.com/confluence/" },
+    ]) {
+      test(`getPage URL — ${name}`, async () => {
+        const isCloud = baseUrl.includes("atlassian.net");
+        const expectedBase = isCloud
+          ? "https://test.atlassian.net/wiki"
+          : "https://confluence.example.com/confluence";
+        const url = await captureRequestUrl(baseUrl, pageBody, (c) => c.getPage("123"));
+        expect(url).toContain(`${expectedBase}/rest/api/content/123`);
+        if (!isCloud) expect(url).not.toContain("/wiki/");
+      });
+    }
+
+    // A mutation (the originally-reported HTTP 405 failure) must also route
+    // through the context path rather than /wiki on Data Center.
+    test("updatePage targets the DC context path, not /wiki", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        pageBody,
+        (c) => c.updatePage({ id: "123", title: "Updated", storage: "<p>new</p>", version: 2 })
+      );
+      expect(url).toContain("/confluence/rest/api/content/123");
+      expect(url).not.toContain("/wiki/");
+    });
+
+    test("v2 API requests honor the DC context path", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        { results: [] },
+        (c) => c.getPageDirectChildren("123")
+      );
+      expect(url).toContain("/confluence/api/v2/pages/123/direct-children");
+      expect(url).not.toContain("/wiki/");
+    });
+
+    // Web UI links reconstructed from a relative `_links.webui` (v2 endpoints
+    // that omit `_links.base`) must use the same context path as REST requests.
+    test("web UI links use the DC context path", async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                { id: "999", title: "Child", type: "page", _links: { webui: "/spaces/TEST/pages/999/Child" } },
+              ],
+            }),
+            { status: 200 }
+          )
+        )
+      ) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient({
+        ...mockProfile,
+        baseUrl: "https://confluence.example.com/confluence",
+      });
+      const children = await client.getPageDirectChildren("123");
+
+      expect(children[0]?.url).toBe(
+        "https://confluence.example.com/confluence/spaces/TEST/pages/999/Child"
+      );
+    });
+  });
+
   describe("label operations", () => {
     test("getLabels fetches labels for a page", async () => {
       let capturedUrl = "";

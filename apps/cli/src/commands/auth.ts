@@ -450,8 +450,11 @@ Commands:
   delete <name>     Delete profile entirely
 
 Options:
-  --site <url>       Atlassian site URL (root only, e.g. https://company.atlassian.net;
-                     do not include /wiki — Confluence appends it automatically)
+  --site <url>       Atlassian site URL.
+                     Cloud: root only, e.g. https://company.atlassian.net
+                     (do not include /wiki — Confluence appends it automatically).
+                     Server/Data Center: include the context path if your
+                     instance uses one, e.g. https://confluence.company.com/confluence
   --bearer           Use Bearer auth with PAT (for Server/Data Center)
   --token <token>    API token or PAT
   --username <user>  Username (for keychain lookup with --bearer)
