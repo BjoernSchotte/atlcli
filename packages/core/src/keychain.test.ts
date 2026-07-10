@@ -56,7 +56,8 @@ describe("keychain", () => {
 
   // Integration test that actually uses the keychain (Mac only)
   // This test creates, reads, and deletes a real keychain entry
-  if (isMac) {
+  // Opt in explicitly so normal unit/release runs never mutate a user's keychain.
+  if (isMac && process.env.ATLCLI_KEYCHAIN_INTEGRATION === "1") {
     describe("integration (Mac only)", () => {
       const testService = "atlcli-test-integration";
       const testAccount = "test-user-" + Date.now();

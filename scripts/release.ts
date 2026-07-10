@@ -50,6 +50,16 @@ interface ReleaseAcknowledgments {
   issueReporters: Acknowledgment[];
 }
 
+export interface ReleaseState {
+  startingHead: string;
+  filesMutated: boolean;
+  commitCreated: boolean;
+  releaseCommit: string | null;
+  tagCreated: boolean;
+  mainPushed: boolean;
+  tagPushed: boolean;
+}
+
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     type: "patch",
@@ -477,11 +487,12 @@ async function previewChangelog(newVersion: string): Promise<void> {
   }
 }
 
-async function commitRelease(newVersion: string): Promise<void> {
+async function commitRelease(newVersion: string): Promise<string> {
   console.log("Creating release commit...");
   await $`git add package.json CHANGELOG.md`;
   await $`git commit -m ${"chore(release): v" + newVersion}`;
   console.log("  Commit created");
+  return (await $`git rev-parse HEAD`.text()).trim();
 }
 
 async function createTag(newVersion: string): Promise<void> {
@@ -490,10 +501,12 @@ async function createTag(newVersion: string): Promise<void> {
   console.log("  Tag created");
 }
 
-async function pushRelease(): Promise<void> {
+async function pushRelease(newVersion: string, state: ReleaseState): Promise<void> {
   console.log("Pushing to origin...");
   await $`git push origin main`;
-  await $`git push origin --tags`;
+  state.mainPushed = true;
+  await $`git push origin ${`v${newVersion}`}`;
+  state.tagPushed = true;
   console.log("  Pushed");
 }
 
@@ -554,18 +567,44 @@ To execute this release, run without --dry-run:
 `);
 }
 
-async function rollback(newVersion: string): Promise<void> {
+export async function rollback(
+  newVersion: string,
+  state: ReleaseState,
+  cwd = process.cwd(),
+): Promise<void> {
+  if (!state.filesMutated && !state.commitCreated && !state.tagCreated) {
+    console.log("No local release changes to roll back");
+    return;
+  }
+
+  if (state.mainPushed || state.tagPushed) {
+    console.log(
+      "Release changes were pushed; automatic rollback skipped to avoid diverging from origin.",
+    );
+    console.log(`Inspect origin/main and tag v${newVersion} before recovering manually.`);
+    return;
+  }
+
   console.log("Rolling back...");
-  try {
-    await $`git tag -d v${newVersion}`.quiet();
-  } catch {
-    /* tag may not exist */
+
+  if (state.tagCreated) {
+    await $`git -C ${cwd} tag -d ${`v${newVersion}`}`.quiet();
   }
-  try {
-    await $`git reset --hard HEAD~1`.quiet();
-  } catch {
-    /* may fail if no commit was made */
+
+  if (state.commitCreated) {
+    const currentHead = (await $`git -C ${cwd} rev-parse HEAD`.text()).trim();
+    if (!state.releaseCommit || currentHead !== state.releaseCommit) {
+      throw new Error(
+        "Refusing rollback because HEAD no longer points to the release commit.",
+      );
+    }
+    await $`git -C ${cwd} reset --mixed ${state.startingHead}`.quiet();
   }
+
+  if (state.filesMutated) {
+    await $`git -C ${cwd} restore --source ${state.startingHead} --staged --worktree -- package.json CHANGELOG.md`.quiet();
+  }
+
   console.log("Rollback complete");
 }
 
@@ -573,10 +612,20 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   let newVersion = "";
+  const state: ReleaseState = {
+    startingHead: "",
+    filesMutated: false,
+    commitCreated: false,
+    releaseCommit: null,
+    tagCreated: false,
+    mainPushed: false,
+    tagPushed: false,
+  };
 
   try {
     // 1. Validate environment
     await validateEnvironment(args.dryRun);
+    state.startingHead = (await $`git rev-parse HEAD`.text()).trim();
 
     // 2. Calculate new version
     const currentVersion = await getCurrentVersion();
@@ -604,6 +653,7 @@ async function main(): Promise<void> {
     }
 
     // 4. Update package.json
+    state.filesMutated = true;
     await updateVersion(newVersion);
 
     // 5. Generate changelog
@@ -618,13 +668,15 @@ async function main(): Promise<void> {
     await injectThanks(newVersion);
 
     // 6. Commit changes
-    await commitRelease(newVersion);
+    state.releaseCommit = await commitRelease(newVersion);
+    state.commitCreated = true;
 
     // 7. Create tag
     await createTag(newVersion);
+    state.tagCreated = true;
 
     // 8. Push to origin
-    await pushRelease();
+    await pushRelease(newVersion, state);
 
     // 9. Wait for GitHub release artifacts
     await waitForRelease(newVersion);
@@ -636,14 +688,16 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error(`\nError: ${error instanceof Error ? error.message : error}`);
 
-    // Offer rollback if we've made local changes (only in non-dry-run mode)
-    if (newVersion && !args.dryRun) {
+    // Roll back only mutations made locally and never rewrite published state.
+    if (newVersion && state.filesMutated) {
       console.log("\nAttempting rollback...");
-      await rollback(newVersion);
+      await rollback(newVersion, state);
     }
 
     process.exit(1);
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}

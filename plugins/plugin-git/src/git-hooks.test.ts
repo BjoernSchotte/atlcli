@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir, readFile, chmod, stat } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile, chmod, stat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
@@ -17,7 +17,7 @@ describe("git hooks", () => {
 
   beforeEach(async () => {
     // Create temp directory with git repo and .atlcli
-    tempDir = await mkdtemp(join(tmpdir(), "plugin-git-hooks-test-"));
+    tempDir = await realpath(await mkdtemp(join(tmpdir(), "plugin-git-hooks-test-")));
     await gitExec(tempDir, ["init"]);
     await mkdir(join(tempDir, ".atlcli"));
     hookPath = join(tempDir, ".git", "hooks", "post-commit");

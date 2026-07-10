@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -21,7 +21,7 @@ describe("git utils", () => {
 
   beforeEach(async () => {
     // Create temp directory
-    tempDir = await mkdtemp(join(tmpdir(), "plugin-git-test-"));
+    tempDir = await realpath(await mkdtemp(join(tmpdir(), "plugin-git-test-")));
   });
 
   afterEach(async () => {
