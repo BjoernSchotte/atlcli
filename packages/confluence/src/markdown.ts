@@ -2375,6 +2375,29 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
   });
   service.use(gfm);
 
+  // Confluence wraps table-cell content in block elements such as <p>. Turndown
+  // renders those blocks with surrounding newlines, while the GFM table plugin
+  // inserts the result verbatim between pipes. Normalize only table cells so a
+  // logical row always remains a single Markdown line.
+  service.addRule("normalizedTableCell", {
+    filter: ["th", "td"],
+    replacement: (content, node) => {
+      const normalizedContent = content
+        .trim()
+        .replace(/[ \t]*\n+[ \t]*/g, "<br>")
+        .replace(/\\*\|/g, (match) => {
+          const backslashes = match.slice(0, -1);
+          return backslashes.length % 2 === 0 ? `${backslashes}\\|` : match;
+        });
+
+      const siblingCells = Array.from((node.parentNode as any)?.childNodes ?? [])
+        .filter((sibling: any) => sibling.nodeName === "TH" || sibling.nodeName === "TD");
+      const prefix = siblingCells[0] === node ? "| " : " ";
+
+      return `${prefix}${normalizedContent} |`;
+    },
+  });
+
   // Handle inline status macro
   service.addRule("statusMacro", {
     filter: (node) => {
