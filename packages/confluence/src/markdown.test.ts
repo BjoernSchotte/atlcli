@@ -48,6 +48,13 @@ describe("markdownToStorage", () => {
     expect(html).not.toContain('<pre><code');
   });
 
+  test("splits CDATA terminators inside code blocks", () => {
+    const md = '```xml\nconst terminator = "]]>";\n```';
+    const html = markdownToStorage(md);
+    expect(html).toContain('<![CDATA[const terminator = "]]]]><![CDATA[>";');
+    expect(storageToMarkdown(html)).toContain('const terminator = "]]>";');
+  });
+
   test("converts task lists to Confluence format", () => {
     const md = "- [ ] Unchecked\n- [x] Checked";
     const html = markdownToStorage(md);
@@ -584,17 +591,25 @@ describe("round-trip conversion", () => {
   test("code macro without language survives storage → markdown → storage (regression)", () => {
     const originalStorage =
       '<ac:structured-macro ac:name="code" ac:schema-version="1">' +
-      '<ac:parameter ac:name="language">text</ac:parameter>' +
       '<ac:plain-text-body><![CDATA[# Default Code Owners\n* @Schneider.Felix.SE @Karpic.Jelenko\n]]></ac:plain-text-body>' +
       '</ac:structured-macro>';
     const md = storageToMarkdown(originalStorage);
     const roundtrip = markdownToStorage(md);
     expect(roundtrip).toContain('<ac:structured-macro ac:name="code">');
-    expect(roundtrip).toContain('<ac:parameter ac:name="language">text</ac:parameter>');
+    expect(roundtrip).not.toContain('ac:name="language"');
     expect(roundtrip).toContain("# Default Code Owners");
     expect(roundtrip).toContain("@Schneider.Felix.SE @Karpic.Jelenko");
     expect(roundtrip).not.toContain('<pre><code');
     expect(roundtrip).not.toContain('class=""');
+  });
+
+  test("split CDATA terminators survive storage → markdown → storage", () => {
+    const original = '```xml\nconst terminator = "]]>";\n```\n';
+    const storage = markdownToStorage(original);
+    const md = storageToMarkdown(storage);
+    const roundtrip = markdownToStorage(md);
+    expect(md).toContain('const terminator = "]]>";');
+    expect(roundtrip).toContain('<![CDATA[const terminator = "]]]]><![CDATA[>";');
   });
 
   test("list survives round-trip", () => {
