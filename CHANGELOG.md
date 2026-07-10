@@ -2,6 +2,36 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.17.1] - 2026-07-10
+
+### Bug Fixes
+
+- **confluence:** Preserve Markdown table rows on pull (#17)([7492ad8](https://github.com/bjoernschotte/atlcli/commit/7492ad83af497a38eba8a665c158a1ca3c2c2bb2))
+- **confluence:** Honor context path for Server/Data Center instances (#14)([e6513ee](https://github.com/bjoernschotte/atlcli/commit/e6513ee28e65951a4990f9c9a282f949fe1fea4a))
+- **confluence:** Complete deployment-aware URL handling (#18)([033f5c8](https://github.com/bjoernschotte/atlcli/commit/033f5c8826aed77898d6bc72ea85d236d411b9bf))
+- **docs:** Pin Astro Zod dependency (#19)([383d1a6](https://github.com/bjoernschotte/atlcli/commit/383d1a6804aab112ec311006cd50e08503f35fb3))
+- **release:** Make rollback safe([71ee362](https://github.com/bjoernschotte/atlcli/commit/71ee362e89cc7e18457dabbf68ffc308c30ea290))
+
+### Documentation
+
+- Refresh stale version examples and fix release-process docs([4a7ef10](https://github.com/bjoernschotte/atlcli/commit/4a7ef10f0fd28b8fc76ae6f6b7afa8f540990ec2))
+- **release:** Refresh version examples in release script help text([1a82f1d](https://github.com/bjoernschotte/atlcli/commit/1a82f1da3d0f972121368c30ec7637cee651e102))
+
+### Miscellaneous
+
+- Add SonarQube scanner config with coverage([95a7e7e](https://github.com/bjoernschotte/atlcli/commit/95a7e7eaf3125f3ddc89e6ee7a3d28feb35a9679))
+
+### New Contributors
+
+- [@jvm](https://github.com/jvm) - fix(confluence): honor context path for Server/Data Center instances (#14)
+
+### Thanks
+
+A big thank you to everyone who helped shape this release 🙏
+
+- [@jvm](https://github.com/jvm) — PR #14
+- [@lauritziu](https://github.com/lauritziu) — reported issue #15
+
 ## [0.17.0] - 2026-05-15
 
 ### Bug Fixes
@@ -20,14 +50,6 @@ All notable changes to atlcli will be documented in this file.
 ### Features
 
 - **release:** Credit PR contributors and issue reporters in changelog([4bdf47d](https://github.com/bjoernschotte/atlcli/commit/4bdf47d3f44843bfa64bb1f2dda9f74756335d07))
-
-### Thanks
-
-A big thank you to everyone who helped shape this release 🙏
-
-- [@twogood](https://github.com/twogood) — PRs #9, #10, #11
-- [@byteboon](https://github.com/byteboon) — reported issue #4
-
 ## [0.16.0] - 2026-04-09
 
 ### Bug Fixes
