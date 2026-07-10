@@ -8,7 +8,7 @@
  * └── cache/         # Base versions for 3-way merge
  */
 
-import { join, dirname, relative, resolve } from "path";
+import { join, dirname, relative, resolve, sep } from "path";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile, unlink } from "fs/promises";
 import { createSyncDb, hasSyncDb, getStorageType } from "./sync-db/index.js";
@@ -767,9 +767,13 @@ export function generateUniqueFilename(
 
 /**
  * Get relative path from root directory.
+ *
+ * Always returns a POSIX-style path (forward slashes) so that stored
+ * state paths remain stable and comparable across Windows and Unix.
  */
 export function getRelativePath(rootDir: string, filePath: string): string {
-  return relative(rootDir, filePath);
+  const rel = relative(rootDir, filePath);
+  return sep === "\\" ? rel.split(sep).join("/") : rel;
 }
 
 // ============ Attachment State Functions ============

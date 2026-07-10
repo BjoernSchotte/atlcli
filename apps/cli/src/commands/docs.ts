@@ -1,6 +1,6 @@
 import { readdir, writeFile, readFile, mkdir, stat, unlink, rename, rm } from "node:fs/promises";
 import { FSWatcher, watch, existsSync } from "node:fs";
-import { join, basename, extname, dirname, relative, resolve } from "node:path";
+import { join, basename, extname, dirname, relative, resolve, sep } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -211,6 +211,88 @@ function findAtlcliDirWithWarning(
   }
   return atlcliDir;
 }
+
+/** Normalize a stored state path to the platform separator for filesystem ops. */
+function toPlatformPath(p: string): string {
+  return sep === "\\" ? p.split("/").join(sep) : p;
+}
+
+/** Normalize any path to POSIX (forward slashes) for state storage. */
+function toPosixPath(p: string): string {
+  return sep === "\\" ? p.split(sep).join("/") : p;
+}
+
+/**
+ * @internal
+ * Locate the markdown file for a tracked page inside an atlcli directory.
+ *
+ * Prefers the path recorded in state. If the file has moved or the state is
+ * stale, falls back to scanning the tree for a file whose frontmatter matches
+ * the page ID. When a match is found via scan, the state is healed so future
+ * lookups are cheap.
+ *
+ * Returns null when nothing matches; the caller decides how to report that.
+ */
+export async function resolvePageFile(
+  atlcliDir: string,
+  pageId: string,
+  state: AtlcliState
+): Promise<{ absolutePath: string; relativePath: string } | null> {
+  const pageState = state.pages[pageId];
+
+  if (pageState?.path) {
+    const abs = join(atlcliDir, toPlatformPath(pageState.path));
+    if (existsSync(abs)) {
+      return { absolutePath: abs, relativePath: pageState.path };
+    }
+  }
+
+  const scanned = await findMarkdownFileByFrontmatterId(atlcliDir, pageId);
+  if (!scanned) return null;
+
+  const newRelativePath = toPosixPath(relative(atlcliDir, scanned));
+
+  if (pageState) {
+    if (pageState.path && pageState.path !== newRelativePath) {
+      delete state.pathIndex[pageState.path];
+    }
+    pageState.path = newRelativePath;
+    state.pathIndex[newRelativePath] = pageId;
+  }
+
+  return { absolutePath: scanned, relativePath: newRelativePath };
+}
+
+/**
+ * @internal
+ * Scan an atlcli tree for a markdown file whose frontmatter ID matches.
+ * Respects .atlcliignore/.gitignore so stray files (build output, drafts)
+ * don't get mistakenly returned.
+ */
+export async function findMarkdownFileByFrontmatterId(
+  atlcliDir: string,
+  pageId: string
+): Promise<string | null> {
+  const ignoreResult = await loadIgnorePatterns(atlcliDir);
+  const files = await collectMarkdownFiles(atlcliDir, {
+    ignore: ignoreResult.ignore,
+    rootDir: atlcliDir,
+  });
+
+  for (const file of files) {
+    try {
+      const content = await readTextFile(file);
+      const { frontmatter } = parseFrontmatter(content);
+      if (frontmatter?.id === pageId) {
+        return file;
+      }
+    } catch {
+      // Ignore unreadable files
+    }
+  }
+  return null;
+}
+
 
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -1457,19 +1539,38 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   let files: string[];
   let atlcliDir: string | null;
   let isSingleFile = false;
+  // State may be loaded during --page-id resolution; reuse it later to avoid a re-read.
+  let state: AtlcliState | undefined;
 
   if (pageIdFlag) {
-    // Push by page ID - find the file in state
     atlcliDir = findAtlcliDirWithWarning(pathArg, opts);
     if (!atlcliDir) {
-      fail(opts, 1, ERROR_CODES.USAGE, "Not in an initialized directory. Run 'docs init' first.");
+      const searchedFrom = resolve(pathArg);
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        `Not in an initialized directory (searched from ${searchedFrom}). Run 'atlcli wiki docs init' first, or cd into an initialized directory.`
+      );
     }
-    const state = await readState(atlcliDir);
-    const pageState = state.pages[pageIdFlag];
-    if (!pageState) {
-      fail(opts, 1, ERROR_CODES.USAGE, `Page ${pageIdFlag} not found in state. Pull it first or use file path.`);
+    state = await readState(atlcliDir);
+    const priorPath = state.pages[pageIdFlag]?.path;
+    const resolved = await resolvePageFile(atlcliDir, pageIdFlag, state);
+    if (!resolved) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        `Page ${pageIdFlag} not found under ${atlcliDir}. Pull it first with 'atlcli wiki docs pull --page-id ${pageIdFlag}', or push the file directly by path.`
+      );
     }
-    files = [join(atlcliDir, pageState.path)];
+    if (priorPath && priorPath !== resolved.relativePath && !opts.json) {
+      output(
+        `Note: page ${pageIdFlag} moved locally (${priorPath} -> ${resolved.relativePath}); updating state.`,
+        opts
+      );
+    }
+    files = [resolved.absolutePath];
     isSingleFile = true;
   } else if (pathArg.endsWith(".md")) {
     // Single file push
@@ -1488,16 +1589,18 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
 
   const globalConfig = await loadConfig();
   let space = getFlag(flags, "space");
-  let state: AtlcliState | undefined;
   let dirConfig: AtlcliConfig | null = null;
 
   if (atlcliDir) {
     dirConfig = await readConfig(atlcliDir);
     space = space || dirConfig.space || globalConfig.global?.space;
-    state = await readState(atlcliDir);
+    if (!state) {
+      state = await readState(atlcliDir);
+    }
   } else {
     space = space || globalConfig.global?.space;
   }
+
 
   // Run validation if --validate flag is set
   if (hasFlag(flags, "validate") && atlcliDir) {
@@ -3290,6 +3393,10 @@ async function handleDocsConvert(
 function docsHelp(): string {
   return `atlcli wiki docs <command>
 
+Directory argument is optional for most commands - defaults to the current directory
+and walks up to find the nearest .atlcli/. Run commands from inside the initialized
+tree, or pass an explicit path/--dir when running from elsewhere.
+
 Commands:
   init <dir> [scope options]                        Initialize directory for sync
   pull [dir] [scope options] [--limit <n>] [--force] [--label <l>] [--comments]
@@ -3347,13 +3454,15 @@ Examples:
   atlcli wiki docs init ./docs --space TEAM              Initialize for entire space
   atlcli wiki docs init ./docs --ancestor 12345          Initialize for page tree
   atlcli wiki docs init ./docs --page-id 67890           Initialize for single page
-  atlcli wiki docs pull ./docs                           Pull using saved scope
+  atlcli wiki docs pull                                  Pull into the current directory
+  atlcli wiki docs pull ./docs                           Pull into ./docs
   atlcli wiki docs pull ./docs --ancestor 99999          Override scope for this pull
   atlcli wiki docs pull ./docs --label architecture      Pull only pages with label
   atlcli wiki docs pull ./docs --comments                Pull pages with comments
+  atlcli wiki docs push                                  Push everything in current directory
   atlcli wiki docs push ./docs                           Push all tracked files
   atlcli wiki docs push ./docs/page.md                   Push single file
-  atlcli wiki docs push --page-id 12345                  Push by page ID
+  atlcli wiki docs push --page-id 12345                  Push by page ID (from anywhere in the tree)
   atlcli wiki docs push --validate                       Validate before pushing
   atlcli wiki docs push --validate --strict              Fail on warnings too
   atlcli wiki docs diff ./docs/page.md                   Show local vs remote diff
