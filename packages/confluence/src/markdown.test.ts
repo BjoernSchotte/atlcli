@@ -140,6 +140,41 @@ describe("storageToMarkdown", () => {
     expect(md).toContain("World");
   });
 
+  test("converts paragraph-wrapped Confluence table cells to valid markdown", () => {
+    const storage = `<table><tbody><tr><th><p>TaskID</p></th><th><p>Task Type</p></th><th><p>Description</p></th><th><p>JIRA link</p></th></tr><tr><td><p>I0BB-2565</p></td><td><p>Story</p></td><td><p>some text</p></td><td><p>some text</p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).toBe(
+      "| TaskID | Task Type | Description | JIRA link |\n" +
+      "| --- | --- | --- | --- |\n" +
+      "| I0BB-2565 | Story | some text | some text |\n"
+    );
+  });
+
+  test("keeps table rows valid when cells contain formatting, pipes, or line breaks", () => {
+    const storage = `<table><tbody><tr><th><p>Type</p></th><th><p>Description</p></th></tr><tr><td><p><strong>Story</strong></p></td><td><p>First line<br />Second | line</p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).toBe(
+      "| Type | Description |\n" +
+      "| --- | --- |\n" +
+      "| **Story** | First line<br>Second \\| line |\n"
+    );
+  });
+
+  test("round-trips markdown tables without adding cell whitespace", () => {
+    const original =
+      "| TaskID | Task Type | Description | JIRA link |\n" +
+      "| --- | --- | --- | --- |\n" +
+      "| I0BB-2565 | Story | some text | some text |";
+
+    const roundtrip = storageToMarkdown(markdownToStorage(original));
+
+    expect(roundtrip).toBe(original + "\n");
+  });
+
   test("converts code blocks back to fenced syntax", () => {
     const html = '<pre><code class="language-js">const x = 1;</code></pre>';
     const md = storageToMarkdown(html);
