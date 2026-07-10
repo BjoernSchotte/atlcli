@@ -42,32 +42,16 @@ function buildCommitMessage(changes: FileChange[], direction: "pull" | "push"): 
  * This is called as an afterCommand hook.
  */
 export async function autoCommitAfterPull(ctx: CommandContext): Promise<void> {
-  // 1. Check if this is a docs pull or docs sync command
-  const [cmd, subcmd] = ctx.command;
+  // Hooks receive the complete root command path from the CLI.
+  const [rootCommand, namespace, action, commandDir] = ctx.command;
 
-  // Only trigger for docs pull and docs sync
-  if (cmd !== "docs") {
+  if (rootCommand !== "wiki" || namespace !== "docs" || action !== "pull") {
     return;
   }
 
-  if (subcmd !== "pull" && subcmd !== "sync") {
-    return;
-  }
-
-  // For sync command, we only auto-commit after it stops (not while running)
-  // The sync daemon handles its own commits differently
-  // For now, skip sync to avoid complications with the running daemon
-  if (subcmd === "sync") {
-    // Sync daemon runs continuously, so we don't auto-commit here
-    // Instead, the sync engine should handle commits during operation
-    return;
-  }
-
-  // 2. Get the directory from args
-  // ctx.command = ["docs", "pull", dir] or ["docs", "pull"]
-  // ctx.args = ["pull", dir] or ["pull"]
-  // So the directory is at ctx.args[1] or ctx.command[2]
-  const dir = ctx.args[1] ? resolve(ctx.args[1]) : process.cwd();
+  // ctx.command = ["wiki", "docs", "pull", dir]
+  // ctx.args = ["docs", "pull", dir]
+  const dir = resolve(commandDir ?? ctx.args[2] ?? process.cwd());
 
   // 3. Check if directory is a git repo
   if (!(await isGitRepo(dir))) {
@@ -84,9 +68,11 @@ export async function autoCommitAfterPull(ctx: CommandContext): Promise<void> {
 
   // 5. Stage all changes and commit
   try {
-    await gitAddAll(dir);
+    // Limit both staging and the commit to the selected docs directory. Using
+    // --only for the commit preserves unrelated changes already in the index.
+    await gitAddAll(dir, ".");
     const message = buildCommitMessage(changes, "pull");
-    await gitCommit(dir, message);
+    await gitCommit(dir, message, ["."]);
 
     // Output success message (unless --quiet flag is set)
     if (!ctx.flags.quiet) {

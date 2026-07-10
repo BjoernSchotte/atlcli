@@ -32,7 +32,7 @@ describe("git hooks", () => {
       command: ["git", "hook", "install"],
       args: [tempDir],
       flags: {},
-      output: { json: false, quiet: false },
+      output: { json: false },
       ...overrides,
     };
   }
@@ -45,6 +45,19 @@ describe("git hooks", () => {
       expect(existsSync(hookPath)).toBe(true);
       const content = await readFile(hookPath, "utf-8");
       expect(content).toContain("atlcli-plugin-git hook");
+      expect(content).toContain("atlcli wiki docs push");
+      expect(content).toContain("DOCS_RELATIVE='.'");
+    });
+
+    test("retains a nested docs directory in the installed hook", async () => {
+      const docsDir = join(tempDir, "docs with spaces");
+      await mkdir(join(docsDir, ".atlcli"), { recursive: true });
+
+      await installHookHandler(createContext({ args: [docsDir] }));
+
+      const content = await readFile(hookPath, "utf-8");
+      expect(content).toContain("DOCS_RELATIVE='docs with spaces'");
+      expect(content).toContain('DOCS_DIR="$REPO_ROOT/$DOCS_RELATIVE"');
     });
 
     test("makes hook executable", async () => {
@@ -130,7 +143,7 @@ describe("git hooks", () => {
     });
 
     test("outputs JSON when requested", async () => {
-      const ctx = createContext({ output: { json: true, quiet: false } });
+      const ctx = createContext({ output: { json: true } });
 
       // Capture console output
       const logs: string[] = [];
@@ -206,7 +219,7 @@ describe("git hooks", () => {
 
       const ctx = createContext({
         command: ["git", "hook", "remove"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -226,7 +239,7 @@ describe("git hooks", () => {
     test("reports not installed", async () => {
       const ctx = createContext({
         command: ["git", "hook", "status"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -247,7 +260,7 @@ describe("git hooks", () => {
 
       const ctx = createContext({
         command: ["git", "hook", "status"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -265,7 +278,7 @@ describe("git hooks", () => {
     test("reports atlcli initialized status", async () => {
       const ctx = createContext({
         command: ["git", "hook", "status"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -286,7 +299,7 @@ describe("git hooks", () => {
 
       const ctx = createContext({
         command: ["git", "hook", "status"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -308,7 +321,7 @@ describe("git hooks", () => {
 
       const ctx = createContext({
         command: ["git", "hook", "status"],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];
@@ -330,7 +343,7 @@ describe("git hooks", () => {
       const ctx = createContext({
         command: ["git", "hook", "status"],
         args: [nonGitDir],
-        output: { json: true, quiet: false },
+        output: { json: true },
       });
 
       const logs: string[] = [];

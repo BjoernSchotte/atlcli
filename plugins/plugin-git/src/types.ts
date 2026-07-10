@@ -8,11 +8,10 @@
 /** Output options passed to commands */
 export interface OutputOptions {
   json: boolean;
-  quiet: boolean;
 }
 
 /** Flag value types */
-export type FlagValue = string | number | boolean | undefined;
+export type FlagValue = string | boolean | string[];
 
 /** Context passed to command handlers and hooks */
 export interface CommandContext {
@@ -66,6 +65,8 @@ export interface CommandDefinition {
   name: string;
   description: string;
   subcommands?: Subcommand[];
+  /** Handler for a command without subcommands. */
+  handler?: (ctx: CommandContext) => Promise<void>;
 }
 
 /** Full plugin interface */

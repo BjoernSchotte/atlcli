@@ -27,10 +27,10 @@ describe("autoCommitAfterPull", () => {
 
   function createContext(overrides: Partial<CommandContext> = {}): CommandContext {
     return {
-      command: ["docs", "pull", tempDir],
-      args: ["pull", tempDir],
+      command: ["wiki", "docs", "pull", tempDir],
+      args: ["docs", "pull", tempDir],
       flags: {},
-      output: { json: false, quiet: false },
+      output: { json: false },
       ...overrides,
     };
   }
@@ -50,7 +50,10 @@ describe("autoCommitAfterPull", () => {
     test("skips docs commands other than pull", async () => {
       await writeFile(join(tempDir, "new.txt"), "content");
 
-      const ctx = createContext({ command: ["docs", "push", tempDir], args: ["push", tempDir] });
+      const ctx = createContext({
+        command: ["wiki", "docs", "push", tempDir],
+        args: ["docs", "push", tempDir],
+      });
       await autoCommitAfterPull(ctx);
 
       const { stdout } = await gitExec(tempDir, ["status", "--porcelain"]);
@@ -60,7 +63,10 @@ describe("autoCommitAfterPull", () => {
     test("skips docs sync command", async () => {
       await writeFile(join(tempDir, "new.txt"), "content");
 
-      const ctx = createContext({ command: ["docs", "sync", tempDir], args: ["sync", tempDir] });
+      const ctx = createContext({
+        command: ["wiki", "docs", "sync", tempDir],
+        args: ["docs", "sync", tempDir],
+      });
       await autoCommitAfterPull(ctx);
 
       const { stdout } = await gitExec(tempDir, ["status", "--porcelain"]);
@@ -85,8 +91,8 @@ describe("autoCommitAfterPull", () => {
       await writeFile(join(nonGitDir, "file.txt"), "content");
 
       const ctx = createContext({
-        command: ["docs", "pull", nonGitDir],
-        args: ["pull", nonGitDir],
+        command: ["wiki", "docs", "pull", nonGitDir],
+        args: ["docs", "pull", nonGitDir],
       });
 
       // Should not throw
@@ -118,6 +124,35 @@ describe("autoCommitAfterPull", () => {
 
       const { stdout } = await gitExec(tempDir, ["log", "-1", "--format=%s"]);
       expect(stdout).toContain("sync(confluence): pull");
+    });
+
+    test("preserves staged work outside the docs directory", async () => {
+      const docsDir = join(tempDir, "docs");
+      await mkdir(docsDir);
+      await writeFile(join(docsDir, "pulled.md"), "# From Confluence");
+      await writeFile(join(tempDir, "unrelated.txt"), "user work");
+      await gitExec(tempDir, ["add", "unrelated.txt"]);
+
+      const ctx = createContext({
+        command: ["wiki", "docs", "pull", docsDir],
+        args: ["docs", "pull", docsDir],
+      });
+      await autoCommitAfterPull(ctx);
+
+      const { stdout: committed } = await gitExec(tempDir, [
+        "show",
+        "--pretty=format:",
+        "--name-only",
+        "HEAD",
+      ]);
+      expect(committed.trim()).toBe("docs/pulled.md");
+
+      const { stdout: stillStaged } = await gitExec(tempDir, [
+        "diff",
+        "--cached",
+        "--name-only",
+      ]);
+      expect(stillStaged.trim()).toBe("unrelated.txt");
     });
   });
 
@@ -177,10 +212,10 @@ describe("autoCommitAfterPull", () => {
 
       try {
         const ctx: CommandContext = {
-          command: ["docs", "pull"],
-          args: ["pull"],
+          command: ["wiki", "docs", "pull"],
+          args: ["docs", "pull"],
           flags: {},
-          output: { json: false, quiet: false },
+          output: { json: false },
         };
         await autoCommitAfterPull(ctx);
 
