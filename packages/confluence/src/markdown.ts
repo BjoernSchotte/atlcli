@@ -76,7 +76,7 @@ md.renderer.rules.fence = (tokens, idx) => {
 
   // Handle noformat blocks: ```noformat
   if (info.toLowerCase() === "noformat") {
-    return `<ac:structured-macro ac:name="noformat">\n<ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>\n</ac:structured-macro>`;
+    return `<ac:structured-macro ac:name="noformat">\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
   }
 
   // Parse extended syntax: ```lang{title="..." collapse}
@@ -102,15 +102,18 @@ md.renderer.rules.fence = (tokens, idx) => {
     if (hasCollapse) {
       macroHtml += `\n<ac:parameter ac:name="collapse">true</ac:parameter>`;
     }
-    macroHtml += `\n<ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>\n</ac:structured-macro>`;
+    macroHtml += `\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
 
     return macroHtml;
   }
 
   // Regular code block
-  const lang = info ? ` language-${escapeHtml(info)}` : "";
-  const escapedContent = escapeHtml(content);
-  return `<pre><code class="${lang.trim()}">${escapedContent}</code></pre>`;
+  let macroHtml = `<ac:structured-macro ac:name="code">`;
+  if (info) {
+    macroHtml += `\n<ac:parameter ac:name="language">${escapeHtml(info)}</ac:parameter>`;
+  }
+  macroHtml += `\n${serializePlainTextBody(content)}\n</ac:structured-macro>`;
+  return macroHtml;
 };
 
 /**
@@ -1686,13 +1689,10 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
       const langMatch = inner.match(/<ac:parameter\s+ac:name="language"[^>]*>([^<]*)<\/ac:parameter>/i);
       const titleMatch = inner.match(/<ac:parameter\s+ac:name="title"[^>]*>([^<]*)<\/ac:parameter>/i);
       const collapseMatch = inner.match(/<ac:parameter\s+ac:name="collapse"[^>]*>([^<]*)<\/ac:parameter>/i);
-      // Code is in plain-text-body, possibly wrapped in CDATA
-      const bodyMatch = inner.match(/<ac:plain-text-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-body>/i);
-
       const lang = langMatch ? langMatch[1] : "";
       const title = titleMatch ? titleMatch[1] : "";
       const collapse = collapseMatch ? collapseMatch[1] : "";
-      const code = bodyMatch ? bodyMatch[1] : "";
+      const code = extractPlainTextBody(inner);
 
       return `<pre data-macro="code" data-lang="${escapeHtml(lang)}" data-title="${escapeHtml(title)}" data-collapse="${escapeHtml(collapse)}"><code>${escapeHtml(code)}</code></pre>`;
     }
@@ -1702,8 +1702,7 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
   storage = storage.replace(
     /<ac:structured-macro\s+ac:name="noformat"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gi,
     (_, inner) => {
-      const bodyMatch = inner.match(/<ac:plain-text-body>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ac:plain-text-body>/i);
-      const content = bodyMatch ? bodyMatch[1] : "";
+      const content = extractPlainTextBody(inner);
       return `<pre data-macro="noformat"><code>${escapeHtml(content)}</code></pre>`;
     }
   );
@@ -3056,6 +3055,30 @@ export function storageToMarkdown(storage: string, options?: ConversionOptions):
 
   const markdown = service.turndown(preprocessed);
   return markdown.trim() + "\n";
+}
+
+/**
+ * Wrap text in CDATA while preserving literal CDATA terminators.
+ * XML represents `]]>` by closing and reopening the CDATA section.
+ */
+function serializePlainTextBody(content: string): string {
+  const safeContent = content.replaceAll("]]>", "]]]]><![CDATA[>");
+  return `<ac:plain-text-body><![CDATA[${safeContent}]]></ac:plain-text-body>`;
+}
+
+/** Extract a Confluence plain-text body and reassemble split CDATA sections. */
+function extractPlainTextBody(input: string): string {
+  const bodyMatch = input.match(/<ac:plain-text-body>([\s\S]*?)<\/ac:plain-text-body>/i);
+  if (!bodyMatch) return "";
+
+  const body = bodyMatch[1];
+  if (!body.startsWith("<![CDATA[") || !body.endsWith("]]>")) {
+    return body;
+  }
+
+  return body
+    .slice("<![CDATA[".length, -"]]>".length)
+    .replaceAll("]]]]><![CDATA[>", "]]>");
 }
 
 function escapeHtml(input: string): string {
