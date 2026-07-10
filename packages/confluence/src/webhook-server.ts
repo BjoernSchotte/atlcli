@@ -107,7 +107,7 @@ export class WebhookServer {
   /** Get server URL */
   getUrl(): string | null {
     if (!this.server) return null;
-    return `http://localhost:${this.options.port}${this.options.path}`;
+    return `http://localhost:${this.server.port}${this.options.path}`;
   }
 
   /** Handle incoming webhook request */
