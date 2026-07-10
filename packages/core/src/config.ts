@@ -5,6 +5,8 @@ import os from "node:os";
 
 export type AuthType = "apiToken" | "bearer" | "oauth";
 
+export type DeploymentType = "cloud" | "data-center";
+
 export type AuthConfig = {
   type: AuthType;
   // Basic auth (Cloud)
@@ -20,6 +22,8 @@ export type AuthConfig = {
 export type Profile = {
   name: string;
   baseUrl: string;
+  /** Atlassian hosting model. Optional for backwards compatibility with existing profiles. */
+  deploymentType?: DeploymentType;
   auth: AuthConfig;
   cloudId?: string;
   /** Profile-specific Jira project key */

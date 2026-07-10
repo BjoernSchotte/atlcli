@@ -17,6 +17,7 @@ import {
   promptConfirm,
   promptInput,
   removeProfile,
+  resolveDeploymentType,
   renameProfile,
   saveConfig,
   setCurrentProfile,
@@ -84,6 +85,15 @@ async function handleLoginWithMode(
   }
 
   const useBearer = hasFlag(flags, "bearer");
+  const deploymentFlag = getFlag(flags, "deployment");
+  if (deploymentFlag && deploymentFlag !== "cloud" && deploymentFlag !== "data-center") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--deployment must be 'cloud' or 'data-center'.");
+  }
+  const deploymentType = deploymentFlag === "cloud" || deploymentFlag === "data-center"
+    ? deploymentFlag
+    : useBearer
+      ? "data-center"
+      : "cloud";
 
   const baseUrl = normalizeBaseUrl(
     getFlag(flags, "site") ||
@@ -152,6 +162,7 @@ async function handleLoginWithMode(
     setProfile(config, {
       name: profileName,
       baseUrl,
+      deploymentType,
       auth: {
         type: "bearer",
         username: username || undefined,
@@ -170,6 +181,7 @@ async function handleLoginWithMode(
       username: username || undefined,
       baseUrl,
       authType: "bearer",
+      deploymentType,
       keychainUsed: storedInKeychain,
     });
 
@@ -179,6 +191,7 @@ async function handleLoginWithMode(
         profile: profileName,
         site: baseUrl,
         authType: "bearer",
+        deploymentType,
         keychainUsed: storedInKeychain,
         configPath: getConfigPath(),
       },
@@ -207,6 +220,7 @@ async function handleLoginWithMode(
     setProfile(config, {
       name: profileName,
       baseUrl,
+      deploymentType,
       auth: {
         type: "apiToken",
         email,
@@ -224,6 +238,7 @@ async function handleLoginWithMode(
       profile: profileName,
       email,
       baseUrl,
+      deploymentType,
     });
 
     output(
@@ -231,6 +246,7 @@ async function handleLoginWithMode(
         ok: true,
         profile: profileName,
         site: baseUrl,
+        deploymentType,
         configPath: getConfigPath(),
       },
       opts
@@ -250,6 +266,7 @@ async function handleStatus(flags: Record<string, string | boolean | string[]>, 
     profile: profile.name,
     site: profile.baseUrl,
     authType: profile.auth.type,
+    deploymentType: resolveDeploymentType(profile),
   };
 
   // Show auth details based on type
@@ -283,6 +300,7 @@ async function handleList(opts: OutputOptions): Promise<void> {
     name: p.name,
     site: p.baseUrl,
     authType: p.auth.type,
+    deploymentType: resolveDeploymentType(p),
     active: config.currentProfile === p.name,
   }));
   output({ profiles }, opts);
@@ -453,9 +471,10 @@ Options:
   --site <url>       Atlassian site URL.
                      Cloud: root only, e.g. https://company.atlassian.net
                      (do not include /wiki — Confluence appends it automatically).
-                     Server/Data Center: include the context path if your
-                     instance uses one, e.g. https://confluence.company.com/confluence
+                     Server/Data Center: use the exact Confluence base URL,
+                     including any configured context path.
   --bearer           Use Bearer auth with PAT (for Server/Data Center)
+  --deployment <type> Hosting model: cloud or data-center
   --token <token>    API token or PAT
   --username <user>  Username (for keychain lookup with --bearer)
   --email <email>    Email (for Cloud Basic auth)

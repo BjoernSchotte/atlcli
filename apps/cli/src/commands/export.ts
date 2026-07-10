@@ -7,6 +7,7 @@ import {
   ERROR_CODES,
   OutputOptions,
   fail,
+  getConfluenceBaseUrl,
   getActiveProfile,
   getFlag,
   hasFlag,
@@ -91,7 +92,7 @@ export async function handleExport(
   // Resolve page ID from reference
   const pageId = await resolvePageId(client, pageRef, opts);
 
-  const baseUrl = profile.baseUrl.replace(/\/+$/, "");
+  const baseUrl = getConfluenceBaseUrl(profile);
 
   // Fetch page data (with metadata for export)
   const page = await client.getPageDetails(pageId);
@@ -110,7 +111,7 @@ export async function handleExport(
 
   // Get space info (if we have the space key)
   let spaceName = spaceKey;
-  let spaceUrl = `${baseUrl}/wiki/spaces/${spaceKey}`;
+  let spaceUrl = `${baseUrl}/spaces/${spaceKey}`;
   try {
     const space = await client.getSpace(spaceKey);
     spaceName = space.name;
@@ -180,7 +181,7 @@ export async function handleExport(
     childrenMacro = children.map(child => ({
       title: child.title,
       pageId: child.id,
-      pageUrl: child.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${child.id}`,
+      pageUrl: child.url ?? `${baseUrl}/spaces/${spaceKey}/pages/${child.id}`,
     }));
 
     if (includeChildren) {
@@ -224,7 +225,7 @@ export async function handleExport(
             created: childPage.created ?? "",
             modified: childPage.modified ?? "",
             pageId: child.id,
-            pageUrl: childPage.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${child.id}`,
+            pageUrl: childPage.url ?? `${baseUrl}/spaces/${spaceKey}/pages/${child.id}`,
             tinyUrl: childPage.tinyUrl ?? "",
             labels: childPage.labels ?? [],
             attachments: childAttachmentData,
@@ -257,7 +258,7 @@ export async function handleExport(
     created: page.created ?? "",
     modified: page.modified ?? "",
     pageId: page.id,
-    pageUrl: page.url ?? `${baseUrl}/wiki/spaces/${spaceKey}/pages/${page.id}`,
+    pageUrl: page.url ?? `${baseUrl}/spaces/${spaceKey}/pages/${page.id}`,
     tinyUrl: page.tinyUrl ?? "",
     labels: page.labels ?? [],
     spaceKey,
@@ -646,7 +647,7 @@ async function resolveContentByLabel(
     const items = search.results.map(item => ({
       title: item.title,
       pageId: item.id,
-      pageUrl: item.url ?? `${baseUrl}/wiki/spaces/${item.spaceKey ?? fallbackSpaceKey}/pages/${item.id}`,
+      pageUrl: item.url ?? `${baseUrl}/spaces/${item.spaceKey ?? fallbackSpaceKey}/pages/${item.id}`,
     }));
 
     results.push({

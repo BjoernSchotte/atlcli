@@ -15,6 +15,7 @@ type AuthConfig = {
 type Profile = {
   name: string;
   baseUrl: string;
+  deploymentType?: "cloud" | "data-center";
   auth: AuthConfig;
   tlsCaFile?: string;
   tlsSkipVerify?: boolean;
@@ -262,5 +263,54 @@ describe("auth command", () => {
     expect(profiles).toHaveLength(1);
     expect(profiles[0]?.tlsCaFile).toBeUndefined();
     expect(profiles[0]?.tlsSkipVerify).toBeUndefined();
+  });
+
+  test("defaults bearer profiles to Data Center deployment", async () => {
+    await handleAuth(
+      ["login"],
+      { bearer: true, site: "https://confluence.company.com", token: "mytoken" },
+      opts
+    );
+
+    expect(Object.values(config.profiles)[0]?.deploymentType).toBe("data-center");
+  });
+
+  test("defaults API-token profiles to Cloud deployment", async () => {
+    await handleAuth(
+      ["login"],
+      {
+        site: "https://company.atlassian.net",
+        email: "user@example.com",
+        token: "mytoken",
+      },
+      opts
+    );
+
+    expect(Object.values(config.profiles)[0]?.deploymentType).toBe("cloud");
+  });
+
+  test("allows an explicit deployment override", async () => {
+    await handleAuth(
+      ["login"],
+      {
+        bearer: true,
+        site: "https://confluence.company.com/wiki",
+        token: "mytoken",
+        deployment: "cloud",
+      },
+      opts
+    );
+
+    expect(Object.values(config.profiles)[0]?.deploymentType).toBe("cloud");
+  });
+
+  test("rejects an invalid deployment type", async () => {
+    await expect(
+      handleAuth(
+        ["login"],
+        { site: "https://company.atlassian.net", deployment: "server" },
+        opts
+      )
+    ).rejects.toThrow(/deployment/i);
   });
 });

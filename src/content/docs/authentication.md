@@ -92,16 +92,23 @@ Atlassian Cloud serves Confluence under `/wiki`, which atlcli appends
 automatically — so Cloud `--site` URLs are bare hosts
 (`https://company.atlassian.net`).
 
-Server/Data Center instances are often served from a custom context path such
-as `/confluence`. Include that path in `--site` and atlcli will route REST
-requests through it:
+For Server/Data Center, `--site` is the exact Confluence base URL. It may be a
+bare host for a root deployment, or include any configured context path such
+as `/confluence` or `/wiki`:
 
 ```bash
+# Root deployment
+atlcli auth login --bearer --site https://confluence.company.com \
+  --token YOUR_PAT
+
+# Custom context path
 atlcli auth login --bearer --site https://confluence.company.com/confluence \
   --token YOUR_PAT
 ```
 
-Do **not** add `/wiki` to a Data Center URL — that is Cloud-only.
+`--bearer` defaults the profile to `data-center`; API-token authentication
+defaults it to `cloud`. Use `--deployment cloud|data-center` when authentication
+alone does not describe the hosting model.
 :::
 
 Options:
@@ -112,6 +119,7 @@ Options:
 | `--email` | Account email (Cloud) |
 | `--token` | API token (Cloud) or PAT (Server/DC) |
 | `--bearer` | Use Bearer auth with PAT (for Server/DC) |
+| `--deployment` | Hosting model: `cloud` or `data-center` |
 | `--username` | Username for keychain lookup (Server/DC) |
 | `--profile` | Profile name to create/update |
 | `--ca-file` | Path to a custom CA certificate (PEM) for self-signed or internal CAs |
@@ -287,6 +295,7 @@ Credentials are stored at `~/.atlcli/credentials.json`:
     "default": {
       "name": "default",
       "baseUrl": "https://company.atlassian.net",
+      "deploymentType": "cloud",
       "email": "you@company.com",
       "apiToken": "ATATT3x..."
     },
@@ -299,6 +308,7 @@ Credentials are stored at `~/.atlcli/credentials.json`:
     "onprem": {
       "name": "onprem",
       "baseUrl": "https://jira.company.internal",
+      "deploymentType": "data-center",
       "authType": "bearer",
       "username": "myuser",
       "tlsCaFile": "/etc/ssl/certs/company-ca.pem"
@@ -307,7 +317,10 @@ Credentials are stored at `~/.atlcli/credentials.json`:
 }
 ```
 
-For Server/Data Center profiles using Bearer auth, the profile includes `authType: "bearer"` and may include a `username` for keychain lookup and optional `tlsCaFile` / `tlsSkipVerify` fields for TLS configuration.
+New profiles persist `deploymentType` as either `cloud` or `data-center`.
+Server/Data Center profiles using Bearer auth include `authType: "bearer"` and
+may include a `username` for keychain lookup and optional `tlsCaFile` /
+`tlsSkipVerify` fields for TLS configuration.
 
 :::caution[Security]
 Protect this file with appropriate permissions:
@@ -504,16 +517,17 @@ If reads work but `wiki page create`, `wiki page update`, or `wiki docs`
 commands fail on a Server/Data Center instance, your site is likely served
 from a context path that is missing from the profile URL.
 
-atlcli appends `/wiki` (Cloud's context path) only when the `--site` URL has no
-path of its own. A Data Center instance hosted at
-`https://confluence.company.com/confluence` must include `/confluence` in the
-site URL, otherwise requests are sent to a non-existent
-`/confluence/wiki/rest/api/...` path.
+For a Data Center profile, atlcli treats `--site` as the exact Confluence root.
+An instance hosted at `https://confluence.company.com/confluence` must include
+`/confluence` in the site URL. If it is omitted, requests target
+`https://confluence.company.com/rest/api/...` instead of the required
+`https://confluence.company.com/confluence/rest/api/...` path.
 
 Re-create the profile with the full context path:
 
 ```bash
-atlcli auth login --bearer --site https://confluence.company.com/confluence \
+atlcli auth login --bearer --deployment data-center \
+  --site https://confluence.company.com/confluence \
   --token YOUR_PAT
 ```
 

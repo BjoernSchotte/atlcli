@@ -17,6 +17,7 @@ import {
   hasFlag,
   loadConfig,
   getActiveProfile,
+  getConfluenceBaseUrl,
   type Profile,
 } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
@@ -310,7 +311,7 @@ async function checkConfluenceApi(profile: Profile): Promise<CheckResult> {
     await client.getCurrentUser();
     const latency = Date.now() - start;
 
-    const wikiUrl = `${profile.baseUrl}/wiki`;
+    const wikiUrl = getConfluenceBaseUrl(profile);
 
     if (latency > LATENCY_WARN_THRESHOLD) {
       return {
