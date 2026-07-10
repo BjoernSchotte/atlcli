@@ -68,6 +68,13 @@ describe("plugin command", () => {
       enabled: true,
     });
 
+    const command = await runCli("git", "hook", "status");
+    expect(command).toEqual({
+      exitCode: 0,
+      stdout: "Status: Not a git repository\n",
+      stderr: "",
+    });
+
     const enabledList = await runCli("plugin", "list");
     expect(enabledList.exitCode).toBe(0);
     expect(enabledList.stdout).toContain("git@1.0.0 (enabled)");

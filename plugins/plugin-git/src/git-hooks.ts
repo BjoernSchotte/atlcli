@@ -4,8 +4,8 @@
  * Installs/removes/checks post-commit hooks for auto-pushing to Confluence.
  */
 
-import { readFile, writeFile, unlink, chmod, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, writeFile, unlink, chmod, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import type { CommandContext } from "./types.js";
 import { isGitRepo, getGitRoot } from "./utils.js";
@@ -13,14 +13,25 @@ import { isGitRepo, getGitRoot } from "./utils.js";
 /** Marker comment to identify our hook */
 const HOOK_MARKER = "# atlcli-plugin-git hook";
 
-/** The post-commit hook script */
-const HOOK_SCRIPT = `#!/bin/sh
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+/** Build a post-commit hook that retains the selected docs directory. */
+function buildHookScript(relativeDocsDir: string): string {
+  return `#!/bin/sh
 ${HOOK_MARKER}
 # Auto-push to Confluence on commit
 # Installed by: atlcli git hook install
 
-# Get the directory containing .atlcli
-DOCS_DIR="$(git rev-parse --show-toplevel)"
+# Resolve the configured docs directory from the current repository location.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+DOCS_RELATIVE=${shellQuote(relativeDocsDir)}
+if [ "$DOCS_RELATIVE" = "." ]; then
+  DOCS_DIR="$REPO_ROOT"
+else
+  DOCS_DIR="$REPO_ROOT/$DOCS_RELATIVE"
+fi
 
 # Skip if sync daemon is running (lockfile exists)
 LOCKFILE="$DOCS_DIR/.atlcli/.sync.lock"
@@ -36,13 +47,14 @@ fi
 
 # Push changes to Confluence
 echo "[atlcli-git] Auto-pushing to Confluence..."
-atlcli docs push "$DOCS_DIR" --quiet 2>&1 || {
+atlcli wiki docs push "$DOCS_DIR" --quiet 2>&1 || {
   echo "[atlcli-git] Push failed (non-blocking)"
 }
 
 # Always exit 0 - don't block commits
 exit 0
 `;
+}
 
 /**
  * Get the path to the post-commit hook.
@@ -88,7 +100,7 @@ async function hasExistingHook(hookPath: string): Promise<boolean> {
  * Install the post-commit hook.
  */
 export async function installHookHandler(ctx: CommandContext): Promise<void> {
-  const dir = ctx.args[0] ? resolve(ctx.args[0]) : process.cwd();
+  let dir = ctx.args[0] ? resolve(ctx.args[0]) : process.cwd();
 
   // Check if git repo
   if (!(await isGitRepo(dir))) {
@@ -96,17 +108,30 @@ export async function installHookHandler(ctx: CommandContext): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  dir = await realpath(dir);
 
   // Check if .atlcli directory exists
   const atlcliDir = join(dir, ".atlcli");
   if (!existsSync(atlcliDir)) {
     console.error("Error: Directory not initialized for atlcli (missing .atlcli/)");
-    console.error("Run 'atlcli docs init' first");
+    console.error("Run 'atlcli wiki docs init' first");
     process.exitCode = 1;
     return;
   }
 
-  const hookPath = await getHookPath(dir);
+  const gitRoot = await getGitRoot(dir);
+  const relativeDocsDir = relative(gitRoot, dir);
+  if (
+    isAbsolute(relativeDocsDir) ||
+    relativeDocsDir === ".." ||
+    relativeDocsDir.startsWith(`..${sep}`)
+  ) {
+    console.error("Error: Docs directory must be inside the Git repository");
+    process.exitCode = 1;
+    return;
+  }
+  const portableDocsDir = relativeDocsDir ? relativeDocsDir.split(sep).join("/") : ".";
+  const hookPath = join(gitRoot, ".git", "hooks", "post-commit");
 
   // Check if our hook is already installed
   if (await isHookInstalled(hookPath)) {
@@ -135,7 +160,7 @@ export async function installHookHandler(ctx: CommandContext): Promise<void> {
   }
 
   // Write the hook
-  await writeFile(hookPath, HOOK_SCRIPT);
+  await writeFile(hookPath, buildHookScript(portableDocsDir));
   await chmod(hookPath, 0o755); // Make executable
 
   if (ctx.output.json) {

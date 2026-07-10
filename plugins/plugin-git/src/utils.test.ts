@@ -134,6 +134,16 @@ describe("git utils", () => {
       expect(paths).toContain("staged.txt");
       expect(paths).toContain("unstaged.txt");
     });
+
+    test("limits changes to the supplied working directory", async () => {
+      const docsDir = join(tempDir, "docs");
+      await mkdir(docsDir);
+      await writeFile(join(docsDir, "inside.md"), "inside");
+      await writeFile(join(tempDir, "outside.md"), "outside");
+
+      const changes = await getAllGitChanges(docsDir);
+      expect(changes.map((change) => change.path)).toEqual(["docs/inside.md"]);
+    });
   });
 
   describe("gitAdd", () => {
@@ -158,6 +168,16 @@ describe("git utils", () => {
 
       const { stdout } = await gitExec(tempDir, ["diff", "--cached", "--name-only"]);
       expect(stdout.trim()).toBe("file.txt");
+    });
+
+    test("preserves file paths containing spaces", async () => {
+      const filename = "file with spaces.txt";
+      await writeFile(join(tempDir, filename), "content");
+
+      await gitAdd(tempDir, [filename]);
+
+      const { stdout } = await gitExec(tempDir, ["diff", "--cached", "--name-only"]);
+      expect(stdout.trim()).toBe(filename);
     });
   });
 
@@ -214,6 +234,16 @@ describe("git utils", () => {
       const { stdout } = await gitExec(tempDir, ["log", "-1", "--format=%B"]);
       expect(stdout.trim()).toContain("Subject line");
       expect(stdout.trim()).toContain("Body text here");
+    });
+
+    test("does not expand environment variables in messages", async () => {
+      await writeFile(join(tempDir, "file.txt"), "content");
+      await gitExec(tempDir, ["add", "."]);
+
+      await gitCommit(tempDir, "Keep $HOME literal");
+
+      const { stdout } = await gitExec(tempDir, ["log", "-1", "--format=%s"]);
+      expect(stdout.trim()).toBe("Keep $HOME literal");
     });
   });
 

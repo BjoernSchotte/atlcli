@@ -2,12 +2,12 @@
  * Git utilities for plugin-git.
  */
 
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /** File change from git status */
 export interface FileChange {
@@ -22,16 +22,52 @@ export async function gitExec(
   dir: string,
   args: string[]
 ): Promise<{ stdout: string; stderr: string }> {
-  const command = `git ${args.join(" ")}`;
+  const displayCommand = ["git", ...args].map((arg) => JSON.stringify(arg)).join(" ");
   try {
-    const result = await execAsync(command, { cwd: dir, maxBuffer: 10 * 1024 * 1024 });
-    return result;
+    const result = await execFileAsync("git", args, {
+      cwd: dir,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return { stdout: result.stdout, stderr: result.stderr };
   } catch (err: unknown) {
     const error = err as { stdout?: string; stderr?: string; message?: string };
     throw new Error(
-      `Git command failed: ${command}\n${error.stderr || error.message}`
+      `Git command failed: ${displayCommand}\n${error.stderr || error.message}`
     );
   }
+}
+
+interface PorcelainEntry {
+  indexStatus: string;
+  workTreeStatus: string;
+  path: string;
+}
+
+/** Parse NUL-delimited porcelain output without relying on shell quoting. */
+function parsePorcelain(output: string): PorcelainEntry[] {
+  const records = output.split("\0");
+  const entries: PorcelainEntry[] = [];
+
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    if (!record || record.length < 4) continue;
+
+    const indexStatus = record.charAt(0);
+    const workTreeStatus = record.charAt(1);
+    entries.push({
+      indexStatus,
+      workTreeStatus,
+      path: record.substring(3),
+    });
+
+    // Rename/copy records contain a second NUL-delimited source path.
+    if (indexStatus === "R" || indexStatus === "C" || workTreeStatus === "R" || workTreeStatus === "C") {
+      i += 1;
+    }
+  }
+
+  return entries;
 }
 
 /**
@@ -66,28 +102,21 @@ export async function getGitRoot(dir: string): Promise<string> {
  * Returns only untracked and modified files (not staged).
  */
 export async function getGitChanges(dir: string): Promise<FileChange[]> {
-  const { stdout } = await gitExec(dir, ["status", "--porcelain"]);
+  const { stdout } = await gitExec(dir, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    ".",
+  ]);
 
   if (!stdout.trim()) {
     return [];
   }
 
   const changes: FileChange[] = [];
-  // Don't use trim() on the full output - it removes leading spaces from status codes
-  const lines = stdout.replace(/\n$/, "").split("\n");
-
-  for (const line of lines) {
-    if (!line || line.length < 4) continue;
-
-    // Git status --porcelain format: XY filename
-    // X = index status, Y = work tree status
-    // Format is exactly: "XY " followed by filename (3 chars then filename)
-    const indexStatus = line.charAt(0);
-    const workTreeStatus = line.charAt(1);
-    const path = line.substring(3); // Skip "XY "
-
-    // We care about work tree changes (untracked, modified)
-    // ? = untracked, M = modified, A = added, D = deleted
+  for (const { indexStatus, workTreeStatus, path } of parsePorcelain(stdout)) {
     if (workTreeStatus === "?" || workTreeStatus === "M" || workTreeStatus === "D") {
       changes.push({
         path,
@@ -109,23 +138,21 @@ export async function getGitChanges(dir: string): Promise<FileChange[]> {
  * Get list of all uncommitted changes (staged + unstaged).
  */
 export async function getAllGitChanges(dir: string): Promise<FileChange[]> {
-  const { stdout } = await gitExec(dir, ["status", "--porcelain"]);
+  const { stdout } = await gitExec(dir, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    ".",
+  ]);
 
   if (!stdout.trim()) {
     return [];
   }
 
   const changes: FileChange[] = [];
-  // Don't use trim() on the full output - it removes leading spaces from status codes
-  const lines = stdout.replace(/\n$/, "").split("\n");
-
-  for (const line of lines) {
-    if (!line || line.length < 4) continue;
-
-    const indexStatus = line.charAt(0);
-    const workTreeStatus = line.charAt(1);
-    const path = line.substring(3);
-
+  for (const { indexStatus, workTreeStatus, path } of parsePorcelain(stdout)) {
     // Include any file that has changes (staged or unstaged)
     if (indexStatus !== " " || workTreeStatus !== " ") {
       // Determine the most relevant status
@@ -163,17 +190,23 @@ export async function gitAdd(dir: string, files: string[] | FileChange[]): Promi
 /**
  * Stage all changes.
  */
-export async function gitAddAll(dir: string): Promise<void> {
-  await gitExec(dir, ["add", "-A"]);
+export async function gitAddAll(dir: string, pathspec = "."): Promise<void> {
+  await gitExec(dir, ["add", "-A", "--", pathspec]);
 }
 
 /**
  * Create a git commit.
  */
-export async function gitCommit(dir: string, message: string): Promise<string> {
-  // Quote the message to handle special characters like parentheses
-  const quotedMessage = `"${message.replace(/"/g, '\\"')}"`;
-  const { stdout } = await gitExec(dir, ["commit", "-m", quotedMessage]);
+export async function gitCommit(
+  dir: string,
+  message: string,
+  pathspecs: string[] = [],
+): Promise<string> {
+  const args = ["commit", "-m", message];
+  if (pathspecs.length > 0) {
+    args.push("--only", "--", ...pathspecs);
+  }
+  const { stdout } = await gitExec(dir, args);
   return stdout;
 }
 

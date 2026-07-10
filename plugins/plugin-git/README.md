@@ -18,10 +18,10 @@ atlcli plugin enable git
 
 ### Auto-commit (automatic)
 
-After installing the plugin, any `docs pull` that brings in changes will automatically commit them to git:
+After installing the plugin, any `wiki docs pull` that brings in changes will automatically commit them to git:
 
 ```bash
-atlcli docs pull ./docs
+atlcli wiki docs pull ./docs
 # [plugin-git] Auto-committed 3 file(s) from Confluence pull
 
 git log -1
@@ -64,8 +64,8 @@ atlcli git hook remove [dir]
 ### Auto-commit on Pull
 
 1. Plugin registers an `afterCommand` hook
-2. After `docs pull` completes, checks for git changes
-3. Stages all changes and commits with descriptive message
+2. After `wiki docs pull` completes, checks for git changes
+3. Stages changes within the selected docs directory and commits them with a descriptive message
 4. Commit message format: `sync(confluence): pull N page(s) from Confluence`
 
 ### Auto-push on Commit
@@ -73,12 +73,12 @@ atlcli git hook remove [dir]
 1. User installs post-commit hook via `atlcli git hook install`
 2. Hook script is created at `.git/hooks/post-commit`
 3. On each commit, hook checks for sync daemon lockfile
-4. If no lockfile, runs `atlcli docs push` to sync to Confluence
+4. If no lockfile, runs `atlcli wiki docs push` to sync to Confluence
 5. Push failures are non-blocking (commit succeeds regardless)
 
 ### Lockfile Detection
 
-When the sync daemon (`atlcli docs sync`) is running, it creates a lockfile at `.atlcli/.sync.lock`. The post-commit hook detects this and skips the push to avoid conflicts.
+When the sync daemon (`atlcli wiki docs sync`) is running, it creates a lockfile at `.atlcli/.sync.lock`. The post-commit hook detects this and skips the push to avoid conflicts.
 
 ## Commit Message Format
 
