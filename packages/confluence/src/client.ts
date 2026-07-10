@@ -115,6 +115,13 @@ export interface AttachmentInfo {
 
 export class ConfluenceClient {
   private baseUrl: string;
+  /**
+   * Path segment inserted between the site URL and the Confluence REST/web
+   * roots. `/wiki` for Atlassian Cloud (`https://x.atlassian.net` + `/wiki/...`),
+   * or "" for Server/Data Center, whose context path (e.g. `/confluence`) is
+   * already part of the site URL. Derived once from the immutable base URL.
+   */
+  private apiBasePath: string;
   private authHeader: string;
   private maxRetries = 3;
   private baseDelayMs = 1000;
@@ -122,6 +129,9 @@ export class ConfluenceClient {
 
   constructor(profile: Profile) {
     this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
+    // If the site URL already carries a path, the API hangs directly off it;
+    // otherwise default to Cloud's `/wiki` (the long-standing behavior).
+    this.apiBasePath = new URL(this.baseUrl).pathname.replace(/\/+$/, "") ? "" : "/wiki";
     if (profile.auth.type === "oauth") {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
@@ -132,6 +142,15 @@ export class ConfluenceClient {
   /** Get the Confluence instance base URL */
   getInstanceUrl(): string {
     return this.baseUrl;
+  }
+
+  /**
+   * Build an absolute web (browser) URL from a Confluence `_links.webui` path,
+   * honoring the instance context path. Returns undefined when no path is given.
+   */
+  private buildWebUrl(webuiPath: string | undefined): string | undefined {
+    if (!webuiPath) return undefined;
+    return `${this.baseUrl}${this.apiBasePath}${webuiPath}`;
   }
 
   /** Sleep utility for rate limiting */
@@ -153,7 +172,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}/wiki/rest/api${path}`);
+    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/api${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
@@ -272,7 +291,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}/wiki/api/v2${path}`);
+    const url = new URL(`${this.baseUrl}${this.apiBasePath}/api/v2${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
@@ -922,7 +941,7 @@ export class ConfluenceClient {
           type: item.type === "folder" ? "folder" : item.type === "page" ? "page" : item.type,
           spaceId: item.spaceId,
           parentId: pageId,
-          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
+          url: this.buildWebUrl(item._links?.webui),
         });
       }
 
@@ -1419,7 +1438,7 @@ export class ConfluenceClient {
     path: string,
     formData: FormData
   ): Promise<any> {
-    const url = new URL(`${this.baseUrl}/wiki/rest/api${path}`);
+    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/api${path}`);
 
     const logger = getLogger();
     const requestId = generateRequestId();
@@ -1522,7 +1541,7 @@ export class ConfluenceClient {
    * Request helper for binary downloads.
    */
   private async requestBinary(downloadPath: string): Promise<Buffer> {
-    const url = new URL(`${this.baseUrl}/wiki${downloadPath}`);
+    const url = new URL(`${this.baseUrl}${this.apiBasePath}${downloadPath}`);
 
     const logger = getLogger();
     const requestId = generateRequestId();
@@ -1723,7 +1742,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}/wiki/rest/webhooks/1.0${path}`);
+    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/webhooks/1.0${path}`);
 
     let lastError: Error | null = null;
 
@@ -2309,7 +2328,7 @@ export class ConfluenceClient {
       title: data.title,
       spaceId: data.spaceId,
       parentId: data.parentId ?? null,
-      url: data._links?.webui ? `${this.baseUrl}/wiki${data._links.webui}` : undefined,
+      url: this.buildWebUrl(data._links?.webui),
       createdAt: data.createdAt,
     };
   }
@@ -2387,7 +2406,7 @@ export class ConfluenceClient {
           type: item.type === "folder" ? "folder" : "page",
           spaceId: item.spaceId,
           parentId: folderId,
-          url: item._links?.webui ? `${this.baseUrl}/wiki${item._links.webui}` : undefined,
+          url: this.buildWebUrl(item._links?.webui),
         });
       }
 
@@ -2471,7 +2490,7 @@ export class ConfluenceClient {
       title: data.title,
       spaceId: data.spaceId,
       parentId: data.parentId ?? null,
-      url: data._links?.webui ? `${this.baseUrl}/wiki${data._links.webui}` : undefined,
+      url: this.buildWebUrl(data._links?.webui),
       createdAt: data.createdAt,
     };
   }

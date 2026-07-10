@@ -87,6 +87,23 @@ atlcli auth login --bearer --site https://jira.company.internal \
   --token YOUR_PAT --ca-file /etc/ssl/certs/company-ca.pem
 ```
 
+:::note[Context paths]
+Atlassian Cloud serves Confluence under `/wiki`, which atlcli appends
+automatically — so Cloud `--site` URLs are bare hosts
+(`https://company.atlassian.net`).
+
+Server/Data Center instances are often served from a custom context path such
+as `/confluence`. Include that path in `--site` and atlcli will route REST
+requests through it:
+
+```bash
+atlcli auth login --bearer --site https://confluence.company.com/confluence \
+  --token YOUR_PAT
+```
+
+Do **not** add `/wiki` to a Data Center URL — that is Cloud-only.
+:::
+
 Options:
 
 | Flag | Description |
@@ -474,6 +491,30 @@ To re-authenticate:
 
 ```bash
 atlcli auth login --bearer --site https://jira.company.com --token YOUR_NEW_PAT
+```
+
+### Confluence page operations fail on Server/Data Center (404 / 405)
+
+```
+Error: HTTP 405
+NOT NULL constraint failed: pages.title
+```
+
+If reads work but `wiki page create`, `wiki page update`, or `wiki docs`
+commands fail on a Server/Data Center instance, your site is likely served
+from a context path that is missing from the profile URL.
+
+atlcli appends `/wiki` (Cloud's context path) only when the `--site` URL has no
+path of its own. A Data Center instance hosted at
+`https://confluence.company.com/confluence` must include `/confluence` in the
+site URL, otherwise requests are sent to a non-existent
+`/confluence/wiki/rest/api/...` path.
+
+Re-create the profile with the full context path:
+
+```bash
+atlcli auth login --bearer --site https://confluence.company.com/confluence \
+  --token YOUR_PAT
 ```
 
 ### Keychain Issues (macOS)
