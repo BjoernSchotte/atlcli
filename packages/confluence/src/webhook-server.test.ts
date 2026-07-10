@@ -1,13 +1,26 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
 import {
   WebhookServer,
   createWebhookServer,
-  WebhookPayload,
+} from "./webhook-server.js";
+import type {
   WebhookHandler,
+  WebhookPayload,
+  WebhookServerOptions,
 } from "./webhook-server.js";
 
-// Use a random port for each test to avoid conflicts
-let testPort = 40000 + Math.floor(Math.random() * 10000);
+function createTestServer(
+  options: Omit<WebhookServerOptions, "port"> = {},
+): WebhookServer {
+  return new WebhookServer({ ...options, port: 0 });
+}
+
+function startServer(instance: WebhookServer): URL {
+  instance.start();
+  const url = instance.getUrl();
+  if (!url) throw new Error("Webhook server did not start");
+  return new URL(url);
+}
 
 describe("WebhookServer", () => {
   let server: WebhookServer | null = null;
@@ -21,7 +34,7 @@ describe("WebhookServer", () => {
 
   describe("lifecycle", () => {
     test("starts and stops correctly", () => {
-      server = new WebhookServer({ port: ++testPort });
+      server = createTestServer();
       expect(server.isRunning()).toBe(false);
 
       server.start();
@@ -32,34 +45,33 @@ describe("WebhookServer", () => {
     });
 
     test("getUrl returns correct URL when running", () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
-      server.start();
+      server = createTestServer();
+      const url = startServer(server);
 
-      expect(server.getUrl()).toBe(`http://localhost:${port}/webhook`);
+      expect(url.hostname).toBe("localhost");
+      expect(Number(url.port)).toBeGreaterThan(0);
+      expect(url.pathname).toBe("/webhook");
     });
 
     test("getUrl returns null when not running", () => {
-      server = new WebhookServer({ port: ++testPort });
+      server = createTestServer();
       expect(server.getUrl()).toBe(null);
     });
 
     test("custom path is used", () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port, path: "/custom-hook" });
-      server.start();
+      server = createTestServer({ path: "/custom-hook" });
+      const url = startServer(server);
 
-      expect(server.getUrl()).toBe(`http://localhost:${port}/custom-hook`);
+      expect(url.pathname).toBe("/custom-hook");
     });
   });
 
   describe("HTTP endpoints", () => {
     test("health endpoint returns ok", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
-      server.start();
+      server = createTestServer();
+      const url = startServer(server);
 
-      const res = await fetch(`http://localhost:${port}/health`);
+      const res = await fetch(new URL("/health", url));
       expect(res.status).toBe(200);
 
       const data = await res.json();
@@ -67,9 +79,8 @@ describe("WebhookServer", () => {
     });
 
     test("webhook endpoint accepts POST", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
-      server.start();
+      server = createTestServer();
+      const url = startServer(server);
 
       const payload: WebhookPayload = {
         eventType: "page_updated",
@@ -82,7 +93,7 @@ describe("WebhookServer", () => {
         },
       };
 
-      const res = await fetch(`http://localhost:${port}/webhook`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -94,20 +105,18 @@ describe("WebhookServer", () => {
     });
 
     test("returns 404 for unknown paths", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
-      server.start();
+      server = createTestServer();
+      const url = startServer(server);
 
-      const res = await fetch(`http://localhost:${port}/unknown`);
+      const res = await fetch(new URL("/unknown", url));
       expect(res.status).toBe(404);
     });
 
     test("returns 400 for invalid JSON", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
-      server.start();
+      server = createTestServer();
+      const url = startServer(server);
 
-      const res = await fetch(`http://localhost:${port}/webhook`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "not valid json",
@@ -119,15 +128,14 @@ describe("WebhookServer", () => {
 
   describe("event handling", () => {
     test("calls registered handlers", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
+      server = createTestServer();
 
       const receivedPayloads: WebhookPayload[] = [];
       server.on((payload) => {
         receivedPayloads.push(payload);
       });
 
-      server.start();
+      const url = startServer(server);
 
       const payload: WebhookPayload = {
         eventType: "page_created",
@@ -140,7 +148,7 @@ describe("WebhookServer", () => {
         },
       };
 
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -155,17 +163,16 @@ describe("WebhookServer", () => {
     });
 
     test("can remove handlers", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
+      server = createTestServer();
 
       let callCount = 0;
       const handler: WebhookHandler = () => { callCount++; };
 
       server.on(handler);
       server.off(handler);
-      server.start();
+      const url = startServer(server);
 
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -179,8 +186,7 @@ describe("WebhookServer", () => {
     });
 
     test("async handlers are awaited", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({ port });
+      server = createTestServer();
 
       let completed = false;
       server.on(async () => {
@@ -188,9 +194,9 @@ describe("WebhookServer", () => {
         completed = true;
       });
 
-      server.start();
+      const url = startServer(server);
 
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -206,18 +212,16 @@ describe("WebhookServer", () => {
 
   describe("filtering", () => {
     test("filters by page ID", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({
-        port,
+      server = createTestServer({
         filterPageIds: new Set(["allowed"]),
       });
 
       const receivedPayloads: WebhookPayload[] = [];
       server.on((payload) => { receivedPayloads.push(payload); });
-      server.start();
+      const url = startServer(server);
 
       // Send allowed page
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +232,7 @@ describe("WebhookServer", () => {
       });
 
       // Send filtered page
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -245,18 +249,16 @@ describe("WebhookServer", () => {
     });
 
     test("filters by space key", async () => {
-      const port = ++testPort;
-      server = new WebhookServer({
-        port,
+      server = createTestServer({
         filterSpaceKeys: new Set(["ALLOWED"]),
       });
 
       const receivedPayloads: WebhookPayload[] = [];
       server.on((payload) => { receivedPayloads.push(payload); });
-      server.start();
+      const url = startServer(server);
 
       // Send allowed space
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -267,7 +269,7 @@ describe("WebhookServer", () => {
       });
 
       // Send filtered space
-      await fetch(`http://localhost:${port}/webhook`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
