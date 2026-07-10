@@ -2,6 +2,18 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [0.17.2] - 2026-07-10
+
+### Bug Fixes
+
+- **plugin:** Bundle git plugin (#21)([cb09aad](https://github.com/bjoernschotte/atlcli/commit/cb09aad75b2c086f11fa67efd12f95d5ecb4f0db))
+
+### Thanks
+
+A big thank you to everyone who helped shape this release 🙏
+
+- [@trueberryless](https://github.com/trueberryless) — reported issue #20
+
 ## [0.17.1] - 2026-07-10
 
 ### Bug Fixes
@@ -20,18 +32,6 @@ All notable changes to atlcli will be documented in this file.
 ### Miscellaneous
 
 - Add SonarQube scanner config with coverage([95a7e7e](https://github.com/bjoernschotte/atlcli/commit/95a7e7eaf3125f3ddc89e6ee7a3d28feb35a9679))
-
-### New Contributors
-
-- [@jvm](https://github.com/jvm) - fix(confluence): honor context path for Server/Data Center instances (#14)
-
-### Thanks
-
-A big thank you to everyone who helped shape this release 🙏
-
-- [@jvm](https://github.com/jvm) — PR #14
-- [@lauritziu](https://github.com/lauritziu) — reported issue #15
-
 ## [0.17.0] - 2026-05-15
 
 ### Bug Fixes
