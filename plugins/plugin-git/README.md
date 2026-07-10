@@ -11,7 +11,7 @@ Git integration plugin for atlcli Confluence sync.
 ## Installation
 
 ```bash
-atlcli plugin install ./plugins/plugin-git
+atlcli plugin enable git
 ```
 
 ## Usage

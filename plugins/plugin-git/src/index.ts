@@ -6,7 +6,7 @@
  * 2. Git hooks: Install post-commit hook for auto-push to Confluence
  *
  * Usage:
- *   atlcli plugin install ./plugins/plugin-git
+ *   atlcli plugin enable git
  *   atlcli git hook install     # Enable auto-push on commit
  *   atlcli git hook status      # Check hook status
  *   atlcli git hook remove      # Disable auto-push
@@ -101,7 +101,7 @@ Options:
 
 /** Plugin definition */
 const plugin: AtlcliPlugin = {
-  name: "plugin-git",
+  name: "git",
   version: "1.0.0",
   description: "Git integration for Confluence sync - auto-commit on pull, auto-push on commit",
 

@@ -24,6 +24,9 @@ import {
   loadPluginConfig,
   savePluginConfig,
   loadPluginFromPath,
+  createBuiltinPluginMetadata,
+  getBuiltinPlugin,
+  getBuiltinPlugins,
 } from "../plugins/loader.js";
 import type { PluginMetadata } from "@atlcli/plugin-api";
 
@@ -63,9 +66,24 @@ export async function handlePlugin(
 
 async function handleList(opts: OutputOptions): Promise<void> {
   const registry = getPluginRegistry();
+  const config = await loadPluginConfig();
+  const builtins = getBuiltinPlugins();
+  const builtinNames = new Set(builtins.map((plugin) => plugin.name));
+  const plugins = [
+    ...builtins.map((plugin) =>
+      registry.getPlugin(plugin.name) ?? {
+        plugin,
+        metadata:
+          config.find(
+            (candidate) => candidate.source === "builtin" && candidate.name === plugin.name,
+          ) ?? createBuiltinPluginMetadata(plugin, false),
+      },
+    ),
+    ...registry.getAllPlugins().filter(({ plugin }) => !builtinNames.has(plugin.name)),
+  ];
 
   if (opts.json) {
-    const plugins = registry.getAllPlugins().map((p) => ({
+    const serialized = plugins.map((p) => ({
       name: p.plugin.name,
       version: p.plugin.version,
       description: p.plugin.description,
@@ -73,11 +91,9 @@ async function handleList(opts: OutputOptions): Promise<void> {
       enabled: p.metadata.enabled,
       commands: p.plugin.commands?.map((c) => c.name) ?? [],
     }));
-    output(JSON.stringify(plugins, null, 2), opts);
+    output(JSON.stringify(serialized, null, 2), opts);
     return;
   }
-
-  const plugins = registry.getAllPlugins();
 
   if (plugins.length === 0) {
     output("No plugins installed.", opts);
@@ -130,6 +146,9 @@ async function handleInstall(
 
   // Check if already installed
   const config = await loadPluginConfig();
+  if (getBuiltinPlugin(plugin.name)) {
+    fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${plugin.name}" is bundled with atlcli`);
+  }
   const existing = config.find((p) => p.name === plugin.name);
   if (existing) {
     fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${plugin.name}" is already installed`);
@@ -185,6 +204,10 @@ async function handleRemove(args: string[], opts: OutputOptions): Promise<void> 
     fail(opts, 1, ERROR_CODES.USAGE, "Usage: atlcli plugin remove <name>");
   }
 
+  if (getBuiltinPlugin(name)) {
+    fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${name}" is built in and cannot be removed`);
+  }
+
   const config = await loadPluginConfig();
   const index = config.findIndex((p) => p.name === name);
 
@@ -226,7 +249,15 @@ async function handleEnable(args: string[], opts: OutputOptions): Promise<void> 
   }
 
   const config = await loadPluginConfig();
-  const plugin = config.find((p) => p.name === name);
+  let plugin = config.find((p) => p.name === name);
+
+  if (!plugin) {
+    const builtin = getBuiltinPlugin(name);
+    if (builtin) {
+      plugin = createBuiltinPluginMetadata(builtin, false);
+      config.push(plugin);
+    }
+  }
 
   if (!plugin) {
     fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${name}" is not installed`);
@@ -242,7 +273,13 @@ async function handleEnable(args: string[], opts: OutputOptions): Promise<void> 
 
   // Load into current session
   try {
-    const loadedPlugin = await loadPluginFromPath(plugin.location);
+    const loadedPlugin =
+      plugin.source === "builtin"
+        ? getBuiltinPlugin(plugin.name)
+        : await loadPluginFromPath(plugin.location);
+    if (!loadedPlugin) {
+      throw new Error(`Built-in plugin "${plugin.name}" is unavailable`);
+    }
     if (loadedPlugin.initialize) {
       await loadedPlugin.initialize();
     }
@@ -269,6 +306,10 @@ async function handleDisable(args: string[], opts: OutputOptions): Promise<void>
   const plugin = config.find((p) => p.name === name);
 
   if (!plugin) {
+    if (getBuiltinPlugin(name)) {
+      output(`Plugin "${name}" is already disabled`, opts);
+      return;
+    }
     fail(opts, 1, ERROR_CODES.CONFIG, `Plugin "${name}" is not installed`);
   }
 

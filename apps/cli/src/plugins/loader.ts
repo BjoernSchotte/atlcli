@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import gitPlugin from "../../../../plugins/plugin-git/src/index.js";
 import type {
   AtlcliPlugin,
   CommandDefinition,
@@ -17,6 +18,32 @@ import type {
   PluginHooks,
   CommandContext,
 } from "@atlcli/plugin-api";
+
+const BUILTIN_PLUGINS: readonly AtlcliPlugin[] = [gitPlugin];
+
+/** Get all plugins compiled into the atlcli executable. */
+export function getBuiltinPlugins(): AtlcliPlugin[] {
+  return [...BUILTIN_PLUGINS];
+}
+
+/** Get a compiled-in plugin by its canonical name. */
+export function getBuiltinPlugin(name: string): AtlcliPlugin | null {
+  return BUILTIN_PLUGINS.find((plugin) => plugin.name === name) ?? null;
+}
+
+/** Create the persisted metadata used to enable or disable a built-in plugin. */
+export function createBuiltinPluginMetadata(
+  plugin: AtlcliPlugin,
+  enabled: boolean,
+): PluginMetadata {
+  return {
+    name: plugin.name,
+    version: plugin.version,
+    source: "builtin",
+    location: `builtin:${plugin.name}`,
+    enabled,
+  };
+}
 
 /** Loaded plugin with metadata */
 export interface LoadedPlugin {
@@ -251,9 +278,33 @@ export async function discoverLocalPlugins(): Promise<Array<{ path: string; name
 
 /** Load all configured and discovered plugins */
 export async function loadAllPlugins(registry: PluginRegistry): Promise<void> {
-  // Load from config
   const config = await loadPluginConfig();
+
+  // Built-in plugins are available in every binary but remain disabled until
+  // explicitly enabled in the user's plugin config.
+  for (const plugin of BUILTIN_PLUGINS) {
+    const meta = config.find(
+      (candidate) => candidate.source === "builtin" && candidate.name === plugin.name,
+    );
+    if (!meta?.enabled) continue;
+
+    try {
+      if (plugin.initialize) {
+        await plugin.initialize();
+      }
+      registry.register(plugin, {
+        ...meta,
+        version: plugin.version,
+        location: `builtin:${plugin.name}`,
+      });
+    } catch (err) {
+      console.error(`Warning: Failed to load built-in plugin "${plugin.name}": ${err}`);
+    }
+  }
+
+  // Load configured external plugins.
   for (const meta of config) {
+    if (meta.source === "builtin") continue;
     if (!meta.enabled) continue;
 
     try {
