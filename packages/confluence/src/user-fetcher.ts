@@ -74,6 +74,81 @@ export function extractUserIdsFromPages(pages: ConfluencePageDetails[]): string[
 }
 
 /**
+ * Minimal user data that can be persisted without a remote status lookup.
+ */
+export interface UserPlaceholder {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+}
+
+/**
+ * Ensure user rows exist before records with user foreign keys are inserted.
+ *
+ * Existing status/cache data is preserved. Page metadata only fills missing
+ * display names or email addresses.
+ */
+export async function ensureUserPlaceholders(
+  users: UserPlaceholder[],
+  adapter: SyncDbAdapter
+): Promise<void> {
+  const uniqueUsers = new Map<string, UserPlaceholder>();
+
+  for (const user of users) {
+    const existing = uniqueUsers.get(user.userId);
+    uniqueUsers.set(user.userId, {
+      userId: user.userId,
+      displayName: existing?.displayName ?? user.displayName ?? null,
+      email: existing?.email ?? user.email ?? null,
+    });
+  }
+
+  for (const user of uniqueUsers.values()) {
+    const existing = await adapter.getUser(user.userId);
+    if (!existing) {
+      await adapter.upsertUser({
+        userId: user.userId,
+        displayName: user.displayName ?? null,
+        email: user.email ?? null,
+        isActive: null,
+        lastCheckedAt: null,
+      });
+      continue;
+    }
+
+    const displayName = existing.displayName ?? user.displayName ?? null;
+    const email = existing.email ?? user.email ?? null;
+    if (displayName !== existing.displayName || email !== existing.email) {
+      await adapter.upsertUser({ ...existing, displayName, email });
+    }
+  }
+}
+
+/**
+ * Ensure creator and last-modifier rows exist using metadata already returned
+ * with pulled pages.
+ */
+export async function ensureUsersFromPages(
+  pages: ConfluencePageDetails[],
+  adapter: SyncDbAdapter
+): Promise<void> {
+  const users: UserPlaceholder[] = [];
+
+  for (const page of pages) {
+    for (const user of [page.createdBy, page.modifiedBy]) {
+      if (!user?.accountId) continue;
+      users.push({
+        userId: user.accountId,
+        displayName: user.displayName,
+        email: user.email ?? null,
+      });
+    }
+  }
+
+  await ensureUserPlaceholders(users, adapter);
+}
+
+/**
  * Check if a user's cached status is expired.
  */
 export function isUserCacheExpired(
@@ -204,6 +279,9 @@ export async function checkUsersFromPull(
   adapter: SyncDbAdapter,
   options: UserCheckOptions = {}
 ): Promise<UserCheckResult> {
+  // Contributor rows reference users even when remote status checks are skipped.
+  await ensureUsersFromPages(pages, adapter);
+
   // Extract all user IDs from pages
   const allUserIds = extractUserIdsFromPages(pages);
 

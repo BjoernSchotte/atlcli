@@ -1,18 +1,27 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { Database } from "bun:sqlite";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   extractUserIdsFromPage,
   extractUserIdsFromPages,
   isUserCacheExpired,
   filterUsersNeedingCheck,
+  checkUsersFromPull,
   createContributorRecords,
+  ensureUserPlaceholders,
   userInfoToRecord,
   getUserStats,
   extractUserIdsFromContributorResults,
   DEFAULT_USER_CACHE_TTL_MS,
   type FetchContributorsResult,
 } from "./user-fetcher.js";
-import type { ConfluencePageDetails, UserInfo } from "./client.js";
+import type { ConfluenceClient, ConfluencePageDetails, UserInfo } from "./client.js";
 import type { SyncDbAdapter, UserRecord } from "./sync-db/types.js";
+import { createPageRecord } from "./sync-db/types.js";
+import { SqliteAdapter } from "./sync-db/sqlite-adapter.js";
+import { extractLinksFromStorage } from "./link-extractor-storage.js";
 
 /**
  * Create a mock page with user data.
@@ -219,6 +228,154 @@ describe("filterUsersNeedingCheck", () => {
     );
 
     expect(result).toEqual(["user-1"]);
+  });
+});
+
+describe("checkUsersFromPull", () => {
+  test("creates placeholder users before contributor and link persistence when checks are skipped", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "atlcli-user-pull-"));
+    const dbPath = join(tempDir, "sync.db");
+    const adapter = new SqliteAdapter({ dbPath });
+    let adapterClosed = false;
+
+    try {
+      await adapter.init();
+      const page = createMockPage({
+        storage: '<p><a href="https://example.com">External</a></p>',
+        createdBy: {
+          accountId: "user-creator",
+          displayName: "Creator User",
+          email: "creator@example.com",
+        },
+      });
+      await adapter.upsertPage(createPageRecord({
+        pageId: page.id,
+        path: "test-page.md",
+        title: page.title,
+        spaceKey: "TEST",
+      }));
+
+      const getUsersBulk = mock(() => Promise.resolve(new Map()));
+      const client = { getUsersBulk } as unknown as ConfluenceClient;
+      const result = await checkUsersFromPull(
+        [page],
+        client,
+        adapter,
+        { skipUserCheck: true }
+      );
+
+      await adapter.setPageLinks(page.id, extractLinksFromStorage(page.storage, page.id));
+      const contributors = [
+        ...createContributorRecords(page, page.id),
+        {
+          pageId: page.id,
+          userId: "user-historical",
+          contributionCount: 3,
+          lastContributedAt: "2023-12-01T00:00:00.000Z",
+        },
+      ];
+      const contributorResults = new Map<string, FetchContributorsResult>([[page.id, {
+        pageId: page.id,
+        contributors,
+        versionCount: 5,
+        userIds: contributors.map((contributor) => contributor.userId),
+      }]]);
+      await ensureUserPlaceholders(
+        extractUserIdsFromContributorResults(contributorResults)
+          .map((userId) => ({ userId })),
+        adapter
+      );
+      await adapter.setPageContributors(page.id, contributors);
+
+      expect(result.checked).toBe(0);
+      expect(getUsersBulk).not.toHaveBeenCalled();
+      expect(await adapter.getUser("user-creator")).toEqual({
+        userId: "user-creator",
+        displayName: "Creator User",
+        email: "creator@example.com",
+        isActive: null,
+        lastCheckedAt: null,
+      });
+      expect((await adapter.getPageContributors(page.id)).map((c) => c.userId).sort())
+        .toEqual(["user-creator", "user-historical", "user-modifier"]);
+      expect(await adapter.getUser("user-historical")).toEqual({
+        userId: "user-historical",
+        displayName: null,
+        email: null,
+        isActive: null,
+        lastCheckedAt: null,
+      });
+      expect(await adapter.getOutgoingLinks(page.id)).toHaveLength(1);
+
+      await adapter.close();
+      adapterClosed = true;
+
+      const db = new Database(dbPath, { readonly: true });
+      try {
+        expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      } finally {
+        db.close();
+      }
+    } finally {
+      if (!adapterClosed) await adapter.close();
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("still enriches placeholder users when remote checks are enabled", async () => {
+    const storedUsers = new Map<string, UserRecord>();
+    const adapter = {
+      getUser: mock((userId: string) => Promise.resolve(storedUsers.get(userId) ?? null)),
+      upsertUser: mock((user: UserRecord) => {
+        storedUsers.set(user.userId, user);
+        return Promise.resolve();
+      }),
+    } as unknown as SyncDbAdapter;
+    const getUsersBulk = mock((userIds: string[]) => Promise.resolve(new Map(
+      userIds.map((userId) => [userId, {
+        accountId: userId,
+        displayName: `Checked ${userId}`,
+        email: null,
+        isActive: true,
+        profilePicture: null,
+      } satisfies UserInfo])
+    )));
+    const client = { getUsersBulk } as unknown as ConfluenceClient;
+
+    const result = await checkUsersFromPull([createMockPage()], client, adapter);
+
+    expect(result.checked).toBe(2);
+    expect(getUsersBulk).toHaveBeenCalledTimes(1);
+    expect(storedUsers.get("user-creator")?.displayName).toBe("Checked user-creator");
+    expect(storedUsers.get("user-creator")?.isActive).toBe(true);
+    expect(storedUsers.get("user-creator")?.lastCheckedAt).not.toBeNull();
+  });
+
+  test("preserves cached status when filling missing placeholder metadata", async () => {
+    const cached = createMockUserRecord({
+      userId: "user-1",
+      displayName: null,
+      email: null,
+      isActive: true,
+    });
+    const storedUsers = new Map([[cached.userId, cached]]);
+    const adapter = {
+      getUser: mock((userId: string) => Promise.resolve(storedUsers.get(userId) ?? null)),
+      upsertUser: mock((user: UserRecord) => {
+        storedUsers.set(user.userId, user);
+        return Promise.resolve();
+      }),
+    } as unknown as SyncDbAdapter;
+
+    await ensureUserPlaceholders(
+      [{ userId: "user-1", displayName: "Page Display Name" }],
+      adapter
+    );
+
+    expect(storedUsers.get("user-1")).toEqual({
+      ...cached,
+      displayName: "Page Display Name",
+    });
   });
 });
 

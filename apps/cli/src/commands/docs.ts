@@ -113,13 +113,15 @@ import {
   formatValidationReport,
   ValidationResult,
   // Link storage
-  storePageLinksBatch,
+  extractLinksFromStorage,
   // Link change detection
   detectLinkChangesBatch,
   type LinkChangeResult,
   // User and contributor handling
   checkUsersFromPull,
   createContributorRecords,
+  ensureUserPlaceholders,
+  extractUserIdsFromContributorResults,
   fetchAllContributorsForPages,
   type UserCheckOptions,
   // Sync database
@@ -1322,13 +1324,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     state.lastSync = new Date().toISOString();
     await writeState(atlcliDir, state);
 
-    // Extract and store links from all pulled pages (Phase 1 link graph population)
-    // Uses batch operation for efficiency - only runs if sync.db exists
-    const linksData = pageDetails.map((p) => ({ pageId: p.id, storage: p.storage }));
-    await storePageLinksBatch(atlcliDir, linksData);
-
-    // Phase 2: User and contributor handling
-    // Open adapter once for all Phase 2 operations
+    // Populate sync.db after all content has been written.
     const { createSyncDb } = await import("@atlcli/confluence");
     const adapter = await createSyncDb(getAtlcliPath(atlcliDir), { autoMigrate: false });
     try {
@@ -1400,6 +1396,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
         await adapter.upsertPage(folderRecord);
       }
 
+      // Store links only after their source page rows exist.
+      for (const detail of pageDetails) {
+        const links = extractLinksFromStorage(detail.storage, detail.id);
+        await adapter.setPageLinks(detail.id, links);
+      }
+
       // Store editor versions for pulled pages (after pages exist in DB)
       for (const detail of pageDetails) {
         // Use editorVersion from page details if available (fetched in same request)
@@ -1461,6 +1463,14 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           pageDetails.map((p) => p.id),
           client,
           { concurrency: 3 }
+        );
+
+        // Version history may contain users absent from creator/modifier metadata.
+        // Ensure those foreign-key targets exist without additional API requests.
+        const contributorUserIds = extractUserIdsFromContributorResults(contributorResults);
+        await ensureUserPlaceholders(
+          contributorUserIds.map((userId) => ({ userId })),
+          adapter
         );
 
         // Store full contributor data in database
