@@ -25,7 +25,8 @@ export interface ConversionOptions {
 /** URL patterns for detecting Atlassian product URLs */
 const ATLASSIAN_URL_PATTERNS = {
   jira: /\/browse\/([A-Z][A-Z0-9]*-\d+)/i,
-  confluence: /\/wiki\/spaces\/([^\/]+)\/pages\/(\d+)/i,
+  confluence: /\/spaces\/([^\/]+)\/pages\/(\d+)/i,
+  confluenceDisplay: /\/display\/([^\/]+)\//i,
   trello: /^https?:\/\/trello\.com\/(c|b)\/([a-zA-Z0-9]+)/i,
   bitbucket: /^https?:\/\/bitbucket\.org\/([^\/]+)\/([^\/]+)/i,
 };
@@ -50,6 +51,7 @@ function isAtlassianUrl(url: string): boolean {
   return (
     ATLASSIAN_URL_PATTERNS.jira.test(url) ||
     ATLASSIAN_URL_PATTERNS.confluence.test(url) ||
+    ATLASSIAN_URL_PATTERNS.confluenceDisplay.test(url) ||
     ATLASSIAN_URL_PATTERNS.trello.test(url) ||
     ATLASSIAN_URL_PATTERNS.bitbucket.test(url)
   );

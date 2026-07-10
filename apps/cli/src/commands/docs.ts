@@ -2062,7 +2062,7 @@ async function pushFile(params: {
       // Confluence API doesn't support folder rename (returns 501)
       // User must rename in Confluence UI, then pull
       if (!opts.json) {
-        const folderUrl = `${client.getInstanceUrl()}/wiki/spaces/${space}/folder/${pageId}`;
+        const folderUrl = `${client.getInstanceUrl()}/spaces/${space}/folder/${pageId}`;
         output(`Warning: Folder rename not supported by Confluence API. Rename "${existingFolderState?.title}" in Confluence UI, then pull: ${folderUrl}`, opts);
       }
       return "skipped";

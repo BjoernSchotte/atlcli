@@ -4,11 +4,13 @@ import {
   ERROR_CODES,
   OutputOptions,
   fail,
+  buildConfluenceUrl,
   getActiveProfile,
   getFlag,
   getFlags,
   hasFlag,
   loadConfig,
+  isConfluencePageUrl,
   output,
   resolveDefaults,
 } from "@atlcli/core";
@@ -821,7 +823,10 @@ async function handleIssueLinkPage(
   }
 
   // Build page URL
-  const pageUrl = `${profile.baseUrl}/wiki/spaces/${page.spaceKey}/pages/${page.id}`;
+  const pageUrl = page.url ?? buildConfluenceUrl(
+    profile,
+    `/spaces/${page.spaceKey}/pages/${page.id}`
+  );
 
   // Create remote link
   const globalId = `atlcli-confluence-${pageId}`;
@@ -837,7 +842,7 @@ async function handleIssueLinkPage(
       title: page.title,
       summary: page.spaceKey ? `Space: ${page.spaceKey}` : undefined,
       icon: {
-        url16x16: `${profile.baseUrl}/wiki/s/en_US/8401/3fdbb97e2e96088ced3b2b3f17e76d58_7d885fcef5/1000.0.0-01291bfc605/_/images/icons/contenttypes/page-default.svg`,
+        url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
         title: "Confluence Page",
       },
     },
@@ -871,6 +876,11 @@ async function handleIssuePages(
   }
 
   const client = await getClient(flags, opts);
+  const config = await loadConfig();
+  const profile = getActiveProfile(config, getFlag(flags, "profile"));
+  if (!profile) {
+    fail(opts, 1, ERROR_CODES.CONFIG, "No active profile. Run: atlcli auth login");
+  }
   const remoteLinks = await client.getRemoteLinks(key);
 
   // Filter for Confluence pages
@@ -878,7 +888,7 @@ async function handleIssuePages(
     (link) =>
       link.application?.type === "com.atlassian.confluence" ||
       link.globalId?.startsWith("atlcli-confluence-") ||
-      link.object.url.includes("/wiki/")
+      isConfluencePageUrl(profile, link.object.url)
   );
 
   output({
@@ -3232,7 +3242,7 @@ async function handleBulkLinkPage(
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
-  let page: { id: string; title: string; _links?: { webui?: string; base?: string } };
+  let page: { id: string; title: string; url?: string };
   try {
     page = await confluenceClient.getPage(pageId);
   } catch (err) {
@@ -3241,9 +3251,7 @@ async function handleBulkLinkPage(
     return;
   }
 
-  const pageUrl = page._links?.base && page._links?.webui
-    ? `${page._links.base}${page._links.webui}`
-    : `${profile.baseUrl}/wiki/spaces/pages/${page.id}`;
+  const pageUrl = page.url ?? buildConfluenceUrl(profile, `/pages/${page.id}`);
   const globalId = `atlcli-confluence-${page.id}`;
 
   // Dry run - show preview
@@ -3278,7 +3286,7 @@ async function handleBulkLinkPage(
         url: pageUrl,
         title: page.title,
         icon: {
-          url16x16: `${profile.baseUrl}/wiki/favicon.ico`,
+          url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
           title: "Confluence",
         },
       },

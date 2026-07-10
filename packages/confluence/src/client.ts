@@ -1,4 +1,13 @@
-import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader, buildTlsOptions, TlsOptions } from "@atlcli/core";
+import {
+  Profile,
+  getLogger,
+  generateRequestId,
+  redactSensitive,
+  buildAuthHeader,
+  buildTlsOptions,
+  getConfluenceBaseUrl,
+  TlsOptions,
+} from "@atlcli/core";
 
 export type ConfluencePage = {
   id: string;
@@ -105,7 +114,7 @@ export interface AttachmentInfo {
   version: number;
   /** Page ID this attachment belongs to */
   pageId: string;
-  /** Download URL (relative to wiki base) */
+  /** Download URL relative to the resolved Confluence base */
   downloadUrl: string;
   /** Full webui URL for viewing */
   url?: string;
@@ -114,24 +123,14 @@ export interface AttachmentInfo {
 }
 
 export class ConfluenceClient {
-  private baseUrl: string;
-  /**
-   * Path segment inserted between the site URL and the Confluence REST/web
-   * roots. `/wiki` for Atlassian Cloud (`https://x.atlassian.net` + `/wiki/...`),
-   * or "" for Server/Data Center, whose context path (e.g. `/confluence`) is
-   * already part of the site URL. Derived once from the immutable base URL.
-   */
-  private apiBasePath: string;
+  private confluenceBaseUrl: string;
   private authHeader: string;
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
 
   constructor(profile: Profile) {
-    this.baseUrl = profile.baseUrl.replace(/\/+$/, "");
-    // If the site URL already carries a path, the API hangs directly off it;
-    // otherwise default to Cloud's `/wiki` (the long-standing behavior).
-    this.apiBasePath = new URL(this.baseUrl).pathname.replace(/\/+$/, "") ? "" : "/wiki";
+    this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
     if (profile.auth.type === "oauth") {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
@@ -141,7 +140,7 @@ export class ConfluenceClient {
 
   /** Get the Confluence instance base URL */
   getInstanceUrl(): string {
-    return this.baseUrl;
+    return this.confluenceBaseUrl;
   }
 
   /**
@@ -150,7 +149,7 @@ export class ConfluenceClient {
    */
   private buildWebUrl(webuiPath: string | undefined): string | undefined {
     if (!webuiPath) return undefined;
-    return `${this.baseUrl}${this.apiBasePath}${webuiPath}`;
+    return `${this.confluenceBaseUrl}${webuiPath}`;
   }
 
   /** Sleep utility for rate limiting */
@@ -172,7 +171,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/api${path}`);
+    const url = new URL(`${this.confluenceBaseUrl}/rest/api${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
@@ -281,7 +280,7 @@ export class ConfluenceClient {
 
   /**
    * Request helper for v2 API endpoints.
-   * v2 API uses /wiki/api/v2 instead of /wiki/rest/api
+   * v2 API uses /api/v2 below the resolved Confluence base.
    */
   private async requestV2(
     path: string,
@@ -291,7 +290,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}${this.apiBasePath}/api/v2${path}`);
+    const url = new URL(`${this.confluenceBaseUrl}/api/v2${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
@@ -909,7 +908,7 @@ export class ConfluenceClient {
   /**
    * Get all direct children of a page (including folders, whiteboards, etc.).
    *
-   * GET /wiki/api/v2/pages/{id}/direct-children
+   * GET /api/v2/pages/{id}/direct-children
    *
    * Unlike getChildren(), this returns ALL content types, not just pages.
    * Useful for detecting folders nested under pages.
@@ -947,7 +946,7 @@ export class ConfluenceClient {
 
       // v2 API uses cursor-based pagination
       if (data._links?.next) {
-        const nextUrl = new URL(data._links.next, this.baseUrl);
+        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
         cursor = nextUrl.searchParams.get("cursor") ?? undefined;
       } else {
         break;
@@ -1225,7 +1224,7 @@ export class ConfluenceClient {
       }
 
       if (data._links?.next) {
-        const nextUrl = new URL(data._links.next, this.baseUrl);
+        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
         cursor = nextUrl.searchParams.get("cursor") ?? undefined;
       } else {
         break;
@@ -1438,7 +1437,7 @@ export class ConfluenceClient {
     path: string,
     formData: FormData
   ): Promise<any> {
-    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/api${path}`);
+    const url = new URL(`${this.confluenceBaseUrl}/rest/api${path}`);
 
     const logger = getLogger();
     const requestId = generateRequestId();
@@ -1541,7 +1540,7 @@ export class ConfluenceClient {
    * Request helper for binary downloads.
    */
   private async requestBinary(downloadPath: string): Promise<Buffer> {
-    const url = new URL(`${this.baseUrl}${this.apiBasePath}${downloadPath}`);
+    const url = new URL(`${this.confluenceBaseUrl}${downloadPath}`);
 
     const logger = getLogger();
     const requestId = generateRequestId();
@@ -1742,7 +1741,7 @@ export class ConfluenceClient {
       body?: unknown;
     } = {}
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}${this.apiBasePath}/rest/webhooks/1.0${path}`);
+    const url = new URL(`${this.confluenceBaseUrl}/rest/webhooks/1.0${path}`);
 
     let lastError: Error | null = null;
 
@@ -2008,7 +2007,7 @@ export class ConfluenceClient {
   /**
    * Get footer (page-level) comments for a page.
    *
-   * GET /wiki/api/v2/pages/{id}/footer-comments
+   * GET /api/v2/pages/{id}/footer-comments
    */
   async getFooterComments(
     pageId: string,
@@ -2037,7 +2036,7 @@ export class ConfluenceClient {
   /**
    * Get replies to a footer comment.
    *
-   * GET /wiki/api/v2/footer-comments/{id}/children
+   * GET /api/v2/footer-comments/{id}/children
    */
   async getFooterCommentReplies(
     commentId: string,
@@ -2064,7 +2063,7 @@ export class ConfluenceClient {
   /**
    * Get inline comments for a page.
    *
-   * GET /wiki/api/v2/pages/{id}/inline-comments
+   * GET /api/v2/pages/{id}/inline-comments
    */
   async getInlineComments(
     pageId: string,
@@ -2093,7 +2092,7 @@ export class ConfluenceClient {
   /**
    * Get replies to an inline comment.
    *
-   * GET /wiki/api/v2/inline-comments/{id}/children
+   * GET /api/v2/inline-comments/{id}/children
    */
   async getInlineCommentReplies(
     commentId: string,
@@ -2182,7 +2181,7 @@ export class ConfluenceClient {
   /**
    * Create a footer (page-level) comment.
    *
-   * POST /wiki/api/v2/footer-comments
+   * POST /api/v2/footer-comments
    */
   async createFooterComment(params: {
     pageId: string;
@@ -2216,7 +2215,7 @@ export class ConfluenceClient {
   /**
    * Create an inline comment on specific text.
    *
-   * POST /wiki/api/v2/inline-comments
+   * POST /api/v2/inline-comments
    */
   async createInlineComment(params: {
     pageId: string;
@@ -2265,7 +2264,7 @@ export class ConfluenceClient {
   /**
    * Resolve a comment (mark as resolved).
    *
-   * PUT /wiki/api/v2/{type}-comments/{id}
+   * PUT /api/v2/{type}-comments/{id}
    */
   async resolveComment(
     commentId: string,
@@ -2298,7 +2297,7 @@ export class ConfluenceClient {
   /**
    * Delete a comment.
    *
-   * DELETE /wiki/api/v2/{type}-comments/{id}
+   * DELETE /api/v2/{type}-comments/{id}
    */
   async deleteComment(
     commentId: string,
@@ -2316,7 +2315,7 @@ export class ConfluenceClient {
   /**
    * Get a folder by ID.
    *
-   * GET /wiki/api/v2/folders/{id}
+   * GET /api/v2/folders/{id}
    *
    * Note: Folders are a Confluence Cloud feature introduced in Sept 2024.
    */
@@ -2375,7 +2374,7 @@ export class ConfluenceClient {
   /**
    * Get direct children of a folder.
    *
-   * GET /wiki/api/v2/folders/{id}/direct-children
+   * GET /api/v2/folders/{id}/direct-children
    *
    * Returns mixed content types (pages and folders).
    */
@@ -2413,7 +2412,7 @@ export class ConfluenceClient {
       // v2 API uses cursor-based pagination
       if (data._links?.next) {
         // Extract cursor from next link
-        const nextUrl = new URL(data._links.next, this.baseUrl);
+        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
         cursor = nextUrl.searchParams.get("cursor") ?? undefined;
       } else {
         break;
@@ -2462,7 +2461,7 @@ export class ConfluenceClient {
   /**
    * Create a folder in a space.
    *
-   * POST /wiki/api/v2/folders
+   * POST /api/v2/folders
    */
   async createFolder(params: {
     spaceId: string;
@@ -2498,7 +2497,7 @@ export class ConfluenceClient {
   /**
    * Delete a folder.
    *
-   * DELETE /wiki/api/v2/folders/{id}
+   * DELETE /api/v2/folders/{id}
    */
   async deleteFolder(folderId: string): Promise<void> {
     await this.requestV2(`/folders/${folderId}`, {
@@ -2596,7 +2595,7 @@ export class ConfluenceClient {
    * Move a page into a folder.
    *
    * Note: v2 API doesn't support folder as parent directly. We use
-   * PUT /wiki/rest/api/content/{id}/move to move into a folder.
+   * PUT /rest/api/content/{id}/move to move into a folder.
    */
   async movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage> {
     // Use the v1 move endpoint - move page to be a child of the folder
@@ -2613,7 +2612,7 @@ export class ConfluenceClient {
   /**
    * Get user information by account ID.
    *
-   * GET /wiki/rest/api/user?accountId=xxx
+   * GET /rest/api/user?accountId=xxx
    *
    * @param accountId - Atlassian account ID
    * @returns User info or null if not found
@@ -2731,7 +2730,7 @@ export class ConfluenceClient {
   /**
    * Get the editor version for a page.
    *
-   * GET /wiki/rest/api/content/{id}?expand=metadata.properties.editor
+   * GET /rest/api/content/{id}?expand=metadata.properties.editor
    *
    * @param pageId - The page ID
    * @returns 'v2' for new editor, 'v1' for legacy, or null if not set

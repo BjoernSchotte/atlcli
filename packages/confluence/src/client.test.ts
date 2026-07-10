@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, afterEach } from "bun:test";
+import type { Profile } from "@atlcli/core";
 import { ConfluenceClient } from "./client.js";
 
 // Mock profile for testing
@@ -330,7 +331,8 @@ describe("ConfluenceClient", () => {
     async function captureRequestUrl(
       baseUrl: string,
       body: unknown,
-      call: (client: ConfluenceClient) => Promise<unknown>
+      call: (client: ConfluenceClient) => Promise<unknown>,
+      profileOverrides: Partial<Profile> = {}
     ): Promise<string> {
       let capturedUrl = "";
       globalThis.fetch = mock((url: string) => {
@@ -338,7 +340,7 @@ describe("ConfluenceClient", () => {
         return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
       }) as unknown as typeof fetch;
 
-      await call(new ConfluenceClient({ ...mockProfile, baseUrl }));
+      await call(new ConfluenceClient({ ...mockProfile, baseUrl, ...profileOverrides }));
       return capturedUrl;
     }
 
@@ -382,6 +384,65 @@ describe("ConfluenceClient", () => {
       );
       expect(url).toContain("/confluence/api/v2/pages/123/direct-children");
       expect(url).not.toContain("/wiki/");
+    });
+
+    test("an explicit Data Center profile supports a root deployment", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com",
+        pageBody,
+        (c) => c.getPage("123"),
+        { deploymentType: "data-center" }
+      );
+      expect(url).toContain("https://confluence.example.com/rest/api/content/123");
+      expect(url).not.toContain("/wiki/");
+    });
+
+    test("Data Center may legitimately use /wiki as its configured context path", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/wiki",
+        pageBody,
+        (c) => c.getPage("123"),
+        { deploymentType: "data-center" }
+      );
+      expect(url).toContain("https://confluence.example.com/wiki/rest/api/content/123");
+      expect(url).not.toContain("/wiki/wiki/");
+    });
+
+    test("multipart uploads honor the Data Center context path", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        {
+          id: "att123",
+          title: "test.txt",
+          version: { number: 1 },
+          extensions: { fileSize: 4, mediaType: "text/plain" },
+          _links: { download: "/download/attachments/123/test.txt" },
+        },
+        (c) => c.uploadAttachment({
+          pageId: "123",
+          filename: "test.txt",
+          data: new TextEncoder().encode("test"),
+        })
+      );
+      expect(url).toContain("/confluence/rest/api/content/123/child/attachment");
+    });
+
+    test("binary downloads honor the Data Center context path", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        "attachment data",
+        (c) => c.downloadAttachment({ downloadUrl: "/download/attachments/123/test.txt" })
+      );
+      expect(url).toContain("/confluence/download/attachments/123/test.txt");
+    });
+
+    test("webhook requests honor the Data Center context path", async () => {
+      const url = await captureRequestUrl(
+        "https://confluence.example.com/confluence",
+        { id: "hook-1", name: "Docs", url: "https://hooks.example.com", events: [] },
+        (c) => c.registerWebhook({ name: "Docs", url: "https://hooks.example.com", events: [] })
+      );
+      expect(url).toContain("/confluence/rest/webhooks/1.0/webhook");
     });
 
     // Web UI links reconstructed from a relative `_links.webui` (v2 endpoints

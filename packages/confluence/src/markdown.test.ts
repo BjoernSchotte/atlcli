@@ -1027,7 +1027,7 @@ describe("smart links", () => {
       expect(html).toContain(">PROJ-123</a>");
     });
 
-    test("converts Confluence URL to inline smart link", () => {
+  test("converts Confluence URL to inline smart link", () => {
       const md = "[Page Title](https://example.atlassian.net/wiki/spaces/TEAM/pages/12345)";
       const html = markdownToStorage(md, { baseUrl });
       expect(html).toContain('data-card-appearance="inline"');
@@ -1072,6 +1072,20 @@ describe("smart links", () => {
       expect(html).not.toContain('data-card-appearance');
       expect(html).toContain('<a href="https://example.atlassian.net/browse/PROJ-123">');
     });
+  });
+
+  test("converts Data Center Confluence URLs with custom context paths to smart links", () => {
+    const md = "[Page](https://confluence.example.com/confluence/spaces/TEAM/pages/123)";
+    const html = markdownToStorage(md, { baseUrl: "https://confluence.example.com/confluence" });
+    expect(html).toContain('href="https://confluence.example.com/confluence/spaces/TEAM/pages/123"');
+    expect(html).toContain('data-card-appearance="inline"');
+  });
+
+  test("converts legacy Data Center display URLs to smart links", () => {
+    const md = "[Page](https://confluence.example.com/confluence/display/TEAM/Page+Title)";
+    const html = markdownToStorage(md, { baseUrl: "https://confluence.example.com/confluence" });
+    expect(html).toContain('href="https://confluence.example.com/confluence/display/TEAM/Page+Title"');
+    expect(html).toContain('data-card-appearance="inline"');
   });
 
   describe("legacy jira macro with baseUrl", () => {

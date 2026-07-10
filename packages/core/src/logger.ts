@@ -103,6 +103,7 @@ export interface AuthChangeData {
   username?: string;
   baseUrl?: string;
   authType?: string;
+  deploymentType?: "cloud" | "data-center";
   keychainUsed?: boolean;
   keychainDeleted?: boolean;
   details?: unknown;

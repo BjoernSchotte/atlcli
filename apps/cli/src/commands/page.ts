@@ -2,6 +2,7 @@ import {
   ERROR_CODES,
   OutputOptions,
   fail,
+  buildConfluenceUrl,
   getActiveProfile,
   getFlag,
   hasFlag,
@@ -1607,8 +1608,13 @@ async function handleOpen(
     return;
   }
 
-  // Construct URL - Confluence Cloud page URL
-  const url = `${profile.baseUrl}/wiki/pages/${id}`;
+  let url = buildConfluenceUrl(profile, `/pages/${id}`);
+  try {
+    const page = await new ConfluenceClient(profile).getPage(id);
+    url = page.url ?? url;
+  } catch {
+    // Keep the deployment-aware fallback URL when the page cannot be fetched.
+  }
 
   // Always display the URL first (for headless environments)
   output(url, opts);
@@ -1681,7 +1687,7 @@ async function handleLinkIssue(
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
-  let page: { id: string; title: string; _links?: { webui?: string; base?: string } };
+  let page: { id: string; title: string; url?: string };
   try {
     page = await confluenceClient.getPage(pageId);
   } catch (err) {
@@ -1690,9 +1696,7 @@ async function handleLinkIssue(
     return;
   }
 
-  const pageUrl = page._links?.base && page._links?.webui
-    ? `${page._links.base}${page._links.webui}`
-    : `${profile.baseUrl}/wiki/spaces/pages/${page.id}`;
+  const pageUrl = page.url ?? buildConfluenceUrl(profile, `/pages/${page.id}`);
   const globalId = `atlcli-confluence-${page.id}`;
 
   // Get Jira client and create remote link
@@ -1710,7 +1714,7 @@ async function handleLinkIssue(
       url: pageUrl,
       title: page.title,
       icon: {
-        url16x16: `${profile.baseUrl}/wiki/favicon.ico`,
+        url16x16: buildConfluenceUrl(profile, "/favicon.ico"),
         title: "Confluence",
       },
     },
