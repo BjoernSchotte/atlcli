@@ -108,9 +108,12 @@ md.renderer.rules.fence = (tokens, idx) => {
   }
 
   // Regular code block
-  const lang = info ? ` language-${escapeHtml(info)}` : "";
-  const escapedContent = escapeHtml(content);
-  return `<pre><code class="${lang.trim()}">${escapedContent}</code></pre>`;
+  let macroHtml = `<ac:structured-macro ac:name="code">`;
+  if (info) {
+    macroHtml += `\n<ac:parameter ac:name="language">${escapeHtml(info)}</ac:parameter>`;
+  }
+  macroHtml += `\n<ac:plain-text-body><![CDATA[${content}]]></ac:plain-text-body>\n</ac:structured-macro>`;
+  return macroHtml;
 };
 
 /**

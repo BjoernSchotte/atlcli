@@ -20,9 +20,32 @@ describe("markdownToStorage", () => {
   test("converts code blocks with language", () => {
     const md = "```typescript\nconst x = 1;\n```";
     const html = markdownToStorage(md);
-    expect(html).toContain("<pre>");
-    expect(html).toContain("<code");
-    expect(html).toContain("language-typescript");
+    expect(html).toContain('<ac:structured-macro ac:name="code">');
+    expect(html).toContain('<ac:parameter ac:name="language">typescript</ac:parameter>');
+    expect(html).toContain("<![CDATA[const x = 1;");
+    expect(html).toContain("</ac:plain-text-body>");
+    expect(html).toContain("</ac:structured-macro>");
+  });
+
+  test("converts code blocks without language to code macro (regression: no <pre><code>)", () => {
+    const md = "```\n# Default Code Owners\n* @Schneider.Felix.SE @Karpic.Jelenko\n```";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:structured-macro ac:name="code">');
+    expect(html).toContain("<![CDATA[# Default Code Owners");
+    expect(html).toContain("@Schneider.Felix.SE @Karpic.Jelenko");
+    expect(html).toContain("</ac:plain-text-body>");
+    expect(html).not.toContain('ac:name="language"');
+    expect(html).not.toContain('<pre><code');
+    expect(html).not.toContain('class=""');
+  });
+
+  test("converts code blocks with 'text' language to code macro (regression: round-trip)", () => {
+    const md = "```text\nplain text content\n```";
+    const html = markdownToStorage(md);
+    expect(html).toContain('<ac:structured-macro ac:name="code">');
+    expect(html).toContain('<ac:parameter ac:name="language">text</ac:parameter>');
+    expect(html).toContain("<![CDATA[plain text content");
+    expect(html).not.toContain('<pre><code');
   });
 
   test("converts task lists to Confluence format", () => {
@@ -556,6 +579,22 @@ describe("round-trip conversion", () => {
     const result = storageToMarkdown(html);
     expect(result).toContain("```");
     expect(result).toContain("const x = 1;");
+  });
+
+  test("code macro without language survives storage → markdown → storage (regression)", () => {
+    const originalStorage =
+      '<ac:structured-macro ac:name="code" ac:schema-version="1">' +
+      '<ac:parameter ac:name="language">text</ac:parameter>' +
+      '<ac:plain-text-body><![CDATA[# Default Code Owners\n* @Schneider.Felix.SE @Karpic.Jelenko\n]]></ac:plain-text-body>' +
+      '</ac:structured-macro>';
+    const md = storageToMarkdown(originalStorage);
+    const roundtrip = markdownToStorage(md);
+    expect(roundtrip).toContain('<ac:structured-macro ac:name="code">');
+    expect(roundtrip).toContain('<ac:parameter ac:name="language">text</ac:parameter>');
+    expect(roundtrip).toContain("# Default Code Owners");
+    expect(roundtrip).toContain("@Schneider.Felix.SE @Karpic.Jelenko");
+    expect(roundtrip).not.toContain('<pre><code');
+    expect(roundtrip).not.toContain('class=""');
   });
 
   test("list survives round-trip", () => {
