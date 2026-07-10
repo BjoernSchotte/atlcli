@@ -38,6 +38,10 @@ Options:
 | `--page-id` | Sync single page by ID |
 | `--ancestor` | Sync tree under specific page |
 
+:::note[Where to run subsequent commands]
+`init` creates the `.atlcli/` folder inside the directory you pass. Every later command (`pull`, `push`, `status`, `sync`, ...) then either takes that same path or walks up from your current directory to find the nearest `.atlcli/`. In practice: pass the same path you used for `init`, or `cd` into it and drop the path argument.
+:::
+
 ### Scope Options
 
 ```bash
@@ -260,6 +264,8 @@ Download pages from Confluence to local markdown files:
 atlcli wiki docs pull ./docs
 ```
 
+The path argument is optional and defaults to the current directory. Pass the same path you used for `init` (or `cd` into it and omit the path) so files land where the state expects them.
+
 Options:
 
 | Flag | Description |
@@ -313,6 +319,8 @@ Upload local changes to Confluence:
 atlcli wiki docs push ./docs
 ```
 
+The path argument is optional. When omitted, push walks up from the current directory to find the nearest `.atlcli/` — so from inside your synced tree `atlcli wiki docs push` and `atlcli wiki docs push --page-id 12345` both work without any path.
+
 Options:
 
 | Flag | Description |
@@ -331,7 +339,7 @@ atlcli wiki docs push ./docs
 # Push single file
 atlcli wiki docs push ./docs/page.md
 
-# Push by page ID
+# Push by page ID (from anywhere inside the synced tree)
 atlcli wiki docs push --page-id 12345
 
 # Validate before pushing
@@ -340,6 +348,10 @@ atlcli wiki docs push ./docs --validate
 # Strict validation (fail on warnings)
 atlcli wiki docs push ./docs --validate --strict
 ```
+
+:::note[Pushing by page ID]
+`--page-id` looks the file up from `.atlcli/state.json`. If you renamed or moved the file locally, push scans the tree for the matching frontmatter ID and heals the state automatically — you don't have to re-pull.
+:::
 
 :::caution[Permission errors on push?]
 If you see "You don't have permission to edit page", verify your Confluence space/page permissions. You need Edit permission for push operations.

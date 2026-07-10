@@ -14,6 +14,7 @@ import {
   isInitialized,
   findAtlcliDir,
   getAtlcliPath,
+  getRelativePath,
   AtlcliConfigV1,
   AtlcliConfigV2,
   ConfigScope,
@@ -370,6 +371,35 @@ describe("atlcli-dir", () => {
 
       // Cleanup
       await rm(noDbDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("getRelativePath", () => {
+    /**
+     * Regression test: state paths must stay POSIX so lookups work the same
+     * on Windows and Unix. Previously, add/push on Windows stored paths with
+     * backslashes while pull stored them with forward slashes, breaking
+     * pathIndex lookups and move detection.
+     */
+    test("returns a POSIX-style path regardless of platform", () => {
+      const root = process.platform === "win32" ? "C:\\repo\\docs" : "/repo/docs";
+      const file = process.platform === "win32"
+        ? "C:\\repo\\docs\\guides\\install.md"
+        : "/repo/docs/guides/install.md";
+
+      const result = getRelativePath(root, file);
+
+      expect(result).toBe("guides/install.md");
+      expect(result).not.toContain("\\");
+    });
+
+    test("returns a bare filename when the file sits at the root", () => {
+      const root = process.platform === "win32" ? "C:\\repo\\docs" : "/repo/docs";
+      const file = process.platform === "win32"
+        ? "C:\\repo\\docs\\index.md"
+        : "/repo/docs/index.md";
+
+      expect(getRelativePath(root, file)).toBe("index.md");
     });
   });
 });
