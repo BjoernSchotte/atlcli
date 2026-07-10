@@ -8,7 +8,7 @@ honor its STOP conditions, and update the status row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Move the documentation site to Astro 7 and Starlight 0.41 | P1 | M | — | TODO |
+| 001 | Move the documentation site to Astro 7 and Starlight 0.41 | P1 | M | — | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale)

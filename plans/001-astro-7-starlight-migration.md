@@ -21,6 +21,25 @@
 - **Category**: migration
 - **Planned at**: commit `a5f942e`, 2026-07-10
 
+## Execution result
+
+Completed on 2026-07-10 on branch `codex/astro-7-docs`.
+
+- Resolved Astro 7.0.7, Starlight 0.41.3, Astro Check 0.9.9, Vite 8.1.4,
+  Zod 4.4.3, MDX 7.0.2, and Expressive Code 0.44.0 without incompatible peers.
+- Removed the unused direct Zod 3 pin and updated the footer override contract.
+- Kept the Content Layer config, Astro config, Markdown/MDX content, and custom
+  CSS unchanged because Astro Check, production build, and visual E2E found no
+  compatibility regressions.
+- Added docs-only Node 22.12.0 and Bun 1.3.5 CI setup, frozen installs, Astro
+  Check, a pull-request docs build, complete deployment path filters, and
+  contributor documentation.
+- Verified the frozen lockfile, Astro Check, and production build with Bun
+  1.3.5. Root typecheck and build pass; all 1,087 tests pass.
+- Verified all 55 sidebar routes, 57 generated HTML files, 56 Pagefind entries,
+  root-locale URLs, sitemap, `CNAME`, `install.sh`, search, tabs, theme switching,
+  mobile navigation, custom footer, and representative code-heavy pages.
+
 ## Why this matters
 
 The documentation site currently resolves Astro 5.16.15 and Starlight 0.37.3.
