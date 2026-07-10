@@ -115,6 +115,19 @@ bun test           # Run tests
 
 See [Contributing Guide](https://atlcli.sh/contributing/) for detailed development setup.
 
+### Documentation development
+
+The Astro documentation site requires Node.js 22.12.0 or newer. Use the
+repository's declared Bun version (`1.3.5`) to install dependencies and run the
+documentation commands:
+
+```bash
+bun install --frozen-lockfile
+bun run docs:dev      # Start the local development server
+bun run docs:check    # Run Astro diagnostics and type checking
+bun run docs:build    # Build the production documentation site
+```
+
 ### Project Structure
 
 ```
