@@ -120,10 +120,11 @@ tested; rendering is the thin shell.
 
 ### Task 2 — Session-auth read path
 
-- [ ] `profileFromTabUrl` builds a session Profile from the tab origin (unit tests incl. non-atlassian origins → null)
-- [ ] Panel loads `getPageDetails` + storage body via `ConfluenceClient` session mode; mock-fetch integration tests assert `credentials: "include"` and absent `Authorization` (regression net on top of 001's client tests, now from extension call sites)
-- [ ] HTML-login-page response is classified as `not-logged-in`, not a JSON parse error (pinning test with HTML mock body)
-- [ ] 401/403/404/network map to §2.3 states (tests per class)
+- [x] `profileFromTabUrl` builds a session Profile from the tab origin (unit tests incl. non-atlassian origins → null) <!-- utils/profile.ts; profile.test.ts covers cloud host / origin-only / non-atlassian null / malformed null / look-alike null -->
+- [x] Panel loads `getPageDetails` + storage body via `ConfluenceClient` session mode; mock-fetch integration tests assert `credentials: "include"` and absent `Authorization` (regression net on top of 001's client tests, now from extension call sites) <!-- loadConfluencePage (utils/read-path.ts) via the real client; read-path.test.ts asserts credentials:include + no Authorization on BOTH the getPageDetails and listAttachments fetches. Panel wiring in Task 4 -->
+- [x] HTML-login-page response is classified as `not-logged-in`, not a JSON parse error (pinning test with HTML mock body) <!-- the client's JSON.parse fallback yields a details object with no id; the wrapper maps that to not-logged-in (kept out of ConfluenceClient to preserve CLI empty-body handling — PLAN pitfall). read-path.test.ts pins the 200-HTML case -->
+- [x] 401/403/404/network map to §2.3 states (tests per class) <!-- classifyThrownError pure + integration tests per class -->
+
 
 ### Task 3 — Converter + attachments
 
