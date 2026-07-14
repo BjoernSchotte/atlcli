@@ -2,6 +2,7 @@ export * from "./atlcli-dir.js";
 export * from "./client.js";
 export * from "./comments.js";
 export * from "./diff.js";
+export * from "./export-blocks.js";
 export * from "./frontmatter.js";
 export * from "./hierarchy.js";
 export * from "./ignore.js";

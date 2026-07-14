@@ -178,9 +178,9 @@ trust surface and 006's measurement hook.
 
 ### Task 2 — Intermediate export model (isomorphic, in `packages/confluence`)
 
-- [ ] `ExportBlock` model + storage→blocks walker covering: headings, paragraphs, marks (bold/italic/code/link), lists (nested), tables (incl. colspan/rowspan basics), code blocks (language preserved), callouts (4 kinds + generic panel w/ title), images (attachment + external), status macro; unknown macros → `raw`/skip with note
-- [ ] Fixture tests per block type + one integration fixture (the §2.1 document) with snapshot
-- [ ] `bun run check:browser` includes the walker module (stays isomorphic)
+- [x] `ExportBlock` model + storage→blocks walker covering: headings, paragraphs, marks (bold/italic/code/link), lists (nested), tables (incl. colspan/rowspan basics), code blocks (language preserved), callouts (4 kinds + generic panel w/ title), images (attachment + external), status macro; unknown macros → `raw`/skip with note — `packages/confluence/src/export-blocks.ts` (`storageToBlocks`); mentions are a distinct inline node carrying `accountId` + optional `displayName` (clean slot for display-name resolution); unknown macros emit an explicit `unknown` block + `ExportNote` (never raw XML)
+- [x] Fixture tests per block type + one integration fixture (the §2.1 document) with snapshot — `packages/confluence/src/export-blocks.test.ts` (35 tests); includes the modern-Cloud `<colgroup>` + `ac:local-id` + `<p local-id>` table markup as a regression fixture
+- [x] `bun run check:browser` includes the walker module (stays isomorphic) — exported from `index.browser.ts` (a gated entrypoint); browser build clean, reuses `stripTableColumnMetadata`/`KNOWN_MACROS` from `markdown.ts`
 
 ### Task 3 — Template upload + scan UI
 

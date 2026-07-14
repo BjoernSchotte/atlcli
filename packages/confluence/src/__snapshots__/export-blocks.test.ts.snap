@@ -1,0 +1,421 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree snapshot 1`] = `
+{
+  "blocks": [
+    {
+      "content": [
+        {
+          "text": "Export Feature Zoo",
+          "type": "text",
+        },
+      ],
+      "level": 1,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Intro with ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            "bold",
+          ],
+          "text": "bold",
+          "type": "text",
+        },
+        {
+          "text": ", ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            "italic",
+          ],
+          "text": "italic",
+          "type": "text",
+        },
+        {
+          "text": ", ",
+          "type": "text",
+        },
+        {
+          "marks": [
+            "code",
+          ],
+          "text": "code",
+          "type": "text",
+        },
+        {
+          "text": ", and a ",
+          "type": "text",
+        },
+        {
+          "content": [
+            {
+              "text": "link",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "href": "https://example.test",
+            "kind": "external",
+          },
+          "type": "link",
+        },
+        {
+          "text": ".",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "text": "Callouts",
+          "type": "text",
+        },
+      ],
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "info body",
+              "type": "text",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "kind": "info",
+      "title": undefined,
+      "type": "callout",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "note body",
+              "type": "text",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "kind": "note",
+      "title": undefined,
+      "type": "callout",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "warn body",
+              "type": "text",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "kind": "warning",
+      "title": undefined,
+      "type": "callout",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "tip body",
+              "type": "text",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "kind": "tip",
+      "title": undefined,
+      "type": "callout",
+    },
+    {
+      "content": [
+        {
+          "text": "Lists",
+          "type": "text",
+        },
+      ],
+      "level": 3,
+      "type": "heading",
+    },
+    {
+      "items": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "bullet one",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+        },
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "bullet two",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+            {
+              "items": [
+                {
+                  "content": [
+                    {
+                      "content": [
+                        {
+                          "text": "nested",
+                          "type": "text",
+                        },
+                      ],
+                      "type": "paragraph",
+                    },
+                  ],
+                },
+              ],
+              "ordered": false,
+              "type": "list",
+            },
+          ],
+        },
+      ],
+      "ordered": false,
+      "type": "list",
+    },
+    {
+      "items": [
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "step one",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+        },
+        {
+          "content": [
+            {
+              "content": [
+                {
+                  "text": "step two",
+                  "type": "text",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+        },
+      ],
+      "ordered": true,
+      "type": "list",
+    },
+    {
+      "content": [
+        {
+          "text": "Table",
+          "type": "text",
+        },
+      ],
+      "level": 3,
+      "type": "heading",
+    },
+    {
+      "rows": [
+        {
+          "cells": [
+            {
+              "colspan": 1,
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "Key",
+                      "type": "text",
+                    },
+                  ],
+                  "type": "paragraph",
+                },
+              ],
+              "header": true,
+              "rowspan": 1,
+            },
+            {
+              "colspan": 2,
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "Value",
+                      "type": "text",
+                    },
+                  ],
+                  "type": "paragraph",
+                },
+              ],
+              "header": true,
+              "rowspan": 1,
+            },
+          ],
+        },
+        {
+          "cells": [
+            {
+              "colspan": 1,
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "a",
+                      "type": "text",
+                    },
+                  ],
+                  "type": "paragraph",
+                },
+              ],
+              "header": false,
+              "rowspan": 1,
+            },
+            {
+              "colspan": 1,
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "b",
+                      "type": "text",
+                    },
+                  ],
+                  "type": "paragraph",
+                },
+              ],
+              "header": false,
+              "rowspan": 1,
+            },
+            {
+              "colspan": 1,
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "c",
+                      "type": "text",
+                    },
+                  ],
+                  "type": "paragraph",
+                },
+              ],
+              "header": false,
+              "rowspan": 1,
+            },
+          ],
+        },
+      ],
+      "type": "table",
+    },
+    {
+      "content": [
+        {
+          "text": "Code",
+          "type": "text",
+        },
+      ],
+      "level": 4,
+      "type": "heading",
+    },
+    {
+      "code": "console.log(1);",
+      "language": "js",
+      "type": "codeBlock",
+    },
+    {
+      "content": [
+        {
+          "text": "Media & status",
+          "type": "text",
+        },
+      ],
+      "level": 4,
+      "type": "heading",
+    },
+    {
+      "alt": undefined,
+      "height": undefined,
+      "source": {
+        "filename": "pic.png",
+        "kind": "attachment",
+      },
+      "type": "image",
+      "width": 320,
+    },
+    {
+      "content": [
+        {
+          "text": "Status: ",
+          "type": "text",
+        },
+        {
+          "color": "green",
+          "text": "OK",
+          "type": "status",
+        },
+        {
+          "text": " and ",
+          "type": "text",
+        },
+        {
+          "accountId": "acc-1",
+          "displayName": "Ada",
+          "type": "mention",
+        },
+        {
+          "text": ".",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "macroName": "drawio",
+      "type": "unknown",
+    },
+  ],
+  "notes": [
+    {
+      "code": "unknown-macro",
+      "level": "warning",
+      "macroName": "drawio",
+      "message": "Unknown macro "drawio" was emitted as a placeholder (no raw XML passthrough).",
+    },
+  ],
+}
+`;
