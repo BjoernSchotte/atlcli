@@ -247,8 +247,8 @@ export function TemplateSection({
   );
 }
 
-function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
-  const { supported, unsupported, never } = scan;
+export function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
+  const { supported, unsupported, never, hasContentPlaceholder } = scan;
   return (
     <div data-testid="template-scan" style={{ marginTop: 8, fontSize: 12 }}>
       {supported.length === 0 && unsupported.length === 0 && never.length === 0 && (
@@ -257,6 +257,40 @@ function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
       <ScanGroup icon="✓" color="#006644" label="Supported" hits={supported} />
       <ScanGroup icon="⚠" color="#974f0c" label="Will be empty" hits={unsupported} note="will be empty" />
       <ScanGroup icon="✗" color="#bf2600" label="Not supported" hits={never} />
+      <ContentInsertionLine hasContentPlaceholder={hasContentPlaceholder} />
+    </div>
+  );
+}
+
+/**
+ * Surface the page-content insertion point explicitly. `$scroll.content` is
+ * intentionally excluded from the placeholder list (it is the body anchor, not a
+ * fillable value), which led a user to think the anchor was missing (spec 004
+ * E2E finding). Display-only — reads the `hasContentPlaceholder` flag the scan
+ * already carries; the placeholder classification is unchanged. The absent-case
+ * copy matches export.ts's `no-content-placeholder` fallback (the page body is
+ * appended before the final section break).
+ */
+function ContentInsertionLine({
+  hasContentPlaceholder,
+}: {
+  hasContentPlaceholder: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      data-testid="content-insertion-point"
+      style={{ marginTop: 6, color: hasContentPlaceholder ? "#006644" : "#5e6c84" }}
+    >
+      {hasContentPlaceholder ? (
+        <span>
+          Content insertion point: ✓ found (<code>$scroll.content</code>)
+        </span>
+      ) : (
+        <span>
+          No <code>$scroll.content</code> found — the page body will be appended before the final
+          section break.
+        </span>
+      )}
     </div>
   );
 }
