@@ -21,7 +21,7 @@ import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import {
-  detectEntity,
+  currentDetection,
   initialObserverState,
   observeTab,
   type ObserverState,
@@ -66,17 +66,6 @@ async function runWasmSmoke(a: number, b: number): Promise<number> {
 }
 
 /**
- * Resolve the active tab's entity for a `get-current-entity` request (panel
- * mount). Queries the last-focused window's active tab so the panel gets an
- * answer without racing the SW's `entity-changed` push (Task 1 AC).
- */
-async function getCurrentEntity(): Promise<EntityDetection> {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const url = tab?.url;
-  return url ? detectEntity(url) : { url: null, entity: null };
-}
-
-/**
  * Push an `entity-changed` message to the panel (fire-and-forget). The panel may
  * be closed — `sendMessage` then rejects with "no receiving end"; swallow it.
  */
@@ -99,21 +88,38 @@ export default defineBackground({
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((err) => console.error("setPanelBehavior failed", err));
 
-  // The `true` return from handleExtMessage keeps the channel open for the
-  // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
-    handleExtMessage(message, sendResponse, { runWasmSmoke, getCurrentEntity })
-  );
-
   // ---- Tab observation (Task 1) --------------------------------------------
-  // The SW is the canonical observer (PLAN §2.1). The dedup memory lives here in
-  // the imperative shell; all decision logic is the pure `observeTab` core.
+  // The SW is the canonical observer (PLAN §2.1). The dedup + ordering memory
+  // lives here in the imperative shell; all decision logic is the pure
+  // `observeTab` / `currentDetection` core. Both the push (feed) and the pull
+  // (getCurrentEntity) mutate the SAME `observer`, so they draw ordering `seq`
+  // values from one monotonic counter (spec 003, finding: detection ordering).
   let observer: ObserverState = initialObserverState();
   const feed = (url: string | undefined | null): void => {
     const { state, message } = observeTab(observer, url);
     observer = state;
     if (message) pushEntityChanged(message);
   };
+
+  /**
+   * Resolve the active tab's entity for a `get-current-entity` request (panel
+   * mount). Feeds the active tab's URL through the shared observer so the pull
+   * response carries an ordering `seq` comparable to the pushes — a late pull
+   * for tab A can then be dropped by the panel once a newer push for tab B has
+   * been applied (Task 1 AC, no lost-update race).
+   */
+  const getCurrentEntity = async (): Promise<EntityDetection> => {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const { state, detection } = currentDetection(observer, tab?.url);
+    observer = state;
+    return detection;
+  };
+
+  // The `true` return from handleExtMessage keeps the channel open for the
+  // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
+    handleExtMessage(message, sendResponse, { runWasmSmoke, getCurrentEntity })
+  );
 
   // Tab switch: resolve the newly-active tab's URL, then observe it.
   chrome.tabs.onActivated.addListener((activeInfo) => {

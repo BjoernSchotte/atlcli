@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { routeMessage, type RouterDeps } from "../utils/router.js";
 import type { EntityDetection } from "../utils/messages.js";
 
-const noEntity: EntityDetection = { url: null, entity: null };
+const noEntity: EntityDetection = { url: null, entity: null, seq: 0 };
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
@@ -74,6 +74,7 @@ describe("routeMessage (pure router)", () => {
     const detection: EntityDetection = {
       url: "https://x.atlassian.net/wiki/spaces/DOCSY/pages/123/Home",
       entity: { product: "confluence", type: "page", pageId: "123", spaceKey: "DOCSY" },
+      seq: 5,
     };
     const res = await routeMessage(
       { kind: "get-current-entity" },

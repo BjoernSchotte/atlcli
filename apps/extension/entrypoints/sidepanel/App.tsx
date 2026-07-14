@@ -74,7 +74,12 @@ export function App(): React.JSX.Element {
       .sendMessage({ kind: "get-current-entity" })
       .then((res: ExtResponse | undefined) => {
         if (cancelled || !res || res.kind !== "current-entity") return;
-        dispatch({ type: "detected", url: res.detection.url, entity: res.detection.entity });
+        dispatch({
+          type: "detected",
+          url: res.detection.url,
+          entity: res.detection.entity,
+          seq: res.detection.seq,
+        });
       })
       .catch(() => {
         /* SW asleep / no answer — a push will follow on the next tab event */
@@ -83,7 +88,12 @@ export function App(): React.JSX.Element {
     const listener = (message: unknown): void => {
       if (isEntityChanged(message)) {
         const { detection } = message as EntityChanged;
-        dispatch({ type: "detected", url: detection.url, entity: detection.entity });
+        dispatch({
+          type: "detected",
+          url: detection.url,
+          entity: detection.entity,
+          seq: detection.seq,
+        });
       }
     };
     chrome.runtime.onMessage.addListener(listener);

@@ -23,6 +23,15 @@ export interface EntityDetection {
   url: string | null;
   /** Entity resolved via `extractEntityFromUrl`, or `null` when none matches. */
   entity: AtlassianEntity | null;
+  /**
+   * Monotonic ordering token stamped by the service worker's tab observer
+   * (spec 003, finding: detection ordering). Both the SW push (`entity-changed`)
+   * and the panel-initiated pull (`current-entity`) draw from the SAME counter,
+   * so the panel can drop any detection older than the newest it has applied —
+   * e.g. a delayed pull response for tab A that arrives after a newer push for
+   * tab B must not clobber B.
+   */
+  seq: number;
 }
 
 /** Request messages sent from the panel to the service worker. */

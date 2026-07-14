@@ -26,20 +26,35 @@ export function isAtlassianCloudHost(hostname: string): boolean {
 }
 
 /**
+ * True when `url` is a well-formed http(s) URL on an Atlassian Cloud host
+ * covered by the manifest's `host_permissions`. This is the single source of
+ * truth for "is this an Atlassian tab we can act on": both {@link profileFromTabUrl}
+ * (session fetches) and tab-observer's entity detection gate on it, so a
+ * Confluence-shaped path served from a FOREIGN origin (e.g.
+ * `https://evil-atlassian.net/wiki/spaces/D/pages/123/A`) is classified as a
+ * non-entity from the very start — never a page we try to fetch, and never a
+ * confusing "unknown error" state (spec 003, finding: foreign-origin gating).
+ */
+export function isAtlassianCloudUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  return isAtlassianCloudHost(parsed.hostname);
+}
+
+/**
  * Build a session `Profile` from a tab URL, or `null` for non-Atlassian /
  * malformed URLs.
  *
  * @param url - the active tab's URL (from `chrome.tabs`).
  */
 export function profileFromTabUrl(url: string): Profile | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-  if (!isAtlassianCloudHost(parsed.hostname)) return null;
+  if (!isAtlassianCloudUrl(url)) return null;
+  const parsed = new URL(url);
 
   return {
     name: "session",

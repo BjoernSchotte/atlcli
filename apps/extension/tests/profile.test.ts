@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isAtlassianCloudHost, profileFromTabUrl } from "../utils/profile.js";
+import {
+  isAtlassianCloudHost,
+  isAtlassianCloudUrl,
+  profileFromTabUrl,
+} from "../utils/profile.js";
 
 describe("isAtlassianCloudHost", () => {
   it("accepts a site subdomain of atlassian.net", () => {
@@ -12,6 +16,22 @@ describe("isAtlassianCloudHost", () => {
     expect(isAtlassianCloudHost("atlassian.net.evil.com")).toBe(false);
     expect(isAtlassianCloudHost("notatlassian.net")).toBe(false);
     expect(isAtlassianCloudHost("example.com")).toBe(false);
+  });
+});
+
+describe("isAtlassianCloudUrl (shared origin gate — finding #3)", () => {
+  it("accepts well-formed http(s) URLs on an Atlassian Cloud host", () => {
+    expect(isAtlassianCloudUrl("https://mayflower.atlassian.net/wiki/spaces/D/pages/1")).toBe(true);
+    expect(isAtlassianCloudUrl("https://x.atlassian.net/browse/ATLCLI-1")).toBe(true);
+  });
+
+  it("rejects foreign origins that merely LOOK Atlassian, and malformed URLs", () => {
+    // Same gate profileFromTabUrl uses, so detection + profile stay consistent.
+    expect(isAtlassianCloudUrl("https://evil-atlassian.net/wiki/spaces/D/pages/123/A")).toBe(false);
+    expect(isAtlassianCloudUrl("https://atlassian.net.evil.com/wiki/spaces/D/pages/1")).toBe(false);
+    expect(isAtlassianCloudUrl("https://example.com/wiki/spaces/D/pages/1")).toBe(false);
+    expect(isAtlassianCloudUrl("chrome://extensions")).toBe(false);
+    expect(isAtlassianCloudUrl("not a url")).toBe(false);
   });
 });
 
