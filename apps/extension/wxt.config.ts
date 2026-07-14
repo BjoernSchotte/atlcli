@@ -8,6 +8,20 @@ import { defineConfig } from "wxt";
 // manifest-validation test (Task 2) against the built `.output/chrome-mv3/manifest.json`.
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
+  // WXT auto-imports (unimport): its built-in `storage`/`browser` presets run as
+  // a Vite transform over EVERY module in the graph — including the workspace
+  // SOURCE we consume (`packages/*`). There the bare `storage` param in the
+  // confluence converter gets rewritten to `import { storage } from
+  // "wxt/utils/storage"`, which then fails to resolve and breaks the bundle.
+  // `imports: false` does NOT stop this (it only disables user-dir scanning), so
+  // we exclude workspace source from the transform. Our own code imports
+  // everything explicitly, so nothing here relies on auto-imports.
+  // `exclude` is honored by the underlying unimport unplugin's file filter but
+  // is absent from WXT's narrower `imports` type — cast through it.
+  imports: {
+    eslintrc: { enabled: false },
+    exclude: [/[\\/]packages[\\/]/],
+  } as Parameters<typeof defineConfig>[0]["imports"],
   manifest: {
     name: "atlcli",
     // MV3 side panel + offscreen APIs baseline (PLAN §6 risk 1).

@@ -136,10 +136,11 @@ tested; rendering is the thin shell.
 
 ### Task 4 — Panel UI for detection/read
 
-- [ ] States per §2.4 rendered: idle / detected / loaded / four error kinds — each visually distinct, narrow-layout friendly
-- [ ] `loaded` shows: title, space key, version, last-modified + author, word count, attachment count, collapsible markdown preview (debug)
-- [ ] Retry button re-runs the load without tab switch
-- [ ] State machine pure-function tests cover every transition incl. tab-switch-during-load (stale responses discarded — correlation token)
+- [x] States per §2.4 rendered: idle / detected / loaded / four error kinds — each visually distinct, narrow-layout friendly <!-- App.tsx renders idle, unsupported (detected-not-exportable), loading, loaded, and error with 4 kinds (not-logged-in/access-denied/network/unknown) each with distinct copy + colour; max-width 400 narrow-first. Live render is Task 5 -->
+- [x] `loaded` shows: title, space key, version, last-modified + author, word count, attachment count, collapsible markdown preview (debug) <!-- LoadedView: title, Space, Version, Modified · author, Words, Attachments count + collapsible attachment list, collapsible <details> markdown <pre> preview -->
+- [x] Retry button re-runs the load without tab switch <!-- error state Retry + loaded state Reload both dispatch {type:"retry"} → reduce re-enters loading with a bumped token; the load effect refires -->
+- [x] State machine pure-function tests cover every transition incl. tab-switch-during-load (stale responses discarded — correlation token) <!-- panel-state.test.ts: 18 cases incl. stale load-succeeded/failed discard on tab switch, retry-token supersession, dedup -->
+
 
 ### Task 5 — Manual E2E **[E2E: user]**
 
