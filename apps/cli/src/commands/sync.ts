@@ -1,4 +1,5 @@
 import { readdir, writeFile, unlink, readFile, mkdir } from "node:fs/promises";
+import { assertCliAuthSupported } from "./session-guard.js";
 import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname } from "node:path";
 import {
@@ -165,6 +166,7 @@ export async function handleSync(
     return;
   }
 
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   await ensureDir(syncOpts.dir);
 

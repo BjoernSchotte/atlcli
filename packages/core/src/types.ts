@@ -5,7 +5,7 @@
  * bundler without dragging any Node-only code into the graph.
  */
 
-export type AuthType = "apiToken" | "bearer" | "oauth";
+export type AuthType = "apiToken" | "bearer" | "oauth" | "session";
 
 export type DeploymentType = "cloud" | "data-center";
 

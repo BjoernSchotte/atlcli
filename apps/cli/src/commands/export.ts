@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { assertCliAuthSupported } from "./session-guard.js";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -314,6 +315,7 @@ async function getClient(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   return { client, profile };
 }

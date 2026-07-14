@@ -258,11 +258,11 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 5 — `session` auth mode
 
-- [ ] `AuthType` includes `"session"`; typecheck green (all switches exhaustive)
-- [ ] Mock-fetch unit tests per client: session profile → no `Authorization` header, `credentials: "include"` set — on page CRUD, search, and attachment up/download paths
-- [ ] Non-session profiles: `credentials` untouched, `Authorization` present (regression)
-- [ ] CLI with a session profile exits with the §2.4 error message (test at the command-handler level)
-- [ ] Session profiles without explicit `deploymentType` resolve to Cloud (`resolveDeploymentType` test)
+- [x] `AuthType` includes `"session"`; typecheck green (all switches exhaustive)
+- [x] Mock-fetch unit tests per client: session profile → no `Authorization` header, `credentials: "include"` set — on page CRUD, search, and attachment up/download paths
+- [x] Non-session profiles: `credentials` untouched, `Authorization` present (regression)
+- [x] CLI with a session profile exits with the §2.4 error message (test at the command-handler level)
+- [x] Session profiles without explicit `deploymentType` resolve to Cloud (`resolveDeploymentType` test)
 
 ### Task 6 — CI gate
 

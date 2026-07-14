@@ -38,6 +38,7 @@ export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, Jira
 export class JiraClient {
   private baseUrl: string;
   private authHeader: string;
+  private useSession: boolean;
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private isCloud: boolean;
@@ -50,7 +51,11 @@ export class JiraClient {
     if (profile.auth.type === "oauth") {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
-    this.authHeader = buildAuthHeader(profile);
+    // Session auth relies on the ambient browser cookie (credentials: "include");
+    // no Authorization header is built or sent. buildAuthHeader is guarded here
+    // rather than allowed to throw (spec 001 §3.3).
+    this.useSession = profile.auth.type === "session";
+    this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
   }
 
@@ -69,10 +74,24 @@ export class JiraClient {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /** Merge TLS options into fetch RequestInit when a custom TLS config is present. */
-  private applyTls(init: RequestInit): RequestInit {
-    if (!this.tlsOptions) return init;
-    return { ...init, tls: this.tlsOptions } as RequestInit;
+  /**
+   * Finalize a fetch RequestInit: apply session-cookie auth and TLS options.
+   *
+   * For session profiles this strips any Authorization header and sets
+   * `credentials: "include"` so the ambient Atlassian browser session is used.
+   * Custom TLS options are merged in when present.
+   */
+  private applyFetchOptions(init: RequestInit): RequestInit {
+    let result: RequestInit = init;
+    if (this.useSession) {
+      const headers: Record<string, string> = { ...(result.headers as Record<string, string> | undefined) };
+      delete headers.Authorization;
+      result = { ...result, headers, credentials: "include" };
+    }
+    if (this.tlsOptions) {
+      result = { ...result, tls: this.tlsOptions } as RequestInit;
+    }
+    return result;
   }
 
   /**
@@ -119,7 +138,7 @@ export class JiraClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), this.applyTls({
+      const res = await fetch(url.toString(), this.applyFetchOptions({
         method,
         headers: {
           Authorization: this.authHeader,
@@ -1553,7 +1572,7 @@ export class JiraClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const res = await fetch(contentUrl, this.applyTls({
+        const res = await fetch(contentUrl, this.applyFetchOptions({
           method: "GET",
           headers: {
             Authorization: this.authHeader,
@@ -1628,7 +1647,7 @@ export class JiraClient {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        const res = await fetch(url, this.applyTls({
+        const res = await fetch(url, this.applyFetchOptions({
           method: "POST",
           headers: {
             Authorization: this.authHeader,

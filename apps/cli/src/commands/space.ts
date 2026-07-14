@@ -9,6 +9,7 @@ import {
   output,
 } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
+import { assertCliAuthSupported } from "./session-guard.js";
 
 export async function handleSpace(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
@@ -41,6 +42,7 @@ async function getClient(flags: Record<string, string | boolean | string[]>, opt
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   return new ConfluenceClient(profile);
 }
 

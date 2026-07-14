@@ -1077,4 +1077,87 @@ describe("ConfluenceClient", () => {
       expect(capturedBody.version.number).toBe(2);
     });
   });
+
+  describe("session auth mode (spec 001 task 5)", () => {
+    const sessionProfile: Profile = {
+      name: "session",
+      baseUrl: "https://test.atlassian.net",
+      auth: { type: "session" },
+    };
+
+    /** Capture the RequestInit of the last fetch call. */
+    function captureFetch(response: () => Response): { last: () => RequestInit | undefined } {
+      let last: RequestInit | undefined;
+      globalThis.fetch = mock((_url: string, init: RequestInit) => {
+        last = init;
+        return Promise.resolve(response());
+      }) as unknown as typeof fetch;
+      return { last: () => last };
+    }
+
+    const pageResponse = () =>
+      new Response(
+        JSON.stringify({
+          id: "123",
+          title: "Test",
+          body: { storage: { value: "" } },
+          version: { number: 1 },
+          space: { key: "TEST" },
+        }),
+        { status: 200 }
+      );
+
+    test("page CRUD (getPage): no Authorization header, credentials include", async () => {
+      const cap = captureFetch(pageResponse);
+      await new ConfluenceClient(sessionProfile).getPage("123");
+      const init = cap.last();
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      expect(init?.credentials).toBe("include");
+    });
+
+    test("search: no Authorization header, credentials include", async () => {
+      const cap = captureFetch(() =>
+        new Response(JSON.stringify({ results: [], size: 0, start: 0, limit: 25 }), { status: 200 })
+      );
+      await new ConfluenceClient(sessionProfile).search("type=page");
+      const init = cap.last();
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      expect(init?.credentials).toBe("include");
+    });
+
+    test("attachment upload: no Authorization header, credentials include", async () => {
+      const cap = captureFetch(() =>
+        new Response(
+          JSON.stringify({ results: [{ id: "att1", title: "f.png", version: { number: 1 } }] }),
+          { status: 200 }
+        )
+      );
+      await new ConfluenceClient(sessionProfile).uploadAttachment({
+        pageId: "123",
+        filename: "f.png",
+        data: new Uint8Array([1, 2, 3]),
+      });
+      const init = cap.last();
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      expect(init?.credentials).toBe("include");
+    });
+
+    test("attachment download: no Authorization header, credentials include", async () => {
+      const cap = captureFetch(() => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+      await new ConfluenceClient(sessionProfile).downloadAttachment({
+        downloadUrl: "/download/attachments/123/f.png",
+      });
+      const init = cap.last();
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      expect(init?.credentials).toBe("include");
+    });
+
+    test("regression: non-session profile keeps Authorization and leaves credentials unset", async () => {
+      const cap = captureFetch(pageResponse);
+      await new ConfluenceClient(mockProfile).getPage("123");
+      const init = cap.last();
+      expect(new Headers(init?.headers).get("Authorization")).toMatch(/^Basic /);
+      expect(init?.credentials).toBeUndefined();
+    });
+  });
 });

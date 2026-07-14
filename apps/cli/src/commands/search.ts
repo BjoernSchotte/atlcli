@@ -10,6 +10,7 @@ import {
   output,
   resolveDefaults,
 } from "@atlcli/core";
+import { assertCliAuthSupported } from "./session-guard.js";
 import {
   ConfluenceClient,
   ConfluenceSearchResult,
@@ -40,6 +41,7 @@ async function getClient(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
     return { client, defaults: resolveDefaults(config, profile) };
@@ -248,6 +250,7 @@ async function executeSearch(
     });
   }
 
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
 
   const limit = Number(getFlag(flags, "limit") ?? 25);

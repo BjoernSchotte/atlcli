@@ -1,4 +1,5 @@
 import { readdir, writeFile, readFile, mkdir, stat, unlink, rename, rm } from "node:fs/promises";
+import { assertCliAuthSupported } from "./session-guard.js";
 import { FSWatcher, watch, existsSync } from "node:fs";
 import { join, basename, extname, dirname, relative, resolve, sep } from "node:path";
 import {
@@ -369,6 +370,7 @@ async function getClient(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
     return { client, defaults: resolveDefaults(config, profile) };

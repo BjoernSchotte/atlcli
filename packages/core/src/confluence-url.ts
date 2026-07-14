@@ -20,6 +20,10 @@ function hasConfiguredPath(baseUrl: string): boolean {
  */
 export function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType {
   if (profile.deploymentType) return profile.deploymentType;
+  // Session profiles (browser cookie auth) carry no deployment heuristic of their
+  // own: absent an explicit deploymentType they default to Cloud. A DC browser
+  // session is conceivable but must be made explicit (spec 001 §3.3).
+  if (profile.auth.type === "session") return "cloud";
   if (profile.auth.type === "bearer") return "data-center";
   return hasConfiguredPath(normalizeUrl(profile.baseUrl)) ? "data-center" : "cloud";
 }
