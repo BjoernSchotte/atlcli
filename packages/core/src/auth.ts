@@ -34,6 +34,24 @@ export function encodeBase64(input: string): string {
 }
 
 /**
+ * Decode a base64 string back to text, surviving non-ASCII content.
+ *
+ * The exact inverse of {@link encodeBase64}: `atob` yields a binary string whose
+ * char codes are the raw UTF-8 bytes, which `TextDecoder` turns back into the
+ * original string. The result is byte-for-byte identical to
+ * `Buffer.from(encoded, "base64").toString("utf-8")`, so it is a drop-in
+ * replacement for the node-only `Buffer` path in browser bundles.
+ */
+export function decodeBase64(encoded: string): string {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/**
  * Build the Authorization header for a profile.
  *
  * @param profile - The profile to build the header for.

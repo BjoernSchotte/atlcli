@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "outputs": [".output/**", ".wxt/**"],
+      "inputs": [
+        "entrypoints/**",
+        "utils/**",
+        "wxt.config.ts",
+        "package.json",
+        "tsconfig.json"
+      ]
+    },
+    "typecheck": {
+      "cache": true,
+      "outputs": [],
+      "inputs": [
+        "entrypoints/**",
+        "utils/**",
+        "scripts/**",
+        "tests/**",
+        "wxt.config.ts",
+        "env.d.ts",
+        "tsconfig.json",
+        "package.json"
+      ]
+    }
+  }
+}

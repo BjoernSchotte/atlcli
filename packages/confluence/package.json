@@ -4,11 +4,17 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": "./src/index.browser.ts",
+    "./node": "./src/index.ts"
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
     "diff": "^8.0.2",
+    "entities": "^6.0.0",
     "ignore": "^7.0.5",
     "markdown-it": "^14.1.0",
     "markdown-it-sub": "^2.0.0",

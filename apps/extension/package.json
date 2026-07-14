@@ -1,0 +1,31 @@
+{
+  "name": "@atlcli/extension",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "postinstall": "wxt prepare",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "check:output": "bun scripts/check-output-build.ts"
+  },
+  "dependencies": {
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/core": "workspace:*",
+    "docxtemplater": "^3.69.0",
+    "pizzip": "^3.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "shiki": "^4.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@wxt-dev/module-react": "^1.2.2",
+    "fake-indexeddb": "^6.2.5",
+    "wxt": "^0.20.27"
+  }
+}

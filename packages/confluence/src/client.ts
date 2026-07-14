@@ -174,12 +174,64 @@ export class ConfluenceClient {
     if (this.useSession) {
       const headers: Record<string, string> = { ...(result.headers as Record<string, string> | undefined) };
       delete headers.Authorization;
-      result = { ...result, headers, credentials: "include" };
+      // `redirect: "manual"` (session only): an unauthenticated Atlassian API
+      // call answers with a 3xx to `id.atlassian.com`. Manual redirect stops the
+      // browser from FOLLOWING that bounce with cookies to a foreign origin;
+      // instead the fetch resolves as an opaque redirect we classify as
+      // not-logged-in (spec 003 §2.3). CLI (token) mode keeps the default
+      // follow behavior — this branch never runs for it.
+      result = { ...result, headers, credentials: "include", redirect: "manual" };
     }
     if (this.tlsOptions) {
       result = { ...result, tls: this.tlsOptions } as RequestInit;
     }
     return result;
+  }
+
+  /**
+   * Session-mode guard: a redirect on an API call means the ambient Atlassian
+   * session is missing/expired (the request is being bounced to the login host).
+   * With `redirect: "manual"` this surfaces as an opaque-redirect response
+   * (`type === "opaqueredirect"`, `status 0`); some environments expose the raw
+   * 3xx instead. Either way we throw an auth-redirect error (mapped to
+   * `not-logged-in` by the extension) rather than following it with credentials
+   * to a foreign origin. No-op for CLI/token auth.
+   */
+  private assertNotAuthRedirect(res: Response): void {
+    if (!this.useSession) return;
+    const isRedirect =
+      res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
+    if (isRedirect) {
+      throw new Error(
+        "Confluence API error (302): authentication redirect to Atlassian login (session not logged in)"
+      );
+    }
+  }
+
+  /**
+   * Session-mode guard for a 2xx response body. Atlassian answers some
+   * unauthenticated/again-denied API calls with HTTP 200 whose body is NOT a
+   * real page — either an HTML login page (non-JSON), or a JSON error envelope
+   * carrying its own `statusCode`. Both must become errors, not silently-empty
+   * pages (spec 003 §2.3, PLAN login-detection note). No-op for CLI/token auth.
+   */
+  private assertSessionJsonOk(text: string, data: unknown, isJson: boolean): void {
+    if (!this.useSession) return;
+    // Empty body (e.g. 200/204 from DELETE) is legitimate — only guard content.
+    if (text && !isJson) {
+      throw new Error(
+        "Confluence API error (login): non-JSON 200 response (login page — session not logged in)"
+      );
+    }
+    if (isJson && data && typeof data === "object") {
+      const statusCode = (data as { statusCode?: unknown }).statusCode;
+      if (typeof statusCode === "number" && statusCode >= 400) {
+        const message = (data as { message?: unknown }).message;
+        throw new Error(
+          `Confluence API error (${statusCode}): ${typeof message === "string" ? message : "error response body"}`
+        );
+      }
+    }
   }
 
   private async request(
@@ -230,6 +282,10 @@ export class ConfluenceClient {
         body: options.body ? JSON.stringify(options.body) : undefined,
       }));
 
+      // Session auth: a redirect means the session is missing — classify it
+      // rather than follow it to a foreign origin with cookies.
+      this.assertNotAuthRedirect(res);
+
       // Handle rate limiting (429)
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");
@@ -254,9 +310,11 @@ export class ConfluenceClient {
 
       const text = await res.text();
       let data: unknown = text;
+      let isJson = false;
       if (text) {
         try {
           data = JSON.parse(text);
+          isJson = true;
         } catch {
           data = text;
         }
@@ -281,6 +339,10 @@ export class ConfluenceClient {
         });
         throw lastError;
       }
+
+      // Session auth: reject a 2xx that is a login page / error envelope, not a
+      // real API payload (spec 003 §2.3). No-op for CLI/token auth.
+      this.assertSessionJsonOk(text, data, isJson);
 
       // Log successful response
       logger.api("response", {
@@ -349,6 +411,9 @@ export class ConfluenceClient {
         body: options.body ? JSON.stringify(options.body) : undefined,
       }));
 
+      // Session auth: classify an auth-redirect rather than follow it.
+      this.assertNotAuthRedirect(res);
+
       if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After");
         const delayMs = retryAfter
@@ -372,9 +437,11 @@ export class ConfluenceClient {
 
       const text = await res.text();
       let data: unknown = text;
+      let isJson = false;
       if (text) {
         try {
           data = JSON.parse(text);
+          isJson = true;
         } catch {
           data = text;
         }
@@ -398,6 +465,9 @@ export class ConfluenceClient {
         });
         throw lastError;
       }
+
+      // Session auth: reject a 2xx login page / error envelope (spec 003 §2.3).
+      this.assertSessionJsonOk(text, data, isJson);
 
       // Log successful response
       logger.api("response", {
@@ -1445,7 +1515,7 @@ export class ConfluenceClient {
    */
   async downloadAttachment(
     attachment: AttachmentInfo | { downloadUrl: string }
-  ): Promise<Buffer> {
+  ): Promise<Uint8Array> {
     return this.requestBinary(attachment.downloadUrl);
   }
 
@@ -1558,7 +1628,7 @@ export class ConfluenceClient {
   /**
    * Request helper for binary downloads.
    */
-  private async requestBinary(downloadPath: string): Promise<Buffer> {
+  private async requestBinary(downloadPath: string): Promise<Uint8Array> {
     const url = new URL(`${this.confluenceBaseUrl}${downloadPath}`);
 
     const logger = getLogger();
@@ -1625,7 +1695,11 @@ export class ConfluenceClient {
       }
 
       const arrayBuffer = await res.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      // Isomorphic: `new Uint8Array(arrayBuffer)` instead of the node-only
+      // `Buffer.from(...)` so this file stays browser-safe (no `Buffer` global
+      // in the extension bundle). Node callers that need base64 wrap the result
+      // in `Buffer.from(...)` at the call site.
+      const buffer = new Uint8Array(arrayBuffer);
 
       // Log successful response (without binary body, just size)
       logger.api("response", {

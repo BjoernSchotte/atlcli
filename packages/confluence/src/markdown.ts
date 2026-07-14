@@ -5,6 +5,7 @@ import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { createHash } from "crypto";
+import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 
 // ============ Smart Link Types and Utilities ============
@@ -1142,7 +1143,30 @@ function convertTaskListsToConfluence(html: string): string {
  * Macros we explicitly convert to markdown syntax.
  * All others will be preserved as :::confluence blocks.
  */
-const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history", "loremipsum"];
+export const KNOWN_MACROS = ["info", "note", "warning", "tip", "expand", "toc", "status", "anchor", "jira", "panel", "code", "noformat", "excerpt", "excerpt-include", "include", "gallery", "attachments", "multimedia", "widget", "section", "column", "children", "content-by-label", "recently-updated", "pagetree", "date", "toc-zone", "details", "detailssummary", "tasks-report-macro", "labels-list", "popular-labels", "related-labels", "blog-posts", "spaces-list", "index", "contributors", "change-history", "loremipsum"];
+
+/**
+ * Strip table `<colgroup>`/`<col>` column-sizing metadata emitted by the modern
+ * Confluence Cloud editor.
+ *
+ * Markdown tables cannot express per-column widths, so this data is lost either
+ * way — but leaving it in breaks table conversion outright: turndown-plugin-gfm's
+ * `isHeadingRow` treats a `<tbody>` as the header section only when it is the
+ * table's first child (or follows an empty `<thead>`). A leading `<colgroup>`
+ * makes the `<tbody>` a non-first sibling, so the heading row is never detected,
+ * the GFM `table` rule declines the node, and its `keep` fallback dumps the whole
+ * table back out as raw storage XML (observed: `<th ac:local-id=…><p local-id=…>`
+ * passthrough). Removing the colgroup restores the tbody-first invariant.
+ *
+ * Exported so the intermediate export-block walker (spec 004 Task 2) sees the
+ * identical normalized markup the markdown path does — both consumers strip the
+ * same column metadata rather than each inventing their own pass.
+ */
+export function stripTableColumnMetadata(storage: string): string {
+  storage = storage.replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, "");
+  storage = storage.replace(/<col\b[^>]*\/?>/gi, "");
+  return storage;
+}
 
 /**
  * Valid status colors in Confluence
@@ -1502,6 +1526,11 @@ export function extractAttachmentRefs(markdown: string): string[] {
  * that turndown can process.
  */
 function preprocessStorageMacros(storage: string, options?: ConversionOptions): string {
+  // Strip table <colgroup>/<col> column-sizing metadata emitted by the modern
+  // Confluence Cloud editor. See {@link stripTableColumnMetadata} for the full
+  // rationale (shared with the spec-004 export-block walker).
+  storage = stripTableColumnMetadata(storage);
+
   // Convert smart links with data-card-appearance (inline mode)
   // <a href="..." data-card-appearance="inline">text</a>
   storage = storage.replace(
@@ -2347,16 +2376,21 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
 
 /**
  * Encode raw XML for safe storage in data attribute.
+ *
+ * Uses the isomorphic base64 helpers from `@atlcli/core` (TextEncoder/btoa)
+ * rather than the node-only global, so unknown-macro preservation works in the
+ * Chrome extension panel bundle (spec 003, finding #6). The output is
+ * byte-identical to the former node base64 encode of the raw XML.
  */
 function encodeRawXml(xml: string): string {
-  return Buffer.from(xml, "utf-8").toString("base64");
+  return encodeBase64(xml);
 }
 
 /**
- * Decode raw XML from data attribute.
+ * Decode raw XML from data attribute (inverse of {@link encodeRawXml}).
  */
 function decodeRawXml(encoded: string): string {
-  return Buffer.from(encoded, "base64").toString("utf-8");
+  return decodeBase64(encoded);
 }
 
 /**

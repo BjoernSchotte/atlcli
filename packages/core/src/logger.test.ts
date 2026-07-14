@@ -1,16 +1,63 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, readFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   Logger,
+  FileLogSink,
   getLogger,
   configureLogging,
   generateRequestId,
   redactSensitive,
   isSensitiveKey,
 } from "./logger.node.js";
+
+/**
+ * Poll until `path` holds at least `minLines` COMPLETE JSONL records (or time
+ * out). The logger flushes its write queue asynchronously and `appendFile` can
+ * create-then-write, so polling for mere existence races: a read can observe the
+ * file after creation but before (or mid-) write, seeing empty or partial JSON.
+ * That flaked under CPU load when the wider suite ran the write behind heavier
+ * concurrent work. Waiting until every non-empty line parses as JSON makes the
+ * assertions load-independent AND guarantees the subsequent `JSON.parse` is safe.
+ *
+ * @returns `true` once `minLines` parseable lines are present, else `false` on timeout.
+ */
+async function waitForFile(path: string, timeoutMs = 3000, minLines = 1): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (existsSync(path) && parsedLineCount(path) >= minLines) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return existsSync(path) && parsedLineCount(path) >= minLines;
+}
+
+/**
+ * Count fully-written JSONL records in `path`. Returns the number of leading
+ * lines that each parse as JSON; stops at the first partial line (a half-flushed
+ * trailing record), so a create-then-write in progress reports the completed
+ * records only.
+ */
+function parsedLineCount(path: string): number {
+  let content: string;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return 0;
+  }
+  const lines = content.split("\n").filter((l) => l.trim().length > 0);
+  let count = 0;
+  for (const line of lines) {
+    try {
+      JSON.parse(line);
+      count++;
+    } catch {
+      break;
+    }
+  }
+  return count;
+}
 
 describe("redactSensitive", () => {
   test("redacts token fields", () => {
@@ -313,6 +360,11 @@ describe("Logger file output", () => {
     projectDir = join(tempDir, "project");
     await mkdir(join(projectDir, ".atlcli"), { recursive: true });
     Logger.reset();
+    // The active sink is process-global: another test file (e.g. the core
+    // logger tests) may have swapped in a CaptureSink and not restored the file
+    // sink. These tests assert file writes, so pin the FileLogSink explicitly
+    // rather than depend on the module-load default surviving the whole suite.
+    Logger.setSink(new FileLogSink());
   });
 
   afterEach(async () => {
@@ -338,15 +390,13 @@ describe("Logger file output", () => {
       cwd: projectDir,
     });
 
-    // Wait for async write
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const logsDir = join(projectDir, ".atlcli", "logs");
-    expect(existsSync(logsDir)).toBe(true);
-
     const today = new Date().toISOString().split("T")[0];
     const logFile = join(logsDir, `${today}.jsonl`);
-    expect(existsSync(logFile)).toBe(true);
+
+    // Wait for the async write to flush (poll — see waitForFile).
+    expect(await waitForFile(logFile)).toBe(true);
+    expect(existsSync(logsDir)).toBe(true);
 
     const content = await readFile(logFile, "utf-8");
     const lines = content.trim().split("\n");
@@ -442,11 +492,12 @@ describe("Logger file output", () => {
       },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const logsDir = join(projectDir, ".atlcli", "logs");
     const today = new Date().toISOString().split("T")[0];
     const logFile = join(logsDir, `${today}.jsonl`);
+
+    // Wait for the async write to flush (poll — see waitForFile).
+    expect(await waitForFile(logFile)).toBe(true);
 
     const content = await readFile(logFile, "utf-8");
     const entry = JSON.parse(content.trim());

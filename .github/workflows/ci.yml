@@ -55,6 +55,9 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
+      - name: Type check extension
+        run: bun run typecheck:extension
+
       - name: Check browser build
         run: bun run check:browser
 
@@ -84,6 +87,9 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Check extension output bundle
+        run: bun run check:extension-output
 
   test-python:
     runs-on: ubuntu-latest

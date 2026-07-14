@@ -1036,7 +1036,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           try {
             const data = await client.downloadAttachment(attachment);
             const attachmentPath = join(attachmentsDir, attachment.filename);
-            const remoteHash = hashContent(data.toString("base64"));
+            const remoteHash = hashContent(Buffer.from(data).toString("base64"));
 
             // Check for conflict with local changes
             const existingAttState = state?.pages[detail.id]?.attachments?.[attachment.id];

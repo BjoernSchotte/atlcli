@@ -12,7 +12,7 @@ import type { Profile } from "./types.js";
 
 // Re-export the browser-safe core surface (TokenResolver, encodeBase64) so
 // Node consumers can import everything auth-related from one module.
-export { encodeBase64, type TokenResolver } from "./auth.js";
+export { encodeBase64, decodeBase64, type TokenResolver } from "./auth.js";
 
 const KEYCHAIN_SERVICE = "atlcli";
 
