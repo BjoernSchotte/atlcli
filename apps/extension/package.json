@@ -7,7 +7,8 @@
     "dev": "wxt",
     "build": "wxt build",
     "postinstall": "wxt prepare",
-    "typecheck": "wxt prepare && tsc --noEmit"
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "check:output": "bun scripts/check-output-build.ts"
   },
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
