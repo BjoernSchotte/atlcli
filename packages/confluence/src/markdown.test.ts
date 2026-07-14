@@ -205,6 +205,76 @@ describe("storageToMarkdown", () => {
     expect(roundtrip).toBe(original + "\n");
   });
 
+  // Regression (spec 003 live E2E): modern Confluence Cloud editor tables carry a
+  // leading <colgroup> for column widths. That made the <tbody> a non-first
+  // sibling, defeating turndown-plugin-gfm's heading-row detection, so the GFM
+  // `table` rule declined the node and its `keep` fallback dumped the whole
+  // table back out as raw storage XML (<th ac:local-id=…><p local-id=…> …).
+  test("converts modern Cloud table with leading <colgroup> to a markdown table", () => {
+    const storage = `<table data-layout="default" ac:local-id="tbl1"><colgroup><col style="width: 226.0px;"/><col style="width: 226.0px;"/></colgroup><tbody><tr ac:local-id="r1"><th ac:local-id="a4168d7b"><p local-id="87bd62eb7e80"><strong>Next Steps</strong></p></th><th ac:local-id="0d54bcde"><p local-id="44784a6872b1"><strong>Status</strong></p></th></tr><tr ac:local-id="27b00013"><td ac:local-id="c1"><p><ac:emoticon ac:name="warning" ac:emoji-shortname=":warning:" ac:emoji-fallback=":warning:"/> Careful</p></td><td ac:local-id="c2"><p></p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    // No raw storage XML leaked through.
+    expect(md).not.toContain("ac:local-id");
+    expect(md).not.toContain("local-id");
+    expect(md).not.toContain("<th");
+    expect(md).not.toContain("<td");
+    expect(md).not.toContain("<colgroup");
+    expect(md).not.toContain("<col");
+    // Proper markdown table, emoticon in cell mapped to :name: convention.
+    expect(md).toBe(
+      "| **Next Steps** | **Status** |\n" +
+      "| --- | --- |\n" +
+      "| :warning: Careful |  |\n"
+    );
+  });
+
+  test("attribute-laden tr/th/td (ac:local-id) still convert to a markdown table", () => {
+    const storage = `<table><tbody><tr ac:local-id="r1"><th ac:local-id="h1"><p local-id="p1">A</p></th><th ac:local-id="h2"><p local-id="p2">B</p></th></tr><tr ac:local-id="r2"><td ac:local-id="d1"><p local-id="p3">1</p></td><td ac:local-id="d2"><p local-id="p4">2</p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).toBe(
+      "| A | B |\n" +
+      "| --- | --- |\n" +
+      "| 1 | 2 |\n"
+    );
+  });
+
+  test("unwraps <p local-id=…> cell wrappers without leaking attributes", () => {
+    const storage = `<table><colgroup><col/></colgroup><tbody><tr><th><p local-id="h">Header</p></th></tr><tr><td><p local-id="b">Body</p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).toBe(
+      "| Header |\n" +
+      "| --- |\n" +
+      "| Body |\n"
+    );
+  });
+
+  test("converts data-emoticon span inside a table cell to :name: syntax", () => {
+    const storage = `<table><tbody><tr><th><p>Note</p></th></tr><tr><td><p><ac:emoticon ac:name="warning" ac:emoji-shortname=":warning:"/> Heads up</p></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).toContain("| :warning: Heads up |");
+    expect(md).not.toContain("data-emoticon");
+    expect(md).not.toContain("ac:emoticon");
+  });
+
+  test("nested modern tables (colgroup in outer and inner) both convert", () => {
+    const storage = `<table><colgroup><col/></colgroup><tbody><tr><th><p>Outer</p></th></tr><tr><td><table><colgroup><col/></colgroup><tbody><tr><th><p>Inner</p></th></tr><tr><td><p>x</p></td></tr></tbody></table></td></tr></tbody></table>`;
+
+    const md = storageToMarkdown(storage);
+
+    expect(md).not.toContain("<colgroup");
+    expect(md).not.toContain("<table");
+    expect(md).toContain("| Outer |");
+    expect(md).toContain("Inner");
+  });
+
   test("converts code blocks back to fenced syntax", () => {
     const html = '<pre><code class="language-js">const x = 1;</code></pre>';
     const md = storageToMarkdown(html);

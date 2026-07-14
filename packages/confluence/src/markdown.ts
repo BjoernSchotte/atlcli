@@ -1503,6 +1503,19 @@ export function extractAttachmentRefs(markdown: string): string[] {
  * that turndown can process.
  */
 function preprocessStorageMacros(storage: string, options?: ConversionOptions): string {
+  // Strip table <colgroup>/<col> column-sizing metadata emitted by the modern
+  // Confluence Cloud editor. Markdown tables cannot express per-column widths,
+  // so this data is lost either way — but leaving it in breaks table conversion
+  // outright: turndown-plugin-gfm's `isHeadingRow` treats a <tbody> as the header
+  // section only when it is the table's first child (or follows an empty
+  // <thead>). A leading <colgroup> makes the <tbody> a non-first sibling, so the
+  // heading row is never detected, the GFM `table` rule declines the node, and
+  // its `keep` fallback dumps the entire table back out as raw storage XML
+  // (observed: <th ac:local-id=…><p local-id=…> passthrough). Removing the
+  // colgroup restores the tbody-first invariant the GFM plugin relies on.
+  storage = storage.replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, "");
+  storage = storage.replace(/<col\b[^>]*\/?>/gi, "");
+
   // Convert smart links with data-card-appearance (inline mode)
   // <a href="..." data-card-appearance="inline">text</a>
   storage = storage.replace(
