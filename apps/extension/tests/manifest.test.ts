@@ -1,6 +1,23 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { ensureExtensionBuilt, MANIFEST_PATH } from "./build-helper.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ensureExtensionBuilt, MANIFEST_PATH, OUTPUT_DIR } from "./build-helper.js";
+
+/**
+ * The exact, normative extension-pages CSP from PLAN §2.3. The test asserts the
+ * built manifest carries THIS string verbatim — no extra sources permitted
+ * (an appended `https://cdn…` would silently widen the trust boundary).
+ */
+export const NORMATIVE_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'";
+
+/**
+ * Pure predicate: is `csp` byte-for-byte the normative policy? Exposed so both
+ * the positive assertion and a negative fixture (appended remote source) can
+ * exercise it without a real build.
+ */
+export function isNormativeCsp(csp: unknown): boolean {
+  return csp === NORMATIVE_CSP;
+}
 
 /**
  * Manifest correctness (spec 002 Task 2). Parses the BUILT
@@ -34,27 +51,71 @@ describe("built manifest.json", () => {
     expect(manifest.host_permissions).toEqual(["*://*.atlassian.net/*"]);
   });
 
-  it("uses a module service worker", () => {
+  it("uses a module service worker whose file exists in the output", () => {
     expect(manifest.background.type).toBe("module");
-    expect(typeof manifest.background.service_worker).toBe("string");
-    expect(manifest.background.service_worker.length).toBeGreaterThan(0);
+    const sw: unknown = manifest.background.service_worker;
+    expect(typeof sw).toBe("string");
+    expect((sw as string).length).toBeGreaterThan(0);
+    // The declared SW file must actually be emitted, or Chrome errors on load.
+    expect(existsSync(join(OUTPUT_DIR, sw as string))).toBe(true);
   });
 
-  it("registers a side panel whose default_path is a real bundled html file", () => {
-    expect(typeof manifest.side_panel.default_path).toBe("string");
-    expect(manifest.side_panel.default_path).toMatch(/\.html$/);
+  it("registers a side panel whose default_path is a real emitted html file", () => {
+    const path: unknown = manifest.side_panel.default_path;
+    expect(typeof path).toBe("string");
+    expect(path).toMatch(/\.html$/);
+    // Assert the path points at the file WXT actually produced (not merely any
+    // non-empty .html string) — the file must exist in the built output.
+    expect(existsSync(join(OUTPUT_DIR, path as string))).toBe(true);
   });
 
-  it("sets a CSP that allows wasm-unsafe-eval but NOT unsafe-eval", () => {
-    const csp: string = manifest.content_security_policy.extension_pages;
-    expect(csp).toContain("wasm-unsafe-eval");
-    expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("object-src 'self'");
-    // Must not grant full unsafe-eval — only the wasm-scoped variant.
-    expect(/(^|[^-])\bunsafe-eval\b/.test(csp.replace(/wasm-unsafe-eval/g, ""))).toBe(false);
+  it("sets the exact normative CSP — no extra sources", () => {
+    const csp: unknown = manifest.content_security_policy.extension_pages;
+    expect(csp).toBe(NORMATIVE_CSP);
+    expect(isNormativeCsp(csp)).toBe(true);
   });
 
   it("pins a minimum chrome version for sidePanel/offscreen APIs", () => {
     expect(manifest.minimum_chrome_version).toBe("116");
+  });
+});
+
+/**
+ * Negative fixtures on the CSP predicate: guard specifically against an
+ * appended remote source silently passing. These would go green under a
+ * `.toContain("wasm-unsafe-eval")`-style loose check.
+ */
+describe("isNormativeCsp negative fixtures", () => {
+  it("rejects an appended remote script source", () => {
+    expect(
+      isNormativeCsp(
+        "script-src 'self' 'wasm-unsafe-eval' https://cdn.evil.example; object-src 'self'"
+      )
+    ).toBe(false);
+  });
+
+  it("rejects an appended object-src source", () => {
+    expect(
+      isNormativeCsp(
+        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self' https://cdn.evil.example"
+      )
+    ).toBe(false);
+  });
+
+  it("rejects an added unsafe-eval source", () => {
+    expect(
+      isNormativeCsp(
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; object-src 'self'"
+      )
+    ).toBe(false);
+  });
+
+  it("rejects trailing whitespace / near-miss variants", () => {
+    expect(isNormativeCsp(NORMATIVE_CSP + " ")).toBe(false);
+    expect(isNormativeCsp("script-src 'self'; object-src 'self'")).toBe(false);
+  });
+
+  it("accepts exactly the normative string", () => {
+    expect(isNormativeCsp(NORMATIVE_CSP)).toBe(true);
   });
 });
