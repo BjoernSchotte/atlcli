@@ -272,11 +272,11 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 7 — URL→entity extractor
 
-- [ ] `entity-url.ts` implements §5.1 API with the §5.2 registry as versioned data; exported from both entries
-- [ ] Fixture table: ≥ 1 positive and ≥ 1 negative fixture per registry row, plus Cloud/DC context-path variants, query-param forms (`?pageId=`, `?selectedIssue=`), and non-entity URLs on `atlassian.net` (marketing pages) → `null`
-- [ ] Malformed input (`not a url`, empty string) → `null`, never throws
-- [ ] `isConfluencePageUrl` reimplemented on the extractor; its existing tests stay green unchanged
-- [ ] Registry injection works: a test passes a modified registry and observes different extraction
+- [x] `entity-url.ts` implements §5.1 API with the §5.2 registry as versioned data; exported from both entries
+- [x] Fixture table: ≥ 1 positive and ≥ 1 negative fixture per registry row, plus Cloud/DC context-path variants, query-param forms (`?pageId=`, `?selectedIssue=`), and non-entity URLs on `atlassian.net` (marketing pages) → `null`
+- [x] Malformed input (`not a url`, empty string) → `null`, never throws
+- [x] `isConfluencePageUrl` reimplemented on the extractor; its existing tests stay green unchanged
+- [x] Registry injection works: a test passes a modified registry and observes different extraction
 
 ### Task 8 — Scroll placeholder mapping (parallel, no code)
 

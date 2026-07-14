@@ -1,6 +1,7 @@
 export * from "./auth.node.js";
 export * from "./config.js";
 export * from "./confluence-url.js";
+export * from "./entity-url.js";
 export * from "./flags.js";
 export * from "./keychain.js";
 export * from "./logger.node.js";

@@ -10,6 +10,7 @@
 export * from "./types.js";
 export * from "./redact.js";
 export * from "./confluence-url.js";
+export * from "./entity-url.js";
 export * from "./logger.js";
 export * from "./auth.js";
 export * from "./tls.browser.js";
