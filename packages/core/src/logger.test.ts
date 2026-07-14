@@ -5,12 +5,28 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   Logger,
+  FileLogSink,
   getLogger,
   configureLogging,
   generateRequestId,
   redactSensitive,
   isSensitiveKey,
 } from "./logger.node.js";
+
+/**
+ * Poll until `path` exists (or time out). The logger flushes its write queue
+ * asynchronously, so a fixed sleep races under CPU load (flaked when the wider
+ * test suite runs the file write behind heavier concurrent work). Polling makes
+ * the presence assertions load-independent.
+ */
+async function waitForFile(path: string, timeoutMs = 3000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (existsSync(path)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return existsSync(path);
+}
 
 describe("redactSensitive", () => {
   test("redacts token fields", () => {
@@ -313,6 +329,11 @@ describe("Logger file output", () => {
     projectDir = join(tempDir, "project");
     await mkdir(join(projectDir, ".atlcli"), { recursive: true });
     Logger.reset();
+    // The active sink is process-global: another test file (e.g. the core
+    // logger tests) may have swapped in a CaptureSink and not restored the file
+    // sink. These tests assert file writes, so pin the FileLogSink explicitly
+    // rather than depend on the module-load default surviving the whole suite.
+    Logger.setSink(new FileLogSink());
   });
 
   afterEach(async () => {
@@ -338,15 +359,13 @@ describe("Logger file output", () => {
       cwd: projectDir,
     });
 
-    // Wait for async write
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const logsDir = join(projectDir, ".atlcli", "logs");
-    expect(existsSync(logsDir)).toBe(true);
-
     const today = new Date().toISOString().split("T")[0];
     const logFile = join(logsDir, `${today}.jsonl`);
-    expect(existsSync(logFile)).toBe(true);
+
+    // Wait for the async write to flush (poll — see waitForFile).
+    expect(await waitForFile(logFile)).toBe(true);
+    expect(existsSync(logsDir)).toBe(true);
 
     const content = await readFile(logFile, "utf-8");
     const lines = content.trim().split("\n");
@@ -442,11 +461,12 @@ describe("Logger file output", () => {
       },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const logsDir = join(projectDir, ".atlcli", "logs");
     const today = new Date().toISOString().split("T")[0];
     const logFile = join(logsDir, `${today}.jsonl`);
+
+    // Wait for the async write to flush (poll — see waitForFile).
+    expect(await waitForFile(logFile)).toBe(true);
 
     const content = await readFile(logFile, "utf-8");
     const entry = JSON.parse(content.trim());
