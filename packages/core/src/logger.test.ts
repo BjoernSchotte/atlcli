@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, readFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -14,18 +14,49 @@ import {
 } from "./logger.node.js";
 
 /**
- * Poll until `path` exists (or time out). The logger flushes its write queue
- * asynchronously, so a fixed sleep races under CPU load (flaked when the wider
- * test suite runs the file write behind heavier concurrent work). Polling makes
- * the presence assertions load-independent.
+ * Poll until `path` holds at least `minLines` COMPLETE JSONL records (or time
+ * out). The logger flushes its write queue asynchronously and `appendFile` can
+ * create-then-write, so polling for mere existence races: a read can observe the
+ * file after creation but before (or mid-) write, seeing empty or partial JSON.
+ * That flaked under CPU load when the wider suite ran the write behind heavier
+ * concurrent work. Waiting until every non-empty line parses as JSON makes the
+ * assertions load-independent AND guarantees the subsequent `JSON.parse` is safe.
+ *
+ * @returns `true` once `minLines` parseable lines are present, else `false` on timeout.
  */
-async function waitForFile(path: string, timeoutMs = 3000): Promise<boolean> {
+async function waitForFile(path: string, timeoutMs = 3000, minLines = 1): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (existsSync(path)) return true;
+    if (existsSync(path) && parsedLineCount(path) >= minLines) return true;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return existsSync(path);
+  return existsSync(path) && parsedLineCount(path) >= minLines;
+}
+
+/**
+ * Count fully-written JSONL records in `path`. Returns the number of leading
+ * lines that each parse as JSON; stops at the first partial line (a half-flushed
+ * trailing record), so a create-then-write in progress reports the completed
+ * records only.
+ */
+function parsedLineCount(path: string): number {
+  let content: string;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return 0;
+  }
+  const lines = content.split("\n").filter((l) => l.trim().length > 0);
+  let count = 0;
+  for (const line of lines) {
+    try {
+      JSON.parse(line);
+      count++;
+    } catch {
+      break;
+    }
+  }
+  return count;
 }
 
 describe("redactSensitive", () => {
