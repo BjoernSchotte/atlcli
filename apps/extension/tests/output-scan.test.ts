@@ -1,9 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scanText, scanOutputDir } from "../scripts/check-output-build.js";
-import { ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
+import { spawnSync } from "node:child_process";
+import { scanText } from "../scripts/check-output-build.js";
+import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
+
+const CLI_PATH = join(EXTENSION_ROOT, "scripts", "check-output-build.ts");
+
+/** Run the REAL check CLI against `root`; return exit code + merged output. */
+function runCheckCli(root: string): { code: number; output: string } {
+  const res = spawnSync("bun", [CLI_PATH, root], {
+    cwd: EXTENSION_ROOT,
+    encoding: "utf8",
+  });
+  return { code: res.status ?? -1, output: `${res.stdout ?? ""}${res.stderr ?? ""}` };
+}
 
 /**
  * Extension output isomorphism gate (spec 002 Task 6).
@@ -50,32 +62,46 @@ describe("scanText classification", () => {
   });
 });
 
-describe("scanOutputDir negative fixture", () => {
-  let dir: string;
+/**
+ * End-to-end gate proof (spec 002 Task 6): the REAL `wxt build` output is
+ * scanned by the REAL check CLI as a spawned process, so the observed signal is
+ * the actual gate — process exit code + named offender — not an in-process
+ * scanner call over synthetic files.
+ *
+ * Positive: the real clean bundle → exit 0.
+ * Negative: a real build, copied to a temp outDir with a `node:os` leak seeded
+ * in, → nonzero exit naming the offending file AND specifier. (Vite strips
+ * `node:` specifiers from real entrypoints, so the leak is injected into a copy
+ * of the built output — an alternate outDir — while the build+CLI both run for
+ * real. Temp dir is always cleaned up.)
+ */
+describe("check-output-build CLI (end-to-end)", () => {
+  let leakDir: string;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), "atlcli-scan-"));
-    writeFileSync(join(dir, "clean.js"), `export const x = 1;\n`);
+    ensureExtensionBuilt();
+    leakDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-"));
+  });
+
+  afterAll(() => rmSync(leakDir, { recursive: true, force: true }));
+
+  it("exits 0 on the real clean .output/chrome-mv3", () => {
+    const { code, output } = runCheckCli(OUTPUT_DIR);
+    expect(code).toBe(0);
+    expect(output).toContain("clean");
+  });
+
+  it("exits nonzero and names the offending file + specifier on a seeded leak", () => {
+    // Copy the real build into an alternate outDir, then seed a leak file.
+    cpSync(OUTPUT_DIR, leakDir, { recursive: true });
     writeFileSync(
-      join(dir, "leaky.js"),
+      join(leakDir, "leaky.js"),
       `import { platform } from "node:os";\nexport const p = platform();\n`
     );
-  });
 
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
-
-  it("catches the seeded node:os import and names the file", () => {
-    const leaks = scanOutputDir(dir);
-    expect(leaks.length).toBe(1);
-    expect(leaks[0]!.file).toBe("leaky.js");
-    expect(leaks[0]!.findings).toContain("node:os");
-  });
-});
-
-describe("scanOutputDir on the real build", () => {
-  beforeAll(() => ensureExtensionBuilt());
-
-  it("finds zero leaks in .output/chrome-mv3", () => {
-    expect(scanOutputDir(OUTPUT_DIR)).toEqual([]);
+    const { code, output } = runCheckCli(leakDir);
+    expect(code).not.toBe(0);
+    expect(output).toContain("leaky.js");
+    expect(output).toContain("node:os");
   });
 });
