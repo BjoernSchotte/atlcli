@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Buffer } from "node:buffer";
-import { buildAuthHeader, encodeBase64, type TokenResolver } from "./auth.js";
+import { buildAuthHeader, encodeBase64, decodeBase64, type TokenResolver } from "./auth.js";
 import type { Profile } from "./types.js";
 
 function apiTokenProfile(overrides: Partial<Profile["auth"]> = {}): Profile {
@@ -41,6 +41,21 @@ describe("encodeBase64", () => {
     const s = "grüße:😀";
     expect(() => encodeBase64(s)).not.toThrow();
     expect(encodeBase64(s)).toBe(Buffer.from(s, "utf8").toString("base64"));
+  });
+});
+
+describe("decodeBase64 (browser-safe, used for unknown-macro preservation)", () => {
+  test("matches the node-only Buffer decode byte-for-byte (ASCII + non-ASCII)", () => {
+    for (const s of ["hello world", "grüße:😀", "<macro>你好 — €</macro>", ""]) {
+      const encoded = Buffer.from(s, "utf8").toString("base64");
+      expect(decodeBase64(encoded)).toBe(Buffer.from(encoded, "base64").toString("utf-8"));
+      expect(decodeBase64(encoded)).toBe(s);
+    }
+  });
+
+  test("is the exact inverse of encodeBase64", () => {
+    const s = "grüße:😀 <ac:structured-macro/>";
+    expect(decodeBase64(encodeBase64(s))).toBe(s);
   });
 });
 

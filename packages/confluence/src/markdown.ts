@@ -5,6 +5,7 @@ import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { createHash } from "crypto";
+import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 
 // ============ Smart Link Types and Utilities ============
@@ -2347,16 +2348,21 @@ function preprocessStorageMacros(storage: string, options?: ConversionOptions): 
 
 /**
  * Encode raw XML for safe storage in data attribute.
+ *
+ * Uses the isomorphic base64 helpers from `@atlcli/core` (TextEncoder/btoa)
+ * rather than the node-only global, so unknown-macro preservation works in the
+ * Chrome extension panel bundle (spec 003, finding #6). The output is
+ * byte-identical to the former node base64 encode of the raw XML.
  */
 function encodeRawXml(xml: string): string {
-  return Buffer.from(xml, "utf-8").toString("base64");
+  return encodeBase64(xml);
 }
 
 /**
- * Decode raw XML from data attribute.
+ * Decode raw XML from data attribute (inverse of {@link encodeRawXml}).
  */
 function decodeRawXml(encoded: string): string {
-  return Buffer.from(encoded, "base64").toString("utf-8");
+  return decodeBase64(encoded);
 }
 
 /**

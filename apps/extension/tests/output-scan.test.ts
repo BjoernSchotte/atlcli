@@ -60,6 +60,26 @@ describe("scanText classification", () => {
     // A bare URL string (not an import/script) is not a remote SCRIPT origin.
     expect(scanText(`const url = "https://api.atlassian.net/rest";`)).toEqual([]);
   });
+
+  // Regression (finding #6 hardening): bare node GLOBALS are invisible to the
+  // import-specifier scan (nothing is imported), yet they are undefined in the
+  // extension runtime and throw at use — exactly how the unknown-macro `Buffer`
+  // crash slipped past. The gate must now catch them.
+  it.each([
+    ["Buffer.from usage", `const b = Buffer.from(xml, "utf-8");`, "Buffer."],
+    ["Buffer.alloc usage", `Buffer.alloc(10)`, "Buffer."],
+    ["process.env read", `const x = process.env.NODE_ENV;`, "process.env"],
+    ["__dirname global", `const p = join(__dirname, "x");`, "__dirname"],
+    ["__filename global", `console.log(__filename);`, "__filename"],
+  ])("flags %s", (_label, text, expected) => {
+    expect(scanText(text)).toContain(expected);
+  });
+
+  it("does not flag look-alike identifiers that are not node globals", () => {
+    // A property literally named `Buffer` or a `processEnv` variable must not trip.
+    expect(scanText(`const myBuffer = new Uint8Array(4);`)).toEqual([]);
+    expect(scanText(`const processEnvironment = cfg.processEnvironment;`)).toEqual([]);
+  });
 });
 
 /**

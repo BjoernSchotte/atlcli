@@ -6,17 +6,32 @@
  * stay covered by the repo-wide `scripts/check-browser-build.ts` (spec 001).
  * This script is the belt-and-suspenders equivalent for the WXT/Vite ARTIFACT:
  * a post-build scan over the built `.output/chrome-mv3` js/html files asserting
- *   1. zero `node:`/`bun:` module specifiers, and
+ *   1. zero `node:`/`bun:` module specifiers,
  *   2. zero remote script origins (import / importScripts / <script src> from
- *      an http(s) URL) — the extension must load only bundled, local assets.
+ *      an http(s) URL) — the extension must load only bundled, local assets, and
+ *   3. zero bare node GLOBALS (`Buffer.`, `process.env`, `__dirname`). These are
+ *      invisible to an import-specifier scan — nothing is imported, the symbol is
+ *      just assumed to exist — yet they are `undefined` in the extension runtime,
+ *      so code touching them throws at use (spec 003, finding #6: unknown-macro
+ *      conversion crashed on `Buffer` in the panel bundle). This gate closes that
+ *      whole class of leak.
  *
- * On a leak it names the offending file(s) and specifier(s) and exits non-zero.
+ * On a leak it names the offending file(s) and finding(s) and exits non-zero.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /** Quoted `node:`/`bun:` module specifier — a real import/require target. */
 const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
+
+/**
+ * Bare node GLOBALS that do not exist in the extension runtime. Matched as
+ * member access / usage rather than as import specifiers (there is no import to
+ * find). `Buffer\.` catches `Buffer.from(...)` etc.; `process\.env` catches env
+ * reads; `__dirname` / `__filename` are CJS-only path globals. A hit here means
+ * code will throw `ReferenceError`/`undefined` at runtime in the panel/worker.
+ */
+const NODE_GLOBAL_RE = /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b/g;
 
 /**
  * Remote script origin: any executable form that would pull code from an
@@ -69,6 +84,7 @@ export function scanText(text: string): string[] {
   for (const re of REMOTE_SCRIPT_RES) {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
+  for (const m of text.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
   return [...found];
 }
 
