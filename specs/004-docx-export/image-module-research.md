@@ -6,7 +6,7 @@ image-embedding follow-up task (PLAN.md Decisions log **F3**).
 Scope: analyse the ~8-year-old open-source `docxtemplater-image-module-free` and distill
 what our **own** OOXML image module (docxtemplater FREE engine; paid Image Module excluded)
 can reuse or must rewrite. Compares against the spike prototype in
-`specs/004-docx-export/spike/src/ooxml.ts`.
+`specs/004-docx-export/image-module-prototype.ts`.
 
 Primary source (all cited inline):
 - Repo: https://github.com/evilc0des/docxtemplater-image-module-free
@@ -263,7 +263,7 @@ the 8-year-old node-coupled JS + stale API make it a net negative. Concretely:
 - **Page-width capping / alt text** — intrinsic px → cap to content width; `descr`/`title`
   from attachment alt text (the old module hardcodes `descr="image"`).
 
-### 5.1 Explicit diff vs `spike/src/ooxml.ts`
+### 5.1 Explicit diff vs `image-module-prototype.ts`
 
 | Concern | spike `ooxml.ts` | old module | What the follow-up task should build |
 |---|---|---|---|
@@ -296,4 +296,4 @@ has — and that our follow-up must add — are an **in-browser dimension decode
 - `es6/templates.js` (`getImageXml` fragment, §2.1): https://raw.githubusercontent.com/evilc0des/docxtemplater-image-module-free/master/es6/templates.js
 - `es6/imgManager.js` (media path, rId, content-types, §2.2–2.4): master branch
 - `es6/docUtils.js` (`convertPixelsToEmus` = `Math.round(pixel*9525)`, §2.5): master branch
-- Local comparison: `specs/004-docx-export/spike/src/ooxml.ts`, `engine-decision.md`, `PLAN.md` (F3).
+- Local comparison: `specs/004-docx-export/image-module-prototype.ts`, `engine-decision.md`, `PLAN.md` (F3).

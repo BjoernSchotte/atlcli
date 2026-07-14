@@ -1,10 +1,18 @@
 /**
- * Hand-written OOXML fragment builders for the content zoo, plus a *self-built
- * image module* (media part + relationship + content-type plumbing) that works
- * on a raw PizZip instance. The image module is exactly the effort docxtemplater
- * free-tier would require; docx-templates provides an equivalent natively.
+ * PRESERVED SPIKE ARTIFACT — reference prototype for the deferred DOCX image-module task.
  *
- * These are throwaway helpers for the spike — not the product serializer.
+ * This is the OOXML *image module* prototype extracted from the (now-removed) spec-004
+ * engine spike: a self-built image insertion (media part + relationship + content-type
+ * plumbing + drawing/EMU) that works on a raw PizZip instance — exactly the effort the
+ * docxtemplater free tier needs for image embedding. It is NOT compiled or imported by any
+ * product code; it is kept here as the starting point the follow-up image-module task builds
+ * on. See `image-module-research.md` (§5 diffs this prototype against the old open module and
+ * lists the gaps the real module must close: unique element ids, generic content-types,
+ * effectExtent/aspect-locks, svgBlip). Image embedding is deferred per PLAN.md Decision F3.
+ *
+ * (Also contains the spike's hand-written OOXML fragment builders for the content zoo — those
+ * are superseded by the product serializer in apps/extension/utils/docx and are here only as
+ * historical context.)
  */
 import type PizZip from "pizzip";
 
