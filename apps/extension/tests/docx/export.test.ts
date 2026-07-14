@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
 import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence/browser";
-import { exportDocx } from "../../utils/docx/export.js";
+import { DocxRenderError, exportDocx } from "../../utils/docx/export.js";
 import type { CurrentUser } from "../../utils/docx/resolver.js";
 import { buildDocx, documentXml, headingStyle, para, readPart, runSplitPara, stylesXml } from "./fixtures.js";
 
@@ -157,6 +157,65 @@ describe("exportDocx — full pipeline", () => {
     const doc = readPart(bytes, "word/document.xml");
     expect(doc).toContain("{foo}");
     expect(doc).toContain("lone { brace");
+  });
+
+  it("does not throw on guillemets or double braces in a customer template (#11, PUA delimiters)", async () => {
+    // Guillemets appear in real German/French prose; `{{…}}` is another engine's
+    // default delimiter. With PUA delimiters none of these are tags → no parse,
+    // no throw, verbatim survival.
+    const templateBytes = buildDocx({
+      body:
+        para("$scroll.content") +
+        para("Anführung: «Zitat» und {{mustache}} und }unbalanced{"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("«Zitat»");
+    expect(doc).toContain("{{mustache}}");
+    expect(doc).toContain("}unbalanced{");
+  });
+
+  it("injects the body via docxtemplater rawxml — page braces/$scroll survive verbatim (#7/#11)", async () => {
+    // The page body itself contains BOTH a documented $scroll placeholder AND
+    // braces. Because the body is a rawxml DATA value (not template text), none
+    // of it is parsed by the engine.
+    const pageDetails: ConfluencePageDetails = {
+      ...details,
+      storage: "<p>Use $scroll.title and {config} in your template.</p>",
+    };
+    const templateBytes = buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+    const { bytes } = await exportDocx({ templateBytes, details: pageDetails, template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("$scroll.title");
+    expect(doc).toContain("{config}");
+    // No Private-Use-Area delimiter or rawxml tag leaks into the output.
+    expect(doc).not.toContain("scrollContent");
+    expect(doc).not.toContain(String.fromCodePoint(0xe000));
+    expect(doc).not.toContain(String.fromCodePoint(0xe001));
+  });
+
+  it("classifies a docxtemplater render failure as DocxRenderError, not a generic throw", async () => {
+    // Force the engine to choke: place a stray Private-Use-Area start delimiter
+    // (which the customer's own content could never contain) with no closing
+    // delimiter. docxtemplater sees an unclosed tag and throws; export must
+    // surface it as a specific, structured error.
+    const strayOpen = String.fromCodePoint(0xe000);
+    const templateBytes = buildDocx({
+      body: para("$scroll.content") + para(`stray ${strayOpen}unclosed tag`),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+    let caught: unknown;
+    try {
+      await exportDocx({ templateBytes, details, template, deps });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(DocxRenderError);
+    expect((caught as DocxRenderError).details.length).toBeGreaterThan(0);
   });
 
   it("resolves $scroll.title. and keeps the trailing period (#9)", async () => {

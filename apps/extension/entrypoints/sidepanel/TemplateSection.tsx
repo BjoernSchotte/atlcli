@@ -46,6 +46,22 @@ function toStored(name: string, bytes: ArrayBuffer, scan: ScanResult): StoredTem
   return { id: "current", name, bytes, uploadedAt: Date.now(), scan };
 }
 
+/**
+ * Turn an export throw into a user-facing message. A {@link DocxRenderError}
+ * (docxtemplater could not render the template) is surfaced specifically with
+ * the engine's structured explanation rather than as a generic "Export failed"
+ * (spec 004, finding #11 second half). Detected by name to avoid pulling the
+ * heavy export module into this file's static graph.
+ */
+function exportErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.name === "DocxRenderError") {
+    const details = (err as { details?: string[] }).details;
+    const detail = details?.length ? ` (${details.join("; ")})` : "";
+    return `The Word template could not be rendered${detail}. Check the template for stray control characters.`;
+  }
+  return `Export failed: ${(err as Error).message}`;
+}
+
 /** Trigger a browser download of the given bytes. */
 function download(bytes: Uint8Array, filename: string): void {
   const blob = new Blob([bytes as BlobPart], {
@@ -161,7 +177,7 @@ export function TemplateSection({
       download(bytes, rep.filename);
       setReport(rep);
     } catch (err) {
-      setError(`Export failed: ${(err as Error).message}`);
+      setError(exportErrorMessage(err));
     } finally {
       setBusy(null);
     }

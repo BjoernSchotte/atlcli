@@ -6,26 +6,33 @@
  *   2. scan its `$scroll.*` placeholders (reused classification);
  *   3. resolve non-content placeholders (lazy space/user fetch);
  *   4. walk the page storage → ExportBlock[] → OOXML body;
- *   5. swap the `$scroll.content` paragraph for a private sentinel paragraph;
+ *   5. swap the `$scroll.content` paragraph for a docxtemplater rawxml tag
+ *      paragraph (`@scrollContent`, written with Private-Use-Area delimiters);
  *   6. preprocess the remaining `$scroll.*` text (run-normalized) across
  *      document + header/footer parts of the TEMPLATE — NEVER leaving a literal,
  *      and never touching the page body (which is not injected yet);
- *   7. splice the serialized body in place of the sentinel as raw XML — the page
- *      body is DATA and is never run through a `{…}` template parser, so literal
- *      braces and `$scroll.*` examples in the page survive verbatim;
+ *   7. render with docxtemplater: the engine expands the rawxml tag, inserting
+ *      the serialized body VERBATIM — the page body is a DATA value, never
+ *      re-parsed for tags, so literal braces and `$scroll.*` examples in the page
+ *      survive (findings #7/#11);
  *   8. synthesize the code style, set `w:updateFields` so the TOC repaginates;
  *   9. emit bytes + a structured {@link ExportReport}.
  *
- * The template body is spliced directly rather than via docxtemplater's data
- * pass: docxtemplater parsed the WHOLE customer template with `{…}` delimiters,
- * which mutated balanced `{foo}` and threw on a lone brace, and its render had
- * to run before placeholder preprocessing — which then scanned the injected body
- * and rewrote page-authored `$scroll.*` examples. Ordering placeholder
- * resolution on the template first, then splicing the body as opaque XML,
- * removes both failure modes (PLAN Decision F1 permits the no-engine content
- * path). Images are deferred (F3): they add report lines, never OOXML.
+ * **Engine (PLAN Decision F1, Option A):** docxtemplater free is the rendering
+ * engine, configured with Private-Use-Area delimiters (U+E000 … U+E001) instead
+ * of the default `{…}`. docxtemplater always scans the whole document for its
+ * delimiter pair; a PUA pair cannot occur in any real Word template or in
+ * customer page content, so the customer template's literal `{`, `}`, `{foo}`
+ * are NEVER treated as tags — never parsed, never mutated, never throw (finding
+ * #11). Only our own injected `@scrollContent` tag is a tag, and its value (the
+ * page body OOXML) is inserted through the free-tier rawxml module WITHOUT
+ * re-parsing, so page-authored `$scroll.*` / braces pass through verbatim
+ * (finding #7). Non-content `$scroll.*` placeholders are resolved to text on the
+ * template parts BEFORE render (engine-agnostic run-normalized preprocessor,
+ * findings #8/#9). Images are deferred (F3): they add report lines, never OOXML.
  */
 import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
 import { storageToBlocks, type ConfluencePageDetails, type ExportNote } from "@atlcli/confluence/browser";
 import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
 import {
@@ -74,14 +81,48 @@ export interface ExportInput {
 }
 
 /**
- * A unique sentinel paragraph we swap in for `$scroll.content` before
- * placeholder preprocessing, then replace wholesale with the serialized body.
- * It contains no `$scroll` text, so the preprocessor leaves it untouched, and
- * the storage walker never emits this marker, so it cannot collide with page
- * content. The whole `<w:p>` string is what we later splice out.
+ * docxtemplater delimiter pair from the Unicode Private Use Area (U+E000,
+ * U+E001), built from code points so no control byte lives in this source. These
+ * code points are reserved for private agreement and carry no character
+ * semantics, so they cannot appear in a real Word template or in customer page
+ * content. docxtemplater scans the whole document for exactly this pair, so with
+ * a PUA pair the customer's literal `{`, `}`, `{foo}` (and guillemets `«…»`,
+ * which appear in real German/French prose) are never delimiters — never parsed,
+ * never mutated, never throw (finding #11).
  */
-const CONTENT_SENTINEL = "ATLCLI-SCROLL-CONTENT";
-const CONTENT_SENTINEL_PARA = `<w:p><w:r><w:t xml:space="preserve">${CONTENT_SENTINEL}</w:t></w:r></w:p>`;
+const DELIM_START = String.fromCodePoint(0xe000);
+const DELIM_END = String.fromCodePoint(0xe001);
+
+/** The rawxml data key whose value is the serialized page body OOXML. */
+const CONTENT_KEY = "scrollContent";
+
+/**
+ * The paragraph we swap in for `$scroll.content` before render. Its ONLY text is
+ * the docxtemplater rawxml tag `@scrollContent` (delimited with the PUA pair);
+ * the free-tier rawxml module requires a raw tag to be the sole content of its
+ * paragraph, and expands the WHOLE paragraph to the tag's value — so the
+ * serialized body replaces this placeholder paragraph cleanly. It contains no
+ * `$scroll` text, so the `$scroll.*` preprocessor leaves it untouched.
+ */
+const CONTENT_TAG_PARA =
+  `<w:p><w:r><w:t xml:space="preserve">${DELIM_START}@${CONTENT_KEY}${DELIM_END}</w:t></w:r></w:p>`;
+
+/**
+ * Thrown when docxtemplater cannot render the (delimiter-swapped) template.
+ * With PUA delimiters this is not expected — the customer's own text is never a
+ * tag — but a residual malformed input is classified specifically here rather
+ * than surfacing as a generic "Export failed" (second half of finding #11). The
+ * caller can present the structured `details` instead of a bare message.
+ */
+export class DocxRenderError extends Error {
+  constructor(
+    message: string,
+    readonly details: string[]
+  ) {
+    super(message);
+    this.name = "DocxRenderError";
+  }
+}
 
 /** Turn a page title into a safe `.docx` filename. */
 export function toDownloadFilename(title: string): string {
@@ -91,9 +132,12 @@ export function toDownloadFilename(title: string): string {
 
 /**
  * Run the full export. Returns the `.docx` bytes and a report.
- * Throws only on a truly fatal template problem (an unreadable / non-Word zip
- * from {@link unzipDocx}); the customer template's own text is never parsed as a
- * template, so literal braces / `$scroll.*` examples can't cause a parse error.
+ * Throws {@link import("./scan.js").DocxError} on a truly fatal template problem
+ * (an unreadable / non-Word zip from {@link unzipDocx}), or {@link
+ * DocxRenderError} if docxtemplater cannot render the delimiter-swapped template
+ * (not expected with PUA delimiters). The customer template's own text is never
+ * scanned with `{…}`, so literal braces / `$scroll.*` examples can't cause a
+ * parse error.
  */
 export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const start = Date.now();
@@ -111,12 +155,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   const body = await serializeBlocks(blocks, { styleNames });
 
-  // 3. Swap the $scroll.content paragraph for a sentinel. If the template has
-  //    none, inject the sentinel before the body's final section break.
-  const contentFound = injectContentSentinel(zip);
+  // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
+  //    template has none, inject the tag before the body's final section break.
+  const contentFound = injectContentTag(zip);
   const flowNotes: ExportNote[] = [];
   if (!contentFound) {
-    injectContentSentinelAtEnd(zip);
+    injectContentTagAtEnd(zip);
     flowNotes.push({
       level: "info",
       code: "no-content-placeholder",
@@ -126,18 +170,21 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 
   // 4. Resolve remaining $scroll.* text across the TEMPLATE parts (the page body
   //    is NOT injected yet — so page-authored $scroll.* examples can't be hit).
+  //    Runs before render so the engine only ever sees resolved text + the one
+  //    rawxml tag.
   preprocessScrollText(zip, resolved.values);
 
-  // 5. Splice the serialized body in for the sentinel as opaque XML. Never runs
-  //    through a `{…}` parser, so literal braces / $scroll text in the page pass
-  //    through verbatim.
-  spliceContentSentinel(zip, body.xml);
+  // 5. Render with docxtemplater: the rawxml tag expands to the serialized body,
+  //    inserted VERBATIM (the body is a DATA value, never re-parsed for tags), so
+  //    literal braces / $scroll text in the page pass through unchanged. PUA
+  //    delimiters guarantee the customer's own `{…}` is never a tag.
+  const rendered = renderContent(zip, body.xml);
 
   // 6. Synthesize the code style if the body referenced it; force TOC refresh.
-  if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(zip);
-  ensureUpdateFields(zip);
+  if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
+  ensureUpdateFields(rendered);
 
-  const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+  const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
 
   const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes];
   // Every image-skip note kind counts toward the report's skipped-image total:
@@ -159,19 +206,77 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the template with docxtemplater (PUA delimiters) so the `@scrollContent`
+ * rawxml tag expands to `bodyXml`. Returns the rendered PizZip archive for
+ * follow-up surgery (code style, updateFields). Any docxtemplater failure is
+ * re-thrown as a {@link DocxRenderError} carrying the engine's structured
+ * explanation, so the caller never sees a generic "Export failed".
+ */
+function renderContent(zip: PizZip, bodyXml: string): PizZip {
+  let doc: Docxtemplater<PizZip>;
+  try {
+    doc = new Docxtemplater<PizZip>(zip, {
+      delimiters: { start: DELIM_START, end: DELIM_END },
+      paragraphLoop: true,
+      linebreaks: true,
+      // Suppress docxtemplater's internal console.error on a template error; we
+      // classify and surface it via DocxRenderError instead (engine-decision.md
+      // notes the cosmetic console noise).
+      errorLogging: false,
+    });
+    doc.render({ [CONTENT_KEY]: bodyXml });
+  } catch (err) {
+    throw new DocxRenderError(
+      "The Word template could not be rendered.",
+      explainDocxError(err)
+    );
+  }
+  return doc.getZip();
+}
+
+interface DocxErrorLike {
+  message?: string;
+  properties?: {
+    explanation?: string;
+    errors?: DocxErrorLike[];
+  };
+}
+
+/**
+ * Flatten a docxtemplater error into human-readable lines. A multi-error
+ * `TemplateError` carries `properties.errors[]` (each with its own
+ * `properties.explanation`); a single error carries `properties.explanation`
+ * directly; a plain Error just yields its message.
+ */
+function explainDocxError(err: unknown): string[] {
+  const e = err as DocxErrorLike;
+  const nested = e.properties?.errors;
+  if (nested?.length) {
+    return nested.map((n) => n.properties?.explanation ?? n.message ?? "unknown template error");
+  }
+  const explanation = e.properties?.explanation;
+  if (explanation) return [explanation];
+  return [err instanceof Error ? err.message : String(err)];
+}
+
+// ---------------------------------------------------------------------------
 // Zip surgery
 // ---------------------------------------------------------------------------
 
 /** Note kinds that mean "an image was not embedded" (for the report tally). */
 const IMAGE_SKIP_CODES = new Set(["image-skipped", "image-unresolved", "inline-image-skipped"]);
 
-/** Replace the paragraph containing `$scroll.content` with the sentinel. */
-function injectContentSentinel(zip: PizZip): boolean {
+/** Replace the paragraph containing `$scroll.content` with the rawxml tag. */
+function injectContentTag(zip: PizZip): boolean {
   for (const part of documentPartNames(zip)) {
     const xml = zip.file(part)?.asText() ?? "";
     for (const para of splitParagraphs(xml)) {
       if (paragraphText(para).includes("$scroll.content")) {
-        zip.file(part, xml.replace(para, CONTENT_SENTINEL_PARA));
+        zip.file(part, xml.replace(para, CONTENT_TAG_PARA));
         return true;
       }
     }
@@ -179,8 +284,8 @@ function injectContentSentinel(zip: PizZip): boolean {
   return false;
 }
 
-/** Insert the sentinel before the body's final section break (fallback). */
-function injectContentSentinelAtEnd(zip: PizZip): void {
+/** Insert the rawxml tag before the body's final section break (fallback). */
+function injectContentTagAtEnd(zip: PizZip): void {
   const part = "word/document.xml";
   const xml = zip.file(part)?.asText();
   if (!xml) return;
@@ -188,20 +293,9 @@ function injectContentSentinelAtEnd(zip: PizZip): void {
   const bodyClose = xml.lastIndexOf("</w:body>");
   const sectPr = xml.lastIndexOf("<w:sectPr", bodyClose === -1 ? undefined : bodyClose);
   if (sectPr !== -1) {
-    zip.file(part, xml.slice(0, sectPr) + CONTENT_SENTINEL_PARA + xml.slice(sectPr));
+    zip.file(part, xml.slice(0, sectPr) + CONTENT_TAG_PARA + xml.slice(sectPr));
   } else if (bodyClose !== -1) {
-    zip.file(part, xml.slice(0, bodyClose) + CONTENT_SENTINEL_PARA + xml.slice(bodyClose));
-  }
-}
-
-/** Replace the sentinel paragraph with the serialized body (raw XML). */
-function spliceContentSentinel(zip: PizZip, bodyXml: string): void {
-  for (const part of documentPartNames(zip)) {
-    const xml = zip.file(part)?.asText();
-    if (xml && xml.includes(CONTENT_SENTINEL_PARA)) {
-      zip.file(part, xml.replace(CONTENT_SENTINEL_PARA, () => bodyXml));
-      return;
-    }
+    zip.file(part, xml.slice(0, bodyClose) + CONTENT_TAG_PARA + xml.slice(bodyClose));
   }
 }
 
