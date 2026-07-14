@@ -230,11 +230,11 @@ This is the implementation template for Phase 1 Task 1.3 (DOCX export) and is a 
 
 Extract pure types, create `index.browser.ts` with the trivially safe modules, add the `exports` conditions.
 
-- [ ] `src/types.ts` exists with `Profile`, `AuthType`, `DeploymentType` (and their satellite types), zero imports; `config.ts` re-exports them (back-compat)
-- [ ] `index.browser.ts` exports `types`, `redact`, `confluence-url`
-- [ ] `package.json` `exports` block matches §2.1; `bun run typecheck` and `bun test` green repo-wide
-- [ ] `bun build --target=browser packages/core/src/index.browser.ts` succeeds with zero `node:` specifiers in output
-- [ ] `bun run --cwd apps/cli src/index.ts --help` works unchanged (manual check)
+- [x] `src/types.ts` exists with `Profile`, `AuthType`, `DeploymentType` (and their satellite types), zero imports; `config.ts` re-exports them (back-compat)
+- [x] `index.browser.ts` exports `types`, `redact`, `confluence-url`
+- [x] `package.json` `exports` block matches §2.1; `bun run typecheck` and `bun test` green repo-wide
+- [x] `bun build --target=browser packages/core/src/index.browser.ts` succeeds with zero `node:` specifiers in output
+- [x] `bun run --cwd apps/cli src/index.ts --help` works unchanged (manual check)
 
 ### Task 2 — Logger split
 

@@ -1,4 +1,4 @@
-import type { DeploymentType, Profile } from "./config.js";
+import type { DeploymentType, Profile } from "./types.js";
 
 type ConfluenceProfile = Pick<Profile, "baseUrl" | "auth" | "deploymentType">;
 

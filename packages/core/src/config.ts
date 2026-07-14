@@ -3,40 +3,10 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import os from "node:os";
 
-export type AuthType = "apiToken" | "bearer" | "oauth";
-
-export type DeploymentType = "cloud" | "data-center";
-
-export type AuthConfig = {
-  type: AuthType;
-  // Basic auth (Cloud)
-  email?: string;
-  token?: string;
-  // Bearer auth (Server/Data Center)
-  pat?: string;
-  username?: string; // For keychain lookup
-  // OAuth (future)
-  clientId?: string;
-};
-
-export type Profile = {
-  name: string;
-  baseUrl: string;
-  /** Atlassian hosting model. Optional for backwards compatibility with existing profiles. */
-  deploymentType?: DeploymentType;
-  auth: AuthConfig;
-  cloudId?: string;
-  /** Profile-specific Jira project key */
-  project?: string;
-  /** Profile-specific Confluence space key */
-  space?: string;
-  /** Profile-specific Jira board ID */
-  board?: number;
-  /** Path to a custom CA certificate file (PEM format) for self-signed/private CA certificates */
-  tlsCaFile?: string;
-  /** Skip TLS certificate verification. Not recommended for production use. */
-  tlsSkipVerify?: boolean;
-};
+// Pure types live in types.ts (browser-safe). Re-exported here for back-compat
+// so existing `@atlcli/core` / `./config.js` consumers keep working unchanged.
+export type { AuthType, DeploymentType, AuthConfig, Profile } from "./types.js";
+import type { Profile } from "./types.js";
 
 import type { LogLevel } from "./logger.js";
 
