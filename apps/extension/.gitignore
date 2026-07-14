@@ -1,0 +1,4 @@
+# WXT build + generated artifacts
+.output
+.wxt
+stats.html

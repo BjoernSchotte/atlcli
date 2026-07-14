@@ -17,6 +17,7 @@
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "check:browser": "bun scripts/check-browser-build.ts",
+    "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
     "build:prod": "turbo run build && bun run obfuscate",
     "version:core": "npm version --no-git-tag-version -w @atlcli/core -w @atlcli/confluence -w @atlcli/plugin-api",
