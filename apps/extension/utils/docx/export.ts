@@ -46,7 +46,7 @@ import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
 import {
   encodeXmlText,
   paragraphText,
-  rewriteParagraphText,
+  rewriteScrollText,
   splitParagraphs,
 } from "./ooxml-text.js";
 
@@ -301,27 +301,23 @@ function injectContentTagAtEnd(zip: PizZip): void {
 
 /**
  * Replace every `$scroll.*` / `$adhocState` occurrence across document +
- * header/footer parts with its resolved value (empty for unsupported/never),
- * run-normalizing each placeholder paragraph first so split runs are merged.
- * Guarantees no literal placeholder survives.
+ * header/footer parts with its resolved value (empty for unsupported/never).
+ *
+ * {@link rewriteScrollText} run-normalizes each placeholder paragraph (merging
+ * split runs), descends into text boxes (`mc:Choice` + `mc:Fallback`), and
+ * replaces clean `<w:t>` runs that share a paragraph with a drawing/pict run —
+ * so a title inside a cover-page text box and a `$scroll.title` run trailing a
+ * footer picture are both resolved. Guarantees no literal placeholder survives.
  */
 export function preprocessScrollText(zip: PizZip, values: Map<string, string>): void {
   for (const part of documentPartNames(zip)) {
-    let xml = zip.file(part)?.asText();
+    const xml = zip.file(part)?.asText();
     if (!xml) continue;
-    let changed = false;
-    for (const para of splitParagraphs(xml)) {
-      const text = paragraphText(para);
-      if (!text.includes("$scroll") && !text.includes("$adhocState")) continue;
-      const rewritten = rewriteParagraphText(para, (joined) => replaceTokens(joined, values));
-      if (rewritten !== para) {
-        // Function replacer: resolved values may contain `$`, which is a special
-        // pattern in a string replacement.
-        xml = xml.replace(para, () => rewritten);
-        changed = true;
-      }
-    }
-    if (changed) zip.file(part, xml);
+    if (!xml.includes("$scroll") && !xml.includes("$adhocState")) continue;
+    // Function-free replacement path: resolved values may contain `$`, so
+    // rewriteScrollText splices literally rather than via String.replace.
+    const rewritten = rewriteScrollText(xml, (joined) => replaceTokens(joined, values));
+    if (rewritten !== xml) zip.file(part, rewritten);
   }
 }
 

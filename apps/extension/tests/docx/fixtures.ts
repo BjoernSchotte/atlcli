@@ -45,13 +45,51 @@ function docRels(header: boolean, footer: boolean, settings: boolean): string {
   );
 }
 
+/**
+ * The namespace declarations Word carries on document/header/footer roots. The
+ * text-box fixtures use `mc:`/`wps:`/`v:`/`w14:`, so declaring them keeps the
+ * packages genuinely well-formed (and keeps docxtemplater's xmldom parse clean).
+ */
+export const OOXML_NS =
+  `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ` +
+  `xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ` +
+  `xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" ` +
+  `xmlns:v="urn:schemas-microsoft-com:vml" ` +
+  `xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"`;
+
 /** Wrap body inner XML into a full `word/document.xml`. */
 export function documentXml(bodyInner: string): string {
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+    `<w:document ${OOXML_NS}>` +
     `<w:body>${bodyInner}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`
   );
+}
+
+/**
+ * A generic well-formedness (tag-balance) check — no external XML parser needed.
+ * Catches exactly the desync class of bug this fix targets: a mis-segmented
+ * paragraph produces unbalanced output. Ignores the XML declaration, comments,
+ * and self-closing tags; namespace prefixes are treated as opaque names.
+ */
+export function assertBalancedXml(xml: string): void {
+  const stripped = xml.replace(/<\?[\s\S]*?\?>/g, "").replace(/<!--[\s\S]*?-->/g, "");
+  const tagRe = /<(\/?)([A-Za-z_][\w:.-]*)(?:"[^"]*"|'[^']*'|[^>"'])*?(\/?)>/g;
+  const stack: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(stripped)) !== null) {
+    const closing = m[1] === "/";
+    const name = m[2];
+    const selfClose = m[3] === "/";
+    if (selfClose) continue;
+    if (closing) {
+      const top = stack.pop();
+      if (top !== name) throw new Error(`unbalanced XML: </${name}> closes <${top ?? "nothing"}>`);
+    } else {
+      stack.push(name);
+    }
+  }
+  if (stack.length) throw new Error(`unclosed XML tags: ${stack.join(", ")}`);
 }
 
 /** A simple paragraph with the given text in one run. */
@@ -68,6 +106,49 @@ export function runSplitPara(segments: string[]): string {
     .map((s) => `<w:r><w:rPr><w:rFonts w:ascii="Calibri"/></w:rPr><w:t xml:space="preserve">${s}</w:t></w:r>`)
     .join("");
   return `<w:p>${runs}</w:p>`;
+}
+
+/**
+ * A cover-page paragraph whose title lives INSIDE a text box, provided twice via
+ * `mc:AlternateContent` — a modern DrawingML `wps:txbx` (`mc:Choice`) and a VML
+ * `v:textbox` fallback (`mc:Fallback`). Each `<w:txbxContent>` holds its own
+ * NESTED `<w:p>`, reproducing the real customer (Mayflower letterhead) shape (a).
+ * The whole thing is a single run in the outer paragraph.
+ */
+export function textBoxTitlePara(text: string): string {
+  const innerPara = (rpr: string) =>
+    `<w:p><w:pPr><w:pStyle w:val="Heading1TOC"/></w:pPr>` +
+    `<w:r${rpr}><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+  return (
+    `<w:p w14:paraId="6C4FCF91"><w:r><mc:AlternateContent>` +
+    `<mc:Choice Requires="wps"><w:drawing><wps:txbx><w:txbxContent>` +
+    innerPara(' w:rsidRPr="00372A13"') +
+    `</w:txbxContent></wps:txbx></w:drawing></mc:Choice>` +
+    `<mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent>` +
+    innerPara("") +
+    `</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback>` +
+    `</mc:AlternateContent></w:r></w:p>`
+  );
+}
+
+/**
+ * A footer paragraph where a picture run (a text box inside `mc:AlternateContent`
+ * / `w:pict`) is followed in the SAME paragraph by a CLEAN `<w:t>` run holding
+ * the placeholder — real customer shape (b). The drawing run is a non-mergeable
+ * boundary; the trailing clean run must still be resolved.
+ */
+export function drawingAdjacentPara(text: string): string {
+  return (
+    `<w:p>` +
+    `<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wps:txbx><w:txbxContent>` +
+    `<w:p><w:r><w:t xml:space="preserve">logo</w:t></w:r></w:p>` +
+    `</w:txbxContent></wps:txbx></w:drawing></mc:Choice>` +
+    `<mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent>` +
+    `<w:p><w:r><w:t xml:space="preserve">logo</w:t></w:r></w:p>` +
+    `</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r>` +
+    `<w:r w:rsidR="003D31B6" w:rsidRPr="00327E6D"><w:t xml:space="preserve">${text}</w:t></w:r>` +
+    `</w:p>`
+  );
 }
 
 /** styles.xml with optional extra <w:style> definitions. */
@@ -116,13 +197,13 @@ export function buildDocx(opts: BuildDocxOptions): Uint8Array {
   if (hasHeader) {
     zip.file(
       "word/header1.xml",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${opts.header}</w:hdr>`
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${OOXML_NS}>${opts.header}</w:hdr>`
     );
   }
   if (hasFooter) {
     zip.file(
       "word/footer1.xml",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${opts.footer}</w:ftr>`
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${OOXML_NS}>${opts.footer}</w:ftr>`
     );
   }
   return zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;

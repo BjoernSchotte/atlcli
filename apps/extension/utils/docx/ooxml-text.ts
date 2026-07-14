@@ -35,16 +35,164 @@ export function encodeXmlText(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-const PARAGRAPH_RE = /<w:p\b[^>]*>[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g;
 const WT_RE = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
 /** `<w:t>` bodies and hard-break/tab elements, in document order. */
 const TEXT_OR_BREAK_RE = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:(?:br|tab|cr)\b[^>]*\/?>/g;
 /** A `<w:r>…</w:r>` run (or the self-closing form). */
 const RUN_RE = /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>|<w:r(?:\s[^>]*)?\/>/g;
 
-/** Split a document part into its `<w:p>…</w:p>` paragraph blocks (in order). */
+/**
+ * A `<w:p …>` open, a `<w:p …/>` self-closing paragraph, or a `</w:p>` close.
+ * Group 1 is `/` for the self-closing form. `<w:p\b` never matches `<w:pPr`
+ * (no word boundary between `p` and `P`), so paragraph-properties are ignored.
+ */
+const P_TOKEN_RE = /<w:p\b[^>]*?(\/)?>|<\/w:p>/g;
+
+/**
+ * Split a document part into its TOP-LEVEL `<w:p>…</w:p>` paragraph blocks.
+ *
+ * A naive non-greedy `<w:p>…</w:p>` regex mis-segments a paragraph that nests
+ * another paragraph — Word does exactly this when a run holds a drawing/text box
+ * whose `<w:txbxContent>` contains its own `<w:p>`: the non-greedy match stops at
+ * the INNER `</w:p>`, cutting the outer paragraph short and desyncing every
+ * boundary after it (so e.g. a footer's `$scroll.title` run that trails a
+ * text-box picture fell outside the captured paragraph and was never replaced).
+ * This balanced scan tracks `<w:p>` depth and emits only the outermost blocks;
+ * text-box descent is handled separately by {@link extractTextboxes}.
+ */
 export function splitParagraphs(xml: string): string[] {
-  return xml.match(PARAGRAPH_RE) ?? [];
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let m: RegExpExecArray | null;
+  P_TOKEN_RE.lastIndex = 0;
+  while ((m = P_TOKEN_RE.exec(xml)) !== null) {
+    if (m[0] === "</w:p>") {
+      if (depth > 0) {
+        depth -= 1;
+        if (depth === 0 && start !== -1) {
+          out.push(xml.slice(start, P_TOKEN_RE.lastIndex));
+          start = -1;
+        }
+      }
+      continue;
+    }
+    if (m[1] === "/") {
+      // Self-closing `<w:p/>`: a whole (empty) paragraph only at the top level.
+      if (depth === 0) out.push(m[0]);
+      continue;
+    }
+    if (depth === 0) start = m.index;
+    depth += 1;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Text-box descent
+// ---------------------------------------------------------------------------
+
+const TXBX_OPEN = "<w:txbxContent";
+const TXBX_CLOSE = "</w:txbxContent>";
+
+/** A masked-out `<w:txbxContent>` region and the sentinel standing in for it. */
+export interface TextboxRegion {
+  /** A per-region marker placed in the masked XML (carries no OOXML tags). */
+  sentinel: string;
+  /** The `<w:txbxContent …>` opening tag, restored verbatim. */
+  openTag: string;
+  /** The region's inner XML (its own `<w:p>` paragraphs), for recursion. */
+  inner: string;
+}
+
+/**
+ * Replace every top-level `<w:txbxContent>…</w:txbxContent>` region with an
+ * opaque sentinel so the enclosing paragraph can be tokenized into flat runs.
+ *
+ * Word puts placeholders in text boxes two ways at once via
+ * `mc:AlternateContent`: a modern DrawingML `wps:txbx` (`mc:Choice`) and a VML
+ * `v:textbox` fallback (`mc:Fallback`), each holding its OWN nested `<w:p>` +
+ * `<w:r>`. Those nested runs break the non-greedy `RUN_RE`/paragraph regexes, so
+ * we carve the text-box regions out first (balanced on `<w:txbxContent>` depth),
+ * leaving a sentinel the caller can process opaquely and restore. Both the
+ * Choice and the Fallback copy are separate top-level regions, so both are
+ * returned — the caller resolves the placeholder in each (Word renders whichever
+ * it supports).
+ */
+export function extractTextboxes(xml: string): { masked: string; regions: TextboxRegion[] } {
+  if (!xml.includes(TXBX_OPEN)) return { masked: xml, regions: [] };
+  const regions: TextboxRegion[] = [];
+  let masked = "";
+  let i = 0;
+  for (;;) {
+    const open = xml.indexOf(TXBX_OPEN, i);
+    if (open === -1) {
+      masked += xml.slice(i);
+      break;
+    }
+    const openTagEnd = xml.indexOf(">", open);
+    if (openTagEnd === -1) {
+      masked += xml.slice(i);
+      break;
+    }
+    // Self-closing `<w:txbxContent/>` (empty box): pass through untouched.
+    if (xml[openTagEnd - 1] === "/") {
+      masked += xml.slice(i, openTagEnd + 1);
+      i = openTagEnd + 1;
+      continue;
+    }
+    // Balanced scan for the matching close (text boxes rarely nest, but be safe).
+    let depth = 1;
+    let j = openTagEnd + 1;
+    while (depth > 0) {
+      const nextOpen = xml.indexOf(TXBX_OPEN, j);
+      const nextClose = xml.indexOf(TXBX_CLOSE, j);
+      if (nextClose === -1) break; // malformed — stop scanning
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        const t = xml.indexOf(">", nextOpen);
+        if (t === -1) {
+          depth -= 1;
+          j = nextClose + TXBX_CLOSE.length;
+        } else {
+          depth += 1;
+          j = t + 1;
+        }
+      } else {
+        depth -= 1;
+        j = nextClose + TXBX_CLOSE.length;
+      }
+    }
+    const openTag = xml.slice(open, openTagEnd + 1);
+    const inner = xml.slice(openTagEnd + 1, j - TXBX_CLOSE.length);
+    // Sentinel uses Private-Use-Area brackets distinct from the export
+    // delimiter pair (U+E000/U+E001); it is always restored before return.
+    const sentinel = `txbx${regions.length}`;
+    regions.push({ sentinel, openTag, inner });
+    masked += xml.slice(i, open) + sentinel;
+    i = j;
+  }
+  return { masked, regions };
+}
+
+/**
+ * All paragraph texts of a document part, descending into text boxes.
+ *
+ * Top-level paragraphs are read with text-box regions masked out (so a box's
+ * text is never fused with the enclosing paragraph's own runs), and each text
+ * box's inner paragraphs are collected independently (recursively). This is the
+ * scan-side counterpart to {@link rewriteScrollText}: both walk the same set of
+ * paragraphs so the panel's supported-list and the actual replacement agree.
+ */
+export function collectParagraphTexts(xml: string): string[] {
+  const texts: string[] = [];
+  collectParagraphTextsInto(xml, texts);
+  return texts;
+}
+
+function collectParagraphTextsInto(xml: string, texts: string[]): void {
+  const { masked, regions } = extractTextboxes(xml);
+  for (const region of regions) collectParagraphTextsInto(region.inner, texts);
+  for (const para of splitParagraphs(masked)) texts.push(paragraphText(para));
 }
 
 /**
@@ -185,4 +333,50 @@ export function rewriteParagraphText(
   }
 
   return changed ? parts.map((p) => p.text).join("") : paragraphXml;
+}
+
+/** Replace the first occurrence of `needle` in `haystack` (literal, `$`-safe). */
+function replaceFirst(haystack: string, needle: string, replacement: string): string {
+  const idx = haystack.indexOf(needle);
+  if (idx === -1) return haystack;
+  return haystack.slice(0, idx) + replacement + haystack.slice(idx + needle.length);
+}
+
+/**
+ * Resolve `$scroll.*` text across a whole document part, descending into text
+ * boxes and past drawing-adjacent runs.
+ *
+ * Text boxes are masked out first (so the enclosing paragraph tokenizes into
+ * flat runs — a drawing/pict run is a non-mergeable boundary that keeps finding
+ * #8's no-fuse guarantee, while a clean `<w:t>` run sharing the paragraph still
+ * gets replaced), each top-level paragraph is run-normalized via
+ * {@link rewriteParagraphText}, then every masked text box is restored with its
+ * OWN inner paragraphs resolved (recursively — covering both the `mc:Choice`
+ * DrawingML box and the `mc:Fallback` VML box, so Word shows the resolved value
+ * whichever it renders). `transform` receives each run-merged placeholder string
+ * and returns its replacement.
+ */
+export function rewriteScrollText(
+  xml: string,
+  transform: (joined: string) => string
+): string {
+  const { masked, regions } = extractTextboxes(xml);
+
+  // 1. Rewrite the top-level paragraphs on the MASKED xml, where drawing/text-box
+  //    runs are opaque sentinels — so run tokenization stays flat and correct.
+  let out = masked;
+  for (const para of splitParagraphs(masked)) {
+    const text = paragraphText(para);
+    if (!text.includes("$scroll") && !text.includes("$adhocState")) continue;
+    const rewritten = rewriteParagraphText(para, transform);
+    if (rewritten !== para) out = replaceFirst(out, para, rewritten);
+  }
+
+  // 2. Restore each text box, resolving its inner paragraphs recursively.
+  for (const region of regions) {
+    const processedInner = rewriteScrollText(region.inner, transform);
+    out = replaceFirst(out, region.sentinel, region.openTag + processedInner + "</w:txbxContent>");
+  }
+
+  return out;
 }

@@ -13,7 +13,7 @@
  */
 import PizZip from "pizzip";
 import { classifyPlaceholder, type PlaceholderStatus } from "./placeholder-map.js";
-import { paragraphText, splitParagraphs } from "./ooxml-text.js";
+import { collectParagraphTexts } from "./ooxml-text.js";
 
 /** Thrown when uploaded bytes are not a readable `.docx` (zip) package. */
 export class DocxError extends Error {
@@ -108,8 +108,10 @@ export function scanZip(zip: PizZip): ScanResult {
 
   for (const part of parts) {
     const xml = zip.file(part)?.asText() ?? "";
-    for (const para of splitParagraphs(xml)) {
-      const text = paragraphText(para);
+    // Walk every paragraph the replacement will touch — including text-box
+    // (mc:Choice + mc:Fallback) and drawing-adjacent occurrences — so the panel's
+    // supported-list matches what preprocessScrollText actually resolves.
+    for (const text of collectParagraphTexts(xml)) {
       if (!text.includes("$scroll") && !text.includes("$adhocState")) continue;
       let m: RegExpExecArray | null;
       PLACEHOLDER_RE.lastIndex = 0;

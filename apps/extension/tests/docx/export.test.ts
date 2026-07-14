@@ -3,7 +3,18 @@ import PizZip from "pizzip";
 import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence/browser";
 import { DocxRenderError, exportDocx } from "../../utils/docx/export.js";
 import type { CurrentUser } from "../../utils/docx/resolver.js";
-import { buildDocx, documentXml, headingStyle, para, readPart, runSplitPara, stylesXml } from "./fixtures.js";
+import {
+  assertBalancedXml,
+  buildDocx,
+  documentXml,
+  drawingAdjacentPara,
+  headingStyle,
+  para,
+  readPart,
+  runSplitPara,
+  stylesXml,
+  textBoxTitlePara,
+} from "./fixtures.js";
 
 const STORAGE = `
 <h1>Overview</h1>
@@ -98,6 +109,51 @@ describe("exportDocx — full pipeline", () => {
     expect(report.unsupportedNames).toContain("$scroll.pageowner.fullName");
     expect(report.filename).toBe("Q3_ Architecture _ Overview.docx");
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("resolves $scroll.title in a text box and a drawing-adjacent footer run (real template, shapes a+b)", async () => {
+    // Reproduces the live E2E finding against the Mayflower letterhead: the title
+    // in a cover text box (mc:AlternateContent Choice+Fallback), the title again
+    // in a header text box, and the title in a clean run trailing a footer
+    // picture — all previously left as literal `$scroll.title`.
+    const templateBytes = buildDocx({
+      body:
+        textBoxTitlePara("$scroll.title") +
+        para("$scroll.content") +
+        para("$scroll.space.name"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      header: textBoxTitlePara("$scroll.title"),
+      footer: drawingAdjacentPara("$scroll.title"),
+    });
+
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
+
+    const doc = readPart(bytes, "word/document.xml");
+    const header = readPart(bytes, "word/header1.xml");
+    const footer = readPart(bytes, "word/footer1.xml");
+
+    // AC: ZERO literal $scroll.* survives in ANY part.
+    for (const part of [doc, header, footer]) {
+      expect(part).not.toContain("$scroll.");
+      expect(part).not.toContain("$adhocState");
+      assertBalancedXml(part);
+    }
+
+    // Cover text box: both Choice and Fallback copies show the resolved title.
+    expect((doc.match(/Q3: Architecture \/ Overview/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // Header text box + footer run resolved.
+    expect(header).toContain("Q3: Architecture / Overview");
+    expect(footer).toContain("Q3: Architecture / Overview");
+    // The footer picture is preserved (drawing run untouched).
+    expect(footer).toContain("logo");
+    // Body content injected at $scroll.content.
+    expect(doc).toContain("Overview");
+    expect(doc).toContain("Engineering"); // $scroll.space.name resolved
+    // No text-box sentinel leaked into any part.
+    for (const part of [doc, header, footer]) {
+      expect(part).not.toContain("txbx0");
+      expect(part).not.toContain("txbx1");
+    }
   });
 
   it("sets w:updateFields so the TOC repaginates on open", async () => {

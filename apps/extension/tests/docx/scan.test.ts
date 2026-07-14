@@ -5,7 +5,7 @@ import {
   scanTemplate,
   unzipDocx,
 } from "../../utils/docx/scan.js";
-import { buildDocx, para, runSplitPara } from "./fixtures.js";
+import { buildDocx, drawingAdjacentPara, para, runSplitPara, textBoxTitlePara } from "./fixtures.js";
 
 describe("scanTemplate", () => {
   it("classifies supported / unsupported / never placeholders", () => {
@@ -70,6 +70,28 @@ describe("scanTemplate", () => {
     expect(bases).toContain("$scroll.title");
     expect(bases).toContain("$scroll.version");
     expect(bases).not.toContain("$scroll.titleVersion");
+  });
+
+  it("reports a text-box title as supporting $scroll.title (real-template shape a)", () => {
+    // The title lives inside a text box (mc:AlternateContent Choice + Fallback);
+    // the scan must not miss it, so the panel lists it as supported.
+    const bytes = buildDocx({ body: textBoxTitlePara("$scroll.title") + para("$scroll.content") });
+    const scan = scanTemplate(bytes);
+    expect(scan.supported.map((h) => h.base)).toContain("$scroll.title");
+  });
+
+  it("counts a text-box title (Choice+Fallback) plus a footer occurrence (shape a+b)", () => {
+    // Two text-box copies on the cover + one clean run trailing a footer picture
+    // = the occurrences the replacement resolves; the scan must count them all
+    // (the real bug reported ×2 while missing one).
+    const bytes = buildDocx({
+      body: textBoxTitlePara("$scroll.title") + para("$scroll.content"),
+      footer: drawingAdjacentPara("$scroll.title"),
+    });
+    const scan = scanTemplate(bytes);
+    const title = scan.supported.find((h) => h.base === "$scroll.title");
+    expect(title).toBeDefined();
+    expect(title!.count).toBe(3); // Choice + Fallback + footer clean run
   });
 
   it("scans header and footer parts", () => {
