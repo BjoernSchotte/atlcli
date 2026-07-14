@@ -90,6 +90,13 @@ describe("resolveOne — every direct + derivable mapping row", () => {
     expect(resolveOne("$scroll.modifier.email", ctx, space, currentUser, notes)).toBe("");
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
+
+  it("exportdate with an unknown format token falls back to ISO + a note (#10)", () => {
+    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const out = resolveOne('$scroll.exportdate.("yyyy-QQ")', ctx, space, currentUser, notes);
+    expect(out).toBe("2026-07-14"); // ISO fallback for the export date
+    expect(notes.some((n) => n.code === "date-format-unknown")).toBe(true);
+  });
 });
 
 describe("resolvePlaceholders — lazy fetching", () => {
@@ -122,6 +129,18 @@ describe("resolvePlaceholders — lazy fetching", () => {
     const getSpace = mock(async () => space);
     await resolvePlaceholders(["$scroll.space.name", "$scroll.space.url"], ctx, { getSpace });
     expect(getSpace).toHaveBeenCalledTimes(1);
+  });
+
+  it("notes a needed exporter placeholder when no user fetcher is provided (#12)", async () => {
+    const res = await resolvePlaceholders(["$scroll.exporter.fullName"], ctx, {});
+    expect(res.values.get("$scroll.exporter.fullName")).toBe("");
+    expect(res.notes.some((n) => n.code === "user-unavailable")).toBe(true);
+  });
+
+  it("notes a needed space placeholder when no space fetcher is provided (#12)", async () => {
+    const res = await resolvePlaceholders(["$scroll.space.name"], ctx, {});
+    expect(res.values.get("$scroll.space.name")).toBe("");
+    expect(res.notes.some((n) => n.code === "space-unavailable")).toBe(true);
   });
 });
 

@@ -277,7 +277,23 @@ function ScanGroup({
   );
 }
 
-function ReportView({ report }: { report: ExportReport }): React.JSX.Element {
+/** Notes are the export's trust surface (PLAN §2.5): fetch failures, image
+ * skips, date/highlight warnings, walker degradations — all must be visible. */
+const NOTE_LEVEL_STYLE: Record<string, { color: string; label: string }> = {
+  warning: { color: "#974f0c", label: "Warnings" },
+  info: { color: "#5e6c84", label: "Notes" },
+};
+
+export function ReportView({ report }: { report: ExportReport }): React.JSX.Element {
+  // Group notes by level so warnings stand out from informational notes.
+  const groups = new Map<string, ExportReport["notes"]>();
+  for (const note of report.notes) {
+    const level = note.level === "warning" ? "warning" : "info";
+    const bucket = groups.get(level) ?? [];
+    bucket.push(note);
+    groups.set(level, bucket);
+  }
+
   return (
     <div
       data-testid="export-report"
@@ -294,6 +310,24 @@ function ReportView({ report }: { report: ExportReport }): React.JSX.Element {
         {report.skippedImages > 0 && <li data-testid="report-skipped-images">{report.skippedImages} image(s) skipped (embedding not yet available)</li>}
         <li>{report.durationMs} ms</li>
       </ul>
+
+      {(["warning", "info"] as const).map((level) => {
+        const notes = groups.get(level);
+        if (!notes || notes.length === 0) return null;
+        const meta = NOTE_LEVEL_STYLE[level];
+        return (
+          <div key={level} data-testid={`report-notes-${level}`} style={{ marginTop: 8 }}>
+            <div style={{ fontWeight: 600, color: meta.color }}>{meta.label} ({notes.length})</div>
+            <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>
+              {notes.map((note, i) => (
+                <li key={`${note.code}-${i}`} style={{ color: meta.color }}>
+                  {note.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }

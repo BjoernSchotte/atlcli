@@ -37,53 +37,152 @@ export function encodeXmlText(text: string): string {
 
 const PARAGRAPH_RE = /<w:p\b[^>]*>[\s\S]*?<\/w:p>|<w:p\b[^>]*\/>/g;
 const WT_RE = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+/** `<w:t>` bodies and hard-break/tab elements, in document order. */
+const TEXT_OR_BREAK_RE = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:(?:br|tab|cr)\b[^>]*\/?>/g;
+/** A `<w:r>…</w:r>` run (or the self-closing form). */
+const RUN_RE = /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>|<w:r(?:\s[^>]*)?\/>/g;
 
 /** Split a document part into its `<w:p>…</w:p>` paragraph blocks (in order). */
 export function splitParagraphs(xml: string): string[] {
   return xml.match(PARAGRAPH_RE) ?? [];
 }
 
-/** The concatenated, entity-decoded `<w:t>` text of a paragraph. */
+/**
+ * The entity-decoded text of a paragraph, with a hard-break/tab boundary
+ * rendered as a newline. Concatenating `<w:t>` bodies across `<w:br/>`/`<w:tab/>`
+ * would fuse text that is visually on separate lines — that fusion produced
+ * false placeholder matches (e.g. `$scroll.title` + `Version` → `$scroll.titleVersion`),
+ * so a break contributes a separator that no placeholder can span.
+ */
 export function paragraphText(paragraphXml: string): string {
   let out = "";
   let m: RegExpExecArray | null;
-  WT_RE.lastIndex = 0;
-  while ((m = WT_RE.exec(paragraphXml)) !== null) {
-    out += decodeXmlText(m[1]);
+  TEXT_OR_BREAK_RE.lastIndex = 0;
+  while ((m = TEXT_OR_BREAK_RE.exec(paragraphXml)) !== null) {
+    out += m[1] !== undefined ? decodeXmlText(m[1]) : "\n";
   }
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Run-aware rewrite
+// ---------------------------------------------------------------------------
+
+interface Part {
+  kind: "run" | "other";
+  text: string;
+}
+
+interface RunInfo {
+  /** The leading `<w:rPr>…</w:rPr>` (formatting signature), or "" if none. */
+  rpr: string;
+  /** Mergeable = pure `<w:t>` text with no break/tab and no drawing/object. */
+  mergeable: boolean;
+}
+
+/** Inner XML of a run (between `<w:r …>` and `</w:r>`); "" for `<w:r/>`. */
+function runInner(runXml: string): string {
+  const m = runXml.match(/^<w:r(?:\s[^>]*)?>([\s\S]*)<\/w:r>$/);
+  return m ? m[1] : "";
+}
+
+function parseRunInfo(runXml: string): RunInfo {
+  const inner = runInner(runXml);
+  const rpr = inner.match(/^<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+  const hasText = /<w:t\b[^>]*>/.test(inner);
+  const hasBreak = /<w:(?:br|tab|cr)\b/.test(inner);
+  const hasObject = /<w:(?:drawing|object|pict|fldChar|instrText)\b/.test(inner);
+  return { rpr, mergeable: hasText && !hasBreak && !hasObject };
+}
+
+/** Concatenated, decoded `<w:t>` text of a single run. */
+function runText(runXml: string): string {
+  let out = "";
+  for (const m of runXml.matchAll(WT_RE)) out += decodeXmlText(m[1]);
+  return out;
+}
+
+/** Tokenize a paragraph into ordered run / non-run parts (order preserved). */
+function tokenizeParts(paragraphXml: string): Part[] {
+  const parts: Part[] = [];
+  let last = 0;
+  RUN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RUN_RE.exec(paragraphXml)) !== null) {
+    if (m.index > last) parts.push({ kind: "other", text: paragraphXml.slice(last, m.index) });
+    parts.push({ kind: "run", text: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < paragraphXml.length) parts.push({ kind: "other", text: paragraphXml.slice(last) });
+  return parts;
+}
+
+/** Write `text` into the first `<w:t>` of the segment; empty the rest. */
+function writeSegment(parts: Part[], segIdx: number[], text: string): void {
+  let wrote = false;
+  for (const k of segIdx) {
+    parts[k] = {
+      kind: "run",
+      text: parts[k].text.replace(WT_RE, () => {
+        if (!wrote) {
+          wrote = true;
+          return `<w:t xml:space="preserve">${encodeXmlText(text)}</w:t>`;
+        }
+        return `<w:t xml:space="preserve"></w:t>`;
+      }),
+    };
+  }
+}
+
 /**
- * Collapse every `<w:t>` in a paragraph into the first one, applying `transform`
- * to the joined (decoded) text. The first `<w:t>` keeps its run's formatting and
- * receives the full transformed text (re-encoded, `xml:space="preserve"`); all
- * other `<w:t>` bodies are emptied. This makes a run-split placeholder
- * contiguous and replaceable while preserving the paragraph's first-run style.
+ * Apply `transform` to placeholder text within run boundaries.
  *
- * Paragraphs with no `<w:t>` are returned unchanged.
+ * Adjacent `<w:t>` runs that share the same `<w:rPr>` formatting and are not
+ * separated by a `<w:br/>`/`<w:tab/>` are merged into one segment so a
+ * placeholder split across rsid-driven runs (`$scr`|`oll.`|`title`) is detected
+ * and replaced. Text is NOT fused across break/tab boundaries or across a
+ * formatting change (differing `<w:rPr>`), so a line break or an italic switch
+ * mid-paragraph keeps its own segment — preserving both the break elements and
+ * per-run formatting. The replaced text lands in the first `<w:t>` of its
+ * segment; other `<w:t>` bodies in the same segment are emptied.
+ *
+ * Paragraphs with no mergeable text are returned unchanged.
  */
 export function rewriteParagraphText(
   paragraphXml: string,
   transform: (joined: string) => string
 ): string {
-  const texts: string[] = [];
-  WT_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = WT_RE.exec(paragraphXml)) !== null) texts.push(decodeXmlText(m[1]));
-  if (texts.length === 0) return paragraphXml;
+  const parts = tokenizeParts(paragraphXml);
+  let changed = false;
 
-  const joined = texts.join("");
-  const replaced = transform(joined);
-  if (replaced === joined) return paragraphXml;
+  let i = 0;
+  while (i < parts.length) {
+    if (parts[i].kind !== "run") {
+      i += 1;
+      continue;
+    }
+    const info = parseRunInfo(parts[i].text);
+    if (!info.mergeable) {
+      i += 1;
+      continue;
+    }
+    // Grow a segment of consecutive same-rPr mergeable runs.
+    const segIdx = [i];
+    let j = i + 1;
+    while (j < parts.length && parts[j].kind === "run") {
+      const qi = parseRunInfo(parts[j].text);
+      if (!qi.mergeable || qi.rpr !== info.rpr) break;
+      segIdx.push(j);
+      j += 1;
+    }
+    const joined = segIdx.map((k) => runText(parts[k].text)).join("");
+    const replaced = transform(joined);
+    if (replaced !== joined) {
+      writeSegment(parts, segIdx, replaced);
+      changed = true;
+    }
+    i = j;
+  }
 
-  let idx = 0;
-  return paragraphXml.replace(WT_RE, () => {
-    // Normalize each <w:t> to xml:space="preserve" so leading/trailing spaces
-    // survive; the first run receives the full transformed text, the rest blank.
-    const isFirst = idx === 0;
-    idx += 1;
-    const body = isFirst ? encodeXmlText(replaced) : "";
-    return `<w:t xml:space="preserve">${body}</w:t>`;
-  });
+  return changed ? parts.map((p) => p.text).join("") : paragraphXml;
 }

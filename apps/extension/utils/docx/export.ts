@@ -6,20 +6,26 @@
  *   2. scan its `$scroll.*` placeholders (reused classification);
  *   3. resolve non-content placeholders (lazy space/user fetch);
  *   4. walk the page storage → ExportBlock[] → OOXML body;
- *   5. swap the `$scroll.content` paragraph for a docxtemplater `{@scrollContent}`
- *      raw tag and render the body in via `{@rawXml}` (engine F1: docxtemplater
- *      free);
+ *   5. swap the `$scroll.content` paragraph for a private sentinel paragraph;
  *   6. preprocess the remaining `$scroll.*` text (run-normalized) across
- *      document + header/footer parts — NEVER leaving a literal;
- *   7. synthesize the code style, set `w:updateFields` so the TOC repaginates;
- *   8. emit bytes + a structured {@link ExportReport}.
+ *      document + header/footer parts of the TEMPLATE — NEVER leaving a literal,
+ *      and never touching the page body (which is not injected yet);
+ *   7. splice the serialized body in place of the sentinel as raw XML — the page
+ *      body is DATA and is never run through a `{…}` template parser, so literal
+ *      braces and `$scroll.*` examples in the page survive verbatim;
+ *   8. synthesize the code style, set `w:updateFields` so the TOC repaginates;
+ *   9. emit bytes + a structured {@link ExportReport}.
  *
- * Images are deferred (F3): they add report lines, never OOXML — so the output
- * has no dangling relationship. Everything here is browser-safe (PizZip +
- * docxtemplater are eval-free; the only dynamic import is Shiki, code-split).
+ * The template body is spliced directly rather than via docxtemplater's data
+ * pass: docxtemplater parsed the WHOLE customer template with `{…}` delimiters,
+ * which mutated balanced `{foo}` and threw on a lone brace, and its render had
+ * to run before placeholder preprocessing — which then scanned the injected body
+ * and rewrote page-authored `$scroll.*` examples. Ordering placeholder
+ * resolution on the template first, then splicing the body as opaque XML,
+ * removes both failure modes (PLAN Decision F1 permits the no-engine content
+ * path). Images are deferred (F3): they add report lines, never OOXML.
  */
 import PizZip from "pizzip";
-import Docxtemplater from "docxtemplater";
 import { storageToBlocks, type ConfluencePageDetails, type ExportNote } from "@atlcli/confluence/browser";
 import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
 import {
@@ -67,8 +73,15 @@ export interface ExportInput {
   deps?: ResolveDeps;
 }
 
-/** The docxtemplater raw tag we splice in place of `$scroll.content`. */
-const CONTENT_TAG_PARA = `<w:p><w:r><w:t xml:space="preserve">{@scrollContent}</w:t></w:r></w:p>`;
+/**
+ * A unique sentinel paragraph we swap in for `$scroll.content` before
+ * placeholder preprocessing, then replace wholesale with the serialized body.
+ * It contains no `$scroll` text, so the preprocessor leaves it untouched, and
+ * the storage walker never emits this marker, so it cannot collide with page
+ * content. The whole `<w:p>` string is what we later splice out.
+ */
+const CONTENT_SENTINEL = "ATLCLI-SCROLL-CONTENT";
+const CONTENT_SENTINEL_PARA = `<w:p><w:r><w:t xml:space="preserve">${CONTENT_SENTINEL}</w:t></w:r></w:p>`;
 
 /** Turn a page title into a safe `.docx` filename. */
 export function toDownloadFilename(title: string): string {
@@ -78,7 +91,9 @@ export function toDownloadFilename(title: string): string {
 
 /**
  * Run the full export. Returns the `.docx` bytes and a report.
- * Throws only on a truly fatal template problem (docxtemplater parse error).
+ * Throws only on a truly fatal template problem (an unreadable / non-Word zip
+ * from {@link unzipDocx}); the customer template's own text is never parsed as a
+ * template, so literal braces / `$scroll.*` examples can't cause a parse error.
  */
 export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const start = Date.now();
@@ -96,12 +111,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   const body = await serializeBlocks(blocks, { styleNames });
 
-  // 3. Splice the content insertion point → {@scrollContent}. If the template
-  //    has none, inject the tag before the body's final section break.
-  const contentFound = injectContentTag(zip);
+  // 3. Swap the $scroll.content paragraph for a sentinel. If the template has
+  //    none, inject the sentinel before the body's final section break.
+  const contentFound = injectContentSentinel(zip);
   const flowNotes: ExportNote[] = [];
   if (!contentFound) {
-    injectContentTagAtEnd(zip);
+    injectContentSentinelAtEnd(zip);
     flowNotes.push({
       level: "info",
       code: "no-content-placeholder",
@@ -109,23 +124,25 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     });
   }
 
-  // 4. Render the body via docxtemplater {@rawXml}.
-  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-  doc.render({ scrollContent: body.xml });
-  const outZip: PizZip = doc.getZip();
+  // 4. Resolve remaining $scroll.* text across the TEMPLATE parts (the page body
+  //    is NOT injected yet — so page-authored $scroll.* examples can't be hit).
+  preprocessScrollText(zip, resolved.values);
 
-  // 5. Preprocess remaining $scroll.* text across all parts (post-render, so no
-  //    resolved value can collide with docxtemplater's `{…}` parser).
-  preprocessScrollText(outZip, resolved.values);
+  // 5. Splice the serialized body in for the sentinel as opaque XML. Never runs
+  //    through a `{…}` parser, so literal braces / $scroll text in the page pass
+  //    through verbatim.
+  spliceContentSentinel(zip, body.xml);
 
   // 6. Synthesize the code style if the body referenced it; force TOC refresh.
-  if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(outZip);
-  ensureUpdateFields(outZip);
+  if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(zip);
+  ensureUpdateFields(zip);
 
-  const bytes = outZip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+  const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
 
   const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes];
-  const skippedImages = notes.filter((n) => n.code === "image-skipped").length;
+  // Every image-skip note kind counts toward the report's skipped-image total:
+  // serializer `image-skipped`, walker `image-unresolved` and `inline-image-skipped`.
+  const skippedImages = notes.filter((n) => IMAGE_SKIP_CODES.has(n.code)).length;
 
   return {
     bytes,
@@ -145,13 +162,16 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 // Zip surgery
 // ---------------------------------------------------------------------------
 
-/** Replace the paragraph containing `$scroll.content` with the raw tag. */
-function injectContentTag(zip: PizZip): boolean {
+/** Note kinds that mean "an image was not embedded" (for the report tally). */
+const IMAGE_SKIP_CODES = new Set(["image-skipped", "image-unresolved", "inline-image-skipped"]);
+
+/** Replace the paragraph containing `$scroll.content` with the sentinel. */
+function injectContentSentinel(zip: PizZip): boolean {
   for (const part of documentPartNames(zip)) {
     const xml = zip.file(part)?.asText() ?? "";
     for (const para of splitParagraphs(xml)) {
       if (paragraphText(para).includes("$scroll.content")) {
-        zip.file(part, xml.replace(para, CONTENT_TAG_PARA));
+        zip.file(part, xml.replace(para, CONTENT_SENTINEL_PARA));
         return true;
       }
     }
@@ -159,8 +179,8 @@ function injectContentTag(zip: PizZip): boolean {
   return false;
 }
 
-/** Insert the content tag before the body's final section break (fallback). */
-function injectContentTagAtEnd(zip: PizZip): void {
+/** Insert the sentinel before the body's final section break (fallback). */
+function injectContentSentinelAtEnd(zip: PizZip): void {
   const part = "word/document.xml";
   const xml = zip.file(part)?.asText();
   if (!xml) return;
@@ -168,9 +188,20 @@ function injectContentTagAtEnd(zip: PizZip): void {
   const bodyClose = xml.lastIndexOf("</w:body>");
   const sectPr = xml.lastIndexOf("<w:sectPr", bodyClose === -1 ? undefined : bodyClose);
   if (sectPr !== -1) {
-    zip.file(part, xml.slice(0, sectPr) + CONTENT_TAG_PARA + xml.slice(sectPr));
+    zip.file(part, xml.slice(0, sectPr) + CONTENT_SENTINEL_PARA + xml.slice(sectPr));
   } else if (bodyClose !== -1) {
-    zip.file(part, xml.slice(0, bodyClose) + CONTENT_TAG_PARA + xml.slice(bodyClose));
+    zip.file(part, xml.slice(0, bodyClose) + CONTENT_SENTINEL_PARA + xml.slice(bodyClose));
+  }
+}
+
+/** Replace the sentinel paragraph with the serialized body (raw XML). */
+function spliceContentSentinel(zip: PizZip, bodyXml: string): void {
+  for (const part of documentPartNames(zip)) {
+    const xml = zip.file(part)?.asText();
+    if (xml && xml.includes(CONTENT_SENTINEL_PARA)) {
+      zip.file(part, xml.replace(CONTENT_SENTINEL_PARA, () => bodyXml));
+      return;
+    }
   }
 }
 
@@ -190,7 +221,9 @@ export function preprocessScrollText(zip: PizZip, values: Map<string, string>): 
       if (!text.includes("$scroll") && !text.includes("$adhocState")) continue;
       const rewritten = rewriteParagraphText(para, (joined) => replaceTokens(joined, values));
       if (rewritten !== para) {
-        xml = xml.replace(para, rewritten);
+        // Function replacer: resolved values may contain `$`, which is a special
+        // pattern in a string replacement.
+        xml = xml.replace(para, () => rewritten);
         changed = true;
       }
     }
@@ -223,7 +256,14 @@ export function ensureUpdateFields(zip: PizZip): void {
   const existing = zip.file(path)?.asText();
   if (existing) {
     if (/<w:updateFields\b/.test(existing)) {
-      zip.file(path, existing.replace(/<w:updateFields\b[^>]*\/>/, '<w:updateFields w:val="true"/>'));
+      // Normalize BOTH the self-closing (`<w:updateFields w:val="false"/>`) and
+      // the paired (`<w:updateFields w:val="false"></w:updateFields>`) forms to a
+      // single self-closing `true` — the paired form was previously left as-is,
+      // so a template pinning the TOC to false never refreshed.
+      const normalized = existing
+        .replace(/<w:updateFields\b[^>]*>[\s\S]*?<\/w:updateFields>/, '<w:updateFields w:val="true"/>')
+        .replace(/<w:updateFields\b[^>]*\/>/, '<w:updateFields w:val="true"/>');
+      zip.file(path, normalized);
       return;
     }
     // Insert as the first child of <w:settings …>.
@@ -257,7 +297,10 @@ function registerSettingsPart(zip: PizZip): void {
     zip.file(relsPath)?.asText() ??
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
   if (!rels.includes("settings.xml")) {
-    const ids = [...rels.matchAll(/Id="rId(\d+)"/g)].map((m) => Number(m[1]));
+    // Parse existing rIds regardless of quote style (`Id="rId1"` or `Id='rId1'`),
+    // then allocate max+1 — matching only double-quoted ids could re-issue an id
+    // already used with single quotes and collide.
+    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
     const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
     zip.file(
       relsPath,

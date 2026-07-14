@@ -30,6 +30,16 @@ export interface CodeToken {
 /** A line of code as an ordered list of colored tokens. */
 export type CodeLine = CodeToken[];
 
+/** Why highlighting was skipped, when it was. */
+export type HighlightSkip = "unknown-language" | "highlight-failed";
+
+/** Result of {@link highlightCode}: the token grid + why it degraded, if it did. */
+export interface HighlightResult {
+  lines: CodeLine[];
+  /** Set when a language was requested but the code was left uncolored. */
+  skipped: HighlightSkip | null;
+}
+
 const THEME = "github-light";
 
 /**
@@ -104,13 +114,20 @@ function plainLines(code: string): CodeLine[] {
 }
 
 /**
- * Highlight `code` in `language`, returning a token grid. Falls back to plain
- * (uncolored) lines when the language is uncurated or Shiki fails to load.
+ * Highlight `code` in `language`, returning a token grid plus a `skipped` reason
+ * when it degraded to plain lines. A language that is present but uncurated
+ * (`skipped: "unknown-language"`) or a Shiki load/tokenize failure
+ * (`skipped: "highlight-failed"`) both fall back to uncolored text — and now
+ * surface a reason so the caller can add a report note. A code block with no
+ * language is plain by design (`skipped: null`).
  */
-export async function highlightCode(code: string, language?: string): Promise<CodeLine[]> {
+export async function highlightCode(code: string, language?: string): Promise<HighlightResult> {
   const raw = (language ?? "").trim().toLowerCase();
   const lang = canonicalLang(raw);
-  if (!lang) return plainLines(code);
+  if (!lang) {
+    // Only a REQUESTED-but-unknown language is a skip worth reporting.
+    return { lines: plainLines(code), skipped: raw ? "unknown-language" : null };
+  }
 
   try {
     const hl = await getHighlighter();
@@ -120,8 +137,11 @@ export async function highlightCode(code: string, language?: string): Promise<Co
       loadedLangs.add(lang);
     }
     const { tokens } = hl.codeToTokens(code, { lang, theme: THEME });
-    return tokens.map((line) => line.map((t) => ({ text: t.content, color: t.color })));
+    return {
+      lines: tokens.map((line) => line.map((t) => ({ text: t.content, color: t.color }))),
+      skipped: null,
+    };
   } catch {
-    return plainLines(code);
+    return { lines: plainLines(code), skipped: "highlight-failed" };
   }
 }

@@ -71,15 +71,8 @@ function capitalizeFirst(s: string): string {
   return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
 }
 
-/** Resolve a single date field to text, recording an unknown-token note. */
-function resolveDate(
-  value: string | undefined,
-  raw: string,
-  notes: ExportNote[]
-): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+/** Format a concrete date, recording an unknown-token note on ISO fallback. */
+function formatDateWithNote(date: Date, raw: string, notes: ExportNote[]): string {
   const { text, unknownToken } = formatDatePlaceholder(date, parseArg(raw));
   if (unknownToken) {
     notes.push({
@@ -89,6 +82,18 @@ function resolveDate(
     });
   }
   return text;
+}
+
+/** Resolve a single date field to text, recording an unknown-token note. */
+function resolveDate(
+  value: string | undefined,
+  raw: string,
+  notes: ExportNote[]
+): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return formatDateWithNote(date, raw, notes);
 }
 
 /**
@@ -137,7 +142,7 @@ export function resolveOne(
     case "$scroll.modificationdate":
       return resolveDate(details.modified, raw, notes);
     case "$scroll.exportdate":
-      return formatDatePlaceholder(exportDate, parseArg(raw)).text;
+      return formatDateWithNote(exportDate, raw, notes);
 
     case "$scroll.space.key":
       return details.spaceKey ?? "";
@@ -154,20 +159,8 @@ export function resolveOne(
 
     case "$scroll.template.name":
       return template.name;
-    case "$scroll.template.modificationdate": {
-      const { text, unknownToken } = formatDatePlaceholder(
-        template.modificationDate,
-        parseArg(raw)
-      );
-      if (unknownToken) {
-        notes.push({
-          level: "warning",
-          code: "date-format-unknown",
-          message: `Unknown date token "${unknownToken}" in ${raw}; fell back to ISO date.`,
-        });
-      }
-      return text;
-    }
+    case "$scroll.template.modificationdate":
+      return formatDateWithNote(template.modificationDate, raw, notes);
 
     default:
       // Unsupported / never / unrecognized → empty (caller adds the report line).
@@ -217,27 +210,45 @@ export async function resolvePlaceholders(
   }
 
   let space: ConfluenceSpace | undefined;
-  if (needsSpace && deps.getSpace && ctx.details.spaceKey) {
-    try {
-      space = await deps.getSpace(ctx.details.spaceKey);
-    } catch {
+  if (needsSpace) {
+    if (deps.getSpace && ctx.details.spaceKey) {
+      try {
+        space = await deps.getSpace(ctx.details.spaceKey);
+      } catch {
+        notes.push({
+          level: "warning",
+          code: "space-fetch-failed",
+          message: `Could not load space "${ctx.details.spaceKey}"; space placeholders will be empty.`,
+        });
+      }
+    } else {
       notes.push({
         level: "warning",
-        code: "space-fetch-failed",
-        message: `Could not load space "${ctx.details.spaceKey}"; space placeholders will be empty.`,
+        code: "space-unavailable",
+        message: ctx.details.spaceKey
+          ? "The template uses $scroll.space.* but no space fetcher is available; those placeholders will be empty."
+          : "The template uses $scroll.space.* but the page has no space key; those placeholders will be empty.",
       });
     }
   }
 
   let currentUser: CurrentUser | undefined;
-  if (needsUser && deps.getCurrentUser) {
-    try {
-      currentUser = await deps.getCurrentUser();
-    } catch {
+  if (needsUser) {
+    if (deps.getCurrentUser) {
+      try {
+        currentUser = await deps.getCurrentUser();
+      } catch {
+        notes.push({
+          level: "warning",
+          code: "user-fetch-failed",
+          message: "Could not load the current user; exporter placeholders will be empty.",
+        });
+      }
+    } else {
       notes.push({
         level: "warning",
-        code: "user-fetch-failed",
-        message: "Could not load the current user; exporter placeholders will be empty.",
+        code: "user-unavailable",
+        message: "The template uses $scroll.exporter* but no current-user fetcher is available; those placeholders will be empty.",
       });
     }
   }

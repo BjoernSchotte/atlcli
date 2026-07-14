@@ -2,9 +2,9 @@
  * OOXML fragment builders + template style detection (spec 004 Task 5).
  *
  * Pure string builders that turn the intermediate {@link ExportBlock} model into
- * WordprocessingML paragraphs/tables for injection at `$scroll.content` via
- * docxtemplater `{@rawXml}`. No zip / no IO here — the export orchestrator
- * (export.ts) owns the engine and the settings/styles surgery.
+ * WordprocessingML paragraphs/tables that are spliced in place of the
+ * `$scroll.content` paragraph as raw XML. No zip / no IO here — the export
+ * orchestrator (export.ts) owns the splice and the settings/styles surgery.
  *
  * Heading styles map to the template's own style ids so a native Word TOC field
  * resolves: `Scroll Heading N` → else `Heading N` → else the builtin `HeadingN`
@@ -143,13 +143,30 @@ export function lineBreakRun(): string {
 }
 
 /**
+ * Escape a value for use as a single quoted argument inside a Word field code.
+ *
+ * Word field instructions are a distinct grammar from XML: a `"` closes the
+ * quoted argument and a `\` introduces a field switch (`\l`, `\o`, …). Without
+ * neutralizing them, a crafted URL like `x" \l "Injected` would inject a switch
+ * and a second argument. Inside a quoted field argument, `\\` is a literal
+ * backslash and `\"` a literal quote, so doubling backslashes and escaping
+ * quotes keeps the whole URL as one argument. The result is still XML-escaped by
+ * the caller for the `<w:instrText>` body.
+ */
+export function escapeFieldArgument(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * A hyperlink built as a Word `HYPERLINK` field (no relationship needed), with
- * the given inner runs.
+ * the given inner runs. The URL is neutralized against field-code injection
+ * (see {@link escapeFieldArgument}) then XML-escaped for the instruction body.
  */
 export function hyperlinkField(url: string, innerRuns: string): string {
+  const instr = esc(escapeFieldArgument(url));
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${esc(url)}" </w:instrText></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}" </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
     innerRuns +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`

@@ -136,6 +136,91 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("diagram.png");
   });
 
+  it("emits every cell of a ragged rowspan table (never drops a carried column)", async () => {
+    // Regression (#1): <td rowspan=2>A</td><td>B</td> / <td>C</td><td>D</td>.
+    // The grid width must account for the carried rowspan or D is dropped.
+    const cell = (text: string, rowspan = 1) => ({
+      header: false,
+      colspan: 1,
+      rowspan,
+      content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+    });
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [
+          { cells: [cell("A", 2), cell("B")] },
+          { cells: [cell("C"), cell("D")] },
+        ],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    for (const text of ["A", "B", "C", "D"]) expect(xml).toContain(text);
+    expect(xml).toContain('<w:vMerge w:val="restart"/>');
+    expect(xml).toContain('<w:vMerge w:val="continue"/>');
+  });
+
+  it("escapes a hostile hyperlink href so it stays one field argument (#2)", () => {
+    const xml = serializeInline([
+      {
+        type: "link",
+        target: { kind: "external", href: 'https://x.com" \\l "Injected' },
+        content: [{ type: "text", text: "link" }],
+      },
+    ]);
+    // Exactly one HYPERLINK argument opening — no injected second quoted arg.
+    expect(xml.match(/HYPERLINK "/g)?.length).toBe(1);
+    // The injected quote is escaped and the switch backslash is doubled.
+    expect(xml).toContain('\\"Injected');
+    expect(xml).toContain("\\\\l");
+    // The raw, un-neutralized switch must not appear.
+    expect(xml).not.toContain('" \\l "');
+  });
+
+  it("indents a blockquote paragraph that already has a pPr — e.g. a heading (#5)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "blockquote",
+        content: [
+          { type: "heading", level: 2, content: [{ type: "text", text: "Quoted heading" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Quoted body" }] },
+        ],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    // The heading keeps its style AND gains the quote indent + border.
+    expect(xml).toContain('<w:pStyle w:val="Heading2"/>');
+    // Both paragraphs are indented/bordered (2 occurrences of the left border).
+    expect((xml.match(/<w:pBdr>/g) ?? []).length).toBe(2);
+    expect((xml.match(/<w:ind w:left="360"\/>/g) ?? []).length).toBe(2);
+  });
+
+  it("attaches the list marker to a heading-first item without a trailing marker paragraph (#6)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "list",
+        ordered: false,
+        items: [{ content: [{ type: "heading", level: 2, content: [{ type: "text", text: "Only heading" }] }] }],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain("Only heading");
+    expect(xml).toContain('<w:pStyle w:val="Heading2"/>');
+    // Exactly one marker — no extra marker-only paragraph after the heading.
+    expect((xml.match(/•/g) ?? []).length).toBe(1);
+    // The marker sits inside the heading paragraph (before its text run).
+    expect(xml.indexOf("•")).toBeLessThan(xml.indexOf("Only heading"));
+  });
+
+  it("reports a note when an unknown language degrades to plain text (#14)", async () => {
+    const blocks: ExportBlock[] = [{ type: "codeBlock", language: "brainfuck", code: "+[-]" }];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain("+[-]");
+    const note = notes.find((n) => n.code === "code-highlight-skipped");
+    expect(note).toBeDefined();
+    expect(note!.message).toContain("brainfuck");
+  });
+
   it("renders nested lists with markers", async () => {
     const blocks: ExportBlock[] = [
       {

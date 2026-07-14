@@ -112,6 +112,43 @@ function linkStyledRuns(nodes: InlineNode[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Paragraph-property injection (indent / borders / marker)
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert `propsXml` (e.g. `<w:ind/>`, `<w:pBdr/>`) into every paragraph of a
+ * fragment. Paragraphs that already carry a `<w:pPr>` (headings, code lines)
+ * have the props merged in AFTER an existing `<w:pStyle>` (keeping the schema
+ * order pStyle → … → pBdr → ind sane); bare paragraphs get a fresh `<w:pPr>`.
+ * Rewriting only bare `<w:p>` — the old behavior — silently skipped styled
+ * paragraphs, so a heading inside a blockquote/list lost its indent.
+ */
+function addParagraphProps(frag: string, propsXml: string): string {
+  return frag
+    .replace(
+      /(<w:p\b[^>]*><w:pPr>)(<w:pStyle\b[^>]*\/>)?/g,
+      (_m, open: string, pStyle: string | undefined) => `${open}${pStyle ?? ""}${propsXml}`
+    )
+    .replace(/(<w:p\b[^>]*>)(?!<w:pPr>)/g, `$1<w:pPr>${propsXml}</w:pPr>`);
+}
+
+/**
+ * Place a list marker at the start of the first block of an item, regardless of
+ * that block's type: for a paragraph/heading (`<w:p …>`) the marker run is
+ * inserted after its `<w:pPr>`; when the first block is not a paragraph (a
+ * callout table, say) the marker is emitted as its own leading paragraph.
+ */
+function placeMarker(frag: string, markerRun: string): string {
+  if (frag.startsWith("<w:p")) {
+    return frag.replace(
+      /^(<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)/,
+      `$1${markerRun}`
+    );
+  }
+  return paragraph(markerRun) + frag;
+}
+
+// ---------------------------------------------------------------------------
 // Blocks
 // ---------------------------------------------------------------------------
 
@@ -144,7 +181,14 @@ async function serializeBlock(
       return paragraph(serializeInline(block.content));
 
     case "codeBlock": {
-      const lines = await highlightCode(block.code, block.language);
+      const { lines, skipped } = await highlightCode(block.code, block.language);
+      if (skipped) {
+        notes.push({
+          level: "info",
+          code: "code-highlight-skipped",
+          message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${skipped}); rendered as plain monospace.`,
+        });
+      }
       return lines.map((tokens) => codeLineParagraph(tokens)).join("");
     }
 
@@ -162,12 +206,11 @@ async function serializeBlock(
 
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
-      // Indent the quoted block and add a left bar via each paragraph's pPr is
-      // heavy; a single indent conveys the quote acceptably for v1.
-      return inner.replace(
-        /<w:p>(?!<w:pPr>)/g,
-        `<w:p><w:pPr><w:ind w:left="${INDENT_STEP}"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="DFE1E6"/></w:pBdr></w:pPr>`
-      );
+      // Indent + left accent bar on EVERY paragraph, including styled ones
+      // (headings) that already carry a <w:pPr>.
+      const pBdr = `<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="DFE1E6"/></w:pBdr>`;
+      const ind = `<w:ind w:left="${INDENT_STEP}"/>`;
+      return addParagraphProps(inner, `${pBdr}${ind}`);
     }
 
     case "divider":
@@ -234,35 +277,35 @@ async function serializeListItem(
 ): Promise<string> {
   const marker =
     item.checked === true ? "☑" : item.checked === false ? "☐" : ordered ? `${index}.` : "•";
+  const markerRun = run(`${marker} `);
   const indent = INDENT_STEP + level * INDENT_STEP;
   let out = "";
-  let firstLineEmitted = false;
+  let markerPlaced = false;
 
   for (const block of item.content) {
     if (block.type === "list") {
+      // Nested lists carry their own (deeper) indent; never the item marker.
       out += await serializeList(block, ctx, notes, level + 1);
       continue;
     }
-    if (block.type === "paragraph" && !firstLineEmitted) {
-      const runs = `${run(`${marker} `)}${serializeInline(block.content)}`;
-      out += paragraph(runs, { extraPPr: `<w:ind w:left="${indent}"/>` });
-      firstLineEmitted = true;
-      continue;
+    // Indent the block under the bullet, then attach the marker to the FIRST
+    // rendered block regardless of its type (heading-first items must not get a
+    // trailing marker-only paragraph).
+    let frag = addParagraphProps(
+      await serializeBlock(block, ctx, notes, level + 1),
+      `<w:ind w:left="${indent}"/>`
+    );
+    if (!markerPlaced) {
+      frag = placeMarker(frag, markerRun);
+      markerPlaced = true;
     }
-    // Additional content in the item: indent under the bullet.
-    const frag = await serializeBlock(block, ctx, notes, level + 1);
-    out += indentFragment(frag, indent);
+    out += frag;
   }
 
-  if (!firstLineEmitted) {
-    out += paragraph(run(`${marker} `), { extraPPr: `<w:ind w:left="${indent}"/>` });
+  if (!markerPlaced) {
+    out += paragraph(markerRun, { extraPPr: `<w:ind w:left="${indent}"/>` });
   }
   return out;
-}
-
-/** Add a left indent to bare paragraphs of a fragment (best-effort). */
-function indentFragment(frag: string, indent: number): string {
-  return frag.replace(/<w:p>(?!<w:pPr>)/g, `<w:p><w:pPr><w:ind w:left="${indent}"/></w:pPr>`);
 }
 
 // ---- Tables ---------------------------------------------------------------
@@ -277,27 +320,26 @@ async function serializeTable(
   ctx: SerializeContext,
   notes: ExportNote[]
 ): Promise<string> {
-  // Total grid columns = widest row by summed colspan.
+  // The grid grows as needed: a row's width is the columns carried in by
+  // rowspans from above PLUS this row's own cells. The naive "widest row by
+  // summed colspan" undercounts when a carried rowspan pushes later cells past
+  // that width, which dropped those cells. Here every source cell is emitted;
+  // rows shorter than the final grid are padded so the table stays rectangular.
+  const carry: (Carry | null)[] = [];
+  const rowCells: string[] = [];
+  const rowWidths: number[] = [];
   let gridCols = 0;
-  for (const r of rows) {
-    let sum = 0;
-    for (const c of r.cells) sum += c.colspan;
-    gridCols = Math.max(gridCols, sum);
-  }
-  gridCols = Math.max(1, gridCols);
-
-  const carry: (Carry | null)[] = new Array(gridCols).fill(null);
-  let rowsXml = "";
 
   for (const r of rows) {
     let col = 0;
     let sourceIdx = 0;
     let cellsXml = "";
 
-    while (col < gridCols) {
+    // A row is done once every source cell is placed AND no carried rowspan
+    // still occupies a column at or beyond the cursor.
+    while (sourceIdx < r.cells.length || hasCarryFrom(carry, col)) {
       const active = carry[col];
       if (active) {
-        // Continuation of a rowspan started above.
         cellsXml += tableCell("", { colspan: active.colspan, vMerge: "continue" });
         active.rowsRemaining -= 1;
         const span = active.colspan;
@@ -308,26 +350,51 @@ async function serializeTable(
         continue;
       }
 
+      if (sourceIdx >= r.cells.length) break;
       const cell = r.cells[sourceIdx++];
-      if (!cell) {
-        cellsXml += tableCell("", {});
-        col += 1;
-        continue;
-      }
-      const body = await serializeChildren(cell.content, ctx, notes, 1);
       const colspan = Math.max(1, cell.colspan);
+      const body = await serializeChildren(cell.content, ctx, notes, 1);
       cellsXml += tableCell(body || paragraph(run("")), {
         colspan,
         vMerge: cell.rowspan > 1 ? "restart" : undefined,
         header: cell.header,
       });
       if (cell.rowspan > 1) {
-        for (let k = col; k < col + colspan; k++) carry[k] = { colspan, rowsRemaining: cell.rowspan - 1 };
+        for (let k = col; k < col + colspan; k++) {
+          carry[k] = { colspan, rowsRemaining: cell.rowspan - 1 };
+        }
       }
       col += colspan;
     }
-    rowsXml += `<w:tr>${cellsXml}</w:tr>`;
+
+    rowCells.push(cellsXml);
+    rowWidths.push(col);
+    gridCols = Math.max(gridCols, col);
+  }
+  gridCols = Math.max(1, gridCols);
+
+  // A rowspan that reaches past the last row leaves an active carry: the shape
+  // can't be fully represented, so note it rather than corrupt anything.
+  if (carry.some((c) => c)) {
+    notes.push({
+      level: "info",
+      code: "table-shape-approximated",
+      message: "A table cell's rowspan extended beyond the table; the merge was truncated to the available rows.",
+    });
+  }
+
+  let rowsXml = "";
+  for (let i = 0; i < rowCells.length; i++) {
+    let cells = rowCells[i];
+    for (let k = rowWidths[i]; k < gridCols; k++) cells += tableCell(paragraph(run("")), {});
+    rowsXml += `<w:tr>${cells}</w:tr>`;
   }
 
   return dataTable(gridCols, rowsXml);
+}
+
+/** True if any carried rowspan still occupies a column at or beyond `col`. */
+function hasCarryFrom(carry: (Carry | null)[], col: number): boolean {
+  for (let k = col; k < carry.length; k++) if (carry[k]) return true;
+  return false;
 }

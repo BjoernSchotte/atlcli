@@ -61,10 +61,18 @@ function tx(
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const t = db.transaction(STORE, mode);
+    let result: unknown;
     const req = run(t.objectStore(STORE));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-    t.onabort = () => reject(t.error);
+    // Capture the request result, but only resolve on transaction COMMIT
+    // (`oncomplete`). Resolving on the request's `onsuccess` reports success
+    // for writes that are later rolled back by a commit-time abort.
+    req.onsuccess = () => {
+      result = req.result;
+    };
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB request failed"));
+    t.oncomplete = () => resolve(result);
+    t.onabort = () => reject(t.error ?? req.error ?? new Error("IndexedDB transaction aborted"));
+    t.onerror = () => reject(t.error ?? req.error ?? new Error("IndexedDB transaction failed"));
   });
 }
 

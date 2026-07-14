@@ -53,8 +53,19 @@ export interface ScanResult {
   hasContentPlaceholder: boolean;
 }
 
-/** `$scroll.<dotted>[ (args) ]` or the bare Comala `$adhocState`. */
-export const PLACEHOLDER_RE = /\$scroll\.[A-Za-z.]+(?:\([^)]*\))?|\$adhocState/g;
+/**
+ * `$scroll.<dotted-name>[ .(args) ]` or the bare Comala `$adhocState`.
+ *
+ * The name is one or more dot-separated alphabetic segments; the grammar stops
+ * at the last segment so a sentence-ending period is NOT swallowed
+ * (`$scroll.title.` matches `$scroll.title`, leaving the `.` as literal text).
+ * A real dotted sub-token (`$scroll.pagelabels.capitalised`) still matches whole.
+ * An optional argument group — `.("dd.MM.yyyy")`, `.(key,fallback)` — is picked
+ * up via the optional leading dot before the parenthesis. This one regex is the
+ * single placeholder grammar shared by the scan, the resolver, and the
+ * body/header/footer preprocessor.
+ */
+export const PLACEHOLDER_RE = /\$scroll\.[A-Za-z]+(?:\.[A-Za-z]+)*(?:\.?\([^)]*\))?|\$adhocState/g;
 
 /** The document parts a scan/preprocess must cover. */
 export function documentPartNames(zip: PizZip): string[] {

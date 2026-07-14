@@ -41,6 +41,37 @@ describe("scanTemplate", () => {
     expect(scan.supported.map((h) => h.base)).toContain("$scroll.title");
   });
 
+  it("does not swallow a sentence-ending period after a placeholder (#9)", () => {
+    const bytes = buildDocx({
+      body: para("Title: $scroll.title. More text.") + para("$scroll.pagelabels.capitalised"),
+    });
+    const scan = scanTemplate(bytes);
+    const bases = scan.supported.map((h) => h.base).sort();
+    // $scroll.title is recognized (period is NOT part of the token) and the real
+    // dotted sub-token still matches whole.
+    expect(bases).toContain("$scroll.title");
+    expect(bases).toContain("$scroll.pagelabels.capitalised");
+    const title = scan.supported.find((h) => h.base === "$scroll.title");
+    expect(title!.raw).toContain("$scroll.title");
+    expect(title!.raw).not.toContain("$scroll.title.");
+  });
+
+  it("does not fuse placeholders across a hard line break (#8 detection)", () => {
+    // Two placeholders on separate lines must classify separately — not as one
+    // fused `$scroll.titleVersion`.
+    const bytes = buildDocx({
+      body:
+        `<w:p><w:r><w:t xml:space="preserve">Title: $scroll.title</w:t></w:r>` +
+        `<w:r><w:br/></w:r>` +
+        `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">Version: $scroll.version</w:t></w:r></w:p>`,
+    });
+    const scan = scanTemplate(bytes);
+    const bases = scan.supported.map((h) => h.base).sort();
+    expect(bases).toContain("$scroll.title");
+    expect(bases).toContain("$scroll.version");
+    expect(bases).not.toContain("$scroll.titleVersion");
+  });
+
   it("scans header and footer parts", () => {
     const bytes = buildDocx({
       body: para("body"),
