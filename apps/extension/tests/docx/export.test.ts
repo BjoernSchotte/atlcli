@@ -6,12 +6,16 @@ import type { CurrentUser } from "../../utils/docx/resolver.js";
 import {
   assertBalancedXml,
   buildDocx,
+  chartTitlePart,
+  complexFieldResult,
   documentXml,
   drawingAdjacentPara,
+  fldSimpleResult,
   headingStyle,
   para,
   readPart,
   runSplitPara,
+  smartArtDataPart,
   stylesXml,
   textBoxTitlePara,
 } from "./fixtures.js";
@@ -177,6 +181,81 @@ describe("exportDocx — full pipeline", () => {
       expect(part).not.toContain("txbx0");
       expect(part).not.toContain("txbx1");
     }
+  });
+
+  it("resolves $scroll.* in chart and SmartArt DrawingML parts (shape ①)", async () => {
+    const templateBytes = buildDocx({
+      body: para("$scroll.title") + para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      extraParts: {
+        "word/charts/chart1.xml": chartTitlePart("$scroll.title"),
+        "word/diagrams/data1.xml": smartArtDataPart("$scroll.title"),
+      },
+    });
+
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
+
+    const chart = readPart(bytes, "word/charts/chart1.xml");
+    const diagram = readPart(bytes, "word/diagrams/data1.xml");
+    for (const part of [chart, diagram]) {
+      // Placeholder resolved, zero literal survives, part still well-formed.
+      expect(part).not.toContain("$scroll.");
+      expect(part).toContain("Q3: Architecture / Overview");
+      assertBalancedXml(part);
+    }
+    // Structural DrawingML preserved.
+    expect(chart).toContain("<c:plotArea>");
+  });
+
+  it("resolves a $scroll.* field result but never the field instruction (shape ②)", async () => {
+    const templateBytes = buildDocx({
+      body:
+        para("$scroll.content") +
+        fldSimpleResult(" DOCPROPERTY $scroll.title ", "$scroll.title") +
+        complexFieldResult(" REF $scroll.title ", "$scroll.title"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+
+    // The DISPLAYED results resolved (both field forms).
+    expect((doc.match(/Q3: Architecture \/ Overview/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // The field INSTRUCTIONS are left literal — a $scroll.* in field logic is NOT
+    // a text placeholder, and rewriting it would corrupt the field.
+    expect(doc).toContain('w:instr=" DOCPROPERTY $scroll.title "');
+    expect(doc).toContain("<w:instrText xml:space=\"preserve\"> REF $scroll.title </w:instrText>");
+    // Field frame intact + well-formed.
+    expect(doc).toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(doc).toContain('<w:fldChar w:fldCharType="end"/>');
+    assertBalancedXml(doc);
+  });
+
+  it("does not fuse a placeholder across a text-box story boundary (shape ③)", async () => {
+    // `$scr` in the main flow + `oll.title` inside a floating text box must stay
+    // literal — merging across the story boundary would corrupt output. (There is
+    // no $scroll.content here, so the body is appended before the section break.)
+    const templateBytes = buildDocx({
+      body:
+        `<w:p>` +
+        `<w:r><w:t xml:space="preserve">$scr</w:t></w:r>` +
+        `<w:r><w:drawing><wps:txbx><w:txbxContent>` +
+        `<w:p><w:r><w:t xml:space="preserve">oll.title</w:t></w:r></w:p>` +
+        `</w:txbxContent></wps:txbx></w:drawing></w:r>` +
+        `</w:p>` +
+        para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    // Both fragments survive literally; no resolved title formed from the fusion.
+    expect(doc).toContain(">$scr<");
+    expect(doc).toContain(">oll.title<");
+    // The only "$scroll." occurrences that could remain are the page-body verbatim
+    // ones; the split fragments themselves never formed `$scroll.title`.
+    expect(doc).not.toContain("$scroll.title<");
+    assertBalancedXml(doc);
   });
 
   it("sets w:updateFields so the TOC repaginates on open", async () => {

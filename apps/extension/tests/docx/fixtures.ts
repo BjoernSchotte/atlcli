@@ -151,6 +151,121 @@ export function drawingAdjacentPara(text: string): string {
   );
 }
 
+/** Split a string roughly in half (to simulate Word's rsid run splitting). */
+function splitHalf(s: string): [string, string] {
+  const i = Math.ceil(s.length / 2);
+  return [s.slice(0, i), s.slice(i)];
+}
+
+// ---------------------------------------------------------------------------
+// Shape ① — SmartArt / chart DrawingML `<a:t>` text
+// ---------------------------------------------------------------------------
+
+/**
+ * A DrawingML `<a:p>` whose text is split across two `<a:t>` runs (rsid-style
+ * split, to exercise `<a:t>` run-normalization). The `a:` namespace makes this
+ * structurally distinct from the `<w:p>`/`<w:t>` tree — the shape used by
+ * SmartArt (`<dgm:t>`) and chart rich text (`<c:rich>`).
+ */
+export function smartArtTitlePara(text: string): string {
+  const [a, b] = splitHalf(text);
+  return (
+    `<a:p><a:r><a:t>${a}</a:t></a:r><a:r><a:t>${b}</a:t></a:r></a:p>`
+  );
+}
+
+/** Namespaces DrawingML chart / diagram parts declare. */
+const DML_NS =
+  `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+  `xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ` +
+  `xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" ` +
+  `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
+
+/**
+ * A full `word/charts/chart1.xml` whose chart TITLE holds `text` in a
+ * `<c:tx><c:rich>` run (split across `<a:t>` runs). Structural chart XML around
+ * the title (`<c:plotArea>` etc.) must survive untouched.
+ */
+export function chartTitlePart(text: string): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<c:chartSpace ${DML_NS}><c:chart><c:title><c:tx><c:rich>` +
+    `<a:bodyPr/><a:lstStyle/>` +
+    smartArtTitlePara(text) +
+    `</c:rich></c:tx></c:title>` +
+    `<c:plotArea><c:layout/></c:plotArea>` +
+    `</c:chart></c:chartSpace>`
+  );
+}
+
+/** A full `word/diagrams/data1.xml` (SmartArt) with `text` in a `<dgm:t>` run. */
+export function smartArtDataPart(text: string): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<dgm:dataModel ${DML_NS}><dgm:ptLst><dgm:pt><dgm:t>` +
+    `<a:bodyPr/><a:lstStyle/>` +
+    smartArtTitlePara(text) +
+    `</dgm:t></dgm:pt></dgm:ptLst></dgm:dataModel>`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shape ② — field-code placeholders
+// ---------------------------------------------------------------------------
+
+/**
+ * A `<w:fldSimple>` field: `instr` is the field INSTRUCTION (an attribute that
+ * must never be rewritten), `result` is the cached displayed result in a child
+ * `<w:r><w:t>` (where a `$scroll.*` must resolve).
+ */
+export function fldSimpleResult(instr: string, result: string): string {
+  return (
+    `<w:p><w:fldSimple w:instr="${instr}">` +
+    `<w:r><w:t xml:space="preserve">${result}</w:t></w:r>` +
+    `</w:fldSimple></w:p>`
+  );
+}
+
+/**
+ * A complex field: `begin` → `<w:instrText>` (the instruction, never rewritten)
+ * → `separate` → cached `result` `<w:r><w:t>` (where a `$scroll.*` resolves) →
+ * `end`. The result is split across two runs to prove run-normalization applies
+ * to the displayed result too.
+ */
+export function complexFieldResult(instr: string, result: string): string {
+  const [a, b] = splitHalf(result);
+  return (
+    `<w:p>` +
+    `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:instrText xml:space="preserve">${instr}</w:instrText></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+    `<w:r><w:t xml:space="preserve">${a}</w:t></w:r>` +
+    `<w:r><w:t xml:space="preserve">${b}</w:t></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
+    `</w:p>`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shape ③ — placeholder split across a text-box (story) boundary
+// ---------------------------------------------------------------------------
+
+/**
+ * A paragraph whose `outer` run text is followed by a nested text box whose run
+ * holds `inner`. Used to PROVE the extractor does NOT fuse text across the box
+ * (story) boundary — a physically impossible split in real authoring.
+ */
+export function crossBoundarySplitPara(outer: string, inner: string): string {
+  return (
+    `<w:p>` +
+    `<w:r><w:t xml:space="preserve">${outer}</w:t></w:r>` +
+    `<w:r><w:drawing><wps:txbx><w:txbxContent>` +
+    `<w:p><w:r><w:t xml:space="preserve">${inner}</w:t></w:r></w:p>` +
+    `</w:txbxContent></wps:txbx></w:drawing></w:r>` +
+    `</w:p>`
+  );
+}
+
 /** styles.xml with optional extra <w:style> definitions. */
 export function stylesXml(extraStyles = ""): string {
   return (
@@ -173,6 +288,13 @@ export interface BuildDocxOptions {
   header?: string;
   footer?: string;
   settings?: string | null;
+  /**
+   * Extra raw parts keyed by path, e.g. `word/charts/chart1.xml` or
+   * `word/diagrams/data1.xml`. Added verbatim; the `Default Extension="xml"`
+   * content type covers them, and docxtemplater leaves non-story `.xml` parts
+   * untouched — so they round-trip through the export unchanged.
+   */
+  extraParts?: Record<string, string>;
 }
 
 /** Assemble a valid minimal `.docx` and return its bytes. */
@@ -205,6 +327,9 @@ export function buildDocx(opts: BuildDocxOptions): Uint8Array {
       "word/footer1.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${OOXML_NS}>${opts.footer}</w:ftr>`
     );
+  }
+  for (const [path, content] of Object.entries(opts.extraParts ?? {})) {
+    zip.file(path, content);
   }
   return zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
 }

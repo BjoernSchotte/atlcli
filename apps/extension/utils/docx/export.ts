@@ -300,14 +300,21 @@ function injectContentTagAtEnd(zip: PizZip): void {
 }
 
 /**
- * Replace every `$scroll.*` / `$adhocState` occurrence across document +
- * header/footer parts with its resolved value (empty for unsupported/never).
+ * Replace every `$scroll.*` / `$adhocState` occurrence across the document,
+ * header/footer, and chart/SmartArt-diagram parts with its resolved value (empty
+ * for unsupported/never).
  *
  * {@link rewriteScrollText} run-normalizes each placeholder paragraph (merging
- * split runs), descends into text boxes (`mc:Choice` + `mc:Fallback`), and
- * replaces clean `<w:t>` runs that share a paragraph with a drawing/pict run —
- * so a title inside a cover-page text box and a `$scroll.title` run trailing a
- * footer picture are both resolved. Guarantees no literal placeholder survives.
+ * split runs), descends into text boxes (`mc:Choice` + `mc:Fallback`), replaces
+ * clean `<w:t>` runs that share a paragraph with a drawing/pict run, AND resolves
+ * DrawingML `<a:t>` runs (SmartArt / chart / shape text, including in the
+ * separate chart/diagram parts enumerated by {@link documentPartNames}) — so a
+ * title inside a cover-page text box, a `$scroll.title` run trailing a footer
+ * picture, and a chart/SmartArt title are all resolved. A `$scroll.*` inside a
+ * field INSTRUCTION (`w:instr` / `<w:instrText>`) is intentionally left literal:
+ * it is field logic, not displayed text, and rewriting it would corrupt the
+ * field (only the field's cached RESULT `<w:t>` runs resolve). Guarantees no
+ * literal placeholder survives in any displayed text.
  */
 export function preprocessScrollText(zip: PizZip, values: Map<string, string>): void {
   for (const part of documentPartNames(zip)) {

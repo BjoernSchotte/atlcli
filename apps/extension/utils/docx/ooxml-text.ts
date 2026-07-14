@@ -186,6 +186,12 @@ export function extractTextboxes(xml: string): { masked: string; regions: Textbo
 export function collectParagraphTexts(xml: string): string[] {
   const texts: string[] = [];
   collectParagraphTextsInto(xml, texts);
+  // DrawingML text (SmartArt / chart / shape `<a:t>` runs) lives OUTSIDE the
+  // WordprocessingML `<w:p>` tree — in `<a:p>` paragraphs, either inline in this
+  // part or (more commonly) in a separate chart/diagram part. Collect those too
+  // so the scan panel's supported-list matches what {@link rewriteScrollText}
+  // resolves. Reads the whole part (nested boxes included), reads only `<a:t>`.
+  for (const text of collectDrawingTexts(xml)) texts.push(text);
   return texts;
 }
 
@@ -360,6 +366,19 @@ export function rewriteScrollText(
   xml: string,
   transform: (joined: string) => string
 ): string {
+  // WordprocessingML pass first (paragraph/run/text-box tree), then the
+  // DrawingML pass over the WHOLE result — the latter walks `<a:p>` paragraphs
+  // wherever they sit (inline shapes here, or a chart/diagram part passed as
+  // `xml`), so a single top-level DrawingML sweep covers every `<a:t>` run,
+  // including any nested inside a restored text box.
+  const afterWml = rewriteScrollTextWml(xml, transform);
+  return rewriteDrawingText(afterWml, transform);
+}
+
+function rewriteScrollTextWml(
+  xml: string,
+  transform: (joined: string) => string
+): string {
   const { masked, regions } = extractTextboxes(xml);
 
   // 1. Rewrite the top-level paragraphs on the MASKED xml, where drawing/text-box
@@ -373,10 +392,128 @@ export function rewriteScrollText(
   }
 
   // 2. Restore each text box, resolving its inner paragraphs recursively.
+  //    NOTE: recursion re-masks/rewrites each box's OWN `<w:p>` runs, so the
+  //    text-box boundary is honoured — an outer run's `$scr` is never fused with
+  //    an inner box run's `oll.title`. A text box is a separate story; a word
+  //    cannot straddle that boundary in real authoring, so NOT merging across it
+  //    is the correct behaviour, not a gap (see shape ③ regression test).
   for (const region of regions) {
-    const processedInner = rewriteScrollText(region.inner, transform);
+    const processedInner = rewriteScrollTextWml(region.inner, transform);
     out = replaceFirst(out, region.sentinel, region.openTag + processedInner + "</w:txbxContent>");
   }
 
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// DrawingML text (SmartArt / chart / shape `<a:t>` runs)
+// ---------------------------------------------------------------------------
+//
+// Placeholders can live in DrawingML text, which uses the `a:` namespace and is
+// structurally independent of the `w:` paragraph/run tree handled above:
+//   • SmartArt diagram text  — `word/diagrams/data*.xml` (`<dgm:t><a:p><a:r><a:t>`)
+//   • chart titles / labels  — `word/charts/chart*.xml`  (`<c:tx><c:rich><a:p>…`)
+//   • drawing/shape text     — inline `<a:p><a:r><a:t>` inside a `<w:drawing>`
+//
+// The `<a:t>` run is the DrawingML analogue of `<w:t>`. Word can split a single
+// logical string across adjacent `<a:t>` runs (same rsid discipline as `<w:t>`),
+// so we merge consecutive `<a:t>` within one `<a:p>` before matching — with an
+// `<a:br/>` hard break as a boundary a placeholder cannot span (mirrors the
+// `<w:br/>` rule). Unlike `<w:r>`, an `<a:t>` carries no `<w:rPr>`-equivalent we
+// need to gate on, so ALL consecutive `<a:t>` in one `<a:p>` are mergeable.
+//
+// We touch ONLY `<a:t>` text bodies — never geometry, style, or any other
+// structural DrawingML — so every modified part stays well-formed.
+
+/** A DrawingML `<a:p>…</a:p>` paragraph (or the self-closing `<a:p/>`). */
+const A_P_RE = /<a:p\b[^>]*>[\s\S]*?<\/a:p>|<a:p\b[^>]*\/>/g;
+/** An `<a:t …>` body (group 1 = open tag, group 2 = inner) or an `<a:br/>`. */
+const A_TEXT_OR_BREAK_RE = /(<a:t\b[^>]*>)([\s\S]*?)<\/a:t>|<a:br\b[^>]*\/?>/g;
+
+interface AtToken {
+  openTag: string;
+  inner: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Resolve `$scroll.*` text in the DrawingML `<a:t>` runs of every `<a:p>` in
+ * `xml`. Consecutive `<a:t>` in one paragraph are merged (so a split placeholder
+ * is detected); an `<a:br/>` breaks the merge. The replacement lands in the
+ * first `<a:t>` of its run group; the rest are emptied. Non-`<a:t>` DrawingML is
+ * untouched.
+ */
+export function rewriteDrawingText(
+  xml: string,
+  transform: (joined: string) => string
+): string {
+  if (!xml.includes("<a:t")) return xml;
+  return xml.replace(A_P_RE, (pXml) => rewriteDrawingParagraph(pXml, transform));
+}
+
+function rewriteDrawingParagraph(pXml: string, transform: (joined: string) => string): string {
+  const tokens: (AtToken | "break")[] = [];
+  A_TEXT_OR_BREAK_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = A_TEXT_OR_BREAK_RE.exec(pXml)) !== null) {
+    if (m[1] !== undefined) {
+      tokens.push({ openTag: m[1], inner: m[2], start: m.index, end: m.index + m[0].length });
+    } else {
+      tokens.push("break");
+    }
+  }
+
+  // Collect edits (start/end/replacement) for run groups whose merged text
+  // changes; apply them in one left-to-right splice so offsets stay valid.
+  const edits: { start: number; end: number; text: string }[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokens[i] === "break") {
+      i += 1;
+      continue;
+    }
+    const seg: AtToken[] = [];
+    while (i < tokens.length && tokens[i] !== "break") {
+      seg.push(tokens[i] as AtToken);
+      i += 1;
+    }
+    const joined = seg.map((t) => decodeXmlText(t.inner)).join("");
+    const replaced = transform(joined);
+    if (replaced !== joined) {
+      edits.push({ start: seg[0].start, end: seg[0].end, text: `${seg[0].openTag}${encodeXmlText(replaced)}</a:t>` });
+      for (let k = 1; k < seg.length; k++) {
+        edits.push({ start: seg[k].start, end: seg[k].end, text: `${seg[k].openTag}</a:t>` });
+      }
+    }
+  }
+  if (!edits.length) return pXml;
+
+  let out = "";
+  let last = 0;
+  for (const e of edits) {
+    out += pXml.slice(last, e.start) + e.text;
+    last = e.end;
+  }
+  return out + pXml.slice(last);
+}
+
+/**
+ * The decoded text of every DrawingML `<a:p>` in `xml`, one string per paragraph
+ * (an `<a:br/>` contributes a newline so no placeholder spans it). Scan-side
+ * counterpart to {@link rewriteDrawingText}.
+ */
+export function collectDrawingTexts(xml: string): string[] {
+  if (!xml.includes("<a:t")) return [];
+  const texts: string[] = [];
+  for (const pMatch of xml.matchAll(A_P_RE)) {
+    let out = "";
+    A_TEXT_OR_BREAK_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = A_TEXT_OR_BREAK_RE.exec(pMatch[0])) !== null) {
+      out += m[2] !== undefined ? decodeXmlText(m[2]) : "\n";
+    }
+    if (out) texts.push(out);
+  }
+  return texts;
 }

@@ -1,11 +1,20 @@
 import { describe, expect, it } from "bun:test";
 import {
+  collectDrawingTexts,
   collectParagraphTexts,
   paragraphText,
+  rewriteDrawingText,
   rewriteParagraphText,
   rewriteScrollText,
   splitParagraphs,
 } from "../../utils/docx/ooxml-text.js";
+import {
+  chartTitlePart,
+  complexFieldResult,
+  crossBoundarySplitPara,
+  fldSimpleResult,
+  smartArtTitlePara,
+} from "./fixtures.js";
 
 /** A tiny placeholder transform for the tests. */
 const values = new Map<string, string>([
@@ -140,5 +149,100 @@ describe("rewriteScrollText — drawing-adjacent clean run (shape b)", () => {
     expect(out).toContain("$scroll");
     expect(out).toContain(".title");
     expect(out).not.toContain("My Title");
+  });
+});
+
+describe("rewriteDrawingText — DrawingML <a:t> runs (shape ①)", () => {
+  it("resolves a placeholder split across adjacent <a:t> runs in one <a:p>", () => {
+    // smartArtTitlePara splits `$scroll.title` across two <a:t> runs.
+    const dml = smartArtTitlePara("$scroll.title");
+    expect((dml.match(/<a:t\b/g) ?? []).length).toBe(2); // sanity: it IS split
+    const out = rewriteDrawingText(dml, replace);
+    expect(out).toContain("<a:t>My Title</a:t>");
+    // Second run emptied, not duplicated.
+    expect(out).toContain("<a:t></a:t>");
+    expect(out).not.toContain("$scroll");
+  });
+
+  it("resolves the title inside a chart <c:tx><c:rich> part, leaving structure intact", () => {
+    const out = rewriteScrollText(chartTitlePart("$scroll.title"), replace);
+    expect(out).not.toContain("$scroll");
+    expect(out).toContain("My Title");
+    // Structural chart DrawingML is untouched.
+    expect(out).toContain("<c:plotArea>");
+    expect(out).toContain("<a:bodyPr/>");
+  });
+
+  it("does NOT fuse <a:t> text across an <a:br/> break", () => {
+    const dml =
+      `<a:p><a:r><a:t>$scroll</a:t></a:r><a:br/><a:r><a:t>.title</a:t></a:r></a:p>`;
+    const out = rewriteDrawingText(dml, replace);
+    expect(out).toContain("$scroll");
+    expect(out).toContain(".title");
+    expect(out).not.toContain("My Title");
+  });
+
+  it("collectDrawingTexts reads each <a:p> and breaks on <a:br/> so no placeholder spans it", () => {
+    const merged = collectDrawingTexts(smartArtTitlePara("$scroll.title"));
+    expect(merged).toEqual(["$scroll.title"]);
+    const broken = collectDrawingTexts(
+      `<a:p><a:r><a:t>$scroll</a:t></a:r><a:br/><a:r><a:t>.title</a:t></a:r></a:p>`
+    );
+    expect(broken).toEqual(["$scroll\n.title"]);
+  });
+
+  it("collectParagraphTexts surfaces chart <a:t> text for the scan", () => {
+    const texts = collectParagraphTexts(chartTitlePart("$scroll.title"));
+    expect(texts).toContain("$scroll.title");
+  });
+});
+
+describe("rewriteScrollText — field codes (shape ②)", () => {
+  it("resolves the cached RESULT of a <w:fldSimple> but never its w:instr instruction", () => {
+    const para = fldSimpleResult(" DOCPROPERTY $scroll.title ", "$scroll.title");
+    const out = rewriteScrollText(para, replace);
+    // Displayed result resolved.
+    expect(out).toContain("<w:t xml:space=\"preserve\">My Title</w:t>");
+    // The field INSTRUCTION attribute is left byte-for-byte intact.
+    expect(out).toContain('w:instr=" DOCPROPERTY $scroll.title "');
+  });
+
+  it("resolves a complex field's cached result (split across runs) but never its <w:instrText>", () => {
+    const para = complexFieldResult(" REF $scroll.title ", "$scroll.title");
+    const out = rewriteScrollText(para, replace);
+    // Cached result (split across two <w:t>) merged + resolved.
+    expect(out).toContain("My Title");
+    // The instruction is untouched, and the field frame survives.
+    expect(out).toContain("<w:instrText xml:space=\"preserve\"> REF $scroll.title </w:instrText>");
+    expect(out).toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(out).toContain('<w:fldChar w:fldCharType="separate"/>');
+    expect(out).toContain('<w:fldChar w:fldCharType="end"/>');
+  });
+
+  it("scan counts only the field RESULT, not the instruction text", () => {
+    // paragraphText reads <w:t> bodies only — never w:instr / <w:instrText> — so a
+    // placeholder that appears in BOTH is counted once (the displayed result).
+    const texts = collectParagraphTexts(fldSimpleResult(" DOCPROPERTY $scroll.title ", "$scroll.title"));
+    expect(texts).toEqual(["$scroll.title"]);
+  });
+});
+
+describe("rewriteScrollText — text-box story boundary is NOT crossed (shape ③)", () => {
+  it("never fuses an outer run's $scr with an inner text-box run's oll.title", () => {
+    // A text box is a SEPARATE story; a word cannot be half in the main flow and
+    // half inside a floating box in real authoring. Merging across that boundary
+    // would corrupt output, so the extractor must keep both fragments literal.
+    const para = crossBoundarySplitPara("$scr", "oll.title");
+    const out = rewriteScrollText(para, replace);
+    // Neither fragment resolved; no fused `$scroll.title` ever formed.
+    expect(out).toContain(">$scr<");
+    expect(out).toContain(">oll.title<");
+    expect(out).not.toContain("My Title");
+
+    // Scan side agrees: the two stories are separate texts, never one fused string.
+    const texts = collectParagraphTexts(para);
+    expect(texts).toContain("$scr");
+    expect(texts).toContain("oll.title");
+    expect(texts).not.toContain("$scroll.title");
   });
 });

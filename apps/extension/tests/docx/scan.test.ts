@@ -5,7 +5,17 @@ import {
   scanTemplate,
   unzipDocx,
 } from "../../utils/docx/scan.js";
-import { buildDocx, drawingAdjacentPara, para, runSplitPara, textBoxTitlePara } from "./fixtures.js";
+import {
+  buildDocx,
+  chartTitlePart,
+  complexFieldResult,
+  drawingAdjacentPara,
+  fldSimpleResult,
+  para,
+  runSplitPara,
+  smartArtDataPart,
+  textBoxTitlePara,
+} from "./fixtures.js";
 
 describe("scanTemplate", () => {
   it("classifies supported / unsupported / never placeholders", () => {
@@ -92,6 +102,40 @@ describe("scanTemplate", () => {
     const title = scan.supported.find((h) => h.base === "$scroll.title");
     expect(title).toBeDefined();
     expect(title!.count).toBe(3); // Choice + Fallback + footer clean run
+  });
+
+  it("classifies a placeholder in a chart part's <a:t> title (shape ①)", () => {
+    const bytes = buildDocx({
+      body: para("$scroll.content"),
+      extraParts: { "word/charts/chart1.xml": chartTitlePart("$scroll.title") },
+    });
+    const scan = scanTemplate(bytes);
+    expect(scan.supported.map((h) => h.base)).toContain("$scroll.title");
+    expect(scan.parts).toContain("word/charts/chart1.xml");
+  });
+
+  it("classifies a placeholder in a SmartArt diagram data part's <a:t> (shape ①)", () => {
+    const bytes = buildDocx({
+      body: para("$scroll.content"),
+      extraParts: { "word/diagrams/data1.xml": smartArtDataPart("$scroll.title") },
+    });
+    const scan = scanTemplate(bytes);
+    expect(scan.supported.map((h) => h.base)).toContain("$scroll.title");
+    expect(scan.parts).toContain("word/diagrams/data1.xml");
+  });
+
+  it("counts a field's cached result once, ignoring the instruction text (shape ②)", () => {
+    // $scroll.title appears in BOTH the w:instr and the cached result; the scan
+    // must count only the displayed result (instructions are not text).
+    const bytes = buildDocx({
+      body:
+        fldSimpleResult(" DOCPROPERTY $scroll.title ", "$scroll.title") +
+        complexFieldResult(" REF $scroll.title ", "$scroll.title"),
+    });
+    const scan = scanTemplate(bytes);
+    const title = scan.supported.find((h) => h.base === "$scroll.title");
+    expect(title).toBeDefined();
+    expect(title!.count).toBe(2); // one per field RESULT, not the two instructions
   });
 
   it("scans header and footer parts", () => {

@@ -67,10 +67,26 @@ export interface ScanResult {
  */
 export const PLACEHOLDER_RE = /\$scroll\.[A-Za-z]+(?:\.[A-Za-z]+)*(?:\.?\([^)]*\))?|\$adhocState/g;
 
-/** The document parts a scan/preprocess must cover. */
+/**
+ * The document parts a scan/preprocess must cover:
+ *  - the main story + all headers/footers (WordprocessingML `<w:t>` text), and
+ *  - chart (`word/charts/chart*.xml`) and SmartArt-diagram
+ *    (`word/diagrams/data*.xml` / `drawing*.xml`) parts, whose placeholder text
+ *    lives in DrawingML `<a:t>` runs in a SEPARATE part rather than in the main
+ *    story. {@link import("./ooxml-text.js").collectParagraphTexts} /
+ *    {@link import("./ooxml-text.js").rewriteScrollText} read `<a:t>` from these.
+ *
+ * `$scroll.content` never lives in a chart/diagram part, so including them here
+ * is safe for the content-anchor lookup ({@link import("./export.js")}).
+ */
 export function documentPartNames(zip: PizZip): string[] {
   return Object.keys(zip.files)
-    .filter((n) => /^word\/(document\.xml|header\d*\.xml|footer\d*\.xml)$/.test(n))
+    .filter(
+      (n) =>
+        /^word\/(document\.xml|header\d*\.xml|footer\d*\.xml)$/.test(n) ||
+        /^word\/charts\/chart\d*\.xml$/.test(n) ||
+        /^word\/diagrams\/(data|drawing)\d*\.xml$/.test(n)
+    )
     .sort();
 }
 
