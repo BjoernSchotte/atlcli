@@ -36,8 +36,8 @@ they are what turns "a PDF export" into "visibly better than Scroll":
 - Confluence semantics mapped: callout boxes (styled per EXPORT-QUALITY §4 example),
   status → inline badge, code blocks with syntax highlighting + language label, tables
   with repeated headers and basic merges, images (attachment blobs), expand macro inlined.
-- Open fonts bundled and embedded (proposal: Source Sans 3 / Source Serif 4 text,
-  JetBrains Mono code — final set is decision F2); deterministic output.
+- Open fonts bundled and embedded — **Inter** (text) + **JetBrains Mono** (code), per
+  decision F2; the `atlcli.typ` template is designed sans-serif-only. Deterministic output.
 - Tagged PDF on by default (Typst ≥ 0.14); one reference export validated as PDF/UA-1.
 - Compile runs off the panel thread (offscreen doc), panel shows progress and stays
   responsive; errors surface as readable messages, not hangs.
@@ -134,7 +134,7 @@ error + offscreen teardown.
 
 ### Task 2 — Fonts
 
-- [ ] Chosen open fonts (decision F2) bundled; compiler configured to use only bundled fonts (no system font access exists in WASM anyway — assert the compile fails loudly on a missing font rather than silently substituting)
+- [ ] Inter + JetBrains Mono (decision F2) bundled; compiler configured to use only bundled fonts (no system font access exists in WASM anyway — assert the compile fails loudly on a missing font rather than silently substituting)
 - [ ] Font licenses (OFL) copied into `apps/extension/assets/fonts/`
 - [ ] PDF output embeds the fonts (verify via PDF inspection in Task 6)
 
@@ -198,4 +198,4 @@ Joint session (space `DOCSY`, same feature-zoo test page as 004, delete after):
 ### Decisions log
 
 - **F1 — serializer location**: ❓ open (proposal: `packages/confluence` next to the walker, isomorphism-gated).
-- **F2 — bundled font set**: ❓ open (proposal: Source Sans 3 + Source Serif 4 + JetBrains Mono; alternatives: Inter, IBM Plex family).
+- **F2 — bundled font set**: ✅ (Björn, 2026-07-14) Inter + JetBrains Mono (OFL); no serif face in the PoC — template designed sans-only.

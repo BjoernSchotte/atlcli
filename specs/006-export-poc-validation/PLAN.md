@@ -67,9 +67,10 @@ better?"):
   `$scroll.exporter.fullName` in body/header/footer + a native TOC field. Björn provides
   or approves it; stored (or referenced, if confidential) from this dir.
 - **Scroll access:** one export of the reference page through Scroll Word Exporter with
-  that template. **Open question F1: is a Scroll instance/trial available?** Without it,
-  criterion 1 degrades to "documented comparison against Scroll's documented behavior" —
-  a real reference export is strongly preferred.
+  that template. **F1 resolved (Björn, 2026-07-14): a Scroll instance is available**
+  (existing installation/customer) — criterion 1 runs as a true A/B against a real
+  Scroll export. Logistics (which site, replicating the reference page there) are
+  settled in the Task 1 session.
 
 ### 2.2 Measurement rules
 
@@ -104,7 +105,7 @@ Rows 2, 3 (🏆 expected: Typst-computed page numbers), 4, 7, 8, 9, 11, 12, 13, 
 
 - [ ] Reference page created in DOCSY per §2.1; storage source archived in this dir
 - [ ] Reference template provided/approved by Björn; placeholder inventory documented
-- [ ] Scroll availability resolved (F1); if available: Scroll export of the reference page produced and archived
+- [ ] Scroll export of the reference page produced on the available Scroll instance (F1 ✅) and archived; if the reference page must be replicated on that site, replication + later cleanup included
 
 ### Task 2 — Reference test DOCX vs. Scroll **[E2E: user]**
 
@@ -157,7 +158,7 @@ This spec *is* a test plan; its own quality bar:
 
 ## 6. Risks and open questions
 
-1. **F1 — Scroll reference availability** (trial license / existing customer instance?). Determines whether criterion 1 is a true A/B or a documented approximation. Needs Björn's answer before Task 1 completes.
+1. **F1 — Scroll reference availability**: ✅ resolved (Björn, 2026-07-14) — instance/customer available; true A/B. Residual logistics: reference page may need to be replicated on the Scroll-equipped site (data-sensitivity check before copying content there).
 2. **Template confidentiality:** if the mayflower template can't live in the repo, store a placeholder-equivalent synthetic template here and keep the real one local — protocol notes which was used.
 3. **PDF < 10 s is the shakiest number** (WASM compile + 5 images). The protocol deliberately separates cold/warm and stages the bottleneck analysis so a miss produces an actionable Phase-2 item, not just a red X.
 4. **Subjectivity of "visually equivalent":** mitigated by the itemized checklist + three-level scale + screenshots; final arbiter is Björn in the joint session.

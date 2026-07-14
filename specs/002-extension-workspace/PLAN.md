@@ -31,8 +31,8 @@ Key architectural facts driving the shape (from the research):
 ### Goals
 
 - `apps/extension` workspace exists, wired into workspaces/Turbo/typecheck/CI.
-- `bun run --cwd apps/extension build` produces a `dist/` directory that Chrome accepts via
-  **Load unpacked** without warnings or errors.
+- `bun run --cwd apps/extension build` (→ `wxt build`) produces `.output/chrome-mv3/` that
+  Chrome accepts via **Load unpacked** without warnings or errors.
 - Side panel opens and renders a placeholder UI; service worker and offscreen document
   communicate via typed messages.
 - Offscreen document instantiates a trivial WASM module (smoke test for the 005 path).
@@ -52,47 +52,52 @@ Key architectural facts driving the shape (from the research):
 
 ## 2. Architecture decisions
 
-### 2.1 Build tooling: plain `bun build` script, no extension framework
+### 2.1 Build tooling: WXT (decision F2 ✅ 2026-07-14)
 
-**Decision (proposed):** a small `apps/extension/scripts/build.ts` that runs
-`bun build --target=browser` per entrypoint (service worker, side panel, offscreen) and
-copies static assets (`manifest.json`, HTML, icons) to `dist/`. Optional `--watch` flag for
-dev iteration.
+**Decision (Björn, 2026-07-14):** the extension is built with **WXT** as the core
+framework (Vite-based, MV3-aware: manifest generation, entrypoint conventions, dev-mode
+HMR, `wxt build` output ready for load-unpacked). Rationale: WXT carries the extension
+plumbing so the specs 003–005 stay feature work, and its dev loop pays off across the
+many joint E2E sessions ahead.
 
-Rationale: the repo is Bun-native and already has browser-build infrastructure (001's
-`check:browser`). Frameworks like WXT or CRXJS bring Vite along — a second bundler
-toolchain to maintain for features (HMR into extension pages) that a PoC does not need.
-Revisit if dev-loop friction becomes real.
+Consequence for the monorepo: `apps/extension` gets Vite/WXT as its local toolchain while
+the rest of the repo stays pure Bun. Shared code (`@atlcli/core` browser entry,
+`@atlcli/confluence`) is consumed as workspace source — isomorphism for those packages
+remains enforced by the existing `check:browser` gate; the WXT bundle gets its own
+output-scan check (Task 6).
 
-**Rejected alternative:** WXT (nice DX, auto-manifest, HMR) — deferred; adopting it later
-is a build-layer swap, not an architecture change.
+### 2.2 UI stack: React in popup/side panel (decision F1 ✅ 2026-07-14)
 
-### 2.2 UI stack: Preact + htm (no JSX build step) — decision F1, see §8
+**Decision (Björn, 2026-07-14):** **React** for the side panel/popup UI (WXT's React
+template). Forward-looking rationale: a later phase may add an inline chat UI for the
+agent overlay (Phase 3), where **CopilotKit-UI** on top of React is the candidate —
+Preact/vanilla would block that path.
 
-Panel UI needs lists, progress states and a template picker in specs 003–005 — beyond
-comfortable vanilla-DOM territory, but React (~45 KB) is oversized for a side panel.
-**Proposal: Preact (~4 KB)**. Final call is open question F1.
+**Explicit constraint:** no remote-iframe UI. Some extensions render their panel UI from
+a remote origin via iframe; this extension renders everything from bundled, local assets
+only — consistent with the privacy story ("nothing leaves the browser") and the CSP.
 
 ### 2.3 Extension surfaces and message protocol
 
 ```
 apps/extension/
-  manifest.json           # MV3, side_panel, offscreen, host_permissions
-  src/
+  wxt.config.ts           # WXT config: manifest fields (§ below), React module
+  entrypoints/
     background.ts         # service worker: routing, offscreen lifecycle mgmt
     sidepanel/
       index.html
-      main.ts(x)          # panel UI entry
+      main.tsx            # React panel entry
     offscreen/
       index.html
       main.ts             # WASM host (typst.ts lives here from 005 on)
+  utils/
     messages.ts           # typed message protocol (discriminated unions)
-  scripts/build.ts
-  package.json            # name: @atlcli/extension, private
-  tsconfig.json           # DOM + chrome types, extends root config
+  package.json            # name: @atlcli/extension, private (wxt, react deps)
+  tsconfig.json           # extends WXT's generated config
 ```
 
-Manifest core (normative):
+WXT generates `manifest.json` from `wxt.config.ts`; the following fields are **normative**
+regardless of generator (asserted by the Task 2 test against the built output):
 
 ```jsonc
 {
@@ -120,10 +125,14 @@ Manifest core (normative):
 ### 2.4 Monorepo wiring
 
 - Root `package.json` workspaces already cover `apps/*` — no change needed.
-- Turbo: `build` task for `apps/extension` with `dist/**` outputs; depends on `^build`.
-- `scripts/check-browser-build.ts` (from 001) gains the three extension entrypoints, so a
-  stray Node import in extension code turns CI red like everywhere else.
-- Typecheck: extension tsconfig included in root `bun run typecheck` (add `@types/chrome`).
+- Turbo: `build` task for `apps/extension` with `.output/**` outputs; depends on `^build`.
+- Isomorphism gate: shared packages stay covered by `scripts/check-browser-build.ts`
+  (001). The extension bundle itself is built by Vite, so Task 6 adds an **output scan**
+  over `.output/chrome-mv3/**/*.js` asserting zero `node:`/`bun:` specifiers — same
+  belt-and-suspenders idea, applied to the WXT artifact.
+- Typecheck: extension workspace typechecks via its own `tsc --noEmit` (WXT-generated
+  config, `@types/chrome` via WXT); wired into the root `typecheck` flow through Turbo so
+  CI covers it.
 
 ---
 
@@ -132,18 +141,18 @@ Manifest core (normative):
 > AC = acceptance criteria, each objectively checkable. Tasks marked **[E2E: user]** need
 > Björn to load the unpacked extension in Chrome — coordinate before starting those checks.
 
-### Task 1 — Workspace scaffold + build script
+### Task 1 — Workspace scaffold (WXT + React)
 
-- [ ] `apps/extension` exists per §2.3 layout; `package.json` (`@atlcli/extension`, private) with deps on `@atlcli/core`, `@atlcli/confluence`
-- [ ] `scripts/build.ts` bundles background/sidepanel/offscreen entries (`bun build --target=browser`) and copies manifest + HTML + placeholder icons to `dist/`
-- [ ] `bun run --cwd apps/extension build` exits 0; `dist/` contains manifest.json, background.js, sidepanel/, offscreen/
-- [ ] Turbo `build` task wired; root `bun run build` still green
-- [ ] `bun run typecheck` green with extension sources included (`@types/chrome` installed)
+- [ ] `apps/extension` scaffolded with WXT (React module) per §2.3 layout; `package.json` (`@atlcli/extension`, private) with deps on `@atlcli/core`, `@atlcli/confluence`
+- [ ] `wxt.config.ts` declares the §2.3 manifest fields; background/sidepanel/offscreen entrypoints exist
+- [ ] `bun run --cwd apps/extension build` (`wxt build`) exits 0; `.output/chrome-mv3/` contains manifest.json, background, sidepanel, offscreen assets
+- [ ] `wxt` dev mode starts (`bun run --cwd apps/extension dev`) — dev-loop for later E2E sessions
+- [ ] Turbo `build` task wired; root `bun run build` still green; extension typecheck wired into CI
 
 ### Task 2 — Manifest + CSP correctness
 
 - [ ] `manifest.json` matches §2.3 (MV3, side_panel, offscreen, storage, tabs, host_permissions `*://*.atlassian.net/*`, CSP with `wasm-unsafe-eval`)
-- [ ] A manifest validation test parses `dist/manifest.json` and asserts the normative fields (guards against build-script copy regressions)
+- [ ] A manifest validation test parses `.output/chrome-mv3/manifest.json` and asserts the normative fields (guards against WXT config/upgrade regressions)
 - [ ] No `unsafe-eval` (only `wasm-unsafe-eval`) — asserted by the same test
 
 ### Task 3 — Message protocol + service worker
@@ -156,7 +165,7 @@ Manifest core (normative):
 
 - [ ] Side panel renders: extension name/version, a status line ("no Atlassian page detected" placeholder for 003), and a "Ping" debug button that round-trips through the service worker and displays `pong`
 - [ ] Panel opens via the extension action click (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`)
-- [ ] UI stack per decision F1; no inline scripts (MV3 CSP forbids them) — all JS from bundled files
+- [ ] React panel (decision F1); no inline scripts (MV3 CSP forbids them) and **no remote-loaded UI/iframes** — all JS from bundled files
 
 ### Task 5 — Offscreen WASM smoke test
 
@@ -166,14 +175,15 @@ Manifest core (normative):
 
 ### Task 6 — CI gate extension
 
-- [ ] `scripts/check-browser-build.ts` includes the three extension entrypoints; `bun run check:browser` green
-- [ ] Negative proof retained: seeding `node:os` into `background.ts` fails `check:browser` naming the entrypoint (fixture test, same pattern as 001 Task 6)
+- [ ] Output scan over `.output/chrome-mv3/**/*.js`: zero `node:`/`bun:` specifiers, zero references to remote script origins (script/`import` from http(s) URLs) — wired as a post-build check in CI
+- [ ] Negative proof: seeding `node:os` into an entrypoint fails the scan naming the file (fixture test, same spirit as 001 Task 6)
+- [ ] Shared packages remain covered by the existing `bun run check:browser` (unchanged)
 
 ### Task 7 — Manual E2E: load unpacked **[E2E: user]**
 
 Joint session — I cannot drive Björn's Chrome:
 
-- [ ] `chrome://extensions` → Load unpacked → `apps/extension/dist` loads with **zero errors/warnings** on the extensions page
+- [ ] `chrome://extensions` → Load unpacked → `apps/extension/.output/chrome-mv3` loads with **zero errors/warnings** on the extensions page
 - [ ] Clicking the toolbar action opens the side panel on any tab
 - [ ] Ping and WASM smoke test succeed from the panel (visible results)
 - [ ] Service worker console (inspect view) shows no errors; offscreen document appears in `chrome://extensions` inspect list while active
@@ -200,9 +210,10 @@ Joint session — I cannot drive Björn's Chrome:
 1. **Offscreen document API churn.** `chrome.offscreen` reasons/lifetime semantics have shifted across Chrome versions; pin minimum Chrome version in the manifest (`minimum_chrome_version: "116"` — sidePanel API baseline) and verify against Björn's actual Chrome in Task 7.
 2. **Side panel UX constraints.** Side panel width is user-controlled and narrow; the 004/005 UIs must be designed for ~320–400 px. Skeleton should already use a narrow-first layout.
 3. **`*.atlassian.net` only.** DC/Server instances live on arbitrary domains — out of scope for the PoC (FAHRPLAN scopes Cloud); revisit host_permissions strategy (optional_host_permissions + user grant) post-PoC.
-4. **Bun as extension bundler.** `bun build` lacks HTML-entry awareness (we copy HTML manually and reference hashed-free JS names). Acceptable for PoC; if asset graphs grow (fonts/WASM in 005), the build script grows with them — contained in one file.
+4. **Second toolchain (Vite via WXT) in a Bun-pure repo.** Accepted cost of the WXT decision; contained inside `apps/extension`. Watch for Bun-workspace/Vite resolution quirks when importing `@atlcli/*` source packages — if the browser `exports` condition isn't picked up by Vite automatically, configure `resolve.conditions` explicitly (note for Task 1).
+5. **Large static assets (005: WASM + fonts) under WXT/Vite** need the `public/` passthrough rather than module imports — flagged here so 005 doesn't fight the bundler.
 
 ### Decisions log
 
-- **F1 — panel UI stack**: ❓ open (proposal: Preact + htm; alternatives: vanilla TS, React). Decide before Task 4.
-- **F2 — build tooling**: ✅ proposed plain `bun build` script (§2.1); revisit only on real dev-loop pain.
+- **F1 — panel UI stack**: ✅ (Björn, 2026-07-14) React (WXT React module); motivation: future agent-chat UI (Phase 3) with CopilotKit-UI as candidate. Explicitly no remote-iframe UI.
+- **F2 — build tooling**: ✅ (Björn, 2026-07-14) WXT as core framework; plain-bun-build alternative rejected.

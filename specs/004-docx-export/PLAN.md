@@ -87,10 +87,13 @@ Score both engines on:
 | Header/footer placeholder replacement | Scroll parity requirement |
 
 **Exit criteria:** an engine is viable iff it can (a) replace text placeholders in body
-*and* header/footer, (b) embed images without paid modules or with an acceptable license
-cost (Björn decides), (c) inject raw OOXML for code runs/callouts. Decision + evidence →
-`engine-decision.md`. Expected winner per research: `docx-templates` (MIT); the spike
-verifies rather than assumes.
+*and* header/footer, (b) embed images **without paid modules** — constraint fixed by
+Björn (2026-07-14): docxtemplater is only used in its free version; if its paid image
+module were the missing piece, we build the image insertion ourselves (raw OOXML +
+relationship parts) rather than license PRO — (c) inject raw OOXML for code runs/callouts.
+Decision + evidence → `engine-decision.md`; the final pick is Björn's call at the Task 1
+gate based on which variant "feels better" in the spike. Expected winner per research:
+`docx-templates` (MIT); the spike verifies rather than assumes.
 
 ### 2.2 Placeholder resolution layer
 
@@ -237,5 +240,5 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ### Decisions log
 
-- **F1 — templating engine**: ❓ open — decided by Task 1 spike + Björn (license). 
+- **F1 — templating engine**: ❓ open — decided by Björn at the Task 1 gate from spike evidence. **Constraint fixed (2026-07-14): free/MIT only; no docxtemplater PRO purchase — missing image capability would be self-built.**
 - **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget.
