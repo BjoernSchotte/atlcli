@@ -164,41 +164,42 @@ regardless of generator (asserted by the Task 2 test against the built output):
 
 ### Task 1 — Workspace scaffold (WXT + React)
 
-- [ ] `apps/extension` scaffolded with WXT (React module) per §2.3 layout; `package.json` (`@atlcli/extension`, private) with deps on `@atlcli/core`, `@atlcli/confluence`
-- [ ] `wxt.config.ts` declares the §2.3 manifest fields; background/sidepanel/offscreen entrypoints exist
-- [ ] `bun run --cwd apps/extension build` (`wxt build`) exits 0; `.output/chrome-mv3/` contains manifest.json, background, sidepanel, offscreen assets
-- [ ] `wxt` dev mode starts (`bun run --cwd apps/extension dev`) — dev-loop for later E2E sessions
-- [ ] Turbo `build` task wired; root `bun run build` still green; extension typecheck wired into CI
+- [x] `apps/extension` scaffolded with WXT (React module) per §2.3 layout; `package.json` (`@atlcli/extension`, private) with deps on `@atlcli/core`, `@atlcli/confluence`
+- [x] `wxt.config.ts` declares the §2.3 manifest fields; background/sidepanel/offscreen entrypoints exist
+- [x] `bun run --cwd apps/extension build` (`wxt build`) exits 0; `.output/chrome-mv3/` contains manifest.json, background, sidepanel, offscreen assets
+- [x] `wxt` dev mode starts (`bun run --cwd apps/extension dev`) — dev-loop for later E2E sessions <!-- dev server boots ("Started dev server @ :3000" + builds chrome-mv3-dev); only the automatic Chrome launch fails in this headless env (Task 7 domain) -->
+- [x] Turbo `build` task wired; root `bun run build` still green; extension typecheck wired into CI
 
 ### Task 2 — Manifest + CSP correctness
 
-- [ ] `manifest.json` matches §2.3 (MV3, side_panel, offscreen, storage, tabs, host_permissions `*://*.atlassian.net/*`, CSP with `wasm-unsafe-eval`)
-- [ ] A manifest validation test parses `.output/chrome-mv3/manifest.json` and asserts the normative fields (guards against WXT config/upgrade regressions)
-- [ ] No `unsafe-eval` (only `wasm-unsafe-eval`) — asserted by the same test
+- [x] `manifest.json` matches §2.3 (MV3, side_panel, offscreen, storage, tabs, host_permissions `*://*.atlassian.net/*`, CSP with `wasm-unsafe-eval`) <!-- deviation: side_panel.default_path is "sidepanel.html" (WXT flattens dir/index.html to <name>.html) rather than the literal "sidepanel/index.html" — the emitted path must point at the file WXT actually produces or Chrome errors; test asserts a real .html path -->
+- [x] A manifest validation test parses `.output/chrome-mv3/manifest.json` and asserts the normative fields (guards against WXT config/upgrade regressions)
+- [x] No `unsafe-eval` (only `wasm-unsafe-eval`) — asserted by the same test
 
 ### Task 3 — Message protocol + service worker
 
-- [ ] `messages.ts` defines the typed protocol (`ping`, `wasm-smoke` at minimum) with request/response pairing (correlation id or `chrome.runtime.sendMessage` response callback)
-- [ ] `background.ts` handles `ping` → `pong`; unit test for the pure router logic (extract routing into a testable function — functional core, imperative shell)
-- [ ] `ensureOffscreen()` implemented: creates the offscreen document once, reuses it, survives double-invocation (unit test with mocked `chrome.offscreen`)
+- [x] `messages.ts` defines the typed protocol (`ping`, `wasm-smoke` at minimum) with request/response pairing (correlation id or `chrome.runtime.sendMessage` response callback)
+- [x] `background.ts` handles `ping` → `pong`; unit test for the pure router logic (extract routing into a testable function — functional core, imperative shell)
+- [x] `ensureOffscreen()` implemented: creates the offscreen document once, reuses it, survives double-invocation (unit test with mocked `chrome.offscreen`)
 
 ### Task 4 — Side panel skeleton
 
-- [ ] Side panel renders: extension name/version, a status line ("no Atlassian page detected" placeholder for 003), and a "Ping" debug button that round-trips through the service worker and displays `pong`
-- [ ] Panel opens via the extension action click (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`)
-- [ ] React panel (decision F1); no inline scripts (MV3 CSP forbids them) and **no remote-hosted UI** — all UI assets from bundled files (bundled offscreen/sandbox documents remain allowed)
+- [ ] Side panel renders: extension name/version, a status line ("no Atlassian page detected" placeholder for 003), and a "Ping" debug button that round-trips through the service worker and displays `pong` <!-- implemented (App.tsx: name/version from getManifest, status line, Ping button → sendMessage → pong); the live SW round-trip requires Chrome — verified in Task 7 -->
+- [ ] Panel opens via the extension action click (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`) <!-- setPanelBehavior({openPanelOnActionClick:true}) implemented in background.ts; actual open behavior is a Chrome runtime check (Task 7) -->
+- [x] React panel (decision F1); no inline scripts (MV3 CSP forbids them) and **no remote-hosted UI** — all UI assets from bundled files (bundled offscreen/sandbox documents remain allowed) <!-- React 19; sidepanel.html loads only a bundled module script; output scan asserts zero remote origins -->
 
 ### Task 5 — Offscreen WASM smoke test
 
-- [ ] Offscreen document loads and instantiates a minimal inline WASM module (e.g. a hand-written 8-byte-plus add function, no external dependency) on receiving `wasm-smoke`, returns the computed result
-- [ ] Side panel debug section triggers `wasm-smoke` end-to-end: panel → SW → offscreen → SW → panel; result rendered
-- [ ] Failure path: if WASM instantiation throws, the error message (not a hang) reaches the panel
+- [x] Offscreen document loads and instantiates a minimal inline WASM module (e.g. a hand-written 8-byte-plus add function, no external dependency) on receiving `wasm-smoke`, returns the computed result <!-- inline add module (utils/wasm-smoke.ts) instantiated + result unit-tested; offscreen handler (offscreen/main.ts) answers `offscreen:wasm-add`; document-load in Chrome is confirmed in Task 7 -->
+- [ ] Side panel debug section triggers `wasm-smoke` end-to-end: panel → SW → offscreen → SW → panel; result rendered <!-- full live round-trip requires Chrome (Task 7); the WASM-smoke button + result rendering + the SW/offscreen wiring are implemented -->
+- [x] Failure path: if WASM instantiation throws, the error message (not a hang) reaches the panel <!-- runWasmAdd rejects on invalid bytes (tested); routeMessage captures it into an error response (tested); panel renders `error: <msg>` -->
+
 
 ### Task 6 — CI gate extension
 
-- [ ] Output scan over `.output/chrome-mv3/**/*.js`: zero `node:`/`bun:` specifiers, zero references to remote script origins (script/`import` from http(s) URLs) — wired as a post-build check in CI
-- [ ] Negative proof: seeding `node:os` into an entrypoint fails the scan naming the file (fixture test, same spirit as 001 Task 6)
-- [ ] Shared packages remain covered by the existing `bun run check:browser` (unchanged)
+- [x] Output scan over `.output/chrome-mv3/**/*.js`: zero `node:`/`bun:` specifiers, zero references to remote script origins (script/`import` from http(s) URLs) — wired as a post-build check in CI <!-- scripts/check-output-build.ts + CI step `check:extension-output`; also scans .html for remote <script src> -->
+- [x] Negative proof: seeding `node:os` into an entrypoint fails the scan naming the file (fixture test, same spirit as 001 Task 6)
+- [x] Shared packages remain covered by the existing `bun run check:browser` (unchanged)
 
 ### Task 7 — Manual E2E: load unpacked **[E2E: user]**
 
