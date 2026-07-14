@@ -53,6 +53,44 @@ describe("ensureOffscreen", () => {
     expect(state.createCalls).toBe(1);
   });
 
+  it("does not create a second document when a stale getContexts resolves after creation (single-flight)", async () => {
+    // Regression (finding 4): with the old "guard-after-getContexts" design, a
+    // second caller whose getContexts resolves EMPTY only *after* the first
+    // caller already created the document would create a duplicate. The
+    // single-flight promise makes the second caller await the first operation
+    // and never run its own getContexts.
+    let releaseStale: (v: unknown[]) => void = () => {};
+    const stale = new Promise<unknown[]>((r) => {
+      releaseStale = r;
+    });
+    let getContextsCalls = 0;
+    const state = { createCalls: 0 };
+    const chrome: OffscreenChrome = {
+      runtime: {
+        getURL: (p) => p,
+        getContexts: async () => {
+          getContextsCalls += 1;
+          // First caller: none exist. Any later caller: a STALE empty snapshot
+          // that only resolves after the first create has completed.
+          return getContextsCalls === 1 ? [] : stale;
+        },
+      },
+      offscreen: {
+        createDocument: async () => {
+          state.createCalls += 1;
+        },
+      },
+    };
+
+    const a = ensureOffscreen(chrome);
+    const b = ensureOffscreen(chrome);
+    await a; // first caller creates the document
+    releaseStale([]); // the stale empty getContexts result arrives now
+    await b;
+
+    expect(state.createCalls).toBe(1);
+  });
+
   it("passes the WORKERS reason and a justification", async () => {
     const captured: { reasons?: string[]; justification?: string } = {};
     const chrome: OffscreenChrome = {
