@@ -1,6 +1,6 @@
 # DOCX Export (Headline) — Customer Word Template + Scroll Placeholder Compatibility
 
-Status: **Planned**
+Status: **In progress** (2026-07-16 — Task 1 spike done + engine decided, Task 2 done; Tasks 3–5 next. F1 ✅ docxtemplater free; images deferred to a follow-up task ✅.)
 
 Spec ID: `004-docx-export`
 Depends on: `003-page-detection-read-path` · `001-browser-ready-core` Task 8 (`specs/001-browser-ready-core/scroll-placeholder-mapping.md` — the normative placeholder table)
@@ -18,10 +18,13 @@ the side panel (no WASM, no offscreen document needed — templating libs are pl
 
 Two deliverables interleave:
 
-1. **The engine spike (decides a license question):** `docx-templates` (MIT) vs
-   `docxtemplater` (image embedding is a paid PRO module). Both implement the same
-   paradigm as atlcli's existing Python `docxtpl` path. The spike renders the *same
-   fixture page through both* and produces a written decision.
+1. **The engine spike (DONE — decision made):** `docx-templates` (MIT) vs
+   `docxtemplater` (free). **Outcome (2026-07-16):** `docx-templates` is ruled out for the
+   side-panel context — it evaluates template JS via `new Function`/`eval`, which our
+   MV3 CSP (`script-src 'self' 'wasm-unsafe-eval'`, no `'unsafe-eval'`, verified against
+   the built manifest) forbids; its MIT-native image support is itself an eval-gated
+   command. **Chosen: `docxtemplater` free tier** (MV3-safe, `{@rawXml}` paragraph-level
+   injection, structured errors, all-MIT with PizZip elected MIT). See `engine-decision.md`.
 2. **The product path:** template upload + placeholder scan UI, placeholder resolution per
    the 001 mapping table, ADF/storage → intermediate export model → templating engine,
    images fetched as blobs and embedded, Word-native TOC/heading-style support.
@@ -41,11 +44,17 @@ Quality proofs from EXPORT-QUALITY §7 that belong in this spike (cheap, visible
 - Headings emit the **`Scroll Heading 1–6` / template heading styles** so a native Word
   TOC field in the template populates on open (`w:updateFields` set — parity with Scroll,
   see EXPORT-QUALITY §2: this is the ceiling, not a bug).
-- Images: attachment references resolved via session-auth fetch → embedded at correct
-  intrinsic size (capped to page width).
 - Callouts (info/note/warning/tip) render as styled single-cell tables; tables, lists,
   code blocks (colored via Shiki) render correctly.
 - Engine decision documented in `engine-decision.md` in this spec dir.
+
+**Image handling deferred to a follow-up (Björn, 2026-07-16):** v1 DOCX export ships
+**without embedded images**. Image references produce a report line ("image skipped —
+embedding not yet available") and are omitted from the body, not rendered broken. The
+self-built OOXML image module (~1 day; relationship/content-type parts, EMU sizing;
+prototyped in `spike/src/ooxml.ts`) becomes its own follow-up task **after** this spec's
+export flow is proven. Rationale: images are orthogonal to the template/placeholder/body
+core that this PoC must prove, and deferring them de-risks and shortens 004.
 
 ### Non-goals
 
@@ -170,11 +179,11 @@ trust surface and 006's measurement hook.
 
 ### Task 1 — Engine spike + decision **[decision gate]**
 
-- [ ] Spike harness renders the §2.1 fixture through **both** engines (spike code under `specs/004-docx-export/spike/`, allowed to be throwaway)
-- [ ] All six criteria scored with evidence (output .docx files kept next to the spike); **image embedding exercised hands-on in both free tiers** — no docs-only assessment
-- [ ] If an engine would need a self-built OOXML image module to compete: effort estimated and recorded as a cost item (per §2.1) — not built in the spike
-- [ ] `engine-decision.md` written: winner, license consequence, cost items, raw-XML injection recipe for the winner
-- [ ] Decision reviewed with Björn (license/money question is his call) before Task 3 builds on it
+- [x] Spike harness renders the §2.1 fixture through **both** engines (`specs/004-docx-export/spike/`, own package.json/lock outside the workspace globs — root install/test unaffected)
+- [x] All six criteria scored with evidence (output .docx verified at the XML level by `spike/verify-outputs.ts`, `xmllint`-validated); **image embedding exercised hands-on in both free tiers**
+- [x] Self-built OOXML image module effort estimated (~1 day) + prototyped in `spike/src/ooxml.ts` — recorded as a cost item; also surfaced the decisive MV3-CSP/`eval` finding that rules out docx-templates
+- [x] `engine-decision.md` written: verdict, license consequence, cost items, raw-XML recipe for the winner
+- [x] Decision made with Björn (2026-07-16): docxtemplater free; images deferred (see Decisions log)
 
 ### Task 2 — Intermediate export model (isomorphic, in `packages/confluence`)
 
@@ -196,14 +205,15 @@ trust surface and 006's measurement hook.
 - [ ] SimpleDateFormat subset (`yyyy`, `MM`, `dd`, `HH`, `mm`) + fallback behavior tested
 - [ ] Unsupported/never placeholders → empty string + report entries (never literal `$scroll.*` in output — pinning test)
 
-### Task 5 — Body serialization + export flow
+### Task 5 — Body serialization + export flow (docxtemplater free)
 
-- [ ] `$scroll.content` replaced with serialized blocks; heading style mapping incl. fallback chain tested against a template with and without `Scroll Heading` styles
-- [ ] Images embedded via session fetch (mock-fetch integration test asserts `credentials: "include"` on attachment downloads); failed image → placeholder text + report line, export still succeeds
+- [ ] `$scroll.content` replaced with serialized `ExportBlock[]` OOXML via docxtemplater `{@rawXml}`; heading style mapping incl. fallback chain tested against a template with and without `Scroll Heading` styles
+- [ ] `$scroll.*` preprocessor (engine-agnostic; run-normalisation so placeholders split across `<w:r>` runs are merged before replacement) resolves all non-content placeholders in body **and** header/footer parts
+- [ ] Images: **deferred (v1)** — an image block emits NO OOXML image and adds a report line ("image skipped — embedding not yet available"); export still succeeds (pinning test: output has no dangling relationship, no `$scroll.` literal, report lists each skipped image)
 - [ ] Callout boxes as styled 1×1 tables (background + left accent border + title); code blocks via Shiki colored runs — both verified by unzipping the output in tests and asserting OOXML landmarks
 - [ ] `w:updateFields` set in output `settings.xml` (TOC populates on open)
 - [ ] Export triggers a browser download `"<page-title>.docx"`; duration measured and shown in report
-- [ ] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs
+- [ ] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs, and (docxtemplater) throws no template error on the fixture template
 
 ### Task 6 — Stretch: mermaid diagrams
 
@@ -216,7 +226,7 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 - [ ] Upload a real mayflower Word template; scan output matches expectation
 - [ ] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt
-- [ ] Callouts, tables, lists, code (colored), images all visually correct in Word
+- [ ] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded)
 - [ ] A template using an unsupported placeholder exports with empty value + report warning
 - [ ] Duration for the ~2,000-word page recorded (input to 006)
 
@@ -232,10 +242,10 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ## 5. Definition of done
 
-- Tasks 1–5 + 7 checked (6 checked or explicitly descoped with fallback pinned).
-- `engine-decision.md` committed; license question answered by Björn.
-- E2E: a real DOCSY page exported through a real mayflower template opens clean in Word.
-- Export report shows no silent failures; unsupported placeholders surfaced.
+- Tasks 1–5 + 7 checked (6 = mermaid, and image embedding, explicitly deferred as follow-up tasks with the skip behavior pinned).
+- `engine-decision.md` committed; engine + image decisions made by Björn.
+- E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1).
+- Export report shows no silent failures; unsupported placeholders + skipped images surfaced.
 - Test resources cleaned up (test pages deleted).
 
 ## 6. Risks and open questions
@@ -249,5 +259,6 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ### Decisions log
 
-- **F1 — templating engine**: ❓ open — decided by Björn at the Task 1 gate from spike evidence. **Constraints fixed (2026-07-14/15): no docxtemplater PRO; image embedding is a mandatory spike criterion; a potential self-built image module is a cost item in the decision, not a commitment.**
-- **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget.
+- **F1 — templating engine**: ✅ (Björn, 2026-07-16) **docxtemplater free**. `docx-templates` ruled out by our MV3 CSP (uses `eval`/`new Function`; CSP has no `'unsafe-eval'` — verified against the built manifest). Option C (no-engine) was the close alternative; A chosen for robust zip/part handling + structured errors against arbitrary customer templates. All-MIT (docxtemplater core + PizZip **elected MIT** from its `MIT OR GPL-3.0` dual license + xmldom).
+- **F3 — image embedding**: ✅ (Björn, 2026-07-16) **deferred to a follow-up task**. v1 export omits images with a report line; the ~1-day self-built OOXML image module (prototyped in `spike/src/ooxml.ts`) is a separate task after the export flow is proven.
+- **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget. (Likely deferred alongside images, since mermaid embedding also needs the image module.)
