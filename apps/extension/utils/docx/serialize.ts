@@ -38,6 +38,15 @@ export interface SerializeContext {
   styleNames: Map<string, string>;
 }
 
+/** {@link SerializeContext} plus the document-wide heading promotion offset. */
+interface InternalContext extends SerializeContext {
+  /**
+   * Subtracted from every heading's source `level` so the SHALLOWEST heading in
+   * the document maps to Heading 1 ("promotion"; see {@link computeHeadingOffset}).
+   */
+  headingOffset: number;
+}
+
 export interface SerializeResult {
   xml: string;
   notes: ExportNote[];
@@ -152,6 +161,49 @@ function placeMarker(frag: string, markerRun: string): string {
 // Blocks
 // ---------------------------------------------------------------------------
 
+/**
+ * Heading-level normalization ("promotion"), matching Scroll Office.
+ *
+ * Confluence pages usually omit H1 (the page title is the implicit Heading 1)
+ * and start their body headings at H2. Preserving levels would leave the top
+ * TOC level empty, so Scroll promotes the SHALLOWEST heading in the document to
+ * Heading 1. We do the same: `offset = minLevel - 1`, and every heading's
+ * effective level is `block.level - offset` (shallowest → 1).
+ *
+ * The scan spans the WHOLE block tree — headings nested in callouts,
+ * blockquotes, list items and table cells count — so a single document-wide
+ * offset governs every heading. A document with no headings yields offset 0
+ * (no-op); one already starting at H1 (minLevel 1) also yields offset 0.
+ */
+function computeHeadingOffset(blocks: ExportBlock[]): number {
+  const min = minHeadingLevel(blocks);
+  return min === Infinity ? 0 : min - 1;
+}
+
+/** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
+function minHeadingLevel(blocks: ExportBlock[]): number {
+  let min = Infinity;
+  for (const block of blocks) {
+    switch (block.type) {
+      case "heading":
+        if (block.level < min) min = block.level;
+        break;
+      case "callout":
+      case "blockquote":
+        min = Math.min(min, minHeadingLevel(block.content));
+        break;
+      case "list":
+        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
+        break;
+      case "table":
+        for (const row of block.rows)
+          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
+        break;
+    }
+  }
+  return min;
+}
+
 /** Serialize a block list into an OOXML fragment + report notes. */
 export async function serializeBlocks(
   blocks: ExportBlock[],
@@ -159,20 +211,27 @@ export async function serializeBlocks(
 ): Promise<SerializeResult> {
   const notes: ExportNote[] = [];
   const parts: string[] = [];
+  const internal: InternalContext = { ...ctx, headingOffset: computeHeadingOffset(blocks) };
   for (const block of blocks) {
-    parts.push(await serializeBlock(block, ctx, notes, 0));
+    parts.push(await serializeBlock(block, internal, notes, 0));
   }
   return { xml: parts.join(""), notes };
 }
 
 async function serializeBlock(
   block: ExportBlock,
-  ctx: SerializeContext,
+  ctx: InternalContext,
   notes: ExportNote[],
   depth: number
 ): Promise<string> {
   switch (block.type) {
     case "heading": {
+      // Promote to match Scroll Office: the shallowest heading in the document
+      // becomes Heading 1 (see computeHeadingOffset). The EFFECTIVE level drives
+      // BOTH the mapped style id and the outline level.
+      const effective = block.level - ctx.headingOffset;
+      // Clamp the style level to 1..6 (the range template heading styles cover).
+      const styleLevel = Math.max(1, Math.min(6, effective));
       // Stamp an explicit outline level IN ADDITION to the template style id.
       // `TOC \o "1-3"` collects paragraphs by OUTLINE LEVEL, not by style name,
       // so a template whose only heading style is a custom name (e.g.
@@ -180,9 +239,9 @@ async function serializeBlock(
       // the visual look, the outline level supplies the TOC membership (spec 004
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
-      const outlineLvl = Math.max(0, Math.min(8, block.level - 1));
+      const outlineLvl = Math.max(0, Math.min(8, effective - 1));
       return paragraph(serializeInline(block.content), {
-        styleId: resolveHeadingStyleId(ctx.styleNames, block.level),
+        styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
     }
@@ -251,7 +310,7 @@ function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
 /** Serialize child blocks, joining their fragments. */
 async function serializeChildren(
   blocks: ExportBlock[],
-  ctx: SerializeContext,
+  ctx: InternalContext,
   notes: ExportNote[],
   depth: number
 ): Promise<string> {
@@ -264,7 +323,7 @@ async function serializeChildren(
 
 async function serializeList(
   list: Extract<ExportBlock, { type: "list" }>,
-  ctx: SerializeContext,
+  ctx: InternalContext,
   notes: ExportNote[],
   level: number
 ): Promise<string> {
@@ -282,7 +341,7 @@ async function serializeListItem(
   ordered: boolean,
   index: number,
   level: number,
-  ctx: SerializeContext,
+  ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
   const marker =
@@ -327,7 +386,7 @@ interface Carry {
 
 async function serializeTable(
   rows: TableRow[],
-  ctx: SerializeContext,
+  ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
   // The grid grows as needed: a row's width is the columns carried in by
