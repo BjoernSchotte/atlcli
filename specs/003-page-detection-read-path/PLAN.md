@@ -1,6 +1,6 @@
 # Page Detection + Read Path — Tab URL → Entity → Session-Auth REST → Converter
 
-Status: **Implemented** (2026-07-15 — Tasks 0–4 complete, Codex-reviewed (7 findings fixed). **Session-auth cookie proof E2E-verified with Björn 2026-07-15**: real Cloud page loaded zero-config → 001 risk #5 closed, no fallback ladder needed. Open: logged-out negative check, restricted-page check; table-markup converter bug found in E2E, fix in progress.)
+Status: **Implemented** (2026-07-15 — Tasks 0–4 complete, Codex-reviewed (7 findings fixed). **Session-auth cookie proof E2E-verified with Björn 2026-07-15**: real Cloud page loaded zero-config → 001 risk #5 closed, no fallback ladder needed. Open: logged-out negative check, restricted-page check; table-markup converter bug found in E2E and fixed in `ec35c1f` — root cause: leading `<colgroup>` from the modern Cloud editor broke GFM heading-row detection → raw passthrough; colgroup now stripped in preprocessing, 5 regression tests.)
 
 Spec ID: `003-page-detection-read-path`
 Depends on: `001-browser-ready-core` (entity extractor, session auth mode, browser entry — implemented), `002-extension-workspace`
