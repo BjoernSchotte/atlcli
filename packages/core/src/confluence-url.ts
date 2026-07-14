@@ -1,4 +1,5 @@
-import type { DeploymentType, Profile } from "./config.js";
+import type { DeploymentType, Profile } from "./types.js";
+import { extractEntityFromUrl } from "./entity-url.js";
 
 type ConfluenceProfile = Pick<Profile, "baseUrl" | "auth" | "deploymentType">;
 
@@ -20,6 +21,10 @@ function hasConfiguredPath(baseUrl: string): boolean {
  */
 export function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType {
   if (profile.deploymentType) return profile.deploymentType;
+  // Session profiles (browser cookie auth) carry no deployment heuristic of their
+  // own: absent an explicit deploymentType they default to Cloud. A DC browser
+  // session is conceivable but must be made explicit (spec 001 §3.3).
+  if (profile.auth.type === "session") return "cloud";
   if (profile.auth.type === "bearer") return "data-center";
   return hasConfiguredPath(normalizeUrl(profile.baseUrl)) ? "data-center" : "cloud";
 }
@@ -40,7 +45,14 @@ export function buildConfluenceUrl(profile: ConfluenceProfile, path = ""): strin
   return `${baseUrl}/${path.replace(/^\/+/, "")}`;
 }
 
-/** Identify a Confluence page URL belonging to this profile. */
+/**
+ * Identify a Confluence page URL belonging to this profile.
+ *
+ * Reimplemented on top of {@link extractEntityFromUrl} (spec 001 §5.1): the URL
+ * must live under the profile's Confluence base and resolve to a Confluence
+ * entity. Base-origin/path scoping stays here so URLs on other hosts (or the
+ * profile's Jira `/browse/…` paths) are rejected.
+ */
 export function isConfluencePageUrl(profile: ConfluenceProfile, candidate: string): boolean {
   try {
     const base = new URL(getConfluenceBaseUrl(profile));
@@ -52,8 +64,7 @@ export function isConfluencePageUrl(profile: ConfluenceProfile, candidate: strin
       return false;
     }
 
-    const relativePath = url.pathname.slice(basePath.length) || "/";
-    return /^\/(?:spaces|pages|display)\//i.test(relativePath);
+    return extractEntityFromUrl(candidate)?.product === "confluence";
   } catch {
     return false;
   }

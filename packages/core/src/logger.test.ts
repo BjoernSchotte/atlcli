@@ -10,7 +10,7 @@ import {
   generateRequestId,
   redactSensitive,
   isSensitiveKey,
-} from "./logger.js";
+} from "./logger.node.js";
 
 describe("redactSensitive", () => {
   test("redacts token fields", () => {

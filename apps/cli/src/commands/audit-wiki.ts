@@ -1,4 +1,5 @@
 import { ERROR_CODES, OutputOptions, fail, hasFlag, getFlag, output, loadConfig, getActiveProfile } from "@atlcli/core";
+import { assertCliAuthSupported } from "./session-guard.js";
 import {
   findAtlcliDir,
   getAtlcliPath,
@@ -284,6 +285,7 @@ export async function handleAuditWiki(
     if (!profile) {
       fail(opts, 1, ERROR_CODES.VALIDATION, "No active profile. Run 'atlcli auth login' first.");
     }
+    assertCliAuthSupported(profile, opts);
     client = new ConfluenceClient(profile);
   }
 
@@ -1155,6 +1157,7 @@ async function handleFixActions(
     if (!profile) {
       output("Warning: No active profile - skipping API operations", opts);
     } else {
+      assertCliAuthSupported(profile, opts);
       client = new ConfluenceClient(profile);
     }
   }

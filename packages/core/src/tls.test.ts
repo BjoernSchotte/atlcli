@@ -3,7 +3,7 @@ import { writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { buildTlsOptions } from "./tls.js";
+import { buildTlsOptions } from "./tls.node.js";
 import type { Profile } from "./config.js";
 
 function makeProfile(overrides: Partial<Profile> = {}): Profile {

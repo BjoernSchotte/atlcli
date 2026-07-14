@@ -17,6 +17,7 @@ import {
   TemplateResolver,
   TemplateEngine,
 } from "@atlcli/core";
+import { assertCliAuthSupported } from "./session-guard.js";
 import {
   ConfluenceClient,
   markdownToStorage,
@@ -146,6 +147,7 @@ async function getClient(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`." , { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
     return { client, defaults: resolveDefaults(config, profile) };
@@ -1610,6 +1612,7 @@ async function handleOpen(
 
   let url = buildConfluenceUrl(profile, `/pages/${id}`);
   try {
+    assertCliAuthSupported(profile, opts);
     const page = await new ConfluenceClient(profile).getPage(id);
     url = page.url ?? url;
   } catch {
@@ -1684,6 +1687,7 @@ async function handleLinkIssue(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
@@ -1701,6 +1705,7 @@ async function handleLinkIssue(
 
   // Get Jira client and create remote link
   const { JiraClient } = await import("@atlcli/jira");
+  assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
   const input = {
@@ -1763,6 +1768,7 @@ async function handleIssues(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
@@ -1779,6 +1785,7 @@ async function handleIssues(
   // Note: Jira doesn't have a direct way to search by remote link, so we search for issues
   // that mention this page in a project, then filter client-side
   const { JiraClient } = await import("@atlcli/jira");
+  assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
   const globalIdPattern = `atlcli-confluence-${pageId}`;
@@ -1864,6 +1871,7 @@ async function handleUnlinkIssue(
   }
 
   const { JiraClient } = await import("@atlcli/jira");
+  assertCliAuthSupported(profile, opts);
   const jiraClient = new JiraClient(profile);
 
   try {

@@ -1,60 +1,50 @@
-import { Buffer } from "node:buffer";
-import { getKeychainToken } from "./keychain.js";
-import type { Profile } from "./config.js";
+/**
+ * Browser-safe authentication core.
+ *
+ * Holds the pure header-building logic and a non-ASCII-safe base64 helper.
+ * Token resolution (env/keychain/config) is Node-only and lives in
+ * `auth.node.ts`; here it is an injected `TokenResolver` so this module has
+ * zero `node:`/`bun:` imports.
+ */
 
-const KEYCHAIN_SERVICE = "atlcli";
+import type { Profile } from "./types.js";
 
 /**
- * Resolve the authentication token for a profile.
- *
- * Token priority (like jira-cli):
- * 1. Environment variable: ATLCLI_API_TOKEN (highest priority)
- * 2. Mac Keychain: Entry named "atlcli" with account = username
- * 3. Config file: profile.auth.pat or profile.auth.token (lowest priority)
- *
- * @param profile - The profile to resolve the token for
- * @returns The resolved token, or null if not found
+ * Resolves the raw auth token for a profile, or `null` when none is available.
+ * Injected into {@link buildAuthHeader} so the browser and Node builds can
+ * differ in *how* a token is found without changing the header logic.
  */
-export function resolveToken(profile: Profile): string | null {
-  // 1. Environment variable (highest priority)
-  const envToken = process.env.ATLCLI_API_TOKEN;
-  if (envToken) {
-    return envToken;
-  }
+export type TokenResolver = (profile: Profile) => string | null;
 
-  // 2. Mac Keychain
-  if (profile.auth.username) {
-    const keychainToken = getKeychainToken(KEYCHAIN_SERVICE, profile.auth.username);
-    if (keychainToken) {
-      return keychainToken;
-    }
+/**
+ * Base64-encode a string, surviving non-ASCII input.
+ *
+ * `btoa` alone throws on code points > 0xFF (e.g. umlaut e-mails), so we first
+ * UTF-8 encode with `TextEncoder`, then base64 the raw bytes. The result is
+ * byte-for-byte identical to `Buffer.from(input, "utf8").toString("base64")`.
+ */
+export function encodeBase64(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
-
-  // 3. Config file (lowest priority)
-  if (profile.auth.type === "bearer" && profile.auth.pat) {
-    return profile.auth.pat;
-  }
-  if (profile.auth.type === "apiToken" && profile.auth.token) {
-    return profile.auth.token;
-  }
-
-  return null;
+  return btoa(binary);
 }
 
 /**
  * Build the Authorization header for a profile.
  *
- * @param profile - The profile to build the header for
- * @returns The Authorization header value (e.g., "Bearer <token>" or "Basic <encoded>")
- * @throws Error if no token is found
+ * @param profile - The profile to build the header for.
+ * @param resolveToken - Injected token resolver (env/keychain/config in Node).
+ * @returns The Authorization header value (e.g. `Bearer <token>` or `Basic <encoded>`).
+ * @throws Error if the resolver yields no token, or if Basic auth is missing an email.
  */
-export function buildAuthHeader(profile: Profile): string {
+export function buildAuthHeader(profile: Profile, resolveToken: TokenResolver): string {
   const token = resolveToken(profile);
   if (!token) {
-    throw new Error(
-      "No token found. Set ATLCLI_API_TOKEN environment variable, " +
-      "store token in Mac Keychain, or configure token in profile."
-    );
+    throw new Error(`No token resolved for profile '${profile.name}' by the configured token resolver.`);
   }
 
   if (profile.auth.type === "bearer") {
@@ -68,13 +58,5 @@ export function buildAuthHeader(profile: Profile): string {
       "Email is required for Basic auth. Set email in profile or re-run `atlcli auth login`."
     );
   }
-  const encoded = Buffer.from(`${email}:${token}`).toString("base64");
-  return `Basic ${encoded}`;
-}
-
-/**
- * Get the keychain service name used by atlcli.
- */
-export function getKeychainService(): string {
-  return KEYCHAIN_SERVICE;
+  return `Basic ${encodeBase64(`${email}:${token}`)}`;
 }

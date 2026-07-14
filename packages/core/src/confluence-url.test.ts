@@ -72,6 +72,34 @@ describe("Confluence URL handling", () => {
     expect(resolveDeploymentType(value)).toBe("data-center");
   });
 
+  test("session profiles without an explicit deploymentType default to Cloud", () => {
+    const value = profile({
+      baseUrl: "https://example.atlassian.net",
+      deploymentType: undefined,
+      auth: { type: "session" },
+    });
+    expect(resolveDeploymentType(value)).toBe("cloud");
+    expect(getConfluenceBaseUrl(value)).toBe("https://example.atlassian.net/wiki");
+  });
+
+  test("session profiles default to Cloud even when the base URL carries a path", () => {
+    const value = profile({
+      baseUrl: "https://confluence.example.com/confluence",
+      deploymentType: undefined,
+      auth: { type: "session" },
+    });
+    expect(resolveDeploymentType(value)).toBe("cloud");
+  });
+
+  test("session profiles honor an explicit Data Center deploymentType", () => {
+    const value = profile({
+      baseUrl: "https://confluence.example.com/confluence",
+      deploymentType: "data-center",
+      auth: { type: "session" },
+    });
+    expect(resolveDeploymentType(value)).toBe("data-center");
+  });
+
   test("identifies Cloud and Data Center page URLs for a profile", () => {
     const cloud = profile();
     const dataCenter = profile({

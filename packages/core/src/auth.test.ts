@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { resolveToken, buildAuthHeader, getKeychainService } from "./auth.js";
+import { resolveToken, buildAuthHeader, getKeychainService } from "./auth.node.js";
 import type { Profile } from "./config.js";
 
 function createApiTokenProfile(overrides: Partial<Profile["auth"]> = {}): Profile {

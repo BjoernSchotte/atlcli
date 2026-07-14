@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { assertCliAuthSupported } from "./session-guard.js";
 import { basename } from "node:path";
 import {
   ERROR_CODES,
@@ -197,6 +198,7 @@ async function getClient(
       { profile: profileName }
     );
   }
+  assertCliAuthSupported(profile, opts);
   const client = new JiraClient(profile);
   if (withDefaults) {
     return { client, defaults: resolveDefaults(config, profile) };
@@ -811,6 +813,7 @@ async function handleIssueLinkPage(
 
   // Import Confluence client to get page details
   const { ConfluenceClient } = await import("@atlcli/confluence");
+  assertCliAuthSupported(profile, opts);
   const confluenceClient = new ConfluenceClient(profile);
   const jiraClient = new JiraClient(profile);
 
@@ -1850,6 +1853,7 @@ async function handleTimerStop(
       `Profile "${timer.profile}" not found. The timer was started with this profile.`
     );
   }
+  assertCliAuthSupported(profile, opts);
   const client = new JiraClient(profile);
 
   // Log the worklog
@@ -3239,6 +3243,7 @@ async function handleBulkLinkPage(
   if (!profile) {
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
+  assertCliAuthSupported(profile, opts);
   const confluenceClient = new ConfluenceClient(profile);
 
   // Fetch page details
