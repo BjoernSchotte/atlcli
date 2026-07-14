@@ -12,10 +12,20 @@ import { defineBackground } from "wxt/utils/define-background";
 // resolves the `browser` export condition (PLAN §6 risk 4); the Task 6 output
 // scan then proves this pulls in zero node:/bun: specifiers.
 import { extractEntityFromUrl } from "@atlcli/core";
-import { type OffscreenResponse } from "../utils/messages.js";
+import {
+  type EntityChanged,
+  type EntityDetection,
+  type OffscreenResponse,
+} from "../utils/messages.js";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
+import {
+  detectEntity,
+  initialObserverState,
+  observeTab,
+  type ObserverState,
+} from "../utils/tab-observer.js";
 
 /**
  * Idle-close policy (PLAN §2.3): after 5 minutes with no offscreen request,
@@ -55,6 +65,27 @@ async function runWasmSmoke(a: number, b: number): Promise<number> {
   return res.result;
 }
 
+/**
+ * Resolve the active tab's entity for a `get-current-entity` request (panel
+ * mount). Queries the last-focused window's active tab so the panel gets an
+ * answer without racing the SW's `entity-changed` push (Task 1 AC).
+ */
+async function getCurrentEntity(): Promise<EntityDetection> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const url = tab?.url;
+  return url ? detectEntity(url) : { url: null, entity: null };
+}
+
+/**
+ * Push an `entity-changed` message to the panel (fire-and-forget). The panel may
+ * be closed — `sendMessage` then rejects with "no receiving end"; swallow it.
+ */
+function pushEntityChanged(message: EntityChanged): void {
+  chrome.runtime.sendMessage(message).catch(() => {
+    /* panel not open — nothing to receive; ignore */
+  });
+}
+
 export default defineBackground({
   // Emit `"background": { "type": "module", ... }` in the manifest (PLAN §2.3).
   type: "module",
@@ -71,7 +102,36 @@ export default defineBackground({
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
-    handleExtMessage(message, sendResponse, { runWasmSmoke })
+    handleExtMessage(message, sendResponse, { runWasmSmoke, getCurrentEntity })
   );
+
+  // ---- Tab observation (Task 1) --------------------------------------------
+  // The SW is the canonical observer (PLAN §2.1). The dedup memory lives here in
+  // the imperative shell; all decision logic is the pure `observeTab` core.
+  let observer: ObserverState = initialObserverState();
+  const feed = (url: string | undefined | null): void => {
+    const { state, message } = observeTab(observer, url);
+    observer = state;
+    if (message) pushEntityChanged(message);
+  };
+
+  // Tab switch: resolve the newly-active tab's URL, then observe it.
+  chrome.tabs.onActivated.addListener((activeInfo) => {
+    chrome.tabs
+      .get(activeInfo.tabId)
+      .then((tab) => feed(tab?.url))
+      .catch(() => {
+        /* tab gone before we could read it; ignore */
+      });
+  });
+
+  // URL change (incl. Confluence SPA history navigation): only when the URL
+  // actually changed AND it's the active tab — avoids reacting to background
+  // tabs the panel isn't showing.
+  chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    if (!changeInfo.url) return;
+    if (!tab.active) return;
+    feed(changeInfo.url);
+  });
   },
 });

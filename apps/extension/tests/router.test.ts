@@ -1,8 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { routeMessage, type RouterDeps } from "../utils/router.js";
+import type { EntityDetection } from "../utils/messages.js";
+
+const noEntity: EntityDetection = { url: null, entity: null };
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
+  getCurrentEntity: async () => noEntity,
 };
 
 describe("routeMessage (pure router)", () => {
@@ -25,6 +29,7 @@ describe("routeMessage (pure router)", () => {
           called = true;
           return a + b;
         },
+        getCurrentEntity: async () => noEntity,
       }
     );
     expect(called).toBe(false);
@@ -37,6 +42,7 @@ describe("routeMessage (pure router)", () => {
         runWasmSmoke: async () => {
           throw new Error("instantiate boom");
         },
+        getCurrentEntity: async () => noEntity,
       }
     );
     expect(res).toEqual({
@@ -54,6 +60,7 @@ describe("routeMessage (pure router)", () => {
         runWasmSmoke: async () => {
           throw "plain string";
         },
+        getCurrentEntity: async () => noEntity,
       }
     );
     expect(res).toEqual({
@@ -61,5 +68,17 @@ describe("routeMessage (pure router)", () => {
       ok: false,
       error: "plain string",
     });
+  });
+
+  it("answers get-current-entity with the resolved detection", async () => {
+    const detection: EntityDetection = {
+      url: "https://x.atlassian.net/wiki/spaces/DOCSY/pages/123/Home",
+      entity: { product: "confluence", type: "page", pageId: "123", spaceKey: "DOCSY" },
+    };
+    const res = await routeMessage(
+      { kind: "get-current-entity" },
+      { runWasmSmoke: async (a, b) => a + b, getCurrentEntity: async () => detection }
+    );
+    expect(res).toEqual({ kind: "current-entity", detection });
   });
 });

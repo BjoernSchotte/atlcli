@@ -112,10 +112,11 @@ tested; rendering is the thin shell.
 
 ### Task 1 — Tab observation + entity detection
 
-- [ ] `background.ts` observes `tabs.onActivated` + `tabs.onUpdated` (URL changes only) and sends `entity-changed { url, entity }` using `extractEntityFromUrl`
-- [ ] Panel requests current tab entity on mount (`get-current-entity` message) — no race with SW push
-- [ ] Unit tests: the observation → message logic as pure function over synthetic tab events (mock `chrome.tabs`); duplicate-URL events are de-duplicated (no message storm on SPA-heavy Confluence)
-- [ ] Non-entity URLs and Jira entities produce the correct panel states (state-machine unit tests)
+- [x] `background.ts` observes `tabs.onActivated` + `tabs.onUpdated` (URL changes only) and sends `entity-changed { detection: { url, entity } }` using `extractEntityFromUrl` <!-- background.ts feeds active-tab URLs through the pure `observeTab` core; onUpdated is gated on `changeInfo.url && tab.active`; live SW behavior is Task 5 -->
+- [x] Panel requests current tab entity on mount (`get-current-entity` message) — no race with SW push <!-- panel sends get-current-entity on mount (App.tsx, Task 4); SW answers via router `getCurrentEntity` (queries active tab). SW push + pull both feed the same reducer so a late push can't be lost -->
+- [x] Unit tests: the observation → message logic as pure function over synthetic tab events (mock `chrome.tabs`); duplicate-URL events are de-duplicated (no message storm on SPA-heavy Confluence) <!-- tab-observer.test.ts: dedup of repeated URLs, re-emit on change, no-op on empty URL -->
+- [x] Non-entity URLs and Jira entities produce the correct panel states (state-machine unit tests) <!-- panel-state.test.ts: detected(non-exportable) for Jira, idle for null entity -->
+
 
 ### Task 2 — Session-auth read path
 

@@ -7,7 +7,10 @@ import {
 import type { ExtResponse, OffscreenResponse } from "../utils/messages.js";
 import type { RouterDeps } from "../utils/router.js";
 
-const okRouterDeps: RouterDeps = { runWasmSmoke: async (a, b) => a + b };
+const okRouterDeps: RouterDeps = {
+  runWasmSmoke: async (a, b) => a + b,
+  getCurrentEntity: async () => ({ url: null, entity: null }),
+};
 const okOffscreenDeps: OffscreenListenerDeps = { runWasmAdd: async (a, b) => a + b };
 
 /**
@@ -72,6 +75,7 @@ describe("handleExtMessage (background listener adapter)", () => {
         runWasmSmoke: async () => {
           throw new Error("boom");
         },
+        getCurrentEntity: async () => ({ url: null, entity: null }),
       }
     );
     expect(ret).toBe(true);

@@ -7,12 +7,14 @@
  * wires the real effects (offscreen round-trip) into `RouterDeps` and adapts
  * the result onto `chrome.runtime.onMessage`.
  */
-import type { ExtRequest, ExtResponse } from "./messages.js";
+import type { EntityDetection, ExtRequest, ExtResponse } from "./messages.js";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
   /** Runs the WASM smoke computation (in practice: round-trip to offscreen). */
   runWasmSmoke: (a: number, b: number) => Promise<number>;
+  /** Resolves the active tab's current entity (queries `chrome.tabs`). */
+  getCurrentEntity: () => Promise<EntityDetection>;
 }
 
 /**
@@ -38,6 +40,10 @@ export async function routeMessage(
           error: err instanceof Error ? err.message : String(err),
         };
       }
+    }
+    case "get-current-entity": {
+      const detection = await deps.getCurrentEntity();
+      return { kind: "current-entity", detection };
     }
     default: {
       // Exhaustiveness: adding a request kind without handling it fails typecheck.
