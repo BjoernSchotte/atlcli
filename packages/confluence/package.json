@@ -3,7 +3,12 @@
   "version": "0.6.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": "./src/index.browser.ts",
+    "./node": "./src/index.ts"
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
