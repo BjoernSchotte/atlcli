@@ -266,9 +266,9 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 6 — CI gate
 
-- [ ] `scripts/check-browser-build.ts` implements §6 (four entrypoints, exit-code + specifier scan, named failure output)
-- [ ] `bun run check:browser` green locally; wired into Turbo + `.github/workflows/ci.yml`
-- [ ] Negative proof: temporarily adding `import "node:fs"` to a client makes `check:browser` fail naming the entrypoint and specifier (documented in the script's test or a fixture test)
+- [x] `scripts/check-browser-build.ts` implements §6 (four entrypoints, exit-code + specifier scan, named failure output)
+- [x] `bun run check:browser` green locally; wired into Turbo + `.github/workflows/ci.yml`
+- [x] Negative proof: temporarily adding `import "node:fs"` to a client makes `check:browser` fail naming the entrypoint and specifier (documented in the script's test or a fixture test) — deviation: `node:fs` is silently browser-polyfilled by Bun 1.3.x, so the fixture test seeds `node:os` (the module that broke the clients in §1), which fails the build and is named in the output
 
 ### Task 7 — URL→entity extractor
 

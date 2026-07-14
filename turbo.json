@@ -7,6 +7,15 @@
       "dependsOn": ["^build"],
       "outputs": ["../../dist/**", "dist/**"],
       "inputs": ["src/**/*.ts", "tsconfig.json", "package.json"]
+    },
+    "//#check:browser": {
+      "cache": true,
+      "inputs": [
+        "scripts/check-browser-build.ts",
+        "packages/confluence/src/**/*.ts",
+        "packages/jira/src/**/*.ts",
+        "packages/core/src/**/*.ts"
+      ]
     }
   }
 }
