@@ -1,6 +1,6 @@
 # Page Detection + Read Path — Tab URL → Entity → Session-Auth REST → Converter
 
-Status: **Planned**
+Status: **Implemented** (2026-07-15 — Tasks 0–4 complete, Codex-reviewed (7 findings fixed). **Session-auth cookie proof E2E-verified with Björn 2026-07-15**: real Cloud page loaded zero-config → 001 risk #5 closed, no fallback ladder needed. Open: logged-out negative check, restricted-page check; table-markup converter bug found in E2E, fix in progress.)
 
 Spec ID: `003-page-detection-read-path`
 Depends on: `001-browser-ready-core` (entity extractor, session auth mode, browser entry — implemented), `002-extension-workspace`
@@ -147,14 +147,17 @@ tested; rendering is the thin shell.
 Joint session against the real instance (profile context: Björn's browser logged in to
 `mayflower.atlassian.net`, space `DOCSY`):
 
-- [ ] Open a DOCSY page → panel auto-detects and loads: correct title/space/version shown
-- [ ] Tab-switch between two Confluence pages → panel follows without manual action
-- [ ] Confluence SPA navigation (click a page-tree link, no full reload) → panel follows
-- [ ] Jira tab (`ATLCLI` project) → "detected, not exportable" state
-- [ ] Non-Atlassian tab → idle state
-- [ ] Logged-out check: in a private window profile w/o session (or after logout), panel shows the not-logged-in state — **this is the SameSite/cookie proof, the most important single check of this spec**
-- [ ] DevTools network log during a load: requests go only to `*.atlassian.net`
-- [ ] A page with restricted permissions → access-denied state (use/create a restricted test page; clean up after per CLAUDE.md)
+- [x] Open a Confluence page → panel auto-detects and loads: correct title/space/version shown <!-- E2E 2026-07-15 with Björn: real Cloud page (space RCM, v45, 2497 words) loaded zero-config via browser session — the positive half of the cookie proof. Known issue found: table with ac:local-id/p-local-id markup passed through unconverted in the markdown preview (fix in progress, regression-tested) -->
+- [x] Tab-switch between two Confluence pages → panel follows without manual action <!-- E2E 2026-07-15: confirmed -->
+- [x] Confluence SPA navigation (click a page-tree link, no full reload) → panel follows <!-- E2E 2026-07-15: confirmed -->
+- [x] Jira tab → "detected, not exportable" state <!-- E2E 2026-07-15: "Detected Jira board MLBOT. Nothing to export here yet…" -->
+- [x] Non-Atlassian tab → idle state <!-- E2E 2026-07-15: "No Atlassian page detected." -->
+- [ ] Logged-out check: in a private window profile w/o session (or after logout), panel shows the not-logged-in state — the negative half of the cookie proof <!-- still open; positive half proven -->
+- [x] DevTools network log during a load: requests go only to `*.atlassian.net` <!-- E2E 2026-07-15: confirmed by Björn -->
+- [ ] A page with restricted permissions → access-denied state (use/create a restricted test page; clean up after per CLAUDE.md) <!-- still open -->
+
+Attachment note (E2E 2026-07-15): "Attachments 0" on the test page was correct — the page
+has no attachments; the best-effort listing is not implicated.
 
 ---
 

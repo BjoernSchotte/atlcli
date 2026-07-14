@@ -1,6 +1,6 @@
 # Extension Workspace — MV3 Skeleton for `apps/extension`
 
-Status: **Planned**
+Status: **Implemented** (2026-07-15 — Tasks 1–6 complete, Codex-reviewed (8 findings fixed); Task 7 E2E with Björn passed: load unpacked clean, panel, ping, WASM smoke. Open: SW/offscreen console inspection.)
 
 Spec ID: `002-extension-workspace`
 Depends on: `specs/001-browser-ready-core` (implemented — browser entry, session auth, CI gate)
@@ -205,11 +205,11 @@ regardless of generator (asserted by the Task 2 test against the built output):
 
 Joint session — I cannot drive Björn's Chrome:
 
-- [ ] `chrome://extensions` → Load unpacked → `apps/extension/.output/chrome-mv3` loads with **zero errors/warnings** on the extensions page
-- [ ] Clicking the toolbar action opens the side panel on any tab
-- [ ] Ping and WASM smoke test succeed from the panel (visible results)
-- [ ] Service worker console (inspect view) shows no errors; offscreen document appears in `chrome://extensions` inspect list while active
-- [ ] Reload-after-rebuild loop documented in `apps/extension/README.md` (build → reload button) so later specs' E2E sessions are smooth
+- [x] `chrome://extensions` → Load unpacked → `apps/extension/.output/chrome-mv3` loads with **zero errors/warnings** on the extensions page <!-- E2E 2026-07-15 with Björn: loaded, panel functional -->
+- [x] Clicking the toolbar action opens the side panel on any tab <!-- E2E 2026-07-15 -->
+- [x] Ping and WASM smoke test succeed from the panel (visible results) <!-- E2E 2026-07-15: "pong", "40 + 2 = 42" (screenshot) -->
+- [ ] Service worker console (inspect view) shows no errors; offscreen document appears in `chrome://extensions` inspect list while active <!-- not yet inspected in the session -->
+- [x] Reload-after-rebuild loop documented in `apps/extension/README.md` (build → reload button) so later specs' E2E sessions are smooth
 
 ---
 
