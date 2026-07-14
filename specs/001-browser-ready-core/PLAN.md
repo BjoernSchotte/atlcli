@@ -245,10 +245,10 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 3 — `buildAuthHeader` decoupling
 
-- [ ] Core `buildAuthHeader(profile, resolveToken)` in browser entry; base64 helper handles non-ASCII (umlaut fixture byte-equal to `Buffer` result)
-- [ ] Node wrapper keeps the one-arg signature; header-equivalence regression tests old vs. new for `bearer` + `apiToken`, error cases (no token, no email) produce today's messages
-- [ ] `resolveToken` priority (env → keychain → config) unchanged and unit-tested in the Node entry
-- [ ] No call-site changes in `apps/cli`, `packages/confluence`, `packages/jira` (clients still import `buildAuthHeader` from `@atlcli/core` — Node resolution gives them the wrapper)
+- [x] Core `buildAuthHeader(profile, resolveToken)` in browser entry; base64 helper handles non-ASCII (umlaut fixture byte-equal to `Buffer` result)
+- [x] Node wrapper keeps the one-arg signature; header-equivalence regression tests old vs. new for `bearer` + `apiToken`, error cases (no token, no email) produce today's messages
+- [x] `resolveToken` priority (env → keychain → config) unchanged and unit-tested in the Node entry
+- [x] No call-site changes in `apps/cli`, `packages/confluence`, `packages/jira` (clients still import `buildAuthHeader` from `@atlcli/core` — Node resolution gives them the wrapper)
 
 ### Task 4 — TLS split + client injection seam
 

@@ -1,4 +1,4 @@
-export * from "./auth.js";
+export * from "./auth.node.js";
 export * from "./config.js";
 export * from "./confluence-url.js";
 export * from "./flags.js";
