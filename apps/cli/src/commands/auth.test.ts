@@ -29,6 +29,19 @@ type Config = {
 const utils = await import("../../../../packages/core/src/utils");
 const { ERROR_CODES, getFlag, hasFlag, normalizeBaseUrl, slugify } = utils;
 
+/**
+ * Load the REAL barrel before mocking it. `mock.module` semantics depend on
+ * whether the target module is already evaluated: if it is, only the factory's
+ * keys are patched and every other export stays real; if it is NOT, the factory
+ * result becomes the COMPLETE export set — and any name missing from it (e.g.
+ * `resolveDeploymentType`, imported by ./auth.ts) is a load-time SyntaxError.
+ * That made this file order-dependent: it passed only when some earlier test
+ * happened to import @atlcli/core first. Importing the real module here and
+ * spreading it into the factory removes the order dependence entirely — the
+ * factory always carries the full real surface plus the intended overrides.
+ */
+const actualCore = await import("@atlcli/core");
+
 let config: Config;
 
 const promptInput = mock<() => Promise<string>>(async () => "");
@@ -46,6 +59,7 @@ const fail = mock((_: unknown, __: number, ___: string, message: string) => {
 let lastOutput: unknown;
 
 mock.module("@atlcli/core", () => ({
+  ...actualCore,
   ERROR_CODES,
   output,
   getFlag,
