@@ -23,6 +23,7 @@ import {
 import type { OutputOptions } from "@atlcli/core";
 import { ConfluenceClient } from "@atlcli/confluence";
 import { JiraClient } from "@atlcli/jira";
+import { SESSION_CLI_ERROR } from "./session-guard.js";
 
 type CheckCategory = "config" | "auth" | "connectivity" | "permissions";
 type CheckStatus = "pass" | "warn" | "fail";
@@ -304,7 +305,27 @@ async function checkConnectivity(): Promise<CheckResult[]> {
   return results;
 }
 
-async function checkConfluenceApi(profile: Profile): Promise<CheckResult> {
+/**
+ * Report a session-auth profile as a deliberate failed check (spec 001 §2.4).
+ *
+ * Doctor is a diagnostic, so it must not hard-exit like the other commands —
+ * but it must also never construct a client for a session profile (which would
+ * produce a misleading "auth failed" instead of the real cause).
+ */
+function sessionAuthCheckFailure(name: string): CheckResult {
+  return {
+    name,
+    category: "connectivity",
+    status: "fail",
+    message: SESSION_CLI_ERROR,
+    suggestion: "Use an apiToken or bearer profile in the CLI: atlcli auth login",
+  };
+}
+
+export async function checkConfluenceApi(profile: Profile): Promise<CheckResult> {
+  if (profile.auth.type === "session") {
+    return sessionAuthCheckFailure("confluence_api");
+  }
   try {
     const start = Date.now();
     const client = new ConfluenceClient(profile);
@@ -347,7 +368,10 @@ async function checkConfluenceApi(profile: Profile): Promise<CheckResult> {
   }
 }
 
-async function checkJiraApi(profile: Profile): Promise<CheckResult> {
+export async function checkJiraApi(profile: Profile): Promise<CheckResult> {
+  if (profile.auth.type === "session") {
+    return sessionAuthCheckFailure("jira_api");
+  }
   try {
     const start = Date.now();
     const client = new JiraClient(profile);

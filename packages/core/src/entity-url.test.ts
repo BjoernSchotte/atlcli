@@ -89,6 +89,26 @@ const fixtures: Fixture[] = [
     expected: { product: "confluence", type: "space", spaceKey: "DOCSY" },
   },
 
+  // --- Collision pins (spec 001 review) ---
+  // A stray ?pageId= on a Jira URL must never win over the Jira entity.
+  {
+    row: "collision: /browse/ with stray ?pageId= stays a Jira issue",
+    url: "https://acme.atlassian.net/browse/ABC-1?pageId=999",
+    expected: { product: "jira", type: "issue", issueKey: "ABC-1", projectKey: "ABC" },
+  },
+  {
+    row: "collision: board URL with stray ?pageId= stays a Jira board",
+    url: "https://acme.atlassian.net/jira/software/projects/PX/boards/9?pageId=42",
+    expected: { product: "jira", type: "board", projectKey: "PX", boardId: "9" },
+  },
+  // Ordering pin: a Cloud page whose slug contains a "display" segment must
+  // extract as the cloud page, not fall through to the display/space pattern.
+  {
+    row: "ordering pin: cloud page with 'display' in the slug stays a page",
+    url: "https://acme.atlassian.net/wiki/spaces/DOC/pages/123/How+to/display/Content",
+    expected: { product: "confluence", type: "page", pageId: "123", spaceKey: "DOC" },
+  },
+
   // --- Jira issue (/browse/) ---
   {
     row: "jira-issue-browse",

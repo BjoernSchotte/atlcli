@@ -81,15 +81,6 @@ export const DEFAULT_PATTERN_REGISTRY: PatternRegistry = {
       fields: { spaceKey: "spaceKey", pageId: "pageId" },
     },
     {
-      id: "confluence-page-pageid-query",
-      product: "confluence",
-      type: "page",
-      // Legacy Cloud `?pageId={id}` and DC `/pages/viewpage.action?pageId={id}`
-      target: "pathAndSearch",
-      regex: /[?&]pageId=(?<pageId>\d+)/,
-      fields: { pageId: "pageId" },
-    },
-    {
       id: "confluence-space-overview",
       product: "confluence",
       type: "space",
@@ -131,6 +122,20 @@ export const DEFAULT_PATTERN_REGISTRY: PatternRegistry = {
       target: "pathAndSearch",
       regex: /[?&]selectedIssue=(?<issueKey>(?<projectKey>[A-Z][A-Z0-9]+)-\d+)/,
       fields: { issueKey: "issueKey", projectKey: "projectKey" },
+    },
+    // --- Confluence, query-param form (deliberately after the Jira patterns) ---
+    {
+      id: "confluence-page-pageid-query",
+      product: "confluence",
+      type: "page",
+      // Legacy Cloud `?pageId={id}` and DC `/pages/viewpage.action?pageId={id}`
+      // (with optional context path). The path must be Confluence-shaped
+      // (`/wiki/`, `/pages/`, `/display/`, or `viewpage.action`) so a stray
+      // `?pageId=` on a Jira URL (`/browse/…`, board URLs) never misclassifies;
+      // ordering after the Jira patterns is the second line of defense.
+      target: "pathAndSearch",
+      regex: /(?:\/wiki\/|\/pages\/|\/display\/|viewpage\.action)[^?#]*[?&][^#]*?\bpageId=(?<pageId>\d+)/,
+      fields: { pageId: "pageId" },
     },
   ],
 };

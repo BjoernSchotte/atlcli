@@ -30,9 +30,10 @@ mock.module("@atlcli/core", () => ({
     if (cfg.currentProfile) return cfg.profiles[cfg.currentProfile];
     return undefined;
   },
+  getConfluenceBaseUrl: (profile: Profile) => profile.baseUrl,
 }));
 
-// The client must never be constructed for a session profile; make it explode
+// The clients must never be constructed for a session profile; make them explode
 // if the guard ever lets execution through.
 mock.module("@atlcli/confluence", () => ({
   ConfluenceClient: class {
@@ -41,8 +42,16 @@ mock.module("@atlcli/confluence", () => ({
     }
   },
 }));
+mock.module("@atlcli/jira", () => ({
+  JiraClient: class {
+    constructor() {
+      throw new Error("JiraClient should not be constructed for a session profile");
+    }
+  },
+}));
 
 const { handleSpace } = await import("./space.js");
+const { checkConfluenceApi, checkJiraApi } = await import("./doctor.js");
 const { SESSION_CLI_ERROR, assertCliAuthSupported } = await import("./session-guard.js");
 
 const opts = { json: true };
@@ -79,5 +88,37 @@ describe("session auth CLI guard (spec 001 task 5)", () => {
     };
 
     await expect(handleSpace(["list"], {}, opts as never)).rejects.toThrow(SESSION_CLI_ERROR);
+  });
+
+  // Regression (spec 001 review): doctor's connectivity checks bypassed the
+  // session guard, constructing real clients and reporting a misleading
+  // "auth failed". Doctor must instead report a failed check carrying the
+  // exact §2.4 message — without constructing any client.
+  test("doctor confluence check reports the §2.4 message for a session profile without constructing a client", async () => {
+    const profile = {
+      name: "browser",
+      baseUrl: "https://x.atlassian.net",
+      auth: { type: "session" },
+    };
+
+    const result = await checkConfluenceApi(profile as never);
+
+    expect(result.status).toBe("fail");
+    expect(result.message).toBe(SESSION_CLI_ERROR);
+    expect(result.name).toBe("confluence_api");
+  });
+
+  test("doctor jira check reports the §2.4 message for a session profile without constructing a client", async () => {
+    const profile = {
+      name: "browser",
+      baseUrl: "https://x.atlassian.net",
+      auth: { type: "session" },
+    };
+
+    const result = await checkJiraApi(profile as never);
+
+    expect(result.status).toBe("fail");
+    expect(result.message).toBe(SESSION_CLI_ERROR);
+    expect(result.name).toBe("jira_api");
   });
 });
