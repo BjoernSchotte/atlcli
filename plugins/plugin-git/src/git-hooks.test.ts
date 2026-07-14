@@ -76,7 +76,7 @@ describe("git hooks", () => {
       await installHookHandler(ctx);
 
       expect(process.exitCode).toBe(1);
-      process.exitCode = undefined;
+      process.exitCode = 0; // reset (NOT `undefined`: Bun keeps the prior numeric value — see git-hooks-exitcode.test.ts)
 
       await rm(nonGitDir, { recursive: true, force: true });
     });
@@ -89,7 +89,7 @@ describe("git hooks", () => {
       await installHookHandler(ctx);
 
       expect(process.exitCode).toBe(1);
-      process.exitCode = undefined;
+      process.exitCode = 0; // reset (NOT `undefined`: Bun keeps the prior numeric value — see git-hooks-exitcode.test.ts)
 
       await rm(gitOnlyDir, { recursive: true, force: true });
     });
@@ -115,7 +115,7 @@ describe("git hooks", () => {
       await installHookHandler(ctx);
 
       expect(process.exitCode).toBe(1);
-      process.exitCode = undefined;
+      process.exitCode = 0; // reset (NOT `undefined`: Bun keeps the prior numeric value — see git-hooks-exitcode.test.ts)
 
       // Original hook preserved
       const content = await readFile(hookPath, "utf-8");
@@ -208,7 +208,7 @@ describe("git hooks", () => {
       await removeHookHandler(ctx);
 
       expect(process.exitCode).toBe(1);
-      process.exitCode = undefined;
+      process.exitCode = 0; // reset (NOT `undefined`: Bun keeps the prior numeric value — see git-hooks-exitcode.test.ts)
 
       await rm(nonGitDir, { recursive: true, force: true });
     });
