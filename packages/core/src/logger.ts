@@ -1,15 +1,14 @@
 /**
- * JSONL logging system for atlcli.
+ * Structured logging core for atlcli (browser-safe).
  *
- * Provides structured logging to both global (~/.atlcli/logs/) and
- * project-level (.atlcli/logs/) directories.
+ * This module holds the isomorphic logger kernel: log levels, entry types,
+ * `generateRequestId`, the `LogSink` interface, and a default console sink.
+ * It has zero `node:`/`bun:` imports so it resolves for the browser target.
+ *
+ * The Node entry (`logger.node.ts`) installs a JSONL file sink to reproduce
+ * today's CLI behavior; browsers keep the console sink.
  */
 
-import { mkdir, appendFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import os from "node:os";
-import crypto from "node:crypto";
 import { redactSensitive } from "./redact.js";
 
 // Re-export redact utilities
@@ -133,12 +132,27 @@ export type LogEntry =
   | (BaseLogEntry & { type: "auth.change"; data: AuthChangeData })
   | (BaseLogEntry & { type: "error"; data: ErrorData });
 
+/**
+ * A destination for log entries. The core `Logger` decides *whether* an entry
+ * should be emitted (level/enabled gating); a sink decides *where* it goes.
+ *
+ * `configure`/`reset` are optional hooks so environment-specific sinks (e.g.
+ * the Node JSONL file sink) can pick up `LoggerOptions` and reset their state.
+ */
+export interface LogSink {
+  write(entry: LogEntry): void | Promise<void>;
+  configure?(options: LoggerOptions): void;
+  reset?(): void;
+}
+
 /** Logger configuration options */
 export interface LoggerOptions {
   level?: LogLevel;
   enableGlobal?: boolean;
   enableProject?: boolean;
   projectDir?: string;
+  /** Inject a custom log sink (browser: console; Node: JSONL file sink). */
+  sink?: LogSink;
 }
 
 /** Numeric level values for comparison */
@@ -151,25 +165,26 @@ const LEVEL_VALUES: Record<LogLevel, number> = {
 };
 
 /**
- * Get the global logs directory (~/.atlcli/logs/).
+ * Default browser/isomorphic sink: writes entries at or above `minLevel`
+ * (default `warn`) to the console, so extension problems surface in DevTools
+ * without spamming info/debug chatter. Callers can inject a different sink.
  */
-function getGlobalLogsDir(): string {
-  return join(os.homedir(), ".atlcli", "logs");
+export class ConsoleLogSink implements LogSink {
+  constructor(private minLevel: LogLevel = "warn") {}
+
+  write(entry: LogEntry): void {
+    if (LEVEL_VALUES[entry.level] > LEVEL_VALUES[this.minLevel]) {
+      return;
+    }
+    const method = entry.level === "error" ? "error" : entry.level === "warn" ? "warn" : "log";
+    // eslint-disable-next-line no-console
+    console[method](`[atlcli] ${entry.type}`, entry);
+  }
 }
 
-/**
- * Get the project logs directory (.atlcli/logs/).
- */
-function getProjectLogsDir(projectDir: string): string {
-  return join(projectDir, ".atlcli", "logs");
-}
-
-/**
- * Get today's log filename (YYYY-MM-DD.jsonl).
- */
-function getLogFilename(): string {
-  const date = new Date().toISOString().split("T")[0];
-  return `${date}.jsonl`;
+/** Process id if available (undefined in browsers). */
+function currentPid(): number {
+  return typeof process !== "undefined" && typeof process.pid === "number" ? process.pid : 0;
 }
 
 /**
@@ -179,14 +194,12 @@ export class Logger {
   private static instance: Logger | null = null;
 
   private level: LogLevel = "info";
-  private enableGlobal = true;
-  private enableProject = true;
-  private projectDir: string | null = null;
   private sessionId: string;
   private disabled = false;
+  private sink: LogSink = new ConsoleLogSink();
 
   private constructor() {
-    this.sessionId = crypto.randomUUID();
+    this.sessionId = generateRequestId();
   }
 
   /**
@@ -207,15 +220,26 @@ export class Logger {
     if (options.level !== undefined) {
       logger.level = options.level;
     }
-    if (options.enableGlobal !== undefined) {
-      logger.enableGlobal = options.enableGlobal;
+    if (options.sink !== undefined) {
+      logger.sink = options.sink;
     }
-    if (options.enableProject !== undefined) {
-      logger.enableProject = options.enableProject;
-    }
-    if (options.projectDir !== undefined) {
-      logger.projectDir = options.projectDir;
-    }
+    // Forward environment-specific options (enableGlobal/enableProject/
+    // projectDir) to the active sink if it understands them.
+    logger.sink.configure?.(options);
+  }
+
+  /**
+   * Replace the active log sink (injection point for Node/browser wiring).
+   */
+  static setSink(sink: LogSink): void {
+    Logger.getInstance().sink = sink;
+  }
+
+  /**
+   * Get the active log sink.
+   */
+  static getSink(): LogSink {
+    return Logger.getInstance().sink;
   }
 
   /**
@@ -235,16 +259,14 @@ export class Logger {
   }
 
   /**
-   * Reset the logger (for testing).
+   * Reset the logger (for testing). Keeps the active sink but resets its state.
    */
   static reset(): void {
     const logger = Logger.getInstance();
     logger.level = "info";
-    logger.enableGlobal = true;
-    logger.enableProject = true;
-    logger.projectDir = null;
     logger.disabled = false;
-    logger.sessionId = crypto.randomUUID();
+    logger.sessionId = generateRequestId();
+    logger.sink.reset?.();
   }
 
   /**
@@ -265,49 +287,13 @@ export class Logger {
   }
 
   /**
-   * Write a log entry to all configured destinations.
+   * Write a log entry to the active sink.
    */
-  private async write(entry: LogEntry): Promise<void> {
+  private write(entry: LogEntry): void {
     if (!this.shouldLog(entry.level)) {
       return;
     }
-
-    const line = JSON.stringify(entry) + "\n";
-    const filename = getLogFilename();
-
-    const writes: Promise<void>[] = [];
-
-    // Write to global logs
-    if (this.enableGlobal) {
-      const globalDir = getGlobalLogsDir();
-      writes.push(this.appendToLog(join(globalDir, filename), line));
-    }
-
-    // Write to project logs
-    if (this.enableProject && this.projectDir) {
-      const projectLogsDir = getProjectLogsDir(this.projectDir);
-      // Only write if .atlcli directory exists in project
-      if (existsSync(join(this.projectDir, ".atlcli"))) {
-        writes.push(this.appendToLog(join(projectLogsDir, filename), line));
-      }
-    }
-
-    await Promise.all(writes);
-  }
-
-  /**
-   * Append a line to a log file, creating the directory if needed.
-   */
-  private async appendToLog(path: string, line: string): Promise<void> {
-    try {
-      const dir = join(path, "..");
-      if (!existsSync(dir)) {
-        await mkdir(dir, { recursive: true });
-      }
-      await appendFile(path, line);
-    } catch {
-      // Silently ignore write errors to avoid disrupting CLI operations
-    }
+    void this.sink.write(entry);
   }
 
   /**
@@ -315,11 +301,11 @@ export class Logger {
    */
   private createBase(level: Exclude<LogLevel, "off">, type: LogEntryType): BaseLogEntry {
     return {
-      id: crypto.randomUUID(),
+      id: generateRequestId(),
       timestamp: new Date().toISOString(),
       level,
       type,
-      pid: process.pid,
+      pid: currentPid(),
       sessionId: this.sessionId,
     };
   }
@@ -454,7 +440,10 @@ export function configureLogging(options: LoggerOptions): void {
 
 /**
  * Generate a unique request ID for API call correlation.
+ *
+ * Uses `globalThis.crypto.randomUUID()` (Bun, Node >= 19, all browsers) so the
+ * logger core carries no `node:crypto` dependency.
  */
 export function generateRequestId(): string {
-  return crypto.randomUUID();
+  return globalThis.crypto.randomUUID();
 }

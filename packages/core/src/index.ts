@@ -3,7 +3,7 @@ export * from "./config.js";
 export * from "./confluence-url.js";
 export * from "./flags.js";
 export * from "./keychain.js";
-export * from "./logger.js";
+export * from "./logger.node.js";
 export * from "./prompt.js";
 export * from "./redact.js";
 export * from "./tls.js";

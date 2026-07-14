@@ -238,10 +238,10 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 2 — Logger split
 
-- [ ] `LogSink` interface exists; Node JSONL sink reproduces today's behavior (existing `logger.test.ts` green without modification, or with import-path-only edits)
-- [ ] `generateRequestId` uses `globalThis.crypto.randomUUID()`; uniqueness test stays green
-- [ ] Browser entry exports logger core + console sink (level ≥ warn default); sink injection unit-tested (fake sink captures entries)
-- [ ] Logger core module has zero `node:` imports (asserted by the Task 1 build check now including it)
+- [x] `LogSink` interface exists; Node JSONL sink reproduces today's behavior (existing `logger.test.ts` green without modification, or with import-path-only edits)
+- [x] `generateRequestId` uses `globalThis.crypto.randomUUID()`; uniqueness test stays green
+- [x] Browser entry exports logger core + console sink (level ≥ warn default); sink injection unit-tested (fake sink captures entries)
+- [x] Logger core module has zero `node:` imports (asserted by the Task 1 build check now including it)
 
 ### Task 3 — `buildAuthHeader` decoupling
 
