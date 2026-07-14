@@ -89,6 +89,18 @@ describe("classifyThrownError (pure taxonomy, PLAN §2.3)", () => {
     expect(classifyThrownError(new TypeError("Failed to fetch"))).toBe("network");
   });
 
+  it("maps a 3xx auth redirect to not-logged-in (finding #4)", () => {
+    expect(
+      classifyThrownError(new Error("Confluence API error (302): authentication redirect to Atlassian login"))
+    ).toBe("not-logged-in");
+  });
+
+  it("maps a non-JSON/login-page phrase to not-logged-in (finding #5)", () => {
+    expect(
+      classifyThrownError(new Error("Confluence API error (login): non-JSON 200 response (login page)"))
+    ).toBe("not-logged-in");
+  });
+
   it("maps other HTTP statuses and junk to unknown", () => {
     expect(classifyThrownError(new Error("Confluence API error (500): boom"))).toBe("unknown");
     expect(classifyThrownError("weird")).toBe("unknown");
@@ -189,6 +201,68 @@ describe("loadConfluencePage — session-auth read path (integration, mock fetch
     ) as unknown as typeof fetch;
     const err = await loadConfluencePage("123", sessionProfile).catch((e) => e);
     expect((err as ReadError).kind).toBe("network");
+  });
+
+  it("regression (finding #4): an opaque redirect (logged-out 3xx→id.atlassian.com) → not-logged-in", async () => {
+    // With session `redirect: "manual"` a bounce to the login host surfaces as an
+    // opaque-redirect response. The client must classify it as an auth redirect —
+    // NOT follow it with cookies to a foreign origin, and NOT surface a raw
+    // TypeError/network failure.
+    let calls = 0;
+    const inits: RequestInit[] = [];
+    globalThis.fetch = mock((_url: string, init: RequestInit) => {
+      calls++;
+      inits.push(init);
+      return Promise.resolve({
+        type: "opaqueredirect",
+        status: 0,
+        ok: false,
+        headers: new Headers(),
+        text: async () => "",
+      } as unknown as Response);
+    }) as unknown as typeof fetch;
+
+    const err = (await loadConfluencePage("123", sessionProfile).catch((e) => e)) as ReadError;
+    expect(err).toBeInstanceOf(ReadError);
+    expect(err.kind).toBe("not-logged-in");
+    // No credentialed follow to the foreign login origin: exactly one fetch, and
+    // it went out with manual redirect + session credentials.
+    expect(calls).toBe(1);
+    expect(inits[0].redirect).toBe("manual");
+    expect(inits[0].credentials).toBe("include");
+    expect(new Headers(inits[0].headers).has("Authorization")).toBe(false);
+  });
+
+  it("regression (finding #4): a raw 302 status is classified as not-logged-in", async () => {
+    installFetch(() => new Response(null, { status: 302, headers: { location: "https://id.atlassian.com/login" } }));
+    const err = (await loadConfluencePage("123", sessionProfile).catch((e) => e)) as ReadError;
+    expect(err.kind).toBe("not-logged-in");
+  });
+
+  it("regression (finding #5): a 200 application/json error envelope ({statusCode:403}) → access-denied", async () => {
+    // Keyed only on a missing `id`, this was misclassified as not-logged-in. It
+    // is a permission error dressed as a 200, so it must read as access-denied.
+    installFetch(
+      () =>
+        new Response(JSON.stringify({ statusCode: 403, message: "Forbidden" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+    );
+    const err = (await loadConfluencePage("123", sessionProfile).catch((e) => e)) as ReadError;
+    expect(err.kind).toBe("access-denied");
+  });
+
+  it("regression (finding #5): a 200 JSON body with neither id nor statusCode → unknown (not not-logged-in)", async () => {
+    installFetch(
+      () =>
+        new Response(JSON.stringify({ foo: "bar" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+    );
+    const err = (await loadConfluencePage("123", sessionProfile).catch((e) => e)) as ReadError;
+    expect(err.kind).toBe("unknown");
   });
 
   it("keeps the page when attachment listing fails (best-effort)", async () => {

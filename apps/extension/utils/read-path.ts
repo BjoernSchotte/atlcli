@@ -10,12 +10,14 @@
  * The client is imported through `@atlcli/confluence/browser` — the browser
  * entry from Task 0 — so the panel bundle never drags the node-only barrel.
  *
- * Error taxonomy (PLAN §2.3) is a pure classifier over the thrown value plus one
- * shape check: ConfluenceClient does NOT throw on a 200 HTML login page (its
- * JSON.parse falls back to the raw text, yielding a details object with no
- * `id`). Changing that fallback would break the CLI's empty-body handling
- * (DELETE etc.), so — per the PLAN pitfall — the login-page classification lives
- * HERE, in the extension wrapper, keyed off the missing `id`.
+ * Error taxonomy (PLAN §2.3) is a pure classifier over the thrown value. In
+ * SESSION mode the ConfluenceClient now rejects a 200 that is not a real page —
+ * an HTML login page (non-JSON body) or a JSON error envelope carrying its own
+ * `statusCode` — throwing a message this classifier maps (HTML → not-logged-in,
+ * `{statusCode:4xx}` → access-denied, 3xx redirect → not-logged-in). CLI/token
+ * behavior is untouched: those guards are `useSession`-gated, preserving the
+ * client's empty-body handling for DELETE etc. The residual `!details.id` check
+ * below is a defensive net for an otherwise-unclassifiable 200 JSON body.
  */
 import {
   ConfluenceClient,
@@ -70,10 +72,20 @@ export interface LoadedPage {
 export function classifyThrownError(err: unknown): ReadErrorKind {
   const message = err instanceof Error ? err.message : String(err);
 
+  // Session-mode login signals surfaced by the client (spec 003 §2.3): an HTML
+  // login page ("non-JSON 200") or a bounce to the Atlassian login host
+  // (redirect). Checked before the numeric-status match so the phrase wins even
+  // when no 3-digit code is present.
+  if (/non-json|login page|authentication redirect|opaqueredirect/i.test(message)) {
+    return "not-logged-in";
+  }
+
   const status = message.match(/Confluence API(?: v2)? error \((\d{3})\)/);
   if (status) {
     const code = Number(status[1]);
     if (code === 401) return "not-logged-in";
+    // A 3xx (auth redirect to id.atlassian.com) means the session is missing.
+    if (code >= 300 && code < 400) return "not-logged-in";
     if (code === 403 || code === 404) return "access-denied";
     return "unknown";
   }
@@ -138,12 +150,17 @@ export async function loadConfluencePage(
     throw new ReadError(classifyThrownError(err), err instanceof Error ? err.message : String(err));
   }
 
-  // A 200 HTML login page parses to a details object with no id (see file
-  // header): treat it as not-logged-in, the SameSite/session proof (PLAN §2.3).
+  // Defensive net: HTML login pages and JSON error envelopes on a 200 are now
+  // rejected inside the client (session mode) and surface via `classifyThrownError`
+  // above — an HTML body → not-logged-in, a `{statusCode:4xx}` body → access-denied.
+  // Reaching here with no id means a 200 JSON body that is neither a page nor a
+  // recognizable error envelope: genuinely unexpected, so classify as unknown
+  // (NOT not-logged-in — see finding #5: a 403-in-200 JSON must not read as a
+  // login failure).
   if (!details.id) {
     throw new ReadError(
-      "not-logged-in",
-      "Confluence returned a non-page response (login page?) with HTTP 200"
+      "unknown",
+      "Confluence returned an HTTP 200 JSON response without a page id"
     );
   }
 
