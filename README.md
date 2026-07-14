@@ -1,4 +1,4 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Build](https://github.com/BjoernSchotte/atlcli/actions/workflows/ci.yml/badge.svg)](https://github.com/BjoernSchotte/atlcli/actions)
 [![Version](https://img.shields.io/github/v/release/BjoernSchotte/atlcli)](https://github.com/BjoernSchotte/atlcli/releases)
 [![Docs](https://img.shields.io/badge/docs-online-brightgreen)](https://atlcli.sh/)
@@ -150,7 +150,7 @@ atlcli/
 
 ## License
 
-MIT - see [LICENSE](LICENSE)
+Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE)
 
 ---
 
