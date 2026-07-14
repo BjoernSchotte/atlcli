@@ -73,9 +73,21 @@ template). Forward-looking rationale: a later phase may add an inline chat UI fo
 agent overlay (Phase 3), where **CopilotKit-UI** on top of React is the candidate —
 Preact/vanilla would block that path.
 
-**Explicit constraint:** no remote-iframe UI. Some extensions render their panel UI from
-a remote origin via iframe; this extension renders everything from bundled, local assets
-only — consistent with the privacy story ("nothing leaves the browser") and the CSP.
+**Constraint for the PoC:** no remote-iframe UI — everything renders from bundled, local
+assets, consistent with the privacy story ("nothing leaves the browser").
+
+**Documented for later (post-PoC option, Björn 2026-07-14):** Chrome Web Store MV3 policy
+exempts contexts *isolated from extension APIs* (iframes, sandboxed pages) from the
+remote-code restriction. That enables a **remote-hosted UI web app inside a sandboxed
+iframe**: UI changes deploy daily without waiting ~3 days for store review; only the
+extension-side bridge goes through review. Architectural consequence we honor **now**,
+cheaply: keep the boundary between UI and extension capabilities a thin, stable, typed
+message protocol (`messages.ts`, §2.3). If the UI later moves into an iframe, the same
+protocol runs over `postMessage` and the reviewed surface stays frozen while the UI
+iterates. Trade-offs to weigh at that point: privacy story changes (UI assets load from a
+remote origin — telemetry/asset hosting must be squeaky clean even if Confluence data
+never leaves the browser), offline behavior, and CSP/frame wiring. Candidate trigger:
+Phase 3 agent chat UI (CopilotKit), where UI iteration speed matters most.
 
 ### 2.3 Extension surfaces and message protocol
 
@@ -215,5 +227,5 @@ Joint session — I cannot drive Björn's Chrome:
 
 ### Decisions log
 
-- **F1 — panel UI stack**: ✅ (Björn, 2026-07-14) React (WXT React module); motivation: future agent-chat UI (Phase 3) with CopilotKit-UI as candidate. Explicitly no remote-iframe UI.
+- **F1 — panel UI stack**: ✅ (Björn, 2026-07-14) React (WXT React module); motivation: future agent-chat UI (Phase 3) with CopilotKit-UI as candidate. No remote-iframe UI **in the PoC**; the sandboxed-iframe remote-UI option (daily deploys without store review) is documented in §2.2 for a later phase — the typed message protocol is deliberately designed to survive that move.
 - **F2 — build tooling**: ✅ (Björn, 2026-07-14) WXT as core framework; plain-bun-build alternative rejected.
