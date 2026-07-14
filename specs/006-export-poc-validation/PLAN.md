@@ -71,6 +71,15 @@ better?"):
   (existing installation/customer) — criterion 1 runs as a true A/B against a real
   Scroll export. Logistics (which site, replicating the reference page there) are
   settled in the Task 1 session.
+- **Frozen reference set:** page (storage source), template, Scroll output, extension
+  output, and **all version identifiers** (Scroll Word Exporter product version,
+  extension commit, Chrome version) are archived together as one immutable set in this
+  dir — that's what makes the A/B citable and re-runnable later.
+- **Anonymized regression fixture:** if the reference material contains customer data
+  (template or replicated page content), derive an anonymized equivalent (same structure,
+  scrubbed content/branding) as a **permanent regression fixture** that can live in the
+  repo unrestricted; the original set stays local. The fixture is what post-Phase-1
+  changes re-run against.
 
 ### 2.2 Measurement rules
 
@@ -106,6 +115,8 @@ Rows 2, 3 (🏆 expected: Typst-computed page numbers), 4, 7, 8, 9, 11, 12, 13, 
 - [ ] Reference page created in DOCSY per §2.1; storage source archived in this dir
 - [ ] Reference template provided/approved by Björn; placeholder inventory documented
 - [ ] Scroll export of the reference page produced on the available Scroll instance (F1 ✅) and archived; if the reference page must be replicated on that site, replication + later cleanup included
+- [ ] Frozen reference set assembled per §2.1: page source, template, both outputs, Scroll product version, extension commit, Chrome version — one immutable archive
+- [ ] If customer data is involved: anonymized regression fixture derived and committed; original set kept local only
 
 ### Task 2 — Reference test DOCX vs. Scroll **[E2E: user]**
 

@@ -54,9 +54,11 @@ Key architectural facts driving the shape (from the research):
 
 ### 2.1 Build tooling: WXT (decision F2 ✅ 2026-07-14)
 
-**Decision (Björn, 2026-07-14):** the extension is built with **WXT** as the core
-framework (Vite-based, MV3-aware: manifest generation, entrypoint conventions, dev-mode
-HMR, `wxt build` output ready for load-unpacked). Rationale: WXT carries the extension
+**Decision (Björn, 2026-07-14):** the extension is built with **WXT as the extension
+framework** (Vite-based, MV3-aware: manifest generation, entrypoint conventions, dev-mode
+HMR, `wxt build` output ready for load-unpacked). Terminology note: "framework" here means
+the extension build/runtime platform — not to be confused with `@atlcli/core`, which
+remains the isomorphic domain kernel. Rationale: WXT carries the extension
 plumbing so the specs 003–005 stay feature work, and its dev loop pays off across the
 many joint E2E sessions ahead.
 
@@ -69,12 +71,19 @@ output-scan check (Task 6).
 ### 2.2 UI stack: React in popup/side panel (decision F1 ✅ 2026-07-14)
 
 **Decision (Björn, 2026-07-14):** **React** for the side panel/popup UI (WXT's React
-template). Forward-looking rationale: a later phase may add an inline chat UI for the
-agent overlay (Phase 3), where **CopilotKit-UI** on top of React is the candidate —
-Preact/vanilla would block that path.
+template — officially supported, incl. shadow-DOM content-script UI should inline
+overlays arrive later). Forward-looking rationale: a later phase may add an inline chat
+UI for the agent overlay (Phase 3), where **CopilotKit-UI** on top of React is the
+candidate. **CopilotKit is deliberately a Phase-3 evaluation, not a foundation choice:**
+its current architecture is React frontend → CopilotKit Runtime → agent, and direct
+agent connections carry documented limitations — choosing React today keeps the option
+open without committing to it.
 
-**Constraint for the PoC:** no remote-iframe UI — everything renders from bundled, local
-assets, consistent with the privacy story ("nothing leaves the browser").
+**Constraint for the PoC:** no **remote-hosted** UI — everything renders from bundled,
+local assets, consistent with the privacy story ("nothing leaves the browser"). Bundled
+offscreen and sandboxed documents are explicitly fine (and required: typst.ts/WASM in
+spec 005 runs in the bundled offscreen document); the ban is on loading UI from a remote
+origin, not on iframes/sandbox pages as such.
 
 **Documented for later (post-PoC option, Björn 2026-07-14):** Chrome Web Store MV3 policy
 exempts contexts *isolated from extension APIs* (iframes, sandboxed pages) from the
@@ -177,7 +186,7 @@ regardless of generator (asserted by the Task 2 test against the built output):
 
 - [ ] Side panel renders: extension name/version, a status line ("no Atlassian page detected" placeholder for 003), and a "Ping" debug button that round-trips through the service worker and displays `pong`
 - [ ] Panel opens via the extension action click (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`)
-- [ ] React panel (decision F1); no inline scripts (MV3 CSP forbids them) and **no remote-loaded UI/iframes** — all JS from bundled files
+- [ ] React panel (decision F1); no inline scripts (MV3 CSP forbids them) and **no remote-hosted UI** — all UI assets from bundled files (bundled offscreen/sandbox documents remain allowed)
 
 ### Task 5 — Offscreen WASM smoke test
 
@@ -227,5 +236,5 @@ Joint session — I cannot drive Björn's Chrome:
 
 ### Decisions log
 
-- **F1 — panel UI stack**: ✅ (Björn, 2026-07-14) React (WXT React module); motivation: future agent-chat UI (Phase 3) with CopilotKit-UI as candidate. No remote-iframe UI **in the PoC**; the sandboxed-iframe remote-UI option (daily deploys without store review) is documented in §2.2 for a later phase — the typed message protocol is deliberately designed to survive that move.
-- **F2 — build tooling**: ✅ (Björn, 2026-07-14) WXT as core framework; plain-bun-build alternative rejected.
+- **F1 — panel UI stack**: ✅ (Björn, 2026-07-14) React (WXT React module); motivation: future agent-chat UI (Phase 3) with CopilotKit-UI as candidate — CopilotKit itself is a separate Phase-3 evaluation (runtime-architecture and direct-agent-connection caveats), not part of this decision. No **remote-hosted** UI in the PoC; the sandboxed-iframe remote-UI option (daily deploys without store review) is documented in §2.2 for a later phase — the typed message protocol is deliberately designed to survive that move.
+- **F2 — build tooling**: ✅ (Björn, 2026-07-14) WXT as extension framework; plain-bun-build alternative rejected.

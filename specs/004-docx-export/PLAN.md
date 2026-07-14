@@ -87,13 +87,21 @@ Score both engines on:
 | Header/footer placeholder replacement | Scroll parity requirement |
 
 **Exit criteria:** an engine is viable iff it can (a) replace text placeholders in body
-*and* header/footer, (b) embed images **without paid modules** — constraint fixed by
-Björn (2026-07-14): docxtemplater is only used in its free version; if its paid image
-module were the missing piece, we build the image insertion ourselves (raw OOXML +
-relationship parts) rather than license PRO — (c) inject raw OOXML for code runs/callouts.
+*and* header/footer, (b) embed images, (c) inject raw OOXML for code runs/callouts.
+
+**License/image constraint (Björn, 2026-07-14, refined 2026-07-15):**
+- docxtemplater **PRO is excluded** — only free tiers compete.
+- **Image embedding is a mandatory spike criterion**, exercised hands-on for both engines
+  in their free tiers (not assessed from docs).
+- If docxtemplater is only competitive with a **self-built OOXML image module**
+  (relationship parts, content types, EMU sizing, svgBlip+fallback), that build effort is
+  **estimated and enters the Task-1 decision as an explicit cost item** — it is *not* a
+  pre-commitment. A self-built image module can quietly become the actual DOCX project;
+  the decision weighs that risk, it doesn't assume it away.
+
 Decision + evidence → `engine-decision.md`; the final pick is Björn's call at the Task 1
-gate based on which variant "feels better" in the spike. Expected winner per research:
-`docx-templates` (MIT); the spike verifies rather than assumes.
+gate based on the spike results incl. the cost item above. Expected winner per research:
+`docx-templates` (MIT, native images); the spike verifies rather than assumes.
 
 ### 2.2 Placeholder resolution layer
 
@@ -163,8 +171,9 @@ trust surface and 006's measurement hook.
 ### Task 1 — Engine spike + decision **[decision gate]**
 
 - [ ] Spike harness renders the §2.1 fixture through **both** engines (spike code under `specs/004-docx-export/spike/`, allowed to be throwaway)
-- [ ] All six criteria scored with evidence (output .docx files kept next to the spike)
-- [ ] `engine-decision.md` written: winner, license consequence, raw-XML injection recipe for the winner
+- [ ] All six criteria scored with evidence (output .docx files kept next to the spike); **image embedding exercised hands-on in both free tiers** — no docs-only assessment
+- [ ] If an engine would need a self-built OOXML image module to compete: effort estimated and recorded as a cost item (per §2.1) — not built in the spike
+- [ ] `engine-decision.md` written: winner, license consequence, cost items, raw-XML injection recipe for the winner
 - [ ] Decision reviewed with Björn (license/money question is his call) before Task 3 builds on it
 
 ### Task 2 — Intermediate export model (isomorphic, in `packages/confluence`)
@@ -240,5 +249,5 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ### Decisions log
 
-- **F1 — templating engine**: ❓ open — decided by Björn at the Task 1 gate from spike evidence. **Constraint fixed (2026-07-14): free/MIT only; no docxtemplater PRO purchase — missing image capability would be self-built.**
+- **F1 — templating engine**: ❓ open — decided by Björn at the Task 1 gate from spike evidence. **Constraints fixed (2026-07-14/15): no docxtemplater PRO; image embedding is a mandatory spike criterion; a potential self-built image module is a cost item in the decision, not a commitment.**
 - **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget.

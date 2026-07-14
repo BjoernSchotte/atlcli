@@ -36,8 +36,11 @@ they are what turns "a PDF export" into "visibly better than Scroll":
 - Confluence semantics mapped: callout boxes (styled per EXPORT-QUALITY §4 example),
   status → inline badge, code blocks with syntax highlighting + language label, tables
   with repeated headers and basic merges, images (attachment blobs), expand macro inlined.
-- Open fonts bundled and embedded — **Inter** (text) + **JetBrains Mono** (code), per
-  decision F2; the `atlcli.typ` template is designed sans-serif-only. Deterministic output.
+- Open fonts bundled and embedded — **Inter** (text; weights 400/500/600) +
+  **JetBrains Mono** (code; weights 400/700), per decision F2; the `atlcli.typ` template
+  is designed sans-serif-only. Font files and versions are **pinned** (exact release
+  recorded in the repo); **no fallback to locally installed fonts** — otherwise the 006
+  quality comparison isn't reproducible. Deterministic output.
 - Tagged PDF on by default (Typst ≥ 0.14); one reference export validated as PDF/UA-1.
 - Compile runs off the panel thread (offscreen doc), panel shows progress and stays
   responsive; errors surface as readable messages, not hangs.
@@ -134,7 +137,9 @@ error + offscreen teardown.
 
 ### Task 2 — Fonts
 
-- [ ] Inter + JetBrains Mono (decision F2) bundled; compiler configured to use only bundled fonts (no system font access exists in WASM anyway — assert the compile fails loudly on a missing font rather than silently substituting)
+- [ ] Inter (400/500/600) + JetBrains Mono (400/700) bundled as **pinned files with recorded release versions** (version + source URL + checksum noted in `assets/fonts/README.md`)
+- [ ] Compiler configured to use only the bundled fonts; a compile referencing a non-bundled font **fails loudly** rather than silently substituting (test with a deliberately wrong font name) — no local-font fallback exists in WASM, and none is added
+- [ ] **Full character sets bundled for Phase 1** (incl. Latin Extended for umlauts etc.); subsetting is an explicit later optimization, not done now
 - [ ] Font licenses (OFL) copied into `apps/extension/assets/fonts/`
 - [ ] PDF output embeds the fonts (verify via PDF inspection in Task 6)
 
@@ -198,4 +203,4 @@ Joint session (space `DOCSY`, same feature-zoo test page as 004, delete after):
 ### Decisions log
 
 - **F1 — serializer location**: ❓ open (proposal: `packages/confluence` next to the walker, isomorphism-gated).
-- **F2 — bundled font set**: ✅ (Björn, 2026-07-14) Inter + JetBrains Mono (OFL); no serif face in the PoC — template designed sans-only.
+- **F2 — bundled font set**: ✅ (Björn, 2026-07-14; refined 2026-07-15) Inter 400/500/600 + JetBrains Mono 400/700 (OFL), files and versions pinned, no local-font fallback, full charsets in Phase 1 (subsetting later); no serif face in the PoC — template designed sans-only.
