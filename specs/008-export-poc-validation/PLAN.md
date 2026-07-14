@@ -2,8 +2,8 @@
 
 Status: **Planned**
 
-Spec ID: `006-export-poc-validation`
-Depends on: `004-docx-export`, `005-pdf-export` (validates their output; 002/003 transitively)
+Spec ID: `008-export-poc-validation`
+Depends on: `004-docx-export`, `007-pdf-export` (validates their output; 002/003 transitively)
 Related strategy: FAHRPLAN Phase 1 Task 1.5 · `TYPST-EXPORT-ANGLE.md` §7.5 Erfolgskriterien · `EXPORT-QUALITY-ANGLE.md` §6 (20-point benchmark), §7 item 4
 Origin: FAHRPLAN Phase 1 — "Erfolgskriterien prüfen"
 

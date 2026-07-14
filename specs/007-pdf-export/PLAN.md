@@ -2,7 +2,7 @@
 
 Status: **Planned**
 
-Spec ID: `005-pdf-export`
+Spec ID: `007-pdf-export`
 Depends on: `003-page-detection-read-path`, `004-docx-export` Task 2 (shared `ExportBlock` intermediate model), `002-extension-workspace` Task 5 (offscreen WASM proof)
 Related strategy: FAHRPLAN Phase 1 Task 1.4 · `TYPST-EXPORT-ANGLE.md` §1b, §5.2, §7.5 Schritt 4 · `EXPORT-QUALITY-ANGLE.md` §3–§5, §7 (quality proofs 1+3)
 Origin: FAHRPLAN Phase 1 — "PDF-Export"

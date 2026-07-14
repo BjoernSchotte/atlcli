@@ -4,7 +4,7 @@ Status: **Implemented** (2026-07-15 — Tasks 1–6 complete, Codex-reviewed (8 
 
 Spec ID: `002-extension-workspace`
 Depends on: `specs/001-browser-ready-core` (implemented — browser entry, session auth, CI gate)
-Blocks: `003-page-detection-read-path`, `004-docx-export`, `005-pdf-export`
+Blocks: `003-page-detection-read-path`, `004-docx-export`, `007-pdf-export`
 Related strategy: `~/code/rovo-skills/FAHRPLAN.md` Phase 1 Task 1.1 · `~/code/rovo-skills/research/TYPST-EXPORT-ANGLE.md` §1b (WASM in MV3), §7.4/§7.5 Schritt 2
 Origin: FAHRPLAN Phase 1 — "Workspace `apps/extension`"
 
@@ -14,7 +14,7 @@ Origin: FAHRPLAN Phase 1 — "Workspace `apps/extension`"
 
 Create the Chrome extension workspace in the monorepo: a Manifest V3 extension that loads
 unpacked in Chrome, opens a side panel on Atlassian tabs, hosts an offscreen document for
-WASM workloads (needed by the PDF path, spec 005), and builds via the existing Bun/Turbo
+WASM workloads (needed by the PDF path, spec 007), and builds via the existing Bun/Turbo
 pipeline. This spec delivers **scaffolding only** — no Confluence calls, no export logic.
 Its job is to make every later spec a pure feature-add on a proven skeleton.
 
@@ -22,7 +22,7 @@ Key architectural facts driving the shape (from the research):
 
 - **MV3 service workers are short-lived** — any multi-second WASM job (Typst compile) must
   run in an **offscreen document**, not the service worker. The skeleton must prove the
-  offscreen round-trip works before spec 005 depends on it.
+  offscreen round-trip works before spec 007 depends on it.
 - **WASM requires `wasm-unsafe-eval`** in the extension CSP (Chrome ≥ 103).
 - **Session-cookie auth requires `host_permissions`** for `*.atlassian.net` so that
   `fetch(..., { credentials: "include" })` from extension contexts rides the user's
@@ -35,7 +35,7 @@ Key architectural facts driving the shape (from the research):
   Chrome accepts via **Load unpacked** without warnings or errors.
 - Side panel opens and renders a placeholder UI; service worker and offscreen document
   communicate via typed messages.
-- Offscreen document instantiates a trivial WASM module (smoke test for the 005 path).
+- Offscreen document instantiates a trivial WASM module (smoke test for the 007 path).
 - The extension imports `@atlcli/core` (browser entry) and `@atlcli/confluence` and the
   bundle contains zero `node:`/`bun:` specifiers — enforced by extending the existing
   `check:browser` gate.
@@ -43,7 +43,7 @@ Key architectural facts driving the shape (from the research):
 ### Non-goals (this spec)
 
 - No page detection, no REST calls, no session-auth usage (spec 003).
-- No DOCX/PDF export, no template UI (specs 004/005).
+- No DOCX/PDF export, no template UI (specs 004/007).
 - No Chrome Web Store packaging/publishing, no icons beyond placeholders, no i18n.
 - No Firefox/Edge compatibility work (MV3 Chrome only for the PoC).
 - No framework-heavy UI: keep the panel minimal; visual design comes with the feature specs.
@@ -82,7 +82,7 @@ open without committing to it.
 **Constraint for the PoC:** no **remote-hosted** UI — everything renders from bundled,
 local assets, consistent with the privacy story ("nothing leaves the browser"). Bundled
 offscreen and sandboxed documents are explicitly fine (and required: typst.ts/WASM in
-spec 005 runs in the bundled offscreen document); the ban is on loading UI from a remote
+spec 007 runs in the bundled offscreen document); the ban is on loading UI from a remote
 origin, not on iframes/sandbox pages as such.
 
 **Documented for later (post-PoC option, Björn 2026-07-14):** Chrome Web Store MV3 policy
@@ -110,7 +110,7 @@ apps/extension/
       main.tsx            # React panel entry
     offscreen/
       index.html
-      main.ts             # WASM host (typst.ts lives here from 005 on)
+      main.ts             # WASM host (typst.ts lives here from 007 on)
   utils/
     messages.ts           # typed message protocol (discriminated unions)
   package.json            # name: @atlcli/extension, private (wxt, react deps)

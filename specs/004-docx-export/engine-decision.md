@@ -7,7 +7,7 @@ Status: **Decision made (2026-07-16): docxtemplater free — Option A.** See PLA
 > and nothing imports it). Paths below like `spike/src/preprocess.ts`, `spike/src/verify-outputs.ts`,
 > `spike/out/*.docx`, `spike/bundle/*` refer to that removed harness and are recoverable from git
 > history (spike added in `45e909e`). The one reusable artifact — the OOXML image-module prototype —
-> was preserved as [`image-module-prototype.ts`](image-module-prototype.ts) for the deferred
+> was preserved as [`specs/005-docx-image-module/image-module-prototype.ts`](../005-docx-image-module/image-module-prototype.ts) for the deferred
 > image-module task. The reproduce-commands below are historical.
 
 Author: engine spike, 2026-07-14
@@ -96,7 +96,7 @@ Legend: ✅ works · ⚠️ works with caveat/cost · ❌ blocked.
   is unavailable and you fall back to a self-built module anyway.
 - **docxtemplater free**: no image module without the paid **Image Module**
   (commercial, excluded per Björn). The spike **built the free-tier image path
-  by hand** (`image-module-prototype.ts`): write `word/media/*.png`, append an
+  by hand** (`specs/005-docx-image-module/image-module-prototype.ts`): write `word/media/*.png`, append an
   `.../image` relationship to `word/_rels/document.xml.rels`, add the `png`
   default to `[Content_Types].xml`, emit a `<w:drawing>`/`<pic:pic>` with EMU
   sizing referencing the rId. Verified: 3 media parts, png content-type, 3 blips
@@ -162,7 +162,7 @@ shipped `lib/browser.js`; docxtemplater entry includes PizZip):
 | **docxtemplater (+pizzip)** | **270.1 KB** | **83.2 KB** | **~1.5 ms** |
 | preprocessor only (Option C) | (pizzip ~95 KB min only) | — | ~3 ms |
 
-All render times are ~1000× under the 10 s budget (spec 006). Size difference is
+All render times are ~1000× under the 10 s budget (spec 008). Size difference is
 minor at side-panel scale but favours docxtemplater / no-engine.
 
 ### 6. Header/footer placeholder replacement — **proven**
@@ -197,7 +197,7 @@ The MV3-CSP row is the added, decisive real-world gate the spike surfaced.
 ## Cost items (explicit, per §2.1 license constraint)
 
 1. **Self-built OOXML image module — ~1 developer-day (S).** Prototyped in
-   `image-module-prototype.ts` (media part + relationship + content-type + drawing/EMU).
+   `specs/005-docx-image-module/image-module-prototype.ts` (media part + relationship + content-type + drawing/EMU).
    Remaining production work: run-normalisation, SVG `svgBlip`+PNG fallback,
    intrinsic-size→page-width capping, alt text, dedupe of identical images.
    **This cost is incurred under docxtemplater AND under docx-templates-in-MV3
@@ -251,7 +251,7 @@ zip.file(`word/media/${name}.png`, pngBytes);
 //    <w:drawing><wp:inline><wp:extent cx cy/><a:graphic>…<a:blip r:embed="rIdN"/>…
 ```
 
-Full reference implementation: `image-module-prototype.ts`
+Full reference implementation: `specs/005-docx-image-module/image-module-prototype.ts`
 (`addImageRel`, `ensurePngContentType`, `imageDrawing`).
 
 **`$scroll.*` text placeholders — preprocessor** (`spike/src/preprocess.ts`):

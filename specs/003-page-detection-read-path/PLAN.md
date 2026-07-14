@@ -4,7 +4,7 @@ Status: **Implemented** (2026-07-15 — Tasks 0–4 complete, Codex-reviewed (7 
 
 Spec ID: `003-page-detection-read-path`
 Depends on: `001-browser-ready-core` (entity extractor, session auth mode, browser entry — implemented), `002-extension-workspace`
-Blocks: `004-docx-export`, `005-pdf-export`
+Blocks: `004-docx-export`, `007-pdf-export`
 Related strategy: FAHRPLAN Phase 1 Task 1.2 · `TYPST-EXPORT-ANGLE.md` §7.2 (session auth), §7.5 Schritt 2–3 · `AGENT-OVERLAY-ANGLE.md` §1 (URL registry as primary source, DOM only as fallback)
 Origin: FAHRPLAN Phase 1 — "Seitenerkennung + Read-Pfad"
 

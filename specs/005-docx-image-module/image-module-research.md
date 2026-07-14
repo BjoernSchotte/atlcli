@@ -6,7 +6,7 @@ image-embedding follow-up task (PLAN.md Decisions log **F3**).
 Scope: analyse the ~8-year-old open-source `docxtemplater-image-module-free` and distill
 what our **own** OOXML image module (docxtemplater FREE engine; paid Image Module excluded)
 can reuse or must rewrite. Compares against the spike prototype in
-`specs/004-docx-export/image-module-prototype.ts`.
+`image-module-prototype.ts`.
 
 Primary source (all cited inline):
 - Repo: https://github.com/evilc0des/docxtemplater-image-module-free
@@ -296,4 +296,4 @@ has — and that our follow-up must add — are an **in-browser dimension decode
 - `es6/templates.js` (`getImageXml` fragment, §2.1): https://raw.githubusercontent.com/evilc0des/docxtemplater-image-module-free/master/es6/templates.js
 - `es6/imgManager.js` (media path, rId, content-types, §2.2–2.4): master branch
 - `es6/docUtils.js` (`convertPixelsToEmus` = `Math.round(pixel*9525)`, §2.5): master branch
-- Local comparison: `specs/004-docx-export/image-module-prototype.ts`, `engine-decision.md`, `PLAN.md` (F3).
+- Local comparison: `image-module-prototype.ts`, `engine-decision.md`, `PLAN.md` (F3).
