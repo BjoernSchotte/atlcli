@@ -1,6 +1,7 @@
 {
   "name": "@atlcli/example-plugin",
   "version": "0.5.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
