@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock } from "@atlcli/confluence/browser";
+import { storageToBlocks, type ExportBlock, type InlineNode } from "@atlcli/confluence/browser";
 import { serializeBlocks, serializeInline } from "../../utils/docx/serialize.js";
 import { parseStyleNames } from "../../utils/docx/ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
@@ -29,6 +29,18 @@ describe("serializeInline", () => {
   it("renders a mention with @ and no literal accountId leak when named", () => {
     const xml = serializeInline([{ type: "mention", accountId: "u1", displayName: "Jo" }]);
     expect(xml).toContain("@Jo");
+  });
+
+  it("round-trips named HTML entities from storage into real UTF-8 <w:t> text", () => {
+    // Regression: DOCX export previously showed literal `drei &uuml;berlappende`
+    // because the storage walker only decoded a dozen hand-listed entities.
+    const { blocks } = storageToBlocks(
+      "<h2>Gr&ouml;&szlig;e</h2><p>drei &uuml;berlappende &auml;pfel &mdash; caf&eacute;</p>"
+    );
+    const xml = serializeInline((blocks[1] as { content: InlineNode[] }).content);
+    expect(xml).toContain("drei überlappende äpfel — café");
+    // No surviving named-entity literals leak into the OOXML text run.
+    expect(xml).not.toMatch(/&[a-zA-Z][a-zA-Z0-9]*;/);
   });
 });
 

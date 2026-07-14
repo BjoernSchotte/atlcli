@@ -75,6 +75,20 @@ describe("storageToBlocks — paragraphs & marks", () => {
     expect(run.text).toBe(`a & b <c> — d e`);
   });
 
+  test("decodes the full HTML named-entity set (umlauts, punctuation, charrefs)", () => {
+    const out = blocks(
+      "<p>&uuml;&auml;&ouml;&Uuml;&szlig; &eacute; &mdash;&hellip; &copy; &#252;&#xFC; &amp;&lt;&gt;</p>"
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toHaveLength(1);
+    const run = content[0] as { type: "text"; text: string };
+    // Named umlauts + eszett, punctuation, decimal + hex charrefs and the
+    // XML-core trio all resolve to real characters (full HTML5 entity set).
+    expect(run.text).toBe("üäöÜß é —… © üü &<>");
+    // Zero surviving named-entity literals.
+    expect(run.text).not.toMatch(/&[a-zA-Z][a-zA-Z0-9]*;/);
+  });
+
   test("drops empty/whitespace-only paragraphs", () => {
     expect(blocks("<p></p><p>  </p><p>real</p>")).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "real" }] },
@@ -280,6 +294,15 @@ describe("storageToBlocks — images", () => {
   test("external image URL", () => {
     const out = blocks('<ac:image><ri:url ri:value="https://x.test/a.png"/></ac:image>');
     expect(out).toEqual([{ type: "image", source: { kind: "external", url: "https://x.test/a.png" } }]);
+  });
+
+  test("decodes named entities in attribute values (image alt)", () => {
+    const out = blocks(
+      '<ac:image ac:alt="drei &uuml;berlappende &auml;pfel &mdash; Gr&ouml;&szlig;e"><ri:attachment ri:filename="a.png"/></ac:image>'
+    );
+    expect(out).toEqual([
+      { type: "image", source: { kind: "attachment", filename: "a.png" }, alt: "drei überlappende äpfel — Größe" },
+    ]);
   });
 
   test("image inside a paragraph splits into its own block", () => {

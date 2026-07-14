@@ -23,6 +23,7 @@
  *   passed through verbatim.
  */
 
+import { decodeHTML } from "entities";
 import { KNOWN_MACROS, stripTableColumnMetadata } from "./markdown.js";
 
 // ---------------------------------------------------------------------------
@@ -139,41 +140,20 @@ interface XmlElement {
 }
 type XmlNode = XmlText | XmlElement;
 
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  mdash: "—",
-  ndash: "–",
-  hellip: "…",
-  copy: "©",
-  reg: "®",
-  trade: "™",
-};
-
-/** Decode the XML/HTML entities that appear in Confluence storage. */
+/**
+ * Decode the XML/HTML entities that appear in Confluence storage.
+ *
+ * Confluence storage is XHTML and may carry any of the ~2000 HTML5 named
+ * entities (`&uuml;`, `&szlig;`, `&eacute;`, `&mdash;`, `&hellip;`, ...) plus
+ * numeric decimal/hex charrefs. We delegate to `entities` (the isomorphic
+ * decoder used by turndown/markdown-it) so the full set resolves; the previous
+ * hand-maintained table silently dropped everything outside a dozen names.
+ *
+ * Note: `&nbsp;` decodes to a real non-breaking space (U+00A0), not a plain
+ * 0x20 space -- this is the correct character for Word/DOCX output.
+ */
 function decodeEntities(text: string): string {
-  return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g, (whole, body: string) => {
-    if (body[0] === "#") {
-      const codePoint =
-        body[1] === "x" || body[1] === "X"
-          ? Number.parseInt(body.slice(2), 16)
-          : Number.parseInt(body.slice(1), 10);
-      if (Number.isFinite(codePoint) && codePoint > 0) {
-        try {
-          return String.fromCodePoint(codePoint);
-        } catch {
-          return whole;
-        }
-      }
-      return whole;
-    }
-    const named = NAMED_ENTITIES[body];
-    return named ?? whole;
-  });
+  return decodeHTML(text);
 }
 
 /**
