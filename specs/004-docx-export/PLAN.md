@@ -1,6 +1,6 @@
 # DOCX Export (Headline) — Customer Word Template + Scroll Placeholder Compatibility
 
-Status: **In progress** (2026-07-16 — Task 1 spike done + engine decided, Task 2 done; Tasks 3–5 next. F1 ✅ docxtemplater free; images deferred to a follow-up task ✅.)
+Status: **In progress** (2026-07-16 — Task 1 spike done + engine decided, Task 2 done; Tasks 3–5 implemented + ACs verified 2026-07-14, Task 7 user-E2E next. F1 ✅ docxtemplater free; images deferred to a follow-up task ✅.)
 
 Spec ID: `004-docx-export`
 Depends on: `003-page-detection-read-path` · `001-browser-ready-core` Task 8 (`specs/001-browser-ready-core/scroll-placeholder-mapping.md` — the normative placeholder table)
@@ -193,27 +193,27 @@ trust surface and 006's measurement hook.
 
 ### Task 3 — Template upload + scan UI
 
-- [ ] Upload (.docx only, size cap 20 MB), stored in IndexedDB, survives panel reload; replace + delete actions
-- [ ] Placeholder scan per §2.4 incl. header/footer parts; unit tests with crafted minimal docx fixtures (supported/unsupported/never mixes)
-- [ ] Panel renders scan: supported ✓, unsupported ⚠ (with "will be empty" note), never ✗
-- [ ] Corrupt/non-zip upload → clear error, nothing stored
+- [x] Upload (.docx only, size cap 20 MB), stored in IndexedDB, survives panel reload; replace + delete actions — `apps/extension/utils/docx/template-store.ts` (native IDB, round-trip tested with `fake-indexeddb`), `entrypoints/sidepanel/TemplateSection.tsx` (mount re-read + replace/delete)
+- [x] Placeholder scan per §2.4 incl. header/footer parts; unit tests with crafted minimal docx fixtures (supported/unsupported/never mixes) — `utils/docx/scan.ts` + `utils/docx/ooxml-text.ts` (run-normalized), `tests/docx/scan.test.ts` incl. a run-split placeholder
+- [x] Panel renders scan: supported ✓, unsupported ⚠ (with "will be empty" note), never ✗ — `TemplateSection.tsx` `ScanView`
+- [x] Corrupt/non-zip upload → clear error, nothing stored — `unzipDocx` validates (zip + `word/document.xml`) before persist; `scan.test.ts` covers not-zip/not-docx/too-large
 
 ### Task 4 — Placeholder resolver
 
-- [ ] Every `direct` + `derivable` mapping row implemented; table-driven test asserts each against a fixture context
-- [ ] Lazy `getSpace`/`getCurrentUser` fetching (mock-fetch test: not called when template doesn't need them)
-- [ ] SimpleDateFormat subset (`yyyy`, `MM`, `dd`, `HH`, `mm`) + fallback behavior tested
-- [ ] Unsupported/never placeholders → empty string + report entries (never literal `$scroll.*` in output — pinning test)
+- [x] Every `direct` + `derivable` mapping row implemented; table-driven test asserts each against a fixture context — `utils/docx/resolver.ts` (`resolveOne`), `tests/docx/resolver.test.ts` (24-row table). Deviation: `$scroll.includepage.*` (derivable in §2 but a cross-page-include Phase-2 non-goal) is classified `unsupported` in v1 → empty + report line, per PLAN Non-goals; documented in `placeholder-map.ts`.
+- [x] Lazy `getSpace`/`getCurrentUser` fetching (mock-fetch test: not called when template doesn't need them) — `resolvePlaceholders` fires each round-trip only when the used set needs it, at most once; `resolver.test.ts` proves not-called + at-most-once
+- [x] SimpleDateFormat subset (`yyyy`, `MM`, `dd`, `HH`, `mm`) + fallback behavior tested — `utils/docx/dateformat.ts`, `tests/docx/dateformat.test.ts` (incl. unknown-token → ISO + report)
+- [x] Unsupported/never placeholders → empty string + report entries (never literal `$scroll.*` in output — pinning test) — `resolver.test.ts` pinning test + `export.test.ts` full-output pin
 
 ### Task 5 — Body serialization + export flow (docxtemplater free)
 
-- [ ] `$scroll.content` replaced with serialized `ExportBlock[]` OOXML via docxtemplater `{@rawXml}`; heading style mapping incl. fallback chain tested against a template with and without `Scroll Heading` styles
-- [ ] `$scroll.*` preprocessor (engine-agnostic; run-normalisation so placeholders split across `<w:r>` runs are merged before replacement) resolves all non-content placeholders in body **and** header/footer parts
-- [ ] Images: **deferred (v1)** — an image block emits NO OOXML image and adds a report line ("image skipped — embedding not yet available"); export still succeeds (pinning test: output has no dangling relationship, no `$scroll.` literal, report lists each skipped image)
-- [ ] Callout boxes as styled 1×1 tables (background + left accent border + title); code blocks via Shiki colored runs — both verified by unzipping the output in tests and asserting OOXML landmarks
-- [ ] `w:updateFields` set in output `settings.xml` (TOC populates on open)
-- [ ] Export triggers a browser download `"<page-title>.docx"`; duration measured and shown in report
-- [ ] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs, and (docxtemplater) throws no template error on the fixture template
+- [x] `$scroll.content` replaced with serialized `ExportBlock[]` OOXML via docxtemplater `{@rawXml}`; heading style mapping incl. fallback chain tested against a template with and without `Scroll Heading` styles — `utils/docx/export.ts` (`{@scrollContent}` splice + render), `utils/docx/serialize.ts` + `ooxml.ts` (`resolveHeadingStyleId` Scroll Heading N → Heading N → builtin); `tests/docx/{serialize,export}.test.ts`
+- [x] `$scroll.*` preprocessor (engine-agnostic; run-normalisation so placeholders split across `<w:r>` runs are merged before replacement) resolves all non-content placeholders in body **and** header/footer parts — `export.ts` `preprocessScrollText` + `ooxml-text.ts` `rewriteParagraphText`; `export.test.ts` asserts resolved values in body + header + run-split footer
+- [x] Images: **deferred (v1)** — an image block emits NO OOXML image and adds a report line ("image skipped — embedding not yet available"); export still succeeds (pinning test: output has no dangling relationship, no `$scroll.` literal, report lists each skipped image) — `serialize.ts` image case; `serialize.test.ts` + `export.test.ts` pins (no `<w:drawing>`, `skippedImages` counted)
+- [x] Callout boxes as styled 1×1 tables (background + left accent border + title); code blocks via Shiki colored runs — both verified by unzipping the output in tests and asserting OOXML landmarks — `ooxml.ts` `calloutTable`/`codeLineParagraph`, `highlight.ts` (lazy fine-grained Shiki core, JS regex engine, curated per-language chunks); `serialize.test.ts` asserts fill/accent + colored runs
+- [x] `w:updateFields` set in output `settings.xml` (TOC populates on open) — `export.ts` `ensureUpdateFields` (creates settings.xml + registers part when absent); `export.test.ts`
+- [x] Export triggers a browser download `"<page-title>.docx"`; duration measured and shown in report — `TemplateSection.tsx` `download()` + `ReportView`; `export.ts` `toDownloadFilename` + `durationMs`; `export.test.ts` asserts sanitized filename
+- [x] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs, and (docxtemplater) throws no template error on the fixture template — `tests/docx/export.test.ts`
 
 ### Task 6 — Stretch: mermaid diagrams
 

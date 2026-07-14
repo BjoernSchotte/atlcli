@@ -26,6 +26,7 @@ import {
   reduce,
   type PanelState,
 } from "../../utils/panel-state.js";
+import { TemplateSection } from "./TemplateSection.js";
 
 const manifest = chrome.runtime.getManifest();
 
@@ -149,6 +150,11 @@ export function App(): React.JSX.Element {
       </header>
 
       <DetectionView state={state} onRetry={() => dispatch({ type: "retry" })} />
+
+      <TemplateSection
+        loadedPage={state.status === "loaded" ? state.page : null}
+        pageUrl={state.status === "loaded" ? state.ref.url : null}
+      />
 
       <DebugSection />
     </main>
