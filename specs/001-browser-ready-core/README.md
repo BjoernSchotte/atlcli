@@ -196,6 +196,6 @@ Empfohlene Umsetzung als 3–4 PRs: (1) 0.1+0.2, (2) 0.3, (3) 0.4, (4) 0.5; 0.6 
 
 ## Entscheidungen
 
-- **F1 — Exports-Strategie:** offen (Erläuterung der Auswirkungen angefragt, 2026-07-14). Spec geht bis zur Entscheidung von `exports`-Conditions aus.
+- **F1 — Exports-Strategie:** ✅ entschieden (2026-07-14): `exports`-Conditions (Option A, non-breaking). Ein harter Split (`.` = browser-safe, Node nur via `@atlcli/core/node`) bleibt als spätere Verschärfung (z.B. zu einem 1.0-Release) möglich.
 - **F2 — Logger-Browser-Default:** ✅ entschieden (2026-07-14): `console`-Sink mit Level ≥ warn.
 - **F3 — Registry-Scope 0.5:** ✅ entschieden (2026-07-14): Confluence + Jira; JSM-Queues erst mit Phase 3 (Agent-Overlay).
