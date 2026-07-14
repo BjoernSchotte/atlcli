@@ -19,6 +19,8 @@ import {
   type EntityChanged,
   type ExtResponse,
 } from "../../utils/messages.js";
+import type { PanelEvent } from "../../utils/panel-state.js";
+import { pullCurrentEntity } from "../../utils/detection-pull.js";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import { loadConfluencePage, ReadError, type ReadErrorKind } from "../../utils/read-path.js";
 import {
@@ -71,20 +73,14 @@ export function App(): React.JSX.Element {
   // ---- Detection: mount pull + push subscription (Task 1 wiring) -----------
   useEffect(() => {
     let cancelled = false;
-    void chrome.runtime
-      .sendMessage({ kind: "get-current-entity" })
-      .then((res: ExtResponse | undefined) => {
-        if (cancelled || !res || res.kind !== "current-entity") return;
-        dispatch({
-          type: "detected",
-          url: res.detection.url,
-          entity: res.detection.entity,
-          seq: res.detection.seq,
-        });
-      })
-      .catch(() => {
-        /* SW asleep / no answer — a push will follow on the next tab event */
-      });
+    const send = (message: { kind: "get-current-entity" }): Promise<unknown> =>
+      chrome.runtime.sendMessage(message);
+    const safeDispatch = (event: PanelEvent): void => {
+      if (!cancelled) dispatch(event);
+    };
+    const pull = (): void => void pullCurrentEntity(send, safeDispatch);
+
+    pull(); // mount pull — no race with the SW's entity-changed push
 
     const listener = (message: unknown): void => {
       if (isEntityChanged(message)) {
@@ -98,9 +94,23 @@ export function App(): React.JSX.Element {
       }
     };
     chrome.runtime.onMessage.addListener(listener);
+
+    // Re-pull when the panel regains visibility/focus. After an extension reload
+    // an already-open Confluence tab fires no tab event, so the mount pull is the
+    // only detection path; re-pulling on visibility/focus recovers detection when
+    // the user re-opens or refocuses the panel — no page reload needed (spec 003
+    // E2E papercut). The reducer's seq guard keeps a stale pull from winning.
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
     return () => {
       cancelled = true;
       chrome.runtime.onMessage.removeListener(listener);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

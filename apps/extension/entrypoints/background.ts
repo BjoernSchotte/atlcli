@@ -24,6 +24,7 @@ import {
   currentDetection,
   initialObserverState,
   observeTab,
+  selectActiveTabUrl,
   type ObserverState,
 } from "../utils/tab-observer.js";
 
@@ -109,8 +110,21 @@ export default defineBackground({
    * been applied (Task 1 AC, no lost-update race).
    */
   const getCurrentEntity = async (): Promise<EntityDetection> => {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    const { state, detection } = currentDetection(observer, tab?.url);
+    // Widen the query beyond the last-focused window: after an extension reload
+    // the panel takes focus, so `lastFocusedWindow`'s active tab can be the wrong
+    // one and the pull would read a non-Confluence URL (spec 003 E2E: "No
+    // Atlassian page detected" until F5). Gather the last-focused active tab AND
+    // every window's active tab, then let the pure selector prefer the docked
+    // Atlassian tab (see selectActiveTabUrl).
+    const [focusedTabs, activeTabs] = await Promise.all([
+      chrome.tabs.query({ active: true, lastFocusedWindow: true }),
+      chrome.tabs.query({ active: true }),
+    ]);
+    const url = selectActiveTabUrl({
+      focused: focusedTabs[0]?.url,
+      active: activeTabs.map((t) => t.url),
+    });
+    const { state, detection } = currentDetection(observer, url);
     observer = state;
     return detection;
   };

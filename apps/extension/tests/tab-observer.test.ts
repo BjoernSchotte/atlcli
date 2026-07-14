@@ -5,6 +5,7 @@ import {
   detectEntity,
   initialObserverState,
   observeTab,
+  selectActiveTabUrl,
   type ObserverState,
 } from "../utils/tab-observer.js";
 
@@ -156,5 +157,46 @@ describe("currentDetection (pull path, shared seq counter)", () => {
     const afterPush = observeTab(initialObserverState(), PAGE_URL); // seq 1
     const pull = currentDetection(afterPush.state, undefined);
     expect(pull.detection).toEqual({ url: null, entity: null, seq: 1 });
+  });
+});
+
+describe("selectActiveTabUrl (get-current-entity tab resolution, finding: detection after reload)", () => {
+  it("prefers the last-focused active tab when it is an Atlassian URL", () => {
+    expect(
+      selectActiveTabUrl({ focused: PAGE_URL, active: [PAGE_URL, NON_ATLASSIAN] })
+    ).toBe(PAGE_URL);
+  });
+
+  it("recovers the docked Atlassian tab when the last-focused tab is NOT Atlassian", () => {
+    // Regression: after an extension reload the panel takes focus, so the
+    // last-focused window's active tab resolves to a non-Confluence tab. Widening
+    // to all active tabs and preferring an Atlassian one fixes the empty panel.
+    expect(
+      selectActiveTabUrl({ focused: NON_ATLASSIAN, active: [NON_ATLASSIAN, PAGE_URL] })
+    ).toBe(PAGE_URL);
+  });
+
+  it("does not misread a foreign Confluence-shaped origin as the target tab", () => {
+    // The origin gate lives in isAtlassianCloudUrl; a look-alike origin is not a
+    // preferred candidate, so we fall back to the last-focused tab.
+    expect(
+      selectActiveTabUrl({ focused: NON_ATLASSIAN, active: [NON_ATLASSIAN, FOREIGN_CONFLUENCE_SHAPE] })
+    ).toBe(NON_ATLASSIAN);
+  });
+
+  it("falls back to the last-focused tab when no active tab is Atlassian", () => {
+    expect(
+      selectActiveTabUrl({ focused: NON_ATLASSIAN, active: [NON_ATLASSIAN] })
+    ).toBe(NON_ATLASSIAN);
+  });
+
+  it("falls back to the first active tab with a URL when there is no focused tab", () => {
+    expect(
+      selectActiveTabUrl({ focused: undefined, active: [undefined, NON_ATLASSIAN] })
+    ).toBe(NON_ATLASSIAN);
+  });
+
+  it("returns undefined when there is no candidate URL at all", () => {
+    expect(selectActiveTabUrl({ focused: undefined, active: [undefined, null] })).toBeUndefined();
   });
 });

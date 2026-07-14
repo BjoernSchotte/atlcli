@@ -104,5 +104,43 @@ export function currentDetection(
   return { state: { lastEmittedUrl: url, seq }, detection: detectEntity(url, seq) };
 }
 
+/**
+ * Candidate tab URLs for resolving a `get-current-entity` pull.
+ *
+ *  - `focused`: the URL of the active tab in the last-focused window
+ *    (`chrome.tabs.query({ active: true, lastFocusedWindow: true })`).
+ *  - `active`:  the URLs of the active tab in EVERY window
+ *    (`chrome.tabs.query({ active: true })`).
+ */
+export interface TabCandidates {
+  focused: string | undefined | null;
+  active: (string | undefined | null)[];
+}
+
+/**
+ * Pick the URL of the tab the side panel is docked next to (spec 003 E2E: after
+ * an extension reload the panel showed "No Atlassian page detected" for an
+ * already-open Confluence tab until the user pressed F5).
+ *
+ * Root cause: when the panel has focus, `lastFocusedWindow`'s active tab can be
+ * the wrong tab, so the mount-pull read a non-Confluence URL. The fix widens the
+ * SW query to all active tabs and prefers a real Atlassian tab:
+ *
+ *   1. the last-focused active tab, IF it is an Atlassian Cloud URL (the common
+ *      case: the panel is docked beside the page the user is looking at);
+ *   2. otherwise ANY active tab that is an Atlassian Cloud URL (recovers the
+ *      docked Confluence tab when focus resolution missed it);
+ *   3. otherwise the last-focused active tab, else the first active tab with a
+ *      URL — so a non-Atlassian tab still lands on the idle state deterministically.
+ */
+export function selectActiveTabUrl(candidates: TabCandidates): string | undefined {
+  const { focused, active } = candidates;
+  if (focused && isAtlassianCloudUrl(focused)) return focused;
+  const atlassian = active.find((u): u is string => !!u && isAtlassianCloudUrl(u));
+  if (atlassian) return atlassian;
+  if (focused) return focused;
+  return active.find((u): u is string => !!u);
+}
+
 /** Re-export for shells that only need the entity type. */
 export type { AtlassianEntity };
