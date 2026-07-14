@@ -12,12 +12,8 @@ import { defineBackground } from "wxt/utils/define-background";
 // resolves the `browser` export condition (PLAN §6 risk 4); the Task 6 output
 // scan then proves this pulls in zero node:/bun: specifiers.
 import { extractEntityFromUrl } from "@atlcli/core";
-import {
-  isExtRequest,
-  type ExtResponse,
-  type OffscreenResponse,
-} from "../utils/messages.js";
-import { routeMessage } from "../utils/router.js";
+import { type OffscreenResponse } from "../utils/messages.js";
+import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 
@@ -72,22 +68,10 @@ export default defineBackground({
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((err) => console.error("setPanelBehavior failed", err));
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    // Ignore anything that isn't a panel-facing request (e.g. offscreen replies).
-    if (!isExtRequest(message)) return false;
-
-    routeMessage(message, { runWasmSmoke })
-      .then((response: ExtResponse) => sendResponse(response))
-      .catch((err) =>
-        sendResponse({
-          kind: "wasm-smoke-result",
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        } satisfies ExtResponse)
-      );
-
-    // Keep the message channel open for the async response.
-    return true;
-  });
+  // The `true` return from handleExtMessage keeps the channel open for the
+  // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
+    handleExtMessage(message, sendResponse, { runWasmSmoke })
+  );
   },
 });
