@@ -128,10 +128,11 @@ tested; rendering is the thin shell.
 
 ### Task 3 — Converter + attachments
 
-- [ ] Storage body runs through the existing storage→markdown converter inside the panel bundle; result stored in panel state
-- [ ] `listAttachments(pageId)` fetches attachment metadata (name, mediaType, size, download link) — displayed as a count + expandable list
-- [ ] Word count computed from the markdown (needed for the 006 `< 10 s / ~2,000 words` benchmark)
-- [ ] Unit test: a representative storage fixture (headings, callout macro, table, image ref, code block) converts and the panel state contains non-empty markdown with expected landmarks
+- [x] Storage body runs through the existing storage→markdown converter inside the panel bundle; result stored in panel state <!-- read-path.ts imports storageToMarkdown via @atlcli/confluence/browser; LoadedPage.markdown holds the result -->
+- [x] `listAttachments(pageId)` fetches attachment metadata (name, mediaType, size, download link) — displayed as a count + expandable list <!-- toAttachmentMeta maps to {name,mediaType,size,link}; panel renders count + collapsible list (Task 4). Listing is best-effort (failure → empty list, page still loads) -->
+- [x] Word count computed from the markdown (needed for the 006 `< 10 s / ~2,000 words` benchmark) <!-- countWords over the converted markdown; LoadedPage.wordCount -->
+- [x] Unit test: a representative storage fixture (headings, callout macro, table, image ref, code block) converts and the panel state contains non-empty markdown with expected landmarks <!-- converter-fixture.test.ts asserts heading/callout/table/image/code-fence landmarks + wordCount + attachment metadata via the real converter -->
+
 
 ### Task 4 — Panel UI for detection/read
 

@@ -126,9 +126,10 @@ const defaultDeps: ReadPathDeps = {
 export async function loadConfluencePage(
   pageId: string,
   profile: Profile,
-  deps: ReadPathDeps = defaultDeps
+  deps: Partial<ReadPathDeps> = {}
 ): Promise<LoadedPage> {
-  const client = deps.makeClient(profile);
+  const { makeClient, toMarkdown } = { ...defaultDeps, ...deps };
+  const client = makeClient(profile);
 
   let details: ConfluencePageDetails;
   try {
@@ -146,7 +147,7 @@ export async function loadConfluencePage(
     );
   }
 
-  const markdown = deps.toMarkdown(details.storage ?? "");
+  const markdown = toMarkdown(details.storage ?? "");
   const wordCount = countWords(markdown);
 
   let attachments: AttachmentMeta[] = [];
