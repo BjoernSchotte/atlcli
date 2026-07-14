@@ -111,6 +111,29 @@ describe("exportDocx — full pipeline", () => {
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("stamps outline levels on injected headings so a TOC \\o collects them on a custom-heading-style template", async () => {
+    // Regression (spec 004 E2E): a customer template whose only heading style is
+    // a custom name (`Heading1TOC`, no `Heading 1/2/3`) yielded an empty
+    // `TOC \o "1-3"` because headings carried no outline level. The injected
+    // H1/H2 must now carry <w:outlineLvl w:val="0"/> / "1" regardless of style.
+    const templateBytes = buildDocx({
+      body: para("$scroll.title") + para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1TOC", "Heading1TOC")),
+    });
+    const { bytes } = await exportDocx({
+      templateBytes,
+      details,
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    // STORAGE has an <h1>Overview</h1> and an <h2>Details</h2>.
+    expect(doc).toContain('<w:outlineLvl w:val="0"/>');
+    expect(doc).toContain('<w:outlineLvl w:val="1"/>');
+    assertBalancedXml(doc);
+  });
+
   it("resolves $scroll.title in a text box and a drawing-adjacent footer run (real template, shapes a+b)", async () => {
     // Reproduces the live E2E finding against the Mayflower letterhead: the title
     // in a cover text box (mc:AlternateContent Choice+Fallback), the title again

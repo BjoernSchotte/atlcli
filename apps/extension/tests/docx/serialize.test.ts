@@ -53,6 +53,46 @@ describe("serializeBlocks — heading style mapping", () => {
   });
 });
 
+describe("serializeBlocks — heading outline levels (TOC \\o robustness)", () => {
+  // A `TOC \o "1-3"` field collects paragraphs by OUTLINE LEVEL, not style name,
+  // so headings must carry <w:outlineLvl> to populate a TOC on ANY template —
+  // even one whose only heading style is a custom name (spec 004 E2E finding).
+  it("stamps a 0-based outline level (level 1 → 0, level 3 → 2) alongside the style id", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "heading", level: 1, content: [{ type: "text", text: "H1" }] },
+      { type: "heading", level: 3, content: [{ type: "text", text: "H3" }] },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:outlineLvl w:val="0"/>');
+    expect(xml).toContain('<w:outlineLvl w:val="2"/>');
+    // Outline level is ADDITIONAL to the mapped style id (visual look preserved).
+    expect(xml).toContain('<w:pStyle w:val="Heading1"/>');
+    expect(xml).toContain('<w:pStyle w:val="Heading3"/>');
+    // Schema order: pStyle must precede outlineLvl inside <w:pPr>.
+    expect(xml.indexOf("<w:pStyle")).toBeLessThan(xml.indexOf("<w:outlineLvl"));
+  });
+
+  it("clamps outline levels to the OOXML 0–8 range (defensive: an out-of-range level → 8)", async () => {
+    // Heading levels are typed 1–6, but the serializer defensively clamps to the
+    // OOXML 0–8 outline range; cast an out-of-range level to exercise the guard.
+    const deep = { type: "heading", level: 12, content: [{ type: "text", text: "deep" }] } as unknown as ExportBlock;
+    const { xml } = await serializeBlocks([deep], { styleNames: noStyles });
+    expect(xml).toContain('<w:outlineLvl w:val="8"/>');
+  });
+
+  it("carries outline levels even when the template's only heading style is a custom name", async () => {
+    // Template defines `Heading1TOC` (custom) — no `Scroll Heading N`/`Heading N`.
+    // The style id falls back to the builtin, but the outline level is what a
+    // `TOC \o "1-3"` collects, so the heading still populates the TOC.
+    const styles = parseStyleNames(stylesXml(headingStyle("Heading1TOC", "Heading1TOC")));
+    const blocks: ExportBlock[] = [
+      { type: "heading", level: 1, content: [{ type: "text", text: "Custom" }] },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: styles });
+    expect(xml).toContain('<w:outlineLvl w:val="0"/>');
+  });
+});
+
 describe("serializeBlocks — callouts, code, tables, images", () => {
   it("renders a callout as a shaded 1x1 table with an accent border", async () => {
     const blocks: ExportBlock[] = [

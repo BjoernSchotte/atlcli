@@ -172,10 +172,20 @@ async function serializeBlock(
   depth: number
 ): Promise<string> {
   switch (block.type) {
-    case "heading":
+    case "heading": {
+      // Stamp an explicit outline level IN ADDITION to the template style id.
+      // `TOC \o "1-3"` collects paragraphs by OUTLINE LEVEL, not by style name,
+      // so a template whose only heading style is a custom name (e.g.
+      // `Heading1TOC`) still populates a native Word TOC — the style id supplies
+      // the visual look, the outline level supplies the TOC membership (spec 004
+      // E2E finding: empty TOC on custom-heading-style templates). Outline levels
+      // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
+      const outlineLvl = Math.max(0, Math.min(8, block.level - 1));
       return paragraph(serializeInline(block.content), {
         styleId: resolveHeadingStyleId(ctx.styleNames, block.level),
+        extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
+    }
 
     case "paragraph":
       return paragraph(serializeInline(block.content));
