@@ -1,6 +1,6 @@
 # Browser-Ready Core — Isomorphic `@atlcli/core` + Clients Implementation Plan
 
-Status: **Draft — proposed**
+Status: **Implemented** (2026-07-14 — Tasks 1–8 complete, all §8 ACs verified; implemented by Opus 4.8 agents, adversarially reviewed by Sonnet 5, two MAJOR review findings fixed in `d1274a2`)
 
 Spec ID: `001-browser-ready-core`
 Related specs: `spec/scroll-word-exporter-features.md` (existing `$scroll.*` placeholder catalog — input to Task 8), `spec/confluence-docx-export.md`, `spec/docx-export-typescript-analysis.md` (export background)
