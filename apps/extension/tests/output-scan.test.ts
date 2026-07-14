@@ -25,6 +25,24 @@ describe("scanText classification", () => {
     expect(scriptHits.some((h) => h.includes("http://cdn.example"))).toBe(true);
   });
 
+  // Regression (finding 1): each executable remote-code form must be caught.
+  it.each([
+    ["static import w/ default binding", `import x from "https://cdn.example/a.js";`],
+    ["static import w/ named bindings", `import { a, b } from "https://cdn.example/a.js";`],
+    ["static import namespace", `import * as ns from "https://cdn.example/a.js";`],
+    ["side-effect import (no bindings)", `import "https://cdn.example/a.js";`],
+    ["minified side-effect import", `import"https://cdn.example/a.js"`],
+    ["minified named import", `import{a}from"https://cdn.example/a.js"`],
+    ["dynamic import()", `const m = await import("https://cdn.example/a.js");`],
+    ["importScripts()", `importScripts("https://cdn.example/a.js")`],
+    ["HTML <script src> double-quoted", `<script src="https://cdn.example/a.js"></script>`],
+    ["HTML <script src> single-quoted", `<script src='https://cdn.example/a.js'></script>`],
+    ["HTML <script src> unquoted", `<script src=https://cdn.example/a.js></script>`],
+  ])("catches %s", (_label, text) => {
+    const hits = scanText(text);
+    expect(hits.some((h) => h.includes("https://cdn.example"))).toBe(true);
+  });
+
   it("does not flag ordinary local imports or http string data", () => {
     expect(scanText(`import a from "./local.js";`)).toEqual([]);
     // A bare URL string (not an import/script) is not a remote SCRIPT origin.

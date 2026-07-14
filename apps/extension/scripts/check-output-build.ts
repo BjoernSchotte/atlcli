@@ -19,16 +19,27 @@ import { join, relative } from "node:path";
 const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
 
 /**
- * Remote script origin: a static `import ... from`, dynamic `import(...)`,
- * `importScripts(...)`, or HTML `<script src=...>` pointing at an http(s) URL.
+ * Remote script origin: any executable form that would pull code from an
+ * http(s) URL —
+ *   - a static `import` (with bindings `import x from "url"`, namespace
+ *     `import * as ns from "url"`, or a bare side-effect `import "url"`),
+ *   - a dynamic `import(...)`,
+ *   - `importScripts(...)` (classic/worker), or
+ *   - an HTML `<script src=...>` whose URL is quoted OR unquoted.
  * Bare data/blob URLs and non-script string literals (e.g. a fetch endpoint)
- * are intentionally NOT matched — only executable remote code counts.
+ * are intentionally NOT matched — only executable remote code counts. Patterns
+ * tolerate minified spacing (`import{a}from"url"`).
  */
 const REMOTE_SCRIPT_RES: RegExp[] = [
-  /\bfrom\s*["'`]https?:\/\/[^"'`]+["'`]/g,
+  // Static import: side-effect (`import "url"`), or with a binding clause
+  // (`import x from "url"`, `import * as ns from "url"`, `import {a} from "url"`).
+  /\bimport\s*(?:[^"'`()]*\bfrom\s*)?["'`]https?:\/\/[^"'`]+["'`]/g,
+  // Dynamic import().
   /\bimport\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
+  // Classic worker importScripts().
   /\bimportScripts\s*\(\s*["'`]https?:\/\/[^"'`]+["'`]/g,
-  /<script\b[^>]*\bsrc\s*=\s*["']https?:\/\/[^"']+["']/gi,
+  // HTML <script src=...> — URL quoted ("url"/'url') or unquoted (src=url).
+  /<script\b[^>]*\bsrc\s*=\s*["']?https?:\/\/[^"'\s>]+/gi,
 ];
 
 export interface FileLeak {
