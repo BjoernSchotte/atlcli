@@ -85,7 +85,11 @@ describe("reduce — detection transitions", () => {
   it("de-dups a repeated detection of the same URL (no reload/flicker)", () => {
     const loading = detect(initialPanelState, URL_A, pageEntity);
     const again = detect(loading, URL_A, pageEntity);
-    expect(again).toBe(loading); // identical reference, token unchanged
+    // Same view + token (no reload), but `lastSeq` advances so a later
+    // out-of-order detection for a different URL can't clobber it.
+    expect(again.status).toBe("loading");
+    expect(again.token).toBe(loading.token);
+    expect((again as { ref: { url: string } }).ref.url).toBe(URL_A);
   });
 
   it("a different URL restarts loading with a fresh token", () => {
@@ -161,7 +165,34 @@ describe("reduce — retry", () => {
     expect((retry as { ref: { url: string } }).ref.url).toBe(URL_A);
   });
 
-  it("retry is a no-op outside the error state", () => {
+  it("regression (finding #2): Reload from loaded re-enters loading with a fresh token", () => {
+    // The loaded view's Reload button dispatches `retry`; before the fix the
+    // reducer only accepted `retry` from `error`, so Reload was a silent no-op.
+    const loaded = reduce(detect(initialPanelState, URL_A, pageEntity), {
+      type: "load-succeeded",
+      token: 1,
+      page: fakePage,
+    });
+    expect(loaded.status).toBe("loaded");
+    const reloaded = reduce(loaded, { type: "retry" });
+    expect(reloaded).toMatchObject({ status: "loading", token: 2, contentId: "123" });
+    expect((reloaded as { ref: { url: string } }).ref.url).toBe(URL_A);
+  });
+
+  it("a stale result from the pre-reload load does not clobber the reloaded load", () => {
+    const loaded = reduce(detect(initialPanelState, URL_A, pageEntity), {
+      type: "load-succeeded",
+      token: 1,
+      page: fakePage,
+    });
+    const reloaded = reduce(loaded, { type: "retry" }); // token 2
+    // A late failure from the original load (token 1) must be discarded.
+    const after = reduce(reloaded, { type: "load-failed", token: 1, kind: "network" });
+    expect(after).toBe(reloaded);
+    expect(after.status).toBe("loading");
+  });
+
+  it("retry is a no-op outside the error/loaded states", () => {
     expect(reduce(initialPanelState, { type: "retry" })).toBe(initialPanelState);
     const loading = detect(initialPanelState, URL_A, pageEntity);
     expect(reduce(loading, { type: "retry" })).toBe(loading);
@@ -177,5 +208,68 @@ describe("reduce — retry", () => {
     // A late success from the original attempt (token 1) is discarded.
     const after = reduce(retry, { type: "load-succeeded", token: 1, page: fakePage });
     expect(after).toBe(retry);
+  });
+});
+
+describe("reduce — detection ordering guard (finding #1)", () => {
+  /** Detection with an explicit ordering seq (as the SW stamps in production). */
+  function detectSeq(
+    state: PanelState,
+    url: string | null,
+    entity: AtlassianEntity | null,
+    seq: number
+  ): PanelState {
+    return reduce(state, { type: "detected", url, entity, seq });
+  }
+
+  it("drops a delayed pull for tab A that arrives after a newer push for tab B", () => {
+    // Panel mounts and pulls the current entity for tab A (seq 1) — but the
+    // response is slow in transit. Meanwhile the user switches to tab B and the
+    // SW pushes B (seq 2), which the panel applies first. THEN the stale A pull
+    // finally arrives. It must be ignored (older seq) — otherwise the panel
+    // loads A while the browser shows B.
+    const start = initialPanelState;
+
+    // B push (seq 2) applied first.
+    const showingB = detectSeq(start, URL_B, pageEntity, 2);
+    expect(showingB.status).toBe("loading");
+    expect((showingB as { ref: { url: string } }).ref.url).toBe(URL_B);
+
+    // A pull (seq 1) arrives late → must NOT clobber B.
+    const afterStaleA = detectSeq(showingB, URL_A, pageEntity, 1);
+    expect(afterStaleA).toBe(showingB);
+    expect((afterStaleA as { ref: { url: string } }).ref.url).toBe(URL_B);
+  });
+
+  it("applies detections in seq order regardless of arrival order", () => {
+    // A (seq 1) arrives, then a genuinely newer B (seq 2) supersedes it.
+    const a = detectSeq(initialPanelState, URL_A, pageEntity, 1);
+    expect((a as { ref: { url: string } }).ref.url).toBe(URL_A);
+    const b = detectSeq(a, URL_B, pageEntity, 2);
+    expect((b as { ref: { url: string } }).ref.url).toBe(URL_B);
+    // A re-delivery of A at the OLD seq is dropped.
+    const staleA = detectSeq(b, URL_A, pageEntity, 1);
+    expect(staleA).toBe(b);
+  });
+
+  it("an equal seq (e.g. a null re-pull) does not supersede an applied detection", () => {
+    const b = detectSeq(initialPanelState, URL_B, pageEntity, 2);
+    const nullPullSameSeq = detectSeq(b, null, null, 2);
+    expect(nullPullSameSeq).toBe(b); // seq 2 is not > lastSeq 2 → ignored
+  });
+});
+
+describe("reduce — foreign-origin consistency (finding #3)", () => {
+  it("a foreign-origin tab (null entity) lands on idle, not an error", () => {
+    // tab-observer classifies a Confluence-shaped foreign-origin URL as a null
+    // entity; the reducer must treat that as idle (nothing to export), matching
+    // profileFromTabUrl returning null — no spurious error state.
+    const s = reduce(initialPanelState, {
+      type: "detected",
+      url: "https://evil-atlassian.net/wiki/spaces/D/pages/123/A",
+      entity: null,
+      seq: 1,
+    });
+    expect(s.status).toBe("idle");
   });
 });

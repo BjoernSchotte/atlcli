@@ -7,11 +7,20 @@
  * The panel component (App.tsx) is the thin shell: it feeds detection + load
  * events in and renders the resulting state.
  *
- * Stale-response discard: each entry into `loading` carries a monotonically
- * increasing correlation `token`. A `load-succeeded` / `load-failed` event
- * carries the token it was issued for; the reducer ignores any result whose
- * token no longer matches the current `loading` token. That is what makes a
- * tab switch mid-load safe — the outgoing load's late result is dropped.
+ * Two independent ordering guards keep the machine correct under races:
+ *
+ *  - `token` (load correlation): each entry into `loading` bumps it. A
+ *    `load-succeeded` / `load-failed` event carries the token it was issued for;
+ *    the reducer ignores any result whose token no longer matches the current
+ *    `loading` token. That makes a tab switch mid-load safe — the outgoing
+ *    load's late result is dropped.
+ *
+ *  - `lastSeq` (detection ordering): every `detected` event carries the SW's
+ *    monotonic detection `seq`. The reducer ignores any detection not strictly
+ *    newer than the last one it applied, so a delayed `get-current-entity` pull
+ *    for tab A that arrives AFTER a newer `entity-changed` push for tab B can no
+ *    longer overwrite B (spec 003, finding: detection ordering / lost update).
+ *    Legacy events without a `seq` behave as before (each one applies).
  */
 import type { AtlassianEntity } from "@atlcli/core";
 import type { LoadedPage, ReadErrorKind } from "./read-path.js";
@@ -22,29 +31,45 @@ export interface DetectedRef {
   entity: AtlassianEntity;
 }
 
-/** Panel states (PLAN §2.4). `token` threads the correlation counter. */
+/**
+ * Panel states (PLAN §2.4).
+ *  - `token`   threads the load correlation counter.
+ *  - `lastSeq` threads the last-applied detection ordering `seq`.
+ */
 export type PanelState =
-  | { status: "idle"; token: number }
-  | { status: "unsupported"; token: number; url: string; entity: AtlassianEntity }
-  | { status: "loading"; token: number; ref: DetectedRef; contentId: string }
-  | { status: "loaded"; token: number; ref: DetectedRef; contentId: string; page: LoadedPage }
+  | { status: "idle"; token: number; lastSeq: number }
+  | { status: "unsupported"; token: number; lastSeq: number; url: string; entity: AtlassianEntity }
+  | { status: "loading"; token: number; lastSeq: number; ref: DetectedRef; contentId: string }
+  | {
+      status: "loaded";
+      token: number;
+      lastSeq: number;
+      ref: DetectedRef;
+      contentId: string;
+      page: LoadedPage;
+    }
   | {
       status: "error";
       token: number;
+      lastSeq: number;
       ref: DetectedRef;
       contentId: string;
       kind: ReadErrorKind;
     };
 
-/** Events the panel folds into the state machine. */
+/**
+ * Events the panel folds into the state machine. `detected` carries an optional
+ * ordering `seq` (the SW stamps it in production); when absent the event is
+ * treated as newest (legacy/always-apply).
+ */
 export type PanelEvent =
-  | { type: "detected"; url: string | null; entity: AtlassianEntity | null }
+  | { type: "detected"; url: string | null; entity: AtlassianEntity | null; seq?: number }
   | { type: "retry" }
   | { type: "load-succeeded"; token: number; page: LoadedPage }
   | { type: "load-failed"; token: number; kind: ReadErrorKind };
 
 /** The starting state (no tab observed yet). */
-export const initialPanelState: PanelState = { status: "idle", token: 0 };
+export const initialPanelState: PanelState = { status: "idle", token: 0, lastSeq: 0 };
 
 /**
  * The content id to load for an entity, or `null` when the entity is detected
@@ -73,31 +98,41 @@ function currentUrl(state: PanelState): string | null {
 export function reduce(state: PanelState, event: PanelEvent): PanelState {
   switch (event.type) {
     case "detected": {
+      // Ordering guard: drop any detection not strictly newer than the last one
+      // applied. A missing `seq` (legacy) counts as newest. This is what stops a
+      // late pull for tab A from clobbering an already-applied newer push for B.
+      const eventSeq = event.seq ?? state.lastSeq + 1;
+      if (eventSeq <= state.lastSeq) return state;
+
       const { url, entity } = event;
       // No entity (non-Atlassian tab / unrecognized URL) → idle.
-      if (!entity || !url) return { status: "idle", token: state.token };
+      if (!entity || !url) return { status: "idle", token: state.token, lastSeq: eventSeq };
 
       const contentId = loadableContentId(entity);
       if (!contentId) {
-        return { status: "unsupported", token: state.token, url, entity };
+        return { status: "unsupported", token: state.token, lastSeq: eventSeq, url, entity };
       }
 
       // De-dup: the same URL is already in flight / shown / errored — keep the
-      // current state rather than restart the load (prevents the mount-pull vs.
-      // SW-push double-load and needless flicker).
-      if (state.status !== "idle" && currentUrl(state) === url) return state;
+      // current view rather than restart the load (prevents the mount-pull vs.
+      // SW-push double-load and needless flicker). Still advance `lastSeq` so a
+      // later out-of-order detection for a DIFFERENT URL can't win.
+      if (state.status !== "idle" && currentUrl(state) === url) {
+        return { ...state, lastSeq: eventSeq };
+      }
 
       const token = state.token + 1;
-      return { status: "loading", token, ref: { url, entity }, contentId };
+      return { status: "loading", token, lastSeq: eventSeq, ref: { url, entity }, contentId };
     }
 
     case "retry": {
-      // Only meaningful from an error state; re-enter loading with a fresh token
-      // so any (impossible-but-guarded) prior in-flight result is discarded.
-      if (state.status !== "error") return state;
+      // Meaningful from `error` (Retry) and `loaded` (Reload): re-enter loading
+      // with a fresh token so the load effect re-fires; stale protection intact.
+      if (state.status !== "error" && state.status !== "loaded") return state;
       return {
         status: "loading",
         token: state.token + 1,
+        lastSeq: state.lastSeq,
         ref: state.ref,
         contentId: state.contentId,
       };
@@ -109,6 +144,7 @@ export function reduce(state: PanelState, event: PanelEvent): PanelState {
       return {
         status: "loaded",
         token: state.token,
+        lastSeq: state.lastSeq,
         ref: state.ref,
         contentId: state.contentId,
         page: event.page,
@@ -120,6 +156,7 @@ export function reduce(state: PanelState, event: PanelEvent): PanelState {
       return {
         status: "error",
         token: state.token,
+        lastSeq: state.lastSeq,
         ref: state.ref,
         contentId: state.contentId,
         kind: event.kind,
