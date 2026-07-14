@@ -196,6 +196,47 @@ describe("ConfluenceClient", () => {
     });
   });
 
+  describe("TLS options", () => {
+    test("omits the tls field on fetch when the profile has no TLS config", async () => {
+      let capturedInit: RequestInit | undefined;
+      globalThis.fetch = mock((_url: string, options: RequestInit) => {
+        capturedInit = options;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ id: "123", title: "Test", version: { number: 1 }, space: { key: "TEST" } }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.getPage("123");
+
+      expect(capturedInit).toBeDefined();
+      expect("tls" in (capturedInit as Record<string, unknown>)).toBe(false);
+    });
+
+    test("passes tls options on fetch when the profile skips verification", async () => {
+      let capturedInit: RequestInit | undefined;
+      globalThis.fetch = mock((_url: string, options: RequestInit) => {
+        capturedInit = options;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ id: "123", title: "Test", version: { number: 1 }, space: { key: "TEST" } }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient({ ...mockProfile, tlsSkipVerify: true });
+      await client.getPage("123");
+
+      const tls = (capturedInit as unknown as { tls?: { rejectUnauthorized?: boolean } }).tls;
+      expect(tls).toBeDefined();
+      expect(tls?.rejectUnauthorized).toBe(false);
+    });
+  });
+
   describe("API methods", () => {
     test("getPage fetches with correct expand parameters", async () => {
       let capturedUrl = "";

@@ -252,9 +252,9 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 4 — TLS split + client injection seam
 
-- [ ] Type `TlsOptions` in browser entry; `buildTlsOptions` (file I/O) only in Node entry
-- [ ] Clients tolerate absent TLS options (no `tls` field on fetch when `undefined`) — existing behavior, now covered by a test
-- [ ] Both clients build for the browser target: `bun build --target=browser packages/confluence/src/client.ts packages/jira/src/client.ts` → exit 0, zero `node:` specifiers
+- [x] Type `TlsOptions` in browser entry; `buildTlsOptions` (file I/O) only in Node entry
+- [x] Clients tolerate absent TLS options (no `tls` field on fetch when `undefined`) — existing behavior, now covered by a test
+- [x] Both clients build for the browser target: `bun build --target=browser packages/confluence/src/client.ts packages/jira/src/client.ts` → exit 0, zero `node:` specifiers
 
 ### Task 5 — `session` auth mode
 
