@@ -194,8 +194,8 @@ Empfohlene Umsetzung als 3–4 PRs: (1) 0.1+0.2, (2) 0.3, (3) 0.4, (4) 0.5; 0.6 
 4. `extractEntityFromUrl` deckt alle Registry-Muster mit Fixtures ab.
 5. Scroll-Platzhalter-Mapping-Tabelle liegt verifiziert vor.
 
-## Offene Fragen
+## Entscheidungen
 
-- **F1 — Exports-Strategie:** `exports`-Conditions (`browser`/`default`, non-breaking, Empfehlung) vs. harter Split (`.` = browser-safe, Node-Code nur noch via `@atlcli/core/node` — sauberer, aber Breaking Change für das veröffentlichte `@atlcli/core@0.6.0`)?
-- **F2 — Logger-Browser-Default:** `console`-Sink (Level ≥ warn) oder No-op-Sink als Default im Browser-Entry?
-- **F3 — Registry-Scope 0.5:** Confluence + Jira + JSM sofort (FAHRPLAN nennt pageId/spaceKey/issueKey/projectKey) oder JSM-Queues auf später verschieben?
+- **F1 — Exports-Strategie:** offen (Erläuterung der Auswirkungen angefragt, 2026-07-14). Spec geht bis zur Entscheidung von `exports`-Conditions aus.
+- **F2 — Logger-Browser-Default:** ✅ entschieden (2026-07-14): `console`-Sink mit Level ≥ warn.
+- **F3 — Registry-Scope 0.5:** ✅ entschieden (2026-07-14): Confluence + Jira; JSM-Queues erst mit Phase 3 (Agent-Overlay).
