@@ -280,9 +280,9 @@ Extract pure types, create `index.browser.ts` with the trivially safe modules, a
 
 ### Task 8 — Scroll placeholder mapping (parallel, no code)
 
-- [ ] `scroll-placeholder-mapping.md` exists per §7: every placeholder from the verified catalog has a mapping row with status
-- [ ] Deviations from `spec/scroll-word-exporter-features.md` (new/renamed/removed placeholders in current K15t docs) explicitly listed
-- [ ] atlcli data-model gaps enumerated as Phase 1 inputs
+- [x] `scroll-placeholder-mapping.md` exists per §7: every placeholder from the verified catalog has a mapping row with status
+- [x] Deviations from `spec/scroll-word-exporter-features.md` (new/renamed/removed placeholders in current K15t docs) explicitly listed
+- [x] atlcli data-model gaps enumerated as Phase 1 inputs
 
 ---
 
