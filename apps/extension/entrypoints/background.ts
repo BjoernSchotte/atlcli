@@ -18,14 +18,33 @@ import {
   type OffscreenResponse,
 } from "../utils/messages.js";
 import { routeMessage } from "../utils/router.js";
-import { ensureOffscreen } from "../utils/offscreen.js";
+import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
+import { createIdleTimer } from "../utils/idle-timer.js";
+
+/**
+ * Idle-close policy (PLAN §2.3): after 5 minutes with no offscreen request,
+ * close the offscreen document; the next request re-creates it via
+ * `ensureOffscreen`. Best-effort — the SW may be torn down first, and the
+ * offscreen document dies with the extension process anyway.
+ */
+const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
+const offscreenIdle = createIdleTimer({
+  delayMs: OFFSCREEN_IDLE_MS,
+  onIdle: () => {
+    void closeOffscreen().catch((err) =>
+      console.error("closeOffscreen (idle) failed", err)
+    );
+  },
+});
 
 /**
  * Effect wired into the pure router: ensure the offscreen document exists,
  * then round-trip the WASM computation through it. Rejects on failure so the
- * router turns it into an error response.
+ * router turns it into an error response. Each call (re)arms the idle-close
+ * timer so the document is closed once traffic stops.
  */
 async function runWasmSmoke(a: number, b: number): Promise<number> {
+  offscreenIdle.reset();
   await ensureOffscreen();
   const res = (await chrome.runtime.sendMessage({
     kind: "offscreen:wasm-add",

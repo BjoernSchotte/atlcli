@@ -28,6 +28,7 @@ export interface OffscreenChrome {
       reasons: string[];
       justification: string;
     }): Promise<void>;
+    closeDocument(): Promise<void>;
   };
 }
 
@@ -83,4 +84,29 @@ export function ensureOffscreen(
     ensuring = null;
   });
   return ensuring;
+}
+
+/**
+ * Close the offscreen document if one exists (idle-close policy, PLAN §2.3).
+ *
+ * Best-effort and idempotent: `getContexts` is checked first so calling this
+ * with no document present is a no-op, and any in-flight ensure state is
+ * cleared so the next {@link ensureOffscreen} re-creates the document.
+ *
+ * @param deps  chrome-like API (defaults to the ambient global `chrome`).
+ * @param path  offscreen document path (defaults to {@link OFFSCREEN_PATH}).
+ */
+export async function closeOffscreen(
+  deps: OffscreenChrome = (globalThis as unknown as { chrome: OffscreenChrome }).chrome,
+  path: string = OFFSCREEN_PATH
+): Promise<void> {
+  const url = deps.runtime.getURL(path);
+  const existing = await deps.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [url],
+  });
+  if (existing.length === 0) return;
+
+  await deps.offscreen.closeDocument();
+  ensuring = null;
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  closeOffscreen,
   ensureOffscreen,
   __resetOffscreenState,
   type OffscreenChrome,
@@ -7,7 +8,7 @@ import {
 
 /** Build a mock chrome whose offscreen document "exists" once created. */
 function makeMockChrome(startsExisting = false) {
-  const state = { exists: startsExisting, createCalls: 0 };
+  const state = { exists: startsExisting, createCalls: 0, closeCalls: 0 };
   const chrome: OffscreenChrome = {
     runtime: {
       getURL: (p) => `chrome-extension://test-id/${p}`,
@@ -17,6 +18,10 @@ function makeMockChrome(startsExisting = false) {
       createDocument: async () => {
         state.createCalls += 1;
         state.exists = true;
+      },
+      closeDocument: async () => {
+        state.closeCalls += 1;
+        state.exists = false;
       },
     },
   };
@@ -79,6 +84,7 @@ describe("ensureOffscreen", () => {
         createDocument: async () => {
           state.createCalls += 1;
         },
+        closeDocument: async () => {},
       },
     };
 
@@ -103,10 +109,36 @@ describe("ensureOffscreen", () => {
           captured.reasons = opts.reasons;
           captured.justification = opts.justification;
         },
+        closeDocument: async () => {},
       },
     };
     await ensureOffscreen(chrome);
     expect(captured.reasons).toEqual(["WORKERS"]);
     expect(captured.justification && captured.justification.length).toBeGreaterThan(0);
+  });
+});
+
+describe("closeOffscreen", () => {
+  it("closes the document when one exists", async () => {
+    const { chrome, state } = makeMockChrome(true);
+    await closeOffscreen(chrome);
+    expect(state.closeCalls).toBe(1);
+    expect(state.exists).toBe(false);
+  });
+
+  it("is a no-op when no document exists", async () => {
+    const { chrome, state } = makeMockChrome(false);
+    await closeOffscreen(chrome);
+    expect(state.closeCalls).toBe(0);
+  });
+
+  it("lets a subsequent ensureOffscreen re-create the document", async () => {
+    const { chrome, state } = makeMockChrome(false);
+    await ensureOffscreen(chrome); // create
+    await closeOffscreen(chrome); // close
+    await ensureOffscreen(chrome); // re-create
+    expect(state.createCalls).toBe(2);
+    expect(state.closeCalls).toBe(1);
+    expect(state.exists).toBe(true);
   });
 });
