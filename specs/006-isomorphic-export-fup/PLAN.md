@@ -2,8 +2,9 @@
 
 Status: **Planned**
 
-Spec ID: `007-isomorphic-export-fup`
+Spec ID: `006-isomorphic-export-fup`
 Depends on: `002-extension-workspace`, `003-page-detection-read-path`, `004-docx-export` (must be merged — this extracts code that lands there), `001-browser-ready-core` (the conditional-exports + injectable-side-effects pattern this mirrors)
+Sequencing: **before `007-pdf-export`** (Björn 2026-07-16) — do the isomorphic extraction first so PDF's Typst serializer is built directly into the reusable engine established here, not extracted a second time. Spec order: 004-docx → 005-docx-image-module → **006 (this)** → 007-pdf-export → 008-export-poc-validation.
 Related strategy: `~/code/rovo-skills/FAHRPLAN.md` Phase 5 (Org-Server / Export-Zentrale), Phase 6 (Tauri Studio) · `~/code/rovo-skills/research/TYPST-EXPORT-ANGLE.md` §7.6 (server-side rendering with "the same isomorphic code")
 Origin: raised by Björn 2026-07-16 during the 004 DOCX cycle — the export code landed in `apps/extension/utils/docx/` (extension-only) but the pipeline is meant for reuse across surfaces.
 
@@ -51,8 +52,8 @@ not new behavior — the extension's exports must be byte-identical before and a
   mermaid, not multi-page. Pure extraction + injection.
 - **No replacement of the Python `packages/export`** in this spec — the naming is chosen so
   the TS engine *can* supersede it later (see §2.1), but that migration is out of scope here.
-- **No PDF path move** — spec 005's Typst serializer consumes the same `ExportBlock` model
-  but is not part of this extraction; it can follow the same pattern in a later spec.
+- **No PDF path move** — the PDF export (spec `007-pdf-export`) Typst serializer consumes the same `ExportBlock` model
+  but is not part of THIS extraction; because this spec is sequenced BEFORE PDF, spec 007 builds its Typst serializer directly into the isomorphic engine established here — no second extraction.
 - No API redesign of the transforms themselves — signatures stay as-is unless an injection
   seam demands a minimal change.
 
@@ -152,7 +153,7 @@ browser bundle.
 ### Task 6 — Docs + cleanup
 - [ ] `docs/` updated: the export engine is a reusable package; how a new surface plugs in (implement the three interfaces).
 - [ ] Extension's now-removed pure modules deleted (no dead copies); dependency list corrected.
-- [ ] Note the PDF (spec 005) serializer as the next candidate to move under the same pattern (follow-up, not this spec).
+- [ ] Note that PDF export (spec 007-pdf-export) is built next, directly on the isomorphic engine this spec establishes (not a later re-extraction).
 
 ---
 
