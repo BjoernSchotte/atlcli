@@ -392,6 +392,24 @@ export class Logger {
   }
 
   /**
+   * Log a warning message (warn level).
+   *
+   * Warnings surface through the default `ConsoleLogSink` (min level `warn`),
+   * so they show up in the browser DevTools console without info/debug chatter.
+   */
+  warn(message: string, context?: ErrorData["context"]): void {
+    const entry: LogEntry = {
+      ...this.createBase("warn", "error"),
+      type: "error",
+      data: {
+        message,
+        context,
+      },
+    };
+    this.write(entry);
+  }
+
+  /**
    * Log an error.
    */
   error(error: Error, context?: ErrorData["context"]): void {
