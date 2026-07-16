@@ -12,12 +12,14 @@
     "./browser": "./src/index.browser.ts",
     "./node": "./src/index.ts",
     "./scan": "./src/scan.ts",
-    "./fixtures": "./src/fixtures.ts"
+    "./fixtures": "./src/fixtures.ts",
+    "./fonts/*": "./fonts/*"
   },
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/diagram": "workspace:*",
+    "@resvg/resvg-wasm": "2.6.2",
     "docxtemplater": "^3.69.0",
     "pizzip": "^3.2.0",
     "shiki": "^4.3.1"

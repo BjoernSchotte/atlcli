@@ -18,3 +18,14 @@ Third-party notices:
   under the Eclipse Public License 2.0 (EPL-2.0). elkjs is distributed in
   object-code form inside atlcli's bundled artifacts; its source code is
   available at the URL above.
+- resvg (https://github.com/linebender/resvg) via @resvg/resvg-wasm
+  (https://github.com/yisibl/resvg-js), licensed under the Mozilla Public
+  License 2.0 (MPL-2.0). The WebAssembly build is distributed in object-code
+  form inside atlcli's bundled artifacts; the source code of the covered
+  files is available at the URLs above.
+- Inter font family (https://github.com/rsms/inter), Copyright 2016 The Inter
+  Project Authors, licensed under the SIL Open Font License 1.1 (see
+  packages/docx/fonts/LICENSE-Inter.txt).
+- JetBrains Mono font family (https://github.com/JetBrains/JetBrainsMono),
+  Copyright 2020 The JetBrains Mono Project Authors, licensed under the SIL
+  Open Font License 1.1 (see packages/docx/fonts/LICENSE-JetBrainsMono.txt).

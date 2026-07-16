@@ -70,16 +70,22 @@ image that cannot be fetched or decoded becomes a warning note instead of failin
 
 ### Mermaid diagrams
 
-The browser extension renders fenced ```` ```mermaid ```` code blocks into real vector drawings
-(SVG with an automatic PNG fallback for older Word versions). Six diagram types are supported:
-**flowchart, state, sequence, class, ER, and XY chart**. Any other type (Gantt, Pie, Mindmap, …)
-and any diagram that fails to render exports as a readable source code block with a report note
-naming the reason — never a broken image. The diagram source is carried as the drawing's alt text.
+The `ts` engine renders fenced ```` ```mermaid ```` code blocks into real vector drawings
+(SVG with an automatic PNG fallback for older Word versions) — in the CLI and in the browser
+extension alike. Six diagram types are supported: **flowchart, state, sequence, class, ER, and
+XY chart**. Any other type (Gantt, Pie, Mindmap, …) and any diagram that fails to render exports
+as a readable source code block with a report note naming the reason — never a broken image.
+The diagram source is carried as the drawing's alt text.
 
-Rendering the PNG fallback needs a browser canvas, so the **CLI `ts` engine exports mermaid
-blocks as source code blocks** (with a `diagram-skipped` report note). Diagram theming follows
-the export's brand colors when configured; the default is a neutral light theme matching the
-code-block styling.
+The CLI rasterizes the PNG fallback with a bundled WebAssembly build of
+[resvg](https://github.com/yisibl/resvg-js) and bundled **Inter** and **JetBrains Mono** fonts
+(the families the diagrams use), so rendering works identically on every platform with no
+browser, system fonts, or other runtime dependencies — including the Homebrew and standalone
+binaries. If the rasterizer cannot be loaded, the export still succeeds: mermaid blocks degrade
+to source code blocks and the report says so in a note.
+
+Diagram theming follows the export's brand colors when configured; the default is a neutral
+light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
 
 ## Templates
 

@@ -1,8 +1,12 @@
 # Mermaid Diagrams — beautiful-mermaid → SVG for the DOCX and PDF export paths
 
 Status: **Done** (2026-07-16 — engine + extension host; Word E2E passed after finding #1
-(svgBlip flattening). CLI exports mermaid as source blocks until a Node rasterizer host lands.
-Task 6 fully done incl. Scroll comparison (0/7 vs. atlcli 6/7) and duration numbers.)
+(svgBlip flattening). Task 6 fully done incl. Scroll comparison (0/7 vs. atlcli 6/7) and
+duration numbers. Same day, the Node rasterizer leg landed too: `resvgSvgRasterizer` over
+`@resvg/resvg-wasm` + bundled Inter/JetBrains Mono fonts in
+`packages/docx/src/node-adapters.ts`, wired into the CLI ts engine with embedded assets so
+the compiled release binaries render diagrams as well — the CLI no longer degrades mermaid
+to source blocks.)
 
 Spec ID: `005a-mermaid-diagrams`
 Depends on: `005-docx-image-module` (**must be merged** — this spec embeds SVG through the media-part/relationship/EMU plumbing 005 builds), `004-docx-export` Task 2 (the `ExportBlock` model whose `codeBlock` carries the diagram source), `004-docx-export` Task 5 (the pinned descope path this spec replaces)
