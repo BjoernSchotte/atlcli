@@ -42,15 +42,41 @@ export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
  * (the site's Confluence root, e.g. `https://x.atlassian.net/wiki`) is
  * prefixed to make them absolute. External image URLs pass through as-is.
  */
+/**
+ * Panel-lifetime cache for IMMUTABLE asset bytes: version-stamped
+ * `/download/attachments/…` URLs (the space logo's icon path carries
+ * `version=…&modificationDate=…`) never change under their key — a replaced
+ * logo gets a new stamp — so repeat exports skip those round-trips entirely.
+ * Bounded so a long panel session can't hoard megabytes.
+ */
+const versionedAssetCache = new Map<string, Uint8Array>();
+const VERSIONED_CACHE_MAX_ENTRIES = 32;
+
+function isVersionedAssetUrl(refUrl: string): boolean {
+  return refUrl.startsWith("/download/") && /[?&](version|modificationDate)=/.test(refUrl);
+}
+
 export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fetch): AssetFetcher {
   return {
     async fetch(ref: AssetRef): Promise<Uint8Array> {
+      const cacheable = isVersionedAssetUrl(ref.url);
+      const cached = cacheable ? versionedAssetCache.get(ref.url) : undefined;
+      if (cached) return cached;
       const url = /^https?:\/\//i.test(ref.url) ? ref.url : `${baseUrl ?? ""}${ref.url}`;
       const res = await fetchFn(url, { credentials: "include" });
       if (!res.ok) {
         throw new Error(`Asset fetch failed (${res.status}) for ${ref.filename ?? ref.url}`);
       }
-      return new Uint8Array(await res.arrayBuffer());
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (cacheable && bytes.byteLength > 0) {
+        if (versionedAssetCache.size >= VERSIONED_CACHE_MAX_ENTRIES) {
+          // Map iterates in insertion order — drop the oldest entry.
+          const oldest = versionedAssetCache.keys().next().value;
+          if (oldest !== undefined) versionedAssetCache.delete(oldest);
+        }
+        versionedAssetCache.set(ref.url, bytes);
+      }
+      return bytes;
     },
   };
 }

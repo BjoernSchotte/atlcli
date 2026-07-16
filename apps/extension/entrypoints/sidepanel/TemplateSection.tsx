@@ -120,6 +120,15 @@ export function TemplateSection({
       const current = await loadCurrentTemplate(getTemplate, async () => (await loadScan()).scanTemplate);
       if (cancelled || !current) return;
       setTemplate(current);
+      // A stored template means an export is likely: pull the engine + env
+      // chunks and the mermaid renderer (~1.5 MB elkjs) NOW so the first
+      // export doesn't pay their import cost. Pure warm-up — failures are
+      // swallowed and the export path retries its own imports. A user with
+      // no template still loads nothing (the lazy-load contract).
+      void Promise.all([
+        loadExport().then((m) => m.warmDiagramRenderer()),
+        loadEnv(),
+      ]).catch(() => {});
     })().catch(() => {
       // A stored template that no longer scans is unusable; surface it rather
       // than rendering a half-loaded section.
@@ -193,20 +202,26 @@ export function TemplateSection({
         await loadEnv();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
+      // Space + icon share ONE memoized `?expand=icon` round-trip: a template
+      // using $scroll.space.* and a logo placeholder previously called the
+      // same endpoint twice (perf).
+      let spaceInfoP: ReturnType<ConfluenceClient["getSpaceWithIcon"]> | undefined;
+      const spaceInfo = (key: string): NonNullable<typeof spaceInfoP> =>
+        (spaceInfoP ??= client!.getSpaceWithIcon(key));
       const rep = await runExport(
         {
           details: loadedPage.details,
           template: { name: template.name, modificationDate: new Date(template.uploadedAt) },
           deps: client
             ? {
-                getSpace: (key) => client.getSpace(key),
+                getSpace: async (key) => (await spaceInfo(key)).space,
                 getCurrentUser: () => client.getCurrentUser(),
                 getPageOwner: (id) => client.getPageOwner(id),
                 getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
                 // Spec 005 logo pass: icon path in, bytes via the session
                 // asset fetcher below ($scroll.spacelogo / $scroll.globallogo).
                 getSpaceLogo: async (key) => {
-                  const icon = await client.getSpaceIcon(key);
+                  const icon = (await spaceInfo(key)).icon;
                   return icon ? { url: icon.path } : null;
                 },
               }
