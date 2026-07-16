@@ -228,7 +228,7 @@ belongs to 006, not to this spec.
 
 - [x] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source. (Björn, 2026-07-16, page 1119158277, real Mayflower Prüfvorlage — after finding #1 was fixed.)
 - [x] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback). (Proven via Björn's Word print-PDF: the 6 diagrams appear as vector paths; the PDF's only raster XObjects are the template logos/footer.)
-- [ ] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9). *(open — spec 008 input)*
+- [x] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9). *(Done 2026-07-16, Scroll Office export of page 1119158277: **0 of 7 mermaid blocks rendered** — all seven stay `scroll-codecontentdivline` source-text blocks, 0 `<w:drawing>` for diagrams, 0 svgBlip; atlcli renders 6 of 7 as vector drawings with a named report note for the 7th. Benchmark row 9 input recorded.)*
 - [ ] Export duration delta recorded vs. the 004 baseline (spec 008 input). *(open — spec 008 input)*
 - [ ] Test page deleted afterwards. *(page 1119158277 kept for now — also useful for the Scroll comparison; delete after 008 row 9)*
 
