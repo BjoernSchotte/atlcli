@@ -135,6 +135,12 @@ function headerToken(body: string): string | null {
   return null;
 }
 
+import { flattenSvgStyles } from "./svg-flatten.js";
+
+// Exported for consumers that bring their own SVG (the PDF path can flatten
+// any diagram SVG to the portable subset) and for direct unit testing.
+export { flattenSvgStyles } from "./svg-flatten.js";
+
 type BeautifulMermaid = typeof import("beautiful-mermaid");
 
 let rendererPromise: Promise<BeautifulMermaid> | null = null;
@@ -143,16 +149,6 @@ let rendererPromise: Promise<BeautifulMermaid> | null = null;
 function loadRenderer(): Promise<BeautifulMermaid> {
   if (!rendererPromise) rendererPromise = import("beautiful-mermaid");
   return rendererPromise;
-}
-
-/**
- * beautiful-mermaid embeds a Google-Fonts `@import` in the SVG `<style>`.
- * Neither Word nor an `<img>`-context rasterizer loads external resources, so
- * the import is dead weight at best and an external call at worst — strip it;
- * the `font-family` stack's system fallbacks take over deterministically.
- */
-function stripExternalFontImport(svg: string): string {
-  return svg.replace(/@import url\([^)]*\);?/g, "");
 }
 
 /** Intrinsic pixel size from the SVG root's width/height attributes. */
@@ -195,7 +191,11 @@ export async function renderDiagram(
 
   try {
     const { renderMermaidSVG } = await loadRenderer();
-    const svg = stripExternalFontImport(renderMermaidSVG(input, { ...theme }));
+    // Flattening resolves the CSS custom properties / color-mix() /
+    // class rules into literal attributes — Word's svgBlip renderer (and
+    // the PDF path's SVG consumers) don't support them, and dropping the
+    // <style> blocks also removes the external Google-Fonts @import.
+    const svg = flattenSvgStyles(renderMermaidSVG(input, { ...theme }));
     const size = intrinsicSize(svg);
     if (!size) return { kind: "failed", reason: "the rendered SVG has no usable intrinsic size" };
     return { kind: "svg", svg, ...size };
