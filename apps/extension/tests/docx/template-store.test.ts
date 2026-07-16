@@ -12,8 +12,8 @@ import {
   putTemplate,
   type StoredTemplate,
 } from "../../utils/docx/template-store.js";
-import { buildDocx, para } from "./fixtures.js";
-import { scanTemplate } from "../../utils/docx/scan.js";
+import { buildDocx, para } from "@atlcli/docx/fixtures";
+import { scanTemplate } from "@atlcli/docx/scan";
 
 let factory: IDBFactory;
 

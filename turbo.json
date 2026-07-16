@@ -14,7 +14,8 @@
         "scripts/check-browser-build.ts",
         "packages/confluence/src/**/*.ts",
         "packages/jira/src/**/*.ts",
-        "packages/core/src/**/*.ts"
+        "packages/core/src/**/*.ts",
+        "packages/docx/src/**/*.ts"
       ]
     }
   }

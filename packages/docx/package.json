@@ -1,0 +1,24 @@
+{
+  "name": "@atlcli/docx",
+  "version": "0.6.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": "./src/index.browser.ts",
+    "./node": "./src/index.ts",
+    "./scan": "./src/scan.ts",
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "dependencies": {
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/core": "workspace:*",
+    "docxtemplater": "^3.69.0",
+    "pizzip": "^3.2.0",
+    "shiki": "^4.3.1"
+  }
+}

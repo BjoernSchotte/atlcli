@@ -17,8 +17,8 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import { loadCurrentTemplate } from "../../entrypoints/sidepanel/TemplateSection.js";
 import { getTemplate, putTemplate, type StoredTemplate } from "../../utils/docx/template-store.js";
-import { scanTemplate } from "../../utils/docx/scan.js";
-import { buildDocx, para } from "./fixtures.js";
+import { scanTemplate } from "@atlcli/docx/scan";
+import { buildDocx, para } from "@atlcli/docx/fixtures";
 
 let factory: IDBFactory;
 beforeEach(() => {

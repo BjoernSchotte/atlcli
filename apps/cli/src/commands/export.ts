@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
@@ -18,6 +18,7 @@ import {
 import {
   AttachmentInfo,
   ConfluenceClient,
+  ConfluencePageDetails,
   storageToMarkdown,
   ConversionOptions,
 } from "@atlcli/confluence";
@@ -73,6 +74,15 @@ export async function handleExport(
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
   const noTocPrompt = hasFlag(flags, "no-toc-prompt");
 
+  // Engine selection (spec 006): "python" (default) renders markdown through
+  // the packages/export docxtpl subprocess; "ts" drives the isomorphic
+  // @atlcli/docx engine in-process — the exact code the Chrome extension
+  // runs, wired to Node filesystem adapters. No Python required.
+  const engine = getFlag(flags, "engine") ?? "python";
+  if (engine !== "python" && engine !== "ts") {
+    fail(opts, 1, ERROR_CODES.USAGE, `Unknown --engine "${engine}". Use "ts" or "python".`);
+  }
+
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
   }
@@ -98,6 +108,18 @@ export async function handleExport(
   // Fetch page data (with metadata for export)
   const page = await client.getPageDetails(pageId);
   const spaceKey = page.spaceKey ?? "UNKNOWN";
+
+  if (engine === "ts") {
+    await exportWithTsEngine({
+      client,
+      page,
+      resolvedTemplatePath,
+      outputPath,
+      includeChildren,
+      opts,
+    });
+    return;
+  }
 
   // Convert storage to markdown
   const conversionOpts: ConversionOptions = {
@@ -662,6 +684,78 @@ async function resolveContentByLabel(
   return results;
 }
 
+interface TsEngineArgs {
+  client: ConfluenceClient;
+  page: ConfluencePageDetails;
+  resolvedTemplatePath: string;
+  outputPath: string;
+  includeChildren: boolean;
+  opts: OutputOptions;
+}
+
+/**
+ * Spec 006 Task 5: drive the isomorphic `@atlcli/docx` engine — the exact
+ * code the Chrome extension runs — with Node-side env implementations:
+ * template bytes from the filesystem, output to the filesystem, resolver
+ * round-trips over the token-auth client. Feature scope matches the
+ * extension's v1 export: single page, `$scroll.*` placeholder resolution,
+ * images deferred (they become report notes, never OOXML — spec 005).
+ * The engine is imported lazily so the common CLI paths never load
+ * pizzip/docxtemplater.
+ */
+async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
+  const { client, page, resolvedTemplatePath, outputPath, includeChildren, opts } = args;
+  const { runExport, fileTemplateSource, fileOutputSink, unsupportedAssetFetcher } = await import(
+    "@atlcli/docx"
+  );
+  const { stat } = await import("node:fs/promises");
+
+  const cliNotes: string[] = [];
+  if (includeChildren) {
+    cliNotes.push("--include-children is not supported by the ts engine yet; exported the single page.");
+  }
+
+  const templateStat = await stat(resolvedTemplatePath);
+  const resolvedOutputPath = resolve(outputPath);
+  const report = await runExport(
+    {
+      details: page,
+      template: {
+        name: basename(resolvedTemplatePath),
+        modificationDate: templateStat.mtime,
+      },
+      deps: {
+        getSpace: (key: string) => client.getSpace(key),
+        getCurrentUser: () => client.getCurrentUser(),
+        getPageOwner: (id: string) => client.getPageOwner(id),
+        getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+      },
+    },
+    {
+      templates: fileTemplateSource(resolvedTemplatePath),
+      assets: unsupportedAssetFetcher("image embedding is not yet available in the ts engine"),
+      output: fileOutputSink(resolvedOutputPath),
+    }
+  );
+
+  output(
+    {
+      success: true,
+      engine: "ts",
+      output: resolvedOutputPath,
+      page: { id: page.id, title: page.title, space: page.spaceKey ?? "UNKNOWN" },
+      report: {
+        resolvedCount: report.resolvedCount,
+        unsupportedNames: report.unsupportedNames,
+        skippedImages: report.skippedImages,
+        durationMs: report.durationMs,
+        notes: [...cliNotes, ...report.notes.map((n) => `${n.level}: ${n.message}`)],
+      },
+    },
+    opts
+  );
+}
+
 function findPythonExecutable(): string {
   // Check for venv in the export package directory (development mode)
   // Go up from dist/commands to find packages/export/.venv
@@ -770,6 +864,10 @@ Options:
   --include-children  Include child pages in export
   --no-merge          Keep children as separate array (for loops in templates)
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
+  --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
+                      (isomorphic @atlcli/docx engine — same as the browser
+                      extension; $scroll.* placeholders, no Python needed;
+                      images/children not yet supported)
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:
@@ -794,6 +892,7 @@ Examples:
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx
   atlcli wiki export 12345 -t basic -o out.docx --no-images
   atlcli wiki export 12345 -t book -o book.docx --include-children
+  atlcli wiki export 12345 -t scroll-corporate.docx -o out.docx --engine ts
   atlcli wiki export template save corporate --file ./template.docx --level global
   atlcli wiki export template list
 `;

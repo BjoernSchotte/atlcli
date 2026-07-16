@@ -98,6 +98,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
+            { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
             { label: 'Authentication', link: '/authentication/' },
             { label: 'Configuration', link: '/configuration/' },
             { label: 'Doctor', link: '/reference/doctor/' },

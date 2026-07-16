@@ -7,7 +7,7 @@ import {
   rewriteParagraphText,
   rewriteScrollText,
   splitParagraphs,
-} from "../../utils/docx/ooxml-text.js";
+} from "./ooxml-text.js";
 import {
   chartTitlePart,
   complexFieldResult,

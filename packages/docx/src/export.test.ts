@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
-import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence/browser";
-import { DocxRenderError, exportDocx } from "../../utils/docx/export.js";
-import type { CurrentUser } from "../../utils/docx/resolver.js";
+import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence";
+import { DocxRenderError, exportDocx } from "./export.js";
+import type { CurrentUser } from "./resolver.js";
 import {
   assertBalancedXml,
   buildDocx,

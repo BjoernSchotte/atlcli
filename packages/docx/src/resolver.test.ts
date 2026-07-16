@@ -1,12 +1,12 @@
 import { describe, expect, it, mock } from "bun:test";
-import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence/browser";
+import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence";
 import {
   resolveOne,
   resolvePlaceholders,
   type CurrentUser,
   type PageOwner,
   type ResolveContext,
-} from "../../utils/docx/resolver.js";
+} from "./resolver.js";
 
 const details: ConfluencePageDetails = {
   id: "123",
@@ -94,13 +94,13 @@ describe("resolveOne — every direct + derivable mapping row", () => {
   }
 
   it("modifier.email is empty (absent on Cloud) with a note", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     expect(resolveOne("$scroll.modifier.email", ctx, { space, currentUser, owner }, notes)).toBe("");
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
 
   it("exportdate with an unknown format token falls back to ISO + a note (#10)", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     const out = resolveOne('$scroll.exportdate.("yyyy-QQ")', ctx, { space, currentUser, owner }, notes);
     expect(out).toBe("2026-07-14"); // ISO fallback for the export date
     expect(notes.some((n) => n.code === "date-format-unknown")).toBe(true);
@@ -257,7 +257,7 @@ describe("$scroll.pageproperty (G4)", () => {
   });
 
   it("renders empty + a note when the key is missing and no alternate text is given", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     expect(resolveOne("$scroll.pageproperty.(Nope)", pageCtx, {}, notes)).toBe("");
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
@@ -279,7 +279,7 @@ describe("$scroll.pageproperty (G4)", () => {
   });
 
   it("notes a pageproperty that names no key", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     expect(resolveOne("$scroll.pageproperty.()", pageCtx, {}, notes)).toBe("");
     expect(notes.some((n) => n.code === "pageproperty-no-key")).toBe(true);
   });
@@ -299,7 +299,7 @@ describe(".name placeholders — DC username → display name on Cloud (G2)", ()
   });
 
   it("never substitutes silently — the report says what happened", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     resolveOne("$scroll.creator.name", ctx, { space, currentUser, owner }, notes);
     const note = notes.find((n) => n.code === "placeholder-substituted");
     expect(note).toBeDefined();
@@ -308,7 +308,7 @@ describe(".name placeholders — DC username → display name on Cloud (G2)", ()
   });
 
   it("stays empty (and silent) when the user is absent altogether", () => {
-    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
     const bare: ResolveContext = { ...ctx, details: { ...details, createdBy: undefined } };
     expect(resolveOne("$scroll.creator.name", bare, {}, notes)).toBe("");
     // No substitution happened, so nothing to report about one.

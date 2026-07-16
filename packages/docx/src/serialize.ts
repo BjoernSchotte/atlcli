@@ -16,7 +16,7 @@ import type {
   ExportNote,
   ListItem,
   TableRow,
-} from "@atlcli/confluence/browser";
+} from "@atlcli/confluence";
 import { highlightCode } from "./highlight.js";
 import {
   calloutTable,
