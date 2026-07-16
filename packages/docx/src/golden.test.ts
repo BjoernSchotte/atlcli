@@ -19,6 +19,12 @@
  * deterministic given the fixed export date. `durationMs` is excluded for the
  * same reason. Cross-host reuse (the same golden rendered under Node adapters)
  * is asserted in `node-consumer.test.ts`.
+ *
+ * REPORT fields recaptured 2026-07-16 for the spec-005 logo pass:
+ * `$scroll.spacelogo` moved unsupported→supported, so with no asset fetcher it
+ * now yields a `logo-skipped` note (counted in `skippedImages`) instead of a
+ * `placeholder-unsupported` entry. Every zip ENTRY was asserted byte-identical
+ * across the recapture — only the report block changed.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";

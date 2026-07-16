@@ -1078,6 +1078,54 @@ describe("ConfluenceClient", () => {
     });
   });
 
+  describe("getSpaceIcon (spec 005 logo pass)", () => {
+    test("expands icon and returns the path with dimensions", async () => {
+      let capturedUrl = "";
+      globalThis.fetch = mock((url: string) => {
+        capturedUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "1",
+              key: "DOCSY",
+              name: "Docs",
+              icon: {
+                path: "/download/attachments/623935492/DOCSY-default?version=1&api=v2",
+                width: 48,
+                height: 48,
+                isDefault: false,
+              },
+            }),
+            { status: 200 }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      const icon = await client.getSpaceIcon("DOCSY");
+
+      expect(capturedUrl).toContain("/rest/api/space/DOCSY");
+      expect(capturedUrl).toContain("expand=icon");
+      expect(icon).toEqual({
+        path: "/download/attachments/623935492/DOCSY-default?version=1&api=v2",
+        width: 48,
+        height: 48,
+        isDefault: false,
+      });
+    });
+
+    test("returns null when the space carries no icon", async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ id: "1", key: "X", name: "X" }), { status: 200 })
+        )
+      ) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      expect(await client.getSpaceIcon("X")).toBeNull();
+    });
+  });
+
   describe("session auth mode (spec 001 task 5)", () => {
     const sessionProfile: Profile = {
       name: "session",

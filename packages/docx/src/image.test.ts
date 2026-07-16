@@ -244,6 +244,46 @@ describe("ImageEmbedder", () => {
     expect(c.match(/r:embed="(rId\d+)"/)?.[1]).not.toBe(a.match(/r:embed="(rId\d+)"/)?.[1]!);
   });
 
+  it("writes the relationship into the referencing part's OWN rels (partPath)", () => {
+    const zip = new PizZip(
+      buildDocx({ body: para("x"), header: para("h"), footer: para("f") })
+    );
+    const embedder = new ImageEmbedder(zip);
+    const inHeader = embedder.embed(pngBytes(10, 10), { partPath: "word/header1.xml" });
+    const inBody = embedder.embed(pngBytes(10, 10), { partPath: "word/document.xml" });
+
+    // One shared media part; one relationship PER part, ids independent.
+    expect(zip.file("word/media/atlcli-image1.png")).not.toBeNull();
+    expect(zip.file("word/media/atlcli-image2.png")).toBeNull();
+
+    const headerRelId = inHeader.match(/r:embed="(rId\d+)"/)?.[1];
+    // The header had no rels part — it was created fresh.
+    const headerRels = zip.file("word/_rels/header1.xml.rels")!.asText();
+    expect(headerRels).toContain(`Id="${headerRelId}"`);
+    expect(headerRels).toContain('Target="media/atlcli-image1.png"');
+
+    const bodyRelId = inBody.match(/r:embed="(rId\d+)"/)?.[1];
+    const bodyRels = zip.file("word/_rels/document.xml.rels")!.asText();
+    expect(bodyRels).toContain(`Id="${bodyRelId}"`);
+    expect(bodyRels).toContain('Target="media/atlcli-image1.png"');
+    // The header's relationship never leaked into the document rels.
+    expect(bodyRels.match(/relationships\/image/g)).toHaveLength(1);
+
+    // A second embed into the same part reuses the part's relationship.
+    const again = embedder.embed(pngBytes(10, 10), { partPath: "word/header1.xml" });
+    expect(again.match(/r:embed="(rId\d+)"/)?.[1]).toBe(headerRelId!);
+    expect(zip.file("word/_rels/header1.xml.rels")!.asText().match(/relationships\/image/g)).toHaveLength(1);
+  });
+
+  it("carries the given pPr onto the drawing paragraph", () => {
+    const zip = templateZip();
+    const xml = new ImageEmbedder(zip).embed(pngBytes(10, 10), {
+      pPrXml: '<w:pPr><w:jc w:val="center"/></w:pPr>',
+    });
+    expect(xml.startsWith('<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>')).toBe(true);
+    assertBalancedXml(xml);
+  });
+
   it("caps oversized images to the content width", () => {
     const zip = templateZip();
     const xml = new ImageEmbedder(zip).embed(pngBytes(1200, 600));

@@ -36,17 +36,18 @@ describe("scanTemplate", () => {
     const never = scan.never.map((h) => h.base).sort();
 
     // pageowner is SUPPORTED since G1 closed (Cloud v2 exposes `ownerId`); the
-    // space logo stays unsupported because it is an image (needs spec 005).
+    // space logo is SUPPORTED since spec 005's image module landed (G3).
     expect(supported).toEqual([
       "$scroll.pageowner.fullName",
       "$scroll.space.name",
+      "$scroll.spacelogo",
       "$scroll.title",
     ]);
     // $adhocState was dropped from the curated never-list ("bauen wir aus") but
     // is still DETECTED, so it lands on the generic unrecognized→unsupported
     // path and gets blanked. Were it dropped from detection instead, the raw
     // token would survive into the exported document.
-    expect(unsupported).toEqual(["$adhocState", "$scroll.spacelogo"]);
+    expect(unsupported).toEqual(["$adhocState"]);
     expect(never).toEqual(["$scroll.custom"]);
     expect(scan.hasContentPlaceholder).toBe(true);
     // $scroll.content is not listed as a placeholder hit.

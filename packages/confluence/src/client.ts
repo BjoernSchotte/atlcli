@@ -45,6 +45,16 @@ export type ConfluenceSpace = {
   url?: string;
 };
 
+/** A space's logo, from `GET /space/{key}?expand=icon` (spec 005, gap G3). */
+export type SpaceIcon = {
+  /** Wiki-base-relative download path (e.g. `/download/attachments/…`). */
+  path: string;
+  width?: number;
+  height?: number;
+  /** True for the stock Confluence space logo (an SVG on Cloud). */
+  isDefault?: boolean;
+};
+
 export type ConfluenceSearchResult = {
   id: string;
   title: string;
@@ -1199,6 +1209,25 @@ export class ConfluenceClient {
       name: data.name,
       type: data.type ?? "global",
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
+    };
+  }
+
+  /**
+   * Get a space's logo icon (spec 005: drives `$scroll.spacelogo` /
+   * `$scroll.globallogo` embedding). Returns `null` when the space carries no
+   * icon — Cloud normally always has one (the default is an SVG).
+   */
+  async getSpaceIcon(key: string): Promise<SpaceIcon | null> {
+    const data = (await this.request(`/space/${key}`, {
+      query: { expand: "icon" },
+    })) as any;
+    const icon = data.icon;
+    if (!icon?.path) return null;
+    return {
+      path: icon.path,
+      width: icon.width,
+      height: icon.height,
+      isDefault: icon.isDefault,
     };
   }
 

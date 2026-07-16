@@ -45,7 +45,8 @@ import {
   type TemplateMeta,
 } from "./resolver.js";
 import { serializeBlocks, type ImageBlock, type ImageEmbedSeam } from "./serialize.js";
-import { ImageEmbedder } from "./image.js";
+import { ImageEmbedder, ImageEmbedError } from "./image.js";
+import { parseLogoArgs } from "./placeholder-map.js";
 import type { AssetFetcher, AssetRef } from "./env.js";
 import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
 import {
@@ -182,6 +183,20 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    template has none, inject the tag before the body's final section break.
   const contentFound = injectContentTag(zip);
   const flowNotes: ExportNote[] = [];
+
+  // 3b. Logo pass (spec 005, gap G3): replace each $scroll.spacelogo /
+  //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
+  //     space logo. Runs before preprocessScrollText so a failed/skipped logo
+  //     still has its token blanked there (never a literal), and before render
+  //     so the drawing paragraphs pass through docxtemplater untouched.
+  await embedLogoPlaceholders(zip, {
+    embedder,
+    assets: input.assets,
+    getSpaceLogo: input.deps?.getSpaceLogo,
+    spaceKey: input.details.spaceKey,
+    notes: flowNotes,
+  });
+
   if (!contentFound) {
     injectContentTagAtEnd(zip);
     flowNotes.push({
@@ -298,7 +313,138 @@ const IMAGE_SKIP_CODES = new Set([
   "image-embed-failed",
   "image-unresolved",
   "inline-image-skipped",
+  "logo-skipped",
+  "logo-embed-failed",
 ]);
+
+// ---------------------------------------------------------------------------
+// Logo pass (spec 005, gap G3)
+// ---------------------------------------------------------------------------
+
+/** One logo token, matching the shared PLACEHOLDER_RE grammar for these bases. */
+const LOGO_TOKEN_RE = /\$scroll\.(spacelogo|globallogo)(?:\.?\([^)]*\))?/;
+
+interface LogoPassInput {
+  embedder?: ImageEmbedder;
+  assets?: AssetFetcher;
+  getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+  spaceKey?: string;
+  notes: ExportNote[];
+}
+
+interface LogoOccurrence {
+  part: string;
+  paragraph: string;
+  /** The raw token (carries the `.(H,W)` size args). */
+  raw: string;
+  base: string;
+}
+
+/**
+ * Replace each `$scroll.spacelogo` / `$scroll.globallogo` placeholder
+ * paragraph with an inline `<w:drawing>` of the space logo, across the main
+ * story and all header/footer parts (the embedder writes the `r:embed`
+ * relationship into each part's own rels).
+ *
+ * Both bases resolve to the SPACE logo (`GET /space/{key}?expand=icon`):
+ * Confluence Cloud exposes no separately fetchable global logo, so
+ * `$scroll.globallogo` degrades to the space logo with an info note rather
+ * than to nothing. The whole placeholder paragraph is replaced (mirroring the
+ * `$scroll.content` contract), preserving its `<w:pPr>` so alignment survives;
+ * any other text in that paragraph is dropped.
+ *
+ * Every failure branch — no fetcher, no dep, no space key, fetch error,
+ * undecodable bytes (the Cloud DEFAULT space logo is an SVG, which spec 005
+ * defers) — leaves the token in place for {@link preprocessScrollText} to
+ * blank, and adds a note whose code counts toward `skippedImages`. The
+ * embedder writes nothing on failure, so no dangling media part or
+ * relationship survives (the 004-F3 invariant).
+ */
+async function embedLogoPlaceholders(zip: PizZip, input: LogoPassInput): Promise<void> {
+  const { embedder, assets, getSpaceLogo, spaceKey, notes } = input;
+
+  // Collect occurrences first: the space-logo round-trip stays lazy (it fires
+  // only when a template actually uses a logo placeholder).
+  const occurrences: LogoOccurrence[] = [];
+  for (const part of documentPartNames(zip)) {
+    const xml = zip.file(part)?.asText() ?? "";
+    if (!xml.includes("$scroll.spacelogo") && !xml.includes("$scroll.globallogo")) continue;
+    for (const para of splitParagraphs(xml)) {
+      const m = paragraphText(para).match(LOGO_TOKEN_RE);
+      if (m) occurrences.push({ part, paragraph: para, raw: m[0], base: `$scroll.${m[1]}` });
+    }
+  }
+  if (occurrences.length === 0) return;
+
+  const bases = [...new Set(occurrences.map((o) => o.base))].sort();
+  const skipAll = (message: string, level: "info" | "warning" = "warning"): void => {
+    for (const base of bases) {
+      notes.push({ level, code: "logo-skipped", message: `${base} was not embedded: ${message}` });
+    }
+  };
+
+  if (!embedder || !assets) {
+    skipAll("image embedding is off or no asset fetcher is available; rendered empty.", "info");
+    return;
+  }
+  if (!getSpaceLogo) {
+    skipAll("no space-logo fetcher is available; rendered empty.");
+    return;
+  }
+  if (!spaceKey) {
+    skipAll("the page has no space key; rendered empty.");
+    return;
+  }
+
+  let bytes: Uint8Array;
+  try {
+    const ref = await getSpaceLogo(spaceKey);
+    if (!ref) {
+      skipAll(`space "${spaceKey}" has no logo; rendered empty.`, "info");
+      return;
+    }
+    bytes = await assets.fetch(ref);
+  } catch (err) {
+    skipAll(
+      `the space logo could not be fetched (${err instanceof Error ? err.message : String(err)}); rendered empty.`
+    );
+    return;
+  }
+
+  if (bases.includes("$scroll.globallogo")) {
+    notes.push({
+      level: "info",
+      code: "placeholder-substituted",
+      message:
+        "$scroll.globallogo resolved to the space logo — Confluence Cloud has no separately fetchable global logo.",
+    });
+  }
+
+  for (const occ of occurrences) {
+    const xml = zip.file(occ.part)?.asText() ?? "";
+    if (!xml.includes(occ.paragraph)) continue; // already replaced (identical paragraph)
+    const args = parseLogoArgs(occ.raw);
+    try {
+      const drawing = embedder.embed(bytes, {
+        name: occ.base === "$scroll.globallogo" ? "Global logo" : "Space logo",
+        alt: `${spaceKey} space logo`,
+        heightPx: args.heightPx,
+        widthPx: args.widthPx,
+        partPath: occ.part,
+        pPrXml: occ.paragraph.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0],
+      });
+      zip.file(occ.part, xml.replace(occ.paragraph, drawing));
+    } catch (err) {
+      notes.push({
+        level: "warning",
+        code: "logo-embed-failed",
+        message:
+          `${occ.base} could not be embedded` +
+          `${err instanceof ImageEmbedError ? ` (${err.message})` : ""}; rendered empty.`,
+      });
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Image seam (spec 005)

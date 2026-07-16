@@ -209,6 +209,11 @@ export interface DrawingParams {
   descr: string;
   cxEmu: number;
   cyEmu: number;
+  /**
+   * Optional `<w:pPr>…</w:pPr>` carried onto the emitted paragraph — used by
+   * the logo pass to preserve the replaced placeholder paragraph's alignment.
+   */
+  pPrXml?: string;
 }
 
 /**
@@ -223,7 +228,7 @@ export function inlineImageParagraph(p: DrawingParams): string {
   const name = escAttr(p.name);
   const descr = escAttr(p.descr);
   return (
-    `<w:p><w:r><w:drawing>` +
+    `<w:p>${p.pPrXml ?? ""}<w:r><w:drawing>` +
     `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
     `<wp:extent cx="${p.cxEmu}" cy="${p.cyEmu}"/>` +
     `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
@@ -273,15 +278,28 @@ export interface EmbedImageOptions {
   widthPx?: number;
   /** Author-specified rendered height in px. */
   heightPx?: number;
+  /**
+   * The document part whose XML will carry the returned drawing (default
+   * `word/document.xml`). An `r:embed` relationship is only valid in the rels
+   * of the part that references it, so a logo drawn into a header/footer must
+   * name that part here — the relationship then lands in e.g.
+   * `word/_rels/header1.xml.rels` (spec 005 logo pass).
+   */
+  partPath?: string;
+  /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph (see {@link DrawingParams.pPrXml}). */
+  pPrXml?: string;
 }
 
 interface MediaEntry {
-  relId: string;
+  /** Media-part filename (under `word/media/`), shared across parts. */
+  filename: string;
+  /** Relationship id PER RELS PART — the same media gets one rel per part. */
+  relIds: Map<string, string>;
   info: ImageInfo;
   bytes: Uint8Array;
 }
 
-const RELS_PATH = "word/_rels/document.xml.rels";
+const DOCUMENT_PART = "word/document.xml";
 const CT_PATH = "[Content_Types].xml";
 const EMPTY_RELS =
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -331,16 +349,18 @@ export class ImageEmbedder {
     if (!info) throw new ImageEmbedError("unsupported image format (PNG, JPEG and GIF are supported)");
 
     const entry = this.findOrCreateMedia(bytes, info);
+    const relId = this.ensureRelationship(entry, opts.partPath ?? DOCUMENT_PART);
     const size = resolveTargetSize(info, { widthPx: opts.widthPx, heightPx: opts.heightPx }, this.maxWidthPx);
     const docPrId = this.nextDocPrId++;
     this.embedded += 1;
     return inlineImageParagraph({
-      relId: entry.relId,
+      relId,
       docPrId,
       name: opts.name || `Image ${docPrId}`,
       descr: opts.alt || opts.name || "image",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      pPrXml: opts.pPrXml,
     });
   }
 
@@ -353,13 +373,13 @@ export class ImageEmbedder {
         if (sameBytes(candidate.bytes, bytes)) return candidate;
       }
     }
-    const entry: MediaEntry = { relId: this.writeMedia(bytes, info), info, bytes };
+    const entry: MediaEntry = { filename: this.writeMedia(bytes, info), relIds: new Map(), info, bytes };
     if (bucket) bucket.push(entry);
     else this.dedup.set(key, [entry]);
     return entry;
   }
 
-  /** The three archive edits: media part, content-type default, relationship. */
+  /** The two shared archive edits: media part + content-type default. */
   private writeMedia(bytes: Uint8Array, info: ImageInfo): string {
     let filename: string;
     do {
@@ -368,21 +388,41 @@ export class ImageEmbedder {
     } while (this.zip.file(`word/media/${filename}`));
 
     ensureContentTypeDefault(this.zip, info.ext, info.mime);
+    this.zip.file(`word/media/${filename}`, bytes);
+    return filename;
+  }
 
-    const rels = this.zip.file(RELS_PATH)?.asText() ?? EMPTY_RELS;
+  /**
+   * Ensure the media part is related from `partPath`'s rels (created on first
+   * use per part — the same media gets exactly one relationship per part).
+   */
+  private ensureRelationship(entry: MediaEntry, partPath: string): string {
+    const relsPath = relsPathFor(partPath);
+    const existing = entry.relIds.get(relsPath);
+    if (existing) return existing;
+
+    const rels = this.zip.file(relsPath)?.asText() ?? EMPTY_RELS;
     // Match both quote styles, like the settings-part surgery in export.ts.
     const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
     const relId = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
     this.zip.file(
-      RELS_PATH,
+      relsPath,
       rels.replace(
         "</Relationships>",
-        `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${filename}"/></Relationships>`
+        `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${entry.filename}"/></Relationships>`
       )
     );
-    this.zip.file(`word/media/${filename}`, bytes);
+    entry.relIds.set(relsPath, relId);
     return relId;
   }
+}
+
+/** `word/header1.xml` → `word/_rels/header1.xml.rels` (OPC rels convention). */
+export function relsPathFor(partPath: string): string {
+  const slash = partPath.lastIndexOf("/");
+  const dir = slash === -1 ? "" : partPath.slice(0, slash + 1);
+  const base = slash === -1 ? partPath : partPath.slice(slash + 1);
+  return `${dir}_rels/${base}.rels`;
 }
 
 /** Add a `<Default Extension=…>` to `[Content_Types].xml` unless present. */

@@ -10,22 +10,21 @@
  *    §2 `direct` and `derivable` rows the resolver ({@link resolvePlaceholders})
  *    can compute from `{ details, space?, currentUser?, template, exportDate }`.
  *  - **unsupported** — Confluence exposes it but atlcli does not model it yet
- *    (the §2 `unsupported (v1)` rows: DC usernames, space logo, page properties,
- *    JSON content properties) plus the derivable-but-out-of-v1-scope
- *    `$scroll.includepage.*` family (cross-page include is a Phase-2 non-goal,
- *    PLAN §Non-goals). Rendered ⚠ "will be empty"; resolves to `""` + report line.
- *  - **never** — depends on a third-party app or a system asset atlcli does not
- *    target (Comala `$adhocState`/`$scroll.metadata.*`, Scroll Documents
- *    `$scroll.custom.*`, `$scroll.globallogo`). Rendered ✗; resolves to `""`.
+ *    (the §2 `unsupported (v1)` rows: JSON content properties) plus the
+ *    derivable-but-out-of-v1-scope `$scroll.includepage.*` family (cross-page
+ *    include is a Phase-2 non-goal, PLAN §Non-goals). Rendered ⚠ "will be
+ *    empty"; resolves to `""` + report line.
+ *  - **never** — depends on a third-party app atlcli does not target (Comala
+ *    `$adhocState`/`$scroll.metadata.*`, Scroll Documents `$scroll.custom.*`).
+ *    Rendered ✗; resolves to `""`.
  *
  * Each `reason` is surfaced verbatim per row in the panel, so it must say WHY
  * this particular placeholder is empty — the causes differ sharply and a generic
- * "will be empty" would flatten them. Three distinct kinds live here: genuinely
- * impossible on Cloud (`.name` — Atlassian removed usernames), blocked on
- * another spec (the logos need 005's image module), and simply not modelled yet
- * (page properties). `$scroll.pageowner.fullName` used to sit in the first group
- * by implication; it does not — Cloud's v2 API exposes `ownerId`, so it is now
- * supported via {@link SUPPORTED_OWNER} (gap G1 closed).
+ * "will be empty" would flatten them. `$scroll.pageowner.fullName` used to sit
+ * in an "impossible on Cloud" group by implication; it does not — Cloud's v2
+ * API exposes `ownerId`, so it is supported via {@link SUPPORTED_OWNER} (gap G1
+ * closed). The logo placeholders were unblocked the same way once spec 005's
+ * image module landed (gap G3 closed, see {@link SUPPORTED_LOGO}).
  *
  * A placeholder's *base* is its dotted name with any `.("format")` argument and
  * `.(params)` stripped (e.g. `$scroll.exportdate.("dd.MM.yyyy")` → base
@@ -46,7 +45,8 @@ export type PlaceholderDependency =
   | "space"
   | "currentUser"
   | "owner"
-  | "spaceHomepage";
+  | "spaceHomepage"
+  | "spaceLogo";
 
 /**
  * Parsed argument list of `$scroll.pageproperty.(…)` (spec 001 gap **G4**).
@@ -93,6 +93,34 @@ export function parsePagePropertyArgs(raw: string): PagePropertyArgs {
     fallbackEnabled: parts[2] === "true",
     alternateText: parts[3] || undefined,
   };
+}
+
+/**
+ * Parsed size argument of a logo placeholder — Scroll documents
+ * `$scroll.spacelogo.(H,W)`: height first, then width, both px. A single
+ * argument is the height (the width scales by the logo's aspect ratio).
+ * Non-numeric arguments are ignored (intrinsic size wins).
+ */
+export interface LogoArgs {
+  heightPx?: number;
+  widthPx?: number;
+}
+
+/** Parse the raw `$scroll.spacelogo.(H,W)` / `$scroll.globallogo.(H,W)` size args. */
+export function parseLogoArgs(raw: string): LogoArgs {
+  const open = raw.indexOf("(");
+  const close = raw.lastIndexOf(")");
+  if (open === -1 || close <= open) return {};
+  const parts = raw
+    .slice(open + 1, close)
+    .split(",")
+    .map((p) => p.trim());
+  const num = (s: string | undefined): number | undefined => {
+    if (!s || !/^\d+$/.test(s)) return undefined;
+    const n = Number(s);
+    return n > 0 ? n : undefined;
+  };
+  return { heightPx: num(parts[0]), widthPx: num(parts[1]) };
 }
 
 export interface PlaceholderClass {
@@ -177,9 +205,17 @@ const SUPPORTED_OWNER = new Set<string>(["$scroll.pageowner.fullName"]);
  * `$scroll.includepage.*` and the parameterized `$scroll.pageproperty.*` /
  * `$scroll.jsoncontentproperty.*` families match by prefix (see classifier).
  */
-const UNSUPPORTED_EXACT: Record<string, string> = {
-  "$scroll.spacelogo": "the space logo is an image — needs the image module (spec 005, Gap G3)",
-};
+/**
+ * Logo placeholders (spec 005, Gap G3 closed): both resolve to an embedded
+ * image of the space logo (`GET /space/{key}?expand=icon`), handled by the
+ * export orchestrator's logo pass — NOT by the text resolver (a logo is a
+ * drawing, not a string). `$scroll.globallogo` also maps to the space logo:
+ * Confluence Cloud exposes no separately fetchable global logo, and the export
+ * report says so per occurrence.
+ */
+const SUPPORTED_LOGO = new Set<string>(["$scroll.spacelogo", "$scroll.globallogo"]);
+
+const UNSUPPORTED_EXACT: Record<string, string> = {};
 
 const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
   { prefix: "$scroll.includepage", reason: "cross-page include is out of scope in v1 (Phase 2)" },
@@ -199,9 +235,7 @@ const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
  * unrecognized→unsupported branch below: empty value + report line, just with a
  * generic reason instead of a Comala-specific one.
  */
-const NEVER_EXACT: Record<string, string> = {
-  "$scroll.globallogo": "the global logo is an image — needs the image module (spec 005)",
-};
+const NEVER_EXACT: Record<string, string> = {};
 
 const NEVER_PREFIXES: { prefix: string; reason: string }[] = [
   { prefix: "$scroll.custom", reason: "Scroll Documents app — not integrated" },
@@ -219,6 +253,7 @@ export function classifyPlaceholder(raw: string): PlaceholderClass {
   if (SUPPORTED_SPACE.has(base)) return { base, status: "supported", dependency: "space" };
   if (SUPPORTED_USER.has(base)) return { base, status: "supported", dependency: "currentUser" };
   if (SUPPORTED_OWNER.has(base)) return { base, status: "supported", dependency: "owner" };
+  if (SUPPORTED_LOGO.has(base)) return { base, status: "supported", dependency: "spaceLogo" };
 
   // Page Properties (G4). The dependency varies by ARGUMENT, not by base: only
   // the fallback form needs the space homepage. Classification sees the raw, and

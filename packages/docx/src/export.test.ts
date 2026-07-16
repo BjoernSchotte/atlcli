@@ -112,18 +112,20 @@ describe("exportDocx — full pipeline", () => {
     expect(doc).toContain("Heads up");
     expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
 
-    // Image skipped: no drawing, report lists it.
+    // Image + logo skipped (no asset fetcher): no drawing, report lists both.
     expect(doc).not.toContain("<w:drawing");
-    expect(report.skippedImages).toBe(1);
+    expect(report.skippedImages).toBe(2);
     expect(report.notes.some((n) => n.code === "image-skipped")).toBe(true);
+    expect(report.notes.some((n) => n.code === "logo-skipped")).toBe(true);
 
     // Report summary fields.
     expect(report.resolvedCount).toBeGreaterThan(0);
     // The owner resolves through the full pipeline (G1) — and is the OWNER,
     // not the creator.
     expect(doc).toContain("Olga Owner");
-    // The space logo stays unsupported (it is an image — spec 005).
-    expect(report.unsupportedNames).toContain("$scroll.spacelogo");
+    // The space logo is supported since spec 005 (G3) — it degrades to a
+    // logo-skipped note here (no asset fetcher), never to "unsupported".
+    expect(report.unsupportedNames).not.toContain("$scroll.spacelogo");
     expect(report.filename).toBe("Q3_ Architecture _ Overview.docx");
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
   });
@@ -643,6 +645,213 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(report.skippedImages).toBe(1);
     expect(report.notes.some((n) => n.code === "image-skipped")).toBe(true);
     expect(readPart(bytes, "word/document.xml")).not.toContain("<w:drawing");
+  });
+
+  // Logo tests run on an image-free page so drawings/notes are logo-only.
+  const logoDetails: ConfluencePageDetails = { ...details, storage: "<p>plain body</p>" };
+
+  it("embeds the space logo for $scroll.spacelogo AND $scroll.globallogo — body drawing, header drawing with its own rels, one shared media part", async () => {
+    const { refs, fetcher } = recordingFetcher(pngFixtureBytes(300, 100));
+    let logoCalls = 0;
+    const { bytes, report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.spacelogo"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+        header: para("$scroll.globallogo"),
+      }),
+      details: logoDetails,
+      template,
+      deps: {
+        ...deps,
+        getSpaceLogo: async (key: string) => {
+          logoCalls++;
+          expect(key).toBe("ENG");
+          return { url: "/download/attachments/999/space-logo.png" };
+        },
+      },
+      assets: fetcher,
+    });
+
+    // One icon-ref round-trip, one byte fetch — shared across both drawings.
+    expect(logoCalls).toBe(1);
+    expect(refs).toEqual([{ url: "/download/attachments/999/space-logo.png" }]);
+
+    const doc = readPart(bytes, "word/document.xml");
+    const header = readPart(bytes, "word/header1.xml");
+    for (const part of [doc, header]) {
+      expect(part).toContain("<w:drawing>");
+      expect(part).not.toContain("$scroll.");
+      assertBalancedXml(part);
+    }
+    expect(doc).toContain('descr="ENG space logo"');
+
+    // The header drawing's relationship lives in the HEADER's own rels part.
+    const headerRels = readPart(bytes, "word/_rels/header1.xml.rels");
+    const headerRelId = header.match(/r:embed="(rId\d+)"/)?.[1];
+    expect(headerRels).toContain(`Id="${headerRelId}"`);
+    expect(headerRels).toContain('Target="media/atlcli-image1.png"');
+    const docRels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(docRels).toContain('Target="media/atlcli-image1.png"');
+
+    // One media part serves both occurrences (byte-identical dedup).
+    const zip = new PizZip(bytes);
+    const media = Object.keys(zip.files).filter((p) => p.startsWith("word/media/"));
+    expect(media).toEqual(["word/media/atlcli-image1.png"]);
+
+    expect(report.embeddedImages).toBe(2);
+    expect(report.skippedImages).toBe(0);
+    expect(report.unsupportedNames).not.toContain("$scroll.spacelogo");
+    expect(report.unsupportedNames).not.toContain("$scroll.globallogo");
+    // The globallogo → space-logo substitution is said out loud, once.
+    const subs = report.notes.filter(
+      (n) => n.code === "placeholder-substituted" && n.message.includes("$scroll.globallogo")
+    );
+    expect(subs).toHaveLength(1);
+  });
+
+  it("honors the .(H,W) logo size args (height first, per the Scroll grammar)", async () => {
+    const { fetcher } = recordingFetcher(pngFixtureBytes(300, 100));
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.spacelogo.(50,120)"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps: { ...deps, getSpaceLogo: async () => ({ url: "/download/attachments/999/logo.png" }) },
+      assets: fetcher,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(`<wp:extent cx="${120 * 9525}" cy="${50 * 9525}"/>`);
+  });
+
+  it("preserves the placeholder paragraph's pPr (alignment) on the drawing paragraph", async () => {
+    const { fetcher } = recordingFetcher(pngFixtureBytes(300, 100));
+    const centered =
+      `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>` +
+      `<w:r><w:t xml:space="preserve">$scroll.spacelogo</w:t></w:r></w:p>`;
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + centered,
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps: { ...deps, getSpaceLogo: async () => ({ url: "/download/attachments/999/logo.png" }) },
+      assets: fetcher,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    const drawingPara = doc.slice(doc.indexOf("<w:p><w:pPr><w:jc"), doc.indexOf("</w:drawing>"));
+    expect(drawingPara).toContain('<w:jc w:val="center"/>');
+    expect(drawingPara).toContain("<w:drawing>");
+  });
+
+  it("degrades logos to a note + empty text when no getSpaceLogo dep is wired (F3 invariant)", async () => {
+    const { fetcher } = recordingFetcher();
+    const { bytes, report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.spacelogo"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps, // no getSpaceLogo
+      assets: fetcher,
+    });
+    const note = report.notes.find((n) => n.code === "logo-skipped");
+    expect(note?.level).toBe("warning");
+    expect(note?.message).toContain("$scroll.spacelogo");
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("$scroll.");
+    expect(doc).not.toContain("<w:drawing");
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).not.toContain("relationships/image");
+  });
+
+  it("degrades an SVG space logo (the Cloud default) to a logo-embed-failed note", async () => {
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const { bytes, report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.spacelogo"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps: { ...deps, getSpaceLogo: async () => ({ url: "/images/logo/default-space-logo.svg" }) },
+      assets: { fetch: async () => svg },
+    });
+    const note = report.notes.find((n) => n.code === "logo-embed-failed");
+    expect(note?.level).toBe("warning");
+    expect(note?.message).toContain("SVG");
+    expect(report.skippedImages).toBe(1);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("$scroll.");
+    expect(doc).not.toContain("<w:drawing");
+  });
+
+  it("degrades a failed logo fetch to a warning, token blanked", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.globallogo"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps: { ...deps, getSpaceLogo: async () => ({ url: "/download/attachments/999/logo.png" }) },
+      assets: {
+        async fetch() {
+          throw new Error("boom (403)");
+        },
+      },
+    });
+    const note = report.notes.find((n) => n.code === "logo-skipped");
+    expect(note?.level).toBe("warning");
+    expect(note?.message).toContain("boom (403)");
+    expect(readPart(bytes, "word/document.xml")).not.toContain("$scroll.");
+  });
+
+  it("never calls getSpaceLogo when the template uses no logo placeholder (lazy contract)", async () => {
+    const { fetcher } = recordingFetcher();
+    let logoCalls = 0;
+    await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getSpaceLogo: async () => {
+          logoCalls++;
+          return null;
+        },
+      },
+      assets: fetcher,
+    });
+    expect(logoCalls).toBe(0);
+  });
+
+  it("never calls getSpaceLogo when embedding is disabled (--no-images)", async () => {
+    let logoCalls = 0;
+    const { fetcher } = recordingFetcher();
+    const { report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.spacelogo"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: logoDetails,
+      template,
+      deps: {
+        ...deps,
+        getSpaceLogo: async () => {
+          logoCalls++;
+          return { url: "/x.png" };
+        },
+      },
+      assets: fetcher,
+      embedImages: false,
+    });
+    expect(logoCalls).toBe(0);
+    expect(report.notes.some((n) => n.code === "logo-skipped")).toBe(true);
   });
 
   it("embeds images inside table cells and honors ac:width scaling", async () => {

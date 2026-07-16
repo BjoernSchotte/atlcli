@@ -202,6 +202,12 @@ export function TemplateSection({
                 getCurrentUser: () => client.getCurrentUser(),
                 getPageOwner: (id) => client.getPageOwner(id),
                 getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+                // Spec 005 logo pass: icon path in, bytes via the session
+                // asset fetcher below ($scroll.spacelogo / $scroll.globallogo).
+                getSpaceLogo: async (key) => {
+                  const icon = await client.getSpaceIcon(key);
+                  return icon ? { url: icon.path } : null;
+                },
               }
             : {},
         },

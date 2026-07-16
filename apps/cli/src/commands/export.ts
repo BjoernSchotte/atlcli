@@ -763,6 +763,23 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         getCurrentUser: () => client.getCurrentUser(),
         getPageOwner: (id: string) => client.getPageOwner(id),
         getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+        // Spec 005 logo pass: the space icon path feeds $scroll.spacelogo /
+        // $scroll.globallogo; bytes then ride the asset fetcher below. A
+        // custom logo's icon.path is a cookie-only `/download/attachments/
+        // {contentId}/{filename}` URL that 401s under token auth (same Cloud
+        // behavior as page attachments), so the content id + filename are
+        // carried on the ref — the fetcher then resolves them through the
+        // REST attachment listing, which honors token auth.
+        getSpaceLogo: async (key: string) => {
+          const icon = await client.getSpaceIcon(key);
+          if (!icon) return null;
+          const m = icon.path.match(/^\/download\/attachments\/(\d+)\/([^/?]+)/);
+          return {
+            url: icon.path,
+            pageId: m?.[1],
+            filename: m ? decodeURIComponent(m[2]) : undefined,
+          };
+        },
       },
     },
     {
