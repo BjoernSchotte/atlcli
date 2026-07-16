@@ -285,6 +285,49 @@ describe("$scroll.pageproperty (G4)", () => {
   });
 });
 
+describe(".name placeholders — DC username → display name on Cloud (G2)", () => {
+  // `.name` is Scroll's Data Center USERNAME, not a person's name (`.fullName`
+  // is). Cloud has no usernames at all, so the alternative to substituting is an
+  // empty hole in a template that reads "Erstellt von: $scroll.creator.name".
+  it("resolves creator/modifier .name to the display name", () => {
+    expect(value("$scroll.creator.name")).toBe("Alice Author");
+    expect(value("$scroll.modifier.name")).toBe("Mel Modifier");
+  });
+
+  it("resolves exporter.name from the fetched current user", () => {
+    expect(value("$scroll.exporter.name")).toBe("Björn Schotte");
+  });
+
+  it("never substitutes silently — the report says what happened", () => {
+    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    resolveOne("$scroll.creator.name", ctx, { space, currentUser, owner }, notes);
+    const note = notes.find((n) => n.code === "placeholder-substituted");
+    expect(note).toBeDefined();
+    expect(note!.message).toContain("Data Center username");
+    expect(note!.message).toContain("Alice Author");
+  });
+
+  it("stays empty (and silent) when the user is absent altogether", () => {
+    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    const bare: ResolveContext = { ...ctx, details: { ...details, createdBy: undefined } };
+    expect(resolveOne("$scroll.creator.name", bare, {}, notes)).toBe("");
+    // No substitution happened, so nothing to report about one.
+    expect(notes.some((n) => n.code === "placeholder-substituted")).toBe(false);
+  });
+
+  it("exporter.name still needs the user fetch, and only that", async () => {
+    const getCurrentUser = mock(async () => currentUser);
+    const getSpace = mock(async () => space);
+    const res = await resolvePlaceholders(["$scroll.exporter.name"], ctx, {
+      getCurrentUser,
+      getSpace,
+    });
+    expect(getCurrentUser).toHaveBeenCalledTimes(1);
+    expect(getSpace).not.toHaveBeenCalled();
+    expect(res.values.get("$scroll.exporter.name")).toBe("Björn Schotte");
+  });
+});
+
 describe("$adhocState — dropped from the curated list, still blanked", () => {
   it("is unsupported (not never) and never leaks its literal", async () => {
     const res = await resolvePlaceholders(["$adhocState"], ctx, {});

@@ -168,11 +168,15 @@ export function resolveOne(
       return details.createdBy?.displayName ?? "";
     case "$scroll.creator.email":
       return emailOrNote(details.createdBy?.email, raw, notes);
+    case "$scroll.creator.name":
+      return resolveDcName(details.createdBy?.displayName, raw, notes);
     case "$scroll.modifier":
     case "$scroll.modifier.fullName":
       return details.modifiedBy?.displayName ?? "";
     case "$scroll.modifier.email":
       return emailOrNote(details.modifiedBy?.email, raw, notes);
+    case "$scroll.modifier.name":
+      return resolveDcName(details.modifiedBy?.displayName, raw, notes);
 
     case "$scroll.creationdate":
       return resolveDate(details.created, raw, notes);
@@ -193,6 +197,8 @@ export function resolveOne(
       return currentUser?.displayName ?? "";
     case "$scroll.exporter.email":
       return emailOrNote(currentUser?.email, raw, notes);
+    case "$scroll.exporter.name":
+      return resolveDcName(currentUser?.displayName, raw, notes);
 
     case "$scroll.template.name":
       return template.name;
@@ -250,6 +256,35 @@ function resolvePageProperty(
       "; rendered empty.",
   });
   return "";
+}
+
+/**
+ * Resolve a `.name` placeholder (`$scroll.creator.name` & friends) on Cloud.
+ *
+ * In Scroll, `.name` is the **Data Center username** (`bschotte`), not a person's
+ * name — `.fullName` is the name. Confluence Cloud has no usernames at all:
+ * Atlassian removed them and `accountId` replaced them, so there is no value
+ * `.name` could ever carry here. The real choice is therefore not "wrong value
+ * vs. right value" but **display name vs. an empty hole** in a template that
+ * reads "Erstellt von: $scroll.creator.name" — and only a template migrated from
+ * DC can contain `.name` in the first place.
+ *
+ * So we substitute the display name, and **say so in the report**: the value is
+ * useful, and the one thing that would be wrong is doing it silently, since a
+ * template asking for a login now gets a person's name (spec 001 gap G2).
+ */
+function resolveDcName(
+  displayName: string | undefined,
+  raw: string,
+  notes: ExportNote[]
+): string {
+  if (!displayName) return "";
+  notes.push({
+    level: "info",
+    code: "placeholder-substituted",
+    message: `${raw} is a Data Center username, which Confluence Cloud does not have; used the display name "${displayName}" instead.`,
+  });
+  return displayName;
 }
 
 function emailOrNote(email: string | undefined, raw: string, notes: ExportNote[]): string {

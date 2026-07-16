@@ -130,9 +130,14 @@ const SUPPORTED_NONE = new Set<string>([
   "$scroll.creator",
   "$scroll.creator.fullName",
   "$scroll.creator.email",
+  // `.name` is Scroll's DATA CENTER username. Cloud has none, so the choice is
+  // not "wrong value vs. right value" but "display name vs. nothing" — see
+  // resolveDcName(). Resolved with a report note, never silently.
+  "$scroll.creator.name",
   "$scroll.modifier",
   "$scroll.modifier.fullName",
   "$scroll.modifier.email",
+  "$scroll.modifier.name",
   "$scroll.creationdate",
   "$scroll.modificationdate",
   "$scroll.exportdate",
@@ -151,6 +156,7 @@ const SUPPORTED_USER = new Set<string>([
   "$scroll.exporter",
   "$scroll.exporter.fullName",
   "$scroll.exporter.email",
+  "$scroll.exporter.name",
 ]);
 
 /**
@@ -172,9 +178,6 @@ const SUPPORTED_OWNER = new Set<string>(["$scroll.pageowner.fullName"]);
  * `$scroll.jsoncontentproperty.*` families match by prefix (see classifier).
  */
 const UNSUPPORTED_EXACT: Record<string, string> = {
-  "$scroll.creator.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
-  "$scroll.modifier.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
-  "$scroll.exporter.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
   "$scroll.spacelogo": "the space logo is an image — needs the image module (spec 005, Gap G3)",
 };
 

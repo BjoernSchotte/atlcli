@@ -120,11 +120,11 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.creator` | `.createdBy.displayName` | derivable | Scroll's bare form renders the display name. |
 | `$scroll.creator.fullName` | `.createdBy.displayName` | direct | atlcli's `displayName` already falls back to `publicName`. |
 | `$scroll.creator.email` (DC) | `.createdBy.email` | derivable | `email` is optional and usually absent on Cloud. |
-| `$scroll.creator.name` (DC username) | — | unsupported (v1) | `ConfluenceUser` has no username field. Gap G2. |
+| `$scroll.creator.name` (DC username) | `.createdBy.displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. See G2. |
 | `$scroll.modifier` | `.modifiedBy.displayName` | derivable | |
 | `$scroll.modifier.fullName` | `.modifiedBy.displayName` | direct | |
 | `$scroll.modifier.email` (DC) | `.modifiedBy.email` | derivable | Often absent on Cloud. |
-| `$scroll.modifier.name` (DC username) | — | unsupported (v1) | Same as G2. |
+| `$scroll.modifier.name` (DC username) | `.modifiedBy.displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. See G2. |
 
 ### 2.3 Dates
 
@@ -152,7 +152,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.exporter` | `getCurrentUser().displayName` | derivable | atlcli exposes `getCurrentUser()`; not yet wired into export. |
 | `$scroll.exporter.fullName` | `getCurrentUser().displayName` | derivable | |
 | `$scroll.exporter.email` (DC) | `getCurrentUser().email` | derivable | Optional; may be absent on Cloud. |
-| `$scroll.exporter.name` (DC username) | — | unsupported (v1) | No username field. Gap G2. |
+| `$scroll.exporter.name` (DC username) | `getCurrentUser().displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. Rides the existing `getCurrentUser` fetch. See G2. |
 | `$scroll.template.name` | export-side template metadata | derivable | atlcli-side (template file), not Confluence data. |
 | `$scroll.template.modificationdate` | export-side template metadata | derivable | Template file mtime; atlcli-side. |
 | `$adhocState` (Comala) | — | never | Comala Document Management workflow state (DC). Third-party. |
@@ -225,11 +225,21 @@ referenced from the mapping table.
   fires only when a template actually uses the placeholder. Owner ≠ creator: ownership is
   transferable, so a `createdBy` fallback would be wrong (and is pinned against by a fixture whose
   owner differs from its creator).
-- **G2 — Data Center username.** `ConfluenceUser` models `accountId` + `displayName` + `email`,
-  but no `name`/username — because **Confluence Cloud has no usernames at all**: Atlassian removed
-  them, `accountId` is the replacement. The `.name` placeholders are DC-only, so on Cloud this is
-  not "unbuilt" but genuinely unavailable; it would need a DC user shape.
-  Blocks: `$scroll.creator.name`, `$scroll.modifier.name`, `$scroll.exporter.name`.
+- **G2 — Data Center username. ⚠️ RESOLVED BY SUBSTITUTION 2026-07-16** (Björn: "creator ist ja
+  der erzeuger der seite, und den namen könnten wir doch resolven, oder?"). The underlying fact is
+  unchanged and permanent: **Confluence Cloud has no usernames.** Atlassian removed them,
+  `accountId` is the replacement, and `.name` is Scroll's *username* field (`bschotte`) — `.fullName`
+  is the person's name. So there is no value `.name` could ever carry on Cloud.
+  - But the practical alternative was never "wrong value vs. right value" — it was **display name
+    vs. an empty hole** in a template reading `Erstellt von: $scroll.creator.name`. And only a
+    template migrated from Data Center can contain `.name` at all, since Cloud Scroll does not
+    offer it. So the `.name` placeholders now resolve to the display name (already on
+    `createdBy`/`modifiedBy`, so no round-trip; `exporter.name` rides the existing
+    `getCurrentUser` fetch).
+  - **The substitution is reported, never silent** (`placeholder-substituted`): a template asked
+    for a login and got a person's name. The value is useful; hiding the swap would not be.
+  - Not a "closed" gap like G1/G4 — the data genuinely does not exist. This is a deliberate
+    product decision to degrade usefully instead of emptily.
 - **G3 — Space & global logos.** The data exists — `GET /space/{key}?expand=icon` returns
   `icon.path` — but a logo is an **image**, so both placeholders are blocked on the OOXML image
   module (spec `005-docx-image-module`), not on a missing fetch. Blocks: `$scroll.spacelogo` (G3);

@@ -84,6 +84,22 @@ describe("classifyPlaceholder — pageproperty is lazy per ARGUMENT", () => {
   });
 });
 
+describe("classifyPlaceholder — .name is supported on Cloud (G2)", () => {
+  it("creator/modifier .name need no round-trip (the page carries them)", () => {
+    for (const raw of ["$scroll.creator.name", "$scroll.modifier.name"]) {
+      const cls = classifyPlaceholder(raw);
+      expect(cls.status).toBe("supported");
+      expect(cls.dependency).toBe("none");
+    }
+  });
+
+  it("exporter.name needs the current user, like the other exporter fields", () => {
+    const cls = classifyPlaceholder("$scroll.exporter.name");
+    expect(cls.status).toBe("supported");
+    expect(cls.dependency).toBe("currentUser");
+  });
+});
+
 describe("classifyPlaceholder — $adhocState is dropped but still handled", () => {
   it("classifies as unsupported so it is blanked rather than left literal", () => {
     const cls = classifyPlaceholder("$adhocState");
