@@ -109,10 +109,15 @@ export async function handleExport(
   if (engine === "ts") {
     // The page fetch is NOT awaited here: exportWithTsEngine overlaps it
     // with template read/scan + rasterizer setup + pre-started resolver
-    // round-trips (perf).
+    // round-trips (perf). The consumed catch branch keeps a FAST rejection
+    // (bad page id) from surfacing as an unhandled rejection while local
+    // setup is still running — the engine awaits the original promise and
+    // reports the real error.
+    const pagePromise = client.getPageDetails(pageId);
+    pagePromise.catch(() => {});
     await exportWithTsEngine({
       client,
-      pagePromise: client.getPageDetails(pageId),
+      pagePromise,
       pageId,
       baseUrl,
       resolvedTemplatePath,
@@ -752,15 +757,24 @@ function tokenAssetFetcher(client: ConfluenceClient, baseUrl: string) {
     const cachePath = assetCachePath(baseUrl, key);
     try {
       const { readFile } = await import("node:fs/promises");
-      return new Uint8Array(await readFile(cachePath));
+      const cached = new Uint8Array(await readFile(cachePath));
+      // Zero bytes can only be a damaged entry (no Confluence asset is
+      // empty) — treat as a miss and refetch.
+      if (cached.byteLength > 0) return cached;
     } catch {
       // cache miss — fall through to the network
     }
     const bytes = await load();
     try {
-      const { mkdir, writeFile } = await import("node:fs/promises");
+      const { mkdir, rename, writeFile } = await import("node:fs/promises");
       await mkdir(dirname(cachePath), { recursive: true });
-      await writeFile(cachePath, bytes);
+      // Write-then-rename keeps the cache atomic: a concurrent export or a
+      // crash mid-write must never leave partial bytes under the final
+      // name (they would be served as a permanent hit).
+      const tmp = `${cachePath}.${process.pid.toString(36)}${Math.random().toString(36).slice(2)}.tmp`;
+      await writeFile(tmp, bytes);
+      await rename(tmp, cachePath);
+      pruneAssetCacheOnce(dirname(cachePath));
     } catch {
       // best-effort cache write
     }
@@ -789,6 +803,40 @@ function tokenAssetFetcher(client: ConfluenceClient, baseUrl: string) {
 function assetCachePath(baseUrl: string, key: string): string {
   const hash = createHash("sha256").update(`${baseUrl}\n${key}`).digest("hex").slice(0, 32);
   return join(homedir(), ".atlcli", "cache", "assets", `${hash}.bin`);
+}
+
+/** Entries older than this are evicted opportunistically (immutable keys never go stale — this only bounds disk growth). */
+const ASSET_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+let cachePruned = false;
+
+/**
+ * Best-effort, once-per-process, fire-and-forget eviction of stale cache
+ * entries (and orphaned `.tmp` files). Never throws, never blocks the export.
+ */
+function pruneAssetCacheOnce(dir: string): void {
+  if (cachePruned) return;
+  cachePruned = true;
+  void (async () => {
+    try {
+      const { readdir, stat, unlink } = await import("node:fs/promises");
+      const now = Date.now();
+      for (const name of await readdir(dir)) {
+        try {
+          const path = join(dir, name);
+          const s = await stat(path);
+          // Orphaned temp files are only reaped after a grace period so a
+          // CONCURRENT export's in-flight write is never yanked away.
+          const maxAge = name.endsWith(".tmp") ? 60_000 : ASSET_CACHE_MAX_AGE_MS;
+          if (now - s.mtimeMs > maxAge) await unlink(path);
+        } catch {
+          // ignore individual entries
+        }
+      }
+    } catch {
+      // best-effort
+    }
+  })();
 }
 
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {

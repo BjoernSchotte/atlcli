@@ -1161,3 +1161,58 @@ describe("exportDocx — parallel prefetch determinism (perf regression)", () =>
     assertBalancedXml(readPart(bytes, "word/document.xml"));
   });
 });
+
+describe("exportDocx — prefetch failure modes (Codex review findings)", () => {
+  const plainTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  it("a SYNCHRONOUSLY-throwing asset fetcher degrades every image to a note (no pool deadlock)", async () => {
+    // Seven images > the 6-slot pool: a leaked slot per sync throw would
+    // starve the queue and hang the export instead of degrading (004-F3).
+    const storage = Array.from(
+      { length: 7 },
+      (_, i) => `<ac:image><ri:attachment ri:filename="img${i}.png"/></ac:image>`
+    ).join("");
+    const { report } = await exportDocx({
+      templateBytes: plainTemplate(),
+      details: { ...details, storage },
+      template,
+      deps,
+      assets: {
+        fetch(): Promise<Uint8Array> {
+          throw new Error("sync boom"); // NOT an async rejection
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(7);
+    expect(report.notes.filter((n) => n.code === "image-embed-failed").length).toBe(7);
+  });
+
+  it("two blocks referencing the same attachment share ONE fetch", async () => {
+    let calls = 0;
+    const { report } = await exportDocx({
+      templateBytes: plainTemplate(),
+      details: {
+        ...details,
+        storage:
+          '<ac:image><ri:attachment ri:filename="dup.png"/></ac:image>' +
+          "<p>between</p>" +
+          '<ac:image><ri:attachment ri:filename="dup.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        async fetch(): Promise<Uint8Array> {
+          calls += 1;
+          return pngFixtureBytes(120, 60);
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(2);
+    expect(calls).toBe(1);
+  });
+});

@@ -141,7 +141,7 @@ async function createEngine(): Promise<import("shiki/core").RegexEngine> {
 
 async function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
-    highlighterPromise = (async () => {
+    const p = (async () => {
       const [{ createHighlighterCore }, engine, theme] = await Promise.all([
         import("shiki/core"),
         createEngine(),
@@ -153,6 +153,13 @@ async function getHighlighter(): Promise<HighlighterCore> {
         engine,
       });
     })();
+    // A failed init (transient chunk-load error during background warm-up)
+    // must not poison every later highlight — clear the memo so the next
+    // call retries. Callers still observe the original rejection.
+    p.catch(() => {
+      if (highlighterPromise === p) highlighterPromise = null;
+    });
+    highlighterPromise = p;
   }
   return highlighterPromise;
 }

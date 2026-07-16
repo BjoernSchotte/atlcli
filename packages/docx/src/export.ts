@@ -540,16 +540,21 @@ function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
     new Promise<T>((resolve, reject) => {
       const run = (): void => {
         active += 1;
-        fn().then(
-          (v) => {
-            release();
-            resolve(v);
-          },
-          (e) => {
-            release();
-            reject(e);
-          }
-        );
+        // Promise.resolve().then(fn) also routes a SYNCHRONOUSLY-throwing fn
+        // into the rejection path — a bare fn() call would skip release() and
+        // leak the slot (six such failures would deadlock the queue).
+        Promise.resolve()
+          .then(fn)
+          .then(
+            (v) => {
+              release();
+              resolve(v);
+            },
+            (e) => {
+              release();
+              reject(e);
+            }
+          );
       };
       if (active < max) run();
       else queue.push(run);
@@ -572,17 +577,21 @@ function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
  */
 function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string): ImageEmbedSeam {
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
-  const fetches = new Map<ImageBlock, Promise<Uint8Array>>();
+  // Keyed by the CANONICAL asset URL, not block identity: a page that shows
+  // the same attachment twice downloads it once (the embedder already
+  // deduplicates the media part; this deduplicates the network fetch).
+  const fetches = new Map<string, Promise<Uint8Array>>();
   const fetchBytes = (block: ImageBlock): Promise<Uint8Array> => {
-    let p = fetches.get(block);
+    const ref = assetRefFor(block, pageId);
+    let p = fetches.get(ref.url);
     if (!p) {
-      p = limit(() => assets.fetch(assetRefFor(block, pageId)));
+      p = limit(() => assets.fetch(ref));
       // The prefetch caller never awaits; without this consumed branch a
       // fetch failing before embed() awaits it would surface as an
       // unhandled rejection. embed() awaits the ORIGINAL promise and still
       // sees the real error.
       p.catch(() => {});
-      fetches.set(block, p);
+      fetches.set(ref.url, p);
     }
     return p;
   };
