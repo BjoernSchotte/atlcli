@@ -224,7 +224,7 @@ trust surface and 006's measurement hook.
 
 Joint session (space `DOCSY`; create a dedicated test page with the full feature zoo, delete after):
 
-- [x] Upload a real mayflower Word template; scan output matches expectation — panel reported **24 supported / 4 will-be-empty / 2 not-supported + content anchor found**, matching the pre-run prediction from `scanTemplate` exactly (incl. occurrence counts: `$scroll.title` ×4, `$scroll.exportdate` ×5 across its format variants). *Those are the numbers as run; closing gap G1 afterwards moved `$scroll.pageowner.fullName` into the supported bucket, so the same probe template now reads **25 / 3 / 2** — re-confirmed live in the panel (see Decisions log).*
+- [x] Upload a real mayflower Word template; scan output matches expectation — panel reported **24 supported / 4 will-be-empty / 2 not-supported + content anchor found**, matching the pre-run prediction from `scanTemplate` exactly (incl. occurrence counts: `$scroll.title` ×4, `$scroll.exportdate` ×5 across its format variants). *Those are the numbers as run. The gap work that the run triggered then moved three placeholders into the supported bucket — G1 `pageowner`, G4 `pageproperty`, G2 `.name` — so the same probe template now reads **27 / 2 / 1**, re-confirmed live in the panel. What remains is only what cannot yet resolve: `$scroll.spacelogo` + `$scroll.globallogo` (images — spec 005) and `$adhocState` (blanked by decision).*
 - [x] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt — confirmed by Björn (cover + header intact; **TOC populates after clicking "Ja"** in Word's field-update prompt; note the prompt's default button is "Nein").
 - [x] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded) — 4 callout fills present (`DEEBFF`/`EAE6FF`/`FFFAE6`/`E3FCEF`), 6 distinct Shiki colors over 297 `Consolas` runs, mermaid as readable source, exactly **one** image relationship (`media/image1.png` = the template's own logo) so the 3 page images embedded nothing and reported instead.
 - [x] A template using an unsupported placeholder exports with empty value + report warning — all 6 unsupported/never placeholders resolved to empty (G1 page owner, G2 DC username, G3 space logo, G4 page property, `$adhocState`, global logo), plus `Owner: ` in the footer with no value. **Zero `$scroll.` literals** anywhere in the output.
@@ -259,6 +259,22 @@ template name = upload filename per G8), the date subset rendered correctly
 (`16.07.2026`, `16.07.2026 11:04`, `2026`), the deliberately unknown format token `QQQ` fell
 back to ISO as specified, and the lazy fetches fired only because the template used them
 (G6 `getSpace` → "Docsync"; G7 `getCurrentUser` → the exporter).
+
+**Gap closures verified live (2026-07-16, export v3 of the standing fixture page through the
+probe template).** The three rows that were empty when Björn asked "why aren't these six
+resolved?" now carry values, and nothing else changed:
+
+| Probe row | Before | After |
+|---|---|---|
+| Seiteneigentümer (G1) | *(empty)* | `Björn Schotte MAYFLOWER` |
+| Seiteneigenschaft (G4) | *(empty)* | `Freigegeben` |
+| DC-Benutzername (G2) | *(empty)* | `Björn Schotte MAYFLOWER` |
+| Footer `Owner:` (G1) | *(empty)* | `Björn Schotte MAYFLOWER` |
+
+The G4 row doubles as proof of the case-insensitive lookup: the template asks for
+`$scroll.pageproperty.(status)` in lower case while the page's macro spells the label `Status`.
+Still empty, correctly: `spacelogo` + `globallogo` (images — spec 005) and `$adhocState`
+(blanked by decision). Zero `$scroll.` literals anywhere.
 
 **Correction to this PLAN's expectation (not a defect):** §2 of the mapping table calls
 `creator.email`/`modifier.email`/`exporter.email` "usually absent on Cloud", and G7 predicted
