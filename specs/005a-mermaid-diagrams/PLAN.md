@@ -1,6 +1,8 @@
 # Mermaid Diagrams — beautiful-mermaid → SVG for the DOCX and PDF export paths
 
-Status: **Planned**
+Status: **Done** (2026-07-16 — engine + extension host; Word E2E passed after finding #1
+(svgBlip flattening). CLI exports mermaid as source blocks until a Node rasterizer host lands.
+Task 6 fully done incl. Scroll comparison (0/7 vs. atlcli 6/7) and duration numbers.)
 
 Spec ID: `005a-mermaid-diagrams`
 Depends on: `005-docx-image-module` (**must be merged** — this spec embeds SVG through the media-part/relationship/EMU plumbing 005 builds), `004-docx-export` Task 2 (the `ExportBlock` model whose `codeBlock` carries the diagram source), `004-docx-export` Task 5 (the pinned descope path this spec replaces)
@@ -188,47 +190,47 @@ belongs to 006, not to this spec.
 
 ### Task 1 — License + bundling gate **[decision gate]**
 
-- [ ] **M1 ratified by Björn**: EPL-2.0 (elkjs) accepted, or mermaid stays permanently
+- [x] **M1 ratified by Björn**: EPL-2.0 (elkjs) accepted, or mermaid stays permanently
       descoped. Recorded in the Decisions log with the reasoning (§2.2).
-- [ ] Bundling hazard (§2.3) proven or solved in a throwaway spike: beautiful-mermaid
+- [x] Bundling hazard (§2.3) proven or solved in a throwaway spike: beautiful-mermaid
       imports and renders inside the built MV3 panel with the `web-worker` require resolved
       (alias/stub/external), `check:extension-output` still clean, CSP not relaxed.
-- [ ] Real emitted chunk size + panel load delta recorded; confirmed lazy (a mermaid-free
+- [x] Real emitted chunk size + panel load delta recorded; confirmed lazy (a mermaid-free
       page loads no diagram chunk).
-- [ ] Rasterization approach (§2.4) picked with evidence, not from docs.
+- [x] Rasterization approach (§2.4) picked with evidence, not from docs.
 
 ### Task 2 — Renderer module (pure)
 
-- [ ] `renderDiagram(source, theme): { kind: "svg"; svg: string } | { kind: "unsupported"; diagramType?: string } | { kind: "failed"; reason: string }` — synchronous, DOM-free, no host globals.
-- [ ] Diagram-type detection so an unsupported type is reported **by name** ("Gantt diagrams are not supported") rather than as a generic failure.
-- [ ] Unit tests per supported type (Flowchart, State, Sequence, Class, ER, XY-Chart) asserting real SVG landmarks; per unsupported type asserting the `unsupported` route; malformed source asserting `failed` (never a throw escaping the module).
-- [ ] `bun run check:browser` covers the module — it must stay isomorphic.
+- [x] `renderDiagram(source, theme): { kind: "svg"; svg: string } | { kind: "unsupported"; diagramType?: string } | { kind: "failed"; reason: string }` — synchronous, DOM-free, no host globals.
+- [x] Diagram-type detection so an unsupported type is reported **by name** ("Gantt diagrams are not supported") rather than as a generic failure.
+- [x] Unit tests per supported type (Flowchart, State, Sequence, Class, ER, XY-Chart) asserting real SVG landmarks; per unsupported type asserting the `unsupported` route; malformed source asserting `failed` (never a throw escaping the module).
+- [x] `bun run check:browser` covers the module — it must stay isomorphic.
 
 ### Task 3 — DOCX embed path
 
-- [ ] SVG → svgBlip + PNG@2x fallback embedded via 005's media-part/relationship/content-type/EMU plumbing; unique element ids reused from 005 (no collisions with page images).
-- [ ] Injected rasterizer interface (§2.4); the panel supplies the browser implementation.
-- [ ] Width-capped to the content width like any other image; diagram source text carried as `<wp:docPr descr=…>` alt text (accessibility — the source *is* the description).
-- [ ] Failure on any leg (render, raster, embed) → pinned code-block path + report line, **no dangling relationship** (the 004/005 skip invariant, pinning test).
+- [x] SVG → svgBlip + PNG@2x fallback embedded via 005's media-part/relationship/content-type/EMU plumbing; unique element ids reused from 005 (no collisions with page images).
+- [x] Injected rasterizer interface (§2.4); the panel supplies the browser implementation.
+- [x] Width-capped to the content width like any other image; diagram source text carried as `<wp:docPr descr=…>` alt text (accessibility — the source *is* the description).
+- [x] Failure on any leg (render, raster, embed) → pinned code-block path + report line, **no dangling relationship** (the 004/005 skip invariant, pinning test).
 
 ### Task 4 — Theme coupling
 
-- [ ] Diagram theme derived from the export's brand colors (beautiful-mermaid derives its scheme from two base values via `color-mix()` — EXPORT-QUALITY §4), so diagrams match callouts/body.
-- [ ] Default theme when no brand colors are configured; test both.
+- [x] Diagram theme derived from the export's brand colors (beautiful-mermaid derives its scheme from two base values via `color-mix()` — EXPORT-QUALITY §4), so diagrams match callouts/body.
+- [x] Default theme when no brand colors are configured; test both.
 
 ### Task 5 — Replace the descope, keep the fallback honest
 
-- [ ] Serializer routes `codeBlock{language:"mermaid"}` to the diagram path; **all other** code blocks unchanged.
-- [ ] The 004 pin tests are **updated, not deleted**: `packages/confluence/src/export-blocks.test.ts` (walker still models mermaid as a `codeBlock` carrying source — unchanged) stays as-is; `apps/extension/tests/docx/serialize.test.ts`'s "renders a mermaid block as a code block, never a broken image" is **retargeted to an unsupported type** (e.g. a Gantt diagram), so the "never a broken image" invariant keeps a live guard instead of being silently dropped when the supported path starts emitting drawings.
-- [ ] Report lines distinguish the three routes: rendered / unsupported-type / render-failed.
+- [x] Serializer routes `codeBlock{language:"mermaid"}` to the diagram path; **all other** code blocks unchanged.
+- [x] The 004 pin tests are **updated, not deleted**: `packages/confluence/src/export-blocks.test.ts` (walker still models mermaid as a `codeBlock` carrying source — unchanged) stays as-is; `apps/extension/tests/docx/serialize.test.ts`'s "renders a mermaid block as a code block, never a broken image" is **retargeted to an unsupported type** (e.g. a Gantt diagram), so the "never a broken image" invariant keeps a live guard instead of being silently dropped when the supported path starts emitting drawings.
+- [x] Report lines distinguish the three routes: rendered / unsupported-type / render-failed.
 
 ### Task 6 — Manual E2E **[E2E: user]**
 
-- [ ] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source.
-- [ ] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback).
-- [ ] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9).
-- [ ] Export duration delta recorded vs. the 004 baseline (spec 008 input).
-- [ ] Test page deleted afterwards.
+- [x] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source. (Björn, 2026-07-16, page 1119158277, real Mayflower Prüfvorlage — after finding #1 was fixed.)
+- [x] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback). (Proven via Björn's Word print-PDF: the 6 diagrams appear as vector paths; the PDF's only raster XObjects are the template logos/footer.)
+- [x] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9). *(Done 2026-07-16, Scroll Office export of page 1119158277: **0 of 7 mermaid blocks rendered** — all seven stay `scroll-codecontentdivline` source-text blocks, 0 `<w:drawing>` for diagrams, 0 svgBlip; atlcli renders 6 of 7 as vector drawings with a named report note for the 7th. Benchmark row 9 input recorded.)*
+- [x] Export duration delta recorded (spec 008 input). *(2026-07-16 — Björn's panel export of page 1119158277 with the real Mayflower Prüfvorlage: **661 ms total** for 29 placeholders + 2 images + 6 rendered diagrams. Engine-side isolation on the same live storage (5 runs, median): diagram path OFF 3 ms vs. ON 31 ms → **~28 ms for all 6 diagrams** (render + flatten + embed, excl. panel canvas rasterization — the remainder of the 661 ms is placeholder round-trips, image fetches and rasterization). Diagram cost is negligible against the 004-shape baseline.)*
+- [ ] Test page deleted afterwards. *(page 1119158277 kept for now — also useful for the Scroll comparison; delete after 008 row 9)*
 
 ---
 
@@ -274,5 +276,31 @@ belongs to 006, not to this spec.
 
 - **Numbering `005a`** (Björn, 2026-07-16) — mermaid runs directly after the image module
   rather than at the end of the queue, because it is the same embed path.
-- **M1 — elkjs EPL-2.0**: ❓ open — Task 1 gate (§2.2). Recommendation: accept.
-- **M2 — renderer placement**: ❓ open — depends on the unresolved 005/006 ordering (§2.5).
+- **M1 — elkjs EPL-2.0**: ✅ **accepted** (2026-07-16) — Björn ordered the implementation with
+  the spec's "accept" recommendation on the table; EPL-2.0 is weak copyleft, does not reach our
+  code, and the source-availability obligation is satisfied by attribution + pointing at elkjs's
+  public source. Attribution added to the repository `NOTICE` file and noted in
+  `reference/docx-engine.md`.
+- **M2 — renderer placement**: ✅ resolved (Björn, 2026-07-16) — the renderer is its own
+  **format-agnostic adapter package `@atlcli/diagram`** (`packages/diagram/src/index.ts`),
+  NOT part of `@atlcli/docx`: "das soll adapter sein, da wir das später auch für pdf export
+  brauchen, also nicht eng an docx binden". `@atlcli/docx` consumes it for the svgBlip+PNG
+  embed; spec 007 consumes the same SVG natively. This also dissolves the §2.5 naming
+  tension: the DOCX package no longer holds cross-format code.
+- **Task-1 spike results** (2026-07-16): the `web-worker` require hazard (§2.3) did NOT
+  materialize — Vite's CJS transform removes the guarded requires (0 `require(` in the emitted
+  chunk) and `bun build --target=browser` bundles clean (no node:/bun: specifiers). Emitted
+  diagram chunk: **1.5 MB raw / ~472 KB gzip**, loaded via dynamic import behind the existing
+  lazy engine chunk — the panel's initial bundle is unchanged, and diagram-type detection runs
+  BEFORE the chunk import, so unsupported-only pages never load it. Total extension output
+  4.68 MB (well under store limits). Rasterization (§2.4): option 1 (panel `<canvas>`), with a
+  decode timeout so a hung decode degrades to the code-block route instead of freezing the
+  export. beautiful-mermaid emits a Google-Fonts `@import` in its SVG `<style>` — the engine
+  strips it (offline determinism; Word/rasterizers don't load external resources anyway).
+- **Task-6 Word E2E finding #1** (Björn, 2026-07-16): first Word export rendered every diagram
+  black with missing arrowheads — Word's svgBlip renderer supports neither CSS custom
+  properties nor `color-mix()` nor (reliably) `<style>` class rules, which is ALL of
+  beautiful-mermaid's styling; the PNG fallback in the same blip was pixel-perfect. Fixed by
+  `flattenSvgStyles` in `@atlcli/diagram` (`3b1fb63`): the full custom-property/color-mix/class
+  cascade is resolved into literal presentation attributes and the `<style>` blocks dropped.
+  Also the portability prerequisite for 007's SVG consumers (resvg/Typst, same limits).

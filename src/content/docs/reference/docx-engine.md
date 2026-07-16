@@ -16,6 +16,7 @@ inject.
 - [Architecture](#architecture)
 - [The three injected interfaces](#the-three-injected-interfaces)
 - [Image embedding](#image-embedding)
+- [Mermaid diagrams](#mermaid-diagrams)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
 - [Guarantees and gates](#guarantees-and-gates)
 - [Related topics](#related-topics)
@@ -52,11 +53,23 @@ interface AssetFetcher {
 interface OutputSink {
   emit(name: string, bytes: Uint8Array): Promise<void>; // extension: download · CLI: writeFile
 }
-interface ExportEnv { templates: TemplateSource; assets?: AssetFetcher; output: OutputSink; }
+interface SvgRasterizer {
+  rasterize(svg: string, target: { widthPx: number; heightPx: number }): Promise<Uint8Array>;
+} // extension: <canvas> · Node hosts: resvg or similar (optional)
+interface ExportEnv {
+  templates: TemplateSource;
+  assets?: AssetFetcher;
+  rasterizer?: SvgRasterizer;
+  output: OutputSink;
+}
 ```
 
 `AssetFetcher` drives image embedding (spec 005). It is optional: a host that omits it gets the
 pre-005 behavior — every image degrades to an `image-skipped` report note instead of embedding.
+
+`SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
+fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
+blocks as readable source code blocks with a `diagram-skipped` report note.
 
 ## Image embedding
 
@@ -82,6 +95,33 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
   (`tokenAssetFetcher` in `apps/cli/src/commands/export.ts`).
 - Byte-identical images share one media part; the report counts `embeddedImages` and
   `skippedImages`.
+
+## Mermaid diagrams
+
+Fenced ```` ```mermaid ```` code blocks render into inline vector drawings (spec 005a) through
+[`beautiful-mermaid`](https://github.com/lukilabs/beautiful-mermaid) — a self-contained,
+DOM-free renderer (not mermaid.js). The renderer is the **format-agnostic adapter package
+`@atlcli/diagram`** (`packages/diagram`): it knows nothing about DOCX, so the PDF export path
+can consume the same SVG natively later. It is lazy-loaded, so diagram-free exports never pay
+for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's injected
+`SvgRasterizer` (a DOCX-side concern — Word needs the raster fallback, PDF will not).
+
+- **Supported types:** flowchart (`graph`/`flowchart`), state, sequence, class, ER, XY chart.
+- **Word compatibility:** each diagram embeds as `asvg:svgBlip` (vector, modern Word) **plus** a
+  PNG rendered at 2× the intrinsic size in the same blip (older Word). Both media parts,
+  relationships and content types are written by the image module — shared id space with page
+  images, width-capped, and the diagram **source** carried as the drawing's alt text.
+- **Everything else degrades honestly:** an unsupported type (Gantt, Pie, Mindmap, Timeline,
+  Git graph, C4, …) yields a `diagram-unsupported` info note naming the type; a render, raster
+  or embed failure yields a `diagram-render-failed` warning; no rasterizer yields
+  `diagram-skipped`. In every non-rendered route the block exports as a readable monospace
+  source block — never a broken image, never a dangling relationship. The report counts
+  `renderedDiagrams`.
+- **Theming:** `ExportInput.diagramTheme` takes two base colors (`bg`, `fg`) plus optional role
+  overrides (`line`, `accent`, `muted`, `surface`, `border`, `font`); the full scheme is derived
+  from the base pair. Default is a neutral zinc-light palette matching the export's code blocks.
+- **Licensing note:** beautiful-mermaid is MIT; its layout dependency `elkjs` is **EPL-2.0**
+  (weak copyleft, satisfied by attribution — see the repository `NOTICE` file).
 
 ### Logo placeholders
 

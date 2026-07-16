@@ -33,7 +33,7 @@ export const MAX_CONTENT_WIDTH_PX = 600;
 /** Refuse to embed assets above this size (spec 005 risk 2: docx bloat). */
 export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
-export type ImageFormat = "png" | "jpeg" | "gif";
+export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
 
 export interface ImageInfo {
   format: ImageFormat;
@@ -214,6 +214,12 @@ export interface DrawingParams {
    * the logo pass to preserve the replaced placeholder paragraph's alignment.
    */
   pPrXml?: string;
+  /**
+   * Relationship id of an SVG media part (spec 005a). When set, the blip
+   * gains the `asvg:svgBlip` extension: modern Word renders the vector SVG,
+   * older Word falls back to the raster `relId` (the mandatory PNG).
+   */
+  svgRelId?: string;
 }
 
 /**
@@ -247,7 +253,13 @@ export function inlineImageParagraph(p: DrawingParams): string {
     `<a:blip r:embed="${p.relId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     `<a:extLst><a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}">` +
     `<a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/>` +
-    `</a:ext></a:extLst>` +
+    `</a:ext>` +
+    (p.svgRelId
+      ? `<a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">` +
+        `<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="${p.svgRelId}"/>` +
+        `</a:ext>`
+      : "") +
+    `</a:extLst>` +
     `</a:blip>` +
     `<a:srcRect/><a:stretch><a:fillRect/></a:stretch>` +
     `</pic:blipFill>` +
@@ -290,6 +302,21 @@ export interface EmbedImageOptions {
   pPrXml?: string;
 }
 
+export interface EmbedSvgOptions {
+  /** Alt text for `descr` (spec 005a: the diagram SOURCE is the description). */
+  alt?: string;
+  /** Human-facing name (shown in Word's selection pane). */
+  name?: string;
+  /** Intrinsic pixel width of the SVG (drives the width-capped display size). */
+  widthPx: number;
+  /** Intrinsic pixel height of the SVG. */
+  heightPx: number;
+  /** Document part whose rels carry the relationships (default `word/document.xml`). */
+  partPath?: string;
+  /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph. */
+  pPrXml?: string;
+}
+
 interface MediaEntry {
   /** Media-part filename (under `word/media/`), shared across parts. */
   filename: string;
@@ -318,6 +345,7 @@ export class ImageEmbedder {
   private nextDocPrId: number;
   private mediaIndex = 0;
   private embedded = 0;
+  private diagramsEmbedded = 0;
   /** FNV-1a+length key → entries with those bytes (hash collisions chained). */
   private readonly dedup = new Map<string, MediaEntry[]>();
 
@@ -327,9 +355,14 @@ export class ImageEmbedder {
     this.nextDocPrId = maxExistingDrawingId(zip) + 1;
   }
 
-  /** Number of image occurrences successfully embedded so far. */
+  /** Number of image occurrences successfully embedded so far (not diagrams). */
   get embeddedCount(): number {
     return this.embedded;
+  }
+
+  /** Number of diagram occurrences successfully embedded so far (spec 005a). */
+  get diagramCount(): number {
+    return this.diagramsEmbedded;
   }
 
   /**
@@ -358,6 +391,62 @@ export class ImageEmbedder {
       docPrId,
       name: opts.name || `Image ${docPrId}`,
       descr: opts.alt || opts.name || "image",
+      cxEmu: pxToEmu(size.widthPx),
+      cyEmu: pxToEmu(size.heightPx),
+      pPrXml: opts.pPrXml,
+    });
+  }
+
+  /**
+   * Embed a vector diagram: an SVG media part PLUS its mandatory PNG raster
+   * fallback in the same `<a:blip>` (spec 005a §2.4 — Word's `svgBlip` support
+   * is version-dependent, so the raster copy always rides along). Returns the
+   * `<w:p><w:drawing>` fragment sized to the SVG's intrinsic `widthPx` ×
+   * `heightPx`, width-capped like any other image.
+   *
+   * Throws {@link ImageEmbedError} when either leg is invalid (empty/oversized
+   * bytes, a fallback that is not a well-formed PNG, bytes that are not SVG) —
+   * all validation happens BEFORE the first archive write, so a throw leaves
+   * no dangling media part or relationship (the 004-F3 invariant).
+   */
+  embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string {
+    const svgBytes = typeof svg === "string" ? new TextEncoder().encode(svg) : svg;
+    if (svgBytes.length === 0) throw new ImageEmbedError("the rendered SVG was empty");
+    if (svgBytes.length > MAX_IMAGE_BYTES) throw new ImageEmbedError("the rendered SVG is too large to embed");
+    if (!isSvg(svgBytes)) throw new ImageEmbedError("the diagram did not render to a well-formed SVG");
+    if (pngFallback.length === 0) throw new ImageEmbedError("the rasterized PNG fallback was empty");
+    if (pngFallback.length > MAX_IMAGE_BYTES) throw new ImageEmbedError("the rasterized PNG fallback is too large to embed");
+    const pngInfo = decodeImageInfo(pngFallback);
+    if (!pngInfo || pngInfo.format !== "png") {
+      throw new ImageEmbedError("the rasterizer did not produce a well-formed PNG fallback");
+    }
+    if (!opts.widthPx || !opts.heightPx) throw new ImageEmbedError("the diagram has no usable intrinsic size");
+
+    const svgInfo: ImageInfo = {
+      format: "svg",
+      ext: "svg",
+      mime: "image/svg+xml",
+      width: opts.widthPx,
+      height: opts.heightPx,
+    };
+    const partPath = opts.partPath ?? DOCUMENT_PART;
+    const svgEntry = this.findOrCreateMedia(svgBytes, svgInfo);
+    const pngEntry = this.findOrCreateMedia(pngFallback, pngInfo);
+    const svgRelId = this.ensureRelationship(svgEntry, partPath);
+    const pngRelId = this.ensureRelationship(pngEntry, partPath);
+    const size = resolveTargetSize(
+      { width: opts.widthPx, height: opts.heightPx },
+      {},
+      this.maxWidthPx
+    );
+    const docPrId = this.nextDocPrId++;
+    this.diagramsEmbedded += 1;
+    return inlineImageParagraph({
+      relId: pngRelId,
+      svgRelId,
+      docPrId,
+      name: opts.name || `Diagram ${docPrId}`,
+      descr: opts.alt || opts.name || "diagram",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
       pPrXml: opts.pPrXml,

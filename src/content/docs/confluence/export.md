@@ -68,6 +68,19 @@ embed inline at their intrinsic size (or the page-set width), capped to the cont
 image that cannot be fetched or decoded becomes a warning note instead of failing the export.
 `--no-images` disables embedding for this engine too.
 
+### Mermaid diagrams
+
+The browser extension renders fenced ```` ```mermaid ```` code blocks into real vector drawings
+(SVG with an automatic PNG fallback for older Word versions). Six diagram types are supported:
+**flowchart, state, sequence, class, ER, and XY chart**. Any other type (Gantt, Pie, Mindmap, …)
+and any diagram that fails to render exports as a readable source code block with a report note
+naming the reason — never a broken image. The diagram source is carried as the drawing's alt text.
+
+Rendering the PNG fallback needs a browser canvas, so the **CLI `ts` engine exports mermaid
+blocks as source code blocks** (with a `diagram-skipped` report note). Diagram theming follows
+the export's brand colors when configured; the default is a neutral light theme matching the
+code-block styling.
+
 ## Templates
 
 ### Template Resolution

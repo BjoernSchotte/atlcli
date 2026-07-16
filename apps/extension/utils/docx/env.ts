@@ -6,7 +6,13 @@
  * document leaves through a browser download. No engine code touches
  * `chrome.*` / DOM — it all lives here, next to the host that owns it.
  */
-import type { AssetFetcher, AssetRef, OutputSink, TemplateSource } from "@atlcli/docx/browser";
+import type {
+  AssetFetcher,
+  AssetRef,
+  OutputSink,
+  SvgRasterizer,
+  TemplateSource,
+} from "@atlcli/docx/browser";
 import { getTemplate } from "./template-store.js";
 
 /**
@@ -45,6 +51,57 @@ export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fe
         throw new Error(`Asset fetch failed (${res.status}) for ${ref.filename ?? ref.url}`);
       }
       return new Uint8Array(await res.arrayBuffer());
+    },
+  };
+}
+
+/**
+ * {@link SvgRasterizer} over the panel's real document (spec 005a §2.4,
+ * option 1): the rendered diagram SVG becomes an `<img src="blob:…">`, is
+ * drawn onto a `<canvas>` at the requested target size (the engine asks for
+ * 2× the intrinsic size), and encoded to PNG via `canvas.toBlob`. The SVG is
+ * self-contained (beautiful-mermaid output, external font import stripped by
+ * the engine), so the blob image decodes without network and the canvas
+ * stays untainted. Any failure throws — the engine then routes the diagram
+ * to the readable code-block fallback; a decode that never settles is cut off
+ * by `decodeTimeoutMs` so one broken diagram can't freeze the whole export.
+ */
+export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 10_000): SvgRasterizer {
+  return {
+    async rasterize(svg, { widthPx, heightPx }): Promise<Uint8Array> {
+      // Image/Blob/URL come from the document's own window so the rasterizer
+      // works against any real DOM handed in (panel window, happy-dom tests).
+      const view = (doc.defaultView ?? globalThis) as Window & typeof globalThis;
+      const url = view.URL.createObjectURL(new view.Blob([svg], { type: "image/svg+xml" }));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const img = new view.Image();
+        await new Promise<void>((resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`the diagram SVG did not decode within ${decodeTimeoutMs} ms`)),
+            decodeTimeoutMs
+          );
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("the diagram SVG could not be decoded"));
+          img.src = url;
+        });
+        const canvas = doc.createElement("canvas");
+        canvas.width = widthPx;
+        canvas.height = heightPx;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("no 2d canvas context available");
+        ctx.drawImage(img, 0, 0, widthPx, heightPx);
+        const blob = await new Promise<Blob>((resolve, reject) =>
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))),
+            "image/png"
+          )
+        );
+        return new Uint8Array(await blob.arrayBuffer());
+      } finally {
+        clearTimeout(timer);
+        view.URL.revokeObjectURL(url);
+      }
     },
   };
 }

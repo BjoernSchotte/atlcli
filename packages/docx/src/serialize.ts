@@ -38,6 +38,9 @@ import {
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
 
+/** The `codeBlock` variant of {@link ExportBlock} (carries mermaid source). */
+export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
+
 /** Result of one image-embed attempt (spec 005). */
 export type ImageEmbedOutcome = { ok: true; xml: string } | { ok: false; reason: string };
 
@@ -51,11 +54,32 @@ export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
 }
 
+/**
+ * Result of one diagram-embed attempt (spec 005a). The two non-ok routes are
+ * distinguished so the report can name an unsupported diagram TYPE (info)
+ * separately from a genuine render/raster/embed failure (warning).
+ */
+export type DiagramEmbedOutcome =
+  | { ok: true; xml: string }
+  | { ok: false; route: "unsupported"; diagramType: string }
+  | { ok: false; route: "failed"; reason: string };
+
+/**
+ * The serializer's diagram seam (spec 005a): turns a mermaid `codeBlock` into
+ * an inline-drawing fragment (svgBlip + PNG fallback), or says why it could
+ * not. Render + rasterize + zip surgery live with the export orchestrator.
+ */
+export interface DiagramEmbedSeam {
+  embed(block: CodeBlock): Promise<DiagramEmbedOutcome>;
+}
+
 export interface SerializeContext {
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
   /** Image embedding seam; absent → images degrade to report notes. */
   images?: ImageEmbedSeam;
+  /** Diagram embedding seam; absent → mermaid stays a source code block. */
+  diagrams?: DiagramEmbedSeam;
 }
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
@@ -270,6 +294,11 @@ async function serializeBlock(
       return paragraph(serializeInline(block.content));
 
     case "codeBlock": {
+      // A ```mermaid block takes the diagram path (spec 005a); every other
+      // language is untouched by this branch.
+      if ((block.language ?? "").trim().toLowerCase() === "mermaid") {
+        return serializeMermaid(block, ctx, notes);
+      }
       const { lines, skipped } = await highlightCode(block.code, block.language);
       if (skipped) {
         notes.push({
@@ -338,6 +367,51 @@ async function serializeBlock(
 
 function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
   return block.source.kind === "attachment" ? `"${block.source.filename}"` : `"${block.source.url}"`;
+}
+
+/**
+ * A mermaid code block: try the diagram path (spec 005a); every non-ok route
+ * degrades to the spec-004 pinned fallback — the source as plain monospace
+ * code paragraphs, NO `<w:drawing>` ("the reader sees readable diagram
+ * source, never a broken image") — plus a report note naming the route.
+ */
+async function serializeMermaid(
+  block: CodeBlock,
+  ctx: InternalContext,
+  notes: ExportNote[]
+): Promise<string> {
+  if (!ctx.diagrams) {
+    notes.push({
+      level: "info",
+      code: "diagram-skipped",
+      message: "A mermaid diagram was rendered as source — diagram rendering is unavailable in this export.",
+    });
+    return plainCodeParagraphs(block.code);
+  }
+  const outcome = await ctx.diagrams.embed(block);
+  if (outcome.ok) return outcome.xml;
+  if (outcome.route === "unsupported") {
+    notes.push({
+      level: "info",
+      code: "diagram-unsupported",
+      message: `${outcome.diagramType} diagrams are not supported; the diagram was rendered as source.`,
+    });
+  } else {
+    notes.push({
+      level: "warning",
+      code: "diagram-render-failed",
+      message: `A mermaid diagram could not be rendered (${outcome.reason}); it was rendered as source.`,
+    });
+  }
+  return plainCodeParagraphs(block.code);
+}
+
+/** The diagram fallback: source lines as uncolored monospace code paragraphs. */
+function plainCodeParagraphs(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => codeLineParagraph([{ text: line }]))
+    .join("");
 }
 
 /** Serialize child blocks, joining their fragments. */
