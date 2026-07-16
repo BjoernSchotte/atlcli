@@ -89,6 +89,13 @@ not vendor. All-permissive.
       `--engine ts` — PNG embedded (media part byte-identical, drawing scaled by `ac:width`,
       alt text carried), missing image → warning note, no dangling rel. Page cleaned up.
       Scroll-reference visual comparison remains open for Björn's next manual pass.
+- [x] E2E extension (2026-07-16, Björn, real Mayflower Prüfvorlage): panel export embedded both
+      test PNGs (intrinsic 400×200; `ac:width="150"` scaled 300×300 → 150×150), alt texts carried,
+      our rIds/docPr ids coexist with the template's own logo image (ids seeded above the
+      template's max), missing attachment degraded, no `$scroll` literals left. **Finding:** Cloud
+      302s `/wiki/download/attachments/…` to `api.media.atlassian.com`; that origin had to be
+      added to `host_permissions` — outside it the redirect hop falls back to plain CORS, whose
+      wildcard ACAO rejects `credentials:"include"` (fix `b95572c`).
 
 ## 4. Test plan
 
