@@ -366,3 +366,62 @@ describe("resolvePlaceholders — pinning: never a literal", () => {
     expect(res.unsupportedNames.length).toBeGreaterThan(0);
   });
 });
+
+describe("resolvePlaceholders — concurrent dep fetching (perf regression)", () => {
+  const ALL_FOUR = [
+    "$scroll.space.name",
+    "$scroll.exporter.fullName",
+    "$scroll.pageowner.fullName",
+    "$scroll.pageproperty.(status,true)",
+  ];
+
+  it("starts all four round-trips before any of them resolves", async () => {
+    // Each fetcher parks on a shared barrier that only opens once every
+    // fetcher has STARTED. The old sequential implementation awaited getSpace
+    // before calling getCurrentUser, so it can never open the barrier — this
+    // test would time out instead of pass.
+    let started = 0;
+    let open!: () => void;
+    const barrier = new Promise<void>((r) => {
+      open = r;
+    });
+    const arrive = async <T,>(v: T): Promise<T> => {
+      started += 1;
+      if (started === 4) open();
+      await barrier;
+      return v;
+    };
+    const res = await resolvePlaceholders(ALL_FOUR, ctx, {
+      getSpace: () => arrive(space),
+      getCurrentUser: () => arrive(currentUser),
+      getPageOwner: () => arrive(owner),
+      getSpaceHomepageStorage: () => arrive(null),
+    });
+    expect(started).toBe(4);
+    expect(res.values.get("$scroll.space.name")).toBe("Engineering");
+    expect(res.values.get("$scroll.exporter.fullName")).toBe("Björn Schotte");
+    expect(res.values.get("$scroll.pageowner.fullName")).toBe("Olga Owner");
+  });
+
+  it("keeps note order deterministic regardless of completion order", async () => {
+    // All four legs fail, resolving in REVERSE order (homepage first, space
+    // last). The report must still list space → user → owner → homepage.
+    const failAfter = (ms: number) =>
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("boom")), ms));
+    const res = await resolvePlaceholders(ALL_FOUR, ctx, {
+      getSpace: () => failAfter(40) as Promise<ConfluenceSpace>,
+      getCurrentUser: () => failAfter(30) as Promise<CurrentUser>,
+      getPageOwner: () => failAfter(20) as Promise<PageOwner>,
+      getSpaceHomepageStorage: () => failAfter(10) as Promise<string | null>,
+    });
+    const fetchNotes = res.notes
+      .map((n) => n.code)
+      .filter((c) => c.endsWith("-fetch-failed"));
+    expect(fetchNotes).toEqual([
+      "space-fetch-failed",
+      "user-fetch-failed",
+      "owner-fetch-failed",
+      "homepage-fetch-failed",
+    ]);
+  });
+});

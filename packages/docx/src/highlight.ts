@@ -88,24 +88,112 @@ function canonicalLang(lang: string): string | undefined {
 }
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
-const loadedLangs = new Set<string>();
+/** Per-language load promise: concurrent callers (prefetch + serializer) share one load. */
+const langLoads = new Map<string, Promise<void>>();
+
+/**
+ * True when this host may COMPILE WebAssembly. `typeof WebAssembly` alone is
+ * not enough: an MV3 extension page exposes the object but its CSP (without
+ * `wasm-unsafe-eval`) rejects compilation — so probe with the smallest valid
+ * module (the 8-byte `\0asm` header). Sub-millisecond, no network.
+ */
+function canCompileWasm(): boolean {
+  try {
+    return (
+      typeof WebAssembly !== "undefined" &&
+      new WebAssembly.Module(Uint8Array.of(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00)) instanceof
+        WebAssembly.Module
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick the fastest regex engine the host allows (perf finding: loading the
+ * TypeScript grammar through the JS engine costs ~650ms of oniguruma-to-es
+ * translation; the Oniguruma WASM engine does the same in ~30ms — it runs
+ * the grammars' original regexes natively):
+ *
+ *  - hosts that can compile WASM (CLI/Bun, Node, Tauri webviews, extensions
+ *    WITH `wasm-unsafe-eval`) get the Oniguruma engine — the reference
+ *    implementation, so token output is at least as faithful;
+ *  - the MV3 panel (no `wasm-unsafe-eval` in its CSP) keeps the JavaScript
+ *    engine, exactly the pre-existing behavior. The probe means the panel
+ *    never even fetches the ~600 KB wasm chunk — and auto-upgrades if the
+ *    permission is ever added.
+ *
+ * Any wasm-path failure falls back to the JS engine rather than degrading
+ * highlighting.
+ */
+async function createEngine(): Promise<import("shiki/core").RegexEngine> {
+  if (canCompileWasm()) {
+    try {
+      const { createOnigurumaEngine } = await import("shiki/engine/oniguruma");
+      return await createOnigurumaEngine(import("shiki/wasm"));
+    } catch {
+      // fall through to the JS engine
+    }
+  }
+  const { createJavaScriptRegexEngine } = await import("shiki/engine/javascript");
+  return createJavaScriptRegexEngine();
+}
 
 async function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
     highlighterPromise = (async () => {
-      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, theme] = await Promise.all([
+      const [{ createHighlighterCore }, engine, theme] = await Promise.all([
         import("shiki/core"),
-        import("shiki/engine/javascript"),
+        createEngine(),
         import("shiki/themes/github-light.mjs"),
       ]);
       return createHighlighterCore({
         themes: [theme.default],
         langs: [],
-        engine: createJavaScriptRegexEngine(),
+        engine,
       });
     })();
   }
   return highlighterPromise;
+}
+
+/** Load one language grammar into the highlighter exactly once (shared promise). */
+function loadLang(lang: string): Promise<void> {
+  let p = langLoads.get(lang);
+  if (!p) {
+    p = (async () => {
+      const hl = await getHighlighter();
+      const mod = (await LANG_LOADERS[lang]()) as { default: unknown };
+      await hl.loadLanguage(mod.default as never);
+      // Warm the grammar with a throwaway tokenize: the JS regex engine
+      // compiles rules lazily, and the very FIRST tokenize after loadLanguage
+      // can emit differently-merged tokens than every later call (observed:
+      // `1;` as one number-colored token, then `1` + `;` split ever after).
+      // One dummy call makes all real output deterministic from call one —
+      // which the spec-006 golden-file equality test depends on.
+      hl.codeToTokens("0;", { lang, theme: THEME });
+    })();
+    // A failed load must not poison later attempts (they re-import).
+    p.catch(() => {
+      langLoads.delete(lang);
+    });
+    langLoads.set(lang, p);
+  }
+  return p;
+}
+
+/**
+ * Start loading the highlighter core + the given languages' grammars in the
+ * background (perf: the first Shiki use costs ~700ms of import + grammar
+ * compile, which this overlaps with the export's network round-trips).
+ * Never throws and never rejects — a failed warm just means the later
+ * {@link highlightCode} call retries and degrades on its own.
+ */
+export function warmHighlight(languages: string[]): void {
+  const langs = new Set(
+    languages.map((l) => canonicalLang(l.trim().toLowerCase())).filter((l): l is string => Boolean(l))
+  );
+  for (const lang of langs) void loadLang(lang).catch(() => {});
 }
 
 /** Split code into uncolored lines (the fallback path). */
@@ -130,19 +218,8 @@ export async function highlightCode(code: string, language?: string): Promise<Hi
   }
 
   try {
+    await loadLang(lang);
     const hl = await getHighlighter();
-    if (!loadedLangs.has(lang)) {
-      const mod = (await LANG_LOADERS[lang]()) as { default: unknown };
-      await hl.loadLanguage(mod.default as never);
-      // Warm the grammar with a throwaway tokenize: the JS regex engine
-      // compiles rules lazily, and the very FIRST tokenize after loadLanguage
-      // can emit differently-merged tokens than every later call (observed:
-      // `1;` as one number-colored token, then `1` + `;` split ever after).
-      // One dummy call makes all real output deterministic from call one —
-      // which the spec-006 golden-file equality test depends on.
-      hl.codeToTokens("0;", { lang, theme: THEME });
-      loadedLangs.add(lang);
-    }
     const { tokens } = hl.codeToTokens(code, { lang, theme: THEME });
     return {
       lines: tokens.map((line) => line.map((t) => ({ text: t.content, color: t.color }))),

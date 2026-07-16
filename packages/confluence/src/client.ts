@@ -1218,17 +1218,35 @@ export class ConfluenceClient {
    * icon — Cloud normally always has one (the default is an SVG).
    */
   async getSpaceIcon(key: string): Promise<SpaceIcon | null> {
+    return (await this.getSpaceWithIcon(key)).icon;
+  }
+
+  /**
+   * Get a space AND its logo icon in one round-trip
+   * (`GET /space/{key}?expand=icon`). Perf: an export whose template uses
+   * both `$scroll.space.*` and a logo placeholder previously paid two calls
+   * to the same endpoint; hosts memoize this one instead.
+   */
+  async getSpaceWithIcon(key: string): Promise<{ space: ConfluenceSpace; icon: SpaceIcon | null }> {
     const data = (await this.request(`/space/${key}`, {
       query: { expand: "icon" },
     })) as any;
-    const icon = data.icon;
-    if (!icon?.path) return null;
-    return {
-      path: icon.path,
-      width: icon.width,
-      height: icon.height,
-      isDefault: icon.isDefault,
+    const space: ConfluenceSpace = {
+      id: data.id,
+      key: data.key,
+      name: data.name,
+      type: data.type ?? "global",
+      url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
     };
+    const icon = data.icon?.path
+      ? {
+          path: data.icon.path,
+          width: data.icon.width,
+          height: data.icon.height,
+          isDefault: data.icon.isDefault,
+        }
+      : null;
+    return { space, icon };
   }
 
   /**

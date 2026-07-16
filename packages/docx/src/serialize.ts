@@ -19,7 +19,7 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
-import { highlightCode } from "./highlight.js";
+import { highlightCode, warmHighlight } from "./highlight.js";
 import {
   calloutTable,
   codeLineParagraph,
@@ -52,6 +52,14 @@ export type ImageEmbedOutcome = { ok: true; xml: string } | { ok: false; reason:
  */
 export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+  /**
+   * Optional perf hook: start the block's asset fetch NOW, ahead of its
+   * document-order {@link embed} call, so downloads overlap each other and
+   * the export's other round-trips. Must be side-effect-free on the archive
+   * (bytes only) — embedding (and thus relationship-id allocation) still
+   * happens in document order via {@link embed}. Never throws.
+   */
+  prefetch?(block: ImageBlock): void;
 }
 
 /**
@@ -71,6 +79,13 @@ export type DiagramEmbedOutcome =
  */
 export interface DiagramEmbedSeam {
   embed(block: CodeBlock): Promise<DiagramEmbedOutcome>;
+  /**
+   * Optional perf hook: start the block's render + rasterize NOW so the CPU
+   * work overlaps the export's network round-trips. Must not touch the
+   * archive — embedding stays in document order via {@link embed}. Never
+   * throws.
+   */
+  prefetch?(block: CodeBlock): void;
 }
 
 export interface SerializeContext {
@@ -248,6 +263,57 @@ function minHeadingLevel(blocks: ExportBlock[]): number {
   return min;
 }
 
+/**
+ * Kick off every deferrable cost up front (perf): image asset fetches and
+ * diagram render/rasterize runs start through the seams' `prefetch` hooks,
+ * and Shiki grammar loading starts for every code-block language — all
+ * BEFORE the document-order serialization walk begins. The walk then awaits
+ * work that is already in flight instead of paying each cost sequentially.
+ * Archive mutation order (and thus relationship-id allocation) is untouched:
+ * prefetch hooks produce bytes/fragments only.
+ */
+function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
+  const languages: string[] = [];
+  const walk = (list: ExportBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "image":
+          try {
+            ctx.images?.prefetch?.(block);
+          } catch {
+            // prefetch is best-effort; embed() handles + reports failures
+          }
+          break;
+        case "codeBlock": {
+          const lang = (block.language ?? "").trim().toLowerCase();
+          if (lang === "mermaid") {
+            try {
+              ctx.diagrams?.prefetch?.(block);
+            } catch {
+              // best-effort, see above
+            }
+          } else if (lang) {
+            languages.push(lang);
+          }
+          break;
+        }
+        case "callout":
+        case "blockquote":
+          walk(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walk(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+      }
+    }
+  };
+  walk(blocks);
+  if (languages.length) warmHighlight(languages);
+}
+
 /** Serialize a block list into an OOXML fragment + report notes. */
 export async function serializeBlocks(
   blocks: ExportBlock[],
@@ -256,6 +322,7 @@ export async function serializeBlocks(
   const notes: ExportNote[] = [];
   const parts: string[] = [];
   const internal: InternalContext = { ...ctx, headingOffset: computeHeadingOffset(blocks) };
+  prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }

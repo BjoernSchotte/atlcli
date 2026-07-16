@@ -18,6 +18,7 @@ inject.
 - [Image embedding](#image-embedding)
 - [Mermaid diagrams](#mermaid-diagrams)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
+- [Performance model](#performance-model)
 - [Guarantees and gates](#guarantees-and-gates)
 - [Related topics](#related-topics)
 
@@ -201,6 +202,36 @@ A browser surface supplies its own implementations instead (see
 and docxtemplater reference `Buffer.*`; that is a **host** bundling concern — the extension
 installs a `Uint8Array` shim + Vite `define`, a Node host has the real `Buffer`, and the engine
 itself never touches either.
+
+## Performance model
+
+The engine overlaps every independent cost instead of paying them back to back; a page with
+many integrations (images, diagrams, code blocks, logos) exports in roughly one network
+latency plus the heaviest CPU leg:
+
+- **Resolver round-trips run concurrently.** Space, current user, page owner, and space-homepage
+  fetches fire together via `Promise.all`; report notes keep a fixed order regardless of which
+  response arrives first.
+- **Placeholder resolution, body serialization, and the space-logo fetch overlap.** The logo pass
+  is split into a fetch leg (starts immediately, never rejects) and an embed leg (mutates the
+  archive after the body is serialized, in the same deterministic order as before).
+- **Asset fetches are prefetched and pooled.** Before the document-order serialization walk, a
+  prefetch pass starts every image download (max 6 in flight — safe for browser per-origin
+  limits, CLI sockets, and future webview hosts) and every diagram render/rasterize. Embedding
+  still happens in document order, so relationship ids and media numbering never depend on
+  network timing (pinned by the determinism regression tests in `export.test.ts`).
+- **Syntax highlighting warms early and picks the fastest engine.** Code-block languages found
+  during the prefetch pass start their grammar loads immediately. Hosts that may compile
+  WebAssembly (CLI, Node, Tauri) get Shiki's Oniguruma engine (~30 ms for the TypeScript
+  grammar); the MV3 panel (no `wasm-unsafe-eval`) keeps the JavaScript engine and never fetches
+  the wasm chunk — the choice is made by an 8-byte compile probe at runtime.
+- **The CLI overlaps its own legs too.** The page fetch runs concurrently with template
+  read/scan and rasterizer setup; a quick local template scan pre-starts exactly the resolver
+  round-trips the template needs; `$scroll.space.*` and the logo share one `?expand=icon` call.
+- **CLI asset cache.** Immutable asset bytes — version-stamped download URLs (the space logo)
+  and attachments keyed by `id` + `version` — are cached under `~/.atlcli/cache/assets/`. A
+  replaced logo or re-uploaded attachment gets a new version stamp, so the cache never serves
+  stale bytes; deleting the directory is always safe.
 
 ## Guarantees and gates
 
