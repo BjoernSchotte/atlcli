@@ -44,10 +44,17 @@ import {
   type ResolveDeps,
   type TemplateMeta,
 } from "./resolver.js";
-import { serializeBlocks, type ImageBlock, type ImageEmbedSeam } from "./serialize.js";
+import {
+  serializeBlocks,
+  type CodeBlock,
+  type DiagramEmbedSeam,
+  type ImageBlock,
+  type ImageEmbedSeam,
+} from "./serialize.js";
 import { ImageEmbedder, ImageEmbedError } from "./image.js";
+import { renderDiagram, type DiagramTheme } from "./diagram.js";
 import { parseLogoArgs } from "./placeholder-map.js";
-import type { AssetFetcher, AssetRef } from "./env.js";
+import type { AssetFetcher, AssetRef, SvgRasterizer } from "./env.js";
 import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
 import {
   encodeXmlText,
@@ -65,6 +72,8 @@ export interface ExportReport {
   skippedImages: number;
   /** Number of images embedded into the document (spec 005). */
   embeddedImages: number;
+  /** Number of mermaid diagrams rendered + embedded as svgBlip/PNG (spec 005a). */
+  renderedDiagrams: number;
   /** Wall-clock export duration in milliseconds. */
   durationMs: number;
   /** Suggested download filename (`<page-title>.docx`). */
@@ -96,6 +105,18 @@ export interface ExportInput {
    * (the CLI's `--no-images`). Defaults to `true`.
    */
   embedImages?: boolean;
+  /**
+   * SVG → PNG rasterization (spec 005a). When present, mermaid code blocks
+   * render to svgBlip + PNG@2x drawings; absent → they stay source code
+   * blocks with a report note. Independent of `embedImages`, which governs
+   * page ATTACHMENT images.
+   */
+  rasterizer?: SvgRasterizer;
+  /**
+   * Diagram brand colors (spec 005a Task 4). Defaults to the neutral
+   * zinc-light theme matching the export's code blocks and body text.
+   */
+  diagramTheme?: DiagramTheme;
 }
 
 /**
@@ -174,10 +195,18 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    rendered rawxml body then references relationships that already exist.
   const { blocks, notes: walkNotes } = storageToBlocks(input.details.storage ?? "");
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
-  const embedder =
-    input.assets && input.embedImages !== false ? new ImageEmbedder(zip) : undefined;
-  const images = embedder ? imageSeam(embedder, input.assets!, input.details.id) : undefined;
-  const body = await serializeBlocks(blocks, { styleNames, images });
+  // One embedder per export owns the unique-id counters for images AND
+  // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
+  // with page images"). Attachment images additionally need an asset fetcher;
+  // diagrams additionally need a rasterizer — each seam exists independently.
+  const wantImages = Boolean(input.assets) && input.embedImages !== false;
+  const embedder = wantImages || input.rasterizer ? new ImageEmbedder(zip) : undefined;
+  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id) : undefined;
+  const diagrams =
+    embedder && input.rasterizer
+      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme)
+      : undefined;
+  const body = await serializeBlocks(blocks, { styleNames, images, diagrams });
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
@@ -237,6 +266,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       unsupportedNames: resolved.unsupportedNames,
       skippedImages,
       embeddedImages: embedder?.embeddedCount ?? 0,
+      renderedDiagrams: embedder?.diagramCount ?? 0,
       durationMs: Date.now() - start,
       filename: toDownloadFilename(input.details.title),
       notes,
@@ -474,6 +504,61 @@ function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string
         return { ok: true as const, xml };
       } catch (err) {
         return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Diagram seam (spec 005a)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bridge the serializer's {@link DiagramEmbedSeam} to the mermaid renderer,
+ * the host's {@link SvgRasterizer} and the OOXML embedder: render the source
+ * to a themed SVG, rasterize the mandatory PNG fallback at 2× the intrinsic
+ * size, embed both through one `<a:blip>` (svgBlip + raster). Failure on ANY
+ * leg — render, rasterize, embed — funnels into a non-ok outcome so the
+ * serializer takes the pinned code-block route; the embedder writes nothing
+ * to the archive unless it returns a fragment, so no failure leaves a
+ * dangling media part or relationship (the 004-F3 invariant).
+ */
+function diagramSeam(
+  embedder: ImageEmbedder,
+  rasterizer: SvgRasterizer,
+  theme: DiagramTheme | undefined
+): DiagramEmbedSeam {
+  let count = 0;
+  return {
+    async embed(block: CodeBlock) {
+      const rendered = await renderDiagram(block.code, theme);
+      if (rendered.kind === "unsupported") {
+        return { ok: false as const, route: "unsupported" as const, diagramType: rendered.diagramType };
+      }
+      if (rendered.kind === "failed") {
+        return { ok: false as const, route: "failed" as const, reason: rendered.reason };
+      }
+      try {
+        const png = await rasterizer.rasterize(rendered.svg, {
+          widthPx: rendered.widthPx * 2,
+          heightPx: rendered.heightPx * 2,
+        });
+        count += 1;
+        const xml = embedder.embedSvg(rendered.svg, png, {
+          name: `Mermaid diagram ${count}`,
+          // Accessibility (spec 005a Task 3): the diagram SOURCE is the
+          // best available description of the drawing.
+          alt: block.code,
+          widthPx: rendered.widthPx,
+          heightPx: rendered.heightPx,
+        });
+        return { ok: true as const, xml };
+      } catch (err) {
+        return {
+          ok: false as const,
+          route: "failed" as const,
+          reason: err instanceof Error ? err.message : String(err),
+        };
       }
     },
   };

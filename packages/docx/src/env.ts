@@ -42,6 +42,19 @@ export interface OutputSink {
   emit(name: string, bytes: Uint8Array): Promise<void>;
 }
 
+/**
+ * How an SVG becomes PNG bytes (spec 005a §2.4). Rasterization is inherently
+ * a host capability — the engine has no canvas — so it is injected like the
+ * other seams: the extension panel supplies a `<canvas>` implementation, a
+ * Node/server host can plug in resvg or similar later. Callers pass the
+ * TARGET pixel size (the engine asks for 2× the diagram's intrinsic size);
+ * the returned bytes MUST be a well-formed PNG. A host with no rasterizer
+ * omits it — mermaid diagrams then stay readable source code blocks.
+ */
+export interface SvgRasterizer {
+  rasterize(svg: string, target: { widthPx: number; heightPx: number }): Promise<Uint8Array>;
+}
+
 /** Everything a host must supply to run an export. */
 export interface ExportEnv {
   templates: TemplateSource;
@@ -50,6 +63,11 @@ export interface ExportEnv {
    * omits it — images then degrade to report notes instead of embedding.
    */
   assets?: AssetFetcher;
+  /**
+   * SVG → PNG rasterization (spec 005a). Omit it and mermaid diagrams
+   * degrade to source code blocks with a report note.
+   */
+  rasterizer?: SvgRasterizer;
   output: OutputSink;
 }
 
@@ -72,9 +90,15 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
 export async function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport> {
   const { templateId, ...rest } = input;
   const templateBytes = await env.templates.getBytes(templateId ?? "current");
-  // The env's asset fetcher drives image embedding (spec 005) unless the
-  // input overrides it; `embedImages: false` disables embedding entirely.
-  const { bytes, report } = await exportDocx({ ...rest, templateBytes, assets: rest.assets ?? env.assets });
+  // The env's asset fetcher drives image embedding (spec 005) and its
+  // rasterizer drives diagram embedding (spec 005a) unless the input
+  // overrides them; `embedImages: false` disables image embedding entirely.
+  const { bytes, report } = await exportDocx({
+    ...rest,
+    templateBytes,
+    assets: rest.assets ?? env.assets,
+    rasterizer: rest.rasterizer ?? env.rasterizer,
+  });
   await env.output.emit(report.filename, bytes);
   return report;
 }

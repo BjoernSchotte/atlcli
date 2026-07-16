@@ -189,7 +189,8 @@ export function TemplateSection({
     setBusy("export");
     try {
       const { runExport } = await loadExport();
-      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink } = await loadEnv();
+      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink, canvasSvgRasterizer } =
+        await loadEnv();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
       const rep = await runExport(
@@ -216,6 +217,9 @@ export function TemplateSection({
           // Attachment refs are wiki-base-relative (spec 005); resolve them
           // against the tab's Confluence root so the session cookies apply.
           assets: sessionAssetFetcher(profile ? getConfluenceBaseUrl(profile) : undefined),
+          // Mermaid diagrams (spec 005a): the panel document supplies the
+          // SVG → PNG raster fallback via a real <canvas>.
+          rasterizer: canvasSvgRasterizer(),
           output: downloadOutputSink(),
         }
       );
@@ -408,6 +412,9 @@ export function ReportView({ report }: { report: ExportReport }): React.JSX.Elem
         )}
         {report.embeddedImages > 0 && (
           <li data-testid="report-embedded-images">{report.embeddedImages} image(s) embedded</li>
+        )}
+        {report.renderedDiagrams > 0 && (
+          <li data-testid="report-rendered-diagrams">{report.renderedDiagrams} diagram(s) rendered</li>
         )}
         {report.skippedImages > 0 && (
           <li data-testid="report-skipped-images">{report.skippedImages} image(s) skipped (see notes)</li>

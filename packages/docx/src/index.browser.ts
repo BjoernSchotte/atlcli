@@ -14,6 +14,7 @@ export * from "./dateformat.js";
 export * from "./scan.js";
 export * from "./resolver.js";
 export * from "./serialize.js";
+export * from "./diagram.js";
 export * from "./export.js";
 export * from "./env.js";
 export * from "./image.js";

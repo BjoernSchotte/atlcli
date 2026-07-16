@@ -1,10 +1,24 @@
 import { describe, expect, it } from "bun:test";
 import { storageToBlocks, type ExportBlock, type InlineNode } from "@atlcli/confluence";
-import { serializeBlocks, serializeInline } from "./serialize.js";
+import {
+  serializeBlocks,
+  serializeInline,
+  type CodeBlock,
+  type DiagramEmbedOutcome,
+  type DiagramEmbedSeam,
+} from "./serialize.js";
+import { renderDiagram } from "./diagram.js";
 import { parseStyleNames } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 
 const noStyles = new Map<string, string>();
+
+/** A diagram seam over an inline embed function (test double for the wiring). */
+function diagramSeamOver(
+  embed: (block: CodeBlock) => Promise<DiagramEmbedOutcome>
+): DiagramEmbedSeam {
+  return { embed };
+}
 
 describe("serializeInline", () => {
   it("emits marks and colors as run properties", () => {
@@ -350,26 +364,81 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("brainfuck");
   });
 
-  // Spec 004 Task 6 / F2 descope pin: mermaid rendering needs the image module (spec 005),
-  // so a mermaid block must degrade to a readable code block — PLAN §2.3: "never a broken
-  // image". This fails the moment a half-wired diagram path emits a drawing.
-  it("renders a mermaid block as a code block, never a broken image (F2 deferred)", async () => {
+  // The spec-004 F2 pin, retargeted per spec 005a Task 5: supported mermaid types
+  // now RENDER, so the "never a broken image" invariant is guarded through an
+  // UNSUPPORTED diagram type (Gantt) — it must degrade to a readable code block
+  // with no image plumbing whatsoever, and the report must name the type.
+  it("renders an unsupported diagram type as a code block, never a broken image (004 pin)", async () => {
     const blocks: ExportBlock[] = [
-      { type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" },
+      { type: "codeBlock", language: "mermaid", code: "gantt\n  title T\n  section S\n  A :a1, 2026-01-01, 3d" },
     ];
-    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    const seam = diagramSeamOver(async (block) => {
+      const rendered = await renderDiagram(block.code);
+      if (rendered.kind === "unsupported") return { ok: false, route: "unsupported", diagramType: rendered.diagramType };
+      throw new Error("gantt must be unsupported");
+    });
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles, diagrams: seam });
     // Readable code block carrying the diagram source...
     expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
-    expect(xml).toContain("graph TD;");
-    expect(xml).toContain("A--&gt;B;");
+    expect(xml).toContain("gantt");
     // ...and no image plumbing whatsoever (no dangling relationship).
     expect(xml).not.toContain("<w:drawing");
     expect(xml).not.toContain("blip");
     expect(xml).not.toContain("r:embed");
-    // The user is told why it stayed source (mermaid is not a curated grammar).
-    const note = notes.find((n) => n.code === "code-highlight-skipped");
+    // The report names the diagram type (spec 005a Task 2).
+    const note = notes.find((n) => n.code === "diagram-unsupported");
     expect(note).toBeDefined();
-    expect(note!.message).toContain("mermaid");
+    expect(note!.message).toContain("Gantt");
+  });
+
+  // Hosts without a rasterizer (no diagram seam) keep the 004 behavior: source
+  // as a code block, plus a note saying diagram rendering was unavailable.
+  it("renders mermaid as a code block when no diagram seam is wired", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
+    expect(xml).toContain("graph TD;");
+    expect(xml).toContain("A--&gt;B;");
+    expect(xml).not.toContain("<w:drawing");
+    expect(xml).not.toContain("r:embed");
+    const note = notes.find((n) => n.code === "diagram-skipped");
+    expect(note).toBeDefined();
+  });
+
+  it("routes a supported mermaid block through the diagram seam (spec 005a)", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", language: "MERMAID", code: "graph TD\n  A --> B" },
+    ];
+    const seen: string[] = [];
+    const seam = diagramSeamOver(async (block) => {
+      seen.push(block.code);
+      return { ok: true, xml: "<w:p><w:r><w:drawing>DIAGRAM</w:drawing></w:r></w:p>" };
+    });
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles, diagrams: seam });
+    expect(seen).toEqual(["graph TD\n  A --> B"]);
+    expect(xml).toContain("DIAGRAM");
+    // The rendered route emits no note — the report counts it instead.
+    expect(notes).toEqual([]);
+    // Non-mermaid code blocks never touch the seam.
+    await serializeBlocks([{ type: "codeBlock", language: "ts", code: "1;" }], { styleNames: noStyles, diagrams: seam });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("degrades to the code block with a warning when the diagram path fails", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", language: "mermaid", code: "graph TD\n  A --> B" },
+    ];
+    const seam = diagramSeamOver(async () => ({ ok: false, route: "failed", reason: "raster exploded" }));
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles, diagrams: seam });
+    expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
+    expect(xml).toContain("graph TD");
+    expect(xml).not.toContain("<w:drawing");
+    const note = notes.find((n) => n.code === "diagram-render-failed");
+    expect(note).toBeDefined();
+    expect(note!.level).toBe("warning");
+    expect(note!.message).toContain("raster exploded");
   });
 
   it("renders nested lists with markers", async () => {

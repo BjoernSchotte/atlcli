@@ -877,3 +877,179 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(doc).toContain(`<wp:extent cx="${250 * 9525}" cy="${125 * 9525}"/>`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mermaid diagram embedding through the full pipeline (spec 005a)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — mermaid diagrams (spec 005a)", () => {
+  const diagramTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  const mermaidStorage = (source: string) =>
+    `<p>before</p><ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
+    `<ac:plain-text-body><![CDATA[${source}]]></ac:plain-text-body></ac:structured-macro>`;
+
+  /** A rasterizer recording every call, serving real PNG fixture bytes. */
+  function recordingRasterizer() {
+    const calls: { svg: string; widthPx: number; heightPx: number }[] = [];
+    return {
+      calls,
+      rasterizer: {
+        async rasterize(svg: string, target: { widthPx: number; heightPx: number }) {
+          calls.push({ svg, ...target });
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    };
+  }
+
+  it("embeds a flowchart as svgBlip + PNG@2x with the source as alt text (no asset fetcher needed)", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const source = "graph TD\n  A[Start] --> B[Done]";
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidStorage(source) },
+      template,
+      deps,
+      rasterizer,
+    });
+
+    // Rendered through the REAL renderer, rasterized at 2× the intrinsic size.
+    expect(calls).toHaveLength(1);
+    expect(calls[0].svg).toStartWith("<svg");
+    const intrinsicW = calls[0].widthPx / 2;
+    const intrinsicH = calls[0].heightPx / 2;
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("<w:drawing>");
+    // svgBlip extension + raster blip, two distinct relationships.
+    const pngRel = doc.match(/<a:blip r:embed="(rId\d+)"/)?.[1];
+    const svgRel = doc.match(/<asvg:svgBlip[^>]*r:embed="(rId\d+)"/)?.[1];
+    expect(pngRel).toBeDefined();
+    expect(svgRel).toBeDefined();
+    expect(pngRel).not.toBe(svgRel);
+    // Display size = intrinsic px (small diagram, uncapped).
+    expect(doc).toContain(`<wp:extent cx="${intrinsicW * 9525}" cy="${intrinsicH * 9525}"/>`);
+    // Accessibility: the diagram SOURCE is the description (XML-escaped).
+    expect(doc).toContain('descr="graph TD\n  A[Start] --&gt; B[Done]"');
+
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).toContain('Target="media/atlcli-image1.svg"');
+    expect(rels).toContain('Target="media/atlcli-image2.png"');
+    const ct = readPart(bytes, "[Content_Types].xml");
+    expect(ct).toContain('Extension="svg" ContentType="image/svg+xml"');
+    expect(ct).toContain('Extension="png"');
+
+    // The SVG media part is the rendered diagram (theme default, font import stripped).
+    const zip = new PizZip(bytes);
+    const svgPart = zip.file("word/media/atlcli-image1.svg")!.asText();
+    expect(svgPart).toContain("Start");
+    expect(svgPart).not.toContain("fonts.googleapis.com");
+
+    expect(report.renderedDiagrams).toBe(1);
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(0);
+    expect(report.notes.some((n) => n.code.startsWith("diagram"))).toBe(false);
+  });
+
+  it("routes an unsupported type (Gantt) to the pinned code block — no drawing, note names the type, rasterizer untouched", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidStorage("gantt\n  title T\n  section S\n  A :a1, 2026-01-01, 3d") },
+      template,
+      deps,
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("<w:drawing");
+    expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
+    expect(doc).toContain("gantt");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).not.toContain("relationships/image");
+    const note = report.notes.find((n) => n.code === "diagram-unsupported");
+    expect(note?.message).toContain("Gantt");
+    expect(report.renderedDiagrams).toBe(0);
+  });
+
+  it("degrades a rasterizer failure to a warning with NO dangling relationship (F3 invariant)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidStorage("graph TD\n  A --> B") },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize() {
+          throw new Error("canvas exploded");
+        },
+      },
+    });
+    const note = report.notes.find((n) => n.code === "diagram-render-failed");
+    expect(note?.level).toBe("warning");
+    expect(note?.message).toContain("canvas exploded");
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("<w:drawing");
+    expect(doc).toContain("A --&gt; B");
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).not.toContain("relationships/image");
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+    expect(report.renderedDiagrams).toBe(0);
+  });
+
+  it("keeps mermaid a code block when no rasterizer is supplied (pre-005a behavior + note)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidStorage("graph TD\n  A --> B") },
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("<w:drawing");
+    expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
+    expect(report.notes.some((n) => n.code === "diagram-skipped")).toBe(true);
+    expect(report.renderedDiagrams).toBe(0);
+  });
+
+  it("applies the configured diagram theme to the embedded SVG (Task 4)", async () => {
+    const { rasterizer } = recordingRasterizer();
+    const { bytes } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidStorage("graph TD\n  A --> B") },
+      template,
+      deps,
+      rasterizer,
+      diagramTheme: { bg: "#101820", fg: "#FEE715" },
+    });
+    const zip = new PizZip(bytes);
+    const svgPart = zip.file("word/media/atlcli-image1.svg")!.asText();
+    expect(svgPart).toContain("#101820");
+    expect(svgPart).toContain("#FEE715");
+  });
+
+  it("diagram embedding coexists with attachment images — shared id space, separate counts", async () => {
+    const { rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: {
+        ...details,
+        storage:
+          '<ac:image><ri:attachment ri:filename="pic.png"/></ac:image>' +
+          mermaidStorage("graph TD\n  A --> B"),
+      },
+      template,
+      deps,
+      assets: { fetch: async () => pngFixtureBytes(100, 50) },
+      rasterizer,
+    });
+    expect(report.embeddedImages).toBe(1);
+    expect(report.renderedDiagrams).toBe(1);
+    const doc = readPart(bytes, "word/document.xml");
+    const ids = [...doc.matchAll(/wp:docPr id="(\d+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});

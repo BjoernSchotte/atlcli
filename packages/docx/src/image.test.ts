@@ -363,3 +363,121 @@ describe("inlineImageParagraph", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// embedSvg — svgBlip + mandatory PNG fallback (spec 005a)
+// ---------------------------------------------------------------------------
+
+/** A real (header-valid) SVG diagram string with intrinsic size markers. */
+const DIAGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100"><rect width="200" height="100"/><text>Start</text></svg>`;
+
+describe("ImageEmbedder.embedSvg", () => {
+  it("writes BOTH media parts, relationships and content types; blip carries svgBlip + raster", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const xml = embedder.embedSvg(DIAGRAM_SVG, pngBytes(400, 200), {
+      name: "Mermaid diagram 1",
+      alt: "graph TD",
+      widthPx: 200,
+      heightPx: 100,
+    });
+
+    assertBalancedXml(xml);
+    // Display size = SVG intrinsic px in EMU.
+    expect(xml).toContain(`<wp:extent cx="${200 * 9525}" cy="${100 * 9525}"/>`);
+    expect(xml).toContain('descr="graph TD"');
+
+    // The blip: raster r:embed + svgBlip extension with its own rel.
+    const pngRel = xml.match(/<a:blip r:embed="(rId\d+)"/)?.[1];
+    const svgRel = xml.match(/<asvg:svgBlip[^>]*r:embed="(rId\d+)"/)?.[1];
+    expect(pngRel).toBeDefined();
+    expect(svgRel).toBeDefined();
+    expect(pngRel).not.toBe(svgRel);
+    expect(xml).toContain('uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}"');
+    expect(xml).toContain("a14:useLocalDpi");
+
+    // Media parts hold the exact bytes.
+    const svgPart = zip.file("word/media/atlcli-image1.svg");
+    const pngPart = zip.file("word/media/atlcli-image2.png");
+    expect(svgPart).not.toBeNull();
+    expect(pngPart).not.toBeNull();
+    expect(svgPart!.asText()).toBe(DIAGRAM_SVG);
+
+    // Both relationships target their parts.
+    const rels = zip.file("word/_rels/document.xml.rels")!.asText();
+    expect(rels).toContain(`Id="${pngRel}"`);
+    expect(rels).toContain(`Id="${svgRel}"`);
+    expect(rels).toContain('Target="media/atlcli-image1.svg"');
+    expect(rels).toContain('Target="media/atlcli-image2.png"');
+
+    // Content types for both extensions.
+    const ct = zip.file("[Content_Types].xml")!.asText();
+    expect(ct).toContain('Extension="svg" ContentType="image/svg+xml"');
+    expect(ct).toContain('Extension="png"');
+
+    // Counted as a diagram, not an image.
+    expect(embedder.diagramCount).toBe(1);
+    expect(embedder.embeddedCount).toBe(0);
+  });
+
+  it("caps oversized diagrams to the content width preserving aspect", () => {
+    const zip = templateZip();
+    const xml = new ImageEmbedder(zip).embedSvg(DIAGRAM_SVG, pngBytes(2400, 1200), {
+      widthPx: 1200,
+      heightPx: 600,
+    });
+    expect(xml).toContain(`<wp:extent cx="${600 * 9525}" cy="${300 * 9525}"/>`);
+  });
+
+  it("dedupes byte-identical diagrams into shared media parts", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const a = embedder.embedSvg(DIAGRAM_SVG, pngBytes(400, 200), { widthPx: 200, heightPx: 100 });
+    const b = embedder.embedSvg(DIAGRAM_SVG, pngBytes(400, 200), { widthPx: 200, heightPx: 100 });
+    expect(a.match(/<asvg:svgBlip[^>]*r:embed="(rId\d+)"/)?.[1]).toBe(
+      b.match(/<asvg:svgBlip[^>]*r:embed="(rId\d+)"/)?.[1]!
+    );
+    expect(a.match(/wp:docPr id="(\d+)"/)?.[1]).not.toBe(b.match(/wp:docPr id="(\d+)"/)?.[1]!);
+    expect(zip.file("word/media/atlcli-image3.svg")).toBeNull();
+    expect(embedder.diagramCount).toBe(2);
+  });
+
+  it("shares the id space with page images (no docPr collisions)", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const img = embedder.embed(pngBytes(10, 10));
+    const diag = embedder.embedSvg(DIAGRAM_SVG, pngBytes(20, 10), { widthPx: 20, heightPx: 10 });
+    expect(img.match(/wp:docPr id="(\d+)"/)?.[1]).not.toBe(diag.match(/wp:docPr id="(\d+)"/)?.[1]!);
+  });
+
+  it("throws ImageEmbedError and leaves the archive untouched on every bad leg", () => {
+    const zip = templateZip();
+    const relsBefore = zip.file("word/_rels/document.xml.rels")!.asText();
+    const ctBefore = zip.file("[Content_Types].xml")!.asText();
+    const embedder = new ImageEmbedder(zip);
+
+    // Not-an-SVG vector leg.
+    expect(() => embedder.embedSvg("plain text", pngBytes(4, 2), { widthPx: 2, heightPx: 1 })).toThrow(
+      ImageEmbedError
+    );
+    // Fallback that is not a PNG (a GIF header) — the raster leg is mandatory PNG.
+    const gif = new Uint8Array(13);
+    gif.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61], 0);
+    expect(() => embedder.embedSvg(DIAGRAM_SVG, gif, { widthPx: 2, heightPx: 1 })).toThrow(/PNG/);
+    // Empty legs.
+    expect(() => embedder.embedSvg("", pngBytes(4, 2), { widthPx: 2, heightPx: 1 })).toThrow(ImageEmbedError);
+    expect(() => embedder.embedSvg(DIAGRAM_SVG, new Uint8Array(0), { widthPx: 2, heightPx: 1 })).toThrow(
+      ImageEmbedError
+    );
+    // Missing intrinsic size.
+    expect(() => embedder.embedSvg(DIAGRAM_SVG, pngBytes(4, 2), { widthPx: 0, heightPx: 0 })).toThrow(
+      ImageEmbedError
+    );
+
+    // The 004-F3 invariant: nothing was written on any failure.
+    expect(zip.file("word/_rels/document.xml.rels")!.asText()).toBe(relsBefore);
+    expect(zip.file("[Content_Types].xml")!.asText()).toBe(ctBefore);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+    expect(embedder.diagramCount).toBe(0);
+  });
+});

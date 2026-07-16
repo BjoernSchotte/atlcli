@@ -8,3 +8,13 @@ made prior to the relicensing were originally licensed under the MIT License by
 their respective authors; those authors retain their copyright, and their
 contributions are included here under the Apache License, Version 2.0, with the
 original attribution preserved.
+
+Third-party notices:
+
+- beautiful-mermaid (https://github.com/lukilabs/beautiful-mermaid),
+  Copyright Craft Docs / Luki Labs, licensed under the MIT License.
+- elkjs (https://github.com/kieler/elkjs), a JavaScript build of the Eclipse
+  Layout Kernel (https://projects.eclipse.org/projects/modeling.elk), licensed
+  under the Eclipse Public License 2.0 (EPL-2.0). elkjs is distributed in
+  object-code form inside atlcli's bundled artifacts; its source code is
+  available at the URL above.

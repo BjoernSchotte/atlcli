@@ -10,6 +10,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { Window } from "happy-dom";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import {
+  canvasSvgRasterizer,
   downloadOutputSink,
   idbTemplateSource,
   sessionAssetFetcher,
@@ -82,6 +83,26 @@ describe("sessionAssetFetcher", () => {
     expect(
       sessionAssetFetcher(undefined, fetchFn).fetch({ url: "https://x/att", filename: "a.png" })
     ).rejects.toThrow("Asset fetch failed (403) for a.png");
+  });
+});
+
+describe("canvasSvgRasterizer", () => {
+  // happy-dom has no rendering engine: an <img> never fires load/error for a
+  // blob SVG, and canvas.getContext("2d") is null — so the REAL rasterization
+  // is covered by the manual extension E2E (spec 005a Task 6). What IS
+  // testable against a real happy-dom document is the freeze guard: a decode
+  // that never settles must reject (→ the engine's code-block fallback route)
+  // instead of hanging the whole export.
+  it("rejects instead of hanging when the SVG never decodes", async () => {
+    const window = new Window();
+    const doc = window.document as unknown as Document;
+    const rasterizer = canvasSvgRasterizer(doc, 50);
+    expect(
+      rasterizer.rasterize('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"/>', {
+        widthPx: 4,
+        heightPx: 4,
+      })
+    ).rejects.toThrow("did not decode within 50 ms");
   });
 });
 

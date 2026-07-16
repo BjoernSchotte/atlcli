@@ -799,6 +799,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         resolvedCount: report.resolvedCount,
         unsupportedNames: report.unsupportedNames,
         embeddedImages: report.embeddedImages,
+        renderedDiagrams: report.renderedDiagrams,
         skippedImages: report.skippedImages,
         durationMs: report.durationMs,
         notes: [...cliNotes, ...report.notes.map((n) => `${n.level}: ${n.message}`)],
@@ -918,8 +919,10 @@ Options:
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
   --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
                       (isomorphic @atlcli/docx engine — same as the browser
-                      extension; $scroll.* placeholders, no Python needed;
-                      images/children not yet supported)
+                      extension; $scroll.* placeholders + image embedding, no
+                      Python needed; children not yet supported. Mermaid
+                      diagrams export as readable source blocks — rendering
+                      them needs the extension's rasterizer)
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:
