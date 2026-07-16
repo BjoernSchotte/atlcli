@@ -2,7 +2,7 @@
 
 Status: **Done** (2026-07-16 — engine + extension host; Word E2E passed after finding #1
 (svgBlip flattening). CLI exports mermaid as source blocks until a Node rasterizer host lands.
-Open: the two spec-008 benchmark items in Task 6.)
+Task 6 fully done incl. Scroll comparison (0/7 vs. atlcli 6/7) and duration numbers.)
 
 Spec ID: `005a-mermaid-diagrams`
 Depends on: `005-docx-image-module` (**must be merged** — this spec embeds SVG through the media-part/relationship/EMU plumbing 005 builds), `004-docx-export` Task 2 (the `ExportBlock` model whose `codeBlock` carries the diagram source), `004-docx-export` Task 5 (the pinned descope path this spec replaces)
@@ -229,7 +229,7 @@ belongs to 006, not to this spec.
 - [x] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source. (Björn, 2026-07-16, page 1119158277, real Mayflower Prüfvorlage — after finding #1 was fixed.)
 - [x] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback). (Proven via Björn's Word print-PDF: the 6 diagrams appear as vector paths; the PDF's only raster XObjects are the template logos/footer.)
 - [x] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9). *(Done 2026-07-16, Scroll Office export of page 1119158277: **0 of 7 mermaid blocks rendered** — all seven stay `scroll-codecontentdivline` source-text blocks, 0 `<w:drawing>` for diagrams, 0 svgBlip; atlcli renders 6 of 7 as vector drawings with a named report note for the 7th. Benchmark row 9 input recorded.)*
-- [ ] Export duration delta recorded vs. the 004 baseline (spec 008 input). *(open — spec 008 input)*
+- [x] Export duration delta recorded (spec 008 input). *(2026-07-16 — Björn's panel export of page 1119158277 with the real Mayflower Prüfvorlage: **661 ms total** for 29 placeholders + 2 images + 6 rendered diagrams. Engine-side isolation on the same live storage (5 runs, median): diagram path OFF 3 ms vs. ON 31 ms → **~28 ms for all 6 diagrams** (render + flatten + embed, excl. panel canvas rasterization — the remainder of the 661 ms is placeholder round-trips, image fetches and rasterization). Diagram cost is negligible against the 004-shape baseline.)*
 - [ ] Test page deleted afterwards. *(page 1119158277 kept for now — also useful for the Scroll comparison; delete after 008 row 9)*
 
 ---
