@@ -63,6 +63,24 @@ import {
   splitParagraphs,
 } from "./ooxml-text.js";
 
+/**
+ * Wall-clock durations of the export's (deliberately overlapping) phases —
+ * `resolveMs` + `bodyMs` + `logoFetchMs` typically exceed `durationMs`
+ * because they run concurrently. The seam aggregates (`imageFetchMs`,
+ * `diagramRenderMs`, `diagramRasterMs`) are SUMS across calls. Surfaced as a
+ * report note so a slow export names its slow leg.
+ */
+export interface ExportTimings {
+  resolveMs: number;
+  bodyMs: number;
+  logoFetchMs: number;
+  renderMs: number;
+  imageFetchMs: number;
+  imageFetches: number;
+  diagramRenderMs: number;
+  diagramRasterMs: number;
+}
+
 export interface ExportReport {
   /** Placeholders resolved to a non-empty value. */
   resolvedCount: number;
@@ -82,6 +100,8 @@ export interface ExportReport {
   notes: ExportNote[];
   /** The template scan (reused classification), for the panel. */
   scan: ScanResult;
+  /** Per-phase wall clocks (overlapping) + seam aggregates. */
+  timings: ExportTimings;
 }
 
 export interface ExportResult {
@@ -181,6 +201,16 @@ export function toDownloadFilename(title: string): string {
 export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const start = Date.now();
   const exportDate = input.exportDate ?? new Date();
+  const timings: ExportTimings = {
+    resolveMs: 0,
+    bodyMs: 0,
+    logoFetchMs: 0,
+    renderMs: 0,
+    imageFetchMs: 0,
+    imageFetches: 0,
+    diagramRenderMs: 0,
+    diagramRasterMs: 0,
+  };
 
   const zip = unzipDocx(input.templateBytes);
   const scan = scanZip(zip);
@@ -191,7 +221,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    the logo fetch below instead of gating them (perf finding: the
   //    sequential flow paid every network latency back to back).
   const usedRaw = [...scan.supported, ...scan.unsupported, ...scan.never].flatMap((h) => h.raw);
-  const resolvedPromise = resolvePlaceholders(usedRaw, { details: input.details, template: input.template, exportDate }, input.deps);
+  const resolvedPromise = resolvePlaceholders(usedRaw, { details: input.details, template: input.template, exportDate }, input.deps).then(
+    (r) => {
+      timings.resolveMs = Date.now() - start;
+      return r;
+    }
+  );
 
   // 2. Storage → blocks → OOXML body. When the host supplied an asset fetcher
   //    (and images aren't disabled), the serializer's image seam embeds each
@@ -205,10 +240,10 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // diagrams additionally need a rasterizer — each seam exists independently.
   const wantImages = Boolean(input.assets) && input.embedImages !== false;
   const embedder = wantImages || input.rasterizer ? new ImageEmbedder(zip) : undefined;
-  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id) : undefined;
+  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id, timings) : undefined;
   const diagrams =
     embedder && input.rasterizer
-      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme)
+      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme, timings)
       : undefined;
 
   // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
@@ -220,9 +255,14 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     assets: input.assets,
     getSpaceLogo: input.deps?.getSpaceLogo,
     spaceKey: input.details.spaceKey,
+  }).then((s) => {
+    timings.logoFetchMs = Date.now() - start;
+    return s;
   });
 
+  const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, { styleNames, images, diagrams });
+  timings.bodyMs = Date.now() - bodyStart;
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
@@ -261,6 +301,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    inserted VERBATIM (the body is a DATA value, never re-parsed for tags), so
   //    literal braces / $scroll text in the page pass through unchanged. PUA
   //    delimiters guarantee the customer's own `{…}` is never a tag.
+  const renderStart = Date.now();
   const rendered = renderContent(zip, body.xml);
 
   // 6. Synthesize the code style if the body referenced it; force TOC refresh.
@@ -268,8 +309,9 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+  timings.renderMs = Date.now() - renderStart;
 
-  const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes];
+  const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes, timingNote(timings, Date.now() - start)];
   // Every image-skip note kind counts toward the report's skipped-image total:
   // serializer `image-skipped`/`image-embed-failed`, walker `image-unresolved`
   // and `inline-image-skipped`.
@@ -287,7 +329,31 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       filename: toDownloadFilename(input.details.title),
       notes,
       scan,
+      timings,
     },
+  };
+}
+
+/**
+ * One compact, always-present report line naming each phase's wall clock —
+ * so a slow export tells the user (and us) WHICH leg was slow without any
+ * extra tooling. Phases overlap by design, so they don't sum to the total.
+ */
+function timingNote(t: ExportTimings, totalMs: number): ExportNote {
+  const parts = [
+    `body ${t.bodyMs} ms` +
+      (t.diagramRenderMs || t.diagramRasterMs
+        ? ` (diagrams: render ${t.diagramRenderMs} ms, rasterize ${t.diagramRasterMs} ms)`
+        : "") +
+      (t.imageFetches ? ` (${t.imageFetches} image fetch(es): ${t.imageFetchMs} ms)` : ""),
+    `placeholders ${t.resolveMs} ms`,
+    ...(t.logoFetchMs ? [`logo fetch ${t.logoFetchMs} ms`] : []),
+    `render+zip ${t.renderMs} ms`,
+  ];
+  return {
+    level: "info",
+    code: "perf-timing",
+    message: `Timing: ${totalMs} ms total — ${parts.join(" · ")} (phases overlap).`,
   };
 }
 
@@ -575,7 +641,12 @@ function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
  * instead of N; embedding (and thus relationship-id allocation) still
  * happens in document order through {@link ImageEmbedSeam.embed}.
  */
-function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string): ImageEmbedSeam {
+function imageSeam(
+  embedder: ImageEmbedder,
+  assets: AssetFetcher,
+  pageId: string,
+  timings: ExportTimings
+): ImageEmbedSeam {
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
   // Keyed by the CANONICAL asset URL, not block identity: a page that shows
   // the same attachment twice downloads it once (the embedder already
@@ -585,7 +656,15 @@ function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string
     const ref = assetRefFor(block, pageId);
     let p = fetches.get(ref.url);
     if (!p) {
-      p = limit(() => assets.fetch(ref));
+      p = limit(async () => {
+        const t = Date.now();
+        try {
+          return await assets.fetch(ref);
+        } finally {
+          timings.imageFetches += 1;
+          timings.imageFetchMs += Date.now() - t;
+        }
+      });
       // The prefetch caller never awaits; without this consumed branch a
       // fetch failing before embed() awaits it would surface as an
       // unhandled rejection. embed() awaits the ORIGINAL promise and still
@@ -634,7 +713,8 @@ function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string
 function diagramSeam(
   embedder: ImageEmbedder,
   rasterizer: SvgRasterizer,
-  theme: DiagramTheme | undefined
+  theme: DiagramTheme | undefined,
+  timings: ExportTimings
 ): DiagramEmbedSeam {
   let count = 0;
   // Render + rasterize results, keyed by block: the serializer's prefetch
@@ -651,16 +731,20 @@ function diagramSeam(
     let p = preps.get(block);
     if (!p) {
       p = (async (): Promise<DiagramPrep> => {
+        const renderStart = Date.now();
         const rendered = await renderDiagram(block.code, theme);
+        timings.diagramRenderMs += Date.now() - renderStart;
         if (rendered.kind === "unsupported") {
           return { kind: "unsupported", diagramType: rendered.diagramType };
         }
         if (rendered.kind === "failed") return { kind: "failed", reason: rendered.reason };
         try {
+          const rasterStart = Date.now();
           const png = await rasterizer.rasterize(rendered.svg, {
             widthPx: rendered.widthPx * 2,
             heightPx: rendered.heightPx * 2,
           });
+          timings.diagramRasterMs += Date.now() - rasterStart;
           return {
             kind: "ready",
             svg: rendered.svg,
