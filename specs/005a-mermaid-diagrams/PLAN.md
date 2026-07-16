@@ -296,3 +296,10 @@ belongs to 006, not to this spec.
   decode timeout so a hung decode degrades to the code-block route instead of freezing the
   export. beautiful-mermaid emits a Google-Fonts `@import` in its SVG `<style>` — the engine
   strips it (offline determinism; Word/rasterizers don't load external resources anyway).
+- **Task-6 Word E2E finding #1** (Björn, 2026-07-16): first Word export rendered every diagram
+  black with missing arrowheads — Word's svgBlip renderer supports neither CSS custom
+  properties nor `color-mix()` nor (reliably) `<style>` class rules, which is ALL of
+  beautiful-mermaid's styling; the PNG fallback in the same blip was pixel-perfect. Fixed by
+  `flattenSvgStyles` in `@atlcli/diagram` (`3b1fb63`): the full custom-property/color-mix/class
+  cascade is resolved into literal presentation attributes and the `<style>` blocks dropped.
+  Also the portability prerequisite for 007's SVG consumers (resvg/Typst, same limits).
