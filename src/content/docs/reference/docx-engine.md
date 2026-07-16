@@ -74,7 +74,9 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
 - **`AssetRef` shape:** attachment refs carry a wiki-base-relative `url`
   (`/download/attachments/{pageId}/{filename}`) plus `pageId`/`filename`; external images carry
   their absolute URL. A session host (the extension) prefixes its Confluence root and rides the
-  ambient cookies. A **token host must not** fetch the cookie-only `/download/attachments/…`
+  ambient cookies — note Cloud 302s these downloads to `api.media.atlassian.com`, so an MV3 host
+  needs that origin in its `host_permissions` (the media CDN's wildcard CORS header rejects
+  credentialed fetches otherwise). A **token host must not** fetch the cookie-only `/download/attachments/…`
   path (it answers 401 to API tokens) — resolve `pageId`+`filename` through the REST attachment
   listing and fetch the API's own `downloadUrl` instead, as the CLI's fetcher does
   (`tokenAssetFetcher` in `apps/cli/src/commands/export.ts`).

@@ -47,8 +47,14 @@ describe("built manifest.json", () => {
     );
   });
 
-  it("declares atlassian.net host permissions", () => {
-    expect(manifest.host_permissions).toEqual(["*://*.atlassian.net/*"]);
+  it("declares atlassian.net + media-CDN host permissions", () => {
+    // api.media.atlassian.com: attachment downloads 302 to the media CDN;
+    // without this host permission the redirect hop falls back to normal CORS
+    // and its wildcard ACAO rejects the credentialed session fetch (spec 005).
+    expect(manifest.host_permissions).toEqual([
+      "*://*.atlassian.net/*",
+      "https://api.media.atlassian.com/*",
+    ]);
   });
 
   it("uses a module service worker whose file exists in the output", () => {
