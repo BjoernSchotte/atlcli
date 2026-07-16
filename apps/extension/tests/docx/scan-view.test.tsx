@@ -38,3 +38,61 @@ describe("ScanView — content insertion point (spec 004 finding)", () => {
     expect(html).toContain("appended before the final section break");
   });
 });
+
+describe("ScanView — per-placeholder reasons (E2E finding)", () => {
+  // The panel used to print one static "will be empty" per row and drop the
+  // per-hit `reason` the scan already carries. That flattened causes which are
+  // in fact unrelated: a Cloud-impossible DC username vs. a gap waiting on the
+  // image module. Each row must state its OWN reason.
+  const scan: ScanResult = {
+    supported: [{ base: "$scroll.title", status: "supported", count: 2, raw: ["$scroll.title"] }],
+    unsupported: [
+      {
+        base: "$scroll.creator.name",
+        status: "unsupported",
+        count: 1,
+        raw: ["$scroll.creator.name"],
+        reason: "Confluence Cloud has no usernames — Data Center only (Gap G2)",
+      },
+      {
+        base: "$scroll.spacelogo",
+        status: "unsupported",
+        count: 1,
+        raw: ["$scroll.spacelogo"],
+        reason: "the space logo is an image — needs the image module (spec 005, Gap G3)",
+      },
+    ],
+    never: [
+      {
+        base: "$adhocState",
+        status: "never",
+        count: 1,
+        raw: ["$adhocState"],
+        reason: "needs the Comala Workflows app — third-party",
+      },
+    ],
+    parts: ["word/document.xml"],
+    hasContentPlaceholder: true,
+  };
+
+  it("renders each unsupported row's own reason, not one shared note", () => {
+    const html = renderToStaticMarkup(<ScanView scan={scan} />);
+    expect(html).toContain("Data Center only");
+    expect(html).toContain("needs the image module");
+    // The two causes are distinct — the old static note made them identical.
+    expect(html).not.toContain("— will be empty");
+  });
+
+  it("renders a reason for never rows too (previously none at all)", () => {
+    const html = renderToStaticMarkup(<ScanView scan={scan} />);
+    expect(html).toContain("Comala Workflows");
+  });
+
+  it("keeps the outcome in the group header and leaves supported rows bare", () => {
+    const html = renderToStaticMarkup(<ScanView scan={scan} />);
+    expect(html).toContain("Will be empty (2)");
+    expect(html).toContain("Not supported (1)");
+    // A supported hit carries no reason, so it renders no trailing dash.
+    expect(html).toContain("$scroll.title");
+  });
+});

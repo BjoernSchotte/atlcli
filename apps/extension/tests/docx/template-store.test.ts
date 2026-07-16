@@ -24,13 +24,11 @@ beforeEach(() => {
 
 function makeStored(id: string, name: string): StoredTemplate {
   const bytes = buildDocx({ body: para("$scroll.title") + para("$scroll.content") });
-  const scan = scanTemplate(bytes);
   return {
     id,
     name,
     bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     uploadedAt: Date.now(),
-    scan,
   };
 }
 
@@ -42,11 +40,15 @@ describe("template store (fake-indexeddb)", () => {
     const back = await getTemplate("current", factory);
     expect(back).toBeDefined();
     expect(back!.name).toBe("mayflower.docx");
-    expect(back!.scan.supported.map((h) => h.base)).toContain("$scroll.title");
-    // Bytes survive the round-trip and re-unzip.
+    // The scan is NOT persisted — it is re-derived from the bytes on read, so a
+    // classification change can never leave a stale verdict in the store.
+    expect(back as unknown as { scan?: unknown }).not.toHaveProperty("scan");
+    // Bytes survive the round-trip and re-unzip, which is what the scan needs.
     const reBytes = new Uint8Array(back!.bytes);
     expect(reBytes.byteLength).toBe(new Uint8Array(stored.bytes).byteLength);
-    expect(scanTemplate(reBytes).hasContentPlaceholder).toBe(true);
+    const rescan = scanTemplate(reBytes);
+    expect(rescan.hasContentPlaceholder).toBe(true);
+    expect(rescan.supported.map((h) => h.base)).toContain("$scroll.title");
   });
 
   it("replaces an existing template in the same slot", async () => {

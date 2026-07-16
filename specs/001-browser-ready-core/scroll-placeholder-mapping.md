@@ -111,7 +111,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.tinyurl` | `.tinyUrl` | direct | Populated by `getPageDetails` (`_links.tinyui`). |
 | `$scroll.pagelabels` | `.labels` | derivable | Join `string[]` (Scroll renders a comma/space list). |
 | `$scroll.pagelabels.capitalised` | `.labels` | derivable | Join + capitalize first letter of each label. |
-| `$scroll.pageowner.fullName` (Cloud) | — | unsupported (v1) | atlcli has no page-**owner** field; only `createdBy`. Owner ≠ creator on Cloud. Gap G1. |
+| `$scroll.pageowner.fullName` (Cloud) | `ConfluenceClient.getPageOwner()` | derivable | **Gap G1 closed** (2026-07-16). Cloud's v2 API exposes `ownerId`; resolved to a display name via the account lookup. Owner ≠ creator (ownership is transferable), so this is a lazy round-trip of its own, not a `createdBy` fallback. |
 
 ### 2.2 Creator / modifier
 
@@ -120,11 +120,11 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.creator` | `.createdBy.displayName` | derivable | Scroll's bare form renders the display name. |
 | `$scroll.creator.fullName` | `.createdBy.displayName` | direct | atlcli's `displayName` already falls back to `publicName`. |
 | `$scroll.creator.email` (DC) | `.createdBy.email` | derivable | `email` is optional and usually absent on Cloud. |
-| `$scroll.creator.name` (DC username) | — | unsupported (v1) | `ConfluenceUser` has no username field. Gap G2. |
+| `$scroll.creator.name` (DC username) | `.createdBy.displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. See G2. |
 | `$scroll.modifier` | `.modifiedBy.displayName` | derivable | |
 | `$scroll.modifier.fullName` | `.modifiedBy.displayName` | direct | |
 | `$scroll.modifier.email` (DC) | `.modifiedBy.email` | derivable | Often absent on Cloud. |
-| `$scroll.modifier.name` (DC username) | — | unsupported (v1) | Same as G2. |
+| `$scroll.modifier.name` (DC username) | `.modifiedBy.displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. See G2. |
 
 ### 2.3 Dates
 
@@ -152,7 +152,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.exporter` | `getCurrentUser().displayName` | derivable | atlcli exposes `getCurrentUser()`; not yet wired into export. |
 | `$scroll.exporter.fullName` | `getCurrentUser().displayName` | derivable | |
 | `$scroll.exporter.email` (DC) | `getCurrentUser().email` | derivable | Optional; may be absent on Cloud. |
-| `$scroll.exporter.name` (DC username) | — | unsupported (v1) | No username field. Gap G2. |
+| `$scroll.exporter.name` (DC username) | `getCurrentUser().displayName` | derivable | **G2 substitution** — Cloud has no usernames; resolves to the display name + a `placeholder-substituted` report note. Rides the existing `getCurrentUser` fetch. See G2. |
 | `$scroll.template.name` | export-side template metadata | derivable | atlcli-side (template file), not Confluence data. |
 | `$scroll.template.modificationdate` | export-side template metadata | derivable | Template file mtime; atlcli-side. |
 | `$adhocState` (Comala) | — | never | Comala Document Management workflow state (DC). Third-party. |
@@ -164,7 +164,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.includepage.(pagename)` | fetched page body | derivable | Resolve title → `search` → `getPage`. |
 | `$scroll.includepage.(SPACEKEY:pagename)` | fetched page body | derivable | Space-scoped title resolution. |
 | `$scroll.includepage.(pageid)` | fetched page body | derivable | Direct `getPage(id)`. |
-| `$scroll.pageproperty.(key)` (+ fallback / macro-id / alt-text forms) | — | unsupported (v1) | Requires parsing Page Properties macro out of storage; atlcli models raw storage only. Gap G4. |
+| `$scroll.pageproperty.(key)` (+ fallback / macro-id / alt-text forms) | `parsePageProperties()` over `details.storage` (+ `getSpaceHomepageStorage()` for the fallback form) | derivable | **Gap G4 closed** (2026-07-16). All four documented forms. The page's own macro costs no round-trip — the export already holds its storage; only `(key,true)` fetches the space homepage. See G4 below for the argument-grammar inference. |
 | `$scroll.jsoncontentproperty.(key)` (jsonPointer/fallback/alt) | — | unsupported (v1) | No content-property API wrapper in atlcli. Gap G5. |
 | `$scroll.metadata.(key)` (Comala) | — | never | Requires Comala Metadata app. Third-party. |
 
@@ -211,19 +211,59 @@ the `$scroll.custom.*` rows. Distinct mapped rows in the tables above: 49.)
 These are the concrete gaps a Phase 1 DOCX export must close (or explicitly decline). Each is
 referenced from the mapping table.
 
-- **G1 — Page owner (Cloud).** No `owner` on `ConfluencePage`/`ConfluencePageDetails`; only
-  `createdBy`. Confluence Cloud ownership is distinct from the creator. Needs a v2 pages call
-  (`ownerId`) + account lookup to populate `$scroll.pageowner.fullName`.
-  Blocks: `$scroll.pageowner.fullName`.
-- **G2 — Data Center username.** `ConfluenceUser` models `accountId` + `displayName` + `email`,
-  but no `name`/username. The `.name` placeholders are DC-only; requires a DC user-shape field.
-  Blocks: `$scroll.creator.name`, `$scroll.modifier.name`, `$scroll.exporter.name`.
-- **G3 — Space & global logos.** atlcli fetches no space logo or global logo asset; no attachment
-  handle for either. Blocks: `$scroll.spacelogo` (G3); `$scroll.globallogo` is `never` (system
-  asset, out of scope).
-- **G4 — Page Properties macro extraction.** atlcli stores raw `storage` only; there is no parsed
-  key→value model of the Page Properties macro (incl. macro-id disambiguation and space-homepage
-  fallback). Blocks: all `$scroll.pageproperty.(…)` forms.
+> **Read the gaps by their *kind*, not as one list.** They are not equally hard, and wording
+> them alike misleads: **G1 was merely unbuilt** (the data was there all along — now closed);
+> **G2 is genuinely impossible on Cloud**; **G3 is blocked on another spec**; **G4/G5 are
+> scope decisions**. The panel surfaces each `reason` verbatim per row, so these strings are
+> user-facing — keep them honest about which kind they are.
+
+- **G1 — Page owner (Cloud). ✅ CLOSED 2026-07-16.** Was described as "atlcli has no page-owner
+  field", which read as *impossible* but only ever described our own model. Probing the live
+  Cloud API showed `GET /api/v2/pages/{id}` returns **`ownerId`** (and `lastOwnerId`); combined
+  with the existing account lookup that is all `$scroll.pageowner.fullName` needs. Implemented as
+  `ConfluenceClient.getPageOwner()` + a lazy `"owner"` resolver dependency, mirroring G6/G7 — it
+  fires only when a template actually uses the placeholder. Owner ≠ creator: ownership is
+  transferable, so a `createdBy` fallback would be wrong (and is pinned against by a fixture whose
+  owner differs from its creator).
+- **G2 — Data Center username. ⚠️ RESOLVED BY SUBSTITUTION 2026-07-16** (Björn: "creator ist ja
+  der erzeuger der seite, und den namen könnten wir doch resolven, oder?"). The underlying fact is
+  unchanged and permanent: **Confluence Cloud has no usernames.** Atlassian removed them,
+  `accountId` is the replacement, and `.name` is Scroll's *username* field (`bschotte`) — `.fullName`
+  is the person's name. So there is no value `.name` could ever carry on Cloud.
+  - But the practical alternative was never "wrong value vs. right value" — it was **display name
+    vs. an empty hole** in a template reading `Erstellt von: $scroll.creator.name`. And only a
+    template migrated from Data Center can contain `.name` at all, since Cloud Scroll does not
+    offer it. So the `.name` placeholders now resolve to the display name (already on
+    `createdBy`/`modifiedBy`, so no round-trip; `exporter.name` rides the existing
+    `getCurrentUser` fetch).
+  - **The substitution is reported, never silent** (`placeholder-substituted`): a template asked
+    for a login and got a person's name. The value is useful; hiding the swap would not be.
+  - Not a "closed" gap like G1/G4 — the data genuinely does not exist. This is a deliberate
+    product decision to degrade usefully instead of emptily.
+- **G3 — Space & global logos.** The data exists — `GET /space/{key}?expand=icon` returns
+  `icon.path` — but a logo is an **image**, so both placeholders are blocked on the OOXML image
+  module (spec `005-docx-image-module`), not on a missing fetch. Blocks: `$scroll.spacelogo` (G3);
+  `$scroll.globallogo` is `never` (system asset).
+- **G4 — Page Properties macro extraction. ✅ CLOSED 2026-07-16.** Was a scope call, not a
+  capability one: the macro (`ac:name="details"`) lives in the page's OWN storage, which the
+  export already holds, so the common `(key)` form needs no round-trip at all. Implemented in
+  `packages/confluence/src/page-properties.ts` (`parsePageProperties` / `lookupPageProperty`),
+  built on the shared `parseXml` tree — **not** a regex: a details macro can contain other
+  macros, and hunting for the next `</ac:structured-macro>` would slice the wrong one (the same
+  trap as the non-greedy `<w:p>` regex in the DOCX text-box finding). The space-homepage
+  fallback form is a lazy `getSpaceHomepageStorage()` (one call —
+  `?expand=homepage.body.storage`), fired only by an argument that asks for it.
+  - **Argument grammar is partly INFERRED.** Scroll documents `(key)`,
+    `(key,fallback-enabled)` and `(key,macro-id,true,alternate-text)` but not how to tell a
+    2-arg `(key,macroId)` from `(key,fallback)`. We disambiguate on shape: a boolean second
+    argument is the fallback flag, anything else is a macro id. Pinned in
+    `apps/extension/tests/docx/placeholder-map.test.ts` so a contradiction with real Scroll
+    behaviour surfaces there rather than silently.
+  - **"macro-id" is ambiguous in real storage.** Confluence writes BOTH an author-set
+    `<ac:parameter ac:name="id">` (e.g. `zoo-meta`) and an auto-assigned `ac:macro-id` UUID
+    attribute. A template can only mean the former (nobody hand-writes a UUID), but the lookup
+    matches either — a UUID cannot collide with a hand-written label, so accepting both costs
+    nothing. Verified against real DOCSY markup, which hand-built fixtures had missed.
 - **G5 — Content properties (JSON).** No Confluence content-property API wrapper
   (`/content/{id}/property/{key}`) in atlcli, and no jsonPointer/fallback resolution.
   Blocks: `$scroll.jsoncontentproperty.(…)`.
@@ -237,10 +277,19 @@ referenced from the mapping table.
   (the chosen `.docx` template file). No template registry/metadata model exists yet; Phase 1 must
   define where template name + mtime come from.
 
-**Out of scope (never, not gaps to close):** Comala workflow/metadata (`$adhocState`,
-`$scroll.metadata.*`), the entire Scroll Documents `$scroll.custom.*` family, and the system-wide
-`$scroll.globallogo`. These require third-party K15t/Comala apps or Confluence-instance assets that
-atlcli deliberately does not target.
+**Out of scope (never, not gaps to close):** Comala metadata (`$scroll.metadata.*`), the entire
+Scroll Documents `$scroll.custom.*` family, and the system-wide `$scroll.globallogo`. These
+require third-party K15t/Comala apps or Confluence-instance assets that atlcli deliberately does
+not target.
+
+**`$adhocState` — dropped from the curated list** (Björn, 2026-07-16: "bauen wir aus, das wollen
+wir aktuell nicht supporten"). It no longer carries a Comala-specific entry and falls through to
+the generic *unrecognized → unsupported* branch. **It is still MATCHED by `PLACEHOLDER_RE`, and
+that is load-bearing:** removing it from detection would mean the resolver never sees it, so it
+would never be blanked and the raw `$adhocState` would survive into the exported document —
+breaking the never-a-literal invariant that every other row here depends on. Dropping a
+placeholder from *support* and dropping it from *detection* are different acts; only the first is
+safe.
 
 ---
 

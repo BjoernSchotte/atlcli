@@ -1,6 +1,6 @@
 # DOCX Export (Headline) — Customer Word Template + Scroll Placeholder Compatibility
 
-Status: **In progress** (2026-07-16 — Task 1 spike done + engine decided, Task 2 done; Tasks 3–5 implemented + ACs verified 2026-07-14, Task 7 user-E2E next. F1 ✅ docxtemplater free; images deferred to a follow-up task ✅.)
+Status: **Done** (2026-07-16). Tasks 1–5 implemented and merged to `main` in `40953db` (bundled into PR #30, whose title names only specs 002/003 — the DOCX engine lives in `apps/extension/utils/docx/`). Task 6 closed as **descoped with the fallback pinned** (see F2). **Task 7 (user E2E) passed** on the post-fix build: all 5 checklist items confirmed against the real Mayflower template in real Word, incl. all 35 placeholder rows of a purpose-built probe template and the six 2026-07-14 real-template findings re-confirmed structurally. Baseline for spec 008: **117 ms / 1,823 words**. Repo gates green: 1509 tests, typecheck, `check:browser` (5 isomorphic entrypoints), `check:extension-output`. Decisions: F1 ✅ docxtemplater free · F3 ✅ images deferred → spec 005 · F2 ⏸ mermaid deferred → spec `005a-mermaid-diagrams` (PR #33), awaiting ratification.
 
 Spec ID: `004-docx-export`
 Depends on: `003-page-detection-read-path` · `001-browser-ready-core` Task 8 (`specs/001-browser-ready-core/scroll-placeholder-mapping.md` — the normative placeholder table)
@@ -200,8 +200,8 @@ trust surface and 006's measurement hook.
 
 ### Task 4 — Placeholder resolver
 
-- [x] Every `direct` + `derivable` mapping row implemented; table-driven test asserts each against a fixture context — `utils/docx/resolver.ts` (`resolveOne`), `tests/docx/resolver.test.ts` (24-row table). Deviation: `$scroll.includepage.*` (derivable in §2 but a cross-page-include Phase-2 non-goal) is classified `unsupported` in v1 → empty + report line, per PLAN Non-goals; documented in `placeholder-map.ts`.
-- [x] Lazy `getSpace`/`getCurrentUser` fetching (mock-fetch test: not called when template doesn't need them) — `resolvePlaceholders` fires each round-trip only when the used set needs it, at most once; `resolver.test.ts` proves not-called + at-most-once
+- [x] Every `direct` + `derivable` mapping row implemented; table-driven test asserts each against a fixture context — `utils/docx/resolver.ts` (`resolveOne`), `tests/docx/resolver.test.ts` (25-row table, incl. `$scroll.pageowner.fullName` after G1 closed — see Decisions log). Deviation: `$scroll.includepage.*` (derivable in §2 but a cross-page-include Phase-2 non-goal) is classified `unsupported` in v1 → empty + report line, per PLAN Non-goals; documented in `placeholder-map.ts`.
+- [x] Lazy `getSpace`/`getCurrentUser`/`getPageOwner` fetching (mock-fetch test: not called when template doesn't need them) — `resolvePlaceholders` fires each round-trip only when the used set needs it, at most once; `resolver.test.ts` proves not-called + at-most-once for all three
 - [x] SimpleDateFormat subset (`yyyy`, `MM`, `dd`, `HH`, `mm`) + fallback behavior tested — `utils/docx/dateformat.ts`, `tests/docx/dateformat.test.ts` (incl. unknown-token → ISO + report)
 - [x] Unsupported/never placeholders → empty string + report entries (never literal `$scroll.*` in output — pinning test) — `resolver.test.ts` pinning test + `export.test.ts` full-output pin
 
@@ -215,20 +215,73 @@ trust surface and 006's measurement hook.
 - [x] Export triggers a browser download `"<page-title>.docx"`; duration measured and shown in report — `TemplateSection.tsx` `download()` + `ReportView`; `export.ts` `toDownloadFilename` + `durationMs`; `export.test.ts` asserts sanitized filename
 - [x] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs, and (docxtemplater) throws no template error on the fixture template — `tests/docx/export.test.ts`
 
-### Task 6 — Stretch: mermaid diagrams
+### Task 6 — Stretch: mermaid diagrams **[descoped — see F2]**
 
-- [ ] ```mermaid blocks → beautiful-mermaid SVG → svgBlip + PNG@2x fallback embedded; unsupported diagram types fall back to code block + report line
-- [ ] Skipped cleanly if descoped (mermaid renders as code block — existing behavior, test pins it)
+- [ ] ~~```mermaid blocks → beautiful-mermaid SVG → svgBlip + PNG@2x fallback embedded~~ — **descoped**: SVG embedding requires the OOXML image module, which is spec `005-docx-image-module`. Picked up by spec **`005a-mermaid-diagrams`** (PR #33), sequenced directly after 005 — not in 004.
+- [x] Skipped cleanly if descoped (mermaid renders as code block — existing behavior, test pins it) — mermaid is deliberately absent from `highlight.ts`'s curated `LANG_LOADERS`, so it degrades via the uncurated-language path to an uncolored `AtlcliCode` block + a `code-highlight-skipped` report note. Pinned at both levels: `packages/confluence/src/export-blocks.test.ts` (a `language=mermaid` code macro stays a `codeBlock` carrying its source) and `apps/extension/tests/docx/serialize.test.ts` (the block renders as a code block with **no** `<w:drawing>`/`blip`/`r:embed` — the PLAN §2.3 "never a broken image" invariant; the test fails the moment a half-wired diagram path emits a drawing).
 
 ### Task 7 — Manual E2E **[E2E: user]**
 
 Joint session (space `DOCSY`; create a dedicated test page with the full feature zoo, delete after):
 
-- [ ] Upload a real mayflower Word template; scan output matches expectation
-- [ ] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt
-- [ ] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded)
-- [ ] A template using an unsupported placeholder exports with empty value + report warning
-- [ ] Duration for the ~2,000-word page recorded (input to 006)
+- [x] Upload a real mayflower Word template; scan output matches expectation — panel reported **24 supported / 4 will-be-empty / 2 not-supported + content anchor found**, matching the pre-run prediction from `scanTemplate` exactly (incl. occurrence counts: `$scroll.title` ×4, `$scroll.exportdate` ×5 across its format variants). *Those are the numbers as run. The gap work that the run triggered then moved three placeholders into the supported bucket — G1 `pageowner`, G4 `pageproperty`, G2 `.name` — so the same probe template now reads **27 / 2 / 1**, re-confirmed live in the panel. What remains is only what cannot yet resolve: `$scroll.spacelogo` + `$scroll.globallogo` (images — spec 005) and `$adhocState` (blanked by decision).*
+- [x] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt — confirmed by Björn (cover + header intact; **TOC populates after clicking "Ja"** in Word's field-update prompt; note the prompt's default button is "Nein").
+- [x] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded) — 4 callout fills present (`DEEBFF`/`EAE6FF`/`FFFAE6`/`E3FCEF`), 6 distinct Shiki colors over 297 `Consolas` runs, mermaid as readable source, exactly **one** image relationship (`media/image1.png` = the template's own logo) so the 3 page images embedded nothing and reported instead.
+- [x] A template using an unsupported placeholder exports with empty value + report warning — all 6 unsupported/never placeholders resolved to empty (G1 page owner, G2 DC username, G3 space logo, G4 page property, `$adhocState`, global logo), plus `Owner: ` in the footer with no value. **Zero `$scroll.` literals** anywhere in the output.
+- [x] Duration for the ~2,000-word page recorded (input to 006) — **117 ms** for the 1,823-word feature-zoo page (35 blocks incl. 4 callouts, 4 code blocks, 1 table, 5 lists, 3 skipped images).
+
+**Result (2026-07-16): confirming run passed on the post-fix build.**
+The 2026-07-14 session was finding-generating: it produced the six `Known real-template
+case` entries in the Decisions log, each fixed and pinned with a regression test, but all
+of them landed in the same squash (`40953db`) as the run that found them and were never
+reopened in Word. This second pass closes that gap on the built extension.
+
+Evidence for the two riskiest fixes, verified structurally in the artifact rather than
+by eye:
+
+- **Text-box placeholders (shape a)** — the Mayflower template carries both its
+  `$scroll.title` occurrences *inside* `<w:txbxContent>` regions, provided twice via
+  `mc:AlternateContent`. Both resolved: one in the `mc:Choice` (DrawingML) branch, one in
+  the `mc:Fallback` (VML) branch. This is the exact shape that previously left a literal.
+- **Footer run trailing a drawing (shape b)** — footer1's `$scroll.title` run directly
+  follows an `mc:AlternateContent` picture in the same paragraph; resolved.
+- **Heading promotion + `TOC \o`** — the page is the RFP shape (9 × H2, 7 × H3, no H1) and
+  the template defines `Überschrift 1–6` **plus** a custom `Heading1TOC`. Output carries
+  9 × `outlineLvl 0` / 7 × `outlineLvl 1` with `berschrift1`/`berschrift2` styles, i.e. the
+  H2s were promoted to level 1 and the TOC's top level is populated — the empty-TOC finding.
+- **Entities** — zero surviving named entities; umlauts real (`Björn`, `Größe`).
+
+A second export against a purpose-built probe template (`Mayflower_E2E_Platzhalter-Pruefung.docx`
+— the real template plus a final page carrying every placeholder, and `$scroll.pageowner.fullName`
+in the footer) exercised **all 35 placeholder rows**: 29 supported resolved to real values
+(version `2`, labels `e2e-test, docx-export, spec-004` + capitalised variant, space `DOCSY`,
+template name = upload filename per G8), the date subset rendered correctly
+(`16.07.2026`, `16.07.2026 11:04`, `2026`), the deliberately unknown format token `QQQ` fell
+back to ISO as specified, and the lazy fetches fired only because the template used them
+(G6 `getSpace` → "Docsync"; G7 `getCurrentUser` → the exporter).
+
+**Gap closures verified live (2026-07-16, export v3 of the standing fixture page through the
+probe template).** The three rows that were empty when Björn asked "why aren't these six
+resolved?" now carry values, and nothing else changed:
+
+| Probe row | Before | After |
+|---|---|---|
+| Seiteneigentümer (G1) | *(empty)* | `Björn Schotte MAYFLOWER` |
+| Seiteneigenschaft (G4) | *(empty)* | `Freigegeben` |
+| DC-Benutzername (G2) | *(empty)* | `Björn Schotte MAYFLOWER` |
+| Footer `Owner:` (G1) | *(empty)* | `Björn Schotte MAYFLOWER` |
+
+The G4 row doubles as proof of the case-insensitive lookup: the template asks for
+`$scroll.pageproperty.(status)` in lower case while the page's macro spells the label `Status`.
+Still empty, correctly: `spacelogo` + `globallogo` (images — spec 005) and `$adhocState`
+(blanked by decision). Zero `$scroll.` literals anywhere.
+
+**Correction to this PLAN's expectation (not a defect):** §2 of the mapping table calls
+`creator.email`/`modifier.email`/`exporter.email` "usually absent on Cloud", and G7 predicted
+`$scroll.exporter.email` → empty + report line. On the Mayflower Cloud instance all three
+resolved to a real address. The unsupported→empty behavior is unaffected; only the
+expectation was wrong, and the resolver's absent-email branch stays unit-tested rather than
+E2E-covered.
 
 ---
 
@@ -242,11 +295,29 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ## 5. Definition of done
 
-- Tasks 1–5 + 7 checked (6 = mermaid, and image embedding, explicitly deferred as follow-up tasks with the skip behavior pinned).
-- `engine-decision.md` committed; engine + image decisions made by Björn.
-- E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1).
-- Export report shows no silent failures; unsupported placeholders + skipped images surfaced.
-- Test resources cleaned up (test pages deleted).
+- Tasks 1–5 ✅ + Task 6 ✅ (descoped, fallback pinned) + Task 7 ✅ (E2E passed 2026-07-16) — mermaid (F2 → spec `005a`) and image embedding (F3 → spec `005`) are explicitly deferred as follow-up tasks with the skip behavior pinned by test.
+- ✅ `engine-decision.md` committed; engine + image decisions made by Björn (F1, F3).
+- ✅ E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1); TOC populates after the field-update prompt.
+- ✅ Export report shows no silent failures; unsupported placeholders + skipped images surfaced (5 notes on the feature-zoo run: 2 uncurated code languages incl. mermaid, 3 skipped images).
+- ✅ Test resources: the run's page (`1118830593`) was deleted and verified gone (404). A fresh copy is then **kept on purpose** — see below.
+
+**Standing test fixture (Björn, 2026-07-16):** the feature-zoo page is re-created as
+`1117356071` in `DOCSY` and **deliberately not deleted**, deviating from the repo's
+"clean up test resources" rule so the DOCX export stays re-testable without rebuilding it
+each time (specs 005 image embedding, 005a mermaid, 007 PDF and 008's benchmark all need
+the same input). It is the exact §2.1 feature zoo: 1,823 words, 9 × H2 + 7 × H3 and **no
+H1** (the heading-promotion shape), 4 callouts, 4 code blocks (TypeScript coloured, mermaid,
+an uncurated language, one bare), 1 table, nested + ordered lists, 3 attachment image refs,
+3 status macros, and the full named-entity set (`&uuml; &ouml; &auml; &szlig; &eacute;
+&mdash; &hellip; &copy;`) that G-decoding relies on. Labels `e2e-test`, `docx-export`,
+`spec-004` exist so `$scroll.pagelabels` resolves to a non-empty value. The source lives in
+this spec dir as [`e2e-feature-zoo.md`](e2e-feature-zoo.md) — recreate with
+`atlcli wiki page create --space DOCSY --title "…" --body specs/004-docx-export/e2e-feature-zoo.md`,
+then re-add the three labels. Note the images must use the `./<name>.attachments/<file>`
+form: a bare `![alt](x.png)` converts to a plain `<img>`, which the export walker does not
+model as an image block, so it yields no skip line and silently under-tests the image path.
+Companion probe template: `Mayflower_E2E_Platzhalter-Pruefung.docx` (the real letterhead
+plus a final page carrying every placeholder + `$scroll.pageowner.fullName` in the footer).
 
 ## 6. Risks and open questions
 
@@ -268,4 +339,11 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 - **Known real-template case — named HTML entities survive undecoded into the DOCX** (live E2E, 2026-07-14): exported Word content showed literal `drei &uuml;berlappende` instead of `drei überlappende`. Confluence storage is XHTML and carries the full HTML5 named-entity set (`&uuml;`, `&auml;`, `&ouml;`, `&szlig;`, `&eacute;`, `&mdash;`, `&hellip;`, `&copy;`, …), but the export-block walker's `decodeEntities` only knew a dozen hand-listed names, so every other named entity passed through verbatim into the `<w:t>` runs (the same gap hit attribute values — image alt / link title — decoded via the same helper). **Fix:** added `entities` (npm, BSD-2-Clause, isomorphic — the decoder turndown/markdown-it already use) as a direct dependency of `@atlcli/confluence` and replaced the hand-maintained `NAMED_ENTITIES` table + regex body with `decodeHTML` from `entities`; `decodeEntities(text)` keeps its name/signature so both call sites (text at `pushText`, attributes at `parseAttributes`) resolve the full HTML5 named set + decimal/hex charrefs. Stays isomorphic — `check:browser` still passes clean (no `node:`/`bun:` leaks; export-blocks.ts is re-exported from `index.browser.ts`). Behavior note: `&nbsp;` decodes to a real non-breaking space (U+00A0) — this was already the old table's value (`nbsp: " "`), so no downstream change, and it is the correct char for Word. The markdown path (`storageToMarkdown`) was NOT affected — markdown-it/turndown already decode named entities (verified: `&uuml;` → `ü`). Impl: `packages/confluence/src/export-blocks.ts` (`decodeEntities` → `decodeHTML`), `packages/confluence/package.json`; regression tests in `packages/confluence/src/export-blocks.test.ts` (full named-set: umlauts/eszett/mdash/hellip/copy + decimal `&#252;` + hex `&#xFC;` + `&amp;&lt;&gt;`, asserting zero surviving `&…;` literals; attribute-value decode via image alt) and `apps/extension/tests/docx/serialize.test.ts` (storage→blocks→`serializeInline` round-trip yields real UTF-8 in `<w:t>`, no entity literals).
 - **Display finding — content insertion point not surfaced** (live E2E, 2026-07-14): the scan panel listed only fillable placeholders (`$scroll.title`, …) and never showed `$scroll.content`, which is intentionally excluded from the placeholder list (it is the body anchor, not a fillable value) — a user read this as the content anchor being missing. **Fix (display only):** `ScanView` now renders a content-insertion line from the `hasContentPlaceholder` flag the `ScanResult` already carries — `Content insertion point: ✓ found ($scroll.content)` when present, else a note that the page body will be appended before the final section break (matching `export.ts`'s `no-content-placeholder` behavior). The placeholder-engine classification is unchanged (`$scroll.content` stays out of the supported/unsupported/never buckets). Impl: `apps/extension/entrypoints/sidepanel/TemplateSection.tsx` (`ScanView` + `ContentInsertionLine`); regression test `tests/docx/scan-view.test.tsx` (found + absent cases via react-dom/server).
 - **F3 — image embedding**: ✅ (Björn, 2026-07-16) **deferred to a follow-up task**. v1 export omits images with a report line; the ~1-day self-built OOXML image module (prototyped in `specs/005-docx-image-module/image-module-prototype.ts`) is a separate task after the export flow is proven.
-- **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget. (Likely deferred alongside images, since mermaid embedding also needs the image module.)
+- **Gap G1 (page owner) closed — the E2E's most useful by-product** (2026-07-16, Björn asked "why aren't these six resolved?"). Answering it properly meant probing the live Cloud API instead of re-quoting the mapping table, and the table turned out to be misleading: "atlcli has no page-**owner** field; only `createdBy`" described *our model*, not availability. `GET /api/v2/pages/{id}` returns **`ownerId`** + `lastOwnerId`, and the account lookup already existed — so G1 was unbuilt, not impossible. Implemented as `ConfluenceClient.getPageOwner()` (v2 call → `getUser()`) plus a lazy `"owner"` resolver dependency mirroring G6/G7; it fires only when a template uses the placeholder. Owner ≠ creator (ownership is transferable), so the fixtures give the page an owner that differs from its creator — a `createdBy` fallback fails them. `$scroll.pageowner.fullName` therefore moves ⚠ → ✓. Impl: `packages/confluence/src/client.ts` (`getPageOwner`), `apps/extension/utils/docx/placeholder-map.ts` (`SUPPORTED_OWNER`, `PlaceholderDependency` += `"owner"`), `resolver.ts` (`PageOwner`, `Fetched` bag, lazy fetch + degradation notes), `entrypoints/sidepanel/TemplateSection.tsx` (wiring); tests in `tests/docx/{resolver,scan,export}.test.ts`.
+  - The same probe corrected three further `reason` strings that read as "impossible" but were not: **G2** is genuinely impossible on Cloud (no usernames since Atlassian removed them), **G3** is blocked on spec 005 (a logo is an image; `/space/{key}?expand=icon` does return `icon.path`), and **G4** is a scope decision (page properties sit in the page's own storage as an `ac:name="details"` macro). Updated in `placeholder-map.ts` and `specs/001-browser-ready-core/scroll-placeholder-mapping.md`.
+- **Gap G4 (page properties) closed + `$adhocState` dropped** (Björn, 2026-07-16 — "pageproperty sollten wir direkt mit hinzufügen als fix"; "adhocstate bauen wir aus"). **G4** was a scope call, not a capability one: the `ac:name="details"` macro lives in the page's OWN storage, which the export already holds, so the common `(key)` form costs no round-trip. All four documented forms implemented, incl. the space-homepage fallback as a lazy one-call fetch (`?expand=homepage.body.storage`) fired only by an argument that asks for it — laziness is per-ARGUMENT here, not per-placeholder, so a `(key)` beside a `(key,true)` still costs nothing. Impl: `packages/confluence/src/page-properties.ts` (built on the shared `parseXml` tree — deliberately **not** a regex, since a details macro can nest other macros and hunting the next `</ac:structured-macro>` would slice the wrong one, exactly the trap the `<w:p>` regex fell into), `client.ts` (`getSpaceHomepageStorage`), `placeholder-map.ts` (`parsePagePropertyArgs`, `spaceHomepage` dependency), `resolver.ts` (`resolvePageProperty`, fallback chain page → homepage → alternate text → empty+note). Both new client methods verified against the live instance, not mocks.
+  - **Two things only the real markup revealed** (hand-built fixtures missed both): storage carries an auto-assigned `ac:macro-id` UUID *attribute* **and** an author-set `<ac:parameter ac:name="id">`, and Scroll's docs say only "macro-id" — the lookup now matches either. And the argument grammar is partly **inferred** (a boolean 2nd arg = fallback flag, otherwise a macro id), pinned in `tests/docx/placeholder-map.test.ts` so a contradiction surfaces there. A real details macro now lives on the standing fixture page, and the parser is proven against it end-to-end.
+  - **`$adhocState`** loses its curated Comala entry but **keeps its detection** — that is load-bearing, not an oversight: dropping it from `PLACEHOLDER_RE` would mean the resolver never blanks it and the raw token would land in the exported document. It now takes the generic unrecognized→unsupported path (empty + report line). Pinned in `tests/docx/{placeholder-map,resolver,scan}.test.ts`.
+- **Gap G2 (`.name`) resolved by substitution — not closed** (Björn, 2026-07-16: "creator ist ja der erzeuger der seite, und den namen könnten wir doch resolven, oder?"). The underlying fact stands and is permanent: **Confluence Cloud has no usernames** (Atlassian removed them; `accountId` replaced them), and Scroll's `.name` *is* the DC username — `.fullName` is the person's name. So unlike G1/G4 there is no data to go fetch. **But the real alternative was never "wrong value vs. right value" — it was display name vs. an empty hole** in a template reading `Erstellt von: $scroll.creator.name`; and only a DC-migrated template can contain `.name` at all, since Cloud Scroll does not offer it. The three `.name` placeholders now resolve to the display name — already on `createdBy`/`modifiedBy` (no round-trip), and `exporter.name` rides the existing `getCurrentUser` fetch. **Reported, never silent** (`placeholder-substituted`): a template asked for a login and got a person's name; the value is useful, hiding the swap would not be. Impl: `placeholder-map.ts` (rows moved out of `UNSUPPORTED_EXACT`), `resolver.ts` (`resolveDcName`); tests in `tests/docx/{resolver,placeholder-map}.test.ts` (incl. the absent-user branch, which stays empty *and* silent — there is no substitution to report).
+- **Display finding — the scan panel hid its own reasons** (2026-07-16, same thread): `ScanHit` carries a per-placeholder `reason`, but `ScanGroup` rendered a **static** `note="will be empty"` for every unsupported row and nothing at all for `never` rows. That flattened three unrelated causes into one indistinguishable line — precisely the distinction that makes G1 a cheap win and G2 a dead end. Same family as the content-insertion-point finding below: the data was already in `ScanResult`, the panel discarded it. **Fix:** the group header keeps the outcome ("⚠ Will be empty (4)") and each row now renders its own `reason`. Impl: `apps/extension/entrypoints/sidepanel/TemplateSection.tsx` (`ScanGroup`); regression tests in `tests/docx/scan-view.test.tsx` (distinct reasons per row, `never` rows carry one too, no shared static note).
+- **F2 — mermaid in scope**: ⏸ **deferred to after spec 005** (proposed 2026-07-16 — awaiting Björn's ratification, as F1/F3 were his calls). Not a budget call in the end but a dependency one: mermaid renders to SVG, and embedding SVG needs svgBlip + PNG@2x — i.e. the OOXML image module that F3 already deferred to `005-docx-image-module`. Doing mermaid in 004 would mean building the image module inside 004, which is exactly what F3 decided against. **Descope behavior is pinned, not merely absent** (Task 6): a mermaid block degrades to an uncolored `AtlcliCode` code block carrying its diagram source + a `code-highlight-skipped` report note, with no `<w:drawing>`/`blip`/`r:embed` emitted — the reader sees readable diagram source, never a broken image. Picked up by spec **`005a-mermaid-diagrams`** (PR #33), sequenced directly after 005 — once media parts/relationships/EMU sizing exist, mermaid is "SVG → the same embed path". That spec re-verified beautiful-mermaid against the published tarballs and found it **MV3-CSP-clean** (0 `eval`/`new Function` on the reachable elkjs path) — the check EXPORT-QUALITY §1 had not run, and the one that ruled out docx-templates here. It also surfaced two items this PLAN's research had missed: elkjs is **EPL-2.0** (not MIT — a decision gate of the same shape as F1) and weighs ~1.5 MB minified (risk 4 again).

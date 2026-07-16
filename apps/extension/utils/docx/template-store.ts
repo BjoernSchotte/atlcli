@@ -12,24 +12,30 @@
  * globals. Template bytes are stored as `ArrayBuffer` (universally structured-
  * cloneable) rather than `Blob`.
  */
-import type { ScanResult } from "./scan.js";
-
 const DB_NAME = "atlcli-docx";
 const DB_VERSION = 1;
 const STORE = "templates";
 
-/** A persisted template record. */
+/**
+ * A persisted template record.
+ *
+ * Deliberately stores only what cannot be recomputed. The placeholder scan used
+ * to live here too ("captured at upload time"), which made it a **derived value
+ * that drifts from the logic that produced it**: closing gap G1 reclassified
+ * `$scroll.pageowner.fullName` as supported, but every already-uploaded template
+ * kept serving the old verdict from IndexedDB — and the export, which always
+ * re-scans the bytes, would then disagree with what the panel had promised.
+ * The scan is a pure function of {@link bytes}, so it is derived on read instead.
+ */
 export interface StoredTemplate {
   /** Stable id. The panel uses a single `"current"` slot (one-at-a-time). */
   id: string;
   /** Original uploaded filename (drives `$scroll.template.name`). */
   name: string;
-  /** The raw `.docx` bytes. */
+  /** The raw `.docx` bytes — the single source of truth for the scan. */
   bytes: ArrayBuffer;
   /** Upload timestamp (ms epoch; drives `$scroll.template.modificationdate`). */
   uploadedAt: number;
-  /** Placeholder scan captured at upload time. */
-  scan: ScanResult;
 }
 
 function resolveFactory(factory?: IDBFactory): IDBFactory {

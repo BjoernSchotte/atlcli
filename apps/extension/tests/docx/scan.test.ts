@@ -24,6 +24,7 @@ describe("scanTemplate", () => {
         para("$scroll.title") +
         para("$scroll.space.name") +
         para("$scroll.pageowner.fullName") +
+        para("$scroll.spacelogo") +
         para("$scroll.custom.(k15t-scroll-document-versions-for-confluence,document-id)") +
         para("$adhocState") +
         para("$scroll.content"),
@@ -34,9 +35,19 @@ describe("scanTemplate", () => {
     const unsupported = scan.unsupported.map((h) => h.base).sort();
     const never = scan.never.map((h) => h.base).sort();
 
-    expect(supported).toEqual(["$scroll.space.name", "$scroll.title"]);
-    expect(unsupported).toEqual(["$scroll.pageowner.fullName"]);
-    expect(never).toEqual(["$adhocState", "$scroll.custom"]);
+    // pageowner is SUPPORTED since G1 closed (Cloud v2 exposes `ownerId`); the
+    // space logo stays unsupported because it is an image (needs spec 005).
+    expect(supported).toEqual([
+      "$scroll.pageowner.fullName",
+      "$scroll.space.name",
+      "$scroll.title",
+    ]);
+    // $adhocState was dropped from the curated never-list ("bauen wir aus") but
+    // is still DETECTED, so it lands on the generic unrecognized→unsupported
+    // path and gets blanked. Were it dropped from detection instead, the raw
+    // token would survive into the exported document.
+    expect(unsupported).toEqual(["$adhocState", "$scroll.spacelogo"]);
+    expect(never).toEqual(["$scroll.custom"]);
     expect(scan.hasContentPlaceholder).toBe(true);
     // $scroll.content is not listed as a placeholder hit.
     expect([...supported, ...unsupported, ...never]).not.toContain("$scroll.content");

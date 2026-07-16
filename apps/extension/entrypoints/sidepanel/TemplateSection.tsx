@@ -42,8 +42,37 @@ interface CurrentTemplate {
   bytes: ArrayBuffer;
 }
 
-function toStored(name: string, bytes: ArrayBuffer, scan: ScanResult): StoredTemplate {
-  return { id: "current", name, bytes, uploadedAt: Date.now(), scan };
+/** The scan is not persisted — it is derived from `bytes` on read (see the store). */
+function toStored(name: string, bytes: ArrayBuffer): StoredTemplate {
+  return { id: "current", name, bytes, uploadedAt: Date.now() };
+}
+
+/**
+ * Load the persisted template and **re-derive** its scan from the stored bytes.
+ *
+ * Pure core of the mount effect (both collaborators injected) so the staleness
+ * rule is testable without a DOM: the scan the panel shows must come from the
+ * CURRENT classification, never from a copy frozen at upload time. It once did
+ * — a template uploaded before gap G1 closed kept promising
+ * "$scroll.pageowner.fullName will be empty" while the export, which always
+ * re-scans, resolved it. Panel and export must agree.
+ *
+ * @returns the current template, or `null` when nothing is stored.
+ */
+export async function loadCurrentTemplate(
+  get: () => Promise<StoredTemplate | undefined>,
+  loadScanner: () => Promise<(bytes: Uint8Array) => ScanResult>
+): Promise<CurrentTemplate | null> {
+  const stored = await get();
+  // Nothing stored → the heavy scan chunk is never fetched (lazy-load contract).
+  if (!stored) return null;
+  const scan = await loadScanner();
+  return {
+    name: stored.name,
+    uploadedAt: stored.uploadedAt,
+    scan: scan(new Uint8Array(stored.bytes)),
+    bytes: stored.bytes,
+  };
 }
 
 /**
@@ -91,11 +120,25 @@ export function TemplateSection({
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Re-read the persisted template on mount (survives panel reload).
+  //
+  // The scan is RE-DERIVED from the stored bytes rather than read back from the
+  // record. Persisting it made it drift: a template uploaded before gap G1 closed
+  // kept reporting "$scroll.pageowner.fullName will be empty" forever, while the
+  // export — which always re-scans — resolved it. The panel is the promise and
+  // the export is the delivery, so they must be computed the same way.
+  //
+  // The scan chunk is loaded only once a template actually exists, so a user who
+  // never uploaded one still pays nothing (the lazy-load contract).
   useEffect(() => {
     let cancelled = false;
-    void getTemplate().then((stored) => {
-      if (cancelled || !stored) return;
-      setTemplate({ name: stored.name, uploadedAt: stored.uploadedAt, scan: stored.scan, bytes: stored.bytes });
+    void (async () => {
+      const current = await loadCurrentTemplate(getTemplate, async () => (await loadScan()).scanTemplate);
+      if (cancelled || !current) return;
+      setTemplate(current);
+    })().catch(() => {
+      // A stored template that no longer scans is unusable; surface it rather
+      // than rendering a half-loaded section.
+      if (!cancelled) setError("The stored template could not be read. Please upload it again.");
     });
     return () => {
       cancelled = true;
@@ -139,7 +182,7 @@ export function TemplateSection({
         );
         return;
       }
-      await putTemplate(toStored(file.name, buf, scan));
+      await putTemplate(toStored(file.name, buf));
       setTemplate({ name: file.name, uploadedAt: Date.now(), scan, bytes: buf });
     } catch (err) {
       setError(`Could not read the template: ${(err as Error).message}`);
@@ -171,6 +214,8 @@ export function TemplateSection({
           ? {
               getSpace: (key) => client.getSpace(key),
               getCurrentUser: () => client.getCurrentUser(),
+              getPageOwner: (id) => client.getPageOwner(id),
+              getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
             }
           : {},
       });
@@ -255,7 +300,7 @@ export function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
         <p style={{ color: "#7a869a", margin: 0 }}>No Scroll placeholders detected.</p>
       )}
       <ScanGroup icon="✓" color="#006644" label="Supported" hits={supported} />
-      <ScanGroup icon="⚠" color="#974f0c" label="Will be empty" hits={unsupported} note="will be empty" />
+      <ScanGroup icon="⚠" color="#974f0c" label="Will be empty" hits={unsupported} />
       <ScanGroup icon="✗" color="#bf2600" label="Not supported" hits={never} />
       <ContentInsertionLine hasContentPlaceholder={hasContentPlaceholder} />
     </div>
@@ -295,18 +340,23 @@ function ContentInsertionLine({
   );
 }
 
+/**
+ * One scan bucket. The group header states the OUTCOME ("Will be empty (4)");
+ * each row states its own REASON, which `classifyPlaceholder` already puts on
+ * the hit. Rendering a single static note per bucket instead would flatten
+ * genuinely different causes — a Cloud-impossible DC username, a gap waiting on
+ * the image module, and an unmodelled field all look alike then.
+ */
 function ScanGroup({
   icon,
   color,
   label,
   hits,
-  note,
 }: {
   icon: string;
   color: string;
   label: string;
   hits: ScanResult["supported"];
-  note?: string;
 }): React.JSX.Element | null {
   if (hits.length === 0) return null;
   return (
@@ -319,7 +369,7 @@ function ScanGroup({
           <li key={h.base}>
             <code>{h.base}</code>
             {h.count > 1 ? ` ×${h.count}` : ""}
-            {note ? <span style={{ color: "#7a869a" }}> — {note}</span> : ""}
+            {h.reason ? <span style={{ color: "#7a869a" }}> — {h.reason}</span> : ""}
           </li>
         ))}
       </ul>

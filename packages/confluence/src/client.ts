@@ -2733,6 +2733,56 @@ export class ConfluenceClient {
   }
 
   /**
+   * Get a space homepage's storage body in one call.
+   *
+   * Exists for the Page Properties space-homepage fallback (spec 001 gap
+   * **G4**): Scroll's `$scroll.pageproperty.(key,true)` falls back to the
+   * space homepage's Page Properties macro when the page itself lacks the key.
+   * `expand=homepage.body.storage` returns the homepage inline, so this stays a
+   * single round-trip rather than a space lookup followed by a page fetch.
+   *
+   * @param spaceKey - Space key.
+   * @returns The homepage's storage XML, or `null` when the space has no
+   *   homepage or it carries no storage body.
+   */
+  async getSpaceHomepageStorage(spaceKey: string): Promise<string | null> {
+    const data = (await this.request(`/space/${spaceKey}`, {
+      query: { expand: "homepage.body.storage" },
+    })) as { homepage?: { body?: { storage?: { value?: string } } } };
+    return data?.homepage?.body?.storage?.value ?? null;
+  }
+
+  /**
+   * Get a page's **owner** (Confluence Cloud) — deliberately distinct from its
+   * creator: ownership can be transferred, so `ownerId !== authorId` in general.
+   *
+   * Only the **v2** API exposes this (`ownerId` on `GET /api/v2/pages/{id}`);
+   * v1's `history` carries `createdBy` but no owner, which is why this needs its
+   * own call rather than riding along on {@link getPageDetails}. Callers should
+   * therefore invoke it lazily, only when something actually asks for the owner
+   * (spec 001 mapping gap **G1**).
+   *
+   * @param pageId - Page id.
+   * @returns The owner with a resolved display name, or `null` when the page has
+   *   no owner or the account cannot be looked up (caller renders empty).
+   */
+  async getPageOwner(pageId: string): Promise<ConfluenceUser | null> {
+    const data = (await this.requestV2(`/pages/${pageId}`, {})) as {
+      ownerId?: string | null;
+    };
+    const ownerId = data?.ownerId;
+    if (!ownerId) return null;
+
+    const user = await this.getUser(ownerId);
+    if (!user?.displayName) return null;
+    return {
+      accountId: ownerId,
+      displayName: user.displayName,
+      email: user.email ?? undefined,
+    };
+  }
+
+  /**
    * Get multiple users by account IDs.
    * Uses individual requests since Confluence doesn't have a bulk user endpoint.
    *

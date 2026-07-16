@@ -128,17 +128,17 @@ export interface StorageToBlocksResult {
 // Minimal isomorphic XML parser
 // ---------------------------------------------------------------------------
 
-interface XmlText {
+export interface XmlText {
   type: "text";
   text: string;
 }
-interface XmlElement {
+export interface XmlElement {
   type: "element";
   name: string;
   attrs: Record<string, string>;
   children: XmlNode[];
 }
-type XmlNode = XmlText | XmlElement;
+export type XmlNode = XmlText | XmlElement;
 
 /**
  * Decode the XML/HTML entities that appear in Confluence storage.
@@ -162,8 +162,14 @@ function decodeEntities(text: string): string {
  * Handles elements (namespaced names like `ac:structured-macro`), attributes,
  * self-closing tags, CDATA sections, comments, XML declarations/DOCTYPE, and
  * entity decoding. Tolerant of unclosed tags (auto-closes at end of input).
+ *
+ * Exported because a real tree is the only safe way to read nestable storage
+ * constructs: a regex that hunts for the next `</ac:structured-macro>` stops at
+ * the close tag of a *nested* macro and silently mis-slices the outer one — the
+ * same class of bug that the non-greedy `<w:p>` regex caused in the DOCX text-box
+ * finding. Reuse this instead of writing another matcher.
  */
-function parseXml(input: string): XmlNode[] {
+export function parseXml(input: string): XmlNode[] {
   const root: XmlElement = { type: "element", name: "#root", attrs: {}, children: [] };
   const stack: XmlElement[] = [root];
   let i = 0;

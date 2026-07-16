@@ -16,3 +16,4 @@
 export * from "./client.js";
 export * from "./markdown.js";
 export * from "./export-blocks.js";
+export * from "./page-properties.js";

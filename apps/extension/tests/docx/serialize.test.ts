@@ -350,6 +350,28 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("brainfuck");
   });
 
+  // Spec 004 Task 6 / F2 descope pin: mermaid rendering needs the image module (spec 005),
+  // so a mermaid block must degrade to a readable code block — PLAN §2.3: "never a broken
+  // image". This fails the moment a half-wired diagram path emits a drawing.
+  it("renders a mermaid block as a code block, never a broken image (F2 deferred)", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    // Readable code block carrying the diagram source...
+    expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
+    expect(xml).toContain("graph TD;");
+    expect(xml).toContain("A--&gt;B;");
+    // ...and no image plumbing whatsoever (no dangling relationship).
+    expect(xml).not.toContain("<w:drawing");
+    expect(xml).not.toContain("blip");
+    expect(xml).not.toContain("r:embed");
+    // The user is told why it stayed source (mermaid is not a curated grammar).
+    const note = notes.find((n) => n.code === "code-highlight-skipped");
+    expect(note).toBeDefined();
+    expect(note!.message).toContain("mermaid");
+  });
+
   it("renders nested lists with markers", async () => {
     const blocks: ExportBlock[] = [
       {
