@@ -4,7 +4,9 @@
  * Scroll date placeholders accept a Java `SimpleDateFormat` argument, e.g.
  * `$scroll.exportdate.("dd.MM.yyyy")`. We implement the common numeric-pattern
  * tokens only (PLAN §2.2): `yyyy`, `MM`, `dd`, `HH`, `mm` (plus `yy`, `M`, `d`,
- * `H`, `m` single/short forms and literal quoting). Any token we don't recognize
+ * `H`, `m` single/short forms and literal quoting), and the quarter tokens
+ * `Q`/`QQ`/`QQQ`/`QQQQ` with `java.time.DateTimeFormatter` semantics
+ * (`3`, `03`, `Q3`, `3rd quarter`). Any token we don't recognize
  * makes the whole format fall back to ISO (`toISOString`) and records a report
  * note so the export surface stays honest (PLAN §2.2: "unknown format tokens
  * fall back to ISO + report line").
@@ -15,7 +17,26 @@
  */
 
 /** Tokens we support, longest-first so `yyyy` matches before `yy`. */
-const SUPPORTED_TOKENS = ["yyyy", "yy", "MM", "M", "dd", "d", "HH", "H", "mm", "m", "ss", "s"];
+const SUPPORTED_TOKENS = [
+  "yyyy",
+  "yy",
+  "MM",
+  "M",
+  "dd",
+  "d",
+  "HH",
+  "H",
+  "mm",
+  "m",
+  "ss",
+  "s",
+  "QQQQ",
+  "QQQ",
+  "QQ",
+  "Q",
+];
+
+const QUARTER_ORDINALS = ["1st", "2nd", "3rd", "4th"];
 
 export interface DateFormatResult {
   text: string;
@@ -35,6 +56,7 @@ function pad2(n: number): string {
  * (`'...'`) is emitted verbatim; `''` is a literal apostrophe.
  */
 export function formatSimpleDate(date: Date, pattern: string): DateFormatResult {
+  const quarter = Math.floor(date.getMonth() / 3) + 1;
   const values: Record<string, string> = {
     yyyy: String(date.getFullYear()),
     yy: pad2(date.getFullYear() % 100),
@@ -48,6 +70,10 @@ export function formatSimpleDate(date: Date, pattern: string): DateFormatResult 
     m: String(date.getMinutes()),
     ss: pad2(date.getSeconds()),
     s: String(date.getSeconds()),
+    Q: String(quarter),
+    QQ: pad2(quarter),
+    QQQ: `Q${quarter}`,
+    QQQQ: `${QUARTER_ORDINALS[quarter - 1]} quarter`,
   };
 
   let out = "";
