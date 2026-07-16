@@ -1,6 +1,6 @@
 # DOCX Export (Headline) — Customer Word Template + Scroll Placeholder Compatibility
 
-Status: **In progress** (2026-07-16 — Task 1 spike done + engine decided, Task 2 done; Tasks 3–5 implemented + ACs verified 2026-07-14, Task 7 user-E2E next. F1 ✅ docxtemplater free; images deferred to a follow-up task ✅.)
+Status: **In progress — Task 7 (user E2E) is the only open gate** (2026-07-16). Tasks 1–5 implemented and merged to `main` in `40953db` (bundled into PR #30, whose title names only specs 002/003 — the DOCX engine lives in `apps/extension/utils/docx/`). Task 6 closed as **descoped with the fallback pinned** (see F2). Repo gates green on 2026-07-16: 1507 tests, typecheck, `check:browser` (5 isomorphic entrypoints), `check:extension-output`. Decisions: F1 ✅ docxtemplater free · F3 ✅ images deferred → spec 005 · F2 ⏸ mermaid deferred → after 005, awaiting ratification.
 
 Spec ID: `004-docx-export`
 Depends on: `003-page-detection-read-path` · `001-browser-ready-core` Task 8 (`specs/001-browser-ready-core/scroll-placeholder-mapping.md` — the normative placeholder table)
@@ -215,10 +215,10 @@ trust surface and 006's measurement hook.
 - [x] Export triggers a browser download `"<page-title>.docx"`; duration measured and shown in report — `TemplateSection.tsx` `download()` + `ReportView`; `export.ts` `toDownloadFilename` + `durationMs`; `export.test.ts` asserts sanitized filename
 - [x] Full-pipeline test: fixture storage + fixture template → output docx that unzips, contains no `$scroll.` literals, has expected style refs, and (docxtemplater) throws no template error on the fixture template — `tests/docx/export.test.ts`
 
-### Task 6 — Stretch: mermaid diagrams
+### Task 6 — Stretch: mermaid diagrams **[descoped — see F2]**
 
-- [ ] ```mermaid blocks → beautiful-mermaid SVG → svgBlip + PNG@2x fallback embedded; unsupported diagram types fall back to code block + report line
-- [ ] Skipped cleanly if descoped (mermaid renders as code block — existing behavior, test pins it)
+- [ ] ~~```mermaid blocks → beautiful-mermaid SVG → svgBlip + PNG@2x fallback embedded~~ — **descoped**: SVG embedding requires the OOXML image module, which is spec `005-docx-image-module`. Revisit as a 005 follow-up, not in 004.
+- [x] Skipped cleanly if descoped (mermaid renders as code block — existing behavior, test pins it) — mermaid is deliberately absent from `highlight.ts`'s curated `LANG_LOADERS`, so it degrades via the uncurated-language path to an uncolored `AtlcliCode` block + a `code-highlight-skipped` report note. Pinned at both levels: `packages/confluence/src/export-blocks.test.ts` (a `language=mermaid` code macro stays a `codeBlock` carrying its source) and `apps/extension/tests/docx/serialize.test.ts` (the block renders as a code block with **no** `<w:drawing>`/`blip`/`r:embed` — the PLAN §2.3 "never a broken image" invariant; the test fails the moment a half-wired diagram path emits a drawing).
 
 ### Task 7 — Manual E2E **[E2E: user]**
 
@@ -229,6 +229,29 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 - [ ] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded)
 - [ ] A template using an unsupported placeholder exports with empty value + report warning
 - [ ] Duration for the ~2,000-word page recorded (input to 006)
+
+**Status (2026-07-16): a finding-generating run happened; a confirming run has not.**
+The 2026-07-14 live session against the real Mayflower letterhead produced the six
+`Known real-template case` entries in the Decisions log — text-box/drawing-adjacent
+placeholders, SmartArt/chart/field shapes, empty TOC on a custom-heading template,
+heading promotion, undecoded HTML entities, and the content-insertion display gap. Every
+one was fixed **and** pinned with a regression test, and all repo gates are green
+(1507 tests, typecheck, `check:browser`, `check:extension-output` — verified 2026-07-16).
+
+But those fixes were verified *by test*, not by reopening the result in Word, and all of
+them landed in the same squash (`40953db`) as the run that found them. Task 7's acceptance
+instrument is explicitly "open in Word and look", so the boxes stay unchecked until one
+confirming pass runs end-to-end on the **post-fix** build. That pass is small — it is
+re-confirmation, not exploration:
+
+1. The six fixed shapes render correctly in Word on the real template (they are the
+   highest-risk items precisely because they were broken once).
+2. Items 3 and 4 above have **no live record at all** — callout/table/code visual
+   correctness and the unsupported-placeholder warning path were never exercised against
+   real Word, only against OOXML landmark assertions.
+3. Item 5 (duration) is **unrecorded**: `durationMs` is measured (`export.ts:200`) and
+   shown in the report (`TemplateSection.tsx:361`), but no number for a ~2,000-word page
+   has been captured — spec 008 needs that figure as its baseline.
 
 ---
 
@@ -242,7 +265,7 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 
 ## 5. Definition of done
 
-- Tasks 1–5 + 7 checked (6 = mermaid, and image embedding, explicitly deferred as follow-up tasks with the skip behavior pinned).
+- Tasks 1–5 ✅ + Task 6 ✅ (descoped, fallback pinned) + Task 7 ⬜ **open** — mermaid (F2) and image embedding (F3) are explicitly deferred as follow-up tasks with the skip behavior pinned by test.
 - `engine-decision.md` committed; engine + image decisions made by Björn.
 - E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1).
 - Export report shows no silent failures; unsupported placeholders + skipped images surfaced.
@@ -268,4 +291,4 @@ Joint session (space `DOCSY`; create a dedicated test page with the full feature
 - **Known real-template case — named HTML entities survive undecoded into the DOCX** (live E2E, 2026-07-14): exported Word content showed literal `drei &uuml;berlappende` instead of `drei überlappende`. Confluence storage is XHTML and carries the full HTML5 named-entity set (`&uuml;`, `&auml;`, `&ouml;`, `&szlig;`, `&eacute;`, `&mdash;`, `&hellip;`, `&copy;`, …), but the export-block walker's `decodeEntities` only knew a dozen hand-listed names, so every other named entity passed through verbatim into the `<w:t>` runs (the same gap hit attribute values — image alt / link title — decoded via the same helper). **Fix:** added `entities` (npm, BSD-2-Clause, isomorphic — the decoder turndown/markdown-it already use) as a direct dependency of `@atlcli/confluence` and replaced the hand-maintained `NAMED_ENTITIES` table + regex body with `decodeHTML` from `entities`; `decodeEntities(text)` keeps its name/signature so both call sites (text at `pushText`, attributes at `parseAttributes`) resolve the full HTML5 named set + decimal/hex charrefs. Stays isomorphic — `check:browser` still passes clean (no `node:`/`bun:` leaks; export-blocks.ts is re-exported from `index.browser.ts`). Behavior note: `&nbsp;` decodes to a real non-breaking space (U+00A0) — this was already the old table's value (`nbsp: " "`), so no downstream change, and it is the correct char for Word. The markdown path (`storageToMarkdown`) was NOT affected — markdown-it/turndown already decode named entities (verified: `&uuml;` → `ü`). Impl: `packages/confluence/src/export-blocks.ts` (`decodeEntities` → `decodeHTML`), `packages/confluence/package.json`; regression tests in `packages/confluence/src/export-blocks.test.ts` (full named-set: umlauts/eszett/mdash/hellip/copy + decimal `&#252;` + hex `&#xFC;` + `&amp;&lt;&gt;`, asserting zero surviving `&…;` literals; attribute-value decode via image alt) and `apps/extension/tests/docx/serialize.test.ts` (storage→blocks→`serializeInline` round-trip yields real UTF-8 in `<w:t>`, no entity literals).
 - **Display finding — content insertion point not surfaced** (live E2E, 2026-07-14): the scan panel listed only fillable placeholders (`$scroll.title`, …) and never showed `$scroll.content`, which is intentionally excluded from the placeholder list (it is the body anchor, not a fillable value) — a user read this as the content anchor being missing. **Fix (display only):** `ScanView` now renders a content-insertion line from the `hasContentPlaceholder` flag the `ScanResult` already carries — `Content insertion point: ✓ found ($scroll.content)` when present, else a note that the page body will be appended before the final section break (matching `export.ts`'s `no-content-placeholder` behavior). The placeholder-engine classification is unchanged (`$scroll.content` stays out of the supported/unsupported/never buckets). Impl: `apps/extension/entrypoints/sidepanel/TemplateSection.tsx` (`ScanView` + `ContentInsertionLine`); regression test `tests/docx/scan-view.test.tsx` (found + absent cases via react-dom/server).
 - **F3 — image embedding**: ✅ (Björn, 2026-07-16) **deferred to a follow-up task**. v1 export omits images with a report line; the ~1-day self-built OOXML image module (prototyped in `specs/005-docx-image-module/image-module-prototype.ts`) is a separate task after the export flow is proven.
-- **F2 — mermaid in scope**: ❓ open — stretch; decide at Task 6 based on remaining budget. (Likely deferred alongside images, since mermaid embedding also needs the image module.)
+- **F2 — mermaid in scope**: ⏸ **deferred to after spec 005** (proposed 2026-07-16 — awaiting Björn's ratification, as F1/F3 were his calls). Not a budget call in the end but a dependency one: mermaid renders to SVG, and embedding SVG needs svgBlip + PNG@2x — i.e. the OOXML image module that F3 already deferred to `005-docx-image-module`. Doing mermaid in 004 would mean building the image module inside 004, which is exactly what F3 decided against. **Descope behavior is pinned, not merely absent** (Task 6): a mermaid block degrades to an uncolored `AtlcliCode` code block carrying its diagram source + a `code-highlight-skipped` report note, with no `<w:drawing>`/`blip`/`r:embed` emitted — the reader sees readable diagram source, never a broken image. Natural pickup point: a 005 follow-up, once media parts/relationships/EMU sizing exist and mermaid is "SVG → the same embed path".

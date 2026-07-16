@@ -251,6 +251,17 @@ describe("storageToBlocks — code blocks", () => {
     );
     expect(out).toEqual([{ type: "codeBlock", code: "raw" }]);
   });
+
+  // Spec 004 Task 6 / F2: mermaid rendering is deferred (it needs the image module,
+  // spec 005). A mermaid diagram must stay an ordinary code block carrying its source
+  // — the descope path the PLAN pins ("never a broken image").
+  test("mermaid stays an ordinary code block while diagram rendering is deferred", () => {
+    const out = blocks(
+      '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[graph TD;\n  A-->B;]]></ac:plain-text-body></ac:structured-macro>"
+    );
+    expect(out).toEqual([{ type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" }]);
+  });
 });
 
 describe("storageToBlocks — callouts", () => {
