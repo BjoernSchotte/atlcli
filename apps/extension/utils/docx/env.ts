@@ -28,13 +28,19 @@ export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
 /**
  * {@link AssetFetcher} over the page's own session: attachment downloads are
  * plain GETs that succeed because the browser attaches the Atlassian cookies
- * (`credentials: "include"`). Unused in v1 (image embedding is deferred to
- * spec 005) but wired now so the seam is real, not aspirational.
+ * (`credentials: "include"`). Drives image embedding (spec 005).
+ *
+ * The engine hands attachment refs as WIKI-BASE-RELATIVE download paths
+ * (`/download/attachments/…`); the panel runs on the extension origin, so a
+ * relative fetch would resolve against `chrome-extension://` — `baseUrl`
+ * (the site's Confluence root, e.g. `https://x.atlassian.net/wiki`) is
+ * prefixed to make them absolute. External image URLs pass through as-is.
  */
-export function sessionAssetFetcher(fetchFn: typeof fetch = fetch): AssetFetcher {
+export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fetch): AssetFetcher {
   return {
     async fetch(ref: AssetRef): Promise<Uint8Array> {
-      const res = await fetchFn(ref.url, { credentials: "include" });
+      const url = /^https?:\/\//i.test(ref.url) ? ref.url : `${baseUrl ?? ""}${ref.url}`;
+      const res = await fetchFn(url, { credentials: "include" });
       if (!res.ok) {
         throw new Error(`Asset fetch failed (${res.status}) for ${ref.filename ?? ref.url}`);
       }

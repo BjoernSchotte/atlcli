@@ -36,10 +36,11 @@ export function fileOutputSink(path: string): OutputSink {
 }
 
 /**
- * An {@link AssetFetcher} that fails on first use. v1 never fetches assets
- * (image embedding is deferred to spec 005), so hosts without an asset path
- * can inject this instead of inventing a fake — if the engine ever calls it,
- * that is a real wiring gap and should surface loudly.
+ * An {@link AssetFetcher} that fails on first use. Since spec 005 landed,
+ * hosts without an asset path should simply OMIT `assets` from their
+ * {@link ExportEnv} (images then degrade to `image-skipped` report notes);
+ * inject this only where an asset fetch indicates a real wiring gap that
+ * should surface loudly (as an `image-embed-failed` warning note).
  */
 export function unsupportedAssetFetcher(reason = "asset fetching is not wired for this host"): AssetFetcher {
   return {

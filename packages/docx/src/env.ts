@@ -18,9 +18,10 @@ export interface TemplateSource {
 }
 
 /**
- * A reference to a page asset (attachment) the engine may need to embed.
- * v1 defers image embedding, but the seam exists so the OOXML image-module
- * follow-up (spec 005) plugs in without changing the host contract.
+ * A reference to a page asset (attachment) the engine needs to embed.
+ * Attachment refs carry a wiki-base-relative `url` (the same shape as the
+ * Confluence API's own `downloadUrl`); external images carry their absolute
+ * URL. The OOXML image module (spec 005) drives this seam.
  */
 export interface AssetRef {
   /** Download URL of the asset (absolute, or site-relative for session hosts). */
@@ -44,7 +45,11 @@ export interface OutputSink {
 /** Everything a host must supply to run an export. */
 export interface ExportEnv {
   templates: TemplateSource;
-  assets: AssetFetcher;
+  /**
+   * How image bytes are fetched (spec 005). A host with no asset path simply
+   * omits it — images then degrade to report notes instead of embedding.
+   */
+  assets?: AssetFetcher;
   output: OutputSink;
 }
 
@@ -67,7 +72,9 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
 export async function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport> {
   const { templateId, ...rest } = input;
   const templateBytes = await env.templates.getBytes(templateId ?? "current");
-  const { bytes, report } = await exportDocx({ ...rest, templateBytes });
+  // The env's asset fetcher drives image embedding (spec 005) unless the
+  // input overrides it; `embedImages: false` disables embedding entirely.
+  const { bytes, report } = await exportDocx({ ...rest, templateBytes, assets: rest.assets ?? env.assets });
   await env.output.emit(report.filename, bytes);
   return report;
 }

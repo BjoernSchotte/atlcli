@@ -39,7 +39,8 @@ describe("Node consumer (spec 006 Task 5)", () => {
       },
       {
         templates: fileTemplateSource(templatePath),
-        assets: unsupportedAssetFetcher(),
+        // No asset fetcher: images degrade to `image-skipped` notes — the
+        // pre-005 behavior the golden capture pins.
         output: fileOutputSink(outPath),
       }
     );

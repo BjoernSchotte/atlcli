@@ -15,6 +15,7 @@ inject.
 
 - [Architecture](#architecture)
 - [The three injected interfaces](#the-three-injected-interfaces)
+- [Image embedding](#image-embedding)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
 - [Guarantees and gates](#guarantees-and-gates)
 - [Related topics](#related-topics)
@@ -51,11 +52,36 @@ interface AssetFetcher {
 interface OutputSink {
   emit(name: string, bytes: Uint8Array): Promise<void>; // extension: download · CLI: writeFile
 }
-interface ExportEnv { templates: TemplateSource; assets: AssetFetcher; output: OutputSink; }
+interface ExportEnv { templates: TemplateSource; assets?: AssetFetcher; output: OutputSink; }
 ```
 
-`AssetFetcher` is reserved for image embedding (spec 005) — v1 never calls it, and hosts without
-an asset path can inject `unsupportedAssetFetcher()`.
+`AssetFetcher` drives image embedding (spec 005). It is optional: a host that omits it gets the
+pre-005 behavior — every image degrades to an `image-skipped` report note instead of embedding.
+
+## Image embedding
+
+Images embed through a self-built OOXML image module (`packages/docx/src/image.ts` — the
+docxtemplater free tier has no image support): per image the engine writes a
+`word/media/…` part, a `document.xml.rels` relationship, a `[Content_Types].xml` default, and an
+inline `<w:drawing>` with unique element ids and alt text. Details that matter to hosts:
+
+- **Formats:** PNG, JPEG, GIF (dimensions decoded from the header bytes, no image library).
+  SVG is detected but deferred — it degrades to a report note.
+- **Sizing:** page-set width/height (`ac:width`) wins over the intrinsic size; everything is
+  capped to the content width (600 px at 96 dpi) preserving aspect ratio.
+- **Failure is never fatal:** a failed fetch/decode/oversized image produces an
+  `image-embed-failed` warning note and no OOXML — never a dangling relationship.
+- **`AssetRef` shape:** attachment refs carry a wiki-base-relative `url`
+  (`/download/attachments/{pageId}/{filename}`) plus `pageId`/`filename`; external images carry
+  their absolute URL. A session host (the extension) prefixes its Confluence root and rides the
+  ambient cookies — note Cloud 302s these downloads to `api.media.atlassian.com`, so an MV3 host
+  needs that origin in its `host_permissions` (the media CDN's wildcard CORS header rejects
+  credentialed fetches otherwise). A **token host must not** fetch the cookie-only `/download/attachments/…`
+  path (it answers 401 to API tokens) — resolve `pageId`+`filename` through the REST attachment
+  listing and fetch the API's own `downloadUrl` instead, as the CLI's fetcher does
+  (`tokenAssetFetcher` in `apps/cli/src/commands/export.ts`).
+- Byte-identical images share one media part; the report counts `embeddedImages` and
+  `skippedImages`.
 
 ## Plugging in a new surface
 
@@ -63,7 +89,7 @@ A new consumer (MCP server, Tauri Studio, Org-Server) implements the three inter
 `runExport`. Minimal Node example:
 
 ```ts
-import { runExport, fileTemplateSource, fileOutputSink, unsupportedAssetFetcher } from "@atlcli/docx";
+import { runExport, fileTemplateSource, fileOutputSink } from "@atlcli/docx";
 
 const report = await runExport(
   {
@@ -78,7 +104,8 @@ const report = await runExport(
   },
   {
     templates: fileTemplateSource("./corporate.docx"),
-    assets: unsupportedAssetFetcher(),
+    // assets: { fetch } — supply an AssetFetcher to embed images (see above);
+    // omitted, images become report notes instead.
     output: fileOutputSink("./out.docx"),
   }
 );

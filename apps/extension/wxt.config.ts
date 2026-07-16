@@ -27,7 +27,11 @@ export default defineConfig({
     // MV3 side panel + offscreen APIs baseline (PLAN §6 risk 1).
     minimum_chrome_version: "116",
     permissions: ["sidePanel", "offscreen", "storage", "tabs"],
-    host_permissions: ["*://*.atlassian.net/*"],
+    // api.media.atlassian.com: Cloud 302s attachment downloads to the media
+    // CDN, which answers `Access-Control-Allow-Origin: *` — incompatible with
+    // the session fetch's `credentials: "include"` unless the host permission
+    // exempts that hop from CORS too (spec 005 image embedding, E2E finding).
+    host_permissions: ["*://*.atlassian.net/*", "https://api.media.atlassian.com/*"],
     // WASM in extension pages requires 'wasm-unsafe-eval' (Chrome >= 103).
     // Deliberately NOT 'unsafe-eval' — asserted by the Task 2 test.
     content_security_policy: {

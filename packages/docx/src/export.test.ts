@@ -13,6 +13,7 @@ import {
   fldSimpleResult,
   headingStyle,
   para,
+  pngFixtureBytes,
   readPart,
   runSplitPara,
   smartArtDataPart,
@@ -492,5 +493,178 @@ describe("exportDocx — full pipeline", () => {
     });
     expect(spaceCalls).toBe(0);
     expect(userCalls).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Image embedding through the full pipeline (spec 005)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — image embedding (spec 005)", () => {
+  const imageTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  /** An AssetFetcher recording every ref, serving PNG fixture bytes. */
+  function recordingFetcher(bytes = pngFixtureBytes(200, 100)) {
+    const refs: { url: string; pageId?: string; filename?: string }[] = [];
+    return {
+      refs,
+      fetcher: {
+        async fetch(ref: { url: string; pageId?: string; filename?: string }) {
+          refs.push(ref);
+          return bytes;
+        },
+      },
+    };
+  }
+
+  it("embeds an attachment image: drawing + media + rel + content type, report counts it", async () => {
+    const { refs, fetcher } = recordingFetcher();
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<p>before</p><ac:image ac:alt="the diagram"><ri:attachment ri:filename="diagram.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    // The fetch used the canonical wiki-base-relative download URL.
+    expect(refs).toEqual([
+      { url: "/download/attachments/123/diagram.png", pageId: "123", filename: "diagram.png" },
+    ]);
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("<w:drawing>");
+    expect(doc).toContain('descr="the diagram"');
+    expect(doc).toContain(`<wp:extent cx="${200 * 9525}" cy="${100 * 9525}"/>`);
+    const relId = doc.match(/r:embed="(rId\d+)"/)?.[1];
+    expect(relId).toBeDefined();
+
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).toContain(`Id="${relId}"`);
+    expect(rels).toContain('Target="media/atlcli-image1.png"');
+    expect(readPart(bytes, "[Content_Types].xml")).toContain('Extension="png"');
+    // The media part survived the docxtemplater render byte-identically.
+    const zip = new PizZip(bytes);
+    expect([...zip.file("word/media/atlcli-image1.png")!.asUint8Array()]).toEqual([
+      ...pngFixtureBytes(200, 100),
+    ]);
+
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(0);
+    expect(report.notes.some((n) => n.code.startsWith("image"))).toBe(false);
+  });
+
+  it("passes external image URLs through to the fetcher unchanged", async () => {
+    const { refs, fetcher } = recordingFetcher();
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image><ri:url ri:value="https://cdn.example.com/pic.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: fetcher,
+    });
+    expect(refs[0]?.url).toBe("https://cdn.example.com/pic.png");
+    expect(report.embeddedImages).toBe(1);
+  });
+
+  it("degrades a failed fetch to a warning note with NO dangling relationship (F3 invariant)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<p>t</p><ac:image><ri:attachment ri:filename="broken.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        async fetch() {
+          throw new Error("boom (401)");
+        },
+      },
+    });
+
+    const note = report.notes.find((n) => n.code === "image-embed-failed");
+    expect(note?.level).toBe("warning");
+    expect(note?.message).toContain("broken.png");
+    expect(note?.message).toContain("boom (401)");
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("<w:drawing");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).not.toContain("relationships/image");
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("degrades undecodable bytes (SVG) to a report line, export still succeeds", async () => {
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image><ri:attachment ri:filename="logo.svg"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: { fetch: async () => svg },
+    });
+    const note = report.notes.find((n) => n.code === "image-embed-failed");
+    expect(note?.message).toContain("SVG");
+    expect(report.skippedImages).toBe(1);
+  });
+
+  it("embedImages: false skips embedding without touching the fetcher", async () => {
+    const { refs, fetcher } = recordingFetcher();
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image><ri:attachment ri:filename="diagram.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: fetcher,
+      embedImages: false,
+    });
+    expect(refs).toHaveLength(0);
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    expect(report.notes.some((n) => n.code === "image-skipped")).toBe(true);
+    expect(readPart(bytes, "word/document.xml")).not.toContain("<w:drawing");
+  });
+
+  it("embeds images inside table cells and honors ac:width scaling", async () => {
+    const { fetcher } = recordingFetcher(pngFixtureBytes(800, 400));
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage:
+          "<table><tbody><tr><td>" +
+          '<ac:image ac:width="250"><ri:attachment ri:filename="cell.png"/></ac:image>' +
+          "</td></tr></tbody></table>",
+      },
+      template,
+      deps,
+      assets: fetcher,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(report.embeddedImages).toBe(1);
+    // Inside the table cell, scaled to 250×125 px.
+    const cellStart = doc.indexOf("<w:tc>");
+    expect(doc.indexOf("<w:drawing>")).toBeGreaterThan(cellStart);
+    expect(doc).toContain(`<wp:extent cx="${250 * 9525}" cy="${125 * 9525}"/>`);
   });
 });

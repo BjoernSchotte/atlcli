@@ -51,7 +51,7 @@ atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 | Engine | Templates | Requirements | Feature scope |
 |--------|-----------|--------------|---------------|
 | `python` (default) | Jinja2 variables (`{{ title }}`, …) | Python 3.12+ with `atlcli-export` | Images, children, content-by-label |
-| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page; image embedding not yet available |
+| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page; embeds PNG/JPEG/GIF images (SVG not yet) |
 
 The `ts` engine is the isomorphic [`@atlcli/docx` export engine](/reference/docx-engine/) — the exact
 same code the atlcli browser extension uses for its "Export to Word" button, driven here with
@@ -63,7 +63,10 @@ atlcli wiki export 12345678 --template scroll-corporate.docx --output out.docx -
 ```
 
 The JSON result includes an export report: how many placeholders resolved, which are unsupported
-(rendered empty), and which images were skipped.
+(rendered empty), and how many images were embedded or skipped. Attachment and external images
+embed inline at their intrinsic size (or the page-set width), capped to the content width; an
+image that cannot be fetched or decoded becomes a warning note instead of failing the export.
+`--no-images` disables embedding for this engine too.
 
 ## Templates
 

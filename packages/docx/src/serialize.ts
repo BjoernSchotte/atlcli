@@ -6,9 +6,11 @@
  * code blocks are colored via lazily-loaded Shiki ({@link highlightCode}); every
  * other block builds synchronously.
  *
- * Image handling is **deferred (v1)**: an `image` block emits NO OOXML and adds
- * a report note ("image skipped — embedding not yet available"), so the output
- * never carries a dangling relationship (PLAN Task 5 / Decision F3).
+ * Image handling goes through the optional {@link SerializeContext.images}
+ * seam (spec 005): when a host wires an embedder, an `image` block becomes an
+ * inline `<w:drawing>`; when the seam is absent or an embed fails, the block
+ * emits NO OOXML and adds a report note instead — so the output never carries
+ * a dangling relationship (the spec-004 skip-path invariant).
  */
 import type {
   ExportBlock,
@@ -33,9 +35,27 @@ import {
   type RunStyle,
 } from "./ooxml.js";
 
+/** The `image` variant of {@link ExportBlock}. */
+export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
+
+/** Result of one image-embed attempt (spec 005). */
+export type ImageEmbedOutcome = { ok: true; xml: string } | { ok: false; reason: string };
+
+/**
+ * The serializer's image seam (spec 005): turns an `image` block into an
+ * inline-drawing fragment, or reports why it could not. The implementation
+ * (asset fetch + zip surgery) lives with the export orchestrator — the
+ * serializer stays free of IO and zip state.
+ */
+export interface ImageEmbedSeam {
+  embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+}
+
 export interface SerializeContext {
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
+  /** Image embedding seam; absent → images degrade to report notes. */
+  images?: ImageEmbedSeam;
 }
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
@@ -285,13 +305,26 @@ async function serializeBlock(
     case "divider":
       return dividerParagraph();
 
-    case "image":
+    case "image": {
+      if (!ctx.images) {
+        notes.push({
+          level: "info",
+          code: "image-skipped",
+          message: `Image ${describeImage(block)} skipped — image embedding is unavailable in this export.`,
+        });
+        return "";
+      }
+      const outcome = await ctx.images.embed(block);
+      if (outcome.ok) return outcome.xml;
+      // Failure branch: no OOXML, so no dangling relationship — the export
+      // still succeeds with a report line (spec 005 / 004-F3 invariant).
       notes.push({
-        level: "info",
-        code: "image-skipped",
-        message: `Image ${describeImage(block)} skipped — embedding not yet available.`,
+        level: "warning",
+        code: "image-embed-failed",
+        message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
       return "";
+    }
 
     case "unknown":
       return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));

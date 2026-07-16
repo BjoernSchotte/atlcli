@@ -339,3 +339,21 @@ export function readPart(bytes: Uint8Array, part: string): string {
   const zip = new PizZip(bytes);
   return zip.file(part)?.asText() ?? "";
 }
+
+/**
+ * A structurally valid PNG header (signature + IHDR) with the given pixel
+ * size — real bytes for the image-module decoder, no image library needed.
+ * `pad` appends zero bytes so two fixtures can share a size yet differ.
+ */
+export function pngFixtureBytes(width: number, height: number, pad = 0): Uint8Array {
+  const b = new Uint8Array(33 + pad);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(b.buffer);
+  view.setUint32(8, 13); // IHDR length
+  b.set([0x49, 0x48, 0x44, 0x52], 12); // "IHDR"
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  b[24] = 8; // bit depth
+  b[25] = 6; // color type RGBA
+  return b;
+}
