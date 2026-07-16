@@ -99,9 +99,16 @@ describe("resolveOne — every direct + derivable mapping row", () => {
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
 
+  it("exportdate with a quarter token formats without a note", () => {
+    const notes: import("@atlcli/confluence").ExportNote[] = [];
+    const out = resolveOne('$scroll.exportdate.("QQQ")', ctx, { space, currentUser, owner }, notes);
+    expect(out).toBe("Q3");
+    expect(notes.some((n) => n.code === "date-format-unknown")).toBe(false);
+  });
+
   it("exportdate with an unknown format token falls back to ISO + a note (#10)", () => {
     const notes: import("@atlcli/confluence").ExportNote[] = [];
-    const out = resolveOne('$scroll.exportdate.("yyyy-QQ")', ctx, { space, currentUser, owner }, notes);
+    const out = resolveOne('$scroll.exportdate.("yyyy-EEEE")', ctx, { space, currentUser, owner }, notes);
     expect(out).toBe("2026-07-14"); // ISO fallback for the export date
     expect(notes.some((n) => n.code === "date-format-unknown")).toBe(true);
   });

@@ -17,6 +17,35 @@ describe("formatSimpleDate (SimpleDateFormat subset)", () => {
     expect(formatSimpleDate(D, "dd''MM").text).toBe("14'07");
   });
 
+  it("formats quarter tokens (Q/QQ/QQQ/QQQQ)", () => {
+    // D is in July → Q3.
+    expect(formatSimpleDate(D, "Q").text).toBe("3");
+    expect(formatSimpleDate(D, "QQ").text).toBe("03");
+    expect(formatSimpleDate(D, "QQQ").text).toBe("Q3");
+    expect(formatSimpleDate(D, "QQQQ").text).toBe("3rd quarter");
+    expect(formatSimpleDate(D, "QQQ yyyy").text).toBe("Q3 2026");
+  });
+
+  it("covers all four quarters and their ordinals", () => {
+    const quarters: Array<[number, string, string]> = [
+      [0, "1", "1st quarter"], // January
+      [3, "2", "2nd quarter"], // April
+      [6, "3", "3rd quarter"], // July
+      [9, "4", "4th quarter"], // October
+    ];
+    for (const [month, q, full] of quarters) {
+      const d = new Date(2026, month, 15);
+      expect(formatSimpleDate(d, "Q").text).toBe(q);
+      expect(formatSimpleDate(d, "QQQQ").text).toBe(full);
+    }
+  });
+
+  it("still falls back to ISO on an over-long quarter run", () => {
+    const res = formatSimpleDate(D, "QQQQQ");
+    expect(res.unknownToken).toBe("QQQQQ");
+    expect(res.text).toBe("2026-07-14");
+  });
+
   it("falls back to ISO on an unknown token, reporting it", () => {
     const res = formatSimpleDate(D, "yyyy-MM-dd EEEE");
     expect(res.unknownToken).toBe("EEEE");
