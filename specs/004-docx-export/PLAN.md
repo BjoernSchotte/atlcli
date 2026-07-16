@@ -283,7 +283,25 @@ E2E-covered.
 - ✅ `engine-decision.md` committed; engine + image decisions made by Björn (F1, F3).
 - ✅ E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1); TOC populates after the field-update prompt.
 - ✅ Export report shows no silent failures; unsupported placeholders + skipped images surfaced (5 notes on the feature-zoo run: 2 uncurated code languages incl. mermaid, 3 skipped images).
-- ✅ Test resources cleaned up (test page `1118830593` deleted after the run).
+- ✅ Test resources: the run's page (`1118830593`) was deleted and verified gone (404). A fresh copy is then **kept on purpose** — see below.
+
+**Standing test fixture (Björn, 2026-07-16):** the feature-zoo page is re-created as
+`1117356071` in `DOCSY` and **deliberately not deleted**, deviating from the repo's
+"clean up test resources" rule so the DOCX export stays re-testable without rebuilding it
+each time (specs 005 image embedding, 005a mermaid, 007 PDF and 008's benchmark all need
+the same input). It is the exact §2.1 feature zoo: 1,823 words, 9 × H2 + 7 × H3 and **no
+H1** (the heading-promotion shape), 4 callouts, 4 code blocks (TypeScript coloured, mermaid,
+an uncurated language, one bare), 1 table, nested + ordered lists, 3 attachment image refs,
+3 status macros, and the full named-entity set (`&uuml; &ouml; &auml; &szlig; &eacute;
+&mdash; &hellip; &copy;`) that G-decoding relies on. Labels `e2e-test`, `docx-export`,
+`spec-004` exist so `$scroll.pagelabels` resolves to a non-empty value. The source lives in
+this spec dir as [`e2e-feature-zoo.md`](e2e-feature-zoo.md) — recreate with
+`atlcli wiki page create --space DOCSY --title "…" --body specs/004-docx-export/e2e-feature-zoo.md`,
+then re-add the three labels. Note the images must use the `./<name>.attachments/<file>`
+form: a bare `![alt](x.png)` converts to a plain `<img>`, which the export walker does not
+model as an image block, so it yields no skip line and silently under-tests the image path.
+Companion probe template: `Mayflower_E2E_Platzhalter-Pruefung.docx` (the real letterhead
+plus a final page carrying every placeholder + `$scroll.pageowner.fullName` in the footer).
 
 ## 6. Risks and open questions
 
