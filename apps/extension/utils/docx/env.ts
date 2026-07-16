@@ -92,6 +92,32 @@ export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fe
  * to the readable code-block fallback; a decode that never settles is cut off
  * by `decodeTimeoutMs` so one broken diagram can't freeze the whole export.
  */
+/**
+ * Sub-phase timing sums of every {@link canvasSvgRasterizer} call since the
+ * last {@link resetRasterizerStats} — the panel appends them to the export
+ * report so a slow rasterizer names its slow sub-step (decode vs draw vs
+ * encode) without devtools.
+ */
+export interface RasterizerStats {
+  calls: number;
+  decodeMs: number;
+  drawMs: number;
+  encodeMs: number;
+}
+
+const rasterizerStats: RasterizerStats = { calls: 0, decodeMs: 0, drawMs: 0, encodeMs: 0 };
+
+export function resetRasterizerStats(): void {
+  rasterizerStats.calls = 0;
+  rasterizerStats.decodeMs = 0;
+  rasterizerStats.drawMs = 0;
+  rasterizerStats.encodeMs = 0;
+}
+
+export function getRasterizerStats(): RasterizerStats {
+  return { ...rasterizerStats };
+}
+
 export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 10_000): SvgRasterizer {
   return {
     async rasterize(svg, { widthPx, heightPx }): Promise<Uint8Array> {
@@ -101,6 +127,7 @@ export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 
       const url = view.URL.createObjectURL(new view.Blob([svg], { type: "image/svg+xml" }));
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
+        const decodeStart = Date.now();
         const img = new view.Image();
         await new Promise<void>((resolve, reject) => {
           timer = setTimeout(
@@ -111,18 +138,24 @@ export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 
           img.onerror = () => reject(new Error("the diagram SVG could not be decoded"));
           img.src = url;
         });
+        rasterizerStats.decodeMs += Date.now() - decodeStart;
+        const drawStart = Date.now();
         const canvas = doc.createElement("canvas");
         canvas.width = widthPx;
         canvas.height = heightPx;
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("no 2d canvas context available");
         ctx.drawImage(img, 0, 0, widthPx, heightPx);
+        rasterizerStats.drawMs += Date.now() - drawStart;
+        const encodeStart = Date.now();
         const blob = await new Promise<Blob>((resolve, reject) =>
           canvas.toBlob(
             (b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))),
             "image/png"
           )
         );
+        rasterizerStats.encodeMs += Date.now() - encodeStart;
+        rasterizerStats.calls += 1;
         return new Uint8Array(await blob.arrayBuffer());
       } finally {
         clearTimeout(timer);

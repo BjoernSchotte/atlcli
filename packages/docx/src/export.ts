@@ -727,10 +727,19 @@ function diagramSeam(
     | { kind: "unsupported"; diagramType: string }
     | { kind: "failed"; reason: string };
   const preps = new Map<CodeBlock, Promise<DiagramPrep>>();
+  // Preparations are CHAINED, not fanned out: render + rasterize are
+  // main-thread CPU work in every host (beautiful-mermaid is synchronous;
+  // the panel's canvas rasterizer and the CLI's resvg-wasm both burn the
+  // one JS thread), so running six at once cannot finish sooner — but it
+  // CAN thrash (observed in the extension panel: six concurrent canvas
+  // rasterizations took seconds each instead of tens of ms). The chain
+  // still starts at prefetch time, so diagram CPU overlaps the export's
+  // network round-trips exactly as before.
+  let chain: Promise<unknown> = Promise.resolve();
   const prepare = (block: CodeBlock): Promise<DiagramPrep> => {
     let p = preps.get(block);
     if (!p) {
-      p = (async (): Promise<DiagramPrep> => {
+      const work = async (): Promise<DiagramPrep> => {
         const renderStart = Date.now();
         const rendered = await renderDiagram(block.code, theme);
         timings.diagramRenderMs += Date.now() - renderStart;
@@ -755,7 +764,9 @@ function diagramSeam(
         } catch (err) {
           return { kind: "failed", reason: err instanceof Error ? err.message : String(err) };
         }
-      })();
+      };
+      p = chain.then(work);
+      chain = p;
       preps.set(block, p);
     }
     return p;

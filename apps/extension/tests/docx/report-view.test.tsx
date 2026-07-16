@@ -29,6 +29,16 @@ function makeReport(notes: ExportReport["notes"]): ExportReport {
     filename: "page.docx",
     notes,
     scan: emptyScan,
+    timings: {
+      resolveMs: 0,
+      bodyMs: 0,
+      logoFetchMs: 0,
+      renderMs: 0,
+      imageFetchMs: 0,
+      imageFetches: 0,
+      diagramRenderMs: 0,
+      diagramRasterMs: 0,
+    },
   };
 }
 

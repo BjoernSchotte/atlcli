@@ -121,14 +121,14 @@ export function TemplateSection({
       if (cancelled || !current) return;
       setTemplate(current);
       // A stored template means an export is likely: pull the engine + env
-      // chunks and the mermaid renderer (~1.5 MB elkjs) NOW so the first
-      // export doesn't pay their import cost. Pure warm-up — failures are
-      // swallowed and the export path retries its own imports. A user with
-      // no template still loads nothing (the lazy-load contract).
-      void Promise.all([
-        loadExport().then((m) => m.warmDiagramRenderer()),
-        loadEnv(),
-      ]).catch(() => {});
+      // chunks NOW so the first export doesn't pay their import cost. Pure
+      // warm-up — failures are swallowed and the export path retries its
+      // own imports. A user with no template still loads nothing (the
+      // lazy-load contract). The mermaid renderer chunk is deliberately NOT
+      // warmed here: importing elkjs at mount coincided with a severe
+      // rasterizer slowdown during export (under investigation); the export
+      // path lazy-loads it exactly as before.
+      void Promise.all([loadExport(), loadEnv()]).catch(() => {});
     })().catch(() => {
       // A stored template that no longer scans is unusable; surface it rather
       // than rendering a half-loaded section.
@@ -198,8 +198,9 @@ export function TemplateSection({
     setBusy("export");
     try {
       const { runExport } = await loadExport();
-      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink, canvasSvgRasterizer } =
-        await loadEnv();
+      const env = await loadEnv();
+      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink, canvasSvgRasterizer } = env;
+      env.resetRasterizerStats();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
       // Space + icon share ONE memoized `?expand=icon` round-trip: a template
@@ -238,6 +239,18 @@ export function TemplateSection({
           output: downloadOutputSink(),
         }
       );
+      // Panel-side rasterizer sub-timings (decode/draw/encode sums) join the
+      // report so a slow diagram pipeline names its slow sub-step.
+      const stats = env.getRasterizerStats();
+      if (stats.calls > 0) {
+        rep.notes.push({
+          level: "info",
+          code: "perf-timing",
+          message:
+            `Panel rasterizer: ${stats.calls} call(s) — decode ${stats.decodeMs} ms, ` +
+            `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums).`,
+        });
+      }
       setReport(rep);
     } catch (err) {
       setError(exportErrorMessage(err));
