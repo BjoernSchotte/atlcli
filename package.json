@@ -43,5 +43,8 @@
     "terser": "^5.44.1",
     "turbo": "^2.7.4",
     "typescript": "^5.9.3"
+  },
+  "patchedDependencies": {
+    "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch"
   }
 }
