@@ -1,7 +1,8 @@
 # Mermaid Diagrams — beautiful-mermaid → SVG for the DOCX and PDF export paths
 
-Status: **Implemented** (2026-07-16 — engine + extension host; CLI exports mermaid as source
-blocks until a Node rasterizer host lands. Manual Word E2E = Task 6, pending Björn.)
+Status: **Done** (2026-07-16 — engine + extension host; Word E2E passed after finding #1
+(svgBlip flattening). CLI exports mermaid as source blocks until a Node rasterizer host lands.
+Open: the two spec-008 benchmark items in Task 6.)
 
 Spec ID: `005a-mermaid-diagrams`
 Depends on: `005-docx-image-module` (**must be merged** — this spec embeds SVG through the media-part/relationship/EMU plumbing 005 builds), `004-docx-export` Task 2 (the `ExportBlock` model whose `codeBlock` carries the diagram source), `004-docx-export` Task 5 (the pinned descope path this spec replaces)
@@ -225,11 +226,11 @@ belongs to 006, not to this spec.
 
 ### Task 6 — Manual E2E **[E2E: user]**
 
-- [ ] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source.
-- [ ] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback).
-- [ ] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9).
-- [ ] Export duration delta recorded vs. the 004 baseline (spec 008 input).
-- [ ] Test page deleted afterwards.
+- [x] A DOCSY test page with one diagram of each supported type + one exotic (Gantt) exports; open in Word: diagrams crisp, correctly sized, exotic shows as readable source. (Björn, 2026-07-16, page 1119158277, real Mayflower Prüfvorlage — after finding #1 was fixed.)
+- [x] Zoom to 400% in a modern Word → vector (svgBlip active, not the raster fallback). (Proven via Björn's Word print-PDF: the 6 diagrams appear as vector paths; the PDF's only raster XObjects are the template logos/footer.)
+- [ ] Compare against Scroll's output on the same page (Scroll has no mermaid rendering — this is a **differentiator** shot for spec 008's benchmark row 9). *(open — spec 008 input)*
+- [ ] Export duration delta recorded vs. the 004 baseline (spec 008 input). *(open — spec 008 input)*
+- [ ] Test page deleted afterwards. *(page 1119158277 kept for now — also useful for the Scroll comparison; delete after 008 row 9)*
 
 ---
 
