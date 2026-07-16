@@ -1,6 +1,6 @@
 # DOCX Export (Headline) — Customer Word Template + Scroll Placeholder Compatibility
 
-Status: **In progress — Task 7 (user E2E) is the only open gate** (2026-07-16). Tasks 1–5 implemented and merged to `main` in `40953db` (bundled into PR #30, whose title names only specs 002/003 — the DOCX engine lives in `apps/extension/utils/docx/`). Task 6 closed as **descoped with the fallback pinned** (see F2). Repo gates green on 2026-07-16: 1507 tests, typecheck, `check:browser` (5 isomorphic entrypoints), `check:extension-output`. Decisions: F1 ✅ docxtemplater free · F3 ✅ images deferred → spec 005 · F2 ⏸ mermaid deferred → after 005, awaiting ratification.
+Status: **Done** (2026-07-16). Tasks 1–5 implemented and merged to `main` in `40953db` (bundled into PR #30, whose title names only specs 002/003 — the DOCX engine lives in `apps/extension/utils/docx/`). Task 6 closed as **descoped with the fallback pinned** (see F2). **Task 7 (user E2E) passed** on the post-fix build: all 5 checklist items confirmed against the real Mayflower template in real Word, incl. all 35 placeholder rows of a purpose-built probe template and the six 2026-07-14 real-template findings re-confirmed structurally. Baseline for spec 008: **117 ms / 1,823 words**. Repo gates green: 1509 tests, typecheck, `check:browser` (5 isomorphic entrypoints), `check:extension-output`. Decisions: F1 ✅ docxtemplater free · F3 ✅ images deferred → spec 005 · F2 ⏸ mermaid deferred → spec `005a-mermaid-diagrams` (PR #33), awaiting ratification.
 
 Spec ID: `004-docx-export`
 Depends on: `003-page-detection-read-path` · `001-browser-ready-core` Task 8 (`specs/001-browser-ready-core/scroll-placeholder-mapping.md` — the normative placeholder table)
@@ -224,34 +224,48 @@ trust surface and 006's measurement hook.
 
 Joint session (space `DOCSY`; create a dedicated test page with the full feature zoo, delete after):
 
-- [ ] Upload a real mayflower Word template; scan output matches expectation
-- [ ] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt
-- [ ] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded)
-- [ ] A template using an unsupported placeholder exports with empty value + report warning
-- [ ] Duration for the ~2,000-word page recorded (input to 006)
+- [x] Upload a real mayflower Word template; scan output matches expectation — panel reported **24 supported / 4 will-be-empty / 2 not-supported + content anchor found**, matching the pre-run prediction from `scanTemplate` exactly (incl. occurrence counts: `$scroll.title` ×4, `$scroll.exportdate` ×5 across its format variants).
+- [x] Export the test page; open in Word: styles/cover/header/footer intact, placeholders resolved, TOC populates after field update prompt — confirmed by Björn (cover + header intact; **TOC populates after clicking "Ja"** in Word's field-update prompt; note the prompt's default button is "Nein").
+- [x] Callouts, tables, lists, code (colored) all visually correct in Word (images: v1 shows them as skipped-report lines, not embedded) — 4 callout fills present (`DEEBFF`/`EAE6FF`/`FFFAE6`/`E3FCEF`), 6 distinct Shiki colors over 297 `Consolas` runs, mermaid as readable source, exactly **one** image relationship (`media/image1.png` = the template's own logo) so the 3 page images embedded nothing and reported instead.
+- [x] A template using an unsupported placeholder exports with empty value + report warning — all 6 unsupported/never placeholders resolved to empty (G1 page owner, G2 DC username, G3 space logo, G4 page property, `$adhocState`, global logo), plus `Owner: ` in the footer with no value. **Zero `$scroll.` literals** anywhere in the output.
+- [x] Duration for the ~2,000-word page recorded (input to 006) — **117 ms** for the 1,823-word feature-zoo page (35 blocks incl. 4 callouts, 4 code blocks, 1 table, 5 lists, 3 skipped images).
 
-**Status (2026-07-16): a finding-generating run happened; a confirming run has not.**
-The 2026-07-14 live session against the real Mayflower letterhead produced the six
-`Known real-template case` entries in the Decisions log — text-box/drawing-adjacent
-placeholders, SmartArt/chart/field shapes, empty TOC on a custom-heading template,
-heading promotion, undecoded HTML entities, and the content-insertion display gap. Every
-one was fixed **and** pinned with a regression test, and all repo gates are green
-(1507 tests, typecheck, `check:browser`, `check:extension-output` — verified 2026-07-16).
+**Result (2026-07-16): confirming run passed on the post-fix build.**
+The 2026-07-14 session was finding-generating: it produced the six `Known real-template
+case` entries in the Decisions log, each fixed and pinned with a regression test, but all
+of them landed in the same squash (`40953db`) as the run that found them and were never
+reopened in Word. This second pass closes that gap on the built extension.
 
-But those fixes were verified *by test*, not by reopening the result in Word, and all of
-them landed in the same squash (`40953db`) as the run that found them. Task 7's acceptance
-instrument is explicitly "open in Word and look", so the boxes stay unchecked until one
-confirming pass runs end-to-end on the **post-fix** build. That pass is small — it is
-re-confirmation, not exploration:
+Evidence for the two riskiest fixes, verified structurally in the artifact rather than
+by eye:
 
-1. The six fixed shapes render correctly in Word on the real template (they are the
-   highest-risk items precisely because they were broken once).
-2. Items 3 and 4 above have **no live record at all** — callout/table/code visual
-   correctness and the unsupported-placeholder warning path were never exercised against
-   real Word, only against OOXML landmark assertions.
-3. Item 5 (duration) is **unrecorded**: `durationMs` is measured (`export.ts:200`) and
-   shown in the report (`TemplateSection.tsx:361`), but no number for a ~2,000-word page
-   has been captured — spec 008 needs that figure as its baseline.
+- **Text-box placeholders (shape a)** — the Mayflower template carries both its
+  `$scroll.title` occurrences *inside* `<w:txbxContent>` regions, provided twice via
+  `mc:AlternateContent`. Both resolved: one in the `mc:Choice` (DrawingML) branch, one in
+  the `mc:Fallback` (VML) branch. This is the exact shape that previously left a literal.
+- **Footer run trailing a drawing (shape b)** — footer1's `$scroll.title` run directly
+  follows an `mc:AlternateContent` picture in the same paragraph; resolved.
+- **Heading promotion + `TOC \o`** — the page is the RFP shape (9 × H2, 7 × H3, no H1) and
+  the template defines `Überschrift 1–6` **plus** a custom `Heading1TOC`. Output carries
+  9 × `outlineLvl 0` / 7 × `outlineLvl 1` with `berschrift1`/`berschrift2` styles, i.e. the
+  H2s were promoted to level 1 and the TOC's top level is populated — the empty-TOC finding.
+- **Entities** — zero surviving named entities; umlauts real (`Björn`, `Größe`).
+
+A second export against a purpose-built probe template (`Mayflower_E2E_Platzhalter-Pruefung.docx`
+— the real template plus a final page carrying every placeholder, and `$scroll.pageowner.fullName`
+in the footer) exercised **all 35 placeholder rows**: 29 supported resolved to real values
+(version `2`, labels `e2e-test, docx-export, spec-004` + capitalised variant, space `DOCSY`,
+template name = upload filename per G8), the date subset rendered correctly
+(`16.07.2026`, `16.07.2026 11:04`, `2026`), the deliberately unknown format token `QQQ` fell
+back to ISO as specified, and the lazy fetches fired only because the template used them
+(G6 `getSpace` → "Docsync"; G7 `getCurrentUser` → the exporter).
+
+**Correction to this PLAN's expectation (not a defect):** §2 of the mapping table calls
+`creator.email`/`modifier.email`/`exporter.email` "usually absent on Cloud", and G7 predicted
+`$scroll.exporter.email` → empty + report line. On the Mayflower Cloud instance all three
+resolved to a real address. The unsupported→empty behavior is unaffected; only the
+expectation was wrong, and the resolver's absent-email branch stays unit-tested rather than
+E2E-covered.
 
 ---
 
@@ -265,11 +279,11 @@ re-confirmation, not exploration:
 
 ## 5. Definition of done
 
-- Tasks 1–5 ✅ + Task 6 ✅ (descoped, fallback pinned) + Task 7 ⬜ **open** — mermaid (F2) and image embedding (F3) are explicitly deferred as follow-up tasks with the skip behavior pinned by test.
-- `engine-decision.md` committed; engine + image decisions made by Björn.
-- E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1).
-- Export report shows no silent failures; unsupported placeholders + skipped images surfaced.
-- Test resources cleaned up (test pages deleted).
+- Tasks 1–5 ✅ + Task 6 ✅ (descoped, fallback pinned) + Task 7 ✅ (E2E passed 2026-07-16) — mermaid (F2 → spec `005a`) and image embedding (F3 → spec `005`) are explicitly deferred as follow-up tasks with the skip behavior pinned by test.
+- ✅ `engine-decision.md` committed; engine + image decisions made by Björn (F1, F3).
+- ✅ E2E: a real DOCSY page exported through a real mayflower template opens clean in Word (text/styles/placeholders/callouts/tables/code; images appear as skip-report lines in v1); TOC populates after the field-update prompt.
+- ✅ Export report shows no silent failures; unsupported placeholders + skipped images surfaced (5 notes on the feature-zoo run: 2 uncurated code languages incl. mermaid, 3 skipped images).
+- ✅ Test resources cleaned up (test page `1118830593` deleted after the run).
 
 ## 6. Risks and open questions
 
