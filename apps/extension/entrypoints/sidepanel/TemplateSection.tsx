@@ -21,6 +21,7 @@ import {
   putTemplate,
   type StoredTemplate,
 } from "../../utils/docx/template-store.js";
+import { sessionCache } from "../../utils/docx/session-cache.js";
 
 // PizZip + docxtemplater (+ the OOXML serializer and, transitively, lazy Shiki)
 // are heavy and only needed once the user opts into template upload/export.
@@ -34,6 +35,20 @@ const loadExport = () => import("@atlcli/docx/browser");
 const loadEnv = () => import("../../utils/docx/env.js");
 
 const MAX_MB = 20;
+
+/**
+ * Panel-lifetime TTL caches for the resolver deps' METADATA round-trips,
+ * keyed by site + entity so multi-site tabs never bleed into each other.
+ * Exporting three pages of the same space previously paid the ~100ms
+ * space+icon call (and the current-user call) three times; within the TTL
+ * they now cost one. Page-specific data (details, owner) stays uncached —
+ * always fresh. A renamed space / swapped logo / re-login shows up at most
+ * five minutes later, which matches how often that actually happens.
+ */
+const DEPS_CACHE_TTL_MS = 5 * 60_000;
+const spaceInfoCache = sessionCache<Awaited<ReturnType<ConfluenceClient["getSpaceWithIcon"]>>>(DEPS_CACHE_TTL_MS);
+const currentUserCache = sessionCache<Awaited<ReturnType<ConfluenceClient["getCurrentUser"]>>>(DEPS_CACHE_TTL_MS);
+const homepageStorageCache = sessionCache<string | null>(DEPS_CACHE_TTL_MS);
 
 interface CurrentTemplate {
   name: string;
@@ -203,12 +218,13 @@ export function TemplateSection({
       env.resetRasterizerStats();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
-      // Space + icon share ONE memoized `?expand=icon` round-trip: a template
-      // using $scroll.space.* and a logo placeholder previously called the
-      // same endpoint twice (perf).
-      let spaceInfoP: ReturnType<ConfluenceClient["getSpaceWithIcon"]> | undefined;
-      const spaceInfo = (key: string): NonNullable<typeof spaceInfoP> =>
-        (spaceInfoP ??= client!.getSpaceWithIcon(key));
+      const site = profile ? getConfluenceBaseUrl(profile) : "";
+      // Space + icon share ONE `?expand=icon` round-trip (a template using
+      // $scroll.space.* and a logo placeholder previously called the same
+      // endpoint twice), served from the panel-lifetime TTL cache above so
+      // repeat exports within the same space skip it entirely.
+      const spaceInfo = (key: string): ReturnType<ConfluenceClient["getSpaceWithIcon"]> =>
+        spaceInfoCache.get(`${site}|${key}`, () => client!.getSpaceWithIcon(key));
       const rep = await runExport(
         {
           details: loadedPage.details,
@@ -216,9 +232,10 @@ export function TemplateSection({
           deps: client
             ? {
                 getSpace: async (key) => (await spaceInfo(key)).space,
-                getCurrentUser: () => client.getCurrentUser(),
+                getCurrentUser: () => currentUserCache.get(site, () => client.getCurrentUser()),
                 getPageOwner: (id) => client.getPageOwner(id),
-                getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+                getSpaceHomepageStorage: (key) =>
+                  homepageStorageCache.get(`${site}|${key}`, () => client.getSpaceHomepageStorage(key)),
                 // Spec 005 logo pass: icon path in, bytes via the session
                 // asset fetcher below ($scroll.spacelogo / $scroll.globallogo).
                 getSpaceLogo: async (key) => {
