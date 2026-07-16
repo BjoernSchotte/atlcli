@@ -5,9 +5,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "bun run --cwd ../.. fonts:ensure",
     "dev": "wxt",
+    "prebuild": "bun run --cwd ../.. fonts:ensure",
     "build": "wxt build",
+    "prepdf:fixture": "bun run --cwd ../.. fonts:ensure",
+    "pdf:fixture": "bun scripts/render-pdf-fixture.ts",
     "postinstall": "wxt prepare",
+    "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",
     "check:output": "bun scripts/check-output-build.ts"
   },
@@ -15,6 +20,8 @@
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

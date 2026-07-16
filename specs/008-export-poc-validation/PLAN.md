@@ -28,7 +28,8 @@ better?"):
 2. **Correctness:** callouts, tables, code and embedded images correct in the output.
 3. **Performance:** typical page (~2,000 words, ~5 images) exports in **< 10 s**, no
    local install, no token configuration.
-4. **Privacy:** network log during export shows exclusively `*.atlassian.net` calls.
+4. **Privacy:** network log during export shows exclusively the active
+   `*.atlassian.net` tenant and authenticated redirects to `api.media.atlassian.com`.
 
 ### Goals
 
@@ -87,8 +88,9 @@ better?"):
   median of 3 runs, warm compiler for PDF runs 2–3 (cold-start noted separately).
   Machine + Chrome version recorded.
 - Network: DevTools network log (panel + offscreen contexts!) captured for one full DOCX
-  and one full PDF export; every request host listed. Any non-`*.atlassian.net` request =
-  criterion 4 **fail** (extension-internal `chrome-extension://` resources excluded).
+  and one full PDF export; every request host listed. Any request outside the active
+  `*.atlassian.net` tenant and `api.media.atlassian.com` = criterion 4 **fail**
+  (extension-internal `chrome-extension://` resources excluded).
 - Visual comparison: printed/PDF'd side-by-side, per-item checklist (§2.3), each item
   `match / minor deviation / major deviation` with screenshot evidence for deviations.
 
@@ -140,7 +142,9 @@ Rows 2, 3 (🏆 expected: Typst-computed page numbers), 4, 7, 8, 9, 11, 12, 13, 
 ### Task 5 — Privacy (criterion 4)
 
 - [ ] Network logs captured for one DOCX and one PDF export (all extension contexts)
-- [ ] Host inventory in `RESULTS.md`: only `*.atlassian.net` (+ `chrome-extension://`) — explicitly confirming no CDN font/WASM loads (005's bundling promise)
+- [ ] Host inventory in `RESULTS.md`: only the active `*.atlassian.net` tenant,
+  `api.media.atlassian.com` attachment redirects and `chrome-extension://` — explicitly
+  confirming no CDN font/WASM loads
 - [ ] Repeated in a network-throttled run to catch lazy loaders that only fire under specific conditions
 
 ### Task 6 — RESULTS.md + Phase-2 handoff

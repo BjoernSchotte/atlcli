@@ -14,6 +14,7 @@ import type {
   TemplateSource,
 } from "@atlcli/docx/browser";
 import { getTemplate } from "./template-store.js";
+import { downloadBytes } from "../download.js";
 
 /**
  * {@link TemplateSource} over the panel's IndexedDB template store. The id is
@@ -214,17 +215,12 @@ export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 
 export function downloadOutputSink(doc: Document = document): OutputSink {
   return {
     async emit(name: string, bytes: Uint8Array): Promise<void> {
-      const blob = new Blob([bytes as BlobPart], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      await downloadBytes({
+        name,
+        bytes,
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        document: doc,
       });
-      const url = URL.createObjectURL(blob);
-      const a = doc.createElement("a");
-      a.href = url;
-      a.download = name;
-      doc.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
   };
 }

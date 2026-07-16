@@ -3,9 +3,13 @@ import { isEntityChanged, isExtRequest, isOffscreenRequest } from "../utils/mess
 
 describe("message guards", () => {
   it("isExtRequest accepts panel requests only", () => {
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
     expect(isExtRequest({ kind: "ping" })).toBe(true);
     expect(isExtRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(true);
     expect(isExtRequest({ kind: "get-current-entity" })).toBe(true);
+    expect(isExtRequest({ kind: "pdf:compile", jobId })).toBe(true);
+    expect(isExtRequest({ kind: "pdf:cancel", jobId })).toBe(true);
+    expect(isExtRequest({ kind: "pdf:compile", jobId: "bad" })).toBe(false);
     expect(isExtRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(false);
     expect(isExtRequest({ kind: "pong" })).toBe(false);
     expect(isExtRequest({ kind: "entity-changed", detection: { url: null, entity: null } })).toBe(
@@ -27,7 +31,11 @@ describe("message guards", () => {
   });
 
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
     expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:pdf-cancel", jobId })).toBe(true);
+    expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId: "bad" })).toBe(false);
     expect(isOffscreenRequest({ kind: "wasm-smoke", a: 1, b: 2 })).toBe(false);
     expect(isOffscreenRequest(undefined)).toBe(false);
   });

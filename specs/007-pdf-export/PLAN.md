@@ -1,206 +1,550 @@
 # PDF Export — typst.ts in the Offscreen Document, atlcli Standard Template
 
-Status: **Planned**
+Status: **Planned — implementation-ready after feasibility gates**
 
 Spec ID: `007-pdf-export`
-Depends on: `003-page-detection-read-path`, `004-docx-export` Task 2 (shared `ExportBlock` intermediate model), `002-extension-workspace` Task 5 (offscreen WASM proof)
+Depends on:
+
+- `002-extension-workspace` Task 5 (offscreen WASM proof)
+- `003-page-detection-read-path`
+- `004-docx-export` (shared `ExportBlock` model, report and download lessons)
+- `005-docx-image-module` (authenticated attachment pipeline)
+- `005a-mermaid-diagrams` (`@atlcli/diagram` SVG renderer)
+- `006-isomorphic-export-fup` (browser-safe walker and reusable export engine)
+
+Handoff to: `008-export-poc-validation` (final cross-format quality and performance verdict)
+
 Related strategy: FAHRPLAN Phase 1 Task 1.4 · `TYPST-EXPORT-ANGLE.md` §1b, §5.2, §7.5 Schritt 4 · `EXPORT-QUALITY-ANGLE.md` §3–§5, §7 (quality proofs 1+3)
+Follow-up product direction: [`TEMPLATE-UX.md`](./TEMPLATE-UX.md) — curated Typst
+templates, Git-friendly packages and a focused PDF stationery-import wizard without a
+general-purpose template studio.
 Origin: FAHRPLAN Phase 1 — "PDF-Export"
 
 ---
 
-## 1. Overview
+## 1. Current baseline and objective
 
-Secondary export path, but the one with **visible world-class potential**: compile the
-detected page to PDF via `typst.ts` (Apache-2.0 WASM compiler) running in the extension's
-**offscreen document**, using an **atlcli-owned standard Typst template** with embedded
-open fonts — deliberately *not* a customer-template path (that's DOCX's job, per the
-research verdict).
+The DOCX path, authenticated image embedding, Mermaid-to-SVG rendering and the
+isomorphic export engine are implemented. This spec adds the next output adapter; it
+does not rebuild those capabilities.
 
-The cheap-but-decisive quality proofs from EXPORT-QUALITY §7 ship inside this spec, because
-they are what turns "a PDF export" into "visibly better than Scroll":
+PDF is the secondary export path, but the one with **visible world-class potential**:
+compile the detected page via a pinned `typst.ts` browser compiler running outside the
+panel thread, using an **atlcli-owned standard Typst template** with embedded open fonts.
+PDF deliberately remains a standard-template path rather than a customer-template path.
 
-- **beautiful-mermaid** diagrams embedded as native vector SVG,
-- native **code highlighting** (Typst `raw`/syntect — no extra tooling),
-- one **Tagged PDF (PDF/UA-1)** reference document with cover + bookmarks as the
-  accessibility/archival proof point.
+The cheap-but-decisive quality proofs ship inside this spec:
+
+- Mermaid diagrams embedded as native vector SVG through `@atlcli/diagram`;
+- native Typst code highlighting without an additional highlighter;
+- tagged, semantic PDF by default;
+- one separately selected and independently validated PDF/UA-1 reference export, if the
+  pinned browser compiler exposes the required standard option.
 
 ### Goals
 
-- "Export as PDF" button in the panel: page → `ExportBlock[]` (004's walker) → Typst
-  markup → offscreen compile → downloaded PDF.
-- atlcli standard template (`tech-doc` flavor, single layout for the PoC): cover (title,
-  space, version, date, exporter), TOC with correct page numbers (Typst computes them —
-  a 🏆 over the Word path), numbered headings, header with running chapter title, footer
-  with page numbers, PDF outline/bookmarks from headings, internal links.
-- Confluence semantics mapped: callout boxes (styled per EXPORT-QUALITY §4 example),
-  status → inline badge, code blocks with syntax highlighting + language label, tables
-  with repeated headers and basic merges, images (attachment blobs), expand macro inlined.
-- Open fonts bundled and embedded — **Inter** (text; weights 400/500/600) +
-  **JetBrains Mono** (code; weights 400/700), per decision F2; the `atlcli.typ` template
-  is designed sans-serif-only. Font files and versions are **pinned** (exact release
-  recorded in the repo); **no fallback to locally installed fonts** — otherwise the 006
-  quality comparison isn't reproducible. Deterministic output.
-- Tagged PDF on by default (Typst ≥ 0.14); one reference export validated as PDF/UA-1.
-- Compile runs off the panel thread (offscreen doc), panel shows progress and stays
-  responsive; errors surface as readable messages, not hangs.
+- **Export as PDF** in the side panel: page → `ExportBlock[]` → prepared assets and
+  Typst source → offscreen compiler worker → downloaded PDF.
+- One atlcli `tech-doc` template: cover, TOC with computed page numbers, numbered
+  headings, running chapter header, page-number footer, PDF outline/bookmarks and
+  internal links.
+- Preserve the existing export model: paragraphs, text marks, links, mentions,
+  callouts, statuses, code, nested lists, task state, tables, images, blockquotes,
+  dividers and documented fallback behavior for unsupported content.
+- Bundle and embed pinned **Source Serif 4** 400/600/700 + italic 400,
+  **Source Sans 3** 400/600/700 + italic 400 and **Source Code Pro** 400/700 files.
+  No system-font lookup and no runtime font, compiler or package download.
+- Keep the panel responsive and expose job phases, diagnostics and a useful export
+  report.
+- Produce reproducible output from fixed inputs. Compiler, WASM, template, diagram
+  renderer, fonts, locale, metadata and clock are explicit inputs.
 
 ### Non-goals
 
-- No customer .docx/.typ template support, no template upload for PDF (Phase 2's design
-  system + `brand.typ` add themes; PoC ships exactly one good layout).
-- No corporate font upload (Phase 2, EXPORT-QUALITY §3 strategy step b).
-- No PDF/A profile selection UI — default output + the single tagged reference doc suffice.
-- No multi-page/page-tree export; no PlantUML/draw.io/Gliffy embedding (v1 roadmap).
-- No mermaid.js fallback for exotic diagram types (beautiful-mermaid's 6 types only;
-  others render as code blocks with a report note).
+- No customer `.docx` or `.typ` template support and no PDF template upload.
+- No corporate font upload or template/theme marketplace.
+- No PDF/A claim or archival-conformance claim in this spec.
+- No PDF-standard selection UI. Standard tagged output is the user path; PDF/UA-1 is a
+  reference-validation mode.
+- No multi-page/page-tree export and no PlantUML, draw.io or Gliffy embedding.
+- No server or companion compiler and no CLI command in this spec. The serializer stays
+  host-neutral so a CLI adapter can follow without redesign.
 
 ---
 
-## 2. Architecture
+## 2. Fixed architecture decisions
 
-### 2.1 Process topology
+### 2.1 Ownership boundaries
 
+- New browser-safe workspace package: `packages/pdf` / `@atlcli/pdf`.
+- `@atlcli/pdf` owns the PDF preparation types, Typst serializer, semantic template
+  contract, source-map model and PDF-specific report model.
+- `@atlcli/pdf` depends only on browser-safe packages, including `@atlcli/confluence`
+  and `@atlcli/diagram`. `packages/confluence` does not gain presentation-format code.
+- The extension owns authenticated asset resolution, job storage, compiler lifecycle,
+  offscreen/worker integration and the browser download adapter.
+- PDF fonts have one canonical, gitignored build cache populated from immutable upstream
+  commits with mandatory SHA-256 verification. Only the manifest and OFL texts are tracked;
+  DOCX keeps its independent template-driven contract and diagram-rasterizer assets.
+
+### 2.2 Process and transport topology
+
+```text
+side panel                    service worker                 offscreen document
+──────────                    ──────────────                 ──────────────────
+walk page + prepare assets ─▶ create job in shared store ─▶ compiler host
+send { jobId, inputKey }      route JSON control message     dedicated worker + WASM
+receive phase updates     ◀── small JSON messages        ◀── init / compile / reset
+read PDF Blob by resultKey ◀─ { jobId, resultKey, report }  write result to job store
+download application/pdf
 ```
-side panel                     service worker              offscreen document
-──────────                     ──────────────              ──────────────────
-blocks = walker(storage)   ──▶ ensureOffscreen()      ──▶  typst.ts compiler (WASM)
-typstSrc = serialize(blocks)   route compile-request       + bundled fonts
-images fetched as blobs    ──▶ (transferables)        ──▶  vfs: main.typ, template.typ,
-                                                            images/*, fonts/*
-report + PDF bytes         ◀── compile-response       ◀──  PDF bytes | diagnostics
+
+`chrome.runtime.sendMessage` is the **control plane only**. Runtime messages contain
+JSON-safe, bounded values such as `jobId`, keys, phases, progress, diagnostics and
+report summaries. They never contain `Map`, fonts, image bytes, source bundles or PDF
+bytes.
+
+Large inputs and outputs use a same-origin, job-scoped store accessible by the extension
+contexts (IndexedDB is the default; Cache Storage is allowed only if Task 1 proves a
+clearer lifecycle). Every record is keyed by an unguessable `jobId`, has a byte count and
+creation time, and is deleted in `finally`, on timeout and by stale-job cleanup at
+startup. The store defines per-file, per-job and total quotas and turns quota failures
+into readable errors.
+
+Static WASM, fonts and `atlcli.typ` load directly from packaged extension URLs inside the
+offscreen context. They are initialized once and never copied through runtime messages.
+
+### 2.3 Compiler lifecycle
+
+The offscreen document is a lifecycle host. A locally bundled Dedicated Worker owns the
+compiler and mutable virtual filesystem.
+
+States: `closed → initializing → ready → running → resetting → ready`; any fatal init,
+timeout or compiler failure transitions through `failed → closed` before retry.
+
+Rules:
+
+- Compiler initialization is single-flight.
+- Compile jobs are FIFO with exactly one active job per worker until concurrency is
+  explicitly proven safe.
+- Fonts and compiler core initialize once; job sources and assets are mapped per job.
+- Job shadows are reset before a job and in `finally`; one export cannot observe files
+  from another export.
+- A 60-second timeout terminates the worker, rejects the job, clears cached readiness
+  state and creates a fresh worker for the next attempt. A Promise timeout alone is not
+  considered cancellation.
+- Idle teardown never closes an active or resetting job. Late responses are ignored by
+  `jobId` and their stored results are deleted.
+- Panel navigation or page changes invalidate the visible job without leaking its
+  eventual result into the newly loaded page.
+
+### 2.4 Network and privacy contract
+
+Allowed during export:
+
+- the active Atlassian tenant under `*.atlassian.net`;
+- `https://api.media.atlassian.com/*` for authenticated attachment redirects already
+  required by the working image pipeline.
+
+Disallowed:
+
+- compiler, WASM, font, template or package-registry downloads;
+- Typst default-font/default-package loaders that fetch remote assets;
+- external image hosts unless a later spec adds explicit host permissions.
+
+The compiler adapter disables default remote asset resolution and exposes only packaged
+fonts, template files and the current job VFS.
+
+---
+
+## 3. PDF content contract
+
+### 3.1 Preparation and serialization API
+
+The asynchronous preparation step resolves assets and renders diagrams; the serializer
+itself remains pure:
+
+```ts
+preparePdfDocument(
+  blocks: ExportBlock[],
+  context: PdfExportContext,
+  resolver: PdfAssetResolver,
+): Promise<PreparedPdfDocument>
+
+serializePdfDocument(
+  document: PreparedPdfDocument,
+  options: PdfSerializeOptions,
+): PdfSourceBundle
 ```
 
-- **Serialization (blocks → Typst source) happens in the panel** — pure string work,
-  fully unit-testable in bun without WASM.
-- **Only the compile runs offscreen.** Message protocol (002's `messages.ts`) gains
-  `compile-typst { files: Map<path, bytes>, mainPath }` → `{ ok, pdf } | { ok: false,
-  diagnostics }`. Large payloads: images/fonts passed as ArrayBuffers (structured clone;
-  measure — if cloning ~10 MB payloads is slow, switch to a Blob-URL handoff, noted as
-  fallback).
-- Offscreen doc initializes the typst.ts compiler once and caches it (font parsing is the
-  expensive part); idle-timeout teardown after N minutes.
-- **Fonts and WASM ship inside the extension** (no CDN at runtime — the privacy story
-  "only `*.atlassian.net`" must hold; use the packaged compiler module, not
-  `all-in-one-lite`'s CDN loading).
+`PdfSourceBundle` contains `main.typ`, deterministic job-local asset names, a structured
+source map and preparation notes. It is an internal value written to the job store, not
+a runtime-message payload.
 
-### 2.2 Typst template (`assets/typst/atlcli.typ`)
+Both `ExportBlock` and `InlineNode` mappings are exhaustive TypeScript switches with a
+`never` guard. Adding a model variant must fail typecheck until its PDF behavior is
+chosen.
 
-Single entry `#show: atlcli-doc.with(meta: (…))` providing: cover page, `outline()`,
-heading numbering, running header via heading query, footer page numbers, `callout()`
-(per the EXPORT-QUALITY §4 reference implementation), `status-badge()`, code block
-styling, table defaults (`table.header` repeat), image figure with optional caption,
-document metadata (title/author → PDF metadata, required for UA-1).
+### 3.2 Normative block mapping
 
-### 2.3 Block serializer
-
-`typstSerialize(blocks: ExportBlock[], opts): { main: string, assets: AssetRef[] }` in the
-extension (or `packages/confluence` if it stays dependency-free — preferred, keeps it
-under the isomorphism gate and testable).
-
-Normative mappings:
-
-| ExportBlock | Typst |
+| `ExportBlock` | Typst behavior |
 |---|---|
-| heading(n) | `#heading(level: n)[…]` (template numbers + bookmarks) |
-| callout(kind, title) | `#callout(kind: …, title: …)[…]` |
-| codeBlock(lang) | ` ```lang … ``` ` (native highlighting) |
-| table (colspan/rowspan) | `#table` with `table.cell(colspan:, rowspan:)` |
-| image(attachment) | `#figure(image("images/<n>.<ext>"), caption: alt?)` + **alt text** (UA-1 requires it; fall back to filename) |
-| mermaid code block | beautiful-mermaid SVG → `image("images/dN.svg")` (vector) |
-| statusBadge | `#status-badge(color:)[TEXT]` |
-| link | `#link(url)[text]` |
-| unknown macro | omitted + report line (never raw storage XML in output) |
+| heading | semantic `heading`; document-wide promotion of the shallowest source heading to level 1, matching the established DOCX fixture behavior |
+| paragraph | semantic paragraph with serialized inline children |
+| callout | semantic content inside a styled `callout` container; title and kind preserved |
+| codeBlock | safe raw-code representation with language metadata and native highlighting |
+| ordered/unordered/task list | semantic nested `enum`/`list`; checked state rendered visibly and announced in text |
+| table | semantic `table`; spans preserved where valid, leading complete header rows emitted as `table.header` |
+| image attachment | semantic figure/image using resolved job asset; caption and alternative description remain separate |
+| image external | skipped with a stable report note unless already available through an approved resolver |
+| blockquote | semantic quote styling without flattening child content |
+| divider | thematic visual separator with no misleading text |
+| unknown | omitted or readable text fallback according to the shared export policy; never raw storage XML |
 
-Escaping is a first-class concern: Typst markup characters (`#`, `*`, `_`, `@`, `<`, `[`,
-`$`, `\``) in Confluence text must be escaped — dedicated escape function with a
-character-table test (this is the classic injection-bug source in markup generators).
+Table policy additionally defines mixed header cells, invalid span grids, repeated
+headers, very wide tables and rows crossing page boundaries. Invalid grids degrade to a
+readable table or linearized content with a report note; they never create invalid Typst.
 
-### 2.4 Error/diagnostics model
+### 3.3 Normative inline mapping
 
-Typst diagnostics (source spans) map back to a block index via line markers
-(`// blk:<i>` comments emitted by the serializer) → panel shows "failed at: <block type>
-'<heading text>'…" instead of raw Typst spans. Compile timeout (60 s hard) → readable
-error + offscreen teardown.
+| `InlineNode` | Typst behavior |
+|---|---|
+| text | literal content with bold, italic, underline, strike, code and supported color marks composed deterministically |
+| link | external, page, attachment and anchor targets resolved separately; unsafe or unresolved schemes become text plus a note |
+| mention | visible display name; link only when the model contains an approved target |
+| status | styled inline badge preserving label and color category |
+| lineBreak | explicit line break |
+
+Internal heading labels are deterministic and collision-safe. Duplicate or punctuation-
+only headings receive stable suffixes derived from document order. TOC entries, outline
+bookmarks and internal links use the same promoted hierarchy and label registry.
+
+### 3.4 Escaping and hostile input
+
+There is no universal escape helper. The serializer defines separate, unit-tested
+encoders for:
+
+- Typst content;
+- string literals and URLs;
+- labels/identifiers;
+- raw code bodies.
+
+Raw-code fences are chosen longer than every matching backtick run in the source, or use
+an equivalently safe function form. Hostile fixtures cover Typst punctuation, embedded
+fences, Unicode, RTL text, long unbroken strings, malicious-looking URLs and content that
+resembles template calls. The acceptance test compiles the result and confirms the text
+is represented literally.
+
+### 3.5 Semantic template and accessibility
+
+`atlcli.typ` supplies cover, outline, heading numbering, running header, footer, callout
+styling, status styling, code styling, table defaults and figure styling through semantic
+Typst elements and show rules. Styling must not replace headings, paragraphs, lists,
+tables or figures with layout-only boxes.
+
+Document language, title, author and a caller-supplied export timestamp are set before
+content. Tests inject locale and time; production supplies the current user and clock.
+
+Caption and alternative description are distinct:
+
+- meaningful source alt text is attached to the image;
+- a filename is only a technical fallback in standard tagged mode and produces a report
+  warning;
+- the PDF/UA-1 reference mode fails when meaningful alternative text is required but
+  unavailable;
+- Mermaid source code is not automatically treated as a useful description. Missing
+  diagram descriptions are reported and block the UA reference mode;
+- decorative treatment requires an explicit semantic decision, not an empty string by
+  accident.
+
+### 3.6 PDF profiles and claims
+
+- **Standard mode:** tagged PDF using the pinned compiler's default tagging support.
+- **UA reference mode:** explicitly requests PDF/UA-1 only if Task 1 proves that the
+  pinned browser compiler API exposes it.
+- Compiler success is necessary but not sufficient for a PDF/UA claim. The archived
+  reference requires an external validator report and a manual accessibility checklist.
+- This spec makes no PDF/A or archival-conformance claim.
+
+If the pinned browser compiler cannot select PDF/UA-1, standard tagged export continues,
+and UA mode becomes a clearly blocked follow-up. Vendoring or forking the compiler is a
+new scope decision rather than an implicit Task 1 workaround.
 
 ---
 
-## 3. Task breakdown
+## 4. Asset pipeline
 
-### Task 1 — typst.ts vendored + offscreen compile round-trip
+The PDF path reuses/generalizes the authenticated resolver proven by DOCX and 005:
 
-- [ ] `@myriaddreamin/typst.ts` (+ web compiler WASM) bundled into the extension **without runtime CDN access**; build script copies WASM + font assets into `dist/`
-- [ ] `compile-typst` message implemented; a hardcoded "hello world" .typ compiles to a valid PDF end-to-end (panel button in debug section) — extends 002's WASM smoke into the real thing
-- [ ] Compiler instance cached across compiles (second compile measurably faster — timed assertion in manual check, logged)
-- [ ] Compile error (syntactically broken .typ) returns diagnostics, panel shows readable failure; 60 s timeout enforced
-- [ ] Bundle-size figure recorded (WASM + fonts) in this file — input for store-packaging sanity later
+- page ID plus attachment filename resolve to the canonical Confluence download URL;
+- redirects to Atlassian Media preserve the established credential policy;
+- fetches have bounded concurrency, cancellation, deduplication and deterministic order;
+- each response is checked for status, declared MIME, magic bytes and size;
+- corrupt, missing or unsupported files generate one stable note and no empty VFS file;
+- deterministic collision-free VFS names do not expose tenant URLs or credentials;
+- repeated references reuse one stored asset;
+- per-file and total byte caps fail or skip according to an explicit policy;
+- SVG remains vector after sanitation; raster formats retain original bytes when safe;
+- `@atlcli/diagram` is the only Mermaid renderer. Supported diagrams become sanitized
+  vector SVG; unsupported diagrams remain readable code with a note.
 
-### Task 2 — Fonts
-
-- [ ] Inter (400/500/600) + JetBrains Mono (400/700) bundled as **pinned files with recorded release versions** (version + source URL + checksum noted in `assets/fonts/README.md`)
-- [ ] Compiler configured to use only the bundled fonts; a compile referencing a non-bundled font **fails loudly** rather than silently substituting (test with a deliberately wrong font name) — no local-font fallback exists in WASM, and none is added
-- [ ] **Full character sets bundled for Phase 1** (incl. Latin Extended for umlauts etc.); subsetting is an explicit later optimization, not done now
-- [ ] Font licenses (OFL) copied into `apps/extension/assets/fonts/`
-- [ ] PDF output embeds the fonts (verify via PDF inspection in Task 6)
-
-### Task 3 — atlcli Typst template
-
-- [ ] `atlcli.typ` per §2.2: cover, TOC, numbered headings, running header, page-number footer, callout/status/code/table/figure helpers
-- [ ] Compiles standalone with a demo document (checked into `assets/typst/demo.typ`) — the template's own regression fixture
-- [ ] Document metadata (title/author/date) lands in PDF metadata
-
-### Task 4 — Serializer
-
-- [ ] `typstSerialize` implements the §2.3 table; unit tests per block type (string-level assertions, no WASM needed)
-- [ ] Escape function with full character-table test + a hostile fixture (page text containing Typst syntax) — pinning test that output compiles and renders the text literally
-- [ ] Image assets: attachment blobs → vfs paths; SVG passes through as vector; alt-text rule applied
-- [ ] Mermaid: beautiful-mermaid for the 6 supported types → SVG asset; unsupported types → code block + report (tests for both routes)
-- [ ] `// blk:<i>` markers emitted; diagnostic-to-block mapping unit-tested
-
-### Task 5 — Panel flow
-
-- [ ] "Export as PDF" on the loaded page: fetch images (session auth — mock-test credentials), serialize, compile, download `"<page-title>.pdf"`
-- [ ] Progress states (fetching assets → compiling → done) rendered; panel responsive during compile (compile is offscreen)
-- [ ] Export report: duration, image count, skipped/unsupported items — same report surface as 004
-- [ ] Full-pipeline test with the shared 004 fixture: blocks → typst source snapshot; compile smoke where runnable (see §4 note)
-
-### Task 6 — Quality proofs + manual E2E **[E2E: user]**
-
-Joint session (space `DOCSY`, same feature-zoo test page as 004, delete after):
-
-- [ ] Export the test page: cover, TOC **with correct page numbers**, bookmarks panel populated, internal TOC links click-navigate
-- [ ] Callouts, status badges, tables (repeated header across a page break), nested lists render correctly
-- [ ] Code block shows native syntax highlighting; a mermaid flowchart appears as crisp vector (zoom to 400% — no rasterization)
-- [ ] Images embedded and positioned sanely; fonts embedded (PDF properties / `pdffonts` if available)
-- [ ] **Tagged-PDF reference:** export validated as tagged (Acrobat/veraPDF or PAC if available; minimum: Typst UA-1 export mode succeeds, which validates strictly) — the reference PDF is archived in this spec dir
-- [ ] Duration for the ~2,000-word page recorded (input to 006; WASM path is the slower one — this is the number that matters)
+The compiler adapter maps binary files and registers fonts through the exact API of the
+pinned compiler version. Merely placing TTF files in a VFS is not accepted as proof that
+the compiler uses them.
 
 ---
 
-## 4. Test plan
+## 5. Diagnostics, report and UI contract
 
-- **Unit (fast, no WASM):** serializer per block type, escaping table, diagnostics mapping, template-demo source snapshot.
-- **Integration:** panel flow with mocked compile responses; image-fetch credential assertions.
-- **Compile-level:** if typst.ts runs under bun in CI (Node path is officially supported — probe early in Task 1), add a CI job compiling the demo doc + one fixture; otherwise compile checks are manual-E2E only and the serializer snapshots carry CI weight. Record which way it went here.
-- **Manual E2E (Task 6):** visual quality, tagged-PDF validation, performance number.
+### 5.1 Diagnostics
 
-## 5. Definition of done
+Serializer source mapping records generated file, start/end lines and a structured block
+path such as `blocks[4].table.rows[2].cells[1].children[0]`. Full compiler diagnostics
+(severity, path, range and message) map through it.
 
-- Tasks 1–6 checked; reference Tagged PDF archived in the spec dir.
-- Whole repo green incl. `check:browser` (serializer isomorphic if placed in packages/).
-- No runtime network access except `*.atlassian.net` during export (verified in 006's network-log check, pre-checked here in Task 6).
-- Compile of the E2E page < 10 s target met or the measured number + analysis documented for 006's verdict.
+Diagnostics originating in `atlcli.typ`, the compiler or a generated asset remain
+separate from content diagnostics. The panel shows a concise user-facing error and keeps
+the detailed diagnostic in the report/debug view.
 
-## 6. Risks and open questions
+### 5.2 PDF report
 
-1. **typst.ts API stability / PDF export surface** — the browser PDF path is less "advertised" than SVG/canvas (research §1b). Task 1 is deliberately first and minimal: if PDF bytes can't be produced reliably in the offscreen doc, escalate before any template work (fallback ladder: compile in a Web Worker inside the panel; server/bridge is out of scope for the PoC).
-2. **WASM + fonts bundle size** (likely 10–30 MB). Fine for load-unpacked PoC; store packaging limits arrive later — recorded, not solved, here.
-3. **Compile performance on big pages** — WASM is the slow path per typst.ts docs. The 006 budget check decides whether "good enough"; incremental-compile features of typst.ts are the known lever if not.
-4. **UA-1 strictness can fail exports** (Typst refuses on violations, e.g. missing alt text). Default export mode stays plain tagged PDF; UA-1 is the *reference* proof. Alt-text fallback rule (§2.3) keeps the reference viable.
-5. **Structured-clone payload cost** for image-heavy pages — measured in Task 5; Blob-URL handoff is the prepared fallback.
-6. **`table.cell` rowspan edge cases** mirror 004's merged-cell reef; same policy: basic merges correct, deep nesting degrades with a report line.
+`PdfExportReport` is PDF-specific and maps to a small shared presentation model rather
+than reusing the DOCX template report type directly. It includes:
+
+- page identity, filename and selected PDF profile;
+- compiler wrapper, WASM/Typst engine and template versions;
+- fetch, preparation, queue, compile, download and total durations;
+- embedded, deduplicated, skipped and failed images;
+- rendered and degraded diagrams;
+- warning/note counts with stable ordering;
+- page count, embedded-font result, tagging result and validator result when available;
+- timeout, cancellation and cleanup outcome.
+
+### 5.3 Panel and download flow
+
+- PDF receives its own export action outside the DOCX template-upload controls.
+- Phases: `preparing → fetching assets → queued → compiling → validating → downloading → done`.
+- Busy, cancel, timeout, retry and stale-page states are explicit.
+- The download sink is generalized to accept MIME type and extension; PDF uses
+  `application/pdf` and the established filename sanitizer with a parameterized suffix.
+- The report shown after completion is tied to the source page and `jobId`.
+
+---
+
+## 6. Task breakdown
+
+### Task 0 — Refresh contracts and shared assets
+
+- [ ] Add `@atlcli/pdf` with browser-safe package boundaries and explicit exports.
+- [ ] Establish a canonical, checksum-verified PDF font build cache while leaving the
+  template-driven DOCX font contract and its diagram-rasterizer assets unchanged.
+- [ ] Pin wrapper, web compiler/WASM, embedded Typst engine, diagram renderer, template
+  and fonts; record source URL, version, checksum and license.
+- [ ] Update `NOTICE` and ensure licenses ship in the extension artifact.
+- [ ] Add the decisions in §2 and §3 to code-facing types before integration work.
+
+### Task 1 — Browser compiler feasibility gate
+
+- [ ] In the built WXT extension, initialize the exact pinned compiler and produce a
+  valid hello-world PDF from packaged WASM with network access denied.
+- [ ] Prove font registration with Source Serif 4, Source Sans 3 and Source Code Pro and prove that an unknown
+  font fails rather than silently resolving from the environment.
+- [ ] Record whether and how the browser API selects tagged default and PDF/UA-1 output.
+  If UA selection is unavailable, record the follow-up boundary before template work.
+- [ ] Return a complete syntax diagnostic from a broken source.
+- [ ] Record compressed/uncompressed artifact size and cold/warm initialization time.
+- [ ] Add a load-unpacked Chromium smoke test; source snapshots alone do not satisfy this
+  gate.
+
+### Task 2 — Job store and compiler lifecycle
+
+- [ ] Implement JSON-only control messages and job-scoped binary storage per §2.2.
+- [ ] Enforce quotas, startup cleanup, `finally` cleanup and inaccessible/expired-job
+  behavior.
+- [ ] Implement the worker state machine, FIFO queue, single-flight initialization,
+  timeout termination, retry and idle-close rules from §2.3.
+- [ ] Test a payload above 10 MB, quota failure, two concurrent requests, navigation
+  invalidation, late completion, init failure/retry and a failed job between two
+  successful jobs.
+- [ ] Prove that job B cannot read job A's sources or assets.
+
+### Task 3 — Semantic template
+
+- [ ] Implement `atlcli.typ` following §3.5 with cover, TOC, numbered headings, running
+  header, footer, semantic callout/status/code/table/figure styling and metadata.
+- [ ] Add a standalone demo document and deterministic injected metadata/clock.
+- [ ] Test heading promotion, duplicate labels, outline/bookmarks, internal links,
+  repeated table headers and multi-page layout.
+- [ ] Keep default tagged and UA reference modes explicit and separate.
+
+### Task 4 — Preparation and exhaustive serializer
+
+- [ ] Implement both APIs from §3.1 in `@atlcli/pdf`.
+- [ ] Cover every `ExportBlock` and `InlineNode` variant with exhaustive switches and at
+  least one test, including nesting combinations.
+- [ ] Implement the context-specific encoders and hostile compile fixture from §3.4.
+- [ ] Emit structured source-map entries and map nested compiler diagnostics.
+- [ ] Render Mermaid only through `@atlcli/diagram`; test supported, unsupported and
+  renderer-failure paths.
+- [ ] Snapshot source only as a readable supplement; successful real compilation is the
+  correctness gate.
+
+### Task 5 — Authenticated asset integration
+
+- [ ] Reuse/generalize the working DOCX session resolver and canonical attachment path.
+- [ ] Implement redirect, cancellation, concurrency, byte limits, deduplication, content
+  validation, deterministic naming and failure notes from §4.
+- [ ] Test raster images, sanitized SVG, missing/corrupt assets, duplicate references,
+  external URLs, redirects and total-size exhaustion.
+- [ ] Verify the compiler performs no runtime requests outside the two allowed Atlassian
+  host classes.
+
+### Task 6 — Panel, report and download
+
+- [ ] Add the separate **Export as PDF** action with the phase and stale-page behavior in
+  §5.3.
+- [ ] Add `PdfExportReport` and the shared report presentation mapping.
+- [ ] Generalize the download adapter and download a sanitized `<page-title>.pdf` with
+  `application/pdf`.
+- [ ] Resolve cover metadata explicitly: page title, space name/key, current exporter,
+  document version, locale and injected export time.
+- [ ] Test busy, cancel, timeout, retry, error, success and navigation-during-export UI
+  states.
+
+### Task 7 — Automated PDF verification
+
+- [ ] CI compiles the demo and shared feature-zoo source through the real compiler. If
+  Bun cannot host the compiler, run the built offscreen path in Chromium; compile testing
+  never becomes manual-only.
+- [ ] Pin a PDF inspector and assert valid parse, page count, metadata, outline,
+  internal/external links, embedded fonts and tag presence.
+- [ ] Run the same fixed input twice after cold and warm initialization. Require
+  byte-identical output, or document and normalize specific compiler-owned volatile
+  fields before asserting structural identity.
+- [ ] Extend the extension-output check to require expected WASM, fonts, template,
+  licenses and hashes and to reject remote loader URLs.
+- [ ] Run repo tests, typecheck, `check:browser`, extension build/output checks and the
+  new Chromium smoke.
+
+### Task 8 — Quality proof and manual E2E **[E2E: user]**
+
+Use the standing DOCSY feature-zoo page retained by 004. Do not delete or materially
+mutate it in this spec; final cleanup belongs to 008.
+
+- [ ] Cover, TOC page numbers, outline/bookmarks and internal TOC links are correct.
+- [ ] Promoted headings, callouts, badges, nested lists, tasks, blockquotes and dividers
+  remain semantically and visually clear.
+- [ ] Tables repeat headers and remain readable across page breaks; merges degrade only
+  according to the documented policy.
+- [ ] Code highlights correctly and Mermaid remains crisp at 400% zoom.
+- [ ] Attachments embed through the real authenticated/redirect flow; missing assets
+  produce readable notes.
+- [ ] Fonts are embedded and only the pinned families are used.
+- [ ] Standard output is confirmed tagged.
+- [ ] If UA reference mode passed Task 1, archive the anonymized PDF, external validator
+  report and manual checklist for reading order, outline, links, tables, language and alt
+  descriptions. Compiler success alone does not pass this item.
+- [ ] Record cold compile, warm compile, total duration, peak memory and PDF size for the
+  approximately 2,000-word fixture.
+
+### Task 9 — Documentation and handoff
+
+- [ ] Update `src/content/docs/confluence/export.md` with the PDF UI path, support matrix,
+  tagged-versus-UA explanation, network/privacy contract, limits, fallbacks and
+  troubleshooting.
+- [ ] Record exact compiler/assets matrix and bundle-size result in this spec.
+- [ ] Update `008-export-poc-validation` to consume output from 007 and use the corrected
+  Atlassian plus Media network allowlist.
+- [ ] Hand performance and quality evidence to 008; do not make the final DOCX-versus-PDF
+  product verdict here.
+
+---
+
+## 7. Test matrix
+
+### Unit
+
+- Every block and inline variant, nesting, heading promotion and duplicate labels.
+- Context-specific escaping, code fences, unsafe links and Unicode/RTL fixtures.
+- Source mapping for nested table/list/callout diagnostics.
+- Stable report notes and deterministic asset naming.
+
+### Integration
+
+- Authenticated asset resolution, Atlassian Media redirect and credential policy.
+- Job store quotas, cleanup and isolation.
+- Queue, cancellation, worker timeout/restart and idle lifecycle.
+- Panel phases, stale navigation, report mapping and generic download sink.
+
+### Built-runtime and compile
+
+- Load-unpacked Chromium smoke against the built extension.
+- Cold/warm real compilation and broken-source diagnostics.
+- No compiler/font/CDN/package-network access.
+- Packaged WASM/font/template/license/hash verification.
+- PDF structural inspection and deterministic repeat compile.
+
+### Manual E2E and accessibility
+
+- Visual and semantic review of the standing feature-zoo fixture.
+- Performance and memory capture.
+- External PDF/UA validator plus manual checklist for the optional reference mode.
+
+---
+
+## 8. Definition of done
+
+- Tasks 0–9 are complete and all mandatory gates are automated except the named visual
+  and accessibility checks.
+- The built Chrome extension exports the standing page to a valid, tagged PDF without
+  blocking the panel.
+- No export job leaks VFS state, stored bytes or results into another job or page.
+- Runtime network access is limited to the active Atlassian tenant and the established
+  Atlassian Media redirect host; compiler and presentation assets are fully local.
+- The generated PDF passes structural inspection, embeds only the pinned fonts and
+  preserves the supported `ExportBlock`/`InlineNode` contract.
+- Fixed-input repeatability is proven under the documented determinism definition.
+- PDF/UA-1 is claimed only when the pinned compiler exposes the profile and the archived
+  result passes independent validation plus manual review.
+- Cold/warm performance, peak memory, output size and bundle size are recorded for 008.
+- Repository tests, typecheck, browser/isomorphism checks, extension build and built
+  runtime smoke are green.
+- User documentation and the 008 handoff are updated in the same change set.
+
+---
+
+## 9. Risks and escalation points
+
+1. **Browser PDF-standard API:** Task 1 may prove tagged output but not PDF/UA-1
+   selection. Standard export remains viable; a compiler fork or version change requires
+   a separate scope decision.
+2. **WASM and font size:** record the actual shipped size early. Optimization or
+   subsetting follows only after correctness and licensing are proven.
+3. **Long-running WASM:** hard cancellation requires worker termination and clean
+   reinitialization; a rejected Promise is not sufficient.
+4. **Large jobs and browser quota:** explicit limits and readable failure are required;
+   silently dropping assets is not acceptable.
+5. **Table pagination and spans:** complex grids may require a documented degradation
+   rather than visually incorrect output.
+6. **Meaningful alternative text:** technical fallbacks can keep standard export useful
+   but cannot establish accessibility quality or UA conformance.
 
 ### Decisions log
 
-- **F1 — serializer location**: ❓ open (proposal: `packages/confluence` next to the walker, isomorphism-gated).
-- **F2 — bundled font set**: ✅ (Björn, 2026-07-14; refined 2026-07-15) Inter 400/500/600 + JetBrains Mono 400/700 (OFL), files and versions pinned, no local-font fallback, full charsets in Phase 1 (subsetting later); no serif face in the PoC — template designed sans-only.
+- **F1 — serializer location:** ✅ `packages/pdf` / `@atlcli/pdf`; host-neutral and
+  browser-safe. Extension owns only browser adapters and compiler hosting.
+- **F2 — bundled font set:** ✅ Source Serif 4 400/600/700 + italic 400,
+  Source Sans 3 400/600/700 + italic 400 and Source Code Pro 400/700, exact
+  upstream commits/checksums/licenses pinned, gitignored build cache, no system fallback.
+  DOCX remains template-driven.
+- **F3 — binary transport:** ✅ JSON control messages plus job-scoped same-origin binary
+  storage; no `Map`/`ArrayBuffer` payloads through runtime messaging.
+- **F4 — compiler concurrency:** ✅ one active compile per worker with FIFO queue until a
+  later benchmark proves safe parallelism.
+- **F5 — PDF profiles:** ✅ tagged standard mode; separately selected and independently
+  validated PDF/UA-1 reference mode; no PDF/A claim.
+- **F6 — heading hierarchy:** ✅ promote the shallowest document heading to level 1,
+  preserving relative depth and using the same hierarchy for visual headings, TOC,
+  outline and anchors.
+- **F7 — shared fixture:** ✅ retain the standing 004 feature-zoo page through 007;
+  cleanup remains in 008.

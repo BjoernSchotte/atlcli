@@ -7,6 +7,8 @@ const noEntity: EntityDetection = { url: null, entity: null, seq: 0 };
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
   getCurrentEntity: async () => noEntity,
+  runPdfCompile: async () => ({ ok: true }),
+  runPdfCancel: async () => true,
 };
 
 describe("routeMessage (pure router)", () => {
@@ -30,6 +32,8 @@ describe("routeMessage (pure router)", () => {
           return a + b;
         },
         getCurrentEntity: async () => noEntity,
+        runPdfCompile: okDeps.runPdfCompile,
+        runPdfCancel: okDeps.runPdfCancel,
       }
     );
     expect(called).toBe(false);
@@ -43,6 +47,8 @@ describe("routeMessage (pure router)", () => {
           throw new Error("instantiate boom");
         },
         getCurrentEntity: async () => noEntity,
+        runPdfCompile: okDeps.runPdfCompile,
+        runPdfCancel: okDeps.runPdfCancel,
       }
     );
     expect(res).toEqual({
@@ -61,6 +67,8 @@ describe("routeMessage (pure router)", () => {
           throw "plain string";
         },
         getCurrentEntity: async () => noEntity,
+        runPdfCompile: okDeps.runPdfCompile,
+        runPdfCancel: okDeps.runPdfCancel,
       }
     );
     expect(res).toEqual({
@@ -78,8 +86,29 @@ describe("routeMessage (pure router)", () => {
     };
     const res = await routeMessage(
       { kind: "get-current-entity" },
-      { runWasmSmoke: async (a, b) => a + b, getCurrentEntity: async () => detection }
+      { ...okDeps, getCurrentEntity: async () => detection }
     );
     expect(res).toEqual({ kind: "current-entity", detection });
+  });
+
+  it("routes PDF compile and cancellation by job id", async () => {
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
+    expect(await routeMessage({ kind: "pdf:compile", jobId }, okDeps)).toEqual({
+      kind: "pdf:compile-result", jobId, ok: true,
+    });
+    expect(await routeMessage({ kind: "pdf:cancel", jobId }, okDeps)).toEqual({
+      kind: "pdf:cancel-result", jobId, cancelled: true,
+    });
+  });
+
+  it("captures PDF compiler failures", async () => {
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
+    const response = await routeMessage(
+      { kind: "pdf:compile", jobId },
+      { ...okDeps, runPdfCompile: async () => { throw new Error("compiler offline"); } }
+    );
+    expect(response).toEqual({
+      kind: "pdf:compile-result", jobId, ok: false, error: "compiler offline",
+    });
   });
 });

@@ -1,11 +1,60 @@
 ---
-title: "DOCX Export"
-description: "DOCX Export - atlcli documentation"
+title: "DOCX and PDF Export"
+description: "Export Confluence pages to Word or tagged PDF"
 ---
 
-# DOCX Export
+# DOCX and PDF Export
 
-Export Confluence pages to Microsoft Word (DOCX) format using customizable templates.
+Export Confluence pages to Microsoft Word (DOCX) with customizable templates, or use
+the browser extension to create a tagged PDF with the built-in atlcli document design.
+
+## On this page
+
+- [Browser extension: PDF export](#browser-extension-pdf-export)
+- [CLI: DOCX quick start](#quick-start)
+- [Rendering engines](#rendering-engines)
+- [Templates](#templates)
+- [Table of contents](#table-of-contents)
+- [Template variables](#template-variables)
+- [Troubleshooting](#troubleshooting)
+
+## Browser extension: PDF export
+
+The PDF path is additive: **Export to Word** and its template upload continue to work as
+before. On a loaded Confluence page, select **Export to PDF**. The extension prepares
+attachments and diagrams, compiles the page in a background worker, validates the result,
+and downloads `<page-title>.pdf`.
+
+The completion report separates preparation, compilation, and download time. Preparation
+includes authenticated attachment fetching, so image-heavy pages can be distinguished from
+a slow compiler without enabling debug logging.
+
+PDF currently uses one built-in standard design. It includes a cover, computed table of
+contents, promoted heading hierarchy, running header, page-number footer, callouts, status
+badges, syntax-highlighted code, tables, images and vector Mermaid diagrams. Custom PDF
+template upload is not available yet.
+
+### PDF support and limits
+
+| Area | Behavior |
+|------|----------|
+| PDF profile | Tagged PDF; no PDF/UA or PDF/A conformance claim |
+| Fonts | Bundled Source Serif 4, Source Sans 3 and Source Code Pro; no system-font or CDN dependency |
+| Attachments | PNG, JPEG, GIF, WebP and safe SVG; 25 MB per file, 50 MB total |
+| External images | Not fetched; exported as a readable fallback with a report note |
+| Mermaid | Supported diagrams remain vector SVG; failures become readable source code |
+| Job storage | 64 MB per input/output and 128 MB total temporary browser storage |
+| Compiler timeout | 60 seconds; the compiler worker is terminated and recreated |
+
+The extension validates image magic bytes, rejects active or externally loaded SVG content,
+and validates that the compiled PDF has pages, tags and embedded fonts before download.
+Compilation, the template and fonts are fully local. Network requests during PDF export are
+limited to the active `*.atlassian.net` tenant and authenticated attachment redirects to
+`api.media.atlassian.com`.
+
+The generated PDF is tagged by default, but tagged output is not the same as certified
+PDF/UA. The pinned browser compiler does not expose PDF/UA-1 profile selection, so atlcli does
+not make that claim.
 
 ## Prerequisites
 
@@ -276,3 +325,4 @@ embedding.
 - [Attachments](attachments.md) - Managing page attachments for export
 - [Templates](templates.md) - Page templates (different from export templates)
 - [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine behind `--engine ts`
+- [PDF Export Engine](../reference/pdf-engine.md) - Browser compiler, assets and verification

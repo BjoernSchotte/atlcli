@@ -1,0 +1,21 @@
+{
+  "name": "@atlcli/pdf",
+  "version": "0.6.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": "./src/index.browser.ts",
+    "./template": "./src/template.ts",
+    "./fonts/*": "./.fonts/*",
+    "./licenses/*": "./licenses/*"
+  },
+  "dependencies": {
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/diagram": "workspace:*"
+  }
+}

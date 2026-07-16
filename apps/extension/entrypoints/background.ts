@@ -44,6 +44,8 @@ const offscreenIdle = createIdleTimer({
   },
 });
 
+let activePdfJobs = 0;
+
 /**
  * Effect wired into the pure router: ensure the offscreen document exists,
  * then round-trip the WASM computation through it. Rejects on failure so the
@@ -51,7 +53,7 @@ const offscreenIdle = createIdleTimer({
  * timer so the document is closed once traffic stops.
  */
 async function runWasmSmoke(a: number, b: number): Promise<number> {
-  offscreenIdle.reset();
+  if (activePdfJobs === 0) offscreenIdle.reset();
   await ensureOffscreen();
   const res = (await chrome.runtime.sendMessage({
     kind: "offscreen:wasm-add",
@@ -64,6 +66,39 @@ async function runWasmSmoke(a: number, b: number): Promise<number> {
   }
   if (!res.ok) throw new Error(res.error);
   return res.result;
+}
+
+async function runPdfCompile(jobId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  activePdfJobs += 1;
+  offscreenIdle.stop();
+  try {
+    await ensureOffscreen();
+    const response = (await chrome.runtime.sendMessage({
+      kind: "offscreen:pdf-compile",
+      jobId,
+    })) as OffscreenResponse | undefined;
+    if (!response || response.kind !== "offscreen:pdf-compile-result" || response.jobId !== jobId) {
+      return { ok: false, error: "Offscreen PDF compiler returned no correlated result." };
+    }
+    return response.ok ? { ok: true } : { ok: false, error: response.error };
+  } finally {
+    activePdfJobs = Math.max(0, activePdfJobs - 1);
+    if (activePdfJobs === 0) offscreenIdle.reset();
+  }
+}
+
+async function runPdfCancel(jobId: string): Promise<boolean> {
+  await ensureOffscreen();
+  const response = (await chrome.runtime.sendMessage({
+    kind: "offscreen:pdf-cancel",
+    jobId,
+  })) as OffscreenResponse | undefined;
+  return Boolean(
+    response &&
+      response.kind === "offscreen:pdf-cancel-result" &&
+      response.jobId === jobId &&
+      response.cancelled
+  );
 }
 
 /**
@@ -132,7 +167,12 @@ export default defineBackground({
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
-    handleExtMessage(message, sendResponse, { runWasmSmoke, getCurrentEntity })
+    handleExtMessage(message, sendResponse, {
+      runWasmSmoke,
+      getCurrentEntity,
+      runPdfCompile,
+      runPdfCancel,
+    })
   );
 
   // Tab switch: resolve the newly-active tab's URL, then observe it.
