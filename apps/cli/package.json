@@ -11,7 +11,8 @@
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/jira": "workspace:*",
-    "@atlcli/plugin-api": "workspace:*"
+    "@atlcli/plugin-api": "workspace:*",
+    "@resvg/resvg-wasm": "2.6.2"
   },
   "scripts": {
     "start": "bun run src/index.ts",

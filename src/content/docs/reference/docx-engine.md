@@ -69,7 +69,10 @@ pre-005 behavior — every image degrades to an `image-skipped` report note inst
 
 `SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
 fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
-blocks as readable source code blocks with a `diagram-skipped` report note.
+blocks as readable source code blocks with a `diagram-skipped` report note. Two implementations
+ship: the extension's canvas rasterizer (`apps/extension/utils/docx/env.ts`) and a Node
+rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
+`packages/docx/src/node-adapters.ts`) that the CLI uses.
 
 ## Image embedding
 
@@ -119,9 +122,25 @@ for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's 
   `renderedDiagrams`.
 - **Theming:** `ExportInput.diagramTheme` takes two base colors (`bg`, `fg`) plus optional role
   overrides (`line`, `accent`, `muted`, `surface`, `border`, `font`); the full scheme is derived
-  from the base pair. Default is a neutral zinc-light palette matching the export's code blocks.
+  from the base pair. Use hex colors (`#RRGGBB`). Default is a neutral zinc-light palette
+  matching the export's code blocks.
+- **Flattened SVG:** beautiful-mermaid themes through CSS custom properties and
+  `color-mix()`, which neither Word's svgBlip renderer nor resvg resolves (unresolved `var()`
+  paints black). `renderDiagram` flattens both to literal presentation attributes before the
+  SVG reaches any rasterizer or the archive (`flattenSvgStyles` in
+  `packages/diagram/src/svg-flatten.ts`); the CSS background becomes a real background
+  `<rect>`. Browsers render the flattened SVG identically.
+- **Node rasterizer (CLI):** `resvgSvgRasterizer()` renders the PNG fallback through
+  `@resvg/resvg-wasm` — chosen over the native `@resvg/resvg-js` because release binaries are
+  cross-compiled from one Linux runner, which can embed one portable `.wasm` for every target
+  but never another platform's `.node` addon. The wasm build sees no system fonts, so the
+  package bundles Inter and JetBrains Mono (`packages/docx/fonts/`, SIL OFL) — the exact
+  families the diagram SVGs name. Hosts may pass their own `{ wasm, fonts }` bytes (the
+  compiled CLI binary reads its embedded copies); plain Node hosts omit them and the adapter
+  resolves both from the package.
 - **Licensing note:** beautiful-mermaid is MIT; its layout dependency `elkjs` is **EPL-2.0**
-  (weak copyleft, satisfied by attribution — see the repository `NOTICE` file).
+  (weak copyleft, satisfied by attribution); resvg is **MPL-2.0**; the bundled Inter and
+  JetBrains Mono fonts are **SIL OFL 1.1** — see the repository `NOTICE` file.
 
 ### Logo placeholders
 

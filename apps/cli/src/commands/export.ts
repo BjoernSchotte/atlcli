@@ -741,11 +741,20 @@ function tokenAssetFetcher(client: ConfluenceClient) {
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const { client, page, resolvedTemplatePath, outputPath, includeChildren, embedImages, opts } = args;
   const { runExport, fileTemplateSource, fileOutputSink } = await import("@atlcli/docx");
+  const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
   const { stat } = await import("node:fs/promises");
 
   const cliNotes: string[] = [];
   if (includeChildren) {
     cliNotes.push("--include-children is not supported by the ts engine yet; exported the single page.");
+  }
+
+  // Mermaid diagrams render via resvg-wasm (spec 005a). A missing rasterizer
+  // is not an error: the engine degrades those blocks to readable source
+  // code and reports each one — the note here names the reason once.
+  const rasterizer = await buildDiagramRasterizer();
+  if (!rasterizer) {
+    cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
   }
 
   const templateStat = await stat(resolvedTemplatePath);
@@ -785,6 +794,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     {
       templates: fileTemplateSource(resolvedTemplatePath),
       assets: tokenAssetFetcher(client),
+      rasterizer: rasterizer ?? undefined,
       output: fileOutputSink(resolvedOutputPath),
     }
   );
@@ -919,10 +929,9 @@ Options:
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
   --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
                       (isomorphic @atlcli/docx engine — same as the browser
-                      extension; $scroll.* placeholders + image embedding, no
-                      Python needed; children not yet supported. Mermaid
-                      diagrams export as readable source blocks — rendering
-                      them needs the extension's rasterizer)
+                      extension; $scroll.* placeholders + image embedding +
+                      mermaid diagram rendering, no Python needed; children
+                      not yet supported)
   --profile <name>    Use a specific auth profile
 
 Page Reference Formats:
