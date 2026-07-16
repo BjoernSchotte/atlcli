@@ -1,6 +1,6 @@
 # Isomorphic Export Engine — extract `@atlcli/docx` for CLI / MCP / Studio / Server reuse
 
-Status: **Planned**
+Status: **Implemented** (2026-07-16 — all six tasks done; E2E via `atlcli wiki export --engine ts` against the DOCSY feature-zoo page)
 
 Spec ID: `006-isomorphic-export-fup`
 Depends on: `002-extension-workspace`, `003-page-detection-read-path`, `004-docx-export` (must be merged — this extracts code that lands there), `001-browser-ready-core` (the conditional-exports + injectable-side-effects pattern this mirrors)
@@ -128,32 +128,32 @@ browser bundle.
 ## 3. Task breakdown (ordered)
 
 ### Task 1 — Scaffold `packages/docx`
-- [ ] Package created (`@atlcli/docx`, private), `exports` conditions per §2.1, deps on `@atlcli/confluence` + `@atlcli/core`; wired into workspaces/Turbo/typecheck.
-- [ ] `src/index.browser.ts` + `src/index.ts` skeletons; added to `scripts/check-browser-build.ts` as a gated entrypoint.
-- [ ] Repo-wide `bun test` / `typecheck` / `build` green (empty package builds).
+- [x] Package created (`@atlcli/docx`, private), `exports` conditions per §2.1, deps on `@atlcli/confluence` + `@atlcli/core`; wired into workspaces/Turbo/typecheck.
+- [x] `src/index.browser.ts` + `src/index.ts` skeletons; added to `scripts/check-browser-build.ts` as a gated entrypoint.
+- [x] Repo-wide `bun test` / `typecheck` / `build` green (empty package builds).
 
 ### Task 2 — Move pure modules (no behavior change)
-- [ ] All §2.2 "pure" modules moved into `packages/docx/src`, imports rewired; extension imports them from `@atlcli/docx`.
-- [ ] Their existing tests move with them (or import-path-only edits) and stay green **unchanged** — this is the move-not-rewrite guardrail.
-- [ ] `bun run check:browser` green (engine browser entry has zero `node:`/`bun:`/bare-node-global leaks).
+- [x] All §2.2 "pure" modules moved into `packages/docx/src`, imports rewired; extension imports them from `@atlcli/docx`.
+- [x] Their existing tests move with them (or import-path-only edits) and stay green **unchanged** — this is the move-not-rewrite guardrail.
+- [x] `bun run check:browser` green (engine browser entry has zero `node:`/`bun:`/bare-node-global leaks).
 
 ### Task 3 — Introduce injected interfaces
-- [ ] `TemplateSource` / `AssetFetcher` / `OutputSink` / `ExportEnv` defined; `runExport(input, env)` entry.
-- [ ] Extension implements the three interfaces (IndexedDB / session-fetch / download) as thin adapters; no engine code references `chrome.*` / DOM / `window`.
-- [ ] Unit tests for each adapter using real infra per the repo directive (fake-indexeddb for the template source; mock only `chrome.*`/network).
+- [x] `TemplateSource` / `AssetFetcher` / `OutputSink` / `ExportEnv` defined; `runExport(input, env)` entry.
+- [x] Extension implements the three interfaces (IndexedDB / session-fetch / download) as thin adapters; no engine code references `chrome.*` / DOM / `window`.
+- [x] Unit tests for each adapter using real infra per the repo directive (fake-indexeddb for the template source; mock only `chrome.*`/network).
 
 ### Task 4 — Golden-file equality (extension output unchanged)
-- [ ] A pre-refactor fixture export (the 004 §2.1 feature-zoo page + fixture template) is captured as a golden `.docx`; post-refactor output is byte-equal (or structurally equal after normalizing non-deterministic parts like timestamps). This is the proof the refactor changed nothing observable.
+- [x] A pre-refactor fixture export (the 004 §2.1 feature-zoo page + fixture template) is captured as a golden `.docx`; post-refactor output is byte-equal (or structurally equal after normalizing non-deterministic parts like timestamps). This is the proof the refactor changed nothing observable.
 
 ### Task 5 — Second consumer proves reuse
-- [ ] A Node-side consumer (a CLI subcommand `atlcli export docx`, or a documented `bun` harness if a full command is out of scope) drives `runExport` with filesystem `TemplateSource`/`OutputSink` and the token-auth client as `AssetFetcher`.
-- [ ] It renders the same fixture to an equivalent `.docx` (same structural assertions as Task 4), proving the engine runs outside the browser with no shim.
-- [ ] Runs under Node/Bun with real `Buffer` (no extension shim imported).
+- [x] A Node-side consumer (a CLI subcommand `atlcli export docx`, or a documented `bun` harness if a full command is out of scope) drives `runExport` with filesystem `TemplateSource`/`OutputSink` and the token-auth client as `AssetFetcher`.
+- [x] It renders the same fixture to an equivalent `.docx` (same structural assertions as Task 4), proving the engine runs outside the browser with no shim.
+- [x] Runs under Node/Bun with real `Buffer` (no extension shim imported).
 
 ### Task 6 — Docs + cleanup
-- [ ] `docs/` updated: the export engine is a reusable package; how a new surface plugs in (implement the three interfaces).
-- [ ] Extension's now-removed pure modules deleted (no dead copies); dependency list corrected.
-- [ ] Note that PDF export (spec 007-pdf-export) is built next, directly on the isomorphic engine this spec establishes (not a later re-extraction).
+- [x] `docs/` updated: the export engine is a reusable package; how a new surface plugs in (implement the three interfaces).
+- [x] Extension's now-removed pure modules deleted (no dead copies); dependency list corrected.
+- [x] Note that PDF export (spec 007-pdf-export) is built next, directly on the isomorphic engine this spec establishes (not a later re-extraction).
 
 ---
 

@@ -4,7 +4,7 @@ import {
   MAX_TEMPLATE_BYTES,
   scanTemplate,
   unzipDocx,
-} from "../../utils/docx/scan.js";
+} from "./scan.js";
 import {
   buildDocx,
   chartTitlePart,

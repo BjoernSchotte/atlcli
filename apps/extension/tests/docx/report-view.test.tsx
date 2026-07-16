@@ -8,7 +8,7 @@ import { describe, expect, it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ReportView } from "../../entrypoints/sidepanel/TemplateSection.js";
-import type { ExportReport } from "../../utils/docx/export.js";
+import type { ExportReport } from "@atlcli/docx/browser";
 
 const emptyScan: ExportReport["scan"] = {
   supported: [],

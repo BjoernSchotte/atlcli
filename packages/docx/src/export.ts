@@ -33,7 +33,7 @@
  */
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { storageToBlocks, type ConfluencePageDetails, type ExportNote } from "@atlcli/confluence/browser";
+import { storageToBlocks, type ConfluencePageDetails, type ExportNote } from "@atlcli/confluence";
 import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
 import {
   resolvePlaceholders,

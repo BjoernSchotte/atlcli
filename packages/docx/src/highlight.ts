@@ -134,6 +134,13 @@ export async function highlightCode(code: string, language?: string): Promise<Hi
     if (!loadedLangs.has(lang)) {
       const mod = (await LANG_LOADERS[lang]()) as { default: unknown };
       await hl.loadLanguage(mod.default as never);
+      // Warm the grammar with a throwaway tokenize: the JS regex engine
+      // compiles rules lazily, and the very FIRST tokenize after loadLanguage
+      // can emit differently-merged tokens than every later call (observed:
+      // `1;` as one number-colored token, then `1` + `;` split ever after).
+      // One dummy call makes all real output deterministic from call one —
+      // which the spec-006 golden-file equality test depends on.
+      hl.codeToTokens("0;", { lang, theme: THEME });
       loadedLangs.add(lang);
     }
     const { tokens } = hl.codeToTokens(code, { lang, theme: THEME });

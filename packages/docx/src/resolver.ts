@@ -28,7 +28,7 @@ import {
   type ConfluenceSpace,
   type ExportNote,
   type PagePropertiesMacro,
-} from "@atlcli/confluence/browser";
+} from "@atlcli/confluence";
 import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
 import { formatDatePlaceholder } from "./dateformat.js";
 

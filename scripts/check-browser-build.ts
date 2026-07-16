@@ -18,6 +18,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/jira/src/client.ts",
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
+  "packages/docx/src/index.browser.ts",
 ];
 
 /**

@@ -41,7 +41,29 @@ atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 | `--include-children` | Include child pages in export |
 | `--no-merge` | Keep children as separate array for template loops |
 | `--no-toc-prompt` | Disable TOC update prompt in Word |
+| `--engine` | Rendering engine: `python` (default) or `ts` (see [Rendering Engines](#rendering-engines)) |
 | `--profile` | Use a specific auth profile |
+
+## Rendering Engines
+
+`atlcli wiki export` can render through two engines:
+
+| Engine | Templates | Requirements | Feature scope |
+|--------|-----------|--------------|---------------|
+| `python` (default) | Jinja2 variables (`{{ title }}`, …) | Python 3.12+ with `atlcli-export` | Images, children, content-by-label |
+| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page; image embedding not yet available |
+
+The `ts` engine is the isomorphic [`@atlcli/docx` export engine](/reference/docx-engine/) — the exact
+same code the atlcli browser extension uses for its "Export to Word" button, driven here with
+filesystem adapters. Pick it when you have a Scroll-Word-Exporter-style template and want an export
+with no Python dependency:
+
+```bash
+atlcli wiki export 12345678 --template scroll-corporate.docx --output out.docx --engine ts
+```
+
+The JSON result includes an export report: how many placeholders resolved, which are unsupported
+(rendered empty), and which images were skipped.
 
 ## Templates
 
@@ -195,7 +217,11 @@ atlcli wiki export 12345 -t report -o report.docx --no-toc-prompt
 
 ## Scroll Word Exporter Compatibility
 
-atlcli supports templates created for Scroll Word Exporter. Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the equivalent atlcli variables.
+atlcli supports templates created for Scroll Word Exporter. With the default `python` engine,
+Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the
+equivalent atlcli variables. With `--engine ts`, Scroll placeholders are resolved natively — the
+template is scanned, supported placeholders are filled, unsupported ones are emptied and listed in
+the export report, and the page body is injected at `$scroll.content`.
 
 ## Troubleshooting
 
@@ -222,3 +248,4 @@ atlcli supports templates created for Scroll Word Exporter. Scroll placeholders 
 - [Pages](pages.md) - Page operations and finding page IDs
 - [Attachments](attachments.md) - Managing page attachments for export
 - [Templates](templates.md) - Page templates (different from export templates)
+- [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine behind `--engine ts`

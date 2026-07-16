@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { storageToBlocks, type ExportBlock, type InlineNode } from "@atlcli/confluence/browser";
-import { serializeBlocks, serializeInline } from "../../utils/docx/serialize.js";
-import { parseStyleNames } from "../../utils/docx/ooxml.js";
+import { storageToBlocks, type ExportBlock, type InlineNode } from "@atlcli/confluence";
+import { serializeBlocks, serializeInline } from "./serialize.js";
+import { parseStyleNames } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 
 const noStyles = new Map<string, string>();

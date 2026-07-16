@@ -9,7 +9,7 @@
  * ever contradicts real Scroll behaviour, these tests are where it surfaces.
  */
 import { describe, expect, it } from "bun:test";
-import { classifyPlaceholder, parsePagePropertyArgs } from "../../utils/docx/placeholder-map.js";
+import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
 
 describe("parsePagePropertyArgs — documented forms", () => {
   it("(key)", () => {

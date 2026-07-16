@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ScanView } from "../../entrypoints/sidepanel/TemplateSection.js";
-import type { ScanResult } from "../../utils/docx/scan.js";
+import type { ScanResult } from "@atlcli/docx/browser";
 
 function makeScan(hasContentPlaceholder: boolean): ScanResult {
   return {

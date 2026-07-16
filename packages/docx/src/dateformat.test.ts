@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatDatePlaceholder, formatSimpleDate } from "../../utils/docx/dateformat.js";
+import { formatDatePlaceholder, formatSimpleDate } from "./dateformat.js";
 
 // A fixed local date: 2026-07-14 09:05:03.
 const D = new Date(2026, 6, 14, 9, 5, 3);

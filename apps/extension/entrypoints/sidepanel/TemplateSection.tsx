@@ -1,37 +1,36 @@
 /**
  * DOCX template upload / scan / export panel section (spec 004 Tasks 3 & 5).
  *
- * Thin imperative shell over the tested pure core in `utils/docx/*`:
- *   - upload a `.docx` → {@link scanTemplate} → persist via the IndexedDB store;
- *     survives reload because the current template is re-read on mount;
- *   - render the placeholder scan (✓ supported / ⚠ unsupported / ✗ never);
- *   - when a Confluence page is loaded, Export runs {@link exportDocx} and
- *     triggers a browser download, then shows the export report.
- *
- * All heavy logic (unzip, scan, resolve, serialize, engine render) lives in the
- * pure modules and is unit-tested; this file only does DOM/IDB/`chrome`-adjacent
- * wiring.
+ * Thin imperative shell over the isomorphic engine in `@atlcli/docx`
+ * (spec 006): upload/scan/persist a `.docx` template, then drive the engine's
+ * `runExport` with the extension's env adapters (`utils/docx/env.ts` —
+ * IndexedDB template source, session asset fetcher, download sink) and show
+ * the export report. All heavy logic (unzip, scan, resolve, serialize, engine
+ * render) lives in the engine package and is unit-tested; this file only does
+ * DOM/IDB/`chrome`-adjacent wiring.
  */
 import React, { useEffect, useRef, useState } from "react";
 import { ConfluenceClient } from "@atlcli/confluence/browser";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
-import type { ScanResult } from "../../utils/docx/scan.js";
+import type { ScanResult, ExportReport } from "@atlcli/docx/browser";
 import {
   deleteTemplate,
   getTemplate,
   putTemplate,
   type StoredTemplate,
 } from "../../utils/docx/template-store.js";
-import type { ExportReport } from "../../utils/docx/export.js";
 
 // PizZip + docxtemplater (+ the OOXML serializer and, transitively, lazy Shiki)
 // are heavy and only needed once the user opts into template upload/export.
 // Load them behind these dynamic imports so the initial panel bundle stays lean
 // (the common detect/read path never pulls them). Vite code-splits each into its
-// own chunk fetched on first use.
-const loadScan = () => import("../../utils/docx/scan.js");
-const loadExport = () => import("../../utils/docx/export.js");
+// own chunk fetched on first use. The scan import stays a deep path
+// (`@atlcli/docx/scan`) so uploading a template fetches only the light scan
+// chunk, not the whole engine.
+const loadScan = () => import("@atlcli/docx/scan");
+const loadExport = () => import("@atlcli/docx/browser");
+const loadEnv = () => import("../../utils/docx/env.js");
 
 const MAX_MB = 20;
 
@@ -89,21 +88,6 @@ function exportErrorMessage(err: unknown): string {
     return `The Word template could not be rendered${detail}. Check the template for stray control characters.`;
   }
   return `Export failed: ${(err as Error).message}`;
-}
-
-/** Trigger a browser download of the given bytes. */
-function download(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([bytes as BlobPart], {
-    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function TemplateSection({
@@ -203,23 +187,29 @@ export function TemplateSection({
     setError(null);
     setBusy("export");
     try {
-      const { exportDocx } = await loadExport();
+      const { runExport } = await loadExport();
+      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink } = await loadEnv();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
-      const { bytes, report: rep } = await exportDocx({
-        templateBytes: new Uint8Array(template.bytes),
-        details: loadedPage.details,
-        template: { name: template.name, modificationDate: new Date(template.uploadedAt) },
-        deps: client
-          ? {
-              getSpace: (key) => client.getSpace(key),
-              getCurrentUser: () => client.getCurrentUser(),
-              getPageOwner: (id) => client.getPageOwner(id),
-              getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
-            }
-          : {},
-      });
-      download(bytes, rep.filename);
+      const rep = await runExport(
+        {
+          details: loadedPage.details,
+          template: { name: template.name, modificationDate: new Date(template.uploadedAt) },
+          deps: client
+            ? {
+                getSpace: (key) => client.getSpace(key),
+                getCurrentUser: () => client.getCurrentUser(),
+                getPageOwner: (id) => client.getPageOwner(id),
+                getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+              }
+            : {},
+        },
+        {
+          templates: idbTemplateSource(),
+          assets: sessionAssetFetcher(),
+          output: downloadOutputSink(),
+        }
+      );
       setReport(rep);
     } catch (err) {
       setError(exportErrorMessage(err));
