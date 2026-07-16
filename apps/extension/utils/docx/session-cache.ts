@@ -1,14 +1,11 @@
 /**
- * Small TTL cache for the panel's per-site export metadata (spec 004 deps).
+ * Small TTL cache for the panel's stable per-site export metadata.
  *
- * The engine's resolver deps (space + icon, current user, space-homepage
- * storage) are metadata that changes rarely but was re-fetched on EVERY
- * export — three tabs of the same space each paid the ~100ms space/icon
- * round-trip again. Entries are cached per key for a short TTL: repeat
- * exports within the window skip the round-trip, while a renamed space or
- * swapped logo shows up at most `ttlMs` later. In-flight promises are
- * shared (concurrent exports coalesce); rejections are evicted immediately
- * so a transient failure never sticks.
+ * The extension uses this for space + icon only: current-user and homepage
+ * content have no safe same-site invalidation signal and stay per-export.
+ * Entries are cached per key for a short TTL. In-flight promises are shared
+ * (concurrent exports coalesce); rejections are evicted immediately so a
+ * transient failure never sticks.
  */
 export interface SessionCache<T> {
   get(key: string, load: () => Promise<T>): Promise<T>;

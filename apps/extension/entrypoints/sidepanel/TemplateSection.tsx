@@ -22,6 +22,7 @@ import {
   type StoredTemplate,
 } from "../../utils/docx/template-store.js";
 import { sessionCache } from "../../utils/docx/session-cache.js";
+import { prepareExportDeps } from "../../utils/docx/export-deps.js";
 
 // PizZip + docxtemplater (+ the OOXML serializer and, transitively, lazy Shiki)
 // are heavy and only needed once the user opts into template upload/export.
@@ -37,18 +38,16 @@ const loadEnv = () => import("../../utils/docx/env.js");
 const MAX_MB = 20;
 
 /**
- * Panel-lifetime TTL caches for the resolver deps' METADATA round-trips,
- * keyed by site + entity so multi-site tabs never bleed into each other.
- * Exporting three pages of the same space previously paid the ~100ms
- * space+icon call (and the current-user call) three times; within the TTL
- * they now cost one. Page-specific data (details, owner) stays uncached —
- * always fresh. A renamed space / swapped logo / re-login shows up at most
- * five minutes later, which matches how often that actually happens.
+ * Panel-lifetime TTL cache for the space + icon metadata round-trip, keyed by
+ * site + space so multi-site tabs never bleed into each other. Exporting three
+ * pages of one space previously paid the ~100ms call three times; within the
+ * TTL it now costs one. A renamed space / swapped logo shows up at most five
+ * minutes later. Current user, homepage storage, details, and owner are
+ * deliberately NOT cached across exports: they can change under the same key
+ * without a safe auth/content invalidation signal.
  */
 const DEPS_CACHE_TTL_MS = 5 * 60_000;
 const spaceInfoCache = sessionCache<Awaited<ReturnType<ConfluenceClient["getSpaceWithIcon"]>>>(DEPS_CACHE_TTL_MS);
-const currentUserCache = sessionCache<Awaited<ReturnType<ConfluenceClient["getCurrentUser"]>>>(DEPS_CACHE_TTL_MS);
-const homepageStorageCache = sessionCache<string | null>(DEPS_CACHE_TTL_MS);
 
 interface CurrentTemplate {
   name: string;
@@ -191,6 +190,10 @@ export function TemplateSection({
         );
         return;
       }
+      // A valid upload is an explicit opt-in to the export feature. Warm the
+      // engine + host adapters while IndexedDB persists the template so the
+      // first Export click does not pay the cold dynamic-import cost.
+      void Promise.all([loadExport(), loadEnv()]).catch(() => {});
       await putTemplate(toStored(file.name, buf));
       setTemplate({ name: file.name, uploadedAt: Date.now(), scan, bytes: buf });
     } catch (err) {
@@ -212,10 +215,6 @@ export function TemplateSection({
     setError(null);
     setBusy("export");
     try {
-      const { runExport } = await loadExport();
-      const env = await loadEnv();
-      const { idbTemplateSource, sessionAssetFetcher, downloadOutputSink, canvasSvgRasterizer } = env;
-      env.resetRasterizerStats();
       const profile = profileFromTabUrl(pageUrl);
       const client = profile ? new ConfluenceClient(profile) : null;
       const site = profile ? getConfluenceBaseUrl(profile) : "";
@@ -223,30 +222,36 @@ export function TemplateSection({
       // $scroll.space.* and a logo placeholder previously called the same
       // endpoint twice), served from the panel-lifetime TTL cache above so
       // repeat exports within the same space skip it entirely.
-      const spaceInfo = (key: string): ReturnType<ConfluenceClient["getSpaceWithIcon"]> =>
-        spaceInfoCache.get(`${site}|${key}`, () => client!.getSpaceWithIcon(key));
+      // Start exactly the round-trips named by the already-derived scan BEFORE
+      // host chunks/template setup. Rejections have a consumed branch, while
+      // the original promises still reach the engine's normal report notes.
+      const deps = client
+        ? prepareExportDeps(template.scan, loadedPage.details, {
+            getSpaceWithIcon: (key) =>
+              spaceInfoCache.get(`${site}|${key}`, () => client.getSpaceWithIcon(key)),
+            getCurrentUser: () => client.getCurrentUser(),
+            getPageOwner: (id) => client.getPageOwner(id),
+            getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+          })
+        : {};
+      const [{ runExport }, env] = await Promise.all([loadExport(), loadEnv()]);
+      const {
+        memoryTemplateSource,
+        sessionAssetFetcher,
+        downloadOutputSink,
+        canvasSvgRasterizer,
+      } = env;
+      env.resetRasterizerStats();
       const rep = await runExport(
         {
           details: loadedPage.details,
           template: { name: template.name, modificationDate: new Date(template.uploadedAt) },
-          deps: client
-            ? {
-                getSpace: async (key) => (await spaceInfo(key)).space,
-                getCurrentUser: () => currentUserCache.get(site, () => client.getCurrentUser()),
-                getPageOwner: (id) => client.getPageOwner(id),
-                getSpaceHomepageStorage: (key) =>
-                  homepageStorageCache.get(`${site}|${key}`, () => client.getSpaceHomepageStorage(key)),
-                // Spec 005 logo pass: icon path in, bytes via the session
-                // asset fetcher below ($scroll.spacelogo / $scroll.globallogo).
-                getSpaceLogo: async (key) => {
-                  const icon = (await spaceInfo(key)).icon;
-                  return icon ? { url: icon.path } : null;
-                },
-              }
-            : {},
+          deps,
         },
         {
-          templates: idbTemplateSource(),
+          // The panel already owns these exact bytes; avoid rereading the same
+          // template from IndexedDB on every export.
+          templates: memoryTemplateSource(template.bytes),
           // Attachment refs are wiki-base-relative (spec 005); resolve them
           // against the tab's Confluence root so the session cookies apply.
           assets: sessionAssetFetcher(profile ? getConfluenceBaseUrl(profile) : undefined),
@@ -265,7 +270,8 @@ export function TemplateSection({
           code: "perf-timing",
           message:
             `Panel rasterizer: ${stats.calls} call(s) — decode ${stats.decodeMs} ms, ` +
-            `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums).`,
+            `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums; per call ` +
+            `${stats.encodeCallsMs.join("/")} ms).`,
         });
       }
       setReport(rep);

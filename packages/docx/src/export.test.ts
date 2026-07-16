@@ -893,6 +893,15 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     `<p>before</p><ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
     `<ac:plain-text-body><![CDATA[${source}]]></ac:plain-text-body></ac:structured-macro>`;
 
+  const mermaidBlocks = (...sources: string[]) =>
+    sources
+      .map(
+        (source) =>
+          `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
+          `<ac:plain-text-body><![CDATA[${source}]]></ac:plain-text-body></ac:structured-macro>`
+      )
+      .join("");
+
   /** A rasterizer recording every call, serving real PNG fixture bytes. */
   function recordingRasterizer() {
     const calls: { svg: string; widthPx: number; heightPx: number }[] = [];
@@ -1051,6 +1060,93 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     const doc = readPart(bytes, "word/document.xml");
     const ids = [...doc.matchAll(/wp:docPr id="(\d+)"/g)].map((m) => m[1]);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("chains diagram rasterization in document order with at most one active call", async () => {
+    const order: string[] = [];
+    let active = 0;
+    let maxActive = 0;
+    const { report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: {
+        ...details,
+        storage: mermaidBlocks(
+          "graph TD\n  First --> A",
+          "graph TD\n  Second --> B",
+          "graph TD\n  Third --> C"
+        ),
+      },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(svg, target) {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          order.push(svg.includes("First") ? "First" : svg.includes("Second") ? "Second" : "Third");
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return pngFixtureBytes(target.widthPx, target.heightPx);
+          } finally {
+            active -= 1;
+          }
+        },
+      },
+    });
+
+    expect(order).toEqual(["First", "Second", "Third"]);
+    expect(maxActive).toBe(1);
+    expect(report.renderedDiagrams).toBe(3);
+  });
+
+  it("prepares identical diagram sources once but embeds every occurrence in document order", async () => {
+    const source = "graph TD\n  Shared --> Result";
+    let rasterCalls = 0;
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidBlocks(source, source) },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(_svg, target) {
+          rasterCalls += 1;
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+
+    expect(rasterCalls).toBe(1);
+    expect(report.renderedDiagrams).toBe(2);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(/<w:drawing>/g)).toHaveLength(2);
+    const ids = [...doc.matchAll(/<wp:docPr id="(\d+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("a failed prepared diagram does not reject or poison the remaining chain", async () => {
+    const order: string[] = [];
+    const first = "graph TD\n  Broken --> A";
+    const second = "graph TD\n  Healthy --> B";
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidBlocks(first, second) },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(svg, target) {
+          const name = svg.includes("Broken") ? "Broken" : "Healthy";
+          order.push(name);
+          if (name === "Broken") throw new Error("first raster failed");
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+
+    expect(order).toEqual(["Broken", "Healthy"]);
+    expect(report.renderedDiagrams).toBe(1);
+    expect(report.notes.filter((n) => n.code === "diagram-render-failed")).toHaveLength(1);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(/<w:drawing>/g)).toHaveLength(1);
+    expect(doc).toContain("Broken --&gt; A");
   });
 });
 

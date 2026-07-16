@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { existsSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -708,7 +707,6 @@ interface TsEngineArgs {
   opts: OutputOptions;
 }
 
-
 /**
  * Spec 006 Task 5: drive the isomorphic `@atlcli/docx` engine — the exact
  * code the Chrome extension runs — with Node-side env implementations:
@@ -718,9 +716,8 @@ interface TsEngineArgs {
  * wiki-base-relative download URLs; external images as absolute URLs).
  * The engine is imported lazily so the common CLI paths never load
  * pizzip/docxtemplater.
- */
-/**
- * Image bytes over the token-auth client (spec 005). The site's cookie-only
+ *
+ * The site's cookie-only
  * `/download/attachments/{pageId}/{filename}` path 401s under API-token Basic
  * auth (verified against Cloud), so attachment refs resolve through the REST
  * attachment listing to the API's own `downloadUrl`
@@ -728,117 +725,6 @@ interface TsEngineArgs {
  * token auth. The listing is cached per page — one extra round-trip per page,
  * not per image. External image URLs are absolute and fetched without auth.
  */
-function tokenAssetFetcher(client: ConfluenceClient, baseUrl: string) {
-  const listings = new Map<string, Promise<AttachmentInfo[]>>();
-  const download = async (ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array> => {
-    if (/^https?:\/\//i.test(ref.url)) {
-      const res = await fetch(ref.url);
-      if (!res.ok) throw new Error(`image download failed (${res.status}) for ${ref.url}`);
-      return new Uint8Array(await res.arrayBuffer());
-    }
-    if (ref.pageId && ref.filename) {
-      let listing = listings.get(ref.pageId);
-      if (!listing) {
-        listing = client.listAttachments(ref.pageId);
-        listings.set(ref.pageId, listing);
-      }
-      const attachment = (await listing).find((a) => a.filename === ref.filename);
-      if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);
-      // An attachment's bytes are immutable per (id, version) — a re-upload
-      // bumps the version — so they cache under that key. The listing above
-      // stays live, so a replaced image is picked up on the next export.
-      return cachedBytes(`attachment:${attachment.id}:v${attachment.version}`, () =>
-        client.downloadAttachment(attachment)
-      );
-    }
-    return client.downloadAttachment({ downloadUrl: ref.url });
-  };
-  const cachedBytes = async (key: string, load: () => Promise<Uint8Array>): Promise<Uint8Array> => {
-    const cachePath = assetCachePath(baseUrl, key);
-    try {
-      const { readFile } = await import("node:fs/promises");
-      const cached = new Uint8Array(await readFile(cachePath));
-      // Zero bytes can only be a damaged entry (no Confluence asset is
-      // empty) — treat as a miss and refetch.
-      if (cached.byteLength > 0) return cached;
-    } catch {
-      // cache miss — fall through to the network
-    }
-    const bytes = await load();
-    try {
-      const { mkdir, rename, writeFile } = await import("node:fs/promises");
-      await mkdir(dirname(cachePath), { recursive: true });
-      // Write-then-rename keeps the cache atomic: a concurrent export or a
-      // crash mid-write must never leave partial bytes under the final
-      // name (they would be served as a permanent hit).
-      const tmp = `${cachePath}.${process.pid.toString(36)}${Math.random().toString(36).slice(2)}.tmp`;
-      await writeFile(tmp, bytes);
-      await rename(tmp, cachePath);
-      pruneAssetCacheOnce(dirname(cachePath));
-    } catch {
-      // best-effort cache write
-    }
-    return bytes;
-  };
-  return {
-    async fetch(ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array> {
-      // Version-stamped `/download/attachments/...` URLs (the space logo's
-      // icon path carries `version=…&modificationDate=…`) are immutable per
-      // key, so their bytes are cached on disk — a repeat export skips the
-      // logo's attachment-listing + download round-trips (~450ms measured).
-      // Cache errors never fail an export.
-      if (ref.url.startsWith("/download/") && /[?&](version|modificationDate)=/.test(ref.url)) {
-        return cachedBytes(`url:${ref.url}`, () => download(ref));
-      }
-      return download(ref);
-    },
-  };
-}
-
-/**
- * Disk-cache location for an immutable asset key (a version-stamped download
- * URL, or an attachment id + version). Keyed by site + key, so a replaced
- * logo/attachment (new version stamp) is a new entry.
- */
-function assetCachePath(baseUrl: string, key: string): string {
-  const hash = createHash("sha256").update(`${baseUrl}\n${key}`).digest("hex").slice(0, 32);
-  return join(homedir(), ".atlcli", "cache", "assets", `${hash}.bin`);
-}
-
-/** Entries older than this are evicted opportunistically (immutable keys never go stale — this only bounds disk growth). */
-const ASSET_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-
-let cachePruned = false;
-
-/**
- * Best-effort, once-per-process, fire-and-forget eviction of stale cache
- * entries (and orphaned `.tmp` files). Never throws, never blocks the export.
- */
-function pruneAssetCacheOnce(dir: string): void {
-  if (cachePruned) return;
-  cachePruned = true;
-  void (async () => {
-    try {
-      const { readdir, stat, unlink } = await import("node:fs/promises");
-      const now = Date.now();
-      for (const name of await readdir(dir)) {
-        try {
-          const path = join(dir, name);
-          const s = await stat(path);
-          // Orphaned temp files are only reaped after a grace period so a
-          // CONCURRENT export's in-flight write is never yanked away.
-          const maxAge = name.endsWith(".tmp") ? 60_000 : ASSET_CACHE_MAX_AGE_MS;
-          if (now - s.mtimeMs > maxAge) await unlink(path);
-        } catch {
-          // ignore individual entries
-        }
-      }
-    } catch {
-      // best-effort
-    }
-  })();
-}
-
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const {
     client,
@@ -851,17 +737,23 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     embedImages,
     opts,
   } = args;
-  // Everything local (engine import, rasterizer assets, template bytes) loads
-  // WHILE the page round-trip is in flight (perf).
+  // Everything local (engine import + template bytes) loads WHILE the page
+  // round-trip is in flight. The much larger rasterizer wasm/fonts are gated
+  // on the page storage below.
   const { readFile, stat } = await import("node:fs/promises");
-  const [{ runExport, fileOutputSink }, { buildDiagramRasterizer }, templateBytesRaw, templateStat] =
-    await Promise.all([
-      import("@atlcli/docx"),
-      import("./export-rasterizer.js"),
-      readFile(resolvedTemplatePath),
-      stat(resolvedTemplatePath),
-    ]);
+  const [
+    { runExport, fileOutputSink },
+    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher },
+    templateBytesRaw,
+    templateStat,
+  ] = await Promise.all([
+    import("@atlcli/docx"),
+    import("./export-internals.js"),
+    readFile(resolvedTemplatePath),
+    stat(resolvedTemplatePath),
+  ]);
   const templateBytes = new Uint8Array(templateBytesRaw);
+  const assetCache = createAssetByteCache(baseUrl);
 
   const cliNotes: string[] = [];
   if (includeChildren) {
@@ -878,6 +770,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const currentUser = (): NonNullable<typeof currentUserP> => (currentUserP ??= client.getCurrentUser());
   let ownerP: ReturnType<ConfluenceClient["getPageOwner"]> | undefined;
   const pageOwner = (id: string): NonNullable<typeof ownerP> => (ownerP ??= client.getPageOwner(id));
+  let homepageP: ReturnType<ConfluenceClient["getSpaceHomepageStorage"]> | undefined;
+  const spaceHomepage = (key: string): NonNullable<typeof homepageP> =>
+    (homepageP ??= client.getSpaceHomepageStorage(key));
 
   // Pre-start the round-trips this TEMPLATE will need (a quick local scan
   // names them) so they run concurrently with the page fetch instead of
@@ -885,25 +780,52 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // dep when a placeholder uses it, and these memoized promises are exactly
   // what it receives. The `.catch` branches only prevent unhandled-rejection
   // noise; the resolver observes and reports the original error.
+  const templateDeps = new Set<string>();
   try {
     const { scanZip, unzipDocx } = await import("@atlcli/docx/scan");
     const { classifyPlaceholder } = await import("@atlcli/docx");
     const scan = scanZip(unzipDocx(templateBytes));
-    const deps = new Set(
-      scan.supported.flatMap((h) => h.raw).map((raw) => classifyPlaceholder(raw).dependency)
-    );
-    if (deps.has("currentUser")) currentUser().catch(() => {});
-    if (deps.has("owner")) pageOwner(pageId).catch(() => {});
+    for (const dependency of scan.supported
+      .flatMap((h) => h.raw)
+      .map((raw) => classifyPlaceholder(raw).dependency)) {
+      templateDeps.add(dependency);
+    }
+    if (templateDeps.has("currentUser")) currentUser().catch(() => {});
+    if (templateDeps.has("owner")) pageOwner(pageId).catch(() => {});
   } catch {
     // Pre-scan is a pure optimization; a scan failure surfaces properly
     // inside runExport.
   }
 
+  // Space-key-dependent work can only start after page details arrive. Hook
+  // the already-running page promise now so these exact memoized promises
+  // overlap rasterizer setup rather than waiting for runExport's resolver.
+  prestartPageDependentDeps({
+    pagePromise,
+    templateDeps,
+    embedImages,
+    getSpaceWithIcon: spaceInfo,
+    getSpaceHomepageStorage: spaceHomepage,
+  });
+
   // Mermaid diagrams render via resvg-wasm (spec 005a). A missing rasterizer
   // is not an error: the engine degrades those blocks to readable source
   // code and reports each one — the note here names the reason once.
-  const [page, rasterizer] = await Promise.all([pagePromise, buildDiagramRasterizer()]);
-  if (!rasterizer) {
+  const rasterizerPromise = pagePromise.then(async (details) => {
+    if (!mightContainMermaid(details.storage ?? "")) {
+      return { needed: false as const, rasterizer: null };
+    }
+    try {
+      const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
+      return { needed: true as const, rasterizer: await buildDiagramRasterizer() };
+    } catch {
+      return { needed: true as const, rasterizer: null };
+    }
+  });
+  rasterizerPromise.catch(() => {});
+  const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
+  const rasterizer = rasterizerState.rasterizer;
+  if (rasterizerState.needed && !rasterizer) {
     cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
   }
 
@@ -920,7 +842,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         getSpace: async (key: string) => (await spaceInfo(key)).space,
         getCurrentUser: currentUser,
         getPageOwner: pageOwner,
-        getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+        getSpaceHomepageStorage: spaceHomepage,
         // Spec 005 logo pass: the space icon path feeds $scroll.spacelogo /
         // $scroll.globallogo; bytes then ride the asset fetcher below. A
         // custom logo's icon.path is a cookie-only `/download/attachments/
@@ -942,7 +864,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     },
     {
       templates: { getBytes: async () => templateBytes },
-      assets: tokenAssetFetcher(client, baseUrl),
+      assets: tokenAssetFetcher(client, assetCache),
       rasterizer: rasterizer ?? undefined,
       output: fileOutputSink(resolvedOutputPath),
     }

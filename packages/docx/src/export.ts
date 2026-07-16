@@ -717,16 +717,19 @@ function diagramSeam(
   timings: ExportTimings
 ): DiagramEmbedSeam {
   let count = 0;
-  // Render + rasterize results, keyed by block: the serializer's prefetch
+  // Render + rasterize results, keyed by exact source: the serializer's prefetch
   // pass starts this CPU/async work up front so it overlaps the export's
   // network round-trips; embed() then consumes the in-flight result in
-  // document order. The preparation never rejects — every failure is a
-  // value — so an unawaited prefetch can't surface an unhandled rejection.
+  // document order. Repeated occurrences of the same source share preparation
+  // (theme + rasterizer are seam-wide), while each occurrence still embeds in
+  // document order and receives its own drawing id. The preparation never
+  // rejects — every failure is a value — so an unawaited prefetch can't surface
+  // an unhandled rejection.
   type DiagramPrep =
     | { kind: "ready"; svg: string; png: Uint8Array; widthPx: number; heightPx: number }
     | { kind: "unsupported"; diagramType: string }
     | { kind: "failed"; reason: string };
-  const preps = new Map<CodeBlock, Promise<DiagramPrep>>();
+  const preps = new Map<string, Promise<DiagramPrep>>();
   // Preparations are CHAINED, not fanned out: render + rasterize are
   // main-thread CPU work in every host (beautiful-mermaid is synchronous;
   // the panel's canvas rasterizer and the CLI's resvg-wasm both burn the
@@ -737,7 +740,8 @@ function diagramSeam(
   // network round-trips exactly as before.
   let chain: Promise<unknown> = Promise.resolve();
   const prepare = (block: CodeBlock): Promise<DiagramPrep> => {
-    let p = preps.get(block);
+    const key = block.code;
+    let p = preps.get(key);
     if (!p) {
       const work = async (): Promise<DiagramPrep> => {
         const renderStart = Date.now();
@@ -767,7 +771,7 @@ function diagramSeam(
       };
       p = chain.then(work);
       chain = p;
-      preps.set(block, p);
+      preps.set(key, p);
     }
     return p;
   };
