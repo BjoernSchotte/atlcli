@@ -11,14 +11,12 @@
   },
   "report": {
     "resolvedCount": 5,
-    "unsupportedNames": [
-      "$scroll.spacelogo"
-    ],
-    "skippedImages": 1,
+    "unsupportedNames": [],
+    "skippedImages": 2,
     "filename": "DOCX Feature Zoo _ Golden.docx",
     "noteCodes": [
-      "placeholder-unsupported",
-      "image-skipped"
+      "image-skipped",
+      "logo-skipped"
     ]
   }
 }

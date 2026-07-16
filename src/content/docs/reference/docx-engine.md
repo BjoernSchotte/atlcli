@@ -83,6 +83,28 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
 - Byte-identical images share one media part; the report counts `embeddedImages` and
   `skippedImages`.
 
+### Logo placeholders
+
+`$scroll.spacelogo` and `$scroll.globallogo` embed the **space logo** as an inline drawing
+through the same image module (the placeholder paragraph is replaced, its alignment preserved).
+The icon location comes from the optional `deps.getSpaceLogo(spaceKey)` round-trip — wire it to
+`GET /space/{key}?expand=icon` and return the `icon.path` as an `AssetRef` (the CLI and the
+extension both do). Details:
+
+- **`$scroll.globallogo` maps to the space logo:** Confluence Cloud exposes no separately
+  fetchable global logo; the report carries a `placeholder-substituted` info note per export.
+- **Size args:** `$scroll.spacelogo.(H,W)` — height first, then width, in px; a single argument
+  is the height (width scales by aspect ratio). Both are optional.
+- **Headers/footers work:** the `r:embed` relationship is written into the referencing part's
+  own rels (e.g. `word/_rels/header1.xml.rels`).
+- **Cloud default logos are SVG** and therefore degrade to a `logo-embed-failed` note (same SVG
+  deferral as page images). Custom logos (PNG/JPEG/GIF) embed. On a token host, a custom logo's
+  `icon.path` is a cookie-only `/download/attachments/{contentId}/{filename}` URL — carry the
+  content id + filename on the `AssetRef` so the fetcher resolves them via the REST attachment
+  listing (the CLI's `getSpaceLogo` does exactly this).
+- **Missing dep/fetcher, fetch errors, no space key** all degrade to `logo-skipped` notes; the
+  token is blanked, never left literal.
+
 ## Plugging in a new surface
 
 A new consumer (MCP server, Tauri Studio, Org-Server) implements the three interfaces and calls
@@ -100,6 +122,10 @@ const report = await runExport(
       getCurrentUser: () => client.getCurrentUser(),
       getPageOwner: (id) => client.getPageOwner(id),
       getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+      getSpaceLogo: async (key) => {      // $scroll.spacelogo / $scroll.globallogo
+        const icon = await client.getSpaceIcon(key);
+        return icon ? { url: icon.path } : null;
+      },
     },
   },
   {

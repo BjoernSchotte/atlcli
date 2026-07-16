@@ -42,8 +42,8 @@ describe("ScanView — content insertion point (spec 004 finding)", () => {
 describe("ScanView — per-placeholder reasons (E2E finding)", () => {
   // The panel used to print one static "will be empty" per row and drop the
   // per-hit `reason` the scan already carries. That flattened causes which are
-  // in fact unrelated: a Cloud-impossible DC username vs. a gap waiting on the
-  // image module. Each row must state its OWN reason.
+  // in fact unrelated: a Cloud-impossible DC username vs. an unfetched content
+  // property. Each row must state its OWN reason.
   const scan: ScanResult = {
     supported: [{ base: "$scroll.title", status: "supported", count: 2, raw: ["$scroll.title"] }],
     unsupported: [
@@ -55,11 +55,11 @@ describe("ScanView — per-placeholder reasons (E2E finding)", () => {
         reason: "Confluence Cloud has no usernames — Data Center only (Gap G2)",
       },
       {
-        base: "$scroll.spacelogo",
+        base: "$scroll.jsoncontentproperty",
         status: "unsupported",
         count: 1,
-        raw: ["$scroll.spacelogo"],
-        reason: "the space logo is an image — needs the image module (spec 005, Gap G3)",
+        raw: ["$scroll.jsoncontentproperty.(key)"],
+        reason: "content properties are not fetched (Gap G5)",
       },
     ],
     never: [
@@ -78,7 +78,7 @@ describe("ScanView — per-placeholder reasons (E2E finding)", () => {
   it("renders each unsupported row's own reason, not one shared note", () => {
     const html = renderToStaticMarkup(<ScanView scan={scan} />);
     expect(html).toContain("Data Center only");
-    expect(html).toContain("needs the image module");
+    expect(html).toContain("content properties are not fetched");
     // The two causes are distinct — the old static note made them identical.
     expect(html).not.toContain("— will be empty");
   });

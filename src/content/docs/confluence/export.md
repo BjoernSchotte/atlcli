@@ -224,7 +224,12 @@ atlcli supports templates created for Scroll Word Exporter. With the default `py
 Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the
 equivalent atlcli variables. With `--engine ts`, Scroll placeholders are resolved natively — the
 template is scanned, supported placeholders are filled, unsupported ones are emptied and listed in
-the export report, and the page body is injected at `$scroll.content`.
+the export report, and the page body is injected at `$scroll.content`. The logo placeholders
+`$scroll.spacelogo` and `$scroll.globallogo` embed the space logo as an image (optionally sized
+via `.(height,width)` in px); on Confluence Cloud the global logo is not separately fetchable, so
+`$scroll.globallogo` also resolves to the space logo (noted in the report). Default Cloud space
+logos are SVGs, which are not embedded yet — upload a custom PNG/JPEG logo to the space for logo
+embedding.
 
 ## Troubleshooting
 

@@ -9,7 +9,7 @@
  * ever contradicts real Scroll behaviour, these tests are where it surfaces.
  */
 import { describe, expect, it } from "bun:test";
-import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
+import { classifyPlaceholder, parseLogoArgs, parsePagePropertyArgs } from "./placeholder-map.js";
 
 describe("parsePagePropertyArgs — documented forms", () => {
   it("(key)", () => {
@@ -97,6 +97,35 @@ describe("classifyPlaceholder — .name is supported on Cloud (G2)", () => {
     const cls = classifyPlaceholder("$scroll.exporter.name");
     expect(cls.status).toBe("supported");
     expect(cls.dependency).toBe("currentUser");
+  });
+});
+
+describe("classifyPlaceholder — logo placeholders are supported (G3, spec 005)", () => {
+  it("spacelogo and globallogo classify as supported with the spaceLogo dependency", () => {
+    for (const raw of ["$scroll.spacelogo", "$scroll.globallogo", "$scroll.spacelogo.(50,120)"]) {
+      const cls = classifyPlaceholder(raw);
+      expect(cls.status).toBe("supported");
+      expect(cls.dependency).toBe("spaceLogo");
+    }
+  });
+});
+
+describe("parseLogoArgs — the .(H,W) size grammar (height first)", () => {
+  it("parses height-only and height+width forms", () => {
+    expect(parseLogoArgs("$scroll.spacelogo")).toEqual({ heightPx: undefined, widthPx: undefined });
+    expect(parseLogoArgs("$scroll.spacelogo.(50)")).toEqual({ heightPx: 50, widthPx: undefined });
+    expect(parseLogoArgs("$scroll.spacelogo.(50, 120)")).toEqual({ heightPx: 50, widthPx: 120 });
+  });
+
+  it("ignores non-numeric or non-positive arguments (intrinsic size wins)", () => {
+    expect(parseLogoArgs("$scroll.spacelogo.(auto,120)")).toEqual({
+      heightPx: undefined,
+      widthPx: 120,
+    });
+    expect(parseLogoArgs("$scroll.spacelogo.(0,-5)")).toEqual({
+      heightPx: undefined,
+      widthPx: undefined,
+    });
   });
 });
 

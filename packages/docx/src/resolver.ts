@@ -31,6 +31,7 @@ import {
 } from "@atlcli/confluence";
 import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
 import { formatDatePlaceholder } from "./dateformat.js";
+import type { AssetRef } from "./env.js";
 
 /** atlcli-side template metadata (G8): filename + upload timestamp. */
 export interface TemplateMeta {
@@ -59,13 +60,22 @@ export interface PageOwner {
   email?: string;
 }
 
-/** Lazily-invoked fetchers for the derivable round-trips (G1/G4/G6/G7). */
+/** Lazily-invoked fetchers for the derivable round-trips (G1/G3/G4/G6/G7). */
 export interface ResolveDeps {
   getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
   getCurrentUser?: () => Promise<CurrentUser>;
   getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
   /** Storage of the space homepage — only for the pageproperty fallback form. */
   getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+  /**
+   * Where the space logo lives (G3): the `icon.path` of
+   * `GET /space/{key}?expand=icon`, as an {@link AssetRef} for the host's
+   * asset fetcher — or `null` when the space has none. Consumed by the export
+   * orchestrator's LOGO pass (`$scroll.spacelogo` / `$scroll.globallogo`
+   * become embedded drawings), not by the text resolver — it lives here so
+   * hosts wire every per-site round-trip through one `deps` bag.
+   */
+  getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
 }
 
 /**

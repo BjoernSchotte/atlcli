@@ -347,14 +347,15 @@ describe("$adhocState — dropped from the curated list, still blanked", () => {
 
 describe("resolvePlaceholders — pinning: never a literal", () => {
   it("maps unsupported and never placeholders to empty string + report entry", async () => {
-    // $scroll.spacelogo is genuinely unsupported (needs the image module);
-    // $scroll.pageowner.fullName is NOT used here — it became supported (G1).
+    // $scroll.jsoncontentproperty is genuinely unsupported (Gap G5);
+    // $scroll.pageowner.fullName and $scroll.spacelogo are NOT used here —
+    // they became supported (G1 / G3).
     const res = await resolvePlaceholders(
-      ["$scroll.spacelogo", "$adhocState", "$scroll.pageproperty.(status)"],
+      ["$scroll.jsoncontentproperty.(key)", "$adhocState", "$scroll.pageproperty.(status)"],
       ctx,
       {}
     );
-    expect(res.values.get("$scroll.spacelogo")).toBe("");
+    expect(res.values.get("$scroll.jsoncontentproperty.(key)")).toBe("");
     expect(res.values.get("$adhocState")).toBe("");
     expect(res.values.get("$scroll.pageproperty.(status)")).toBe("");
     // Every value is a string; none contains a literal $scroll./$adhoc.

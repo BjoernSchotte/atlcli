@@ -141,8 +141,8 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.space.key` | `.spaceKey` / `ConfluenceSpace.key` | direct | Present on page details. |
 | `$scroll.space.name` | `ConfluenceSpace.name` | derivable | Needs a `getSpace(spaceKey)` call; page details carry only the key. |
 | `$scroll.space.url` | `ConfluenceSpace.url` | derivable | Same extra `getSpace` call. |
-| `$scroll.spacelogo` `.(H,W)` | — | unsupported (v1) | No space-logo fetch in atlcli. Gap G3. |
-| `$scroll.globallogo` | — | never | Confluence system-wide logo; not a per-content datum atlcli targets. |
+| `$scroll.spacelogo` `.(H,W)` | `getSpaceIcon(spaceKey).path` → embedded drawing | derivable | Gap G3 ✅ closed 2026-07-16: spec 005's image module embeds the space logo (`/space/{key}?expand=icon`). `.(H,W)` = height,width px. Cloud DEFAULT logos are SVG → degrade to a report note. |
+| `$scroll.globallogo` | same as `$scroll.spacelogo` | derivable | Cloud exposes no separately fetchable global logo — resolves to the SPACE logo with a `placeholder-substituted` report note. |
 
 ### 2.5 Export info
 
@@ -240,10 +240,17 @@ referenced from the mapping table.
     for a login and got a person's name. The value is useful; hiding the swap would not be.
   - Not a "closed" gap like G1/G4 — the data genuinely does not exist. This is a deliberate
     product decision to degrade usefully instead of emptily.
-- **G3 — Space & global logos.** The data exists — `GET /space/{key}?expand=icon` returns
-  `icon.path` — but a logo is an **image**, so both placeholders are blocked on the OOXML image
-  module (spec `005-docx-image-module`), not on a missing fetch. Blocks: `$scroll.spacelogo` (G3);
-  `$scroll.globallogo` is `never` (system asset).
+- **G3 — Space & global logos. ✅ CLOSED 2026-07-16.** Was blocked on the OOXML image module
+  (spec `005-docx-image-module`); once that landed, the export gained a logo pass: the
+  placeholder PARAGRAPH is replaced by an inline `<w:drawing>` of the space logo
+  (`GET /space/{key}?expand=icon` → `icon.path`, wired through `deps.getSpaceLogo` + the host's
+  `AssetFetcher`; relationships land in the referencing part's own rels, so header/footer logos
+  work). `$scroll.globallogo` resolves to the SPACE logo — Cloud has no separately fetchable
+  global logo — with a `placeholder-substituted` report note. Cloud DEFAULT space logos are SVG
+  and degrade to `logo-embed-failed` (SVG embedding stays deferred); custom PNG/JPEG/GIF logos
+  embed. Token hosts must resolve a custom logo's cookie-only `/download/attachments/…` path via
+  the REST attachment listing (the CLI's `getSpaceLogo` carries content id + filename on the ref
+  for exactly this).
 - **G4 — Page Properties macro extraction. ✅ CLOSED 2026-07-16.** Was a scope call, not a
   capability one: the macro (`ac:name="details"`) lives in the page's OWN storage, which the
   export already holds, so the common `(key)` form needs no round-trip at all. Implemented in
@@ -277,10 +284,10 @@ referenced from the mapping table.
   (the chosen `.docx` template file). No template registry/metadata model exists yet; Phase 1 must
   define where template name + mtime come from.
 
-**Out of scope (never, not gaps to close):** Comala metadata (`$scroll.metadata.*`), the entire
-Scroll Documents `$scroll.custom.*` family, and the system-wide `$scroll.globallogo`. These
-require third-party K15t/Comala apps or Confluence-instance assets that atlcli deliberately does
-not target.
+**Out of scope (never, not gaps to close):** Comala metadata (`$scroll.metadata.*`) and the
+entire Scroll Documents `$scroll.custom.*` family. These require third-party K15t/Comala apps
+that atlcli deliberately does not target. (`$scroll.globallogo` moved OUT of this list with G3:
+it now resolves to the space logo, see above.)
 
 **`$adhocState` — dropped from the curated list** (Björn, 2026-07-16: "bauen wir aus, das wollen
 wir aktuell nicht supporten"). It no longer carries a Comala-specific entry and falls through to
