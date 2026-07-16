@@ -38,14 +38,19 @@ export interface EntityDetection {
 export type ExtRequest =
   | { kind: "ping" }
   | { kind: "wasm-smoke"; a: number; b: number }
-  | { kind: "get-current-entity" };
+  | { kind: "get-current-entity" }
+  | { kind: "pdf:compile"; jobId: string }
+  | { kind: "pdf:cancel"; jobId: string };
 
 /** Response messages returned to the panel. */
 export type ExtResponse =
   | { kind: "pong" }
   | { kind: "wasm-smoke-result"; ok: true; result: number }
   | { kind: "wasm-smoke-result"; ok: false; error: string }
-  | { kind: "current-entity"; detection: EntityDetection };
+  | { kind: "current-entity"; detection: EntityDetection }
+  | { kind: "pdf:compile-result"; jobId: string; ok: true }
+  | { kind: "pdf:compile-result"; jobId: string; ok: false; error: string }
+  | { kind: "pdf:cancel-result"; jobId: string; cancelled: boolean };
 
 /**
  * Push message: the service worker (canonical tab observer, PLAN §2.1) notifies
@@ -60,10 +65,16 @@ export type EntityChanged = { kind: "entity-changed"; detection: EntityDetection
  * Namespaced (`offscreen:`) so the SW's own panel-facing listener ignores them
  * (no self-delivery loop over the shared `chrome.runtime` message bus).
  */
-export type OffscreenRequest = { kind: "offscreen:wasm-add"; a: number; b: number };
+export type OffscreenRequest =
+  | { kind: "offscreen:wasm-add"; a: number; b: number }
+  | { kind: "offscreen:pdf-compile"; jobId: string }
+  | { kind: "offscreen:pdf-cancel"; jobId: string };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
-  | { kind: "offscreen:wasm-add-result"; ok: false; error: string };
+  | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
+  | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
+  | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
+  | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean };
 
 /** Every message that can travel over the protocol. */
 export type ExtMessage =
@@ -84,6 +95,8 @@ export interface ResponseMap {
   ping: Extract<ExtResponse, { kind: "pong" }>;
   "wasm-smoke": Extract<ExtResponse, { kind: "wasm-smoke-result" }>;
   "get-current-entity": Extract<ExtResponse, { kind: "current-entity" }>;
+  "pdf:compile": Extract<ExtResponse, { kind: "pdf:compile-result" }>;
+  "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
 }
 
 export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
@@ -91,7 +104,9 @@ export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
 /** Narrowing type guard for panel-facing request messages. */
 export function isExtRequest(value: unknown): value is ExtRequest {
   if (typeof value !== "object" || value === null) return false;
-  const kind = (value as { kind?: unknown }).kind;
+  const candidate = value as { kind?: unknown; jobId?: unknown };
+  const kind = candidate.kind;
+  if (kind === "pdf:compile" || kind === "pdf:cancel") return isPdfJobId(candidate.jobId);
   return kind === "ping" || kind === "wasm-smoke" || kind === "get-current-entity";
 }
 
@@ -104,5 +119,13 @@ export function isEntityChanged(value: unknown): value is EntityChanged {
 /** Narrowing type guard for offscreen-bound request messages. */
 export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
   if (typeof value !== "object" || value === null) return false;
-  return (value as { kind?: unknown }).kind === "offscreen:wasm-add";
+  const candidate = value as { kind?: unknown; jobId?: unknown };
+  if (candidate.kind === "offscreen:pdf-compile" || candidate.kind === "offscreen:pdf-cancel") {
+    return isPdfJobId(candidate.jobId);
+  }
+  return candidate.kind === "offscreen:wasm-add";
+}
+
+function isPdfJobId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

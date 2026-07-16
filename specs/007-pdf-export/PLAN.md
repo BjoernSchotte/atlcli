@@ -15,6 +15,9 @@ Depends on:
 Handoff to: `008-export-poc-validation` (final cross-format quality and performance verdict)
 
 Related strategy: FAHRPLAN Phase 1 Task 1.4 · `TYPST-EXPORT-ANGLE.md` §1b, §5.2, §7.5 Schritt 4 · `EXPORT-QUALITY-ANGLE.md` §3–§5, §7 (quality proofs 1+3)
+Follow-up product direction: [`TEMPLATE-UX.md`](./TEMPLATE-UX.md) — curated Typst
+templates, Git-friendly packages and a focused PDF stationery-import wizard without a
+general-purpose template studio.
 Origin: FAHRPLAN Phase 1 — "PDF-Export"
 
 ---
@@ -48,7 +51,8 @@ The cheap-but-decisive quality proofs ship inside this spec:
 - Preserve the existing export model: paragraphs, text marks, links, mentions,
   callouts, statuses, code, nested lists, task state, tables, images, blockquotes,
   dividers and documented fallback behavior for unsupported content.
-- Bundle and embed pinned **Inter** 400/500/600 and **JetBrains Mono** 400/700 files.
+- Bundle and embed pinned **Source Serif 4** 400/600/700 + italic 400,
+  **Source Sans 3** 400/600/700 + italic 400 and **Source Code Pro** 400/700 files.
   No system-font lookup and no runtime font, compiler or package download.
 - Keep the panel responsive and expose job phases, diagnostics and a useful export
   report.
@@ -79,9 +83,9 @@ The cheap-but-decisive quality proofs ship inside this spec:
   and `@atlcli/diagram`. `packages/confluence` does not gain presentation-format code.
 - The extension owns authenticated asset resolution, job storage, compiler lifecycle,
   offscreen/worker integration and the browser download adapter.
-- Fonts have one canonical, format-neutral repository location. Task 0 moves or exposes
-  the already pinned files without duplicating them in DOCX and extension source trees;
-  DOCX must remain green after the move.
+- PDF fonts have one canonical, gitignored build cache populated from immutable upstream
+  commits with mandatory SHA-256 verification. Only the manifest and OFL texts are tracked;
+  DOCX keeps its independent template-driven contract and diagram-rasterizer assets.
 
 ### 2.2 Process and transport topology
 
@@ -332,8 +336,8 @@ than reusing the DOCX template report type directly. It includes:
 ### Task 0 — Refresh contracts and shared assets
 
 - [ ] Add `@atlcli/pdf` with browser-safe package boundaries and explicit exports.
-- [ ] Establish one canonical font source and keep DOCX tests/output green after the
-  asset-path change.
+- [ ] Establish a canonical, checksum-verified PDF font build cache while leaving the
+  template-driven DOCX font contract and its diagram-rasterizer assets unchanged.
 - [ ] Pin wrapper, web compiler/WASM, embedded Typst engine, diagram renderer, template
   and fonts; record source URL, version, checksum and license.
 - [ ] Update `NOTICE` and ensure licenses ship in the extension artifact.
@@ -343,7 +347,7 @@ than reusing the DOCX template report type directly. It includes:
 
 - [ ] In the built WXT extension, initialize the exact pinned compiler and produce a
   valid hello-world PDF from packaged WASM with network access denied.
-- [ ] Prove font registration with Inter and JetBrains Mono and prove that an unknown
+- [ ] Prove font registration with Source Serif 4, Source Sans 3 and Source Code Pro and prove that an unknown
   font fails rather than silently resolving from the environment.
 - [ ] Record whether and how the browser API selects tagged default and PDF/UA-1 output.
   If UA selection is unavailable, record the follow-up boundary before template work.
@@ -529,8 +533,10 @@ mutate it in this spec; final cleanup belongs to 008.
 
 - **F1 — serializer location:** ✅ `packages/pdf` / `@atlcli/pdf`; host-neutral and
   browser-safe. Extension owns only browser adapters and compiler hosting.
-- **F2 — bundled font set:** ✅ Inter 400/500/600 + JetBrains Mono 400/700, full Phase 1
-  character sets, exact files/versions/checksums/licenses pinned, no system fallback.
+- **F2 — bundled font set:** ✅ Source Serif 4 400/600/700 + italic 400,
+  Source Sans 3 400/600/700 + italic 400 and Source Code Pro 400/700, exact
+  upstream commits/checksums/licenses pinned, gitignored build cache, no system fallback.
+  DOCX remains template-driven.
 - **F3 — binary transport:** ✅ JSON control messages plus job-scoped same-origin binary
   storage; no `Map`/`ArrayBuffer` payloads through runtime messaging.
 - **F4 — compiler concurrency:** ✅ one active compile per worker with FIFO queue until a

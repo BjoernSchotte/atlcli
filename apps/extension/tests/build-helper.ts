@@ -4,9 +4,9 @@
  * `build` step, so tests that inspect `.output/chrome-mv3` build on-demand.
  *
  * The build is reused only when it is NOT stale: a rebuild is forced when any
- * build input (wxt.config.ts, package.json, entrypoints/**, utils/**) is newer
- * than the emitted manifest — otherwise a stale `.output` from an earlier
- * source revision would be asserted against.
+ * build input (extension sources plus the PDF template, font manifest and
+ * licenses) is newer than the emitted manifest — otherwise a stale `.output`
+ * from an earlier source revision would be asserted against.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,17 @@ export const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
 export const MANIFEST_PATH = join(OUTPUT_DIR, "manifest.json");
 
 /** Build inputs (relative to the extension root) that invalidate the output. */
-export const BUILD_INPUTS = ["wxt.config.ts", "package.json", "entrypoints", "utils"];
+export const BUILD_INPUTS = [
+  "wxt.config.ts",
+  "package.json",
+  "entrypoints",
+  "utils",
+  "workers",
+  "types",
+  "../../packages/pdf/src",
+  "../../packages/pdf/scripts/ensure-fonts.ts",
+  "../../packages/pdf/licenses",
+];
 
 /**
  * Pure decision: is the built output stale relative to its sources?

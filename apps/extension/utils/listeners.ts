@@ -21,6 +21,8 @@ import { runWasmAdd } from "./wasm-smoke.js";
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
   runWasmAdd: (a: number, b: number, bytes?: Uint8Array) => Promise<number>;
+  runPdfCompile: (jobId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  runPdfCancel: (jobId: string) => Promise<boolean>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -43,9 +45,21 @@ export function handleExtMessage(
   // catch is belt-and-suspenders so a listener bug still yields a response.
   routeMessage(message, deps)
     .then((response) => sendResponse(response))
-    .catch((err) =>
-      sendResponse({ kind: "wasm-smoke-result", ok: false, error: toMessage(err) })
-    );
+    .catch((err) => {
+      switch (message.kind) {
+        case "pdf:compile":
+          sendResponse({ kind: "pdf:compile-result", jobId: message.jobId, ok: false, error: toMessage(err) });
+          break;
+        case "pdf:cancel":
+          sendResponse({ kind: "pdf:cancel-result", jobId: message.jobId, cancelled: false });
+          break;
+        case "ping":
+        case "wasm-smoke":
+        case "get-current-entity":
+          sendResponse({ kind: "wasm-smoke-result", ok: false, error: toMessage(err) });
+          break;
+      }
+    });
 
   return true;
 }
@@ -58,18 +72,33 @@ export function handleExtMessage(
 export function handleOffscreenMessage(
   message: unknown,
   sendResponse: (response: OffscreenResponse) => void,
-  deps: OffscreenListenerDeps = { runWasmAdd }
+  deps: OffscreenListenerDeps = {
+    runWasmAdd,
+    runPdfCompile: async () => ({ ok: false, error: "PDF compiler host is not configured." }),
+    runPdfCancel: async () => false,
+  }
 ): boolean {
   if (!isOffscreenRequest(message)) return false;
 
-  deps
-    .runWasmAdd(message.a, message.b)
-    .then((result) =>
-      sendResponse({ kind: "offscreen:wasm-add-result", ok: true, result })
-    )
-    .catch((err) =>
-      sendResponse({ kind: "offscreen:wasm-add-result", ok: false, error: toMessage(err) })
-    );
+  switch (message.kind) {
+    case "offscreen:wasm-add":
+      deps.runWasmAdd(message.a, message.b)
+        .then((result) => sendResponse({ kind: "offscreen:wasm-add-result", ok: true, result }))
+        .catch((err) => sendResponse({ kind: "offscreen:wasm-add-result", ok: false, error: toMessage(err) }));
+      break;
+    case "offscreen:pdf-compile":
+      deps.runPdfCompile(message.jobId)
+        .then((result) => sendResponse(result.ok
+          ? { kind: "offscreen:pdf-compile-result", jobId: message.jobId, ok: true }
+          : { kind: "offscreen:pdf-compile-result", jobId: message.jobId, ok: false, error: result.error }))
+        .catch((err) => sendResponse({ kind: "offscreen:pdf-compile-result", jobId: message.jobId, ok: false, error: toMessage(err) }));
+      break;
+    case "offscreen:pdf-cancel":
+      deps.runPdfCancel(message.jobId)
+        .then((cancelled) => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled }))
+        .catch(() => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled: false }));
+      break;
+  }
 
   return true;
 }

@@ -11,6 +11,8 @@
   ],
   "scripts": {
     "start": "bun run --cwd apps/cli src/index.ts",
+    "fonts:ensure": "bun packages/pdf/scripts/ensure-fonts.ts",
+    "prebuild": "bun run fonts:ensure",
     "build": "turbo run build",
     "release": "bun scripts/release.ts",
     "build:cli": "bun run --cwd apps/cli build",
@@ -21,6 +23,7 @@
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "check:extension-output": "bun run --cwd apps/extension check:output",
     "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
+    "prebuild:prod": "bun run fonts:ensure",
     "build:prod": "turbo run build && bun run obfuscate",
     "version:core": "npm version --no-git-tag-version -w @atlcli/core -w @atlcli/confluence -w @atlcli/plugin-api",
     "version:cli": "npm version --no-git-tag-version -w @atlcli/cli",

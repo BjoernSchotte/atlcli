@@ -32,6 +32,125 @@ function inlinePlainText(nodes: InlineNode[]): string {
     .join("");
 }
 
+/**
+ * Emit user-controlled text as a string value, never as Typst markup.
+ *
+ * Escaping markup metacharacters is not sufficient here: punctuation,
+ * non-breaking whitespace and future Typst syntax can still become meaningful
+ * when content is nested inside function arguments. A string passed to
+ * `text(...)` remains literal in every surrounding list/table context.
+ */
+function literalText(value: string): string {
+  return `#text(${typstString(value)})`;
+}
+
+type PreparedTableRow = Extract<PreparedPdfBlock, { type: "table" }>["rows"][number];
+
+function blocksPlainText(blocks: PreparedPdfBlock[]): string {
+  return blocks
+    .map((block) => {
+      switch (block.type) {
+        case "heading":
+        case "paragraph":
+          return inlinePlainText(block.content);
+        case "codeBlock":
+          return block.code;
+        case "callout":
+        case "blockquote":
+          return blocksPlainText(block.content);
+        case "list":
+          return block.items.map((item) => blocksPlainText(item.content)).join(" ");
+        case "table":
+          return block.rows
+            .flatMap((row) => row.cells.map((cell) => blocksPlainText(cell.content)))
+            .join(" ");
+        case "image":
+          return block.alt ?? block.fallbackLabel;
+        case "diagram":
+          return block.alt ?? "Diagram";
+        case "divider":
+          return "";
+        case "unknown":
+          return block.macroName;
+        default: {
+          const exhaustive: never = block;
+          return exhaustive;
+        }
+      }
+    })
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Give a narrative column more room in status/RACI-style matrices when the
+ * source contains only default equal tracks. Explicit unequal author widths
+ * always win. The conservative thresholds avoid reshaping prose-heavy tables.
+ */
+function inferredTableTracks(columnCount: number, rows: PreparedTableRow[]): number[] | undefined {
+  if (columnCount < 3 || columnCount > 8) return undefined;
+  const bodyRows = rows.filter((row) => row.cells.some((cell) => !cell.header));
+  if (
+    bodyRows.length < 2 ||
+    bodyRows.some(
+      (row) =>
+        row.cells.length !== columnCount ||
+        row.cells.some((cell) => cell.colspan !== 1 || cell.rowspan !== 1)
+    )
+  ) return undefined;
+
+  const averageLengths = Array.from({ length: columnCount }, (_, columnIndex) => {
+    const total = bodyRows.reduce(
+      (sum, row) => sum + blocksPlainText(row.cells[columnIndex]!.content).length,
+      0
+    );
+    return total / bodyRows.length;
+  });
+  const ranked = averageLengths
+    .map((length, index) => ({ index, length }))
+    .sort((left, right) => right.length - left.length);
+  const dominant = ranked[0]!;
+  const runnerUp = ranked[1]!;
+  const otherAverage = ranked.slice(1).reduce((sum, item) => sum + item.length, 0) / (columnCount - 1);
+
+  if (
+    dominant.length < 18 ||
+    dominant.length < runnerUp.length * 1.8 ||
+    dominant.length < otherAverage * 2.4 ||
+    otherAverage > 24
+  ) return undefined;
+
+  return Array.from({ length: columnCount }, (_, index) => index === dominant.index ? 2 : 1);
+}
+
+function tableColumns(
+  columnCount: number,
+  sourceWidths: number[] | undefined,
+  rows: PreparedTableRow[]
+): string {
+  const validSourceWidths =
+    sourceWidths?.length === columnCount &&
+    sourceWidths.every((width) => Number.isFinite(width) && width > 0)
+      ? sourceWidths
+      : undefined;
+  const sourceSpread = validSourceWidths
+    ? Math.max(...validSourceWidths) / Math.min(...validSourceWidths)
+    : 1;
+  const selectedWidths = validSourceWidths && sourceSpread > 1.05
+    ? validSourceWidths
+    : inferredTableTracks(columnCount, rows);
+  if (!selectedWidths) {
+    return `(${Array.from({ length: columnCount }, () => "1fr").join(", ")},)`;
+  }
+  const total = selectedWidths.reduce((sum, width) => sum + width, 0);
+  const tracks = selectedWidths.map((width) => {
+    const ratio = width / total;
+    return `${Number(ratio.toFixed(6))}fr`;
+  });
+  return `(${tracks.join(", ")},)`;
+}
+
 function resolveLink(target: LinkTarget, labels: Map<string, string>): string | null {
   switch (target.kind) {
     case "external":
@@ -54,7 +173,7 @@ function serializeInline(nodes: InlineNode[], labels: Map<string, string>, notes
     .map((node) => {
       switch (node.type) {
         case "text": {
-          let out = escapeTypstContent(node.text);
+          let out = literalText(node.text);
           for (const mark of node.marks ?? []) {
             switch (mark) {
               case "bold":
@@ -90,7 +209,7 @@ function serializeInline(nodes: InlineNode[], labels: Map<string, string>, notes
         case "lineBreak":
           return "#linebreak()";
         case "mention":
-          return `#text(fill: rgb(\"#0747A6\"))[${escapeTypstContent(`@${node.displayName ?? node.accountId}`)}]`;
+          return `#text(fill: rgb(\"#0747A6\"))[${literalText(`@${node.displayName ?? node.accountId}`)}]`;
         case "status":
           return `#status-badge(${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
         case "link": {
@@ -173,7 +292,6 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): Map<string, string> {
 }
 
 interface Writer {
-  lines: string[];
   sourceMap: PdfSourceMapEntry[];
   notes: ExportNote[];
   labels: Map<string, string>;
@@ -188,18 +306,64 @@ function serializeBlocks(blocks: PreparedPdfBlock[], writer: Writer, parentPath 
 }
 
 function writeMapped(block: PreparedPdfBlock, writer: Writer, path: string, value: string, summary?: string): string {
-  const startLine = writer.lines.length + 1;
-  const marker = `// atlcli:${path}`;
-  const chunk = `${marker}\n${value}`;
-  writer.lines.push(...chunk.split("\n"));
   writer.sourceMap.push({
     blockPath: path,
     blockType: block.type,
-    startLine,
-    endLine: writer.lines.length,
+    startLine: 0,
+    startColumn: 0,
+    endLine: 0,
+    endColumn: 0,
     summary,
   });
-  return chunk;
+  return `/* atlcli:start:${path} */${value}/* atlcli:end:${path} */`;
+}
+
+function resolveSourceMap(main: string, entries: PdfSourceMapEntry[]): PdfSourceMapEntry[] {
+  const byPath = new Map(entries.map((entry) => [entry.blockPath, { ...entry }]));
+  const lineStarts = [0];
+  for (let index = 0; index < main.length; index += 1) {
+    if (main[index] === "\n") lineStarts.push(index + 1);
+  }
+  const positionAt = (offset: number): { line: number; column: number } => {
+    let low = 0;
+    let high = lineStarts.length - 1;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (lineStarts[middle]! <= offset) low = middle + 1;
+      else high = middle - 1;
+    }
+    const lineIndex = Math.max(0, high);
+    return { line: lineIndex + 1, column: offset - lineStarts[lineIndex]! + 1 };
+  };
+  const stack: Array<{ path: string; startLine: number; startColumn: number }> = [];
+  const marker = /\/\* atlcli:(start|end):([^*]+) \*\//g;
+  for (const match of main.matchAll(marker)) {
+    const action = match[1];
+    const path = match[2]!;
+    if (action === "start") {
+      const start = positionAt(match.index! + match[0].length);
+      stack.push({ path, startLine: start.line, startColumn: start.column });
+      continue;
+    }
+    let openIndex = -1;
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      if (stack[index]?.path === path) {
+        openIndex = index;
+        break;
+      }
+    }
+    if (openIndex < 0) continue;
+    const [open] = stack.splice(openIndex, 1);
+    const entry = byPath.get(path);
+    if (entry) {
+      const end = positionAt(match.index!);
+      entry.startLine = open!.startLine;
+      entry.startColumn = open!.startColumn;
+      entry.endLine = Math.max(open!.startLine, end.line);
+      entry.endColumn = end.column;
+    }
+  }
+  return entries.map((entry) => byPath.get(entry.blockPath) ?? entry);
 }
 
 function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): string {
@@ -223,11 +387,14 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
       value = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
       break;
     case "diagram":
-      value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")}), placement: auto)`;
+      // Keep exported content in source order. `placement: auto` turns figures
+      // into top/bottom floats, which can move a diagram before its heading or
+      // collect multiple headings away from their diagrams in real documents.
+      value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")}))`;
       break;
     case "image":
       if (!block.assetPath) {
-        value = `#par[#emph[${escapeTypstContent(`[Image unavailable: ${block.fallbackLabel}]`)}]]`;
+        value = `#par[#emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]]`;
       } else {
         if (!block.alt) {
           writer.notes.push({
@@ -236,11 +403,11 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
             message: `${block.fallbackLabel} uses a technical filename fallback for alternative text.`,
           });
         }
-        value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}), placement: auto)`;
+        value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}))`;
       }
       break;
     case "callout": {
-      const title = block.title ? `[${escapeTypstContent(block.title)}]` : "none";
+      const title = block.title ? `[${literalText(block.title)}]` : "none";
       value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`)}\n]`;
       break;
     }
@@ -249,15 +416,34 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
       break;
     case "list": {
       const fn = block.ordered ? "enum" : "list";
+      const isTaskList = !block.ordered && block.items.some((item) => item.checked !== undefined);
       const items = block.items.map((item, index) => {
-        const state = item.checked === undefined ? "" : item.checked ? "☑ " : "☐ ";
-        return `[${escapeTypstContent(state)}${serializeBlocks(item.content, writer, `${path}.items[${index}].content`)}]`;
+        const itemPath = `${path}.items[${index}].content`;
+        const [first, ...rest] = item.content;
+        let content: string;
+        if (first?.type === "paragraph") {
+          const inline = writeMapped(
+            first,
+            writer,
+            `${itemPath}[0]`,
+            serializeInline(first.content, writer.labels, writer.notes)
+          );
+          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath) : "";
+          content = `${inline}${tail}`;
+        } else {
+          content = serializeBlocks(item.content, writer, itemPath);
+        }
+        if (!isTaskList) return `[${content}]`;
+        const checked = item.checked === true ? "true" : "false";
+        return `[#task-item(${checked})[${content}]]`;
       });
-      value = `#${fn}(\n${items.join(",\n")}\n)`;
+      const options = isTaskList ? "marker: none, body-indent: 0pt, " : "";
+      value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
       break;
     }
     case "table": {
-      const columns = Math.max(1, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+      const columnCount = Math.max(1, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+      const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const rows = block.rows.map((row, rowIndex) => {
         const cells = row.cells.map((cell, cellIndex) => {
           const args = [
@@ -272,7 +458,7 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
           ? `table.header(${cells.join(", ")})`
           : cells.join(", ");
       });
-      value = `#table(columns: ${columns}, inset: 6pt, stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: 6pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
       break;
     }
     case "divider":
@@ -299,6 +485,16 @@ function typstDate(date: Date): string {
   return `datetime(year: ${date.getUTCFullYear()}, month: ${date.getUTCMonth() + 1}, day: ${date.getUTCDate()})`;
 }
 
+function exportedDateLabel(date: Date, language?: string, region?: string): string {
+  const locale = [language, region].filter(Boolean).join("-") || "en";
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 export function serializePdfDocument(
   document: PreparedPdfDocument,
   options: PdfSerializeOptions
@@ -306,7 +502,6 @@ export function serializePdfDocument(
   const labels = collectHeadingLabels(document.blocks);
   const min = minHeadingLevel(document.blocks);
   const writer: Writer = {
-    lines: [],
     sourceMap: [],
     notes: [...document.notes],
     labels,
@@ -316,8 +511,8 @@ export function serializePdfDocument(
   const body = serializeBlocks(document.blocks, writer);
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
-  const exportedLabel = meta.exportedAt.toISOString().slice(0, 10);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge
+  const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},
@@ -325,6 +520,8 @@ export function serializePdfDocument(
   version: ${typstString(meta.version === undefined ? "—" : `v${meta.version}`)},
   author: ${typstString(author)},
   exporter: ${typstString(meta.exporter ?? author)},
+  language: ${typstString(meta.language ?? "en")},
+  region: ${meta.region ? typstString(meta.region) : "none"},
   exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
 ))
@@ -336,26 +533,59 @@ ${body}
     main,
     template: ATLCLI_TYPST_TEMPLATE,
     assets: document.assets,
-    sourceMap: writer.sourceMap,
+    sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
   };
 }
 
 export function mapPdfDiagnostics(
-  diagnostics: Array<{ severity?: string; message: string; path?: string; line?: number }>,
+  diagnostics: Array<{
+    severity?: string;
+    message: string;
+    path?: string;
+    line?: number;
+    column?: number;
+    endLine?: number;
+    endColumn?: number;
+  }>,
   sourceMap: PdfSourceMapEntry[]
-): Array<{ severity: "error" | "warning"; message: string; path?: string; startLine?: number; blockPath?: string }> {
+): Array<{
+  severity: "error" | "warning";
+  message: string;
+  path?: string;
+  startLine?: number;
+  startColumn?: number;
+  endLine?: number;
+  endColumn?: number;
+  blockPath?: string;
+}> {
   return diagnostics.map((diagnostic) => {
     const line = diagnostic.line;
+    const column = diagnostic.column;
     const mapped =
-      diagnostic.path === "main.typ" && line !== undefined
-        ? sourceMap.find((entry) => line >= entry.startLine && line <= entry.endLine)
+      diagnostic.path?.replace(/^\/+/, "") === "main.typ" && line !== undefined
+        ? sourceMap
+            .filter((entry) => {
+              if (line < entry.startLine || line > entry.endLine) return false;
+              if (column === undefined) return true;
+              if (line === entry.startLine && column < entry.startColumn) return false;
+              if (line === entry.endLine && column > entry.endColumn) return false;
+              return true;
+            })
+            .sort(
+              (left, right) =>
+                left.endLine - left.startLine - (right.endLine - right.startLine) ||
+                left.endColumn - left.startColumn - (right.endColumn - right.startColumn)
+            )[0]
         : undefined;
     return {
       severity: diagnostic.severity === "warning" ? "warning" : "error",
       message: diagnostic.message,
       path: diagnostic.path,
       startLine: line,
+      startColumn: column,
+      endLine: diagnostic.endLine,
+      endColumn: diagnostic.endColumn,
       blockPath: mapped?.blockPath,
     };
   });

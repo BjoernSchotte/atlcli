@@ -4,6 +4,7 @@ dist
 .env
 .atlcli
 .tmp
+/tmp/
 .bun
 site/
 .venv/
@@ -12,6 +13,9 @@ spec/internal/
 .astro/
 .playwright-cli/
 opensrc/
+
+# Reproducible PDF font cache (downloaded from pinned Adobe releases).
+packages/pdf/.fonts/
 
 # SonarQube coverage artifact
 coverage/

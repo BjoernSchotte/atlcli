@@ -2,12 +2,16 @@ import initTypst, {
   TypstCompilerBuilder,
   type TypstCompiler,
 } from "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs";
-import type { PdfSourceBundle } from "@atlcli/pdf/browser";
+import {
+  mapPdfDiagnostics,
+  type PdfSourceBundle,
+  type PdfSourceMapEntry,
+} from "@atlcli/pdf/browser";
 
 export const PDF_COMPILER_VERSION = "typst.ts 0.7.0 / Typst 0.14.2";
 
 export interface PdfCompilerAssets {
-  wasm: BufferSource | URL | Response;
+  wasm: ArrayBuffer | URL | Response;
   fonts: Uint8Array[];
 }
 
@@ -75,6 +79,10 @@ export class BrowserPdfCompiler {
     }
   }
 
+  async getLoadedFonts(): Promise<string[]> {
+    return (await this.initialize()).get_loaded_fonts();
+  }
+
   /** Drop all compiler state after a fatal job; the next call initializes anew. */
   async reset(): Promise<void> {
     const compiler = this.compiler;
@@ -87,14 +95,34 @@ export class BrowserPdfCompiler {
   }
 }
 
-export function formatPdfDiagnostics(diagnostics: RawPdfDiagnostic[]): string {
+export function formatPdfDiagnostics(
+  diagnostics: RawPdfDiagnostic[],
+  sourceMap: PdfSourceMapEntry[] = []
+): string {
   if (diagnostics.length === 0) return "Typst produced no PDF and no diagnostics.";
-  return diagnostics
+  const mapped = mapPdfDiagnostics(
+    diagnostics.map((diagnostic) => {
+      const match = diagnostic.range.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
+      return {
+        severity: diagnostic.severity,
+        message: diagnostic.message,
+        path: diagnostic.path,
+        line: match ? Number(match[1]) : undefined,
+        column: match ? Number(match[2]) : undefined,
+        endLine: match ? Number(match[3]) : undefined,
+        endColumn: match ? Number(match[4]) : undefined,
+      };
+    }),
+    sourceMap
+  );
+  return mapped
     .map((diagnostic) => {
-      const at = diagnostic.path
-        ? `${diagnostic.path}${diagnostic.range ? `:${diagnostic.range}` : ""}: `
-        : "";
-      return `${at}${diagnostic.severity}: ${diagnostic.message}`;
+      const location = diagnostic.blockPath
+        ? `${diagnostic.blockPath}: `
+        : diagnostic.path
+          ? `${diagnostic.path}${diagnostic.startLine ? `:${diagnostic.startLine}` : ""}: `
+          : "";
+      return `${location}${diagnostic.severity}: ${diagnostic.message}`;
     })
     .join("\n");
 }

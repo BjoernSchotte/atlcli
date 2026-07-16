@@ -9,6 +9,11 @@
       "inputs": [
         "entrypoints/**",
         "utils/**",
+        "workers/**",
+        "types/**",
+        "$TURBO_ROOT$/packages/pdf/src/**",
+        "$TURBO_ROOT$/packages/pdf/scripts/ensure-fonts.ts",
+        "$TURBO_ROOT$/packages/pdf/licenses/**",
         "wxt.config.ts",
         "package.json",
         "tsconfig.json"
@@ -20,6 +25,8 @@
       "inputs": [
         "entrypoints/**",
         "utils/**",
+        "workers/**",
+        "types/**",
         "scripts/**",
         "tests/**",
         "wxt.config.ts",

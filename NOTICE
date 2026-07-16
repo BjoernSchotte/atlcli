@@ -11,6 +11,10 @@ original attribution preserved.
 
 Third-party notices:
 
+- typst.ts web compiler (https://github.com/Myriad-Dreamin/typst.ts),
+  version 0.7.0 with embedded Typst 0.14.2, licensed under the Apache License
+  2.0. The WebAssembly build is distributed in object-code form inside the
+  extension; source is available at the URL above.
 - beautiful-mermaid (https://github.com/lukilabs/beautiful-mermaid),
   Copyright Craft Docs / Luki Labs, licensed under the MIT License.
 - elkjs (https://github.com/kieler/elkjs), a JavaScript build of the Eclipse
@@ -29,3 +33,12 @@ Third-party notices:
 - JetBrains Mono font family (https://github.com/JetBrains/JetBrainsMono),
   Copyright 2020 The JetBrains Mono Project Authors, licensed under the SIL
   Open Font License 1.1 (see packages/docx/fonts/LICENSE-JetBrainsMono.txt).
+- Source Sans 3 font family (https://github.com/adobe-fonts/source-sans),
+  Copyright 2010-2024 Adobe, licensed under the SIL Open Font License 1.1
+  (see packages/pdf/licenses/LICENSE-Source-Sans-3.txt).
+- Source Serif 4 font family (https://github.com/adobe-fonts/source-serif),
+  Copyright 2014-2023 Adobe, licensed under the SIL Open Font License 1.1
+  (see packages/pdf/licenses/LICENSE-Source-Serif-4.txt).
+- Source Code Pro font family (https://github.com/adobe-fonts/source-code-pro),
+  Copyright 2010-2023 Adobe, licensed under the SIL Open Font License 1.1
+  (see packages/pdf/licenses/LICENSE-Source-Code-Pro.txt).

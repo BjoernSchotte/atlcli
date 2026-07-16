@@ -15,16 +15,17 @@
  *   service workers) and no node deps.
  * - **Consumer-neutral.** No DOCX-isms bake in here (no OOXML, no EMU sizing).
  *   The model describes *content*, serializers decide *presentation*.
- * - **Shared normalization.** Reuses {@link stripTableColumnMetadata} and
- *   {@link KNOWN_MACROS} from the markdown converter so both paths see the same
- *   normalized markup (notably the modern-Cloud `<colgroup>` table strip).
+ * - **Shared macro vocabulary.** Reuses {@link KNOWN_MACROS} from the markdown
+ *   converter. Unlike markdown, the rich export model deliberately retains
+ *   modern-Cloud `<colgroup>` widths so DOCX/PDF serializers can preserve the
+ *   author's table geometry.
  * - **Never silently drop.** Unknown macros become an explicit
  *   {@link UnknownBlock} plus an {@link ExportNote}; raw storage XML is never
  *   passed through verbatim.
  */
 
 import { decodeHTML } from "entities";
-import { KNOWN_MACROS, stripTableColumnMetadata } from "./markdown.js";
+import { KNOWN_MACROS } from "./markdown.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -102,7 +103,7 @@ export type ExportBlock =
   | { type: "codeBlock"; language?: string; code: string }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | { type: "list"; ordered: boolean; items: ListItem[] }
-  | { type: "table"; rows: TableRow[] }
+  | { type: "table"; rows: TableRow[]; columnWidths?: number[] }
   | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number }
   | { type: "blockquote"; content: ExportBlock[] }
   | { type: "divider" }
@@ -326,10 +327,7 @@ const TRANSPARENT_BLOCK_TAGS = new Set([
  */
 export function storageToBlocks(storage: string): StorageToBlocksResult {
   const ctx: WalkCtx = { notes: [] };
-  // Share the converter's column-metadata strip so both paths normalize the
-  // modern-Cloud `<colgroup>` table markup identically.
-  const normalized = stripTableColumnMetadata(storage);
-  const nodes = parseXml(normalized);
+  const nodes = parseXml(storage);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
 }
@@ -489,6 +487,42 @@ function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
 
 // ---- Tables ---------------------------------------------------------------
 
+/** Convert a CSS absolute length to a common pixel-like weight. */
+function parseColumnWidth(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = value.trim().match(/^([0-9]+(?:\.[0-9]+)?)\s*(px|pt|pc|in|cm|mm|%)?$/i);
+  if (!match) return undefined;
+  const amount = Number.parseFloat(match[1]!);
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  switch ((match[2] ?? "px").toLowerCase()) {
+    case "pt": return amount * (96 / 72);
+    case "pc": return amount * 16;
+    case "in": return amount * 96;
+    case "cm": return amount * (96 / 2.54);
+    case "mm": return amount * (96 / 25.4);
+    case "%":
+    case "px":
+    default: return amount;
+  }
+}
+
+function tableColumnWidths(table: XmlElement): number[] | undefined {
+  const colgroup = table.children.find(
+    (child): child is XmlElement => child.type === "element" && child.name === "colgroup"
+  );
+  if (!colgroup) return undefined;
+  const widths: number[] = [];
+  for (const child of colgroup.children) {
+    if (child.type !== "element" || child.name !== "col") continue;
+    const styleWidth = child.attrs.style?.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i)?.[1];
+    const width = parseColumnWidth(styleWidth ?? child.attrs.width);
+    if (width === undefined) return undefined;
+    const span = parsePositiveInt(child.attrs.span) ?? 1;
+    for (let index = 0; index < span; index += 1) widths.push(width);
+  }
+  return widths.length > 0 ? widths : undefined;
+}
+
 function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const rows: TableRow[] = [];
   const rowEls: XmlElement[] = [];
@@ -516,7 +550,8 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
     }
     rows.push({ cells });
   }
-  return { type: "table", rows };
+  const columnWidths = tableColumnWidths(el);
+  return { type: "table", rows, ...(columnWidths ? { columnWidths } : {}) };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {

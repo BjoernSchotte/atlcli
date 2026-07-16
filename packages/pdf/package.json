@@ -10,7 +10,9 @@
       "default": "./src/index.ts"
     },
     "./browser": "./src/index.browser.ts",
-    "./template": "./src/template.ts"
+    "./template": "./src/template.ts",
+    "./fonts/*": "./.fonts/*",
+    "./licenses/*": "./licenses/*"
   },
   "dependencies": {
     "@atlcli/confluence": "workspace:*",

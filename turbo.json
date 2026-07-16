@@ -16,6 +16,7 @@
         "packages/jira/src/**/*.ts",
         "packages/core/src/**/*.ts",
         "packages/docx/src/**/*.ts",
+        "packages/pdf/src/**/*.ts",
         "packages/diagram/src/**/*.ts"
       ]
     }

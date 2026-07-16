@@ -10,8 +10,14 @@ import type { RouterDeps } from "../utils/router.js";
 const okRouterDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
   getCurrentEntity: async () => ({ url: null, entity: null, seq: 0 }),
+  runPdfCompile: async () => ({ ok: true }),
+  runPdfCancel: async () => true,
 };
-const okOffscreenDeps: OffscreenListenerDeps = { runWasmAdd: async (a, b) => a + b };
+const okOffscreenDeps: OffscreenListenerDeps = {
+  runWasmAdd: async (a, b) => a + b,
+  runPdfCompile: async () => ({ ok: true }),
+  runPdfCancel: async () => true,
+};
 
 /**
  * A sendResponse spy that also exposes a promise resolving when it is called,
@@ -76,6 +82,8 @@ describe("handleExtMessage (background listener adapter)", () => {
           throw new Error("boom");
         },
         getCurrentEntity: async () => ({ url: null, entity: null, seq: 0 }),
+        runPdfCompile: okRouterDeps.runPdfCompile,
+        runPdfCancel: okRouterDeps.runPdfCancel,
       }
     );
     expect(ret).toBe(true);
@@ -83,6 +91,15 @@ describe("handleExtMessage (background listener adapter)", () => {
     expect(cap.values).toEqual([
       { kind: "wasm-smoke-result", ok: false, error: "boom" },
     ]);
+  });
+
+  it("returns true and responds to PDF compile", async () => {
+    const cap = captureResponse<ExtResponse>();
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
+    const ret = handleExtMessage({ kind: "pdf:compile", jobId }, cap.sendResponse, okRouterDeps);
+    expect(ret).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{ kind: "pdf:compile-result", jobId, ok: true }]);
   });
 });
 
@@ -117,6 +134,8 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         runWasmAdd: async () => {
           throw new Error("instantiate boom");
         },
+        runPdfCompile: okOffscreenDeps.runPdfCompile,
+        runPdfCancel: okOffscreenDeps.runPdfCancel,
       }
     );
     expect(ret).toBe(true);
@@ -124,5 +143,18 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     expect(cap.values).toEqual([
       { kind: "offscreen:wasm-add-result", ok: false, error: "instantiate boom" },
     ]);
+  });
+
+  it("returns true and responds to an offscreen PDF compile", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const jobId = "123e4567-e89b-42d3-a456-426614174000";
+    const ret = handleOffscreenMessage(
+      { kind: "offscreen:pdf-compile", jobId },
+      cap.sendResponse,
+      okOffscreenDeps
+    );
+    expect(ret).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{ kind: "offscreen:pdf-compile-result", jobId, ok: true }]);
   });
 });

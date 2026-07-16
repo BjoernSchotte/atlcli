@@ -15,6 +15,10 @@ export interface RouterDeps {
   runWasmSmoke: (a: number, b: number) => Promise<number>;
   /** Resolves the active tab's current entity (queries `chrome.tabs`). */
   getCurrentEntity: () => Promise<EntityDetection>;
+  /** Compiles a prepared PDF job through the offscreen worker. */
+  runPdfCompile: (jobId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Cancels a queued or active PDF job. */
+  runPdfCancel: (jobId: string) => Promise<boolean>;
 }
 
 /**
@@ -44,6 +48,25 @@ export async function routeMessage(
     case "get-current-entity": {
       const detection = await deps.getCurrentEntity();
       return { kind: "current-entity", detection };
+    }
+    case "pdf:compile": {
+      try {
+        const result = await deps.runPdfCompile(msg.jobId);
+        return result.ok
+          ? { kind: "pdf:compile-result", jobId: msg.jobId, ok: true }
+          : { kind: "pdf:compile-result", jobId: msg.jobId, ok: false, error: result.error };
+      } catch (error) {
+        return {
+          kind: "pdf:compile-result",
+          jobId: msg.jobId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    case "pdf:cancel": {
+      const cancelled = await deps.runPdfCancel(msg.jobId).catch(() => false);
+      return { kind: "pdf:cancel-result", jobId: msg.jobId, cancelled };
     }
     default: {
       // Exhaustiveness: adding a request kind without handling it fails typecheck.

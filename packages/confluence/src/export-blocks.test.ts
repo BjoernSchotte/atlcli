@@ -211,8 +211,8 @@ describe("storageToBlocks — tables", () => {
 
   test("modern Cloud markup: <colgroup> + ac:local-id + <p local-id> wrappers (regression)", () => {
     // This is the exact shape that broke the markdown table path: a leading
-    // <colgroup> made <tbody> a non-first sibling. The walker shares the same
-    // column-metadata strip, and its own parser tolerates the id attributes.
+    // <colgroup> made <tbody> a non-first sibling. The rich walker tolerates
+    // the metadata and retains the author's column proportions.
     const storage =
       '<table data-layout="default" ac:local-id="1f2e3d4c">' +
       '<colgroup><col style="width: 226.0px;"/><col style="width: 226.0px;"/></colgroup>' +
@@ -222,9 +222,11 @@ describe("storageToBlocks — tables", () => {
       "</tbody></table>";
     const table = blocks(storage)[0] as {
       type: "table";
+      columnWidths?: number[];
       rows: { cells: { header: boolean; content: ExportBlock[] }[] }[];
     };
     expect(table.type).toBe("table");
+    expect(table.columnWidths).toEqual([226, 226]);
     expect(table.rows).toHaveLength(2);
     expect(table.rows[0].cells.every((c) => c.header)).toBe(true);
     expect(table.rows[0].cells[0].content).toEqual([
@@ -233,6 +235,22 @@ describe("storageToBlocks — tables", () => {
     expect(table.rows[1].cells[1].content).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "Engineer" }] },
     ]);
+  });
+
+  test("normalizes absolute colgroup units and expands spans", () => {
+    const table = blocks(
+      '<table><colgroup><col width="72pt"/><col style="width: 25.4mm" span="2"/></colgroup>' +
+        '<tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>'
+    )[0] as Extract<ExportBlock, { type: "table" }>;
+    expect(table.columnWidths).toEqual([96, 96, 96]);
+  });
+
+  test("drops incomplete colgroup widths instead of inventing proportions", () => {
+    const table = blocks(
+      '<table><colgroup><col style="width: 100px"/><col/></colgroup>' +
+        '<tbody><tr><td>A</td><td>B</td></tr></tbody></table>'
+    )[0] as Extract<ExportBlock, { type: "table" }>;
+    expect(table.columnWidths).toBeUndefined();
   });
 });
 
