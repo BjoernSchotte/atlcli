@@ -164,7 +164,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.includepage.(pagename)` | fetched page body | derivable | Resolve title → `search` → `getPage`. |
 | `$scroll.includepage.(SPACEKEY:pagename)` | fetched page body | derivable | Space-scoped title resolution. |
 | `$scroll.includepage.(pageid)` | fetched page body | derivable | Direct `getPage(id)`. |
-| `$scroll.pageproperty.(key)` (+ fallback / macro-id / alt-text forms) | — | unsupported (v1) | Requires parsing Page Properties macro out of storage; atlcli models raw storage only. Gap G4. |
+| `$scroll.pageproperty.(key)` (+ fallback / macro-id / alt-text forms) | `parsePageProperties()` over `details.storage` (+ `getSpaceHomepageStorage()` for the fallback form) | derivable | **Gap G4 closed** (2026-07-16). All four documented forms. The page's own macro costs no round-trip — the export already holds its storage; only `(key,true)` fetches the space homepage. See G4 below for the argument-grammar inference. |
 | `$scroll.jsoncontentproperty.(key)` (jsonPointer/fallback/alt) | — | unsupported (v1) | No content-property API wrapper in atlcli. Gap G5. |
 | `$scroll.metadata.(key)` (Comala) | — | never | Requires Comala Metadata app. Third-party. |
 
@@ -234,9 +234,26 @@ referenced from the mapping table.
   `icon.path` — but a logo is an **image**, so both placeholders are blocked on the OOXML image
   module (spec `005-docx-image-module`), not on a missing fetch. Blocks: `$scroll.spacelogo` (G3);
   `$scroll.globallogo` is `never` (system asset).
-- **G4 — Page Properties macro extraction.** atlcli stores raw `storage` only; there is no parsed
-  key→value model of the Page Properties macro (incl. macro-id disambiguation and space-homepage
-  fallback). Blocks: all `$scroll.pageproperty.(…)` forms.
+- **G4 — Page Properties macro extraction. ✅ CLOSED 2026-07-16.** Was a scope call, not a
+  capability one: the macro (`ac:name="details"`) lives in the page's OWN storage, which the
+  export already holds, so the common `(key)` form needs no round-trip at all. Implemented in
+  `packages/confluence/src/page-properties.ts` (`parsePageProperties` / `lookupPageProperty`),
+  built on the shared `parseXml` tree — **not** a regex: a details macro can contain other
+  macros, and hunting for the next `</ac:structured-macro>` would slice the wrong one (the same
+  trap as the non-greedy `<w:p>` regex in the DOCX text-box finding). The space-homepage
+  fallback form is a lazy `getSpaceHomepageStorage()` (one call —
+  `?expand=homepage.body.storage`), fired only by an argument that asks for it.
+  - **Argument grammar is partly INFERRED.** Scroll documents `(key)`,
+    `(key,fallback-enabled)` and `(key,macro-id,true,alternate-text)` but not how to tell a
+    2-arg `(key,macroId)` from `(key,fallback)`. We disambiguate on shape: a boolean second
+    argument is the fallback flag, anything else is a macro id. Pinned in
+    `apps/extension/tests/docx/placeholder-map.test.ts` so a contradiction with real Scroll
+    behaviour surfaces there rather than silently.
+  - **"macro-id" is ambiguous in real storage.** Confluence writes BOTH an author-set
+    `<ac:parameter ac:name="id">` (e.g. `zoo-meta`) and an auto-assigned `ac:macro-id` UUID
+    attribute. A template can only mean the former (nobody hand-writes a UUID), but the lookup
+    matches either — a UUID cannot collide with a hand-written label, so accepting both costs
+    nothing. Verified against real DOCSY markup, which hand-built fixtures had missed.
 - **G5 — Content properties (JSON).** No Confluence content-property API wrapper
   (`/content/{id}/property/{key}`) in atlcli, and no jsonPointer/fallback resolution.
   Blocks: `$scroll.jsoncontentproperty.(…)`.
@@ -250,10 +267,19 @@ referenced from the mapping table.
   (the chosen `.docx` template file). No template registry/metadata model exists yet; Phase 1 must
   define where template name + mtime come from.
 
-**Out of scope (never, not gaps to close):** Comala workflow/metadata (`$adhocState`,
-`$scroll.metadata.*`), the entire Scroll Documents `$scroll.custom.*` family, and the system-wide
-`$scroll.globallogo`. These require third-party K15t/Comala apps or Confluence-instance assets that
-atlcli deliberately does not target.
+**Out of scope (never, not gaps to close):** Comala metadata (`$scroll.metadata.*`), the entire
+Scroll Documents `$scroll.custom.*` family, and the system-wide `$scroll.globallogo`. These
+require third-party K15t/Comala apps or Confluence-instance assets that atlcli deliberately does
+not target.
+
+**`$adhocState` — dropped from the curated list** (Björn, 2026-07-16: "bauen wir aus, das wollen
+wir aktuell nicht supporten"). It no longer carries a Comala-specific entry and falls through to
+the generic *unrecognized → unsupported* branch. **It is still MATCHED by `PLACEHOLDER_RE`, and
+that is load-bearing:** removing it from detection would mean the resolver never sees it, so it
+would never be blanked and the raw `$adhocState` would survive into the exported document —
+breaking the never-a-literal invariant that every other row here depends on. Dropping a
+placeholder from *support* and dropping it from *detection* are different acts; only the first is
+safe.
 
 ---
 

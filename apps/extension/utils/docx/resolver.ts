@@ -5,25 +5,31 @@
  * string, implementing every `direct` and `derivable` row of the normative §2
  * mapping table. Design points:
  *
- *  - **Pure + injectable.** No `chrome.*` / network here; the three derivable
+ *  - **Pure + injectable.** No `chrome.*` / network here; the four derivable
  *    round-trips (`getSpace` for `$scroll.space.*`, `getCurrentUser` for
- *    `$scroll.exporter*`, `getPageOwner` for `$scroll.pageowner.*`) come in as
+ *    `$scroll.exporter*`, `getPageOwner` for `$scroll.pageowner.*`,
+ *    `getSpaceHomepageStorage` for the pageproperty fallback form) come in as
  *    injected async deps so the resolver unit tests run offline and can prove
  *    the *lazy* contract.
- *  - **Lazy fetching.** `getSpace` / `getCurrentUser` / `getPageOwner` fire only
- *    when the used placeholder set actually needs them (PLAN §2.2; mock-fetch
- *    test asserts they are NOT called otherwise).
+ *  - **Lazy fetching.** Each fetcher fires only when the used placeholder set
+ *    actually needs it (PLAN §2.2; mock-fetch test asserts they are NOT called
+ *    otherwise). For page properties the laziness is per-ARGUMENT, not
+ *    per-placeholder: `(key)` reads the page's own storage, which is already in
+ *    hand, and only `(key,true)` reaches for the space homepage.
  *  - **Never leak a literal.** Supported → value; unsupported/never (and any
  *    absent field like a Cloud-hidden email) → empty string + a report note.
  *    The export preprocessor then removes the raw token, so no `$scroll.*`
  *    survives into the output (pinning test).
  */
-import type {
-  ConfluencePageDetails,
-  ConfluenceSpace,
-  ExportNote,
+import {
+  lookupPageProperty,
+  parsePageProperties,
+  type ConfluencePageDetails,
+  type ConfluenceSpace,
+  type ExportNote,
+  type PagePropertiesMacro,
 } from "@atlcli/confluence/browser";
-import { classifyPlaceholder } from "./placeholder-map.js";
+import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
 import { formatDatePlaceholder } from "./dateformat.js";
 
 /** atlcli-side template metadata (G8): filename + upload timestamp. */
@@ -53,11 +59,13 @@ export interface PageOwner {
   email?: string;
 }
 
-/** Lazily-invoked fetchers for the derivable round-trips (G1/G6/G7). */
+/** Lazily-invoked fetchers for the derivable round-trips (G1/G4/G6/G7). */
 export interface ResolveDeps {
   getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
   getCurrentUser?: () => Promise<CurrentUser>;
   getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+  /** Storage of the space homepage — only for the pageproperty fallback form. */
+  getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
 }
 
 /**
@@ -69,6 +77,8 @@ export interface Fetched {
   space?: ConfluenceSpace;
   currentUser?: CurrentUser;
   owner?: PageOwner;
+  /** Page Properties macros of the space homepage (G4 fallback form only). */
+  homepageProperties?: PagePropertiesMacro[];
 }
 
 export interface ResolveResult {
@@ -150,6 +160,9 @@ export function resolveOne(
     case "$scroll.pageowner.fullName":
       return owner?.displayName ?? "";
 
+    case "$scroll.pageproperty":
+      return resolvePageProperty(raw, ctx, fetched, notes);
+
     case "$scroll.creator":
     case "$scroll.creator.fullName":
       return details.createdBy?.displayName ?? "";
@@ -192,6 +205,53 @@ export function resolveOne(
   }
 }
 
+/**
+ * Resolve `$scroll.pageproperty.(…)` (G4).
+ *
+ * Order: the page's own Page Properties macro → (only when the argument asks for
+ * it) the space homepage's → the alternate text → empty + a note. The page's
+ * macros are parsed from `details.storage`, which the export already holds, so
+ * the common `(key)` form costs no round-trip at all.
+ */
+function resolvePageProperty(
+  raw: string,
+  ctx: ResolveContext,
+  fetched: Fetched,
+  notes: ExportNote[]
+): string {
+  const args = parsePagePropertyArgs(raw);
+  if (args.key === "") {
+    notes.push({
+      level: "warning",
+      code: "pageproperty-no-key",
+      message: `${raw} names no property key; rendered empty.`,
+    });
+    return "";
+  }
+
+  const own = parsePageProperties(ctx.details.storage ?? "");
+  let value = lookupPageProperty(own, args.key, args.macroId);
+
+  if (value === undefined && args.fallbackEnabled) {
+    value = lookupPageProperty(fetched.homepageProperties ?? [], args.key, args.macroId);
+  }
+
+  if (value !== undefined && value !== "") return value;
+
+  if (args.alternateText) return args.alternateText;
+
+  notes.push({
+    level: "info",
+    code: "placeholder-empty",
+    message:
+      `Page property "${args.key}" was not found` +
+      (args.macroId ? ` in the Page Properties macro "${args.macroId}"` : "") +
+      (args.fallbackEnabled ? " (nor on the space homepage)" : "") +
+      "; rendered empty.",
+  });
+  return "";
+}
+
 function emailOrNote(email: string | undefined, raw: string, notes: ExportNote[]): string {
   if (email) return email;
   notes.push({
@@ -222,6 +282,7 @@ export async function resolvePlaceholders(
   let needsSpace = false;
   let needsUser = false;
   let needsOwner = false;
+  let needsHomepage = false;
   const unsupportedNames = new Set<string>();
   for (const raw of rawPlaceholders) {
     const cls = classifyPlaceholder(raw);
@@ -233,6 +294,7 @@ export async function resolvePlaceholders(
     if (cls.dependency === "space") needsSpace = true;
     else if (cls.dependency === "currentUser") needsUser = true;
     else if (cls.dependency === "owner") needsOwner = true;
+    else if (cls.dependency === "spaceHomepage") needsHomepage = true;
   }
 
   let space: ConfluenceSpace | undefined;
@@ -310,7 +372,32 @@ export async function resolvePlaceholders(
     }
   }
 
-  const fetched: Fetched = { space, currentUser, owner };
+  let homepageProperties: PagePropertiesMacro[] | undefined;
+  if (needsHomepage) {
+    if (deps.getSpaceHomepageStorage && ctx.details.spaceKey) {
+      try {
+        const storage = await deps.getSpaceHomepageStorage(ctx.details.spaceKey);
+        homepageProperties = parsePageProperties(storage ?? "");
+      } catch {
+        notes.push({
+          level: "warning",
+          code: "homepage-fetch-failed",
+          message:
+            "Could not load the space homepage; page properties will not fall back to it.",
+        });
+      }
+    } else {
+      notes.push({
+        level: "warning",
+        code: "homepage-unavailable",
+        message: ctx.details.spaceKey
+          ? "A page property asks for the space-homepage fallback but no homepage fetcher is available; only this page's properties are used."
+          : "A page property asks for the space-homepage fallback but the page has no space key; only this page's properties are used.",
+      });
+    }
+  }
+
+  const fetched: Fetched = { space, currentUser, owner, homepageProperties };
 
   let resolvedCount = 0;
   for (const raw of rawPlaceholders) {

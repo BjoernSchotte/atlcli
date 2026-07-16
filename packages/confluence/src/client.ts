@@ -2733,6 +2733,26 @@ export class ConfluenceClient {
   }
 
   /**
+   * Get a space homepage's storage body in one call.
+   *
+   * Exists for the Page Properties space-homepage fallback (spec 001 gap
+   * **G4**): Scroll's `$scroll.pageproperty.(key,true)` falls back to the
+   * space homepage's Page Properties macro when the page itself lacks the key.
+   * `expand=homepage.body.storage` returns the homepage inline, so this stays a
+   * single round-trip rather than a space lookup followed by a page fetch.
+   *
+   * @param spaceKey - Space key.
+   * @returns The homepage's storage XML, or `null` when the space has no
+   *   homepage or it carries no storage body.
+   */
+  async getSpaceHomepageStorage(spaceKey: string): Promise<string | null> {
+    const data = (await this.request(`/space/${spaceKey}`, {
+      query: { expand: "homepage.body.storage" },
+    })) as { homepage?: { body?: { storage?: { value?: string } } } };
+    return data?.homepage?.body?.storage?.value ?? null;
+  }
+
+  /**
    * Get a page's **owner** (Confluence Cloud) — deliberately distinct from its
    * creator: ownership can be transferred, so `ownerId !== authorId` in general.
    *

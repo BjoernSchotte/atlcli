@@ -41,7 +41,59 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
  * one `getCurrentUser()` call; `none` → resolvable from `details`/`template`/date
  * already in hand.
  */
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner";
+export type PlaceholderDependency =
+  | "none"
+  | "space"
+  | "currentUser"
+  | "owner"
+  | "spaceHomepage";
+
+/**
+ * Parsed argument list of `$scroll.pageproperty.(…)` (spec 001 gap **G4**).
+ *
+ * Scroll documents three forms — `(key)`, `(key,fallback-enabled)` and
+ * `(key,macro-id,true,alternate-text)` — but not how to tell a 2-arg
+ * `(key,macroId)` from `(key,fallback)`. We disambiguate on shape: a second
+ * argument that reads as a boolean is the fallback flag, anything else is a
+ * macro id. That covers both documented forms; the inference is recorded in
+ * `scroll-placeholder-mapping.md` so a future contradiction is traceable rather
+ * than mysterious.
+ */
+export interface PagePropertyArgs {
+  key: string;
+  macroId?: string;
+  /** Fall back to the space homepage's macro when the page lacks the key. */
+  fallbackEnabled: boolean;
+  /** Rendered when the key resolves to nothing. */
+  alternateText?: string;
+}
+
+function isBool(s: string | undefined): boolean {
+  return s === "true" || s === "false";
+}
+
+/** Parse the raw `$scroll.pageproperty.(…)` argument group. */
+export function parsePagePropertyArgs(raw: string): PagePropertyArgs {
+  const open = raw.indexOf("(");
+  const close = raw.lastIndexOf(")");
+  if (open === -1 || close <= open) return { key: "", fallbackEnabled: false };
+
+  const parts = raw
+    .slice(open + 1, close)
+    .split(",")
+    .map((p) => p.trim().replace(/^["']|["']$/g, ""));
+
+  const key = parts[0] ?? "";
+  if (parts.length < 2) return { key, fallbackEnabled: false };
+  if (isBool(parts[1])) return { key, fallbackEnabled: parts[1] === "true" };
+
+  return {
+    key,
+    macroId: parts[1] || undefined,
+    fallbackEnabled: parts[2] === "true",
+    alternateText: parts[3] || undefined,
+  };
+}
 
 export interface PlaceholderClass {
   /** The classified base (argument/params stripped). */
@@ -129,17 +181,22 @@ const UNSUPPORTED_EXACT: Record<string, string> = {
 const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
   { prefix: "$scroll.includepage", reason: "cross-page include is out of scope in v1 (Phase 2)" },
   {
-    prefix: "$scroll.pageproperty",
-    reason: "the Page Properties macro is not read from the page body yet (Gap G4)",
-  },
-  {
     prefix: "$scroll.jsoncontentproperty",
     reason: "content properties are not fetched (Gap G5)",
   },
 ];
 
+/**
+ * `$adhocState` is deliberately absent (Björn, 2026-07-16: "bauen wir aus").
+ *
+ * It is still MATCHED by the scan regex on purpose — dropping it from detection
+ * would mean the resolver never sees it, so it would never be blanked and the
+ * literal `$adhocState` would survive into the exported document, breaking the
+ * never-a-literal invariant. Without a curated entry it falls through to the
+ * unrecognized→unsupported branch below: empty value + report line, just with a
+ * generic reason instead of a Comala-specific one.
+ */
 const NEVER_EXACT: Record<string, string> = {
-  $adhocState: "needs the Comala Workflows app — third-party",
   "$scroll.globallogo": "the global logo is an image — needs the image module (spec 005)",
 };
 
@@ -159,6 +216,18 @@ export function classifyPlaceholder(raw: string): PlaceholderClass {
   if (SUPPORTED_SPACE.has(base)) return { base, status: "supported", dependency: "space" };
   if (SUPPORTED_USER.has(base)) return { base, status: "supported", dependency: "currentUser" };
   if (SUPPORTED_OWNER.has(base)) return { base, status: "supported", dependency: "owner" };
+
+  // Page Properties (G4). The dependency varies by ARGUMENT, not by base: only
+  // the fallback form needs the space homepage. Classification sees the raw, and
+  // the resolver iterates raw occurrences, so a `(key)` on the same page never
+  // triggers the homepage round-trip that a `(key,true)` next to it does.
+  if (base === "$scroll.pageproperty") {
+    return {
+      base,
+      status: "supported",
+      dependency: parsePagePropertyArgs(raw).fallbackEnabled ? "spaceHomepage" : "none",
+    };
+  }
 
   if (base in UNSUPPORTED_EXACT) {
     return { base, status: "unsupported", dependency: "none", reason: UNSUPPORTED_EXACT[base] };

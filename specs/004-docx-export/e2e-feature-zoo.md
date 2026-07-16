@@ -1,5 +1,13 @@
 Diese Seite dient als Feature-Zoo für den E2E-Lauf des DOCX-Exports (Spec 004, Task 7). Sie enthält bewusst jedes Element, das die Export-Pipeline abdecken muss, und ist lang genug, um die Exportdauer realistisch zu messen. Sie beginnt absichtlich mit einer Überschrift der Ebene 2 — die Seitenüberschrift ist die implizite Ebene 1, und genau diese Form hat den Heading-Promotion-Fix ausgelöst.
 
+:::page-properties id="zoo-meta"
+| Status | Freigegeben |
+|---|---|
+| Verantwortlich | Björn Schotte |
+| Dokumentart | Prüfseite |
+| Gültig bis | 31.12.2026 |
+:::
+
 ## Ausgangslage und Zielsetzung
 
 Der Export einer Confluence-Seite nach Word ist auf den ersten Blick ein Konvertierungsproblem und auf den zweiten ein Treuhandproblem. Die Kundenvorlage ist die Quelle der Wahrheit für alles Gestalterische: Deckblatt, Kopf- und Fußzeile, Schriftfamilie, Absatzformate, Nummernkreise. Unsere Aufgabe ist nicht, diese Gestaltung nachzubauen, sondern sie unangetastet zu lassen und ausschließlich die Platzhalter zu füllen sowie den Seitenkörper an der dafür vorgesehenen Stelle einzusetzen. Jede Abweichung von diesem Prinzip erzeugt Aufwand bei uns und Misstrauen beim Kunden.

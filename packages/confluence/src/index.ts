@@ -11,6 +11,7 @@ export * from "./link-extractor-storage.js";
 export * from "./link-extractor-markdown.js";
 export * from "./link-validator.js";
 export * from "./markdown.js";
+export * from "./page-properties.js";
 export * from "./merge.js";
 export * from "./poller.js";
 export * from "./reorder.js";

@@ -42,8 +42,12 @@ describe("scanTemplate", () => {
       "$scroll.space.name",
       "$scroll.title",
     ]);
-    expect(unsupported).toEqual(["$scroll.spacelogo"]);
-    expect(never).toEqual(["$adhocState", "$scroll.custom"]);
+    // $adhocState was dropped from the curated never-list ("bauen wir aus") but
+    // is still DETECTED, so it lands on the generic unrecognized→unsupported
+    // path and gets blanked. Were it dropped from detection instead, the raw
+    // token would survive into the exported document.
+    expect(unsupported).toEqual(["$adhocState", "$scroll.spacelogo"]);
+    expect(never).toEqual(["$scroll.custom"]);
     expect(scan.hasContentPlaceholder).toBe(true);
     // $scroll.content is not listed as a placeholder hit.
     expect([...supported, ...unsupported, ...never]).not.toContain("$scroll.content");

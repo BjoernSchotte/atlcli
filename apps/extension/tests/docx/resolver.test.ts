@@ -196,6 +196,105 @@ describe("resolvePlaceholders — page owner degradation (G1)", () => {
   });
 });
 
+describe("$scroll.pageproperty (G4)", () => {
+  const detailsMacro = (rows: string, id?: string) =>
+    `<ac:structured-macro ac:name="details">${
+      id ? `<ac:parameter ac:name="id">${id}</ac:parameter>` : ""
+    }<ac:rich-text-body><table><tbody>${rows}</tbody></table></ac:rich-text-body></ac:structured-macro>`;
+
+  const withProps = (storage: string): ResolveContext => ({
+    ...ctx,
+    details: { ...details, storage },
+  });
+
+  const pageCtx = withProps(
+    detailsMacro("<tr><th>Status</th><td>Approved</td></tr>", "specs") + "<p>body</p>"
+  );
+
+  it("resolves a key from the page's own macro with no round-trip at all", async () => {
+    const getSpaceHomepageStorage = mock(async () => "");
+    const res = await resolvePlaceholders(["$scroll.pageproperty.(Status)"], pageCtx, {
+      getSpaceHomepageStorage,
+    });
+    expect(res.values.get("$scroll.pageproperty.(Status)")).toBe("Approved");
+    // The page's storage is already in hand — the fallback form is what costs a fetch.
+    expect(getSpaceHomepageStorage).not.toHaveBeenCalled();
+  });
+
+  it("scopes to a macro id when the 4-arg form names one", () => {
+    const two =
+      detailsMacro("<tr><th>Status</th><td>Approved</td></tr>", "specs") +
+      detailsMacro("<tr><th>Status</th><td>Draft</td></tr>", "other");
+    expect(
+      resolveOne("$scroll.pageproperty.(Status,other,false,n/a)", withProps(two), {}, [])
+    ).toBe("Draft");
+  });
+
+  it("falls back to the space homepage only when the argument asks for it", async () => {
+    const homepage = detailsMacro("<tr><th>Imprint</th><td>Mayflower GmbH</td></tr>");
+    const getSpaceHomepageStorage = mock(async () => homepage);
+
+    const res = await resolvePlaceholders(["$scroll.pageproperty.(Imprint,true)"], pageCtx, {
+      getSpaceHomepageStorage,
+    });
+    expect(getSpaceHomepageStorage).toHaveBeenCalledTimes(1);
+    expect(getSpaceHomepageStorage).toHaveBeenCalledWith("ENG");
+    expect(res.values.get("$scroll.pageproperty.(Imprint,true)")).toBe("Mayflower GmbH");
+  });
+
+  it("prefers the page's own value over the homepage's", async () => {
+    const homepage = detailsMacro("<tr><th>Status</th><td>FROM HOMEPAGE</td></tr>");
+    const res = await resolvePlaceholders(["$scroll.pageproperty.(Status,true)"], pageCtx, {
+      getSpaceHomepageStorage: async () => homepage,
+    });
+    expect(res.values.get("$scroll.pageproperty.(Status,true)")).toBe("Approved");
+  });
+
+  it("renders the alternate text when the key is missing", () => {
+    expect(
+      resolveOne("$scroll.pageproperty.(Nope,specs,false,not set)", pageCtx, {}, [])
+    ).toBe("not set");
+  });
+
+  it("renders empty + a note when the key is missing and no alternate text is given", () => {
+    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    expect(resolveOne("$scroll.pageproperty.(Nope)", pageCtx, {}, notes)).toBe("");
+    expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
+  });
+
+  it("warns when the fallback is requested but no homepage fetcher exists", async () => {
+    const res = await resolvePlaceholders(["$scroll.pageproperty.(Imprint,true)"], pageCtx, {});
+    expect(res.values.get("$scroll.pageproperty.(Imprint,true)")).toBe("");
+    expect(res.notes.some((n) => n.code === "homepage-unavailable")).toBe(true);
+  });
+
+  it("warns when the homepage fetch throws, and still exports", async () => {
+    const res = await resolvePlaceholders(["$scroll.pageproperty.(Imprint,true)"], pageCtx, {
+      getSpaceHomepageStorage: async () => {
+        throw new Error("403");
+      },
+    });
+    expect(res.values.get("$scroll.pageproperty.(Imprint,true)")).toBe("");
+    expect(res.notes.some((n) => n.code === "homepage-fetch-failed")).toBe(true);
+  });
+
+  it("notes a pageproperty that names no key", () => {
+    const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
+    expect(resolveOne("$scroll.pageproperty.()", pageCtx, {}, notes)).toBe("");
+    expect(notes.some((n) => n.code === "pageproperty-no-key")).toBe(true);
+  });
+});
+
+describe("$adhocState — dropped from the curated list, still blanked", () => {
+  it("is unsupported (not never) and never leaks its literal", async () => {
+    const res = await resolvePlaceholders(["$adhocState"], ctx, {});
+    // Detection is deliberately kept: without it the raw token would survive
+    // into the exported document.
+    expect(res.values.get("$adhocState")).toBe("");
+    expect(res.unsupportedNames).toContain("$adhocState");
+  });
+});
+
 describe("resolvePlaceholders — pinning: never a literal", () => {
   it("maps unsupported and never placeholders to empty string + report entry", async () => {
     // $scroll.spacelogo is genuinely unsupported (needs the image module);

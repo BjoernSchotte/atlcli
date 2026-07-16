@@ -215,6 +215,7 @@ export function TemplateSection({
               getSpace: (key) => client.getSpace(key),
               getCurrentUser: () => client.getCurrentUser(),
               getPageOwner: (id) => client.getPageOwner(id),
+              getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
             }
           : {},
       });
