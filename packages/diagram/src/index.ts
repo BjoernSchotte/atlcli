@@ -1,20 +1,28 @@
 /**
- * Mermaid diagram rendering (spec 005a Task 2).
+ * `@atlcli/diagram` — mermaid → SVG rendering (spec 005a Task 2).
  *
- * `renderDiagram` turns mermaid source into an SVG string via
+ * A deliberately **format-agnostic adapter**: this package knows nothing
+ * about DOCX, PDF or any export container. It turns mermaid source into a
+ * themed SVG string; each export path then embeds that SVG its own way —
+ * DOCX as svgBlip + rasterized PNG fallback (`@atlcli/docx`, spec 005a),
+ * PDF natively as vector (spec 007). Keep it that way: no OOXML, no zip,
+ * no rasterization in here.
+ *
+ * `renderDiagram` renders via
  * [`beautiful-mermaid`](https://github.com/lukilabs/beautiful-mermaid) — a
  * self-contained renderer (own parser/layout/text metrics, **not** mermaid.js)
  * that is synchronous, DOM-free and MV3-CSP-clean (no `eval`/`new Function`;
  * its elkjs layout runs the in-process FakeWorker, never a real `Worker`).
  *
- * The module is isomorphic and follows the `highlight.ts` lazy pattern:
+ * The module is isomorphic and follows the docx `highlight.ts` lazy pattern:
  * beautiful-mermaid (+ its ~1.5 MB elkjs dependency) is only reached through a
  * dynamic `import()`, so hosts that never see a mermaid block never load the
  * chunk. Diagram-type detection runs BEFORE that import — a page with only
  * unsupported diagram types (Gantt, Pie, …) also skips the chunk entirely.
  *
  * Nothing here throws: every outcome is a {@link DiagramRenderResult}, and the
- * caller routes non-`svg` results to the spec-004 pinned code-block fallback.
+ * caller routes non-`svg` results to its own fallback (the DOCX path uses the
+ * spec-004 pinned code block).
  */
 
 /**

@@ -11,7 +11,7 @@
  * A stray `node:`/`bun:` import anywhere in an entrypoint's transitive graph
  * turns this red, naming both the entrypoint and the offending specifier(s).
  */
-/** The four entrypoints that MUST build for the browser (spec 001 §6). */
+/** The entrypoints that MUST build for the browser (spec 001 §6). */
 export const BROWSER_ENTRYPOINTS = [
   "packages/confluence/src/markdown.ts",
   "packages/confluence/src/client.ts",
@@ -19,6 +19,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
   "packages/docx/src/index.browser.ts",
+  "packages/diagram/src/index.ts",
 ];
 
 /**

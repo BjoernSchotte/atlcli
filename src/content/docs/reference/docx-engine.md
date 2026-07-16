@@ -100,9 +100,11 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
 
 Fenced ```` ```mermaid ```` code blocks render into inline vector drawings (spec 005a) through
 [`beautiful-mermaid`](https://github.com/lukilabs/beautiful-mermaid) — a self-contained,
-DOM-free renderer (not mermaid.js). The renderer lives in the engine
-(`packages/docx/src/diagram.ts`, lazy-loaded so diagram-free exports never pay for its ~1.5 MB
-elkjs layout chunk); the SVG → PNG rasterization is the host's injected `SvgRasterizer`.
+DOM-free renderer (not mermaid.js). The renderer is the **format-agnostic adapter package
+`@atlcli/diagram`** (`packages/diagram`): it knows nothing about DOCX, so the PDF export path
+can consume the same SVG natively later. It is lazy-loaded, so diagram-free exports never pay
+for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's injected
+`SvgRasterizer` (a DOCX-side concern — Word needs the raster fallback, PDF will not).
 
 - **Supported types:** flowchart (`graph`/`flowchart`), state, sequence, class, ER, XY chart.
 - **Word compatibility:** each diagram embeds as `asvg:svgBlip` (vector, modern Word) **plus** a

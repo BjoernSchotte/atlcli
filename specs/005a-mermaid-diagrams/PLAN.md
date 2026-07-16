@@ -280,9 +280,12 @@ belongs to 006, not to this spec.
   code, and the source-availability obligation is satisfied by attribution + pointing at elkjs's
   public source. Attribution added to the repository `NOTICE` file and noted in
   `reference/docx-engine.md`.
-- **M2 — renderer placement**: ✅ resolved by sequencing — 006 merged first (PR #35), so the
-  renderer lives in the isomorphic engine (`packages/docx/src/diagram.ts`). The `packages/docx`
-  naming tension (§2.5) remains flagged for 007.
+- **M2 — renderer placement**: ✅ resolved (Björn, 2026-07-16) — the renderer is its own
+  **format-agnostic adapter package `@atlcli/diagram`** (`packages/diagram/src/index.ts`),
+  NOT part of `@atlcli/docx`: "das soll adapter sein, da wir das später auch für pdf export
+  brauchen, also nicht eng an docx binden". `@atlcli/docx` consumes it for the svgBlip+PNG
+  embed; spec 007 consumes the same SVG natively. This also dissolves the §2.5 naming
+  tension: the DOCX package no longer holds cross-format code.
 - **Task-1 spike results** (2026-07-16): the `web-worker` require hazard (§2.3) did NOT
   materialize — Vite's CJS transform removes the guarded requires (0 `require(` in the emitted
   chunk) and `bun build --target=browser` bundles clean (no node:/bun: specifiers). Emitted

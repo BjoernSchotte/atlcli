@@ -7,7 +7,7 @@ import {
   type DiagramEmbedOutcome,
   type DiagramEmbedSeam,
 } from "./serialize.js";
-import { renderDiagram } from "./diagram.js";
+import { renderDiagram } from "@atlcli/diagram";
 import { parseStyleNames } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 

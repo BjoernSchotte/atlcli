@@ -27,7 +27,7 @@ function fixtureDir(): string {
 }
 
 describe("browser-build gate (spec 001 task 6)", () => {
-  test("the gate's entrypoint set is exactly the six browser entrypoints", () => {
+  test("the gate's entrypoint set is exactly the seven browser entrypoints", () => {
     expect(BROWSER_ENTRYPOINTS).toEqual([
       "packages/confluence/src/markdown.ts",
       "packages/confluence/src/client.ts",
@@ -35,6 +35,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/core/src/index.browser.ts",
       "packages/confluence/src/index.browser.ts",
       "packages/docx/src/index.browser.ts",
+      "packages/diagram/src/index.ts",
     ]);
   });
 

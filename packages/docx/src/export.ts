@@ -52,7 +52,7 @@ import {
   type ImageEmbedSeam,
 } from "./serialize.js";
 import { ImageEmbedder, ImageEmbedError } from "./image.js";
-import { renderDiagram, type DiagramTheme } from "./diagram.js";
+import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseLogoArgs } from "./placeholder-map.js";
 import type { AssetFetcher, AssetRef, SvgRasterizer } from "./env.js";
 import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";

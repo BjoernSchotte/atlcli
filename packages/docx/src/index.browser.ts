@@ -14,7 +14,10 @@ export * from "./dateformat.js";
 export * from "./scan.js";
 export * from "./resolver.js";
 export * from "./serialize.js";
-export * from "./diagram.js";
+// The mermaid renderer is the format-agnostic `@atlcli/diagram` adapter
+// (shared with the PDF path, spec 007); re-exported here so DOCX consumers
+// get `DiagramTheme`/`renderDiagram` from one barrel.
+export * from "@atlcli/diagram";
 export * from "./export.js";
 export * from "./env.js";
 export * from "./image.js";

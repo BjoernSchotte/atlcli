@@ -6,7 +6,7 @@
  * mocks (repo directive: real test infra).
  */
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_DIAGRAM_THEME, renderDiagram, type DiagramRenderResult } from "./diagram.js";
+import { DEFAULT_DIAGRAM_THEME, renderDiagram, type DiagramRenderResult } from "./index.js";
 
 function expectSvg(result: DiagramRenderResult): Extract<DiagramRenderResult, { kind: "svg" }> {
   expect(result.kind).toBe("svg");
