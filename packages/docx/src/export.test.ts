@@ -893,6 +893,15 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     `<p>before</p><ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
     `<ac:plain-text-body><![CDATA[${source}]]></ac:plain-text-body></ac:structured-macro>`;
 
+  const mermaidBlocks = (...sources: string[]) =>
+    sources
+      .map(
+        (source) =>
+          `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
+          `<ac:plain-text-body><![CDATA[${source}]]></ac:plain-text-body></ac:structured-macro>`
+      )
+      .join("");
+
   /** A rasterizer recording every call, serving real PNG fixture bytes. */
   function recordingRasterizer() {
     const calls: { svg: string; widthPx: number; heightPx: number }[] = [];
@@ -1051,5 +1060,255 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     const doc = readPart(bytes, "word/document.xml");
     const ids = [...doc.matchAll(/wp:docPr id="(\d+)"/g)].map((m) => m[1]);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("chains diagram rasterization in document order with at most one active call", async () => {
+    const order: string[] = [];
+    let active = 0;
+    let maxActive = 0;
+    const { report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: {
+        ...details,
+        storage: mermaidBlocks(
+          "graph TD\n  First --> A",
+          "graph TD\n  Second --> B",
+          "graph TD\n  Third --> C"
+        ),
+      },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(svg, target) {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          order.push(svg.includes("First") ? "First" : svg.includes("Second") ? "Second" : "Third");
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return pngFixtureBytes(target.widthPx, target.heightPx);
+          } finally {
+            active -= 1;
+          }
+        },
+      },
+    });
+
+    expect(order).toEqual(["First", "Second", "Third"]);
+    expect(maxActive).toBe(1);
+    expect(report.renderedDiagrams).toBe(3);
+  });
+
+  it("prepares identical diagram sources once but embeds every occurrence in document order", async () => {
+    const source = "graph TD\n  Shared --> Result";
+    let rasterCalls = 0;
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidBlocks(source, source) },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(_svg, target) {
+          rasterCalls += 1;
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+
+    expect(rasterCalls).toBe(1);
+    expect(report.renderedDiagrams).toBe(2);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(/<w:drawing>/g)).toHaveLength(2);
+    const ids = [...doc.matchAll(/<wp:docPr id="(\d+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it("a failed prepared diagram does not reject or poison the remaining chain", async () => {
+    const order: string[] = [];
+    const first = "graph TD\n  Broken --> A";
+    const second = "graph TD\n  Healthy --> B";
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: mermaidBlocks(first, second) },
+      template,
+      deps,
+      rasterizer: {
+        async rasterize(svg, target) {
+          const name = svg.includes("Broken") ? "Broken" : "Healthy";
+          order.push(name);
+          if (name === "Broken") throw new Error("first raster failed");
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+
+    expect(order).toEqual(["Broken", "Healthy"]);
+    expect(report.renderedDiagrams).toBe(1);
+    expect(report.notes.filter((n) => n.code === "diagram-render-failed")).toHaveLength(1);
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(/<w:drawing>/g)).toHaveLength(1);
+    expect(doc).toContain("Broken --&gt; A");
+  });
+});
+
+describe("exportDocx — parallel prefetch determinism (perf regression)", () => {
+  // Three attachment images + a space logo, each with DISTINCT bytes so a
+  // mixed-up embed order cannot go unnoticed. The staggered run completes
+  // fetches in REVERSE document order (c before b before a, logo last);
+  // output bytes must be identical to the instant run — media numbering and
+  // relationship ids are allocated in document order, never completion order.
+  const IMG_STORAGE =
+    "<p>intro</p>" +
+    '<ac:image ac:alt="a"><ri:attachment ri:filename="a.png"/></ac:image>' +
+    '<ac:image ac:alt="b"><ri:attachment ri:filename="b.png"/></ac:image>' +
+    '<ac:image ac:alt="c"><ri:attachment ri:filename="c.png"/></ac:image>';
+
+  const SIZES: Record<string, [number, number]> = {
+    "a.png": [200, 100],
+    "b.png": [300, 150],
+    "c.png": [400, 200],
+    logo: [64, 64],
+  };
+
+  function fetcherWithDelays(delays: Record<string, number>) {
+    return {
+      fetch(ref: { url: string; filename?: string }): Promise<Uint8Array> {
+        const key = ref.url.includes("logo") ? "logo" : (ref.filename ?? ref.url);
+        const [w, h] = SIZES[key];
+        return new Promise((res) => setTimeout(() => res(pngFixtureBytes(w, h)), delays[key] ?? 0));
+      },
+    };
+  }
+
+  async function runWith(delays: Record<string, number>) {
+    return exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.spacelogo") + para("$scroll.content"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: { ...details, storage: IMG_STORAGE },
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps: {
+        ...deps,
+        getSpaceLogo: async () => ({ url: "/download/attachments/9/logo.png", pageId: "9", filename: "logo.png" }),
+      },
+      assets: fetcherWithDelays(delays),
+    });
+  }
+
+  it("produces byte-identical output whether fetches resolve in document order or reversed", async () => {
+    const instant = await runWith({});
+    const scrambled = await runWith({ "a.png": 60, "b.png": 40, "c.png": 0, logo: 80 });
+
+    expect(instant.report.embeddedImages).toBe(4); // 3 page images + 1 logo
+    expect(scrambled.report.embeddedImages).toBe(4);
+
+    const zipA = new PizZip(instant.bytes);
+    const zipB = new PizZip(scrambled.bytes);
+    const partsA = Object.keys(zipA.files).sort();
+    const partsB = Object.keys(zipB.files).sort();
+    expect(partsB).toEqual(partsA);
+    for (const name of partsA) {
+      if (zipA.files[name].dir) continue;
+      expect([...zipB.file(name)!.asUint8Array()]).toEqual([...zipA.file(name)!.asUint8Array()]);
+    }
+
+    // Media numbering follows document order: image1 is a.png (200px wide).
+    const doc = readPart(instant.bytes, "word/document.xml");
+    const firstImageExtent = doc.indexOf(`<wp:extent cx="${200 * 9525}"`);
+    const secondImageExtent = doc.indexOf(`<wp:extent cx="${300 * 9525}"`);
+    const thirdImageExtent = doc.indexOf(`<wp:extent cx="${400 * 9525}"`);
+    expect(firstImageExtent).toBeGreaterThan(-1);
+    expect(secondImageExtent).toBeGreaterThan(firstImageExtent);
+    expect(thirdImageExtent).toBeGreaterThan(secondImageExtent);
+  });
+
+  it("report note order is stable when a failing fetch resolves last", async () => {
+    // b.png fails SLOWLY; the notes must still appear in document order and
+    // the export must still embed a + c (F3: no dangling relationship).
+    const failing = {
+      fetch(ref: { url: string; filename?: string }): Promise<Uint8Array> {
+        if (ref.filename === "b.png") {
+          return new Promise((_, rej) => setTimeout(() => rej(new Error("boom")), 50));
+        }
+        const key = ref.url.includes("logo") ? "logo" : (ref.filename ?? ref.url);
+        const [w, h] = SIZES[key];
+        return Promise.resolve(pngFixtureBytes(w, h));
+      },
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content"),
+        styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      }),
+      details: { ...details, storage: IMG_STORAGE },
+      template,
+      deps,
+      assets: failing,
+    });
+    expect(report.embeddedImages).toBe(2);
+    expect(report.skippedImages).toBe(1);
+    const failNote = report.notes.find((n) => n.code === "image-embed-failed");
+    expect(failNote?.message).toContain('"b.png"');
+    // No dangling rel: exactly two media parts exist.
+    const zip = new PizZip(bytes);
+    const media = Object.keys(zip.files).filter((f) => f.startsWith("word/media/"));
+    expect(media.length).toBe(2);
+    assertBalancedXml(readPart(bytes, "word/document.xml"));
+  });
+});
+
+describe("exportDocx — prefetch failure modes (Codex review findings)", () => {
+  const plainTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  it("a SYNCHRONOUSLY-throwing asset fetcher degrades every image to a note (no pool deadlock)", async () => {
+    // Seven images > the 6-slot pool: a leaked slot per sync throw would
+    // starve the queue and hang the export instead of degrading (004-F3).
+    const storage = Array.from(
+      { length: 7 },
+      (_, i) => `<ac:image><ri:attachment ri:filename="img${i}.png"/></ac:image>`
+    ).join("");
+    const { report } = await exportDocx({
+      templateBytes: plainTemplate(),
+      details: { ...details, storage },
+      template,
+      deps,
+      assets: {
+        fetch(): Promise<Uint8Array> {
+          throw new Error("sync boom"); // NOT an async rejection
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(7);
+    expect(report.notes.filter((n) => n.code === "image-embed-failed").length).toBe(7);
+  });
+
+  it("two blocks referencing the same attachment share ONE fetch", async () => {
+    let calls = 0;
+    const { report } = await exportDocx({
+      templateBytes: plainTemplate(),
+      details: {
+        ...details,
+        storage:
+          '<ac:image><ri:attachment ri:filename="dup.png"/></ac:image>' +
+          "<p>between</p>" +
+          '<ac:image><ri:attachment ri:filename="dup.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        async fetch(): Promise<Uint8Array> {
+          calls += 1;
+          return pngFixtureBytes(120, 60);
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(2);
+    expect(calls).toBe(1);
   });
 });

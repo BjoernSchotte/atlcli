@@ -105,14 +105,20 @@ export async function handleExport(
 
   const baseUrl = getConfluenceBaseUrl(profile);
 
-  // Fetch page data (with metadata for export)
-  const page = await client.getPageDetails(pageId);
-  const spaceKey = page.spaceKey ?? "UNKNOWN";
-
   if (engine === "ts") {
+    // The page fetch is NOT awaited here: exportWithTsEngine overlaps it
+    // with template read/scan + rasterizer setup + pre-started resolver
+    // round-trips (perf). The consumed catch branch keeps a FAST rejection
+    // (bad page id) from surfacing as an unhandled rejection while local
+    // setup is still running — the engine awaits the original promise and
+    // reports the real error.
+    const pagePromise = client.getPageDetails(pageId);
+    pagePromise.catch(() => {});
     await exportWithTsEngine({
       client,
-      page,
+      pagePromise,
+      pageId,
+      baseUrl,
       resolvedTemplatePath,
       outputPath,
       includeChildren,
@@ -121,6 +127,10 @@ export async function handleExport(
     });
     return;
   }
+
+  // Fetch page data (with metadata for export)
+  const page = await client.getPageDetails(pageId);
+  const spaceKey = page.spaceKey ?? "UNKNOWN";
 
   // Convert storage to markdown
   const conversionOpts: ConversionOptions = {
@@ -687,7 +697,9 @@ async function resolveContentByLabel(
 
 interface TsEngineArgs {
   client: ConfluenceClient;
-  page: ConfluencePageDetails;
+  pagePromise: Promise<ConfluencePageDetails>;
+  pageId: string;
+  baseUrl: string;
   resolvedTemplatePath: string;
   outputPath: string;
   includeChildren: boolean;
@@ -704,9 +716,8 @@ interface TsEngineArgs {
  * wiki-base-relative download URLs; external images as absolute URLs).
  * The engine is imported lazily so the common CLI paths never load
  * pizzip/docxtemplater.
- */
-/**
- * Image bytes over the token-auth client (spec 005). The site's cookie-only
+ *
+ * The site's cookie-only
  * `/download/attachments/{pageId}/{filename}` path 401s under API-token Basic
  * auth (verified against Cloud), so attachment refs resolve through the REST
  * attachment listing to the API's own `downloadUrl`
@@ -714,50 +725,110 @@ interface TsEngineArgs {
  * token auth. The listing is cached per page — one extra round-trip per page,
  * not per image. External image URLs are absolute and fetched without auth.
  */
-function tokenAssetFetcher(client: ConfluenceClient) {
-  const listings = new Map<string, Promise<{ filename: string; downloadUrl: string }[]>>();
-  return {
-    async fetch(ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array> {
-      if (/^https?:\/\//i.test(ref.url)) {
-        const res = await fetch(ref.url);
-        if (!res.ok) throw new Error(`image download failed (${res.status}) for ${ref.url}`);
-        return new Uint8Array(await res.arrayBuffer());
-      }
-      if (ref.pageId && ref.filename) {
-        let listing = listings.get(ref.pageId);
-        if (!listing) {
-          listing = client.listAttachments(ref.pageId);
-          listings.set(ref.pageId, listing);
-        }
-        const attachment = (await listing).find((a) => a.filename === ref.filename);
-        if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);
-        return client.downloadAttachment(attachment);
-      }
-      return client.downloadAttachment({ downloadUrl: ref.url });
-    },
-  };
-}
-
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
-  const { client, page, resolvedTemplatePath, outputPath, includeChildren, embedImages, opts } = args;
-  const { runExport, fileTemplateSource, fileOutputSink } = await import("@atlcli/docx");
-  const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
-  const { stat } = await import("node:fs/promises");
+  const {
+    client,
+    pagePromise,
+    pageId,
+    baseUrl,
+    resolvedTemplatePath,
+    outputPath,
+    includeChildren,
+    embedImages,
+    opts,
+  } = args;
+  // Everything local (engine import + template bytes) loads WHILE the page
+  // round-trip is in flight. The much larger rasterizer wasm/fonts are gated
+  // on the page storage below.
+  const { readFile, stat } = await import("node:fs/promises");
+  const [
+    { runExport, fileOutputSink },
+    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher },
+    templateBytesRaw,
+    templateStat,
+  ] = await Promise.all([
+    import("@atlcli/docx"),
+    import("./export-internals.js"),
+    readFile(resolvedTemplatePath),
+    stat(resolvedTemplatePath),
+  ]);
+  const templateBytes = new Uint8Array(templateBytesRaw);
+  const assetCache = createAssetByteCache(baseUrl);
 
   const cliNotes: string[] = [];
   if (includeChildren) {
     cliNotes.push("--include-children is not supported by the ts engine yet; exported the single page.");
   }
 
+  // Memoized per-export round-trips, shared between the deps below. Space +
+  // icon come from ONE `?expand=icon` call (previously two calls to the same
+  // endpoint when a template used $scroll.space.* and a logo placeholder).
+  let spaceInfoP: Promise<Awaited<ReturnType<ConfluenceClient["getSpaceWithIcon"]>>> | undefined;
+  const spaceInfo = (key: string): NonNullable<typeof spaceInfoP> =>
+    (spaceInfoP ??= client.getSpaceWithIcon(key));
+  let currentUserP: ReturnType<ConfluenceClient["getCurrentUser"]> | undefined;
+  const currentUser = (): NonNullable<typeof currentUserP> => (currentUserP ??= client.getCurrentUser());
+  let ownerP: ReturnType<ConfluenceClient["getPageOwner"]> | undefined;
+  const pageOwner = (id: string): NonNullable<typeof ownerP> => (ownerP ??= client.getPageOwner(id));
+  let homepageP: ReturnType<ConfluenceClient["getSpaceHomepageStorage"]> | undefined;
+  const spaceHomepage = (key: string): NonNullable<typeof homepageP> =>
+    (homepageP ??= client.getSpaceHomepageStorage(key));
+
+  // Pre-start the round-trips this TEMPLATE will need (a quick local scan
+  // names them) so they run concurrently with the page fetch instead of
+  // after it. The resolver keeps its lazy contract — it still only awaits a
+  // dep when a placeholder uses it, and these memoized promises are exactly
+  // what it receives. The `.catch` branches only prevent unhandled-rejection
+  // noise; the resolver observes and reports the original error.
+  const templateDeps = new Set<string>();
+  try {
+    const { scanZip, unzipDocx } = await import("@atlcli/docx/scan");
+    const { classifyPlaceholder } = await import("@atlcli/docx");
+    const scan = scanZip(unzipDocx(templateBytes));
+    for (const dependency of scan.supported
+      .flatMap((h) => h.raw)
+      .map((raw) => classifyPlaceholder(raw).dependency)) {
+      templateDeps.add(dependency);
+    }
+    if (templateDeps.has("currentUser")) currentUser().catch(() => {});
+    if (templateDeps.has("owner")) pageOwner(pageId).catch(() => {});
+  } catch {
+    // Pre-scan is a pure optimization; a scan failure surfaces properly
+    // inside runExport.
+  }
+
+  // Space-key-dependent work can only start after page details arrive. Hook
+  // the already-running page promise now so these exact memoized promises
+  // overlap rasterizer setup rather than waiting for runExport's resolver.
+  prestartPageDependentDeps({
+    pagePromise,
+    templateDeps,
+    embedImages,
+    getSpaceWithIcon: spaceInfo,
+    getSpaceHomepageStorage: spaceHomepage,
+  });
+
   // Mermaid diagrams render via resvg-wasm (spec 005a). A missing rasterizer
   // is not an error: the engine degrades those blocks to readable source
   // code and reports each one — the note here names the reason once.
-  const rasterizer = await buildDiagramRasterizer();
-  if (!rasterizer) {
+  const rasterizerPromise = pagePromise.then(async (details) => {
+    if (!mightContainMermaid(details.storage ?? "")) {
+      return { needed: false as const, rasterizer: null };
+    }
+    try {
+      const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
+      return { needed: true as const, rasterizer: await buildDiagramRasterizer() };
+    } catch {
+      return { needed: true as const, rasterizer: null };
+    }
+  });
+  rasterizerPromise.catch(() => {});
+  const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
+  const rasterizer = rasterizerState.rasterizer;
+  if (rasterizerState.needed && !rasterizer) {
     cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
   }
 
-  const templateStat = await stat(resolvedTemplatePath);
   const resolvedOutputPath = resolve(outputPath);
   const report = await runExport(
     {
@@ -768,10 +839,10 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       },
       embedImages,
       deps: {
-        getSpace: (key: string) => client.getSpace(key),
-        getCurrentUser: () => client.getCurrentUser(),
-        getPageOwner: (id: string) => client.getPageOwner(id),
-        getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+        getSpace: async (key: string) => (await spaceInfo(key)).space,
+        getCurrentUser: currentUser,
+        getPageOwner: pageOwner,
+        getSpaceHomepageStorage: spaceHomepage,
         // Spec 005 logo pass: the space icon path feeds $scroll.spacelogo /
         // $scroll.globallogo; bytes then ride the asset fetcher below. A
         // custom logo's icon.path is a cookie-only `/download/attachments/
@@ -780,7 +851,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         // carried on the ref — the fetcher then resolves them through the
         // REST attachment listing, which honors token auth.
         getSpaceLogo: async (key: string) => {
-          const icon = await client.getSpaceIcon(key);
+          const icon = (await spaceInfo(key)).icon;
           if (!icon) return null;
           const m = icon.path.match(/^\/download\/attachments\/(\d+)\/([^/?]+)/);
           return {
@@ -792,8 +863,8 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       },
     },
     {
-      templates: fileTemplateSource(resolvedTemplatePath),
-      assets: tokenAssetFetcher(client),
+      templates: { getBytes: async () => templateBytes },
+      assets: tokenAssetFetcher(client, assetCache),
       rasterizer: rasterizer ?? undefined,
       output: fileOutputSink(resolvedOutputPath),
     }

@@ -7,13 +7,13 @@
  *  - `createHighlighterCore` from `shiki/core` — no built-in language/theme
  *    registry, so Vite does NOT emit a chunk for every one of Shiki's ~200
  *    grammars (the full entry produced a ~10 MB output of per-language chunks).
- *  - the **JavaScript regex engine** (`shiki/engine/javascript`) instead of the
- *    Oniguruma WASM engine — avoids shipping the ~600 KB `.wasm` and keeps the
- *    panel within MV3's `wasm-unsafe-eval` posture without needing WASM at all.
+ *  - a runtime-selected regex engine: Oniguruma WASM where compilation is
+ *    allowed, with the JavaScript engine as the CSP-safe fallback.
  *  - one static `import("shiki/langs/<lang>.mjs")` per **curated** common
  *    language, each its own code-split chunk loaded only when a code block of
  *    that language is actually serialized (PLAN: "lazy-load only needed
- *    languages"). Unknown/uncurated languages degrade to uncolored lines.
+ *    languages"). Aliases resolve to one canonical loader/warm promise;
+ *    unknown/uncurated languages degrade to uncolored lines.
  *
  * The whole module is only reached through the serializer's `await`, so nothing
  * here lands in the main panel bundle.
@@ -43,69 +43,170 @@ export interface HighlightResult {
 const THEME = "github-light";
 
 /**
- * Curated language loaders. Each value is a static dynamic import so the bundler
- * emits exactly these chunks (aliases share a loader). Keep this list tight —
- * every entry is a shipped grammar chunk.
+ * Curated canonical language loaders. Each value is a static dynamic import so
+ * the bundler emits exactly these chunks. Aliases resolve through
+ * {@link LANG_ALIASES}; keep both lists tight — every loader is a shipped
+ * grammar chunk.
  */
 const LANG_LOADERS: Record<string, () => Promise<unknown>> = {
   typescript: () => import("shiki/langs/typescript.mjs"),
-  ts: () => import("shiki/langs/typescript.mjs"),
   tsx: () => import("shiki/langs/tsx.mjs"),
   javascript: () => import("shiki/langs/javascript.mjs"),
-  js: () => import("shiki/langs/javascript.mjs"),
   jsx: () => import("shiki/langs/jsx.mjs"),
   json: () => import("shiki/langs/json.mjs"),
   python: () => import("shiki/langs/python.mjs"),
-  py: () => import("shiki/langs/python.mjs"),
   java: () => import("shiki/langs/java.mjs"),
   kotlin: () => import("shiki/langs/kotlin.mjs"),
   csharp: () => import("shiki/langs/csharp.mjs"),
-  cs: () => import("shiki/langs/csharp.mjs"),
   go: () => import("shiki/langs/go.mjs"),
   rust: () => import("shiki/langs/rust.mjs"),
-  rs: () => import("shiki/langs/rust.mjs"),
   c: () => import("shiki/langs/c.mjs"),
   cpp: () => import("shiki/langs/cpp.mjs"),
   php: () => import("shiki/langs/php.mjs"),
   ruby: () => import("shiki/langs/ruby.mjs"),
-  rb: () => import("shiki/langs/ruby.mjs"),
   bash: () => import("shiki/langs/bash.mjs"),
-  shell: () => import("shiki/langs/bash.mjs"),
-  sh: () => import("shiki/langs/bash.mjs"),
   sql: () => import("shiki/langs/sql.mjs"),
   yaml: () => import("shiki/langs/yaml.mjs"),
-  yml: () => import("shiki/langs/yaml.mjs"),
   html: () => import("shiki/langs/html.mjs"),
   xml: () => import("shiki/langs/xml.mjs"),
   css: () => import("shiki/langs/css.mjs"),
   markdown: () => import("shiki/langs/markdown.mjs"),
-  md: () => import("shiki/langs/markdown.mjs"),
 };
 
-/** The Shiki grammar id a given language alias resolves to (for load caching). */
-function canonicalLang(lang: string): string | undefined {
-  return LANG_LOADERS[lang] ? lang : undefined;
+/** Curated aliases keyed to the one grammar load/warm promise they share. */
+const LANG_ALIASES: Record<string, string> = {
+  ts: "typescript",
+  js: "javascript",
+  py: "python",
+  cs: "csharp",
+  rs: "rust",
+  rb: "ruby",
+  shell: "bash",
+  sh: "bash",
+  yml: "yaml",
+  md: "markdown",
+};
+
+/** The Shiki grammar id a given requested language or alias resolves to. */
+export function canonicalLang(lang: string): string | undefined {
+  const canonical = LANG_ALIASES[lang] ?? lang;
+  return LANG_LOADERS[canonical] ? canonical : undefined;
 }
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
-const loadedLangs = new Set<string>();
+/** Per-language load promise: concurrent callers (prefetch + serializer) share one load. */
+const langLoads = new Map<string, Promise<void>>();
+
+/**
+ * True when this host may COMPILE WebAssembly. `typeof WebAssembly` alone is
+ * not enough: an MV3 extension page exposes the object but its CSP (without
+ * `wasm-unsafe-eval`) rejects compilation — so probe with the smallest valid
+ * module (the 8-byte `\0asm` header). Sub-millisecond, no network.
+ */
+function canCompileWasm(): boolean {
+  try {
+    return (
+      typeof WebAssembly !== "undefined" &&
+      new WebAssembly.Module(Uint8Array.of(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00)) instanceof
+        WebAssembly.Module
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick the fastest regex engine the host allows (perf finding: loading the
+ * TypeScript grammar through the JS engine costs ~650ms of oniguruma-to-es
+ * translation; the Oniguruma WASM engine does the same in ~30ms — it runs
+ * the grammars' original regexes natively):
+ *
+ *  - hosts that can compile WASM (CLI/Bun, Node, Tauri webviews, extensions
+ *    WITH `wasm-unsafe-eval`) get the Oniguruma engine — the reference
+ *    implementation, so token output is at least as faithful;
+ *  - the MV3 panel (no `wasm-unsafe-eval` in its CSP) keeps the JavaScript
+ *    engine, exactly the pre-existing behavior. The probe means the panel
+ *    never even fetches the ~600 KB wasm chunk — and auto-upgrades if the
+ *    permission is ever added.
+ *
+ * Any wasm-path failure falls back to the JS engine rather than degrading
+ * highlighting.
+ */
+async function createEngine(): Promise<import("shiki/core").RegexEngine> {
+  if (canCompileWasm()) {
+    try {
+      const { createOnigurumaEngine } = await import("shiki/engine/oniguruma");
+      return await createOnigurumaEngine(import("shiki/wasm"));
+    } catch {
+      // fall through to the JS engine
+    }
+  }
+  const { createJavaScriptRegexEngine } = await import("shiki/engine/javascript");
+  return createJavaScriptRegexEngine();
+}
 
 async function getHighlighter(): Promise<HighlighterCore> {
   if (!highlighterPromise) {
-    highlighterPromise = (async () => {
-      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, theme] = await Promise.all([
+    const p = (async () => {
+      const [{ createHighlighterCore }, engine, theme] = await Promise.all([
         import("shiki/core"),
-        import("shiki/engine/javascript"),
+        createEngine(),
         import("shiki/themes/github-light.mjs"),
       ]);
       return createHighlighterCore({
         themes: [theme.default],
         langs: [],
-        engine: createJavaScriptRegexEngine(),
+        engine,
       });
     })();
+    // A failed init (transient chunk-load error during background warm-up)
+    // must not poison every later highlight — clear the memo so the next
+    // call retries. Callers still observe the original rejection.
+    p.catch(() => {
+      if (highlighterPromise === p) highlighterPromise = null;
+    });
+    highlighterPromise = p;
   }
   return highlighterPromise;
+}
+
+/** Load one language grammar into the highlighter exactly once (shared promise). */
+function loadLang(lang: string): Promise<void> {
+  let p = langLoads.get(lang);
+  if (!p) {
+    p = (async () => {
+      const hl = await getHighlighter();
+      const mod = (await LANG_LOADERS[lang]()) as { default: unknown };
+      await hl.loadLanguage(mod.default as never);
+      // Warm the grammar with a throwaway tokenize: the JS regex engine
+      // compiles rules lazily, and the very FIRST tokenize after loadLanguage
+      // can emit differently-merged tokens than every later call (observed:
+      // `1;` as one number-colored token, then `1` + `;` split ever after).
+      // One dummy call makes all real output deterministic from call one —
+      // which the spec-006 golden-file equality test depends on.
+      hl.codeToTokens("0;", { lang, theme: THEME });
+    })();
+    // A failed load must not poison later attempts (they re-import).
+    p.catch(() => {
+      langLoads.delete(lang);
+    });
+    langLoads.set(lang, p);
+  }
+  return p;
+}
+
+/**
+ * Start loading the highlighter core + the given languages' grammars in the
+ * background (perf: the first Shiki use costs ~700ms of import + grammar
+ * compile, which this overlaps with the export's network round-trips).
+ * Never throws and never rejects — a failed warm just means the later
+ * {@link highlightCode} call retries and degrades on its own.
+ */
+export function warmHighlight(languages: string[]): void {
+  const langs = new Set(
+    languages.map((l) => canonicalLang(l.trim().toLowerCase())).filter((l): l is string => Boolean(l))
+  );
+  for (const lang of langs) void loadLang(lang).catch(() => {});
 }
 
 /** Split code into uncolored lines (the fallback path). */
@@ -123,27 +224,18 @@ function plainLines(code: string): CodeLine[] {
  */
 export async function highlightCode(code: string, language?: string): Promise<HighlightResult> {
   const raw = (language ?? "").trim().toLowerCase();
-  const lang = canonicalLang(raw);
-  if (!lang) {
+  const canonical = canonicalLang(raw);
+  if (!canonical) {
     // Only a REQUESTED-but-unknown language is a skip worth reporting.
     return { lines: plainLines(code), skipped: raw ? "unknown-language" : null };
   }
 
   try {
+    await loadLang(canonical);
     const hl = await getHighlighter();
-    if (!loadedLangs.has(lang)) {
-      const mod = (await LANG_LOADERS[lang]()) as { default: unknown };
-      await hl.loadLanguage(mod.default as never);
-      // Warm the grammar with a throwaway tokenize: the JS regex engine
-      // compiles rules lazily, and the very FIRST tokenize after loadLanguage
-      // can emit differently-merged tokens than every later call (observed:
-      // `1;` as one number-colored token, then `1` + `;` split ever after).
-      // One dummy call makes all real output deterministic from call one —
-      // which the spec-006 golden-file equality test depends on.
-      hl.codeToTokens("0;", { lang, theme: THEME });
-      loadedLangs.add(lang);
-    }
-    const { tokens } = hl.codeToTokens(code, { lang, theme: THEME });
+    // Tokenize with the requested alias so Shiki preserves its public alias
+    // behavior, while grammar loading/warm-up is shared by canonical id.
+    const { tokens } = hl.codeToTokens(code, { lang: raw, theme: THEME });
     return {
       lines: tokens.map((line) => line.map((t) => ({ text: t.content, color: t.color }))),
       skipped: null,

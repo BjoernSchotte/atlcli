@@ -118,7 +118,11 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   expect(report.unsupportedNames).toEqual(golden.report.unsupportedNames);
   expect(report.skippedImages).toBe(golden.report.skippedImages);
   expect(report.filename).toBe(golden.report.filename);
-  expect(report.notes.map((n) => n.code)).toEqual(golden.report.noteCodes);
+  // The perf-timing diagnostic note is wall-clock-dependent and can never be
+  // golden-pinned; the golden capture pins the SEMANTIC notes only.
+  expect(report.notes.map((n) => n.code).filter((c) => c !== "perf-timing")).toEqual(
+    golden.report.noteCodes
+  );
 }
 
 describe("golden-file equality (spec 006 Task 4)", () => {

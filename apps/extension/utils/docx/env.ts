@@ -31,6 +31,15 @@ export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
   };
 }
 
+/** Template source over bytes the panel already has in memory. */
+export function memoryTemplateSource(bytes: ArrayBuffer): TemplateSource {
+  return {
+    async getBytes(): Promise<Uint8Array> {
+      return new Uint8Array(bytes);
+    },
+  };
+}
+
 /**
  * {@link AssetFetcher} over the page's own session: attachment downloads are
  * plain GETs that succeed because the browser attaches the Atlassian cookies
@@ -42,15 +51,53 @@ export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
  * (the site's Confluence root, e.g. `https://x.atlassian.net/wiki`) is
  * prefixed to make them absolute. External image URLs pass through as-is.
  */
+/**
+ * Panel-lifetime cache for IMMUTABLE asset bytes: version-stamped
+ * `/download/attachments/…` URLs (the space logo's icon path carries
+ * `version=…&modificationDate=…`) never change under their key — a replaced
+ * logo gets a new stamp — so repeat exports skip those round-trips entirely.
+ * Bounded so a long panel session can't hoard megabytes.
+ */
+const versionedAssetCache = new Map<string, Uint8Array>();
+const VERSIONED_CACHE_MAX_ENTRIES = 32;
+
+function isVersionedAssetUrl(refUrl: string): boolean {
+  return refUrl.startsWith("/download/") && /[?&](version|modificationDate)=/.test(refUrl);
+}
+
+function canonicalAssetBaseUrl(baseUrl?: string): string {
+  if (!baseUrl) return "";
+  try {
+    const url = new URL(baseUrl);
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return baseUrl.replace(/\/+$/, "");
+  }
+}
+
 export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fetch): AssetFetcher {
+  const canonicalBaseUrl = canonicalAssetBaseUrl(baseUrl);
   return {
     async fetch(ref: AssetRef): Promise<Uint8Array> {
-      const url = /^https?:\/\//i.test(ref.url) ? ref.url : `${baseUrl ?? ""}${ref.url}`;
+      const cacheable = isVersionedAssetUrl(ref.url);
+      const cacheKey = `${canonicalBaseUrl}\n${ref.url}`;
+      const cached = cacheable ? versionedAssetCache.get(cacheKey) : undefined;
+      if (cached) return cached;
+      const url = /^https?:\/\//i.test(ref.url) ? ref.url : `${canonicalBaseUrl}${ref.url}`;
       const res = await fetchFn(url, { credentials: "include" });
       if (!res.ok) {
         throw new Error(`Asset fetch failed (${res.status}) for ${ref.filename ?? ref.url}`);
       }
-      return new Uint8Array(await res.arrayBuffer());
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (cacheable && bytes.byteLength > 0) {
+        if (versionedAssetCache.size >= VERSIONED_CACHE_MAX_ENTRIES) {
+          // Map iterates in insertion order — drop the oldest entry.
+          const oldest = versionedAssetCache.keys().next().value;
+          if (oldest !== undefined) versionedAssetCache.delete(oldest);
+        }
+        versionedAssetCache.set(cacheKey, bytes);
+      }
+      return bytes;
     },
   };
 }
@@ -59,13 +106,63 @@ export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fe
  * {@link SvgRasterizer} over the panel's real document (spec 005a §2.4,
  * option 1): the rendered diagram SVG becomes an `<img src="blob:…">`, is
  * drawn onto a `<canvas>` at the requested target size (the engine asks for
- * 2× the intrinsic size), and encoded to PNG via `canvas.toBlob`. The SVG is
+ * 2× the intrinsic size), and encoded to PNG via `canvas.toDataURL`. In real
+ * side-panel E2E runs, the asynchronous `toBlob` callback path incurred
+ * repeated ~1-second scheduling delays; synchronous encoding avoids that task
+ * runner while preparation remains strictly serial.
+ * The SVG is
  * self-contained (beautiful-mermaid output, external font import stripped by
  * the engine), so the blob image decodes without network and the canvas
  * stays untainted. Any failure throws — the engine then routes the diagram
  * to the readable code-block fallback; a decode that never settles is cut off
  * by `decodeTimeoutMs` so one broken diagram can't freeze the whole export.
  */
+/**
+ * Sub-phase timing sums of every {@link canvasSvgRasterizer} call since the
+ * last {@link resetRasterizerStats} — the panel appends them to the export
+ * report so a slow rasterizer names its slow sub-step (decode vs draw vs
+ * encode) without devtools.
+ */
+export interface RasterizerStats {
+  calls: number;
+  decodeMs: number;
+  drawMs: number;
+  encodeMs: number;
+  encodeCallsMs: number[];
+}
+
+const rasterizerStats: RasterizerStats = {
+  calls: 0,
+  decodeMs: 0,
+  drawMs: 0,
+  encodeMs: 0,
+  encodeCallsMs: [],
+};
+
+export function resetRasterizerStats(): void {
+  rasterizerStats.calls = 0;
+  rasterizerStats.decodeMs = 0;
+  rasterizerStats.drawMs = 0;
+  rasterizerStats.encodeMs = 0;
+  rasterizerStats.encodeCallsMs.length = 0;
+}
+
+export function getRasterizerStats(): RasterizerStats {
+  return { ...rasterizerStats, encodeCallsMs: [...rasterizerStats.encodeCallsMs] };
+}
+
+function pngDataUrlBytes(dataUrl: string, view: Window & typeof globalThis): Uint8Array {
+  const marker = ";base64,";
+  const offset = dataUrl.indexOf(marker);
+  if (!dataUrl.startsWith("data:image/png") || offset === -1) {
+    throw new Error("PNG encoding failed");
+  }
+  const binary = view.atob(dataUrl.slice(offset + marker.length));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 10_000): SvgRasterizer {
   return {
     async rasterize(svg, { widthPx, heightPx }): Promise<Uint8Array> {
@@ -75,6 +172,7 @@ export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 
       const url = view.URL.createObjectURL(new view.Blob([svg], { type: "image/svg+xml" }));
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
+        const decodeStart = Date.now();
         const img = new view.Image();
         await new Promise<void>((resolve, reject) => {
           timer = setTimeout(
@@ -85,19 +183,22 @@ export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 
           img.onerror = () => reject(new Error("the diagram SVG could not be decoded"));
           img.src = url;
         });
+        rasterizerStats.decodeMs += Date.now() - decodeStart;
+        const drawStart = Date.now();
         const canvas = doc.createElement("canvas");
         canvas.width = widthPx;
         canvas.height = heightPx;
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("no 2d canvas context available");
         ctx.drawImage(img, 0, 0, widthPx, heightPx);
-        const blob = await new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob(
-            (b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))),
-            "image/png"
-          )
-        );
-        return new Uint8Array(await blob.arrayBuffer());
+        rasterizerStats.drawMs += Date.now() - drawStart;
+        const encodeStart = Date.now();
+        const bytes = pngDataUrlBytes(canvas.toDataURL("image/png"), view);
+        const encodeMs = Date.now() - encodeStart;
+        rasterizerStats.encodeMs += encodeMs;
+        rasterizerStats.encodeCallsMs.push(encodeMs);
+        rasterizerStats.calls += 1;
+        return bytes;
       } finally {
         clearTimeout(timer);
         view.URL.revokeObjectURL(url);

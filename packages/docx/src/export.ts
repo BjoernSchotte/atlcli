@@ -63,6 +63,24 @@ import {
   splitParagraphs,
 } from "./ooxml-text.js";
 
+/**
+ * Wall-clock durations of the export's (deliberately overlapping) phases —
+ * `resolveMs` + `bodyMs` + `logoFetchMs` typically exceed `durationMs`
+ * because they run concurrently. The seam aggregates (`imageFetchMs`,
+ * `diagramRenderMs`, `diagramRasterMs`) are SUMS across calls. Surfaced as a
+ * report note so a slow export names its slow leg.
+ */
+export interface ExportTimings {
+  resolveMs: number;
+  bodyMs: number;
+  logoFetchMs: number;
+  renderMs: number;
+  imageFetchMs: number;
+  imageFetches: number;
+  diagramRenderMs: number;
+  diagramRasterMs: number;
+}
+
 export interface ExportReport {
   /** Placeholders resolved to a non-empty value. */
   resolvedCount: number;
@@ -82,6 +100,8 @@ export interface ExportReport {
   notes: ExportNote[];
   /** The template scan (reused classification), for the panel. */
   scan: ScanResult;
+  /** Per-phase wall clocks (overlapping) + seam aggregates. */
+  timings: ExportTimings;
 }
 
 export interface ExportResult {
@@ -181,13 +201,32 @@ export function toDownloadFilename(title: string): string {
 export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const start = Date.now();
   const exportDate = input.exportDate ?? new Date();
+  const timings: ExportTimings = {
+    resolveMs: 0,
+    bodyMs: 0,
+    logoFetchMs: 0,
+    renderMs: 0,
+    imageFetchMs: 0,
+    imageFetches: 0,
+    diagramRenderMs: 0,
+    diagramRasterMs: 0,
+  };
 
   const zip = unzipDocx(input.templateBytes);
   const scan = scanZip(zip);
 
   // 1. Resolve non-content placeholders (lazy fetch driven by the used set).
+  //    STARTED here, awaited only when the values are needed (step 4): the
+  //    resolver's round-trips run concurrently with body serialization and
+  //    the logo fetch below instead of gating them (perf finding: the
+  //    sequential flow paid every network latency back to back).
   const usedRaw = [...scan.supported, ...scan.unsupported, ...scan.never].flatMap((h) => h.raw);
-  const resolved = await resolvePlaceholders(usedRaw, { details: input.details, template: input.template, exportDate }, input.deps);
+  const resolvedPromise = resolvePlaceholders(usedRaw, { details: input.details, template: input.template, exportDate }, input.deps).then(
+    (r) => {
+      timings.resolveMs = Date.now() - start;
+      return r;
+    }
+  );
 
   // 2. Storage → blocks → OOXML body. When the host supplied an asset fetcher
   //    (and images aren't disabled), the serializer's image seam embeds each
@@ -201,27 +240,43 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // diagrams additionally need a rasterizer — each seam exists independently.
   const wantImages = Boolean(input.assets) && input.embedImages !== false;
   const embedder = wantImages || input.rasterizer ? new ImageEmbedder(zip) : undefined;
-  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id) : undefined;
+  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id, timings) : undefined;
   const diagrams =
     embedder && input.rasterizer
-      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme)
+      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme, timings)
       : undefined;
+
+  // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
+  // byte fetch start NOW so the (up to three-round-trip) logo chain overlaps
+  // body serialization and the resolver; the archive is only touched in step
+  // 3b below, in the same deterministic order as before. Never rejects.
+  const logoFetch = startLogoPass(zip, {
+    embedder,
+    assets: input.assets,
+    getSpaceLogo: input.deps?.getSpaceLogo,
+    spaceKey: input.details.spaceKey,
+  }).then((s) => {
+    timings.logoFetchMs = Date.now() - start;
+    return s;
+  });
+
+  const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, { styleNames, images, diagrams });
+  timings.bodyMs = Date.now() - bodyStart;
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
   const contentFound = injectContentTag(zip);
   const flowNotes: ExportNote[] = [];
 
-  // 3b. Logo pass (spec 005, gap G3): replace each $scroll.spacelogo /
+  // 3b. Logo pass, embed leg: replace each $scroll.spacelogo /
   //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
-  //     space logo. Runs before preprocessScrollText so a failed/skipped logo
-  //     still has its token blanked there (never a literal), and before render
-  //     so the drawing paragraphs pass through docxtemplater untouched.
-  await embedLogoPlaceholders(zip, {
+  //     space logo (bytes fetched above). Runs before preprocessScrollText so
+  //     a failed/skipped logo still has its token blanked there (never a
+  //     literal), and before render so the drawing paragraphs pass through
+  //     docxtemplater untouched.
+  finishLogoPass(zip, await logoFetch, {
     embedder,
-    assets: input.assets,
-    getSpaceLogo: input.deps?.getSpaceLogo,
     spaceKey: input.details.spaceKey,
     notes: flowNotes,
   });
@@ -239,12 +294,14 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    is NOT injected yet — so page-authored $scroll.* examples can't be hit).
   //    Runs before render so the engine only ever sees resolved text + the one
   //    rawxml tag.
+  const resolved = await resolvedPromise;
   preprocessScrollText(zip, resolved.values);
 
   // 5. Render with docxtemplater: the rawxml tag expands to the serialized body,
   //    inserted VERBATIM (the body is a DATA value, never re-parsed for tags), so
   //    literal braces / $scroll text in the page pass through unchanged. PUA
   //    delimiters guarantee the customer's own `{…}` is never a tag.
+  const renderStart = Date.now();
   const rendered = renderContent(zip, body.xml);
 
   // 6. Synthesize the code style if the body referenced it; force TOC refresh.
@@ -252,8 +309,9 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+  timings.renderMs = Date.now() - renderStart;
 
-  const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes];
+  const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes, timingNote(timings, Date.now() - start)];
   // Every image-skip note kind counts toward the report's skipped-image total:
   // serializer `image-skipped`/`image-embed-failed`, walker `image-unresolved`
   // and `inline-image-skipped`.
@@ -271,7 +329,31 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       filename: toDownloadFilename(input.details.title),
       notes,
       scan,
+      timings,
     },
+  };
+}
+
+/**
+ * One compact, always-present report line naming each phase's wall clock —
+ * so a slow export tells the user (and us) WHICH leg was slow without any
+ * extra tooling. Phases overlap by design, so they don't sum to the total.
+ */
+function timingNote(t: ExportTimings, totalMs: number): ExportNote {
+  const parts = [
+    `body ${t.bodyMs} ms` +
+      (t.diagramRenderMs || t.diagramRasterMs
+        ? ` (diagrams: render ${t.diagramRenderMs} ms, rasterize ${t.diagramRasterMs} ms)`
+        : "") +
+      (t.imageFetches ? ` (${t.imageFetches} image fetch(es): ${t.imageFetchMs} ms)` : ""),
+    `placeholders ${t.resolveMs} ms`,
+    ...(t.logoFetchMs ? [`logo fetch ${t.logoFetchMs} ms`] : []),
+    `render+zip ${t.renderMs} ms`,
+  ];
+  return {
+    level: "info",
+    code: "perf-timing",
+    message: `Timing: ${totalMs} ms total — ${parts.join(" · ")} (phases overlap).`,
   };
 }
 
@@ -359,7 +441,6 @@ interface LogoPassInput {
   assets?: AssetFetcher;
   getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
   spaceKey?: string;
-  notes: ExportNote[];
 }
 
 interface LogoOccurrence {
@@ -370,11 +451,67 @@ interface LogoOccurrence {
   base: string;
 }
 
+/** Outcome of the logo FETCH leg, consumed by {@link finishLogoPass}. */
+interface LogoPassState {
+  occurrences: LogoOccurrence[];
+  /** Distinct bases used, sorted (drives per-base skip notes). */
+  bases: string[];
+  outcome:
+    | { kind: "skip"; message: string; level: "info" | "warning" }
+    | { kind: "bytes"; bytes: Uint8Array };
+}
+
 /**
- * Replace each `$scroll.spacelogo` / `$scroll.globallogo` placeholder
- * paragraph with an inline `<w:drawing>` of the space logo, across the main
- * story and all header/footer parts (the embedder writes the `r:embed`
- * relationship into each part's own rels).
+ * Logo pass (spec 005, gap G3), FETCH leg: scan the template parts for
+ * `$scroll.spacelogo` / `$scroll.globallogo` placeholder paragraphs and — when
+ * any exist — fetch the space-logo bytes. The space-logo round-trip stays lazy
+ * (it fires only when a template actually uses a logo placeholder), but the
+ * returned promise is started EARLY by the caller so the chain (icon lookup →
+ * asset fetch) overlaps the export's other work. Touches nothing in the zip
+ * and never rejects; every failure becomes a `skip` outcome that
+ * {@link finishLogoPass} turns into the same notes as before.
+ */
+async function startLogoPass(zip: PizZip, input: LogoPassInput): Promise<LogoPassState | null> {
+  const { embedder, assets, getSpaceLogo, spaceKey } = input;
+
+  const occurrences: LogoOccurrence[] = [];
+  for (const part of documentPartNames(zip)) {
+    const xml = zip.file(part)?.asText() ?? "";
+    if (!xml.includes("$scroll.spacelogo") && !xml.includes("$scroll.globallogo")) continue;
+    for (const para of splitParagraphs(xml)) {
+      const m = paragraphText(para).match(LOGO_TOKEN_RE);
+      if (m) occurrences.push({ part, paragraph: para, raw: m[0], base: `$scroll.${m[1]}` });
+    }
+  }
+  if (occurrences.length === 0) return null;
+
+  const bases = [...new Set(occurrences.map((o) => o.base))].sort();
+  const state = (outcome: LogoPassState["outcome"]): LogoPassState => ({ occurrences, bases, outcome });
+  const skip = (message: string, level: "info" | "warning" = "warning"): LogoPassState =>
+    state({ kind: "skip", message, level });
+
+  if (!embedder || !assets) {
+    return skip("image embedding is off or no asset fetcher is available; rendered empty.", "info");
+  }
+  if (!getSpaceLogo) return skip("no space-logo fetcher is available; rendered empty.");
+  if (!spaceKey) return skip("the page has no space key; rendered empty.");
+
+  try {
+    const ref = await getSpaceLogo(spaceKey);
+    if (!ref) return skip(`space "${spaceKey}" has no logo; rendered empty.`, "info");
+    return state({ kind: "bytes", bytes: await assets.fetch(ref) });
+  } catch (err) {
+    return skip(
+      `the space logo could not be fetched (${err instanceof Error ? err.message : String(err)}); rendered empty.`
+    );
+  }
+}
+
+/**
+ * Logo pass, EMBED leg: replace each `$scroll.spacelogo` / `$scroll.globallogo`
+ * placeholder paragraph with an inline `<w:drawing>` of the space logo, across
+ * the main story and all header/footer parts (the embedder writes the
+ * `r:embed` relationship into each part's own rels).
  *
  * Both bases resolve to the SPACE logo (`GET /space/{key}?expand=icon`):
  * Confluence Cloud exposes no separately fetchable global logo, so
@@ -390,54 +527,23 @@ interface LogoOccurrence {
  * embedder writes nothing on failure, so no dangling media part or
  * relationship survives (the 004-F3 invariant).
  */
-async function embedLogoPlaceholders(zip: PizZip, input: LogoPassInput): Promise<void> {
-  const { embedder, assets, getSpaceLogo, spaceKey, notes } = input;
+function finishLogoPass(
+  zip: PizZip,
+  fetched: LogoPassState | null,
+  input: { embedder?: ImageEmbedder; spaceKey?: string; notes: ExportNote[] }
+): void {
+  if (!fetched) return;
+  const { embedder, spaceKey, notes } = input;
+  const { occurrences, bases, outcome } = fetched;
 
-  // Collect occurrences first: the space-logo round-trip stays lazy (it fires
-  // only when a template actually uses a logo placeholder).
-  const occurrences: LogoOccurrence[] = [];
-  for (const part of documentPartNames(zip)) {
-    const xml = zip.file(part)?.asText() ?? "";
-    if (!xml.includes("$scroll.spacelogo") && !xml.includes("$scroll.globallogo")) continue;
-    for (const para of splitParagraphs(xml)) {
-      const m = paragraphText(para).match(LOGO_TOKEN_RE);
-      if (m) occurrences.push({ part, paragraph: para, raw: m[0], base: `$scroll.${m[1]}` });
-    }
-  }
-  if (occurrences.length === 0) return;
-
-  const bases = [...new Set(occurrences.map((o) => o.base))].sort();
-  const skipAll = (message: string, level: "info" | "warning" = "warning"): void => {
+  if (outcome.kind === "skip") {
     for (const base of bases) {
-      notes.push({ level, code: "logo-skipped", message: `${base} was not embedded: ${message}` });
+      notes.push({
+        level: outcome.level,
+        code: "logo-skipped",
+        message: `${base} was not embedded: ${outcome.message}`,
+      });
     }
-  };
-
-  if (!embedder || !assets) {
-    skipAll("image embedding is off or no asset fetcher is available; rendered empty.", "info");
-    return;
-  }
-  if (!getSpaceLogo) {
-    skipAll("no space-logo fetcher is available; rendered empty.");
-    return;
-  }
-  if (!spaceKey) {
-    skipAll("the page has no space key; rendered empty.");
-    return;
-  }
-
-  let bytes: Uint8Array;
-  try {
-    const ref = await getSpaceLogo(spaceKey);
-    if (!ref) {
-      skipAll(`space "${spaceKey}" has no logo; rendered empty.`, "info");
-      return;
-    }
-    bytes = await assets.fetch(ref);
-  } catch (err) {
-    skipAll(
-      `the space logo could not be fetched (${err instanceof Error ? err.message : String(err)}); rendered empty.`
-    );
     return;
   }
 
@@ -455,7 +561,7 @@ async function embedLogoPlaceholders(zip: PizZip, input: LogoPassInput): Promise
     if (!xml.includes(occ.paragraph)) continue; // already replaced (identical paragraph)
     const args = parseLogoArgs(occ.raw);
     try {
-      const drawing = embedder.embed(bytes, {
+      const drawing = embedder!.embed(outcome.bytes, {
         name: occ.base === "$scroll.globallogo" ? "Global logo" : "Space logo",
         alt: `${spaceKey} space logo`,
         heightPx: args.heightPx,
@@ -481,6 +587,47 @@ async function embedLogoPlaceholders(zip: PizZip, input: LogoPassInput): Promise
 // ---------------------------------------------------------------------------
 
 /**
+ * How many asset fetches may be in flight at once. 6 is the classic
+ * per-origin browser cap for HTTP/1.1 connections, safe in every host shape
+ * (CLI, extension panel, a future Tauri webview) and gentle on the
+ * Confluence API; HTTP/2 hosts simply multiplex the six.
+ */
+const ASSET_FETCH_CONCURRENCY = 6;
+
+/** Minimal promise pool: run `fn`s with at most `max` concurrently in flight. */
+function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const release = (): void => {
+    active -= 1;
+    queue.shift()?.();
+  };
+  return <T,>(fn: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const run = (): void => {
+        active += 1;
+        // Promise.resolve().then(fn) also routes a SYNCHRONOUSLY-throwing fn
+        // into the rejection path — a bare fn() call would skip release() and
+        // leak the slot (six such failures would deadlock the queue).
+        Promise.resolve()
+          .then(fn)
+          .then(
+            (v) => {
+              release();
+              resolve(v);
+            },
+            (e) => {
+              release();
+              reject(e);
+            }
+          );
+      };
+      if (active < max) run();
+      else queue.push(run);
+    });
+}
+
+/**
  * Bridge the serializer's {@link ImageEmbedSeam} to the host's
  * {@link AssetFetcher} + the OOXML {@link ImageEmbedder}: resolve the block's
  * source to an {@link AssetRef}, fetch the bytes, embed. EVERY throw —
@@ -488,12 +635,52 @@ async function embedLogoPlaceholders(zip: PizZip, input: LogoPassInput): Promise
  * writes a report line and the export always succeeds; the embedder writes
  * nothing to the archive unless it returns a fragment, so a failure never
  * leaves a dangling media part or relationship.
+ *
+ * Fetches are started by the serializer's prefetch pass and pooled at
+ * {@link ASSET_FETCH_CONCURRENCY}, so N images cost ~1 network latency
+ * instead of N; embedding (and thus relationship-id allocation) still
+ * happens in document order through {@link ImageEmbedSeam.embed}.
  */
-function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string): ImageEmbedSeam {
+function imageSeam(
+  embedder: ImageEmbedder,
+  assets: AssetFetcher,
+  pageId: string,
+  timings: ExportTimings
+): ImageEmbedSeam {
+  const limit = pLimit(ASSET_FETCH_CONCURRENCY);
+  // Keyed by the CANONICAL asset URL, not block identity: a page that shows
+  // the same attachment twice downloads it once (the embedder already
+  // deduplicates the media part; this deduplicates the network fetch).
+  const fetches = new Map<string, Promise<Uint8Array>>();
+  const fetchBytes = (block: ImageBlock): Promise<Uint8Array> => {
+    const ref = assetRefFor(block, pageId);
+    let p = fetches.get(ref.url);
+    if (!p) {
+      p = limit(async () => {
+        const t = Date.now();
+        try {
+          return await assets.fetch(ref);
+        } finally {
+          timings.imageFetches += 1;
+          timings.imageFetchMs += Date.now() - t;
+        }
+      });
+      // The prefetch caller never awaits; without this consumed branch a
+      // fetch failing before embed() awaits it would surface as an
+      // unhandled rejection. embed() awaits the ORIGINAL promise and still
+      // sees the real error.
+      p.catch(() => {});
+      fetches.set(ref.url, p);
+    }
+    return p;
+  };
   return {
+    prefetch(block: ImageBlock) {
+      void fetchBytes(block);
+    },
     async embed(block: ImageBlock) {
       try {
-        const bytes = await assets.fetch(assetRefFor(block, pageId));
+        const bytes = await fetchBytes(block);
         const name = block.source.kind === "attachment" ? block.source.filename : undefined;
         const xml = embedder.embed(bytes, {
           alt: block.alt,
@@ -526,31 +713,89 @@ function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string
 function diagramSeam(
   embedder: ImageEmbedder,
   rasterizer: SvgRasterizer,
-  theme: DiagramTheme | undefined
+  theme: DiagramTheme | undefined,
+  timings: ExportTimings
 ): DiagramEmbedSeam {
   let count = 0;
+  // Render + rasterize results, keyed by exact source: the serializer's prefetch
+  // pass starts this CPU/async work up front so it overlaps the export's
+  // network round-trips; embed() then consumes the in-flight result in
+  // document order. Repeated occurrences of the same source share preparation
+  // (theme + rasterizer are seam-wide), while each occurrence still embeds in
+  // document order and receives its own drawing id. The preparation never
+  // rejects — every failure is a value — so an unawaited prefetch can't surface
+  // an unhandled rejection.
+  type DiagramPrep =
+    | { kind: "ready"; svg: string; png: Uint8Array; widthPx: number; heightPx: number }
+    | { kind: "unsupported"; diagramType: string }
+    | { kind: "failed"; reason: string };
+  const preps = new Map<string, Promise<DiagramPrep>>();
+  // Preparations are CHAINED, not fanned out: render + rasterize are
+  // main-thread CPU work in every host (beautiful-mermaid is synchronous;
+  // the panel's canvas rasterizer and the CLI's resvg-wasm both burn the
+  // one JS thread), so running six at once cannot finish sooner — but it
+  // CAN thrash (observed in the extension panel: six concurrent canvas
+  // rasterizations took seconds each instead of tens of ms). The chain
+  // still starts at prefetch time, so diagram CPU overlaps the export's
+  // network round-trips exactly as before.
+  let chain: Promise<unknown> = Promise.resolve();
+  const prepare = (block: CodeBlock): Promise<DiagramPrep> => {
+    const key = block.code;
+    let p = preps.get(key);
+    if (!p) {
+      const work = async (): Promise<DiagramPrep> => {
+        const renderStart = Date.now();
+        const rendered = await renderDiagram(block.code, theme);
+        timings.diagramRenderMs += Date.now() - renderStart;
+        if (rendered.kind === "unsupported") {
+          return { kind: "unsupported", diagramType: rendered.diagramType };
+        }
+        if (rendered.kind === "failed") return { kind: "failed", reason: rendered.reason };
+        try {
+          const rasterStart = Date.now();
+          const png = await rasterizer.rasterize(rendered.svg, {
+            widthPx: rendered.widthPx * 2,
+            heightPx: rendered.heightPx * 2,
+          });
+          timings.diagramRasterMs += Date.now() - rasterStart;
+          return {
+            kind: "ready",
+            svg: rendered.svg,
+            png,
+            widthPx: rendered.widthPx,
+            heightPx: rendered.heightPx,
+          };
+        } catch (err) {
+          return { kind: "failed", reason: err instanceof Error ? err.message : String(err) };
+        }
+      };
+      p = chain.then(work);
+      chain = p;
+      preps.set(key, p);
+    }
+    return p;
+  };
   return {
+    prefetch(block: CodeBlock) {
+      void prepare(block);
+    },
     async embed(block: CodeBlock) {
-      const rendered = await renderDiagram(block.code, theme);
-      if (rendered.kind === "unsupported") {
-        return { ok: false as const, route: "unsupported" as const, diagramType: rendered.diagramType };
+      const prep = await prepare(block);
+      if (prep.kind === "unsupported") {
+        return { ok: false as const, route: "unsupported" as const, diagramType: prep.diagramType };
       }
-      if (rendered.kind === "failed") {
-        return { ok: false as const, route: "failed" as const, reason: rendered.reason };
+      if (prep.kind === "failed") {
+        return { ok: false as const, route: "failed" as const, reason: prep.reason };
       }
       try {
-        const png = await rasterizer.rasterize(rendered.svg, {
-          widthPx: rendered.widthPx * 2,
-          heightPx: rendered.heightPx * 2,
-        });
         count += 1;
-        const xml = embedder.embedSvg(rendered.svg, png, {
+        const xml = embedder.embedSvg(prep.svg, prep.png, {
           name: `Mermaid diagram ${count}`,
           // Accessibility (spec 005a Task 3): the diagram SOURCE is the
           // best available description of the drawing.
           alt: block.code,
-          widthPx: rendered.widthPx,
-          heightPx: rendered.heightPx,
+          widthPx: prep.widthPx,
+          heightPx: prep.heightPx,
         });
         return { ok: true as const, xml };
       } catch (err) {

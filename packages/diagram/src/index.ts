@@ -151,6 +151,19 @@ function loadRenderer(): Promise<BeautifulMermaid> {
   return rendererPromise;
 }
 
+/**
+ * Start loading the renderer chunk (~1.5 MB with elkjs) in the background —
+ * a host that knows an export is likely (the extension panel on mount, say)
+ * calls this so the FIRST diagram render doesn't pay the import. Never
+ * throws and never rejects; a failed warm just means {@link renderDiagram}
+ * retries the import itself.
+ */
+export function warmDiagramRenderer(): void {
+  void loadRenderer().catch(() => {
+    rendererPromise = null;
+  });
+}
+
 /** Intrinsic pixel size from the SVG root's width/height attributes. */
 function intrinsicSize(svg: string): { widthPx: number; heightPx: number } | null {
   const w = svg.match(/<svg[^>]*\bwidth="([\d.]+)"/)?.[1];

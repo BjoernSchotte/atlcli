@@ -13,6 +13,7 @@ import {
   canvasSvgRasterizer,
   downloadOutputSink,
   idbTemplateSource,
+  memoryTemplateSource,
   sessionAssetFetcher,
 } from "../../utils/docx/env.js";
 import { putTemplate } from "../../utils/docx/template-store.js";
@@ -32,6 +33,15 @@ describe("idbTemplateSource", () => {
     const factory = new IDBFactory();
     expect(idbTemplateSource(factory).getBytes("current")).rejects.toThrow(
       'No template stored under id "current"'
+    );
+  });
+});
+
+describe("memoryTemplateSource", () => {
+  it("serves the panel's already-loaded template bytes", async () => {
+    const buffer = new Uint8Array([80, 75, 3, 4]).buffer;
+    expect(await memoryTemplateSource(buffer).getBytes("current")).toEqual(
+      new Uint8Array([80, 75, 3, 4])
     );
   });
 });
@@ -78,6 +88,34 @@ describe("sessionAssetFetcher", () => {
     expect(calls[0].url).toBe("https://cdn.example.com/pic.png");
   });
 
+  it("isolates versioned asset bytes by canonical site base URL", async () => {
+    const ref = {
+      url: "/download/attachments/321/logo.png?version=cross-site-regression",
+      filename: "logo.png",
+    };
+    const siteACalls: string[] = [];
+    const siteBCalls: string[] = [];
+    const fetchA = (async (url: unknown) => {
+      siteACalls.push(String(url));
+      return new Response(new Uint8Array([1]));
+    }) as typeof fetch;
+    const fetchB = (async (url: unknown) => {
+      siteBCalls.push(String(url));
+      return new Response(new Uint8Array([2]));
+    }) as typeof fetch;
+
+    const a = sessionAssetFetcher("https://A.atlassian.net/wiki/", fetchA);
+    const b = sessionAssetFetcher("https://b.atlassian.net/wiki", fetchB);
+    expect(await a.fetch(ref)).toEqual(new Uint8Array([1]));
+    expect(await b.fetch(ref)).toEqual(new Uint8Array([2]));
+    // The canonical no-trailing-slash form shares A's entry, but never B's.
+    expect(await sessionAssetFetcher("https://a.atlassian.net/wiki", fetchA).fetch(ref)).toEqual(
+      new Uint8Array([1])
+    );
+    expect(siteACalls).toHaveLength(1);
+    expect(siteBCalls).toHaveLength(1);
+  });
+
   it("throws with status + filename on a non-OK response", async () => {
     const fetchFn = (async () => new Response("nope", { status: 403 })) as unknown as typeof fetch;
     expect(
@@ -104,6 +142,53 @@ describe("canvasSvgRasterizer", () => {
       })
     ).rejects.toThrow("did not decode within 50 ms");
   });
+
+  it("encodes synchronously without entering the asynchronous toBlob callback path", async () => {
+    let toBlobCalled = false;
+    let revoked = false;
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: () => {} }),
+      toDataURL: () => "data:image/png;base64,AQIDBA==",
+      toBlob: () => {
+        toBlobCalled = true;
+      },
+    };
+    const doc = {
+      defaultView: {
+        URL: {
+          createObjectURL: () => "blob:test",
+          revokeObjectURL: () => {
+            revoked = true;
+          },
+        },
+        Blob,
+        Image: FakeImage,
+        atob,
+      },
+      createElement: () => canvas,
+    } as unknown as Document;
+
+    const bytes = await canvasSvgRasterizer(doc).rasterize("<svg/>", {
+      widthPx: 8,
+      heightPx: 6,
+    });
+
+    expect(bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(canvas.width).toBe(8);
+    expect(canvas.height).toBe(6);
+    expect(toBlobCalled).toBe(false);
+    expect(revoked).toBe(true);
+  });
+
 });
 
 describe("downloadOutputSink", () => {

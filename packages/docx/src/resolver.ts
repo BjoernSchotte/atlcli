@@ -342,20 +342,32 @@ export async function resolvePlaceholders(
     else if (cls.dependency === "spaceHomepage") needsHomepage = true;
   }
 
-  let space: ConfluenceSpace | undefined;
-  if (needsSpace) {
+  // The four round-trips are independent, so they run CONCURRENTLY — a
+  // template using space + exporter + owner + homepage pays one network
+  // latency, not four (perf finding: the sequential awaits summed to ~470ms
+  // against Cloud). Each leg collects its notes into its own array; the
+  // arrays are concatenated in the fixed space → user → owner → homepage
+  // order below, so the report stays deterministic regardless of which
+  // response arrives first.
+  const spaceNotes: ExportNote[] = [];
+  const userNotes: ExportNote[] = [];
+  const ownerNotes: ExportNote[] = [];
+  const homepageNotes: ExportNote[] = [];
+
+  const fetchSpace = async (): Promise<ConfluenceSpace | undefined> => {
+    if (!needsSpace) return undefined;
     if (deps.getSpace && ctx.details.spaceKey) {
       try {
-        space = await deps.getSpace(ctx.details.spaceKey);
+        return await deps.getSpace(ctx.details.spaceKey);
       } catch {
-        notes.push({
+        spaceNotes.push({
           level: "warning",
           code: "space-fetch-failed",
           message: `Could not load space "${ctx.details.spaceKey}"; space placeholders will be empty.`,
         });
       }
     } else {
-      notes.push({
+      spaceNotes.push({
         level: "warning",
         code: "space-unavailable",
         message: ctx.details.spaceKey
@@ -363,51 +375,54 @@ export async function resolvePlaceholders(
           : "The template uses $scroll.space.* but the page has no space key; those placeholders will be empty.",
       });
     }
-  }
+    return undefined;
+  };
 
-  let currentUser: CurrentUser | undefined;
-  if (needsUser) {
+  const fetchUser = async (): Promise<CurrentUser | undefined> => {
+    if (!needsUser) return undefined;
     if (deps.getCurrentUser) {
       try {
-        currentUser = await deps.getCurrentUser();
+        return await deps.getCurrentUser();
       } catch {
-        notes.push({
+        userNotes.push({
           level: "warning",
           code: "user-fetch-failed",
           message: "Could not load the current user; exporter placeholders will be empty.",
         });
       }
     } else {
-      notes.push({
+      userNotes.push({
         level: "warning",
         code: "user-unavailable",
         message: "The template uses $scroll.exporter* but no current-user fetcher is available; those placeholders will be empty.",
       });
     }
-  }
+    return undefined;
+  };
 
-  let owner: PageOwner | undefined;
-  if (needsOwner) {
+  const fetchOwner = async (): Promise<PageOwner | undefined> => {
+    if (!needsOwner) return undefined;
     if (deps.getPageOwner && ctx.details.id) {
       try {
-        owner = (await deps.getPageOwner(ctx.details.id)) ?? undefined;
+        const owner = (await deps.getPageOwner(ctx.details.id)) ?? undefined;
         if (!owner) {
-          notes.push({
+          ownerNotes.push({
             level: "info",
             code: "placeholder-empty",
             message:
               "$scroll.pageowner.fullName has no value (the page has no owner, or the account could not be read).",
           });
         }
+        return owner;
       } catch {
-        notes.push({
+        ownerNotes.push({
           level: "warning",
           code: "owner-fetch-failed",
           message: "Could not load the page owner; $scroll.pageowner.* will be empty.",
         });
       }
     } else {
-      notes.push({
+      ownerNotes.push({
         level: "warning",
         code: "owner-unavailable",
         message: ctx.details.id
@@ -415,16 +430,17 @@ export async function resolvePlaceholders(
           : "The template uses $scroll.pageowner.* but the page has no id; those placeholders will be empty.",
       });
     }
-  }
+    return undefined;
+  };
 
-  let homepageProperties: PagePropertiesMacro[] | undefined;
-  if (needsHomepage) {
+  const fetchHomepage = async (): Promise<PagePropertiesMacro[] | undefined> => {
+    if (!needsHomepage) return undefined;
     if (deps.getSpaceHomepageStorage && ctx.details.spaceKey) {
       try {
         const storage = await deps.getSpaceHomepageStorage(ctx.details.spaceKey);
-        homepageProperties = parsePageProperties(storage ?? "");
+        return parsePageProperties(storage ?? "");
       } catch {
-        notes.push({
+        homepageNotes.push({
           level: "warning",
           code: "homepage-fetch-failed",
           message:
@@ -432,7 +448,7 @@ export async function resolvePlaceholders(
         });
       }
     } else {
-      notes.push({
+      homepageNotes.push({
         level: "warning",
         code: "homepage-unavailable",
         message: ctx.details.spaceKey
@@ -440,7 +456,16 @@ export async function resolvePlaceholders(
           : "A page property asks for the space-homepage fallback but the page has no space key; only this page's properties are used.",
       });
     }
-  }
+    return undefined;
+  };
+
+  const [space, currentUser, owner, homepageProperties] = await Promise.all([
+    fetchSpace(),
+    fetchUser(),
+    fetchOwner(),
+    fetchHomepage(),
+  ]);
+  notes.push(...spaceNotes, ...userNotes, ...ownerNotes, ...homepageNotes);
 
   const fetched: Fetched = { space, currentUser, owner, homepageProperties };
 

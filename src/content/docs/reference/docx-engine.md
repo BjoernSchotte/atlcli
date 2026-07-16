@@ -18,6 +18,7 @@ inject.
 - [Image embedding](#image-embedding)
 - [Mermaid diagrams](#mermaid-diagrams)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
+- [Performance model](#performance-model)
 - [Guarantees and gates](#guarantees-and-gates)
 - [Related topics](#related-topics)
 
@@ -130,6 +131,11 @@ for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's 
   SVG reaches any rasterizer or the archive (`flattenSvgStyles` in
   `packages/diagram/src/svg-flatten.ts`); the CSS background becomes a real background
   `<rect>`. Browsers render the flattened SVG identically.
+- **Extension rasterizer:** the MV3 side panel draws each flattened SVG to a canvas and encodes
+  its PNG synchronously with `toDataURL`. The asynchronous `toBlob` callback path showed
+  repeatable ~1-second scheduling delays in real side-panel E2E runs. Diagram preparation is
+  already serialized, so synchronous encoding avoids that host task runner without adding
+  concurrent main-thread work.
 - **Node rasterizer (CLI):** `resvgSvgRasterizer()` renders the PNG fallback through
   `@resvg/resvg-wasm` — chosen over the native `@resvg/resvg-js` because release binaries are
   cross-compiled from one Linux runner, which can embed one portable `.wasm` for every target
@@ -201,6 +207,48 @@ A browser surface supplies its own implementations instead (see
 and docxtemplater reference `Buffer.*`; that is a **host** bundling concern — the extension
 installs a `Uint8Array` shim + Vite `define`, a Node host has the real `Buffer`, and the engine
 itself never touches either.
+
+## Performance model
+
+The engine overlaps every independent cost instead of paying them back to back; a page with
+many integrations (images, diagrams, code blocks, logos) exports in roughly one network
+latency plus the heaviest CPU leg:
+
+- **Resolver round-trips run concurrently.** Space, current user, page owner, and space-homepage
+  fetches fire together via `Promise.all`; report notes keep a fixed order regardless of which
+  response arrives first.
+- **Placeholder resolution, body serialization, and the space-logo fetch overlap.** The logo pass
+  is split into a fetch leg (starts immediately, never rejects) and an embed leg (mutates the
+  archive after the body is serialized, in the same deterministic order as before).
+- **Asset fetches are prefetched and pooled.** Before the document-order serialization walk, a
+  prefetch pass starts every image download (max 6 in flight — safe for browser per-origin
+  limits, CLI sockets, and future webview hosts). Diagram preparation stays on a single ordered
+  chain because concurrent canvas rasterization degrades sharply in the extension; repeated
+  occurrences of the exact same Mermaid source share one preparation. Embedding still happens
+  in document order, so relationship ids and media numbering never depend on completion timing
+  (pinned by the determinism regression tests in `export.test.ts`).
+- **Syntax highlighting warms early and picks the fastest engine.** Code-block languages found
+  during the prefetch pass start their grammar loads immediately; aliases such as `ts` and
+  `typescript` share one canonical grammar load. Hosts that may compile WebAssembly (CLI, Node,
+  Tauri) get Shiki's Oniguruma engine (~30 ms for the TypeScript grammar); the MV3 panel (no
+  `wasm-unsafe-eval`) keeps the JavaScript engine and never fetches the wasm chunk — the choice
+  is made by an 8-byte compile probe at runtime.
+- **The CLI overlaps its own legs too.** The page fetch runs concurrently with template
+  read/scan; a quick local template scan pre-starts exactly the resolver round-trips the template
+  needs, and page-dependent space/homepage calls start as soon as the page yields its space key.
+  `$scroll.space.*` and the logo share one `?expand=icon` call. The resvg module, WASM, and fonts
+  are loaded only when the page storage contains a Mermaid code block.
+- **CLI asset cache.** Immutable asset bytes — version-stamped download URLs (the space logo)
+  and attachments keyed by `id` + `version` — are cached under `~/.atlcli/cache/assets/`. A
+  replaced logo or re-uploaded attachment gets a new version stamp, so the cache never serves
+  stale bytes. Entries carry a checksum envelope so damaged files are refetched and repaired;
+  the directory is mode `0700` and entries are `0600`. Deleting the directory is always safe.
+- **The extension warms only opted-in export work.** Once a valid template exists, engine and
+  host chunks load in the background. On Export, the existing scan pre-starts only the required
+  resolver calls while host chunks settle, and the already-loaded template bytes are reused from
+  memory. Space/icon metadata is cached for five minutes per canonical site + space. Current user
+  and homepage storage remain per-export because neither has a safe same-site invalidation signal;
+  versioned asset bytes use a separate bounded cache keyed by canonical site + URL.
 
 ## Guarantees and gates
 
