@@ -1,6 +1,8 @@
 # DOCX Image Module — self-built OOXML image embedding for the DOCX export
 
-Status: **Planned** (deferred from spec 004; images were explicitly out of scope for the DOCX PoC)
+Status: **Implemented** (2026-07-16 — module in `packages/docx/src/image.ts`, seam through
+serializer/export/env, hosts wired: extension session fetch + CLI token fetcher; E2E passed
+against DOCSY. SVG deferred per §Non-goals: rasterized PNG fallback needs a canvas, not isomorphic.)
 
 Spec ID: `005-docx-image-module`
 Depends on: `004-docx-export` (the export flow this extends — docxtemplater free engine, `ExportBlock` model, session-auth asset fetch seam)
@@ -68,16 +70,25 @@ not vendor. All-permissive.
 
 ## 3. Task breakdown (outline — detail on pickup)
 
-- [ ] Promote `image-module-prototype.ts` into the real module (unique ids, generic
+- [x] Promote `image-module-prototype.ts` into the real module (unique ids, generic
       content-types, richer drawing fragment); unit tests on the produced OOXML (unzip + assert
       media part, relationship, content-type, blip r:embed, EMU sizing).
-- [ ] In-browser dimension decoder (PNG/JPEG/GIF via DataView) + tests with real fixture bytes.
-- [ ] Wire into the 004 export flow: `image` block → session-auth fetch (mock-fetch test asserts
+      → `packages/docx/src/image.ts` + `image.test.ts` (24 tests). Bonus: byte-identical dedup
+      (one media part per distinct image), docPr ids seeded above the template's existing drawings.
+- [x] In-browser dimension decoder (PNG/JPEG/GIF via DataView) + tests with real fixture bytes.
+- [x] Wire into the 004 export flow: `image` block → session-auth fetch (mock-fetch test asserts
       `credentials: "include"`) → embed; failure → report line, no dangling rel (pinning test).
-- [ ] Width-capping + alt text on `docPr descr`.
-- [ ] svgBlip + PNG@2x fallback (only if the spike proves it cheap; else report line + defer).
-- [ ] E2E with Björn: a real page with images exports with images embedded; compare against the
-      Scroll reference (which embeds images) — close the last v1-vs-Scroll gap.
+      → `SerializeContext.images` seam; `ExportInput.assets`/`embedImages`; `image-embed-failed`
+      warning note; report gains `embeddedImages`. Extension resolves wiki-relative refs against
+      the tab's Confluence root; CLI resolves via REST attachment listing (`tokenAssetFetcher`),
+      because `/download/attachments/…` answers 401 to API-token Basic auth (E2E finding).
+- [x] Width-capping + alt text on `docPr descr`.
+- [x] svgBlip + PNG@2x fallback — **deferred** (spike verdict: not cheap; the mandatory PNG
+      fallback needs rasterization, i.e. a canvas — not isomorphic). SVG degrades to a report line.
+- [x] E2E: DOCSY test page with a real PNG attachment + a missing-attachment image, exported via
+      `--engine ts` — PNG embedded (media part byte-identical, drawing scaled by `ac:width`,
+      alt text carried), missing image → warning note, no dangling rel. Page cleaned up.
+      Scroll-reference visual comparison remains open for Björn's next manual pass.
 
 ## 4. Test plan
 

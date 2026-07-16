@@ -29,7 +29,10 @@
  * re-parsing, so page-authored `$scroll.*` / braces pass through verbatim
  * (finding #7). Non-content `$scroll.*` placeholders are resolved to text on the
  * template parts BEFORE render (engine-agnostic run-normalized preprocessor,
- * findings #8/#9). Images are deferred (F3): they add report lines, never OOXML.
+ * findings #8/#9). Images embed through the self-built OOXML image module
+ * (spec 005) when the host supplies an {@link AssetFetcher}; a missing fetcher
+ * or a failed fetch/decode degrades to a report line, never a dangling
+ * relationship (the 004-F3 skip-path invariant holds on every failure branch).
  */
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
@@ -41,7 +44,9 @@ import {
   type ResolveDeps,
   type TemplateMeta,
 } from "./resolver.js";
-import { serializeBlocks } from "./serialize.js";
+import { serializeBlocks, type ImageBlock, type ImageEmbedSeam } from "./serialize.js";
+import { ImageEmbedder } from "./image.js";
+import type { AssetFetcher, AssetRef } from "./env.js";
 import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
 import {
   encodeXmlText,
@@ -55,8 +60,10 @@ export interface ExportReport {
   resolvedCount: number;
   /** Distinct unsupported/never placeholder bases (rendered empty). */
   unsupportedNames: string[];
-  /** Number of images skipped (deferred embedding). */
+  /** Number of images skipped (no fetcher, disabled, or embed failure). */
   skippedImages: number;
+  /** Number of images embedded into the document (spec 005). */
+  embeddedImages: number;
   /** Wall-clock export duration in milliseconds. */
   durationMs: number;
   /** Suggested download filename (`<page-title>.docx`). */
@@ -78,6 +85,16 @@ export interface ExportInput {
   template: TemplateMeta;
   exportDate?: Date;
   deps?: ResolveDeps;
+  /**
+   * How image bytes are fetched (spec 005). Absent → every image degrades to
+   * a report note, exactly the pre-005 behavior.
+   */
+  assets?: AssetFetcher;
+  /**
+   * Set `false` to skip image embedding even when `assets` is available
+   * (the CLI's `--no-images`). Defaults to `true`.
+   */
+  embedImages?: boolean;
 }
 
 /**
@@ -150,10 +167,16 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const usedRaw = [...scan.supported, ...scan.unsupported, ...scan.never].flatMap((h) => h.raw);
   const resolved = await resolvePlaceholders(usedRaw, { details: input.details, template: input.template, exportDate }, input.deps);
 
-  // 2. Storage → blocks → OOXML body.
+  // 2. Storage → blocks → OOXML body. When the host supplied an asset fetcher
+  //    (and images aren't disabled), the serializer's image seam embeds each
+  //    image into THIS zip (media + rel + content type) before render — the
+  //    rendered rawxml body then references relationships that already exist.
   const { blocks, notes: walkNotes } = storageToBlocks(input.details.storage ?? "");
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
-  const body = await serializeBlocks(blocks, { styleNames });
+  const embedder =
+    input.assets && input.embedImages !== false ? new ImageEmbedder(zip) : undefined;
+  const images = embedder ? imageSeam(embedder, input.assets!, input.details.id) : undefined;
+  const body = await serializeBlocks(blocks, { styleNames, images });
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
@@ -188,7 +211,8 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 
   const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes];
   // Every image-skip note kind counts toward the report's skipped-image total:
-  // serializer `image-skipped`, walker `image-unresolved` and `inline-image-skipped`.
+  // serializer `image-skipped`/`image-embed-failed`, walker `image-unresolved`
+  // and `inline-image-skipped`.
   const skippedImages = notes.filter((n) => IMAGE_SKIP_CODES.has(n.code)).length;
 
   return {
@@ -197,6 +221,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       resolvedCount: resolved.resolvedCount,
       unsupportedNames: resolved.unsupportedNames,
       skippedImages,
+      embeddedImages: embedder?.embeddedCount ?? 0,
       durationMs: Date.now() - start,
       filename: toDownloadFilename(input.details.title),
       notes,
@@ -268,7 +293,63 @@ function explainDocxError(err: unknown): string[] {
 // ---------------------------------------------------------------------------
 
 /** Note kinds that mean "an image was not embedded" (for the report tally). */
-const IMAGE_SKIP_CODES = new Set(["image-skipped", "image-unresolved", "inline-image-skipped"]);
+const IMAGE_SKIP_CODES = new Set([
+  "image-skipped",
+  "image-embed-failed",
+  "image-unresolved",
+  "inline-image-skipped",
+]);
+
+// ---------------------------------------------------------------------------
+// Image seam (spec 005)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bridge the serializer's {@link ImageEmbedSeam} to the host's
+ * {@link AssetFetcher} + the OOXML {@link ImageEmbedder}: resolve the block's
+ * source to an {@link AssetRef}, fetch the bytes, embed. EVERY throw —
+ * fetch, decode, oversized — funnels into `{ok:false}` so the serializer
+ * writes a report line and the export always succeeds; the embedder writes
+ * nothing to the archive unless it returns a fragment, so a failure never
+ * leaves a dangling media part or relationship.
+ */
+function imageSeam(embedder: ImageEmbedder, assets: AssetFetcher, pageId: string): ImageEmbedSeam {
+  return {
+    async embed(block: ImageBlock) {
+      try {
+        const bytes = await assets.fetch(assetRefFor(block, pageId));
+        const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+        const xml = embedder.embed(bytes, {
+          alt: block.alt,
+          name,
+          widthPx: block.width,
+          heightPx: block.height,
+        });
+        return { ok: true as const, xml };
+      } catch (err) {
+        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+}
+
+/**
+ * The {@link AssetRef} for an image block. Attachments use Confluence's
+ * canonical download path, RELATIVE to the wiki base (`/wiki` on Cloud) —
+ * exactly the shape the API's own `downloadUrl` uses, so a token host can
+ * feed it straight to its binary-request helper and a session host prefixes
+ * its wiki base. External images pass their absolute URL through.
+ */
+function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
+  if (block.source.kind === "attachment") {
+    return {
+      url: `/download/attachments/${encodeURIComponent(pageId)}/${encodeURIComponent(block.source.filename)}`,
+      pageId,
+      filename: block.source.filename,
+    };
+  }
+  return { url: block.source.url, pageId };
+}
 
 /** Replace the paragraph containing `$scroll.content` with the rawxml tag. */
 function injectContentTag(zip: PizZip): boolean {

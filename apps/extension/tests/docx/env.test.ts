@@ -36,15 +36,20 @@ describe("idbTemplateSource", () => {
 });
 
 describe("sessionAssetFetcher", () => {
-  it("fetches with session credentials and returns the bytes", async () => {
+  function recordingFetch(payload = new Uint8Array([1, 2, 3])) {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const payload = new Uint8Array([1, 2, 3]);
     const fetchFn = (async (url: unknown, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       return new Response(payload.slice());
     }) as typeof fetch;
+    return { calls, fetchFn };
+  }
 
-    const bytes = await sessionAssetFetcher(fetchFn).fetch({
+  it("fetches with session credentials and returns the bytes", async () => {
+    const payload = new Uint8Array([1, 2, 3]);
+    const { calls, fetchFn } = recordingFetch(payload);
+
+    const bytes = await sessionAssetFetcher(undefined, fetchFn).fetch({
       url: "https://x.atlassian.net/wiki/download/attachments/1/a.png",
       filename: "a.png",
     });
@@ -54,10 +59,28 @@ describe("sessionAssetFetcher", () => {
     expect(calls[0].init?.credentials).toBe("include");
   });
 
+  it("resolves wiki-base-relative attachment refs against the baseUrl (spec 005)", async () => {
+    const { calls, fetchFn } = recordingFetch();
+    await sessionAssetFetcher("https://x.atlassian.net/wiki", fetchFn).fetch({
+      url: "/download/attachments/123/diagram.png",
+      pageId: "123",
+      filename: "diagram.png",
+    });
+    expect(calls[0].url).toBe("https://x.atlassian.net/wiki/download/attachments/123/diagram.png");
+  });
+
+  it("passes absolute external URLs through untouched, ignoring the baseUrl", async () => {
+    const { calls, fetchFn } = recordingFetch();
+    await sessionAssetFetcher("https://x.atlassian.net/wiki", fetchFn).fetch({
+      url: "https://cdn.example.com/pic.png",
+    });
+    expect(calls[0].url).toBe("https://cdn.example.com/pic.png");
+  });
+
   it("throws with status + filename on a non-OK response", async () => {
     const fetchFn = (async () => new Response("nope", { status: 403 })) as unknown as typeof fetch;
     expect(
-      sessionAssetFetcher(fetchFn).fetch({ url: "https://x/att", filename: "a.png" })
+      sessionAssetFetcher(undefined, fetchFn).fetch({ url: "https://x/att", filename: "a.png" })
     ).rejects.toThrow("Asset fetch failed (403) for a.png");
   });
 });

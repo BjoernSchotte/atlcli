@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import { ConfluenceClient } from "@atlcli/confluence/browser";
+import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type { ScanResult, ExportReport } from "@atlcli/docx/browser";
@@ -206,7 +207,9 @@ export function TemplateSection({
         },
         {
           templates: idbTemplateSource(),
-          assets: sessionAssetFetcher(),
+          // Attachment refs are wiki-base-relative (spec 005); resolve them
+          // against the tab's Confluence root so the session cookies apply.
+          assets: sessionAssetFetcher(profile ? getConfluenceBaseUrl(profile) : undefined),
           output: downloadOutputSink(),
         }
       );
@@ -397,7 +400,12 @@ export function ReportView({ report }: { report: ExportReport }): React.JSX.Elem
             {report.unsupportedNames.length} unsupported: {report.unsupportedNames.join(", ")}
           </li>
         )}
-        {report.skippedImages > 0 && <li data-testid="report-skipped-images">{report.skippedImages} image(s) skipped (embedding not yet available)</li>}
+        {report.embeddedImages > 0 && (
+          <li data-testid="report-embedded-images">{report.embeddedImages} image(s) embedded</li>
+        )}
+        {report.skippedImages > 0 && (
+          <li data-testid="report-skipped-images">{report.skippedImages} image(s) skipped (see notes)</li>
+        )}
         <li>{report.durationMs} ms</li>
       </ul>
 

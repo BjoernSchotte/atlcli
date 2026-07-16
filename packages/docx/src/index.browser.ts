@@ -16,4 +16,5 @@ export * from "./resolver.js";
 export * from "./serialize.js";
 export * from "./export.js";
 export * from "./env.js";
+export * from "./image.js";
 export { CODE_STYLE_ID, resolveHeadingStyleId, parseStyleNames, normalizeColor } from "./ooxml.js";

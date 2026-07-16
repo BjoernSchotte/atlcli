@@ -23,6 +23,7 @@ function makeReport(notes: ExportReport["notes"]): ExportReport {
     resolvedCount: 3,
     unsupportedNames: [],
     skippedImages: 0,
+    embeddedImages: 0,
     durationMs: 42,
     filename: "page.docx",
     notes,

@@ -116,6 +116,7 @@ export async function handleExport(
       resolvedTemplatePath,
       outputPath,
       includeChildren,
+      embedImages,
       opts,
     });
     return;
@@ -690,6 +691,7 @@ interface TsEngineArgs {
   resolvedTemplatePath: string;
   outputPath: string;
   includeChildren: boolean;
+  embedImages: boolean;
   opts: OutputOptions;
 }
 
@@ -697,17 +699,48 @@ interface TsEngineArgs {
  * Spec 006 Task 5: drive the isomorphic `@atlcli/docx` engine — the exact
  * code the Chrome extension runs — with Node-side env implementations:
  * template bytes from the filesystem, output to the filesystem, resolver
- * round-trips over the token-auth client. Feature scope matches the
- * extension's v1 export: single page, `$scroll.*` placeholder resolution,
- * images deferred (they become report notes, never OOXML — spec 005).
+ * round-trips over the token-auth client, and image bytes over the client's
+ * token-auth binary download (spec 005: attachment refs arrive as
+ * wiki-base-relative download URLs; external images as absolute URLs).
  * The engine is imported lazily so the common CLI paths never load
  * pizzip/docxtemplater.
  */
+/**
+ * Image bytes over the token-auth client (spec 005). The site's cookie-only
+ * `/download/attachments/{pageId}/{filename}` path 401s under API-token Basic
+ * auth (verified against Cloud), so attachment refs resolve through the REST
+ * attachment listing to the API's own `downloadUrl`
+ * (`/rest/api/content/{id}/child/attachment/{attId}/download`), which honors
+ * token auth. The listing is cached per page — one extra round-trip per page,
+ * not per image. External image URLs are absolute and fetched without auth.
+ */
+function tokenAssetFetcher(client: ConfluenceClient) {
+  const listings = new Map<string, Promise<{ filename: string; downloadUrl: string }[]>>();
+  return {
+    async fetch(ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array> {
+      if (/^https?:\/\//i.test(ref.url)) {
+        const res = await fetch(ref.url);
+        if (!res.ok) throw new Error(`image download failed (${res.status}) for ${ref.url}`);
+        return new Uint8Array(await res.arrayBuffer());
+      }
+      if (ref.pageId && ref.filename) {
+        let listing = listings.get(ref.pageId);
+        if (!listing) {
+          listing = client.listAttachments(ref.pageId);
+          listings.set(ref.pageId, listing);
+        }
+        const attachment = (await listing).find((a) => a.filename === ref.filename);
+        if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);
+        return client.downloadAttachment(attachment);
+      }
+      return client.downloadAttachment({ downloadUrl: ref.url });
+    },
+  };
+}
+
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
-  const { client, page, resolvedTemplatePath, outputPath, includeChildren, opts } = args;
-  const { runExport, fileTemplateSource, fileOutputSink, unsupportedAssetFetcher } = await import(
-    "@atlcli/docx"
-  );
+  const { client, page, resolvedTemplatePath, outputPath, includeChildren, embedImages, opts } = args;
+  const { runExport, fileTemplateSource, fileOutputSink } = await import("@atlcli/docx");
   const { stat } = await import("node:fs/promises");
 
   const cliNotes: string[] = [];
@@ -724,6 +757,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         name: basename(resolvedTemplatePath),
         modificationDate: templateStat.mtime,
       },
+      embedImages,
       deps: {
         getSpace: (key: string) => client.getSpace(key),
         getCurrentUser: () => client.getCurrentUser(),
@@ -733,7 +767,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     },
     {
       templates: fileTemplateSource(resolvedTemplatePath),
-      assets: unsupportedAssetFetcher("image embedding is not yet available in the ts engine"),
+      assets: tokenAssetFetcher(client),
       output: fileOutputSink(resolvedOutputPath),
     }
   );
@@ -747,6 +781,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       report: {
         resolvedCount: report.resolvedCount,
         unsupportedNames: report.unsupportedNames,
+        embeddedImages: report.embeddedImages,
         skippedImages: report.skippedImages,
         durationMs: report.durationMs,
         notes: [...cliNotes, ...report.notes.map((n) => `${n.level}: ${n.message}`)],
