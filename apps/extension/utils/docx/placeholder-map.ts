@@ -10,13 +10,22 @@
  *    §2 `direct` and `derivable` rows the resolver ({@link resolvePlaceholders})
  *    can compute from `{ details, space?, currentUser?, template, exportDate }`.
  *  - **unsupported** — Confluence exposes it but atlcli does not model it yet
- *    (the §2 `unsupported (v1)` rows: page owner, DC usernames, space logo, page
- *    properties, JSON content properties) plus the derivable-but-out-of-v1-scope
+ *    (the §2 `unsupported (v1)` rows: DC usernames, space logo, page properties,
+ *    JSON content properties) plus the derivable-but-out-of-v1-scope
  *    `$scroll.includepage.*` family (cross-page include is a Phase-2 non-goal,
  *    PLAN §Non-goals). Rendered ⚠ "will be empty"; resolves to `""` + report line.
  *  - **never** — depends on a third-party app or a system asset atlcli does not
  *    target (Comala `$adhocState`/`$scroll.metadata.*`, Scroll Documents
  *    `$scroll.custom.*`, `$scroll.globallogo`). Rendered ✗; resolves to `""`.
+ *
+ * Each `reason` is surfaced verbatim per row in the panel, so it must say WHY
+ * this particular placeholder is empty — the causes differ sharply and a generic
+ * "will be empty" would flatten them. Three distinct kinds live here: genuinely
+ * impossible on Cloud (`.name` — Atlassian removed usernames), blocked on
+ * another spec (the logos need 005's image module), and simply not modelled yet
+ * (page properties). `$scroll.pageowner.fullName` used to sit in the first group
+ * by implication; it does not — Cloud's v2 API exposes `ownerId`, so it is now
+ * supported via {@link SUPPORTED_OWNER} (gap G1 closed).
  *
  * A placeholder's *base* is its dotted name with any `.("format")` argument and
  * `.(params)` stripped (e.g. `$scroll.exportdate.("dd.MM.yyyy")` → base
@@ -32,7 +41,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
  * one `getCurrentUser()` call; `none` → resolvable from `details`/`template`/date
  * already in hand.
  */
-export type PlaceholderDependency = "none" | "space" | "currentUser";
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner";
 
 export interface PlaceholderClass {
   /** The classified base (argument/params stripped). */
@@ -93,21 +102,36 @@ const SUPPORTED_USER = new Set<string>([
 ]);
 
 /**
+ * Supported placeholders requiring a `getPageOwner()` round-trip (G6-style lazy
+ * fetch; closes gap **G1**). Cloud page ownership is transferable and therefore
+ * distinct from `createdBy`, and only the v2 API exposes `ownerId` — hence its
+ * own dependency rather than a field on `ConfluencePageDetails`.
+ *
+ * Only the `.fullName` form is listed because that is the sole row the normative
+ * §2 table carries for the owner (Cloud). A bare `$scroll.pageowner` therefore
+ * falls through to the unrecognized→unsupported branch, which is the documented
+ * contract rather than an oversight.
+ */
+const SUPPORTED_OWNER = new Set<string>(["$scroll.pageowner.fullName"]);
+
+/**
  * `unsupported (v1)` bases (§2) — Confluence has it, atlcli does not model it.
  * `$scroll.includepage.*` and the parameterized `$scroll.pageproperty.*` /
  * `$scroll.jsoncontentproperty.*` families match by prefix (see classifier).
  */
 const UNSUPPORTED_EXACT: Record<string, string> = {
-  "$scroll.pageowner.fullName": "page owner is not modeled (Gap G1)",
-  "$scroll.creator.name": "Data Center username is not modeled (Gap G2)",
-  "$scroll.modifier.name": "Data Center username is not modeled (Gap G2)",
-  "$scroll.exporter.name": "Data Center username is not modeled (Gap G2)",
-  "$scroll.spacelogo": "space logo is not fetched (Gap G3)",
+  "$scroll.creator.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
+  "$scroll.modifier.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
+  "$scroll.exporter.name": "Confluence Cloud has no usernames — Data Center only (Gap G2)",
+  "$scroll.spacelogo": "the space logo is an image — needs the image module (spec 005, Gap G3)",
 };
 
 const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
   { prefix: "$scroll.includepage", reason: "cross-page include is out of scope in v1 (Phase 2)" },
-  { prefix: "$scroll.pageproperty", reason: "Page Properties macro is not parsed (Gap G4)" },
+  {
+    prefix: "$scroll.pageproperty",
+    reason: "the Page Properties macro is not read from the page body yet (Gap G4)",
+  },
   {
     prefix: "$scroll.jsoncontentproperty",
     reason: "content properties are not fetched (Gap G5)",
@@ -115,8 +139,8 @@ const UNSUPPORTED_PREFIXES: { prefix: string; reason: string }[] = [
 ];
 
 const NEVER_EXACT: Record<string, string> = {
-  $adhocState: "Comala workflow state — third-party app",
-  "$scroll.globallogo": "Confluence system-wide logo — not targeted",
+  $adhocState: "needs the Comala Workflows app — third-party",
+  "$scroll.globallogo": "the global logo is an image — needs the image module (spec 005)",
 };
 
 const NEVER_PREFIXES: { prefix: string; reason: string }[] = [
@@ -134,6 +158,7 @@ export function classifyPlaceholder(raw: string): PlaceholderClass {
   if (SUPPORTED_NONE.has(base)) return { base, status: "supported", dependency: "none" };
   if (SUPPORTED_SPACE.has(base)) return { base, status: "supported", dependency: "space" };
   if (SUPPORTED_USER.has(base)) return { base, status: "supported", dependency: "currentUser" };
+  if (SUPPORTED_OWNER.has(base)) return { base, status: "supported", dependency: "owner" };
 
   if (base in UNSUPPORTED_EXACT) {
     return { base, status: "unsupported", dependency: "none", reason: UNSUPPORTED_EXACT[base] };

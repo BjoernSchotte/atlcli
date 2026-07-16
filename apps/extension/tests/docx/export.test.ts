@@ -49,7 +49,14 @@ const space: ConfluenceSpace = { id: "s", key: "ENG", name: "Engineering", type:
 const currentUser: CurrentUser = { accountId: "u", displayName: "Björn Schotte" };
 
 const template = { name: "mayflower.docx", modificationDate: new Date(2026, 6, 14) };
-const deps = { getSpace: async () => space, getCurrentUser: async () => currentUser };
+// The owner is deliberately NOT the page's creator (Cloud ownership is
+// transferable), so a createdBy fallback would fail the assertion below.
+const owner = { accountId: "u-9", displayName: "Olga Owner" };
+const deps = {
+  getSpace: async () => space,
+  getCurrentUser: async () => currentUser,
+  getPageOwner: async () => owner,
+};
 
 /** A realistic template: cover placeholders, header/footer, TOC-ready styles. */
 function fullTemplate(withScrollHeadings: boolean): Uint8Array {
@@ -63,7 +70,8 @@ function fullTemplate(withScrollHeadings: boolean): Uint8Array {
       para("$scroll.title") +
       para("$scroll.space.name") +
       para("$scroll.content") +
-      para("$scroll.pageowner.fullName"),
+      para("$scroll.pageowner.fullName") +
+      para("$scroll.spacelogo"),
     styles,
     header: para("$scroll.title"),
     footer: runSplitPara(["$scroll.exporter", ".fullName"]),
@@ -110,7 +118,11 @@ describe("exportDocx — full pipeline", () => {
 
     // Report summary fields.
     expect(report.resolvedCount).toBeGreaterThan(0);
-    expect(report.unsupportedNames).toContain("$scroll.pageowner.fullName");
+    // The owner resolves through the full pipeline (G1) — and is the OWNER,
+    // not the creator.
+    expect(doc).toContain("Olga Owner");
+    // The space logo stays unsupported (it is an image — spec 005).
+    expect(report.unsupportedNames).toContain("$scroll.spacelogo");
     expect(report.filename).toBe("Q3_ Architecture _ Overview.docx");
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
   });

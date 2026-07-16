@@ -111,7 +111,7 @@ atlcli fields below are on `ConfluencePageDetails` unless prefixed with `Conflue
 | `$scroll.tinyurl` | `.tinyUrl` | direct | Populated by `getPageDetails` (`_links.tinyui`). |
 | `$scroll.pagelabels` | `.labels` | derivable | Join `string[]` (Scroll renders a comma/space list). |
 | `$scroll.pagelabels.capitalised` | `.labels` | derivable | Join + capitalize first letter of each label. |
-| `$scroll.pageowner.fullName` (Cloud) | — | unsupported (v1) | atlcli has no page-**owner** field; only `createdBy`. Owner ≠ creator on Cloud. Gap G1. |
+| `$scroll.pageowner.fullName` (Cloud) | `ConfluenceClient.getPageOwner()` | derivable | **Gap G1 closed** (2026-07-16). Cloud's v2 API exposes `ownerId`; resolved to a display name via the account lookup. Owner ≠ creator (ownership is transferable), so this is a lazy round-trip of its own, not a `createdBy` fallback. |
 
 ### 2.2 Creator / modifier
 
@@ -211,16 +211,29 @@ the `$scroll.custom.*` rows. Distinct mapped rows in the tables above: 49.)
 These are the concrete gaps a Phase 1 DOCX export must close (or explicitly decline). Each is
 referenced from the mapping table.
 
-- **G1 — Page owner (Cloud).** No `owner` on `ConfluencePage`/`ConfluencePageDetails`; only
-  `createdBy`. Confluence Cloud ownership is distinct from the creator. Needs a v2 pages call
-  (`ownerId`) + account lookup to populate `$scroll.pageowner.fullName`.
-  Blocks: `$scroll.pageowner.fullName`.
+> **Read the gaps by their *kind*, not as one list.** They are not equally hard, and wording
+> them alike misleads: **G1 was merely unbuilt** (the data was there all along — now closed);
+> **G2 is genuinely impossible on Cloud**; **G3 is blocked on another spec**; **G4/G5 are
+> scope decisions**. The panel surfaces each `reason` verbatim per row, so these strings are
+> user-facing — keep them honest about which kind they are.
+
+- **G1 — Page owner (Cloud). ✅ CLOSED 2026-07-16.** Was described as "atlcli has no page-owner
+  field", which read as *impossible* but only ever described our own model. Probing the live
+  Cloud API showed `GET /api/v2/pages/{id}` returns **`ownerId`** (and `lastOwnerId`); combined
+  with the existing account lookup that is all `$scroll.pageowner.fullName` needs. Implemented as
+  `ConfluenceClient.getPageOwner()` + a lazy `"owner"` resolver dependency, mirroring G6/G7 — it
+  fires only when a template actually uses the placeholder. Owner ≠ creator: ownership is
+  transferable, so a `createdBy` fallback would be wrong (and is pinned against by a fixture whose
+  owner differs from its creator).
 - **G2 — Data Center username.** `ConfluenceUser` models `accountId` + `displayName` + `email`,
-  but no `name`/username. The `.name` placeholders are DC-only; requires a DC user-shape field.
+  but no `name`/username — because **Confluence Cloud has no usernames at all**: Atlassian removed
+  them, `accountId` is the replacement. The `.name` placeholders are DC-only, so on Cloud this is
+  not "unbuilt" but genuinely unavailable; it would need a DC user shape.
   Blocks: `$scroll.creator.name`, `$scroll.modifier.name`, `$scroll.exporter.name`.
-- **G3 — Space & global logos.** atlcli fetches no space logo or global logo asset; no attachment
-  handle for either. Blocks: `$scroll.spacelogo` (G3); `$scroll.globallogo` is `never` (system
-  asset, out of scope).
+- **G3 — Space & global logos.** The data exists — `GET /space/{key}?expand=icon` returns
+  `icon.path` — but a logo is an **image**, so both placeholders are blocked on the OOXML image
+  module (spec `005-docx-image-module`), not on a missing fetch. Blocks: `$scroll.spacelogo` (G3);
+  `$scroll.globallogo` is `never` (system asset).
 - **G4 — Page Properties macro extraction.** atlcli stores raw `storage` only; there is no parsed
   key→value model of the Page Properties macro (incl. macro-id disambiguation and space-homepage
   fallback). Blocks: all `$scroll.pageproperty.(…)` forms.

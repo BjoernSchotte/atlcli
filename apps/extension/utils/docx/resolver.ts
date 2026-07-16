@@ -5,13 +5,14 @@
  * string, implementing every `direct` and `derivable` row of the normative §2
  * mapping table. Design points:
  *
- *  - **Pure + injectable.** No `chrome.*` / network here; the two derivable
+ *  - **Pure + injectable.** No `chrome.*` / network here; the three derivable
  *    round-trips (`getSpace` for `$scroll.space.*`, `getCurrentUser` for
- *    `$scroll.exporter*`) come in as injected async deps so the resolver unit
- *    tests run offline and can prove the *lazy* contract.
- *  - **Lazy fetching.** `getSpace` / `getCurrentUser` fire only when the used
- *    placeholder set actually needs them (PLAN §2.2; mock-fetch test asserts
- *    they are NOT called otherwise).
+ *    `$scroll.exporter*`, `getPageOwner` for `$scroll.pageowner.*`) come in as
+ *    injected async deps so the resolver unit tests run offline and can prove
+ *    the *lazy* contract.
+ *  - **Lazy fetching.** `getSpace` / `getCurrentUser` / `getPageOwner` fire only
+ *    when the used placeholder set actually needs them (PLAN §2.2; mock-fetch
+ *    test asserts they are NOT called otherwise).
  *  - **Never leak a literal.** Supported → value; unsupported/never (and any
  *    absent field like a Cloud-hidden email) → empty string + a report note.
  *    The export preprocessor then removes the raw token, so no `$scroll.*`
@@ -45,10 +46,29 @@ export interface ResolveContext {
   exportDate: Date;
 }
 
-/** Lazily-invoked fetchers for the two derivable round-trips (G6/G7). */
+/** A page's owner (G1) — Cloud ownership is transferable, so ≠ `createdBy`. */
+export interface PageOwner {
+  accountId?: string;
+  displayName: string;
+  email?: string;
+}
+
+/** Lazily-invoked fetchers for the derivable round-trips (G1/G6/G7). */
 export interface ResolveDeps {
   getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
   getCurrentUser?: () => Promise<CurrentUser>;
+  getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+}
+
+/**
+ * The values that had to be fetched before a placeholder could resolve. Grouped
+ * rather than passed positionally so adding a future round-trip does not grow
+ * {@link resolveOne}'s signature again.
+ */
+export interface Fetched {
+  space?: ConfluenceSpace;
+  currentUser?: CurrentUser;
+  owner?: PageOwner;
 }
 
 export interface ResolveResult {
@@ -103,12 +123,12 @@ function resolveDate(
 export function resolveOne(
   raw: string,
   ctx: ResolveContext,
-  space: ConfluenceSpace | undefined,
-  currentUser: CurrentUser | undefined,
+  fetched: Fetched,
   notes: ExportNote[]
 ): string {
   const { base } = classifyPlaceholder(raw);
   const { details, template, exportDate } = ctx;
+  const { space, currentUser, owner } = fetched;
 
   switch (base) {
     case "$scroll.title":
@@ -125,6 +145,10 @@ export function resolveOne(
       return (details.labels ?? []).join(", ");
     case "$scroll.pagelabels.capitalised":
       return (details.labels ?? []).map(capitalizeFirst).join(", ");
+
+    // The owner is NOT the creator: Cloud ownership can be transferred (G1).
+    case "$scroll.pageowner.fullName":
+      return owner?.displayName ?? "";
 
     case "$scroll.creator":
     case "$scroll.creator.fullName":
@@ -197,6 +221,7 @@ export async function resolvePlaceholders(
   // Decide which round-trips are needed from the used set (lazy contract).
   let needsSpace = false;
   let needsUser = false;
+  let needsOwner = false;
   const unsupportedNames = new Set<string>();
   for (const raw of rawPlaceholders) {
     const cls = classifyPlaceholder(raw);
@@ -207,6 +232,7 @@ export async function resolvePlaceholders(
     }
     if (cls.dependency === "space") needsSpace = true;
     else if (cls.dependency === "currentUser") needsUser = true;
+    else if (cls.dependency === "owner") needsOwner = true;
   }
 
   let space: ConfluenceSpace | undefined;
@@ -253,6 +279,39 @@ export async function resolvePlaceholders(
     }
   }
 
+  let owner: PageOwner | undefined;
+  if (needsOwner) {
+    if (deps.getPageOwner && ctx.details.id) {
+      try {
+        owner = (await deps.getPageOwner(ctx.details.id)) ?? undefined;
+        if (!owner) {
+          notes.push({
+            level: "info",
+            code: "placeholder-empty",
+            message:
+              "$scroll.pageowner.fullName has no value (the page has no owner, or the account could not be read).",
+          });
+        }
+      } catch {
+        notes.push({
+          level: "warning",
+          code: "owner-fetch-failed",
+          message: "Could not load the page owner; $scroll.pageowner.* will be empty.",
+        });
+      }
+    } else {
+      notes.push({
+        level: "warning",
+        code: "owner-unavailable",
+        message: ctx.details.id
+          ? "The template uses $scroll.pageowner.* but no page-owner fetcher is available; those placeholders will be empty."
+          : "The template uses $scroll.pageowner.* but the page has no id; those placeholders will be empty.",
+      });
+    }
+  }
+
+  const fetched: Fetched = { space, currentUser, owner };
+
   let resolvedCount = 0;
   for (const raw of rawPlaceholders) {
     const cls = classifyPlaceholder(raw);
@@ -266,7 +325,7 @@ export async function resolvePlaceholders(
       });
       continue;
     }
-    const value = resolveOne(raw, ctx, space, currentUser, notes);
+    const value = resolveOne(raw, ctx, fetched, notes);
     values.set(raw, value);
     if (value !== "") resolvedCount += 1;
   }

@@ -171,6 +171,7 @@ export function TemplateSection({
           ? {
               getSpace: (key) => client.getSpace(key),
               getCurrentUser: () => client.getCurrentUser(),
+              getPageOwner: (id) => client.getPageOwner(id),
             }
           : {},
       });
@@ -255,7 +256,7 @@ export function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
         <p style={{ color: "#7a869a", margin: 0 }}>No Scroll placeholders detected.</p>
       )}
       <ScanGroup icon="✓" color="#006644" label="Supported" hits={supported} />
-      <ScanGroup icon="⚠" color="#974f0c" label="Will be empty" hits={unsupported} note="will be empty" />
+      <ScanGroup icon="⚠" color="#974f0c" label="Will be empty" hits={unsupported} />
       <ScanGroup icon="✗" color="#bf2600" label="Not supported" hits={never} />
       <ContentInsertionLine hasContentPlaceholder={hasContentPlaceholder} />
     </div>
@@ -295,18 +296,23 @@ function ContentInsertionLine({
   );
 }
 
+/**
+ * One scan bucket. The group header states the OUTCOME ("Will be empty (4)");
+ * each row states its own REASON, which `classifyPlaceholder` already puts on
+ * the hit. Rendering a single static note per bucket instead would flatten
+ * genuinely different causes — a Cloud-impossible DC username, a gap waiting on
+ * the image module, and an unmodelled field all look alike then.
+ */
 function ScanGroup({
   icon,
   color,
   label,
   hits,
-  note,
 }: {
   icon: string;
   color: string;
   label: string;
   hits: ScanResult["supported"];
-  note?: string;
 }): React.JSX.Element | null {
   if (hits.length === 0) return null;
   return (
@@ -319,7 +325,7 @@ function ScanGroup({
           <li key={h.base}>
             <code>{h.base}</code>
             {h.count > 1 ? ` ×${h.count}` : ""}
-            {note ? <span style={{ color: "#7a869a" }}> — {note}</span> : ""}
+            {h.reason ? <span style={{ color: "#7a869a" }}> — {h.reason}</span> : ""}
           </li>
         ))}
       </ul>

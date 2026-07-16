@@ -4,6 +4,7 @@ import {
   resolveOne,
   resolvePlaceholders,
   type CurrentUser,
+  type PageOwner,
   type ResolveContext,
 } from "../../utils/docx/resolver.js";
 
@@ -36,6 +37,11 @@ const currentUser: CurrentUser = {
   email: "bjoern@x.com",
 };
 
+// Deliberately NOT the creator (Alice Author): Cloud ownership is transferable,
+// so a resolver that quietly fell back to `createdBy` would still look right on
+// most pages. This fixture makes that mistake fail (G1).
+const owner: PageOwner = { accountId: "u-9", displayName: "Olga Owner" };
+
 const ctx: ResolveContext = {
   details,
   template: { name: "mayflower.docx", modificationDate: new Date(2026, 6, 14) },
@@ -43,7 +49,7 @@ const ctx: ResolveContext = {
 };
 
 function value(raw: string): string {
-  return resolveOne(raw, ctx, space, currentUser, []);
+  return resolveOne(raw, ctx, { space, currentUser, owner }, []);
 }
 
 describe("resolveOne — every direct + derivable mapping row", () => {
@@ -56,6 +62,8 @@ describe("resolveOne — every direct + derivable mapping row", () => {
     ["$scroll.tinyurl", details.tinyUrl!],
     ["$scroll.pagelabels", "architecture, review"],
     ["$scroll.pagelabels.capitalised", "Architecture, Review"],
+    // Owner (G1) — distinct from the creator on purpose.
+    ["$scroll.pageowner.fullName", "Olga Owner"],
     // Creator / modifier
     ["$scroll.creator", "Alice Author"],
     ["$scroll.creator.fullName", "Alice Author"],
@@ -87,13 +95,13 @@ describe("resolveOne — every direct + derivable mapping row", () => {
 
   it("modifier.email is empty (absent on Cloud) with a note", () => {
     const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
-    expect(resolveOne("$scroll.modifier.email", ctx, space, currentUser, notes)).toBe("");
+    expect(resolveOne("$scroll.modifier.email", ctx, { space, currentUser, owner }, notes)).toBe("");
     expect(notes.some((n) => n.code === "placeholder-empty")).toBe(true);
   });
 
   it("exportdate with an unknown format token falls back to ISO + a note (#10)", () => {
     const notes: import("@atlcli/confluence/browser").ExportNote[] = [];
-    const out = resolveOne('$scroll.exportdate.("yyyy-QQ")', ctx, space, currentUser, notes);
+    const out = resolveOne('$scroll.exportdate.("yyyy-QQ")', ctx, { space, currentUser, owner }, notes);
     expect(out).toBe("2026-07-14"); // ISO fallback for the export date
     expect(notes.some((n) => n.code === "date-format-unknown")).toBe(true);
   });
@@ -142,16 +150,62 @@ describe("resolvePlaceholders — lazy fetching", () => {
     expect(res.values.get("$scroll.space.name")).toBe("");
     expect(res.notes.some((n) => n.code === "space-unavailable")).toBe(true);
   });
+
+  it("does NOT call getPageOwner unless a pageowner placeholder is present (G1)", async () => {
+    const getPageOwner = mock(async () => owner);
+    await resolvePlaceholders(["$scroll.title", "$scroll.creator"], ctx, { getPageOwner });
+    expect(getPageOwner).not.toHaveBeenCalled();
+  });
+
+  it("calls getPageOwner once, with the page id, and resolves the owner (G1)", async () => {
+    const getPageOwner = mock(async () => owner);
+    const getSpace = mock(async () => space);
+    const res = await resolvePlaceholders(["$scroll.pageowner.fullName"], ctx, {
+      getPageOwner,
+      getSpace,
+    });
+    expect(getPageOwner).toHaveBeenCalledTimes(1);
+    expect(getPageOwner).toHaveBeenCalledWith("123");
+    expect(getSpace).not.toHaveBeenCalled();
+    // The OWNER, not the creator — a createdBy fallback would yield "Alice Author".
+    expect(res.values.get("$scroll.pageowner.fullName")).toBe("Olga Owner");
+  });
+});
+
+describe("resolvePlaceholders — page owner degradation (G1)", () => {
+  it("renders empty + a note when the page has no owner", async () => {
+    const getPageOwner = mock(async () => null);
+    const res = await resolvePlaceholders(["$scroll.pageowner.fullName"], ctx, { getPageOwner });
+    expect(res.values.get("$scroll.pageowner.fullName")).toBe("");
+    expect(res.notes.some((n) => n.code === "placeholder-empty")).toBe(true);
+  });
+
+  it("renders empty + a warning when the owner fetch throws", async () => {
+    const getPageOwner = mock(async () => {
+      throw new Error("403");
+    });
+    const res = await resolvePlaceholders(["$scroll.pageowner.fullName"], ctx, { getPageOwner });
+    expect(res.values.get("$scroll.pageowner.fullName")).toBe("");
+    expect(res.notes.some((n) => n.code === "owner-fetch-failed")).toBe(true);
+  });
+
+  it("renders empty + a warning when no owner fetcher is provided", async () => {
+    const res = await resolvePlaceholders(["$scroll.pageowner.fullName"], ctx, {});
+    expect(res.values.get("$scroll.pageowner.fullName")).toBe("");
+    expect(res.notes.some((n) => n.code === "owner-unavailable")).toBe(true);
+  });
 });
 
 describe("resolvePlaceholders — pinning: never a literal", () => {
   it("maps unsupported and never placeholders to empty string + report entry", async () => {
+    // $scroll.spacelogo is genuinely unsupported (needs the image module);
+    // $scroll.pageowner.fullName is NOT used here — it became supported (G1).
     const res = await resolvePlaceholders(
-      ["$scroll.pageowner.fullName", "$adhocState", "$scroll.pageproperty.(status)"],
+      ["$scroll.spacelogo", "$adhocState", "$scroll.pageproperty.(status)"],
       ctx,
       {}
     );
-    expect(res.values.get("$scroll.pageowner.fullName")).toBe("");
+    expect(res.values.get("$scroll.spacelogo")).toBe("");
     expect(res.values.get("$adhocState")).toBe("");
     expect(res.values.get("$scroll.pageproperty.(status)")).toBe("");
     // Every value is a string; none contains a literal $scroll./$adhoc.
