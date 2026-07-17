@@ -8,5 +8,5 @@
     "types": ["bun-types"]
   },
   "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"],
-  "exclude": ["src", "astro.config.mjs"]
+  "exclude": ["src", "astro.config.mjs", "apps/browser-export-harness"]
 }

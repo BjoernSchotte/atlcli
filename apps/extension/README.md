@@ -1,9 +1,10 @@
 # @atlcli/extension
 
 Chrome extension (Manifest V3) workspace for atlcli — spec `002-extension-workspace`.
-This is **scaffolding only**: a side panel, a service worker, and an offscreen
-WASM host wired together over a typed message protocol. No Confluence calls, no
-export logic (those arrive in specs 003–005).
+It detects Confluence pages and exports DOCX and PDF from a side panel. The extension owns
+Chrome/session policy, IndexedDB template and job stores, background/offscreen routing, browser
+downloads, and UI. Reusable format behavior lives in `@atlcli/docx`, `@atlcli/pdf`, and the
+browser-only `@atlcli/pdf-compiler-browser` package.
 
 Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
 
@@ -19,14 +20,17 @@ Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
 entrypoints/
   background.ts       # service worker: message router + offscreen lifecycle
   sidepanel/          # React side panel (index.html + main.tsx + App.tsx)
-  offscreen/          # headless WASM host (index.html + main.ts)
+  offscreen/          # headless PDF compiler host (index.html + main.ts)
 utils/
+  docx/               # extension storage/session/output adapters
+  pdf/                # extension page, job, worker, and output adapters
   messages.ts         # typed message protocol (discriminated unions)
-  router.ts           # PURE message router (functional core, unit-tested)
+  router.ts           # message router (functional core, unit-tested)
   offscreen.ts        # idempotent ensureOffscreen() helper
-  wasm-smoke.ts        # inline WASM add module + runner
+workers/
+  pdf-compiler.ts      # static WASM/font/license imports + compiler package
 scripts/
-  check-output-build.ts  # post-build isomorphism scan (node:/bun:/remote)
+  check-output-build.ts  # manifest, inventory, CSP, and runtime-leak scan
 ```
 
 ## Build
@@ -54,9 +58,8 @@ still starts; only the automatic Chrome launch is skipped.
 2. Open `chrome://extensions`, enable **Developer mode** (top-right).
 3. Click **Load unpacked** and select `apps/extension/.output/chrome-mv3/`.
 4. Click the atlcli toolbar action to open the side panel.
-5. In the side panel **Debug** section, use **Ping** (round-trips through the
-   service worker → `pong`) and **WASM smoke** (panel → SW → offscreen → SW →
-   panel → `40 + 2 = 42`).
+5. Open an eligible Confluence page. Upload/select a DOCX template for Word export, or run the
+   built-in PDF export.
 
 **After each rebuild:** click the **reload** (↻) icon on the atlcli card in
 `chrome://extensions`. During active `dev` sessions WXT reloads automatically, so
@@ -72,11 +75,17 @@ bun run --cwd apps/extension typecheck     # wxt prepare && tsc --noEmit
 bun run --cwd apps/extension check:output  # scan built bundle for leaks
 ```
 
+The repository-level `bun run check:browser-export-harness` and
+`bun run test:browser-export-harness` commands prove the reusable DOCX/PDF package contracts in
+an independent production Vite/Chromium host.
+
 ## Design notes
 
 - **No remote-hosted UI / no inline scripts** — everything renders from bundled,
   local assets (MV3 CSP `script-src 'self' 'wasm-unsafe-eval'`). The bundled
-  offscreen document is where WASM (typst.ts in spec 005) runs.
+  offscreen document hosts the PDF compiler worker.
 - The **UI ↔ extension-capability boundary is the typed message protocol**
-  (`utils/messages.ts`). Keeping it thin and stable preserves the option to move
-  the UI into a sandboxed remote iframe later (PLAN §2.2) without re-review churn.
+  (`utils/messages.ts`). Large source and result bytes remain in the extension's job store;
+  messages carry bounded control data.
+- DOCX and PDF are separate engines. They share Confluence `ExportBlock[]`, not a generic
+  export engine, runner, report, or output sink.

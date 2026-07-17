@@ -133,18 +133,23 @@ bun run docs:build    # Build the production documentation site
 ```
 atlcli/
 ├── apps/
-│   ├── cli/              # CLI entry point and commands
-│   └── uno-dashboard/    # UNO dashboard web app
+│   ├── browser-export-harness/ # Vite/Chromium DOCX + PDF conformance app
+│   ├── cli/                    # CLI entry point and commands
+│   ├── extension/              # Chrome MV3 export host
+│   └── uno-dashboard/          # UNO dashboard web app
 ├── packages/
-│   ├── core/             # Shared utilities (config, logging, templates)
-│   ├── confluence/       # Confluence API client + markdown conversion
-│   ├── jira/             # Jira API client
-│   ├── export/           # PDF/Word export (Python)
-│   └── plugin-api/       # Plugin type definitions
+│   ├── core/                   # Shared utilities (config, logging, templates)
+│   ├── confluence/             # Confluence client, conversion, shared export blocks
+│   ├── docx/                   # Isomorphic DOCX engine + browser runtime
+│   ├── export/                 # Legacy PDF/Word export (Python)
+│   ├── jira/                   # Jira API client
+│   ├── pdf/                    # Host-neutral PDF preparation and runner contracts
+│   ├── pdf-compiler-browser/   # Private Typst-WASM browser adapter
+│   └── plugin-api/             # Plugin type definitions
 ├── plugins/              # Built-in plugins (git, example)
 ├── scripts/              # Build and release scripts
 ├── services/             # Background services (UNO)
-├── spec/                 # Feature specifications
+├── specs/                # Feature specifications and implementation plans
 └── src/content/docs/     # Documentation (Astro Starlight)
 ```
 

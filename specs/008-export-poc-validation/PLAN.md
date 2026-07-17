@@ -3,7 +3,9 @@
 Status: **Planned**
 
 Spec ID: `008-export-poc-validation`
-Depends on: `004-docx-export`, `007-pdf-export` (validates their output; 002/003 transitively)
+Depends on: `004-docx-export`, `007-pdf-export`, `009-multi-host-browser-export-runtime`
+(validates extension output after the package extraction and records the neutral browser
+conformance evidence; 002/003 transitively)
 Related strategy: FAHRPLAN Phase 1 Task 1.5 · `TYPST-EXPORT-ANGLE.md` §7.5 Erfolgskriterien · `EXPORT-QUALITY-ANGLE.md` §6 (20-point benchmark), §7 item 4
 Origin: FAHRPLAN Phase 1 — "Erfolgskriterien prüfen"
 
@@ -17,6 +19,11 @@ into an executable validation protocol and produces a single results document �
 everything here is **joint E2E work**: it needs Björn's Chrome, the real mayflower
 Confluence, a real customer-style Word template, and (for the reference test) access to a
 Scroll Word Exporter output.
+
+Spec 009's Vite/Chromium harness is a required automated precondition for this protocol. It
+proves the public DOCX/PDF package contracts, real canvas, Worker, WASM, fonts, warm-repeat, and
+abort behavior in a second browser consumer. It does not replace the extension, tenant, privacy,
+performance, or visual A/B evidence below.
 
 The four normative criteria (FAHRPLAN 1.5 / TYPST §7.5), plus the quality-dimension
 extension from EXPORT-QUALITY §7 item 4 ("not just parity — where are we visibly
@@ -113,6 +120,9 @@ Rows 2, 3 (🏆 expected: Typst-computed page numbers), 4, 7, 8, 9, 11, 12, 13, 
 ## 3. Task breakdown
 
 ### Task 1 — Test assets **[E2E: user]**
+
+- [ ] Record the spec 009 implementation SHA plus passing extension/harness artifact scans and
+  neutral Chromium DOCX/PDF conformance result in the frozen reference set
 
 - [ ] Reference page created in DOCSY per §2.1; storage source archived in this dir
 - [ ] Reference template provided/approved by Björn; placeholder inventory documented

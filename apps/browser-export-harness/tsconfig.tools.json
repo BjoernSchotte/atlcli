@@ -11,5 +11,6 @@
     "scripts/**/*.ts",
     "tests/**/*.ts",
     "src/vite-env.d.ts"
-  ]
+  ],
+  "exclude": []
 }

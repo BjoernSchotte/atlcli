@@ -60,4 +60,16 @@ describe("browser harness boundaries", () => {
     expect(server).not.toMatch(/(?:^|[\s"'])'unsafe-eval'(?:[\s"']|$)/m);
     expect(server).toContain("worker-src 'self'");
   });
+
+  it("typechecks DOM and Worker programs separately from the root program", () => {
+    const rootConfig = JSON.parse(read("../../tsconfig.json")) as { exclude?: string[] };
+    const rootPackage = JSON.parse(read("../../package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(rootConfig.exclude).toContain("apps/browser-export-harness");
+    expect(rootPackage.scripts?.typecheck).toContain("typecheck:browser-export-harness");
+    expect(read("package.json")).toContain("tsconfig.worker.json");
+    expect(JSON.parse(read("tsconfig.worker.json")).exclude).toEqual([]);
+    expect(JSON.parse(read("tsconfig.tools.json")).exclude).toEqual([]);
+  });
 });

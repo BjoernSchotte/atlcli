@@ -1,6 +1,6 @@
 # PDF Export — typst.ts in the Offscreen Document, atlcli Standard Template
 
-Status: **Planned — implementation-ready after feasibility gates**
+Status: **Implemented** (historical task checklist retained; ownership refined by spec 009)
 
 Spec ID: `007-pdf-export`
 Depends on:
@@ -19,6 +19,12 @@ Follow-up product direction: [`TEMPLATE-UX.md`](./TEMPLATE-UX.md) — curated Ty
 templates, Git-friendly packages and a focused PDF stationery-import wizard without a
 general-purpose template studio.
 Origin: FAHRPLAN Phase 1 — "PDF-Export"
+
+Supersession note (spec 009): this spec's PDF behavior and extension worker/job topology remain
+implemented. The low-level Typst-WASM adapter and normalized compiler lifecycle moved to the
+private `@atlcli/pdf-compiler-browser` package; `@atlcli/pdf` now owns the host-neutral runner,
+validation, diagnostics, and runtime-asset manifest. The extension still owns authenticated
+assets, IndexedDB jobs, offscreen/worker control, cancellation/timeout policy, download, and UI.
 
 ---
 
