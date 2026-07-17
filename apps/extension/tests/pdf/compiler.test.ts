@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
@@ -45,6 +46,143 @@ function anonymousText(length: number, special: Record<number, string> = {}): st
   const characters = Array<string>(length).fill("x");
   for (const [offset, value] of Object.entries(special)) characters[Number(offset)] = value;
   return characters.join("");
+}
+
+const DENSE_TABLE_LINK =
+  "https://docs.example.com/platform/integration/deployment-guide?environment=staging&source=pdf-test";
+const CUSTOM_LABEL_LINK = "https://docs.example.com/platform/overview";
+
+function denseTableFixture(): ExportBlock {
+  const cell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: Array<number>(14).fill(1),
+    rows: [
+      {
+        cells: [
+          "Updated",
+          "Component",
+          "Stage",
+          "Priority",
+          "Description",
+          "Reference",
+          "Owner",
+          "Release",
+          "Branch",
+          "Review",
+          "Fallback",
+          "Notes",
+          "Guide",
+          "Result",
+        ].map((text) => cell(text, true)),
+      },
+      {
+        cells: [
+          cell("20 May 2026 12:00"),
+          cell("Integration gateway"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "DEPLOYMENT BLOCKED", color: "#DE350B" }] }],
+          },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "READY FOR RELEASE", color: "#00875A" }] }],
+          },
+          cell("Normal prose keeps natural word wrapping in narrow columns without turning every token into an atom."),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "link",
+                    target: { kind: "external", href: DENSE_TABLE_LINK },
+                    content: [{ type: "text", text: DENSE_TABLE_LINK }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alex Example" }] }],
+          },
+          cell("1.13.1"),
+          cell("development"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "WAITING FOR REVIEW", color: "#FF991F" }] }],
+          },
+          cell("No forced clipping"),
+          cell("-"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "link",
+                    target: { kind: "external", href: CUSTOM_LABEL_LINK },
+                    content: [{ type: "text", text: "Deployment guide" }],
+                  },
+                ],
+              },
+            ],
+          },
+          cell("Synthetic fixture"),
+        ],
+      },
+      ...Array.from({ length: 30 }, (_, index) => ({
+        cells: [
+          cell(`D${index + 1}`),
+          cell(`S${index + 1}`),
+          cell("ON"),
+          cell("LOW"),
+          cell("Text"),
+          cell("Ref"),
+          cell("Team"),
+          cell(`1.14.${index}`),
+          cell("main"),
+          cell("OK"),
+          cell("Ja"),
+          cell("Test"),
+          cell("Guide"),
+          cell("OK"),
+        ],
+      })),
+    ],
+  };
+}
+
+function extractPdfText(pdf: Uint8Array): string | null {
+  const pdftotext = Bun.which("pdftotext");
+  if (!pdftotext) return null;
+  const result = spawnSync(pdftotext, ["-raw", "-", "-"], {
+    input: pdf,
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`pdftotext failed: ${result.stderr.trim()}`);
+  return result.stdout;
 }
 
 describe("BrowserPdfCompiler", () => {
@@ -229,9 +367,65 @@ This is a real PDF.
     });
     const compiler = await createCompiler();
     const result = await compiler.compile(bundle);
+    const repeat = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(repeat.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(repeat.pdf).toEqual(result.pdf);
+  }, 30_000);
+
+  it("compiles a dense table without losing prose, status labels, or the full link target", async () => {
+    const prepared = await preparePdfDocument([denseTableFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Dense table regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
+    const inspection = validatePdfOutput(result.pdf!);
+    expect(inspection.tagged).toBe(true);
+    expect(inspection.pageCount).toBeGreaterThan(4);
+    expect(inspection.embeddedFontFiles).toBeGreaterThanOrEqual(3);
+
+    const pdfSource = new TextDecoder("latin1").decode(result.pdf);
+    expect(pdfSource).toContain(`/URI (${DENSE_TABLE_LINK})`);
+    expect(pdfSource).toContain(`/URI (${CUSTOM_LABEL_LINK})`);
+    expect(pdfSource).toMatch(/SourceCodePro-Bold/);
+
+    expect(bundle.main).toContain("Normal prose keeps natural word wrapping");
+    expect(bundle.main).toContain("DEPLOYMENT BLOCKED");
+    expect(bundle.main).toContain("Alex Example");
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      const extractedCompact = extracted
+        .replaceAll("\u00ad", "")
+        .replaceAll("\u200b", "")
+        .replace(/\s+/g, "");
+      expect(extractedCompact).toContain("prosekeeps");
+      expect(extractedCompact).toContain("naturalwordwrapping");
+      expect(extractedCompact).toContain("DEPLOYMENTBLOCKED");
+      expect(extractedCompact).toContain("READYFORRELEASE");
+      expect(extractedCompact).toContain("WAITINGFORREVIEW");
+      expect(extractedCompact).toContain("AlexExample");
+      expect(extractedCompact).toContain("docs.example.com");
+      expect(extractedCompact).toContain("Deploymentguide");
+      expect(extractedCompact.match(/Updated/g)?.length ?? 0).toBeGreaterThan(1);
+    }
+
+    const repeat = await compiler.compile(bundle);
+    expect(repeat.diagnostics).toEqual([]);
+    expect(repeat.pdf).toEqual(result.pdf);
   }, 30_000);
 
   it("compiles literal office-style text safely inside lists and tables", async () => {
