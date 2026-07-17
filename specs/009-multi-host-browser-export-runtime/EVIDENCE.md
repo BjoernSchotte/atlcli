@@ -2,8 +2,8 @@
 
 Recorded: 2026-07-17
 
-Status: automated implementation gates pass. The user-assisted load-unpacked extension E2E in
-`PLAN.md` §8.6 remains pending.
+Status: automated implementation gates and the user-assisted load-unpacked extension E2E in
+`PLAN.md` §8.6 pass.
 
 ## Implementation chain
 
@@ -83,9 +83,9 @@ Fonts    9 embedded font files
 
 The raw SHA-256 is unchanged from the captured pre-extraction baseline.
 
-## Pending user-assisted evidence
+## User-assisted extension evidence
 
-Load `apps/extension/.output/chrome-mv3/` in Chrome and complete `PLAN.md` §8.6: representative
-DOCX export, PDF export, navigation/abort with no stale download, and warm repeat. This gate is
-kept separate because the neutral harness cannot certify extension permissions, session auth,
-Chrome offscreen lifecycle, or the final human inspection of exported documents.
+On 2026-07-17, the user loaded the final `apps/extension/.output/chrome-mv3/` production build in
+Chrome, confirmed that it worked, and authorized moving the draft PR to ready for review. This
+completes the separate manual gate for extension permissions, session auth, Chrome offscreen
+lifecycle, and final exported-document inspection described in `PLAN.md` §8.6.

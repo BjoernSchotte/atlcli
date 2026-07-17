@@ -1,6 +1,6 @@
 # Multi-Host Browser Export Runtime — extension, embedded web, and desktop webview reuse
 
-Status: **Implemented — automated verification complete; user-assisted extension E2E pending**
+Status: **Implemented — automated and user-assisted verification complete**
 
 Planned at: `9a3c950ce36e63a88fbffe2f47172ebaf9cb9a95` (`feat(pdf): adapt inline layout in dense tables (#44)`)
 
@@ -8,9 +8,9 @@ Implementation branch: `codex/spec-009-multi-host-browser-runtime`. Current `ori
 merged before implementation (`e925d1e`), then the work was delivered as format-specific,
 harness, and documentation commits. See `EVIDENCE.md` for the exact chain and results.
 
-Delivery note: the user explicitly requested intermediate commits/pushes and will perform the
-load-unpacked extension E2E after receiving the final production build. The automated
-implementation is therefore committed while §8.6 remains an explicit pending acceptance gate.
+Delivery note: the user explicitly requested intermediate commits/pushes and performed the
+load-unpacked extension E2E after receiving the final production build. On 2026-07-17, the user
+confirmed that the extension worked and authorized moving the draft PR to ready for review.
 
 Depends on:
 
@@ -1018,10 +1018,9 @@ Using the configured test profile/space from repository instructions:
 6. Clean any page/attachment/test resources created by the E2E.
 
 If credentials or browser access are unavailable, mark this gate **not executed** and do not
-claim extension E2E success. The default is to leave the implementation uncommitted. For this
-delivery, the user explicitly requested intermediate commits/pushes and will run the gate from
-the final build, so the automated implementation is committed with this item visibly pending.
-Tests read or harness E2E are not substitutes for the extension E2E claim.
+claim extension E2E success. Tests read or harness E2E are not substitutes for the extension E2E
+claim. For this delivery, the user loaded the final production build and confirmed successful
+manual operation on 2026-07-17.
 
 ---
 
@@ -1050,8 +1049,7 @@ The implementation is complete only when all of the following are true:
 - [x] Typecheck/Turbo/CI inputs cover TSX, workers, configs, fixtures, fonts, licenses, and transitive workspace sources.
 - [x] Current docs and narrow historical supersession notes are updated.
 - [x] Full automated suite passes.
-- [ ] User-assisted extension E2E passes and all created resources are cleaned; until then it is
-  recorded as pending and no extension E2E claim is made.
+- [x] User-assisted extension E2E passes; the user confirmed the final load-unpacked build works.
 - [x] No package is published, no release is made, and every push was explicitly requested.
 
 ---
