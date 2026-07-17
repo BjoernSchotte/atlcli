@@ -56,6 +56,9 @@ The first GitHub Actions run exposed a stale-output merge between an on-demand W
 and a restored Turbo build artifact. The artifact scanner correctly rejected two compiler-worker
 files. Browser output roots are now removed through an exact-path, regression-tested cleaner
 before direct and Turbo build routes; neighboring source directories are explicitly preserved.
+The following run reached the new Chromium job but exposed an unversioned `bunx playwright`
+install resolving newer than the pinned workspace test package. CI now installs the exact
+`@playwright/test` version, with a boundary test keeping both declarations equal.
 
 ## Output parity
 

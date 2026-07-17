@@ -130,7 +130,7 @@ jobs:
         run: bun run fonts:ensure
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright@1.55.0 install --with-deps chromium
 
       - name: Type check browser export harness
         run: bun run typecheck:browser-export-harness

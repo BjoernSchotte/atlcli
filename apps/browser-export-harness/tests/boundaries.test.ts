@@ -72,4 +72,14 @@ describe("browser harness boundaries", () => {
     expect(JSON.parse(read("tsconfig.worker.json")).exclude).toEqual([]);
     expect(JSON.parse(read("tsconfig.tools.json")).exclude).toEqual([]);
   });
+
+  it("installs the same pinned Playwright version in CI that runs the harness", () => {
+    const harnessPackage = JSON.parse(read("package.json")) as {
+      devDependencies: { "@playwright/test": string };
+    };
+    const version = harnessPackage.devDependencies["@playwright/test"];
+    expect(read("../../.github/workflows/ci.yml")).toContain(
+      `bunx playwright@${version} install --with-deps chromium`
+    );
+  });
 });
