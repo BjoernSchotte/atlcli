@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { routeMessage, type RouterDeps } from "../utils/router.js";
 import type { EntityDetection } from "../utils/messages.js";
 
-const noEntity: EntityDetection = { url: null, entity: null, seq: 0 };
+const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
@@ -80,15 +80,24 @@ describe("routeMessage (pure router)", () => {
 
   it("answers get-current-entity with the resolved detection", async () => {
     const detection: EntityDetection = {
+      windowId: 7,
       url: "https://x.atlassian.net/wiki/spaces/DOCSY/pages/123/Home",
       entity: { product: "confluence", type: "page", pageId: "123", spaceKey: "DOCSY" },
       seq: 5,
     };
+    const requestedWindowIds: number[] = [];
     const res = await routeMessage(
-      { kind: "get-current-entity" },
-      { ...okDeps, getCurrentEntity: async () => detection }
+      { kind: "get-current-entity", windowId: detection.windowId },
+      {
+        ...okDeps,
+        getCurrentEntity: async (windowId) => {
+          requestedWindowIds.push(windowId);
+          return detection;
+        },
+      }
     );
     expect(res).toEqual({ kind: "current-entity", detection });
+    expect(requestedWindowIds).toEqual([detection.windowId]);
   });
 
   it("routes PDF compile and cancellation by job id", async () => {

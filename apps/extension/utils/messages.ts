@@ -19,6 +19,8 @@ import type { AtlassianEntity } from "@atlcli/core";
  * the extractor resolved from it (`null` for non-Atlassian / unrecognized tabs).
  */
 export interface EntityDetection {
+  /** Chrome window whose active tab produced this detection. */
+  windowId: number;
   /** Active tab URL, or `null` when no URL is available (e.g. no active tab). */
   url: string | null;
   /** Entity resolved via `extractEntityFromUrl`, or `null` when none matches. */
@@ -38,7 +40,7 @@ export interface EntityDetection {
 export type ExtRequest =
   | { kind: "ping" }
   | { kind: "wasm-smoke"; a: number; b: number }
-  | { kind: "get-current-entity" }
+  | { kind: "get-current-entity"; windowId: number }
   | { kind: "pdf:compile"; jobId: string }
   | { kind: "pdf:cancel"; jobId: string };
 
@@ -104,16 +106,26 @@ export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
 /** Narrowing type guard for panel-facing request messages. */
 export function isExtRequest(value: unknown): value is ExtRequest {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { kind?: unknown; jobId?: unknown };
+  const candidate = value as { kind?: unknown; jobId?: unknown; windowId?: unknown };
   const kind = candidate.kind;
   if (kind === "pdf:compile" || kind === "pdf:cancel") return isPdfJobId(candidate.jobId);
-  return kind === "ping" || kind === "wasm-smoke" || kind === "get-current-entity";
+  if (kind === "get-current-entity") return isWindowId(candidate.windowId);
+  return kind === "ping" || kind === "wasm-smoke";
 }
 
 /** Narrowing type guard for the SW→panel `entity-changed` push message. */
 export function isEntityChanged(value: unknown): value is EntityChanged {
   if (typeof value !== "object" || value === null) return false;
-  return (value as { kind?: unknown }).kind === "entity-changed";
+  const candidate = value as { kind?: unknown; detection?: { windowId?: unknown } };
+  return candidate.kind === "entity-changed" && isWindowId(candidate.detection?.windowId);
+}
+
+/** Narrow a broadcast push to the Chrome window owned by one side panel. */
+export function isEntityChangedForWindow(
+  value: unknown,
+  windowId: number
+): value is EntityChanged {
+  return isEntityChanged(value) && value.detection.windowId === windowId;
 }
 
 /** Narrowing type guard for offscreen-bound request messages. */
@@ -128,4 +140,8 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
 
 function isPdfJobId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isWindowId(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
 }

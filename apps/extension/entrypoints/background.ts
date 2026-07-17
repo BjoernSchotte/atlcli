@@ -20,11 +20,12 @@ import {
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
+import { createObserverSession } from "../utils/observer-session.js";
 import {
   currentDetection,
   initialObserverState,
+  isObserverState,
   observeTab,
-  selectActiveTabUrl,
   type ObserverState,
 } from "../utils/tab-observer.js";
 
@@ -35,6 +36,7 @@ import {
  * offscreen document dies with the extension process anyway.
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
+const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
 const offscreenIdle = createIdleTimer({
   delayMs: OFFSCREEN_IDLE_MS,
   onIdle: () => {
@@ -125,15 +127,25 @@ export default defineBackground({
     .catch((err) => console.error("setPanelBehavior failed", err));
 
   // ---- Tab observation (Task 1) --------------------------------------------
-  // The SW is the canonical observer (PLAN §2.1). The dedup + ordering memory
-  // lives here in the imperative shell; all decision logic is the pure
-  // `observeTab` / `currentDetection` core. Both the push (feed) and the pull
-  // (getCurrentEntity) mutate the SAME `observer`, so they draw ordering `seq`
-  // values from one monotonic counter (spec 003, finding: detection ordering).
-  let observer: ObserverState = initialObserverState();
-  const feed = (url: string | undefined | null): void => {
-    const { state, message } = observeTab(observer, url);
-    observer = state;
+  // The SW is the canonical observer (PLAN §2.1), but MV3 workers are
+  // disposable. Keep the ordering cursor in storage.session so a worker wakeup
+  // cannot restart `seq` at 1 while a still-open panel retains a higher
+  // `lastSeq`. The session also serializes pulls and pushes, including the tab
+  // query itself, so a slow pull cannot be stamped newer than a tab-switch push.
+  const observerSession = createObserverSession<ObserverState>(chrome.storage.session, {
+    key: TAB_OBSERVER_STORAGE_KEY,
+    initialState: initialObserverState,
+    isState: isObserverState,
+  });
+
+  const feed = async (
+    windowId: number,
+    url: string | undefined | null
+  ): Promise<void> => {
+    const message = await observerSession.mutate((observer) => {
+      const result = observeTab(observer, windowId, url);
+      return { state: result.state, value: result.message };
+    });
     if (message) pushEntityChanged(message);
   };
 
@@ -144,25 +156,20 @@ export default defineBackground({
    * for tab A can then be dropped by the panel once a newer push for tab B has
    * been applied (Task 1 AC, no lost-update race).
    */
-  const getCurrentEntity = async (): Promise<EntityDetection> => {
-    // Widen the query beyond the last-focused window: after an extension reload
-    // the panel takes focus, so `lastFocusedWindow`'s active tab can be the wrong
-    // one and the pull would read a non-Confluence URL (spec 003 E2E: "No
-    // Atlassian page detected" until F5). Gather the last-focused active tab AND
-    // every window's active tab, then let the pure selector prefer the docked
-    // Atlassian tab (see selectActiveTabUrl).
-    const [focusedTabs, activeTabs] = await Promise.all([
-      chrome.tabs.query({ active: true, lastFocusedWindow: true }),
-      chrome.tabs.query({ active: true }),
-    ]);
-    const url = selectActiveTabUrl({
-      focused: focusedTabs[0]?.url,
-      active: activeTabs.map((t) => t.url),
+  const getCurrentEntity = (windowId: number): Promise<EntityDetection> =>
+    observerSession.mutate(async (observer) => {
+      let url: string | undefined;
+      try {
+        const tabs = await chrome.tabs.query({ active: true, windowId });
+        url = tabs[0]?.url;
+      } catch {
+        // The panel's window may have closed while its request was in flight.
+        // Never fall back to a tab from another window.
+        url = undefined;
+      }
+      const result = currentDetection(observer, windowId, url);
+      return { state: result.state, value: result.detection };
     });
-    const { state, detection } = currentDetection(observer, url);
-    observer = state;
-    return detection;
-  };
 
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
@@ -179,7 +186,11 @@ export default defineBackground({
   chrome.tabs.onActivated.addListener((activeInfo) => {
     chrome.tabs
       .get(activeInfo.tabId)
-      .then((tab) => feed(tab?.url))
+      .then((tab) => {
+        void feed(activeInfo.windowId, tab?.url).catch((err) =>
+          console.error("tab observer persistence failed", err)
+        );
+      })
       .catch(() => {
         /* tab gone before we could read it; ignore */
       });
@@ -191,7 +202,9 @@ export default defineBackground({
   chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
     if (!changeInfo.url) return;
     if (!tab.active) return;
-    feed(changeInfo.url);
+    void feed(tab.windowId, changeInfo.url).catch((err) =>
+      console.error("tab observer persistence failed", err)
+    );
   });
   },
 });

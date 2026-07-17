@@ -15,8 +15,7 @@
 import React, { useEffect, useReducer, useState } from "react";
 import type { AtlassianEntity } from "@atlcli/core";
 import {
-  isEntityChanged,
-  type EntityChanged,
+  isEntityChangedForWindow,
   type ExtResponse,
 } from "../../utils/messages.js";
 import type { PanelEvent } from "../../utils/panel-state.js";
@@ -74,18 +73,21 @@ export function App(): React.JSX.Element {
   // ---- Detection: mount pull + push subscription (Task 1 wiring) -----------
   useEffect(() => {
     let cancelled = false;
-    const send = (message: { kind: "get-current-entity" }): Promise<unknown> =>
+    let panelWindowId: number | null = null;
+    const send = (message: { kind: "get-current-entity"; windowId: number }): Promise<unknown> =>
       chrome.runtime.sendMessage(message);
     const safeDispatch = (event: PanelEvent): void => {
       if (!cancelled) dispatch(event);
     };
-    const pull = (): void => void pullCurrentEntity(send, safeDispatch);
-
-    pull(); // mount pull — no race with the SW's entity-changed push
+    const pull = (): void => {
+      if (panelWindowId !== null) {
+        void pullCurrentEntity(panelWindowId, send, safeDispatch);
+      }
+    };
 
     const listener = (message: unknown): void => {
-      if (isEntityChanged(message)) {
-        const { detection } = message as EntityChanged;
+      if (panelWindowId !== null && isEntityChangedForWindow(message, panelWindowId)) {
+        const { detection } = message;
         dispatch({
           type: "detected",
           url: detection.url,
@@ -95,6 +97,22 @@ export function App(): React.JSX.Element {
       }
     };
     chrome.runtime.onMessage.addListener(listener);
+
+    // A global side panel belongs to one Chrome window. Resolve that owning
+    // window from the panel context (not from the service worker, where
+    // "current window" falls back to the last-focused window), then pull the
+    // exact active tab for it. Pushes received before the window id is known
+    // are ignored; the immediate pull below recovers the current active URL.
+    void chrome.windows
+      .getCurrent()
+      .then((currentWindow) => {
+        if (cancelled || currentWindow.id === undefined) return;
+        panelWindowId = currentWindow.id;
+        pull();
+      })
+      .catch(() => {
+        /* Window closed before initialization; do not fall back elsewhere. */
+      });
 
     // Re-pull when the panel regains visibility/focus. After an extension reload
     // an already-open Confluence tab fires no tab event, so the mount pull is the

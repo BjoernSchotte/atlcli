@@ -14,18 +14,36 @@ import type { EntityChanged, EntityDetection } from "./messages.js";
 import { isAtlassianCloudUrl } from "./profile.js";
 
 /**
- * Dedup + ordering memory. `lastEmittedUrl` de-duplicates SPA URL storms;
+ * Dedup + ordering memory. `lastEmittedUrlByWindow` de-duplicates SPA URL
+ * storms independently for each Chrome window;
  * `seq` is the monotonic detection counter shared by pushes and pulls so the
  * panel can order out-of-order deliveries (see {@link EntityDetection.seq}).
  */
 export interface ObserverState {
-  lastEmittedUrl: string | null;
+  lastEmittedUrlByWindow: Record<string, string>;
   seq: number;
 }
 
 /** Initial observer state (nothing emitted yet). */
 export function initialObserverState(): ObserverState {
-  return { lastEmittedUrl: null, seq: 0 };
+  return { lastEmittedUrlByWindow: {}, seq: 0 };
+}
+
+/** Validate observer state restored from `chrome.storage.session`. */
+export function isObserverState(value: unknown): value is ObserverState {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ObserverState>;
+  if (!Number.isSafeInteger(candidate.seq) || (candidate.seq ?? -1) < 0) return false;
+  if (
+    !candidate.lastEmittedUrlByWindow ||
+    typeof candidate.lastEmittedUrlByWindow !== "object" ||
+    Array.isArray(candidate.lastEmittedUrlByWindow)
+  ) {
+    return false;
+  }
+  return Object.entries(candidate.lastEmittedUrlByWindow).every(
+    ([windowId, url]) => /^\d+$/.test(windowId) && typeof url === "string"
+  );
 }
 
 /**
@@ -39,14 +57,14 @@ export function initialObserverState(): ObserverState {
  * null for it, so the panel lands on the idle/unsupported state instead of a
  * spurious "unknown error" (spec 003, finding: foreign-origin gating).
  */
-export function classifyUrl(url: string): Omit<EntityDetection, "seq"> {
+export function classifyUrl(url: string): Omit<EntityDetection, "seq" | "windowId"> {
   const entity = isAtlassianCloudUrl(url) ? extractEntityFromUrl(url) : null;
   return { url, entity };
 }
 
 /** Resolve a URL to a full detection payload stamped with `seq`. */
-export function detectEntity(url: string, seq: number): EntityDetection {
-  return { ...classifyUrl(url), seq };
+export function detectEntity(url: string, seq: number, windowId: number): EntityDetection {
+  return { ...classifyUrl(url), seq, windowId };
 }
 
 /**
@@ -66,15 +84,20 @@ export function detectEntity(url: string, seq: number): EntityDetection {
  */
 export function observeTab(
   state: ObserverState,
+  windowId: number,
   url: string | undefined | null
 ): { state: ObserverState; message: EntityChanged | null } {
   if (!url) return { state, message: null };
-  if (url === state.lastEmittedUrl) return { state, message: null };
+  const windowKey = String(windowId);
+  if (url === state.lastEmittedUrlByWindow[windowKey]) return { state, message: null };
 
   const seq = state.seq + 1;
-  const detection = detectEntity(url, seq);
+  const detection = detectEntity(url, seq, windowId);
   return {
-    state: { lastEmittedUrl: url, seq },
+    state: {
+      lastEmittedUrlByWindow: { ...state.lastEmittedUrlByWindow, [windowKey]: url },
+      seq,
+    },
     message: { kind: "entity-changed", detection },
   };
 }
@@ -92,54 +115,24 @@ export function observeTab(
  */
 export function currentDetection(
   state: ObserverState,
+  windowId: number,
   url: string | undefined | null
 ): { state: ObserverState; detection: EntityDetection } {
   if (!url) {
-    return { state, detection: { url: null, entity: null, seq: state.seq } };
+    return { state, detection: { windowId, url: null, entity: null, seq: state.seq } };
   }
-  if (url === state.lastEmittedUrl) {
-    return { state, detection: detectEntity(url, state.seq) };
+  const windowKey = String(windowId);
+  if (url === state.lastEmittedUrlByWindow[windowKey]) {
+    return { state, detection: detectEntity(url, state.seq, windowId) };
   }
   const seq = state.seq + 1;
-  return { state: { lastEmittedUrl: url, seq }, detection: detectEntity(url, seq) };
-}
-
-/**
- * Candidate tab URLs for resolving a `get-current-entity` pull.
- *
- *  - `focused`: the URL of the active tab in the last-focused window
- *    (`chrome.tabs.query({ active: true, lastFocusedWindow: true })`).
- *  - `active`:  the URLs of the active tab in EVERY window
- *    (`chrome.tabs.query({ active: true })`).
- */
-export interface TabCandidates {
-  focused: string | undefined | null;
-  active: (string | undefined | null)[];
-}
-
-/**
- * Pick the URL of the tab the side panel is docked next to (spec 003 E2E: after
- * an extension reload the panel showed "No Atlassian page detected" for an
- * already-open Confluence tab until the user pressed F5).
- *
- * Root cause: when the panel has focus, `lastFocusedWindow`'s active tab can be
- * the wrong tab, so the mount-pull read a non-Confluence URL. The fix widens the
- * SW query to all active tabs and prefers a real Atlassian tab:
- *
- *   1. the last-focused active tab, IF it is an Atlassian Cloud URL (the common
- *      case: the panel is docked beside the page the user is looking at);
- *   2. otherwise ANY active tab that is an Atlassian Cloud URL (recovers the
- *      docked Confluence tab when focus resolution missed it);
- *   3. otherwise the last-focused active tab, else the first active tab with a
- *      URL — so a non-Atlassian tab still lands on the idle state deterministically.
- */
-export function selectActiveTabUrl(candidates: TabCandidates): string | undefined {
-  const { focused, active } = candidates;
-  if (focused && isAtlassianCloudUrl(focused)) return focused;
-  const atlassian = active.find((u): u is string => !!u && isAtlassianCloudUrl(u));
-  if (atlassian) return atlassian;
-  if (focused) return focused;
-  return active.find((u): u is string => !!u);
+  return {
+    state: {
+      lastEmittedUrlByWindow: { ...state.lastEmittedUrlByWindow, [windowKey]: url },
+      seq,
+    },
+    detection: detectEntity(url, seq, windowId),
+  };
 }
 
 /** Re-export for shells that only need the entity type. */

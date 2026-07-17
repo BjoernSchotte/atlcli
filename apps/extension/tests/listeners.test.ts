@@ -9,7 +9,7 @@ import type { RouterDeps } from "../utils/router.js";
 
 const okRouterDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
-  getCurrentEntity: async () => ({ url: null, entity: null, seq: 0 }),
+  getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
 };
@@ -81,7 +81,7 @@ describe("handleExtMessage (background listener adapter)", () => {
         runWasmSmoke: async () => {
           throw new Error("boom");
         },
-        getCurrentEntity: async () => ({ url: null, entity: null, seq: 0 }),
+        getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
         runPdfCompile: okRouterDeps.runPdfCompile,
         runPdfCancel: okRouterDeps.runPdfCancel,
       }
