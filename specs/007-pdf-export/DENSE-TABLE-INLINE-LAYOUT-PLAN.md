@@ -1,11 +1,51 @@
 # PDF Dense-Table Inline Layout - Implementation Plan
 
-Status: **Approved - implementation in progress**
+Status: **Implemented - automated verification complete; manual wiki E2E pending**
 
 Parent spec: [`PLAN.md`](./PLAN.md)  
 Scope owner: `packages/pdf`  
 Primary runtime: pinned Typst 0.14.2 through the existing browser compiler  
 Product baseline: fixed A4 portrait standard template
+
+## Implementation record (2026-07-17)
+
+The production implementation follows the non-lossy path in this plan:
+
+- dense classification starts at nine effective columns and is recalculated for nested
+  tables;
+- dense cells reduce horizontal inset from 6 pt to 2 pt and switch only their paragraph
+  line breaker from `optimized` to `simple`; the pinned compiler otherwise accepted visibly
+  overfull ordinary phrases at fourteen-column widths, while language-aware hyphenation stays
+  enabled and normal tables remain unchanged;
+- paragraph-local `layout` supplies the real cell content width to measured raw-link and
+  status candidates in the pinned Typst 0.14.2 compiler;
+- raw links keep their complete annotation target and use full, `hostname/…`, then a
+  delimiter-aware wrapping hostname as visible candidates;
+- statuses remain complete colored badges in `Source Code Pro` Bold and fall back from
+  normal padding to reduced padding to a width-bounded multi-line badge;
+- dense mentions retain their complete label and receive rendering-only U+200B break
+  opportunities after `@` and safe account-ID delimiters;
+- hard clipping was not shipped; paragraphs, cells, links, badges, and prose are not clipped.
+
+The synthetic fourteen-column fixture compiles without diagnostics, stays tagged A4 portrait,
+retains complete external link annotations, embeds `Source Code Pro` Bold, and has been rendered
+to PNG for visual overflow inspection. PDF text extraction reconstructs link, status, mention,
+and prose values after removing rendering-only U+200B characters and whitespace. Search,
+interactive copy/paste, zoom inspection in the browser PDF viewer, and the customer-wiki export
+remain manual acceptance checks.
+
+Recorded automated verification:
+
+- `bun test packages/pdf/src/serialize.test.ts`: 14 tests passed;
+- `bun test apps/extension/tests/pdf/compiler.test.ts`: 10 tests passed, including a
+  byte-identical warm repeat of the dense fixture;
+- `bun test apps/extension/tests/pdf/run-export.test.ts`: 4 tests passed;
+- `bun run typecheck`: passed;
+- `bun run build`: passed;
+- `bun run --cwd apps/extension pdf:fixture`: 7-page, unrotated A4, tagged output with an
+  outline and eight embedded font files;
+- Poppler PNG inspection: the primary dense rows and a repeated-header continuation page show
+  no paint crossing a vertical cell boundary.
 
 ## 1. Decision summary
 
@@ -203,12 +243,18 @@ Dense mode must not:
 
 - disable hyphenation for prose;
 - insert forced breaks into ordinary sentences;
-- change paragraph justification or line-breaking mode;
+- change paragraph justification;
 - shrink all table text;
 - clip the table cell or paragraph container.
 
 Only an individual atomic value may receive a compact representation or an emergency
 break policy.
+
+Implementation evidence added one narrowly scoped exception to the original line-breaker
+constraint: dense cells use `linebreaks: "simple"`. In the pinned compiler, the optimized
+breaker deliberately retained overfull multi-word lines in fourteen equal columns even after
+adaptive atoms were contained. The simple breaker preserves word wrapping and hyphenation but
+avoids that cross-cell paint. Normal tables continue to use `linebreaks: "optimized"`.
 
 ### 5.4 Status visual contract
 

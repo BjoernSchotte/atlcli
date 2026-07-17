@@ -204,6 +204,8 @@ chosen.
 Table policy additionally defines mixed header cells, invalid span grids, repeated
 headers, very wide tables and rows crossing page boundaries. Invalid grids degrade to a
 readable table or linearized content with a report note; they never create invalid Typst.
+The concrete A4-portrait policy for atomic values in tables with at least nine effective
+columns is specified in [`DENSE-TABLE-INLINE-LAYOUT-PLAN.md`](./DENSE-TABLE-INLINE-LAYOUT-PLAN.md).
 
 ### 3.3 Normative inline mapping
 
