@@ -151,7 +151,12 @@ describe("runPdfExport", () => {
     let clock = 1_000;
 
     const report = await runPdfExport(
-      { page, pageUrl: "https://acme.atlassian.net/wiki/spaces/DOCSY/pages/123/Guide", onPhase: (phase) => phases.push(phase) },
+      {
+        page,
+        pageUrl: "https://acme.atlassian.net/wiki/spaces/DOCSY/pages/123/Guide",
+        theme: { colors: { paper: "#FFFDF5", ink: "#102040" } },
+        onPhase: (phase) => phases.push(phase),
+      },
       {
         now: () => (clock += 5),
         makeJobId: () => jobId,
@@ -187,6 +192,8 @@ describe("runPdfExport", () => {
     );
 
     expect(bundle?.main).toContain("#heading(level: 1");
+    expect(bundle?.template).toContain('let cover-paper = rgb("#FFFDF5")');
+    expect(bundle?.template).toContain('fill: rgb("#102040")');
     expect(phases).toEqual([
       "preparing",
       "fetching",

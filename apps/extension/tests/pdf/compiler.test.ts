@@ -645,7 +645,16 @@ This is a real PDF.
         {
           cells: [{
             ...cell("Synthetic section", true, 4),
-            backgroundColor: "#334455",
+            backgroundColor: "#8994A9",
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "text",
+                text: "Synthetic section",
+                marks: ["bold"],
+                color: "#172B4D",
+              }],
+            }],
           }],
         },
         { cells: [cell("B"), cell("Local"), cell("Weekly"), cell("Team")] },
@@ -667,8 +676,9 @@ This is a real PDF.
     const result = await compiler.compile(bundle);
 
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
-    expect(bundle.main).toContain('fill: rgb("#334455")');
-    expect(bundle.main).toContain('#set text(fill: rgb("#FFFFFF"))');
+    expect(bundle.main).toContain('fill: rgb("#8994A9")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FCFBF8"))');
+    expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#strong[');
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
   }, 30_000);

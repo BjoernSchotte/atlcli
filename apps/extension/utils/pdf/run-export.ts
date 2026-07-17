@@ -12,6 +12,7 @@ import {
   type PdfAssetResolver,
   type PdfExportReport,
   type PdfSourceBundle,
+  type PdfThemeOptions,
   type PreparedPdfBlock,
 } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../read-path.js";
@@ -38,6 +39,8 @@ export type PdfExportPhase =
 export interface RunPdfExportInput {
   page: LoadedPage;
   pageUrl: string;
+  /** Optional Typst theme overrides for this export. */
+  theme?: PdfThemeOptions;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
 }
@@ -334,6 +337,7 @@ export async function runPdfExport(
     "en";
   const locale = normalizePdfLocale(runtimeLocale);
   const bundle: PdfSourceBundle = deps.serialize(prepared, {
+    theme: input.theme,
     metadata: {
       title: input.page.details.title,
       space: input.page.details.spaceKey,

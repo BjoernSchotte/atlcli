@@ -2,13 +2,18 @@
  * Pinned atlcli Typst standard template. It uses semantic Typst elements and
  * show rules so PDF tagging/outline information survives visual styling.
  */
+import { resolvePdfTheme } from "./theme.js";
+import type { PdfThemeOptions } from "./types.js";
+
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
 const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
 
-export const ATLCLI_TYPST_TEMPLATE = String.raw`
+export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string {
+  const theme = resolvePdfTheme(options);
+  return String.raw`
 #let editorial-numbering(..nums) = {
   let values = nums.pos()
   let current = values.last()
@@ -33,7 +38,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   let indigo = rgb("#4B57A3")
   let ink = rgb("#202A44")
   let warm-slate = rgb("#74727A")
-  let cover-paper = rgb("#FCFBF8")
+  let cover-paper = rgb("${theme.colors.paper}")
 
   set document(
     title: meta.title,
@@ -43,7 +48,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   set text(
     font: "Source Serif 4",
     size: 10pt,
-    fill: rgb("#172B4D"),
+    fill: rgb("${theme.colors.ink}"),
     lang: meta.at("language", default: "en"),
     region: meta.at("region", default: none),
   )
@@ -84,11 +89,11 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   )
 
   show heading.where(level: 1): it => {
-    set text(font: "Source Sans 3", size: 18pt, weight: "semibold", fill: rgb("#172B4D"))
+    set text(font: "Source Sans 3", size: 18pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
     block(above: 28pt, below: 14pt, sticky: true, it)
   }
   show heading.where(level: 2): it => {
-    set text(font: "Source Sans 3", size: 14pt, weight: "semibold", fill: rgb("#172B4D"))
+    set text(font: "Source Sans 3", size: 14pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
     block(above: 24pt, below: 12pt, sticky: true, it)
   }
   show heading.where(level: 3): it => {
@@ -273,3 +278,6 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   body,
 )
 `;
+}
+
+export const ATLCLI_TYPST_TEMPLATE = createAtlcliTypstTemplate();

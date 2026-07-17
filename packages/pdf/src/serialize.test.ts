@@ -162,7 +162,22 @@ describe("PDF preparation and serialization", () => {
         {
           cells: [{
             ...cell("Synthetic section", { header: true, colspan: 4 }),
-            backgroundColor: "#334455",
+            backgroundColor: "#8994A9",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "Synthetic section", marks: ["bold"], color: "#172B4D" },
+                  { type: "text", text: " " },
+                  { type: "mention", accountId: "synthetic", displayName: "Example User" },
+                ],
+              },
+              {
+                type: "heading",
+                level: 3,
+                content: [{ type: "text", text: "Nested heading", color: "#172B4D" }],
+              },
+            ],
           }],
         },
       ],
@@ -174,9 +189,43 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
     expect(bundle.main).toContain("table.cell(x: 0, y: 1, rowspan: 2");
     expect(bundle.main).toContain("table.cell(x: 1, y: 2, colspan: 3");
-    expect(bundle.main).toContain('table.cell(x: 0, y: 3, colspan: 4, fill: rgb("#334455")');
-    expect(bundle.main).toContain('#set text(fill: rgb("#FFFFFF"))');
+    expect(bundle.main).toContain('table.cell(x: 0, y: 3, colspan: 4, fill: rgb("#8994A9")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FCFBF8"))');
+    expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#strong[');
+    expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#text("@');
+    expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#dense-token(available-width, [#text(fill: rgb("#FCFBF8"))');
+    expect(bundle.main).not.toContain('#text(fill: rgb("#172B4D"))[#strong[');
+    expect(bundle.notes).toContainEqual(expect.objectContaining({ code: "pdf-table-cell-contrast-low" }));
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
+  });
+
+  it("configures table contrast colors through the Typst theme", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "table",
+      rows: [{
+        cells: [{
+          header: true,
+          colspan: 1,
+          rowspan: 1,
+          backgroundColor: "#334455",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Section" }] }],
+        }],
+      }],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata,
+      theme: {
+        colors: { paper: "#FFFDF5", ink: "#102040" },
+        table: { coloredCellText: { onDark: "#FFF4D6", minimumContrast: 3 } },
+      },
+    });
+
+    expect(bundle.template).toContain('let cover-paper = rgb("#FFFDF5")');
+    expect(bundle.template).toContain('fill: rgb("#102040")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FFF4D6"))');
+    expect(bundle.notes).not.toContainEqual(expect.objectContaining({ code: "pdf-table-cell-contrast-low" }));
   });
 
   it("widens a dominant narrative column when source tracks are only equal defaults", async () => {

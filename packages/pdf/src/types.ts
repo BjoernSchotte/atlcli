@@ -73,9 +73,49 @@ export interface PdfSourceBundle {
 
 export type PdfProfile = "tagged" | "pdf-ua-1";
 
+export type PdfTableCellTextMode = "auto" | "source";
+
+/** Public, serializable configuration for the built-in Typst theme. */
+export interface PdfThemeOptions {
+  colors?: {
+    /** Main document ink. Also becomes the default foreground on light table fills. */
+    ink?: string;
+    /** Document paper. Also becomes the default foreground on dark table fills. */
+    paper?: string;
+  };
+  table?: {
+    coloredCellText?: {
+      /** `auto` enforces theme ink; `source` retains source colors only when readable. */
+      mode?: PdfTableCellTextMode;
+      /** Optional table-specific foreground on perceptually dark source fills. */
+      onDark?: string;
+      /** Optional table-specific foreground on perceptually light source fills. */
+      onLight?: string;
+      /** Contrast target used for source-color acceptance and export warnings. */
+      minimumContrast?: number;
+    };
+  };
+}
+
+export interface PdfTheme {
+  colors: {
+    ink: string;
+    paper: string;
+  };
+  table: {
+    coloredCellText: {
+      mode: PdfTableCellTextMode;
+      onDark: string;
+      onLight: string;
+      minimumContrast: number;
+    };
+  };
+}
+
 export interface PdfSerializeOptions {
   metadata: PdfExportMetadata;
   profile?: PdfProfile;
+  theme?: PdfThemeOptions;
 }
 
 export interface PdfExportTimings {

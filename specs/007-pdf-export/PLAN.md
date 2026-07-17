@@ -207,6 +207,34 @@ readable table or linearized content with a report note; they never create inval
 The concrete A4-portrait policy for atomic values in tables with at least nine effective
 columns is specified in [`DENSE-TABLE-INLINE-LAYOUT-PLAN.md`](./DENSE-TABLE-INLINE-LAYOUT-PLAN.md).
 
+Source-colored cells use the PDF theme rather than a converter-level hard-coded text
+color. `PdfSerializeOptions.theme` exposes document `paper`/`ink` tokens and a
+`table.coloredCellText` policy with `auto` (theme foreground always wins) and `source`
+(retain a source inline color only when it reaches the configured contrast target).
+`onDark` defaults to the theme paper token, `onLight` defaults to the theme ink token,
+and `minimumContrast` defaults to `4.5`. The serializer applies the chosen foreground
+to ordinary text, headings, links and mentions inside the colored cell so nested inline
+or heading rules cannot silently restore unreadable dark ink. When the selected theme
+pair misses its configured target while the source background is preserved, the export
+completes with a deduplicated `pdf-table-cell-contrast-low` report note.
+
+```ts
+serializePdfDocument(document, {
+  metadata,
+  theme: {
+    colors: { paper: "#FCFBF8", ink: "#172B4D" },
+    table: {
+      coloredCellText: {
+        mode: "auto",
+        onDark: "#FCFBF8",
+        onLight: "#172B4D",
+        minimumContrast: 4.5,
+      },
+    },
+  },
+});
+```
+
 ### 3.3 Normative inline mapping
 
 | `InlineNode` | Typst behavior |

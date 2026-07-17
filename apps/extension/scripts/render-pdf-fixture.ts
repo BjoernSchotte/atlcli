@@ -212,7 +212,16 @@ const blocks: ExportBlock[] = [
         cells: [{
           ...textCell("Synthetic section", true),
           colspan: 4,
-          backgroundColor: "#334455",
+          backgroundColor: "#8994A9",
+          content: [{
+            type: "paragraph",
+            content: [{
+              type: "text",
+              text: "Synthetic section",
+              marks: ["bold"],
+              color: "#172B4D",
+            }],
+          }],
         }],
       },
       {

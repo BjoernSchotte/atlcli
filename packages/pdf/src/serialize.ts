@@ -1,11 +1,17 @@
 import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
-import { readableTextColor } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
-import { ATLCLI_TYPST_TEMPLATE } from "./template.js";
+import { createAtlcliTypstTemplate } from "./template.js";
+import {
+  pdfColorContrast,
+  pdfTableCellForeground,
+  preservePdfSourceCellColor,
+  resolvePdfTheme,
+} from "./theme.js";
 import type {
   PdfSerializeOptions,
   PdfSourceBundle,
   PdfSourceMapEntry,
+  PdfTheme,
   PreparedPdfBlock,
   PreparedPdfDocument,
 } from "./types.js";
@@ -241,6 +247,11 @@ interface RenderContext {
   tableDensity: TableDensity;
   inTable?: boolean;
   availableWidth?: string;
+  coloredCell?: {
+    background: string;
+    foreground: string;
+    theme: PdfTheme;
+  };
 }
 
 const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
@@ -318,7 +329,13 @@ function denseRawUrlLabels(href: string, label: string): DenseUrlLabels | null {
 
 type TextInlineNode = Extract<InlineNode, { type: "text" }>;
 
-function styledText(value: string, node: TextInlineNode): string {
+function effectiveCellTextColor(sourceColor: string | undefined, context: RenderContext): string | undefined {
+  const cell = context.coloredCell;
+  if (!cell) return sourceColor ? safeColor(sourceColor) : undefined;
+  return preservePdfSourceCellColor(sourceColor, cell.background, cell.theme) ?? cell.foreground;
+}
+
+function styledText(value: string, node: TextInlineNode, context: RenderContext): string {
   let out = literalText(value);
   for (const mark of node.marks ?? []) {
     switch (mark) {
@@ -349,20 +366,21 @@ function styledText(value: string, node: TextInlineNode): string {
       }
     }
   }
-  if (node.color) out = `#text(fill: rgb(${typstString(safeColor(node.color))}))[${out}]`;
+  const color = effectiveCellTextColor(node.color, context);
+  if (color) out = `#text(fill: rgb(${typstString(color)}))[${out}]`;
   return out;
 }
 
 function serializeText(node: TextInlineNode, context: RenderContext): string {
-  if (!context.availableWidth) return styledText(node.text, node);
+  if (!context.availableWidth) return styledText(node.text, node, context);
   const segments = node.text.match(/\s+|\S+/gu);
-  if (!segments) return styledText(node.text, node);
+  if (!segments) return styledText(node.text, node, context);
   return segments.map((segment) => {
-    const normal = styledText(segment, node);
+    const normal = styledText(segment, node, context);
     if (/^\s+$/u.test(segment)) return normal;
     const breakable = denseAtomicToken(segment);
     if (breakable === segment) return normal;
-    return `#dense-token(${context.availableWidth}, [${normal}], [${styledText(breakable, node)}])`;
+    return `#dense-token(${context.availableWidth}, [${normal}], [${styledText(breakable, node, context)}])`;
   }).join("");
 }
 
@@ -371,8 +389,9 @@ function serializeMention(
   context: RenderContext
 ): string {
   const label = node.displayName ?? node.accountId;
+  const color = effectiveCellTextColor("#0747A6", context) ?? "#0747A6";
   if (!context.availableWidth) {
-    return `#text(fill: rgb("#0747A6"))[${literalText(`@${label}`)}]`;
+    return `#text(fill: rgb(${typstString(color)}))[${literalText(`@${label}`)}]`;
   }
 
   const segments = label.match(/\s+|\S+/gu) ?? [label];
@@ -384,7 +403,7 @@ function serializeMention(
     return `#dense-token(${context.availableWidth}, [${normal}], [${literalText(breakable)}])`;
   }).join("")}`;
 
-  return `#text(fill: rgb("#0747A6"))[${content}]`;
+  return `#text(fill: rgb(${typstString(color)}))[${content}]`;
 }
 
 function serializeInline(
@@ -504,6 +523,26 @@ interface Writer {
   labels: Map<string, string>;
   headingOffset: number;
   headingCounts: Map<string, number>;
+  theme: PdfTheme;
+  contrastWarnings: Set<string>;
+}
+
+function noteLowCellContrast(
+  writer: Writer,
+  background: string,
+  foreground: string
+): void {
+  const minimum = writer.theme.table.coloredCellText.minimumContrast;
+  const ratio = pdfColorContrast(background, foreground);
+  if (ratio >= minimum) return;
+  const key = `${background}:${foreground}:${minimum}`;
+  if (writer.contrastWarnings.has(key)) return;
+  writer.contrastWarnings.add(key);
+  writer.notes.push({
+    level: "warning",
+    code: "pdf-table-cell-contrast-low",
+    message: `PDF theme table-cell colors ${foreground} on ${background} have contrast ${ratio.toFixed(2)}:1, below the configured ${minimum.toFixed(2)}:1 target.`,
+  });
 }
 
 function serializeParagraphInline(
@@ -699,6 +738,12 @@ function serializeBlock(
       const serializedRows = grid.rows.map((row, rowIndex) => {
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
           const backgroundColor = cell.backgroundColor ?? (cell.header ? "#F4F5F7" : undefined);
+          const foregroundColor = cell.backgroundColor
+            ? pdfTableCellForeground(cell.backgroundColor, writer.theme)
+            : undefined;
+          if (cell.backgroundColor && foregroundColor) {
+            noteLowCellContrast(writer, cell.backgroundColor, foregroundColor);
+          }
           const args = [
             grid.requiresExplicitPlacement ? `x: ${columnIndex}` : "",
             grid.requiresExplicitPlacement ? `y: ${rowIndex}` : "",
@@ -710,10 +755,19 @@ function serializeBlock(
             cell.content,
             writer,
             `${path}.rows[${rowIndex}].cells[${cellIndex}].content`,
-            cellContext
+            foregroundColor && cell.backgroundColor
+              ? {
+                  ...cellContext,
+                  coloredCell: {
+                    background: cell.backgroundColor,
+                    foreground: foregroundColor,
+                    theme: writer.theme,
+                  },
+                }
+              : cellContext
           );
-          const styledContent = cell.backgroundColor
-            ? `#set text(fill: rgb(${typstString(readableTextColor(cell.backgroundColor))}))\n${content}`
+          const styledContent = foregroundColor
+            ? `#set text(fill: rgb(${typstString(foregroundColor)}))\n${content}`
             : content;
           return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${styledContent}])`;
         });
@@ -774,6 +828,7 @@ export function serializePdfDocument(
   document: PreparedPdfDocument,
   options: PdfSerializeOptions
 ): PdfSourceBundle {
+  const theme = resolvePdfTheme(options.theme);
   const labels = collectHeadingLabels(document.blocks);
   const min = minHeadingLevel(document.blocks);
   const writer: Writer = {
@@ -782,6 +837,8 @@ export function serializePdfDocument(
     labels,
     headingOffset: min === Infinity ? 0 : min - 1,
     headingCounts: new Map(),
+    theme,
+    contrastWarnings: new Set(),
   };
   const body = serializeBlocks(document.blocks, writer);
   const meta = options.metadata;
@@ -806,7 +863,7 @@ ${body}
 
   return {
     main,
-    template: ATLCLI_TYPST_TEMPLATE,
+    template: createAtlcliTypstTemplate(options.theme),
     assets: document.assets,
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
