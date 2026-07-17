@@ -2,7 +2,7 @@
 
 Status: **Planned**
 
-Planned at: `81209d5e08477151d8e3073bdc4d5f4fc141cc80` (`fix(extension): keep active page in sync (#45)`)
+Planned at: `9a3c950ce36e63a88fbffe2f47172ebaf9cb9a95` (`feat(pdf): adapt inline layout in dense tables (#44)`)
 
 Implementation branch: create a fresh `codex/` branch from the current `main` when execution starts. This plan was authored on `codex/spec-009-multi-host-browser-runtime`; that planning branch is not an implementation baseline.
 
@@ -27,7 +27,7 @@ The implementation must prove three independent facts:
 2. `@atlcli/pdf` remains its own PDF preparation/orchestration domain, while the Typst-WASM implementation moves into a dedicated browser-only compiler package.
 3. The extension still owns its Chrome/WXT/session/job-store/UI policies and produces equivalent DOCX/PDF output after the package moves.
 
-The permanent proof consumer is a private vanilla Vite app under `apps/browser-export-harness`. It is a conformance harness, not a shipped product. It runs one real DOCX export and one real PDF export under headless Chromium, with no extension APIs, no live tenant, and no native Node globals.
+The permanent proof consumer is a private vanilla Vite app under `apps/browser-export-harness`. It is a conformance harness, not a shipped product. It runs one real DOCX export and one real PDF export under headless Chromium, with no extension APIs, no live tenant, and no native Node globals. This proves the public package contracts in a self-controlled Vite/Chromium host; packaging, CSP, iframe, and asset-loading behavior of any managed or embedded target host requires separate host-specific evidence outside this spec.
 
 ### 1.1 The non-negotiable engine split
 
@@ -87,7 +87,7 @@ This explicit split resolves the ambiguity in the earlier phrase “shared DOCX/
 | DOCX browser adapters | `apps/extension/utils/docx/env.ts` combines neutral DOM code with extension storage/session/cache/report policy | Split neutral DOM capability from extension policy. |
 | PDF model | `packages/pdf/src/**` owns preparation, serialization, source maps, diagnostics model, template, fonts, and report types | Keep the preparation-only browser barrel lightweight. Add host-neutral runner contracts without importing Typst. |
 | PDF compiler | `apps/extension/utils/pdf/compiler.ts` imports no Chrome/WXT/extension API | Wrong physical boundary: move to a dedicated browser compiler package. |
-| PDF orchestration | `apps/extension/utils/pdf/run-export.ts` mixes reusable phase/report logic with `LoadedPage`, ambient locale, session auth, IndexedDB jobs, Chrome messaging, and DOM download | Split a host-neutral PDF runner from a thin extension page adapter. |
+| PDF orchestration | `apps/extension/utils/pdf/run-export.ts` mixes reusable phase/report logic with `LoadedPage`, mention lookup, ambient locale, session auth, IndexedDB jobs, Chrome messaging, and DOM download | Move content-only mention normalization to `@atlcli/confluence`, then split a host-neutral PDF runner from a thin extension page adapter. |
 | PDF topology | `job-store.ts`, `compiler-host.ts`, `worker-protocol.ts`, offscreen/background wiring | Preserve in the extension. It is one host's proven cancellation/timeout/quota strategy. |
 | Browser proof | `scripts/check-browser-build.ts` bundles source entries with Bun; extension output scan validates only WXT output | Insufficient for a second Vite/Worker/WASM host. Add a real browser harness. |
 | Build invalidation | extension artifact helper watches `packages/pdf` but omits other transitive workspace packages | Fix explicit inputs so moved code cannot reuse stale artifacts. |
@@ -101,7 +101,7 @@ Before changing code, the implementing session must run:
 git status --short
 git rev-parse HEAD
 git log -1 --oneline
-rg -n "BrowserPdfCompiler|runPdfExport|byte-helpers-shim|Buffer\.from|PdfCompilerHost" apps packages scripts specs
+rg -n "BrowserPdfCompiler|runPdfExport|resolvePdfMentionNames|PdfThemeOptions|byte-helpers-shim|Buffer\.from|PdfCompilerHost" apps packages scripts specs
 ```
 
 Then compare the result to the ownership map above.
@@ -125,6 +125,7 @@ Do not “adapt while implementing” across a material architecture drift. Upda
 - A DOCX-specific browser compatibility subpath inside `@atlcli/docx`.
 - Extraction of browser-neutral DOCX DOM capability currently trapped under `apps/extension`.
 - A new private workspace package `@atlcli/pdf-compiler-browser`.
+- Host-neutral mention normalization over `ExportBlock[]` in `@atlcli/confluence`, with authenticated lookup remaining host-owned.
 - A host-neutral PDF runner and compile-port contract in `@atlcli/pdf`.
 - Normalized compiler diagnostics at the public package boundary.
 - A canonical PDF font/license asset manifest with host-parity checks.
@@ -159,6 +160,7 @@ Do not “adapt while implementing” across a material architecture drift. Upda
 8. WASM, fonts, and license URLs remain statically discoverable in each host bundle; a shared manifest validates parity but does not hide bundler-specific `?url` imports behind dynamic strings.
 9. No browser artifact contains `node:`/`bun:` imports, bare `Buffer.*`, dynamic `Function`, `eval`, remote executable code, or extension-runtime references unless an existing, narrowly documented scan exception already applies.
 10. In the PDF lane, aborting an export never starts emission/download after the abort is observed. DOCX cancellation is unchanged and out of scope because the current DOCX `RunExportInput` has no abort contract.
+11. Mention resolution preserves existing display names, traverses nested inline/block content, retains unresolved technical identifiers, and never requires a reusable package to know tenant auth or user API response types.
 
 ---
 
@@ -194,7 +196,7 @@ Forbidden dependency edges:
 
 | Owner | Owns after 009 | Does not own |
 |---|---|---|
-| `@atlcli/confluence` | `ExportBlock`, page/storage normalization | DOCX/PDF rendering |
+| `@atlcli/confluence` | `ExportBlock`, page/storage normalization, host-neutral mention normalization | authenticated user lookup, DOCX/PDF rendering |
 | `@atlcli/diagram` | format-neutral Mermaid-to-SVG/theme logic | DOCX PNG embedding or PDF Typst compilation |
 | `@atlcli/docx` | DOCX engine, DOCX env ports, DOCX browser bootstrap/config, neutral canvas/memory adapters | PDF contracts, Chrome/session/IndexedDB policy |
 | `@atlcli/pdf` | PDF preparation, serializer, source map, normalized diagnostics, output validation, font/license manifest, PDF runner contracts/orchestration | Typst implementation, WASM loading, worker topology, Chrome/session policy |
@@ -275,7 +277,36 @@ Rules:
 - The browser runtime subpath must not be re-exported by the Node/default barrel.
 - `memoryTemplateSource` snapshots exactly the supplied view range at construction and returns a fresh copy for each `getBytes()` call. A non-zero-offset `Uint8Array.subarray(...)` must not expose prefix/suffix bytes, and caller/result mutation must not alter later reads.
 
-### 5.2 PDF host-neutral compile and runner contracts
+### 5.2 Confluence mention normalization
+
+Move the content-only traversal currently implemented as `resolvePdfMentionNames` into a browser-safe public surface of `@atlcli/confluence`. The contract is format-neutral because it enriches `ExportBlock[]`, not PDF output:
+
+```ts
+export interface ExportMentionResolution {
+  blocks: ExportBlock[];
+  unresolved: number;
+}
+
+export type ExportMentionLookup = (
+  accountIds: string[]
+) => Promise<ReadonlyMap<string, string | null>>;
+
+export function resolveExportMentions(
+  blocks: ExportBlock[],
+  lookup: ExportMentionLookup
+): Promise<ExportMentionResolution>;
+```
+
+Contract rules:
+
+- The helper deduplicates unresolved account IDs, performs one injected batch lookup, recursively handles links and nested block containers, and leaves already populated display names unchanged.
+- The lookup returns only display-name strings or `null`; tenant clients, auth profiles, `UserInfo`, browser globals, and vendor response types never cross into `@atlcli/confluence`.
+- Missing or blank lookup results retain the original technical identifier and increment `unresolved` once per unique account ID, matching current behavior.
+- Lookup failures are not swallowed by the helper. Each host decides whether a failed lookup is fatal or becomes a warning while retaining the original blocks.
+- The extension keeps its authenticated user loader and its current warning-note policy. Its page adapter passes walker notes followed by mention notes to the PDF runner as `sourceNotes`.
+- The helper is available from the normal and browser-safe Confluence barrels and has no dependency on either export engine.
+
+### 5.3 PDF host-neutral compile and runner contracts
 
 Add `packages/pdf/src/compiler.ts`, `packages/pdf/src/run-export.ts`, and `packages/pdf/src/validate.ts`. Export them from both `index.ts` and `index.browser.ts`; none may import the compiler implementation.
 
@@ -322,6 +353,8 @@ export interface RunPdfExportInput {
   blocks: ExportBlock[];
   sourceNotes?: ExportNote[];
   metadata: PdfExportMetadata;
+  profile?: PdfProfile;
+  theme?: PdfThemeOptions;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
@@ -363,8 +396,9 @@ export function runPdfExport(
 Contract rules:
 
 - The runner accepts already-normalized `ExportBlock[]`. It never imports extension `LoadedPage` or calls `storageToBlocks` itself.
-- The page adapter passes walker/conversion notes as `sourceNotes`. The runner builds report notes in the existing order: source/walker notes first, then serializer/bundle notes.
-- Metadata, locale, filename, clock, assets, compiler, output, and phase observer are explicit inputs. There are no ambient `document`/`navigator` defaults.
+- The page adapter passes walker/conversion and mention notes as `sourceNotes`. The runner builds report notes in the existing order: walker notes, mention notes, then serializer/bundle notes.
+- Metadata, profile, theme, filename, clock, assets, compiler, output, and phase observer are explicit inputs. Locale is part of explicit metadata; there are no ambient `document`/`navigator` defaults.
+- The runner forwards `profile` and `theme` unchanged to `serializePdfDocument`. Its report records the selected profile or the serializer's existing `tagged` default; extraction must not silently discard the current extension theme input.
 - The runner owns `preparePdfDocument`, serialization, prepared-block counts, report timings, validation, and output emission.
 - Rename `PdfExportTimings.downloadMs` to the host-neutral `emitMs` in `@atlcli/pdf`. The extension report view continues to label that value **Download**; this is an internal contract cleanup, not a visible UX change.
 - It checks abort before and after every awaited phase, passes the signal to the output sink, and never starts emission after observing abort. A sink must check the signal immediately before its irreversible write/click. Once that atomic action begins, cancellation is no longer promised; document this as the emission boundary.
@@ -376,7 +410,7 @@ Contract rules:
 
 The extension may retain its UI-only phase label `queued`; its adapter can emit `queued` while persisting the job before delegating to the compile port. Do not pollute the neutral runner with an IndexedDB-specific phase.
 
-### 5.3 Browser compiler package
+### 5.4 Browser compiler package
 
 Create `packages/pdf-compiler-browser` with package name `@atlcli/pdf-compiler-browser`, `private: true`, and a single browser-focused public barrel.
 
@@ -420,7 +454,7 @@ Rules:
 - Do not import `?url`, `?url&no-inline`, `chrome`, IndexedDB, WXT, or DOM download APIs.
 - The extension remains a direct dependency owner of the Typst package while its worker imports the package's WASM `?url` asset directly. A host that statically imports that asset must declare the dependency it imports; workspace transitivity is not a substitute.
 
-### 5.4 Extension compile-port adapter
+### 5.5 Extension compile-port adapter
 
 Keep the existing extension job topology and wrap it behind `PdfCompilePort`:
 
@@ -444,7 +478,9 @@ The exact option typing should reuse existing extension message types rather tha
 `apps/extension/utils/pdf/run-export.ts` becomes the page adapter:
 
 - convert `LoadedPage.details.storage` with `storageToBlocks`;
+- resolve missing mention display names with `resolveExportMentions` and an extension-owned authenticated lookup, retaining the current warning-note behavior;
 - derive explicit metadata/locale;
+- pass the caller's theme and selected/default profile through the neutral runner;
 - create the session-aware `PdfAssetResolver`;
 - sanitize the filename;
 - create the extension compile port and DOM output sink;
@@ -461,7 +497,7 @@ The following remain under `apps/extension` unless a separate future spec proves
 - `workers/pdf-compiler.ts` static asset imports;
 - DOM download and page/session/profile policy.
 
-### 5.5 Canonical PDF runtime asset manifest
+### 5.6 Canonical PDF runtime asset manifest
 
 Add a browser-safe manifest under `packages/pdf/src/runtime-assets.ts` containing only data:
 
@@ -488,9 +524,12 @@ Do not generate dynamic asset import strings from the manifest. Vite must see ev
 
 Create `apps/browser-export-harness` as a private workspace app. Its only purpose is to prove that public package surfaces work in a second browser host.
 
+This is package conformance evidence under a self-controlled Vite/Chromium runtime, not certification for every embedded or managed browser host. Host-specific packaging, CSP, iframe, bridge, and static-resource behavior must be validated by that host's own integration E2E outside this spec.
+
 It must:
 
 - use vanilla TypeScript + Vite; React is unnecessary;
+- set Vite `base: "./"` so the production artifact does not assume deployment at an origin root;
 - use a dedicated module Worker for PDF compilation;
 - run from a production `dist/` build, not only Vite dev mode;
 - have no network dependency after the local page/assets load;
@@ -585,13 +624,14 @@ The harness output checker must inspect `dist/` and fail with the exact output f
 - `eval(`, dynamic `Function`, or remote executable code;
 - `chrome.*`, `chrome-extension://`, WXT runtime imports, or extension message literals;
 - missing worker, WASM, any manifest font/license, or local entry HTML;
+- root-relative JavaScript, Worker, WASM, font, or license asset URLs that break when the artifact is mounted below an origin path;
 - a remote URL used for executable/runtime assets.
 
 Seeded negative-fixture tests must prove each scanner category actually fails.
 
 ### 6.5 Browser automation
 
-Use a pinned `@playwright/test` dependency and Chromium only. The E2E must serve the production Vite output and run both cases in one browser context so warm compiler behavior is observable.
+Use a pinned `@playwright/test` dependency and Chromium only. The E2E must serve the production Vite output below a non-root path and run both cases in one browser context so relative asset loading and warm compiler behavior are observable.
 
 Required root scripts:
 
@@ -645,7 +685,7 @@ Actions:
 
 1. Run the drift check from section 2.2.
 2. Install the exact lockfile dependencies with `bun install --frozen-lockfile` if the worktree has no `node_modules`.
-3. Run the current DOCX golden/node-consumer tests and PDF compiler/run-export/validation tests.
+3. Run the current DOCX golden/node-consumer tests and PDF compiler/run-export/validation tests, including the existing PDF theme-passthrough and mention-resolution cases.
 4. Render the current PDF fixture to an explicit temporary path and record its SHA-256, byte count, structural inspection, and compiler version in the implementation notes.
 5. Build/scan the current extension and record the artifact inventory.
 6. Verify the existing extension behavior in Chrome against the configured test profile only if credentials are available. If credentials are not available, record that as an environment limitation; do not claim E2E.
@@ -669,10 +709,11 @@ Acceptance:
 
 STOP if the baseline itself fails for a suspected product defect. Fixing export behavior is outside this move-only task and requires a separate regression change/spec update.
 
-### Task 1 — Add PDF-domain contracts, validation, and asset manifest
+### Task 1 — Add content normalization plus PDF-domain contracts, validation, and asset manifest
 
 Files:
 
+- add `packages/confluence/src/resolve-mentions.ts`, export it from the normal/browser barrels, and add focused traversal/lookup tests;
 - add `packages/pdf/src/compiler.ts`;
 - add `packages/pdf/src/run-export.ts`;
 - move `apps/extension/utils/pdf/validate.ts` to `packages/pdf/src/validate.ts`;
@@ -682,19 +723,23 @@ Files:
 
 Actions:
 
-1. Add the contracts from section 5.2 with no defaults that touch ambient browser state.
-2. Move prepared-block counting, phase/timing/report construction, validation, and emission into the neutral runner.
-3. Move locale normalization only as a pure function; keep ambient locale discovery in the extension.
-4. Rename the PDF-domain timing field from `downloadMs` to `emitMs`; update type/tests while keeping the extension's visible **Download** label later in Task 4.
-5. Move output validation and its tests from the extension.
-6. Create the data-only runtime asset manifest and make `ensure-fonts.ts` consume it.
-7. Add compile-port/sink fakes covering success, structured failure, pre-abort, abort during compile, post-compile abort, validation failure, output-sink failure, and abort while a deliberately pending sink is still before its irreversible emission boundary.
-8. Assert that a preparation-only import does not import/resolve the Typst package.
+1. Add `resolveExportMentions` from section 5.2 with deep traversal, deduplicated lookup, immutability, unresolved-count, existing-name, empty-input, and lookup-failure tests; keep it free of tenant clients, auth, browser globals, and export-format dependencies.
+2. Add the PDF contracts from section 5.3 with no defaults that touch ambient browser state.
+3. Move prepared-block counting, phase/timing/report construction, validation, and emission into the neutral runner.
+4. Move locale normalization only as a pure function; keep ambient locale discovery in the extension.
+5. Preserve explicit `profile` and `theme` through serialization and report construction; add a regression test that would fail if either is dropped during extraction.
+6. Rename the PDF-domain timing field from `downloadMs` to `emitMs`; update type/tests while keeping the extension's visible **Download** label later in Task 4.
+7. Move output validation and its tests from the extension.
+8. Create the data-only runtime asset manifest and make `ensure-fonts.ts` consume it.
+9. Add compile-port/sink fakes covering success, structured failure, pre-abort, abort during compile, post-compile abort, validation failure, output-sink failure, and abort while a deliberately pending sink is still before its irreversible emission boundary.
+10. Assert that a preparation-only import does not import/resolve the Typst package.
 
 Acceptance:
 
 - `@atlcli/pdf/browser` still builds with no Typst/WASM dependency in its transitive emitted graph;
+- `@atlcli/confluence` mention tests prove nested traversal and lookup behavior without importing a tenant API type or either export engine;
 - neutral runner tests do not import `LoadedPage`, Chrome messages, IndexedDB, DOM, or extension files;
+- non-default PDF theme/profile inputs survive the neutral runner and the report reflects the effective profile;
 - every failure and every abort observed before the emission boundary emits zero bytes;
 - existing serializer/source-map tests remain unchanged and green.
 
@@ -768,7 +813,7 @@ Files:
 Actions:
 
 1. Implement `extensionPdfCompilePort` over the current job/message system.
-2. Make the page adapter derive blocks plus walker notes, explicit metadata, locale, asset resolver, sanitized filename, and output sink; pass walker notes as `sourceNotes` so report ordering remains unchanged.
+2. Make the page adapter derive blocks plus walker notes, resolve mentions through the Confluence helper using its authenticated host lookup, then derive explicit metadata, locale, theme/profile, asset resolver, sanitized filename, and output sink; pass walker plus mention notes as `sourceNotes` so report ordering remains unchanged.
 3. Preserve the current `queued` phase at the adapter layer and map neutral `emitting` back to the existing UI's `downloading` label.
 4. Update the report view to read neutral `emitMs` while preserving its visible **Download** label.
 5. Update the DOM PDF sink to check the supplied signal immediately before the anchor click and cover abort while the sink is pending.
@@ -781,6 +826,7 @@ The existing fatal-worker termination/replacement test remains under `apps/exten
 Acceptance:
 
 - current extension phase order and UI messages remain equivalent;
+- current mention warnings, theme customization, and default PDF profile behavior remain equivalent;
 - current IndexedDB quotas and cleanup tests remain green;
 - the extension compiler worker imports the new package but no reusable package imports extension files;
 - after-move PDF fixture hash equals the Task-0 fixture hash. If a deliberate normalized metadata change makes raw bytes differ, STOP: this is no longer a move-only refactor and needs a reviewed exception;
@@ -792,13 +838,13 @@ Files: all files listed in section 6 plus root workspace scripts/dependencies.
 
 Actions:
 
-1. Scaffold the private vanilla Vite app with explicit TypeScript/Turbo coverage.
+1. Scaffold the private vanilla Vite app with explicit TypeScript/Turbo coverage and `base: "./"`.
 2. Add the DOCX case and independent assertions.
 3. Add the PDF direct-worker case and independent assertions.
 4. Add local CSP headers for dev/preview/production E2E server.
-5. Add the generic artifact scan and seeded negative tests.
+5. Add the generic artifact scan and seeded negative tests, including rejection of root-relative JS/Worker/WASM/font/license URLs.
 6. Add dependency-boundary tests that reject extension/WXT imports and package-direction violations.
-7. Add Playwright Chromium automation against the production build.
+7. Add Playwright Chromium automation against the production build served below a non-root path.
 
 Acceptance:
 
@@ -806,6 +852,7 @@ Acceptance:
 - PDF runs in a real Worker with real WASM/fonts and deterministic warm output;
 - DOCX uses the package bootstrap and real canvas path;
 - output scan proves all assets are local and no extension/runtime leaks exist;
+- the production artifact loads all entry, Worker, WASM, font, and license assets correctly from a nested path;
 - disabling the DOCX Vite defines or removing one PDF font causes a targeted harness gate to fail.
 
 ### Task 6 — Harden build graph, artifact gates, and CI
@@ -825,7 +872,7 @@ Actions:
 2. Ensure root/typecheck scripts explicitly cover app TS/TSX, Vite configs, workers, and tests that root `tsconfig.json` currently skips.
 3. Expand extension stale-build inputs to all actual workspace dependencies: at minimum core, confluence, diagram, docx, pdf, and pdf-compiler-browser.
 4. Give the harness a local `turbo.json` whose inputs include `src/**`, tests, scripts, `index.html`, styles, Vite/Playwright config, package, tsconfig, font/license inputs, and dependent package sources; output is `dist/**` plus Playwright results only when intentionally cached.
-5. Parameterize generic artifact scanning without weakening the extension-specific manifest/CSP/inventory checks.
+5. Parameterize generic artifact scanning without weakening the extension-specific manifest/CSP/inventory checks; retain the harness's relative-asset deployment rule as a harness-specific assertion.
 6. Add Chromium installation and harness gates to CI.
 7. Preserve the complete existing final gate set.
 
@@ -898,10 +945,12 @@ bun run check:browser
 Required assertions:
 
 - package direction is legal;
+- mention normalization traverses nested content without importing host auth/client types;
 - no compiler dependency leaks into PDF preparation barrel;
 - no Node/extension import leaks into browser entries;
 - diagnostics are normalized;
 - abort paths never emit;
+- theme/profile inputs survive neutral PDF orchestration;
 - asset manifest parity is exact.
 
 ### 8.2 Type and build gates
@@ -971,8 +1020,10 @@ If credentials or browser access are unavailable, mark this gate **not executed*
 The implementation is complete only when all of the following are true:
 
 - [ ] DOCX and PDF remain separate engines/packages with no dependency between them.
+- [ ] `@atlcli/confluence` owns reusable mention normalization while authenticated lookup and warning policy remain host-owned.
 - [ ] `@atlcli/docx/browser-runtime` owns the reusable DOCX browser bootstrap/config and neutral DOM capability.
 - [ ] `@atlcli/pdf` owns neutral PDF runner contracts, validation, normalized diagnostics, and the asset manifest without importing Typst.
+- [ ] The neutral PDF runner preserves explicit theme/profile options and reports the effective profile.
 - [ ] `@atlcli/pdf-compiler-browser` exists as a private, browser-only implementation package.
 - [ ] The extension consumes all new public surfaces and retains Chrome/session/job/offscreen/UI policy.
 - [ ] The old extension-local compiler and byte-helper implementations are deleted after migration.
@@ -981,6 +1032,8 @@ The implementation is complete only when all of the following are true:
 - [ ] Static host asset imports match the canonical manifest.
 - [ ] The permanent Vite harness runs DOCX and PDF independently in Chromium.
 - [ ] The harness proves real Worker/WASM and real canvas behavior without extension APIs or native `Buffer`.
+- [ ] The harness artifact uses relative asset URLs and passes production Chromium E2E when served below a non-root path.
+- [ ] Harness evidence is described only as package conformance; host-specific packaging/CSP/iframe claims require separate host evidence.
 - [ ] DOCX structural golden parity and PDF pre/post byte parity pass.
 - [ ] PDF abort/cancel/timeout/cleanup behavior remains covered and no PDF export starts emission after observing abort.
 - [ ] Browser source, extension artifact, and harness artifact gates all pass.
@@ -1001,7 +1054,9 @@ The implementation is complete only when all of the following are true:
 | Typst wrapper typing still comes from extension ambient declarations | package typecheck fails or succeeds only in extension program | Move only the narrow compiler declaration beside the new package and add isolated package typecheck. |
 | Host asset list drifts | manifest parity/output scan fails | Keep static imports per host plus manifest equality test; never hide imports behind runtime-generated paths. |
 | Neutral runner recreates extension topology | imports include job store/message/LoadedPage | Reject the change. Runner accepts blocks and ports; extension adapter owns topology. |
+| Mention normalization remains format- or host-bound | PDF/extension types or tenant clients appear in the traversal helper | Keep only `ExportBlock[]` plus a display-name lookup port in `@atlcli/confluence`; authenticated lookup and warning notes remain host-owned. |
 | Generic abstraction erases formats | new union report/format switch/shared engine appears | Reject the change and restore sibling DOCX/PDF lanes. Shared tooling is allowed; a shared export engine is not. |
+| Generic harness is mistaken for target-host certification | plan/docs claim portability without target packaging/CSP/iframe evidence | Treat it only as self-controlled package conformance. Keep target-specific E2E separate and do not grow the public harness into a vendor implementation. |
 | Browser E2E becomes flaky/slow | repeated CI retries/timeouts | Use one Chromium project, production build, local assets, one browser context, warm compiler reuse, and explicit timeouts. Do not weaken assertions to hide flakes. |
 | Turbo serves stale artifact | changed package source does not rebuild host | Expand declared inputs and add stale-build regression coverage before trusting artifact tests. |
 | Extension cancellation regresses after neutral runner split | active/queued abort test downloads or leaks job | Preserve hard cancel in the extension compile-port adapter; STOP before UI migration if the old semantics cannot be represented. |
@@ -1015,7 +1070,7 @@ The implementation is complete only when all of the following are true:
 A future browser-based host should implement two independent integrations:
 
 - DOCX: install the DOCX browser runtime, supply `TemplateSource`, `AssetFetcher`, optional `SvgRasterizer`, and DOCX `OutputSink`, then call `@atlcli/docx`'s `runExport`.
-- PDF: normalize content to `ExportBlock[]`, supply PDF metadata, `PdfAssetResolver`, a host-specific `PdfCompilePort`, and PDF `PdfOutputSink`, then call `@atlcli/pdf`'s `runPdfExport`.
+- PDF: normalize content to `ExportBlock[]`, optionally enrich mentions through `resolveExportMentions` with a host-owned lookup, supply PDF metadata and any theme/profile choice, `PdfAssetResolver`, a host-specific `PdfCompilePort`, and PDF `PdfOutputSink`, then call `@atlcli/pdf`'s `runPdfExport`.
 
 A future desktop webview may reuse both browser lanes. It may replace only output with a native save sink, and it may later replace the PDF compile port with a native Typst adapter. That does not justify combining the engines today.
 
