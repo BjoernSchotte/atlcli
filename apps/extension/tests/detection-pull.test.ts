@@ -10,6 +10,7 @@ import type { PanelEvent } from "../utils/panel-state.js";
 import type { EntityDetection } from "../utils/messages.js";
 
 const detection: EntityDetection = {
+  windowId: 7,
   url: "https://myco.atlassian.net/wiki/spaces/RCM/pages/1031503874/Page",
   entity: { product: "confluence", type: "page", pageId: "1031503874", spaceKey: "RCM" },
   seq: 4,
@@ -20,9 +21,12 @@ describe("pullCurrentEntity", () => {
     const events: PanelEvent[] = [];
     const send = mock(async () => ({ kind: "current-entity", detection }));
 
-    await pullCurrentEntity(send, (e) => events.push(e));
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e));
 
-    expect(send).toHaveBeenCalledWith({ kind: "get-current-entity" });
+    expect(send).toHaveBeenCalledWith({
+      kind: "get-current-entity",
+      windowId: detection.windowId,
+    });
     expect(events).toEqual([
       { type: "detected", url: detection.url, entity: detection.entity, seq: detection.seq },
     ]);
@@ -33,7 +37,7 @@ describe("pullCurrentEntity", () => {
     const later: EntityDetection = { ...detection, seq: 9 };
     const send = mock(async () => ({ kind: "current-entity", detection: later }));
 
-    await pullCurrentEntity(send, (e) => events.push(e)); // simulates onVisible re-pull
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e)); // simulates onVisible re-pull
 
     expect(events[0]).toMatchObject({ type: "detected", seq: 9 });
   });
@@ -41,7 +45,7 @@ describe("pullCurrentEntity", () => {
   it("dispatches nothing when the SW answers with an unrelated response", async () => {
     const events: PanelEvent[] = [];
     const send = mock(async () => ({ kind: "pong" }));
-    await pullCurrentEntity(send, (e) => events.push(e));
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e));
     expect(events).toEqual([]);
   });
 
@@ -50,14 +54,26 @@ describe("pullCurrentEntity", () => {
     const send = mock(async () => {
       throw new Error("no receiving end");
     });
-    await pullCurrentEntity(send, (e) => events.push(e));
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e));
     expect(events).toEqual([]);
   });
 
   it("dispatches nothing for an undefined response", async () => {
     const events: PanelEvent[] = [];
     const send = mock(async () => undefined);
-    await pullCurrentEntity(send, (e) => events.push(e));
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e));
+    expect(events).toEqual([]);
+  });
+
+  it("ignores a response correlated to a different Chrome window", async () => {
+    const events: PanelEvent[] = [];
+    const send = mock(async () => ({
+      kind: "current-entity",
+      detection: { ...detection, windowId: detection.windowId + 1 },
+    }));
+
+    await pullCurrentEntity(detection.windowId, send, (e) => events.push(e));
+
     expect(events).toEqual([]);
   });
 });

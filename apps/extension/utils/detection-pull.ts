@@ -21,12 +21,14 @@ import type { PanelEvent } from "./panel-state.js";
  * page reload).
  */
 export async function pullCurrentEntity(
-  send: (message: { kind: "get-current-entity" }) => Promise<unknown>,
+  windowId: number,
+  send: (message: { kind: "get-current-entity"; windowId: number }) => Promise<unknown>,
   dispatch: (event: PanelEvent) => void
 ): Promise<void> {
   try {
-    const res = (await send({ kind: "get-current-entity" })) as ExtResponse | undefined;
+    const res = (await send({ kind: "get-current-entity", windowId })) as ExtResponse | undefined;
     if (!res || res.kind !== "current-entity") return;
+    if (res.detection.windowId !== windowId) return;
     dispatch({
       type: "detected",
       url: res.detection.url,
