@@ -238,6 +238,40 @@ function narrowTrackFixture(): ExportBlock {
   };
 }
 
+function narrowStatusFixture(): ExportBlock {
+  const textCell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: [1.2, 0.45, 2.1, 3.5, 1.2, 0.7],
+    rows: [
+      {
+        cells: ["Recorded", "State", "Summary", "Notes", "Owner", "Length"]
+          .map((text) => textCell(text, true)),
+      },
+      {
+        cells: [
+          textCell("2032-02-29"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "PASS", color: "green" }] }],
+          },
+          textCell("Synthetic review"),
+          textCell("Width-aware badge regression"),
+          textCell("Team"),
+          textCell("4 min"),
+        ],
+      },
+    ],
+  };
+}
+
 function extractPdfText(pdf: Uint8Array): string | null {
   const pdftotext = Bun.which("pdftotext");
   if (!pdftotext) return null;
@@ -469,7 +503,7 @@ This is a real PDF.
     expect(pdfSource).toMatch(/SourceCodePro-Bold/);
 
     expect(bundle.main).toContain('[#text("Normal")], [#text("Norm\u200Bal")]');
-    expect(bundle.main).toContain("SYNC\u200BHRON\u200BIZED");
+    expect(bundle.main).toContain('"SYNCHRONIZED", "SY\u200BNC\u200BHR\u200BON\u200BIZ\u200BED"');
     expect(bundle.main).toContain('[#text("Alexanderson")], [#text("Alex\u200Bande\u200Brson")]');
     expect(bundle.main).toContain('[#text("Exampleton")], [#text("Exam\u200Bplet\u200Bon")]');
     const extracted = extractPdfText(result.pdf!);
@@ -528,6 +562,31 @@ This is a real PDF.
         .replace(/\s+/g, "");
       expect(compact).toContain("Moderate/Severe");
       expect(compact).toContain("Cross-teamdependencycoordination");
+    }
+  }, 30_000);
+
+  it("compiles a semantic-color badge inside an extremely narrow status track", async () => {
+    const prepared = await preparePdfDocument([narrowStatusFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Narrow status regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "PASS", "PA\u200BSS", color: "#00875A")');
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      expect(extracted.replaceAll("\u200b", "").replace(/\s+/g, "")).toContain("PASS");
     }
   }, 30_000);
 

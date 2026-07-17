@@ -220,7 +220,7 @@ describe("PDF preparation and serialization", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain('#dense-status-badge(available-width, "IN REVI\u200BEW"');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "IN REVIEW", "IN RE\u200BVI\u200BEW"');
     expect(bundle.main).toContain('#dense-link(available-width, "https://example.com/releases/2026/details"');
     expect(bundle.main.match(/#table-par\(available-width =>/g)).toHaveLength(8);
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
@@ -258,7 +258,7 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
 
     expect(bundle.main).toContain(
-      '#dense-status-badge(available-width, "DEPL\u200BOYME\u200BNT PEND\u200BING", color: "#FF8B00")'
+      '#dense-status-badge(available-width, "DEPLOYMENT PENDING", "DE\u200BPL\u200BOY\u200BME\u200BNT PE\u200BND\u200BIN\u200BG", color: "#FF8B00")'
     );
     expect(bundle.main).toContain(
       '#dense-link(available-width, "https://example.com/releases/2026/details?view=full", "https://example.com/releases/2026/details?view=full", "example.com/…", "exam\u200Bple.\u200Bcom")'
@@ -306,8 +306,8 @@ describe("PDF preparation and serialization", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain('#dense-status-badge(available-width, "NEST\u200BED", color: "#00875A")');
-    expect(bundle.main).toContain('#dense-status-badge(available-width, "OUTE\u200BR", color: "#0052CC")');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "NESTED", "NE\u200BST\u200BED", color: "#00875A")');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "OUTER", "OU\u200BTE\u200BR", color: "#0052CC")');
     expect(bundle.main).toContain("columns: (1fr, 1fr,), inset: (x: 6pt, y: 7pt)");
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr,), inset: (x: 2pt, y: 7pt)");
   });
@@ -387,7 +387,44 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('[#text("23:59")], [#text("23:\u200B59")]');
     expect(bundle.main).toContain('[#text("portal.example.invalid")], [#text("port\u200Bal.\u200Bexam\u200Bple.\u200Binva\u200Blid")]');
     expect(bundle.main).toContain('[#text("REF-1234567890")], [#text("REF-\u200B1234\u200B5678\u200B90")]');
-    expect(bundle.main).toContain("SYNC\u200BHRON\u200BIZED");
+    expect(bundle.main).toContain('"SYNCHRONIZED", "SY\u200BNC\u200BHR\u200BON\u200BIZ\u200BED"');
+  });
+
+  it("maps semantic status colors and keeps the narrow badge fallback inside its track", async () => {
+    const cell = (content: Extract<ExportBlock, { type: "paragraph" }> ["content"], header = false) => ({
+      header,
+      colspan: 1,
+      rowspan: 1,
+      content: [{ type: "paragraph" as const, content }],
+    });
+    const prepared = await preparePdfDocument([
+      { type: "paragraph", content: [{ type: "status", text: "ALERT", color: "red" }] },
+      {
+        type: "table",
+        columnWidths: [1.2, 0.45, 2.1, 3.5, 1.2, 0.7],
+        rows: [
+          { cells: ["Recorded", "State", "Summary", "Notes", "Owner", "Length"].map((text) => cell([{ type: "text", text }], true)) },
+          {
+            cells: [
+              cell([{ type: "text", text: "2032-02-29" }]),
+              cell([{ type: "status", text: "PASS", color: "green" }]),
+              cell([{ type: "text", text: "Synthetic review" }]),
+              cell([{ type: "text", text: "Width-aware badge regression" }]),
+              cell([{ type: "text", text: "Team" }]),
+              cell([{ type: "text", text: "4 min" }]),
+            ],
+          },
+        ],
+      },
+    ], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain('#status-badge("ALERT", color: "#DE350B")');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "PASS", "PA\u200BSS", color: "#00875A")');
+    expect(bundle.template).toContain("width: available-width - 2pt");
+    expect(bundle.template).toContain("#breakable-label");
   });
 
   it("deduplicates image bytes and reports missing alt text", async () => {

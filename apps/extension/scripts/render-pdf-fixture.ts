@@ -169,6 +169,27 @@ const blocks: ExportBlock[] = [
       },
     ],
   },
+  { type: "heading", level: 3, content: [{ type: "text", text: "Narrow status track" }] },
+  {
+    type: "table",
+    columnWidths: [1.2, 0.45, 2.1, 3.5, 1.2, 0.7],
+    rows: [
+      {
+        cells: ["Recorded", "State", "Summary", "Notes", "Owner", "Length"]
+          .map((text) => textCell(text, true)),
+      },
+      {
+        cells: [
+          textCell("2032-02-29"),
+          statusCell("PASS", "green"),
+          textCell("Synthetic review"),
+          textCell("Width-aware badge regression"),
+          textCell("Team"),
+          textCell("4 min"),
+        ],
+      },
+    ],
+  },
   { type: "heading", level: 3, content: [{ type: "text", text: "Dense table" }] },
   {
     type: "table",

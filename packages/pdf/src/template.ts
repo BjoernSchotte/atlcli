@@ -230,7 +230,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   link(target, visible)
 }
 
-#let dense-status-badge(available-width, label, color: "#42526E") = {
+#let dense-status-badge(available-width, label, breakable-label, color: "#42526E") = {
   let normal = status-badge(label, color: color)
   let compact = status-badge(label, color: color, inset-x: 2pt)
   if measure(normal).width <= available-width {
@@ -239,9 +239,11 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
     compact
   } else {
     box(
-      width: available-width,
+      // Typst adds horizontal inset outside an explicit box width. Subtract it
+      // so the fallback badge's painted bounds never exceed the table track.
+      width: available-width - 2pt,
       fill: rgb(color).lighten(82%),
-      inset: (x: 2pt, y: 2pt),
+      inset: (x: 1pt, y: 2pt),
       radius: 3pt,
     )[
       #set text(
@@ -252,7 +254,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
         hyphenate: true,
       )
       #set par(linebreaks: "simple", leading: 0.72em)
-      #label
+      #breakable-label
     ]
   }
 }

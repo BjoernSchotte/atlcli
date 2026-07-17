@@ -180,13 +180,23 @@ const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
+const DENSE_STATUS_RUN_LENGTH = 2;
 
-function denseAtomicToken(value: string): string {
+const CONFLUENCE_STATUS_COLORS: Readonly<Record<string, string>> = {
+  grey: "#42526E",
+  gray: "#42526E",
+  red: "#DE350B",
+  yellow: "#FF991F",
+  green: "#00875A",
+  blue: "#0052CC",
+};
+
+function denseAtomicToken(value: string, runLength = DENSE_ATOMIC_RUN_LENGTH): string {
   return value
     .replace(/([/.\-_?&=:#@,;])/g, `$1${DENSE_BREAK_OPPORTUNITY}`)
     .replace(
       new RegExp(
-        `([\\p{L}\\p{N}\\p{M}]{${DENSE_ATOMIC_RUN_LENGTH}})(?=[\\p{L}\\p{N}\\p{M}])`,
+        `([\\p{L}\\p{N}\\p{M}]{${runLength}})(?=[\\p{L}\\p{N}\\p{M}])`,
         "gu"
       ),
       `$1${DENSE_BREAK_OPPORTUNITY}`
@@ -194,7 +204,12 @@ function denseAtomicToken(value: string): string {
 }
 
 function denseStatusLabel(value: string): string {
-  return value.replace(/\S+/gu, (token) => denseAtomicToken(token));
+  return value.replace(/\S+/gu, (token) => denseAtomicToken(token, DENSE_STATUS_RUN_LENGTH));
+}
+
+function statusColor(value: string | undefined): string {
+  const semantic = value?.trim().toLowerCase();
+  return (semantic && CONFLUENCE_STATUS_COLORS[semantic]) ?? safeColor(value);
 }
 
 function denseHostLabel(value: string): string {
@@ -323,10 +338,12 @@ function serializeInline(
           return serializeMention(node, context);
         }
         case "status": {
+          const label = node.text || node.color;
+          const color = statusColor(node.color);
           if (context.availableWidth) {
-            return `#dense-status-badge(${context.availableWidth}, ${typstString(denseStatusLabel(node.text || node.color))}, color: ${typstString(safeColor(node.color))})`;
+            return `#dense-status-badge(${context.availableWidth}, ${typstString(label)}, ${typstString(denseStatusLabel(label))}, color: ${typstString(color)})`;
           }
-          return `#status-badge(${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
+          return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
         case "link": {
           const content = serializeInline(node.content, labels, notes, context);
