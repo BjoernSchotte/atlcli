@@ -83,13 +83,13 @@ function denseTableFixture(): ExportBlock {
       },
       {
         cells: [
-          cell("20 May 2026 12:00"),
+          cell("2031-12-31 23:59"),
           cell("Integration gateway"),
           {
             header: false,
             colspan: 1,
             rowspan: 1,
-            content: [{ type: "paragraph", content: [{ type: "status", text: "DEPLOYMENT BLOCKED", color: "#DE350B" }] }],
+            content: [{ type: "paragraph", content: [{ type: "status", text: "SYNCHRONIZED", color: "#DE350B" }] }],
           },
           {
             header: false,
@@ -119,7 +119,7 @@ function denseTableFixture(): ExportBlock {
             header: false,
             colspan: 1,
             rowspan: 1,
-            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alex Example" }] }],
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alexanderson Exampleton" }] }],
           },
           cell("1.13.1"),
           cell("development"),
@@ -129,7 +129,7 @@ function denseTableFixture(): ExportBlock {
             rowspan: 1,
             content: [{ type: "paragraph", content: [{ type: "status", text: "WAITING FOR REVIEW", color: "#FF991F" }] }],
           },
-          cell("No forced clipping"),
+          cell("AlphabeticOverflowGuard"),
           cell("-"),
           {
             header: false,
@@ -151,6 +151,41 @@ function denseTableFixture(): ExportBlock {
           cell("Synthetic fixture"),
         ],
       },
+      {
+        cells: [
+          cell("21 May 2026 09:30"),
+          cell("Event processor"),
+          cell("ON"),
+          cell("LOW"),
+          cell("Ordinary descriptive sentences continue to wrap at meaningful word boundaries in dense mode."),
+          cell("Reference"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:user-1234567890-abcdef" }] }],
+          },
+          cell("1.13.2"),
+          cell("release-candidate"),
+          cell("OK"),
+          cell("Available"),
+          cell("REF-1234567890, TASK-9876543210 alphaomegaworkflow-beta"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "link",
+                target: { kind: "external", href: CUSTOM_LABEL_LINK },
+                content: [{ type: "text", text: "portal.example.invalid" }],
+              }],
+            }],
+          },
+          cell("Verified"),
+        ],
+      },
       ...Array.from({ length: 30 }, (_, index) => ({
         cells: [
           cell(`D${index + 1}`),
@@ -169,6 +204,36 @@ function denseTableFixture(): ExportBlock {
           cell("OK"),
         ],
       })),
+    ],
+  };
+}
+
+function narrowTrackFixture(): ExportBlock {
+  const cell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: [1, 1, 0.75, 2, 2, 2, 2],
+    rows: [
+      {
+        cells: ["Level", "Type", "Impact", "Description", "Operations", "Timing", "Decision"]
+          .map((text) => cell(text, true)),
+      },
+      {
+        cells: [
+          cell("3"),
+          cell("Scheduled review"),
+          cell("Moderate / Severe"),
+          cell("Cross-team dependency coordination"),
+          cell("Architecture and platform alignment"),
+          cell("Verification before rollout"),
+          cell("Approval required"),
+        ],
+      },
     ],
   };
 }
@@ -403,9 +468,10 @@ This is a real PDF.
     expect(pdfSource).toContain(`/URI (${CUSTOM_LABEL_LINK})`);
     expect(pdfSource).toMatch(/SourceCodePro-Bold/);
 
-    expect(bundle.main).toContain("Normal prose keeps natural word wrapping");
-    expect(bundle.main).toContain("DEPLOYMENT BLOCKED");
-    expect(bundle.main).toContain("Alex Example");
+    expect(bundle.main).toContain('[#text("Normal")], [#text("Norm\u200Bal")]');
+    expect(bundle.main).toContain("SYNC\u200BHRON\u200BIZED");
+    expect(bundle.main).toContain('[#text("Alexanderson")], [#text("Alex\u200Bande\u200Brson")]');
+    expect(bundle.main).toContain('[#text("Exampleton")], [#text("Exam\u200Bplet\u200Bon")]');
     const extracted = extractPdfText(result.pdf!);
     if (extracted !== null) {
       const extractedCompact = extracted
@@ -414,10 +480,16 @@ This is a real PDF.
         .replace(/\s+/g, "");
       expect(extractedCompact).toContain("prosekeeps");
       expect(extractedCompact).toContain("naturalwordwrapping");
-      expect(extractedCompact).toContain("DEPLOYMENTBLOCKED");
+      expect(extractedCompact).toContain("SYNCHRONIZED");
+      expect(extractedCompact).toContain("2031-12-3123:59");
+      expect(extractedCompact).toContain("portal.example.invalid");
+      expect(extractedCompact).toContain("REF-1234567890,TASK-9876543210");
+      expect(extractedCompact).toContain("alphaomegaworkflow-beta");
+      expect(extractedCompact).toContain("AlphabeticOverflowGuard");
+      expect(extractedCompact).toContain("synthetic:user-1234567890-abcdef");
       expect(extractedCompact).toContain("READYFORRELEASE");
       expect(extractedCompact).toContain("WAITINGFORREVIEW");
-      expect(extractedCompact).toContain("AlexExample");
+      expect(extractedCompact).toContain("AlexandersonExampleton");
       expect(extractedCompact).toContain("docs.example.com");
       expect(extractedCompact).toContain("Deploymentguide");
       expect(extractedCompact.match(/Updated/g)?.length ?? 0).toBeGreaterThan(1);
@@ -426,6 +498,37 @@ This is a real PDF.
     const repeat = await compiler.compile(bundle);
     expect(repeat.diagnostics).toEqual([]);
     expect(repeat.pdf).toEqual(result.pdf);
+  }, 30_000);
+
+  it("compiles a seven-column table with one narrow track without losing its phrase", async () => {
+    const prepared = await preparePdfDocument([narrowTrackFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Narrow track regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(bundle.main).toContain("columns: (0.093023fr, 0.093023fr, 0.069767fr");
+    expect(bundle.main).toContain('[#text("Moderate")], [#text("Mode\u200Brate")]');
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      const compact = extracted
+        .replaceAll("\u00ad", "")
+        .replaceAll("\u200b", "")
+        .replace(/\s+/g, "");
+      expect(compact).toContain("Moderate/Severe");
+      expect(compact).toContain("Cross-teamdependencycoordination");
+    }
   }, 30_000);
 
   it("compiles literal office-style text safely inside lists and tables", async () => {

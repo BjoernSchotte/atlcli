@@ -147,6 +147,28 @@ const blocks: ExportBlock[] = [
       },
     ],
   },
+  { type: "heading", level: 3, content: [{ type: "text", text: "Narrow-track table" }] },
+  {
+    type: "table",
+    columnWidths: [1, 1, 0.75, 2, 2, 2, 2],
+    rows: [
+      {
+        cells: ["Level", "Type", "Impact", "Description", "Operations", "Timing", "Decision"]
+          .map((text) => textCell(text, true)),
+      },
+      {
+        cells: [
+          textCell("3"),
+          textCell("Scheduled review"),
+          textCell("Moderate / Severe"),
+          textCell("Cross-team dependency coordination"),
+          textCell("Architecture and platform alignment"),
+          textCell("Verification before rollout"),
+          textCell("Approval required"),
+        ],
+      },
+    ],
+  },
   { type: "heading", level: 3, content: [{ type: "text", text: "Dense table" }] },
   {
     type: "table",
@@ -172,9 +194,9 @@ const blocks: ExportBlock[] = [
       },
       {
         cells: [
-          textCell("20 May 2026 12:00"),
+          textCell("2031-12-31 23:59"),
           textCell("Integration gateway"),
-          statusCell("DEPLOYMENT BLOCKED", "#DE350B"),
+          statusCell("SYNCHRONIZED", "#DE350B"),
           statusCell("READY FOR RELEASE", "#00875A"),
           textCell("Normal prose keeps natural word wrapping in narrow columns without turning every token into an atom."),
           {
@@ -198,12 +220,12 @@ const blocks: ExportBlock[] = [
             header: false,
             colspan: 1,
             rowspan: 1,
-            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alex Example" }] }],
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alexanderson Exampleton" }] }],
           },
           textCell("1.13.1"),
           textCell("development"),
           statusCell("WAITING FOR REVIEW", "#FF991F"),
-          textCell("No forced clipping"),
+          textCell("AlphabeticOverflowGuard"),
           textCell("-"),
           linkCell("Deployment guide", CUSTOM_LABEL_LINK),
           textCell("Synthetic fixture"),
@@ -217,13 +239,18 @@ const blocks: ExportBlock[] = [
           statusCell("NORMAL", "#42526E"),
           textCell("Ordinary descriptive sentences continue to wrap at meaningful word boundaries in dense mode."),
           linkCell("Custom link labels stay readable", CUSTOM_LABEL_LINK),
-          textCell("Documentation team"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:user-1234567890-abcdef" }] }],
+          },
           textCell("1.13.2"),
           textCell("release-candidate"),
           statusCell("APPROVED", "#00875A"),
           textCell("Full cell content remains available"),
-          textCell("Synthetic visual fixture"),
-          textCell("Author guide"),
+          textCell("REF-1234567890, TASK-9876543210 alphaomegaworkflow-beta"),
+          linkCell("portal.example.invalid", CUSTOM_LABEL_LINK),
           textCell("Verified"),
         ],
       },

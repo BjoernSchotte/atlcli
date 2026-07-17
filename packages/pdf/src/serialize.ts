@@ -172,25 +172,33 @@ type TableDensity = "normal" | "dense";
 
 interface RenderContext {
   tableDensity: TableDensity;
+  inTable?: boolean;
   availableWidth?: string;
 }
 
 const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
+const DENSE_ATOMIC_RUN_LENGTH = 4;
 
-function denseAccountId(value: string): string {
-  return value.replace(/([/.\-_?&=:])/g, `$1${DENSE_BREAK_OPPORTUNITY}`);
+function denseAtomicToken(value: string): string {
+  return value
+    .replace(/([/.\-_?&=:#@,;])/g, `$1${DENSE_BREAK_OPPORTUNITY}`)
+    .replace(
+      new RegExp(
+        `([\\p{L}\\p{N}\\p{M}]{${DENSE_ATOMIC_RUN_LENGTH}})(?=[\\p{L}\\p{N}\\p{M}])`,
+        "gu"
+      ),
+      `$1${DENSE_BREAK_OPPORTUNITY}`
+    );
+}
+
+function denseStatusLabel(value: string): string {
+  return value.replace(/\S+/gu, (token) => denseAtomicToken(token));
 }
 
 function denseHostLabel(value: string): string {
-  return value
-    .split(/([.-])/)
-    .map((part) => {
-      if (part === "." || part === "-") return `${part}${DENSE_BREAK_OPPORTUNITY}`;
-      return part.replace(/([a-z0-9]{4})(?=[a-z0-9])/gi, `$1${DENSE_BREAK_OPPORTUNITY}`);
-    })
-    .join("");
+  return denseAtomicToken(value);
 }
 
 function plainUnmarkedText(nodes: InlineNode[]): string | null {
@@ -226,13 +234,75 @@ function denseRawUrlLabels(href: string, label: string): DenseUrlLabels | null {
   };
 }
 
-function hasDenseAdaptiveInline(nodes: InlineNode[]): boolean {
-  return nodes.some((node) => {
-    if (node.type === "status") return true;
-    if (node.type !== "link" || node.target.kind !== "external") return false;
-    const label = plainUnmarkedText(node.content);
-    return label !== null && denseRawUrlLabels(node.target.href, label) !== null;
-  });
+type TextInlineNode = Extract<InlineNode, { type: "text" }>;
+
+function styledText(value: string, node: TextInlineNode): string {
+  let out = literalText(value);
+  for (const mark of node.marks ?? []) {
+    switch (mark) {
+      case "bold":
+        out = `#strong[${out}]`;
+        break;
+      case "italic":
+        out = `#emph[${out}]`;
+        break;
+      case "underline":
+        out = `#underline[${out}]`;
+        break;
+      case "strike":
+        out = `#strike[${out}]`;
+        break;
+      case "code":
+        out = `#raw(${typstString(value)})`;
+        break;
+      case "subscript":
+        out = `#sub[${out}]`;
+        break;
+      case "superscript":
+        out = `#super[${out}]`;
+        break;
+      default: {
+        const exhaustive: never = mark;
+        out = exhaustive;
+      }
+    }
+  }
+  if (node.color) out = `#text(fill: rgb(${typstString(safeColor(node.color))}))[${out}]`;
+  return out;
+}
+
+function serializeText(node: TextInlineNode, context: RenderContext): string {
+  if (!context.availableWidth) return styledText(node.text, node);
+  const segments = node.text.match(/\s+|\S+/gu);
+  if (!segments) return styledText(node.text, node);
+  return segments.map((segment) => {
+    const normal = styledText(segment, node);
+    if (/^\s+$/u.test(segment)) return normal;
+    const breakable = denseAtomicToken(segment);
+    if (breakable === segment) return normal;
+    return `#dense-token(${context.availableWidth}, [${normal}], [${styledText(breakable, node)}])`;
+  }).join("");
+}
+
+function serializeMention(
+  node: Extract<InlineNode, { type: "mention" }>,
+  context: RenderContext
+): string {
+  const label = node.displayName ?? node.accountId;
+  if (!context.availableWidth) {
+    return `#text(fill: rgb("#0747A6"))[${literalText(`@${label}`)}]`;
+  }
+
+  const segments = label.match(/\s+|\S+/gu) ?? [label];
+  const content = `${literalText(`@${DENSE_BREAK_OPPORTUNITY}`)}${segments.map((segment) => {
+    const normal = literalText(segment);
+    if (/^\s+$/u.test(segment)) return normal;
+    const breakable = denseAtomicToken(segment);
+    if (breakable === segment) return normal;
+    return `#dense-token(${context.availableWidth}, [${normal}], [${literalText(breakable)}])`;
+  }).join("")}`;
+
+  return `#text(fill: rgb("#0747A6"))[${content}]`;
 }
 
 function serializeInline(
@@ -245,51 +315,16 @@ function serializeInline(
     .map((node) => {
       switch (node.type) {
         case "text": {
-          let out = literalText(node.text);
-          for (const mark of node.marks ?? []) {
-            switch (mark) {
-              case "bold":
-                out = `#strong[${out}]`;
-                break;
-              case "italic":
-                out = `#emph[${out}]`;
-                break;
-              case "underline":
-                out = `#underline[${out}]`;
-                break;
-              case "strike":
-                out = `#strike[${out}]`;
-                break;
-              case "code":
-                out = `#raw(${typstString(node.text)})`;
-                break;
-              case "subscript":
-                out = `#sub[${out}]`;
-                break;
-              case "superscript":
-                out = `#super[${out}]`;
-                break;
-              default: {
-                const exhaustive: never = mark;
-                out = exhaustive;
-              }
-            }
-          }
-          if (node.color) out = `#text(fill: rgb(${typstString(safeColor(node.color))}))[${out}]`;
-          return out;
+          return serializeText(node, context);
         }
         case "lineBreak":
           return "#linebreak()";
         case "mention": {
-          const label = node.displayName ?? (
-            context.tableDensity === "dense" ? denseAccountId(node.accountId) : node.accountId
-          );
-          const prefix = context.tableDensity === "dense" ? `@${DENSE_BREAK_OPPORTUNITY}` : "@";
-          return `#text(fill: rgb(\"#0747A6\"))[${literalText(`${prefix}${label}`)}]`;
+          return serializeMention(node, context);
         }
         case "status": {
-          if (context.tableDensity === "dense" && context.availableWidth) {
-            return `#dense-status-badge(${context.availableWidth}, ${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
+          if (context.availableWidth) {
+            return `#dense-status-badge(${context.availableWidth}, ${typstString(denseStatusLabel(node.text || node.color))}, color: ${typstString(safeColor(node.color))})`;
           }
           return `#status-badge(${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
         }
@@ -305,7 +340,7 @@ function serializeInline(
             return content;
           }
           if (href.startsWith("<")) return `#link(${href})[${content}]`;
-          if (context.tableDensity === "dense" && context.availableWidth) {
+          if (context.availableWidth) {
             const label = plainUnmarkedText(node.content);
             const denseLabels = label === null ? null : denseRawUrlLabels(href, label);
             if (denseLabels !== null) {
@@ -393,14 +428,14 @@ function serializeParagraphInline(
   context: RenderContext,
   wrapInParagraph: boolean
 ): string {
-  if (context.tableDensity === "dense" && hasDenseAdaptiveInline(content)) {
+  if (context.inTable) {
     const availableWidth = "available-width";
     const inline = serializeInline(content, writer.labels, writer.notes, {
       ...context,
       availableWidth,
     });
     const body = wrapInParagraph ? `#par[${inline}]` : inline;
-    return `#dense-par(${availableWidth} => [${body}])`;
+    return `#table-par(${availableWidth} => [${body}])`;
   }
   const inline = serializeInline(content, writer.labels, writer.notes, context);
   return wrapInParagraph ? `#par[${inline}]` : inline;
@@ -495,13 +530,13 @@ function serializeBlock(
       const label = count === 1 ? base : `${base}-${count}`;
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
       const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
-      if (context.tableDensity === "dense" && hasDenseAdaptiveInline(block.content)) {
+      if (context.inTable) {
         const availableWidth = "available-width";
         const content = serializeInline(block.content, writer.labels, writer.notes, {
           ...context,
           availableWidth,
         });
-        value = `#dense-par(${availableWidth} => [${heading(content)}]) <${label}>`;
+        value = `#table-par(${availableWidth} => [${heading(content)}]) <${label}>`;
       } else {
         value = `${heading(serializeInline(block.content, writer.labels, writer.notes, context))} <${label}>`;
       }
@@ -573,6 +608,7 @@ function serializeBlock(
       const isDense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
       const cellContext: RenderContext = {
         tableDensity: isDense ? "dense" : "normal",
+        inTable: true,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const rows = block.rows.map((row, rowIndex) => {
@@ -588,8 +624,7 @@ function serializeBlock(
             `${path}.rows[${rowIndex}].cells[${cellIndex}].content`,
             cellContext
           );
-          const cellContent = isDense ? `#dense-cell[${content}]` : content;
-          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${cellContent}])`;
+          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${content}])`;
         });
         return row.cells.every((cell) => cell.header)
           ? `table.header(${cells.join(", ")})`
@@ -650,7 +685,7 @@ export function serializePdfDocument(
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, dense-cell, dense-par, dense-link, dense-status-badge, task-item
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},

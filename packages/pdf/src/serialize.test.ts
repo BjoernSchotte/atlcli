@@ -195,7 +195,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr,)");
   });
 
-  it("keeps adaptive inline layout disabled below nine effective table columns", async () => {
+  it("keeps normal insets below nine columns while making table inline layout width-aware", async () => {
     const cells = Array.from({ length: 8 }, (_, index) => ({
       header: false,
       colspan: 1,
@@ -220,12 +220,9 @@ describe("PDF preparation and serialization", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain('#status-badge("IN REVIEW"');
-    expect(bundle.main).toContain('#link("https://example.com/releases/2026/details")');
-    expect(bundle.main).not.toContain("#dense-par(available-width =>");
-    expect(bundle.main).not.toContain("#dense-status-badge(available-width,");
-    expect(bundle.main).not.toContain("#dense-link(available-width,");
-    expect(bundle.main).not.toContain("#dense-cell[");
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "IN REVI\u200BEW"');
+    expect(bundle.main).toContain('#dense-link(available-width, "https://example.com/releases/2026/details"');
+    expect(bundle.main.match(/#table-par\(available-width =>/g)).toHaveLength(8);
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
   });
 
@@ -261,15 +258,14 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
 
     expect(bundle.main).toContain(
-      '#dense-status-badge(available-width, "DEPLOYMENT PENDING", color: "#FF8B00")'
+      '#dense-status-badge(available-width, "DEPL\u200BOYME\u200BNT PEND\u200BING", color: "#FF8B00")'
     );
     expect(bundle.main).toContain(
       '#dense-link(available-width, "https://example.com/releases/2026/details?view=full", "https://example.com/releases/2026/details?view=full", "example.com/…", "exam\u200Bple.\u200Bcom")'
     );
-    expect(bundle.main).toContain('#link("https://example.com/reference")[#text("Release notes")]');
-    expect(bundle.main.match(/#dense-par\(available-width =>/g)).toHaveLength(2);
+    expect(bundle.main).toContain('#link("https://example.com/reference")[#dense-token(available-width, [#text("Release")]');
+    expect(bundle.main.match(/#table-par\(available-width =>/g)).toHaveLength(8);
     expect(bundle.main).toContain("inset: (x: 2pt, y: 7pt)");
-    expect(bundle.main).toContain("#dense-cell[");
   });
 
   it("recalculates density for nested tables instead of inheriting the outer table mode", async () => {
@@ -310,12 +306,13 @@ describe("PDF preparation and serialization", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain('#status-badge("NESTED", color: "#00875A")');
-    expect(bundle.main).not.toContain('#dense-status-badge(available-width, "NESTED"');
-    expect(bundle.main).toContain('#dense-status-badge(available-width, "OUTER", color: "#0052CC")');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "NEST\u200BED", color: "#00875A")');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "OUTE\u200BR", color: "#0052CC")');
+    expect(bundle.main).toContain("columns: (1fr, 1fr,), inset: (x: 6pt, y: 7pt)");
+    expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr,), inset: (x: 2pt, y: 7pt)");
   });
 
-  it("adds delimiter-only break opportunities to accountId-only mentions in dense tables", async () => {
+  it("bounds resolved display names and accountId-only mentions without changing table prose", async () => {
     const paragraph = (content: ExportBlock & { type: "paragraph" }): ExportBlock => content;
     const cell = (content: Extract<ExportBlock, { type: "paragraph" }> ["content"]) => ({
       header: false,
@@ -325,7 +322,8 @@ describe("PDF preparation and serialization", () => {
     });
     const technicalId = "team.alpha-beta_user?role=reader&scope:wiki/path";
     const unicodeId = "مرحبا:δοκιμή_用户";
-    const ordinaryProse = "release/path.alpha-beta_key?x=1&y:2";
+    const longDisplayName = "Alexanderson Exampleton";
+    const ordinaryProse = "Ordinary prose remains untouched.";
     const normalCells = Array.from({ length: 8 }, (_, index) =>
       index === 0
         ? cell([{ type: "mention", accountId: technicalId }])
@@ -338,13 +336,14 @@ describe("PDF preparation and serialization", () => {
         return cell([{
           type: "mention",
           accountId: technicalId,
-          displayName: "ريم.李-User",
+          displayName: longDisplayName,
         }]);
       }
       if (index === 3) return cell([{ type: "text", text: ordinaryProse }]);
       return cell([{ type: "text", text: `Dense ${index + 1}` }]);
     });
     const prepared = await preparePdfDocument([
+      { type: "paragraph", content: [{ type: "mention", accountId: technicalId }] },
       { type: "table", rows: [{ cells: normalCells }] },
       { type: "table", rows: [{ cells: denseCells }] },
     ], {
@@ -354,15 +353,41 @@ describe("PDF preparation and serialization", () => {
     const breakOpportunity = "\u200B";
 
     expect(bundle.main).toContain(`#text("@${technicalId}")`);
-    expect(bundle.main).toContain(
-      `#text("@${breakOpportunity}team.${breakOpportunity}alpha-${breakOpportunity}beta_${breakOpportunity}user?${breakOpportunity}role=${breakOpportunity}reader&${breakOpportunity}scope:${breakOpportunity}wiki/${breakOpportunity}path")`
-    );
-    expect(bundle.main).toContain(
-      `#text("@${breakOpportunity}مرحبا:${breakOpportunity}δοκιμή_${breakOpportunity}用户")`
-    );
-    expect(bundle.main).toContain(`#text("@${breakOpportunity}ريم.李-User")`);
-    expect(bundle.main).toContain(`#text("${ordinaryProse}")`);
-    expect(bundle.main.match(/\u200B/g)).toHaveLength(13);
+    expect(bundle.main).toContain(`#text("@${breakOpportunity}")#dense-token(available-width, [#text("team.alpha-beta_user?role=reader&scope:wiki/path")]`);
+    expect(bundle.main).toContain(`team.${breakOpportunity}alph${breakOpportunity}a-`);
+    expect(bundle.main).toContain(`read${breakOpportunity}er&${breakOpportunity}`);
+    expect(bundle.main).toContain(`#text("@${breakOpportunity}")#dense-token(available-width, [#text("مرحبا:δοκιμή_用户")]`);
+    expect(bundle.main).toContain(`مرحب${breakOpportunity}ا:${breakOpportunity}`);
+    expect(bundle.main).toContain(`#dense-token(available-width, [#text("Alexanderson")], [#text("Alex${breakOpportunity}ande${breakOpportunity}rson")])`);
+    expect(bundle.main).toContain(`#dense-token(available-width, [#text("Exampleton")], [#text("Exam${breakOpportunity}plet${breakOpportunity}on")])`);
+    expect(bundle.main).toContain('#dense-token(available-width, [#text("Ordinary")], [#text("Ordi\u200Bnary")])');
+    expect(bundle.main).toContain('[#text("untouched.")], [#text("unto\u200Buche\u200Bd.\u200B")]');
+  });
+
+  it("adds measured table fallbacks to dates, identifiers, domains, and single-token statuses", async () => {
+    const cell = (content: Extract<ExportBlock, { type: "paragraph" }> ["content"]) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [{ type: "paragraph" as const, content }],
+    });
+    const cells = Array.from({ length: 9 }, (_, index) => {
+      if (index === 0) return cell([{ type: "text", text: "2031-12-31 23:59" }]);
+      if (index === 1) return cell([{ type: "text", text: "portal.example.invalid" }]);
+      if (index === 2) return cell([{ type: "text", text: "REF-1234567890" }]);
+      if (index === 3) return cell([{ type: "status", text: "SYNCHRONIZED", color: "#0052CC" }]);
+      return cell([{ type: "text", text: `Cell ${index + 1}` }]);
+    });
+    const prepared = await preparePdfDocument([{ type: "table", rows: [{ cells }] }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain('[#text("2031-12-31")], [#text("2031-\u200B12-\u200B31")]');
+    expect(bundle.main).toContain('[#text("23:59")], [#text("23:\u200B59")]');
+    expect(bundle.main).toContain('[#text("portal.example.invalid")], [#text("port\u200Bal.\u200Bexam\u200Bple.\u200Binva\u200Blid")]');
+    expect(bundle.main).toContain('[#text("REF-1234567890")], [#text("REF-\u200B1234\u200B5678\u200B90")]');
+    expect(bundle.main).toContain("SYNC\u200BHRON\u200BIZED");
   });
 
   it("deduplicates image bytes and reports missing alt text", async () => {
@@ -465,7 +490,7 @@ describe("PDF preparation and serialization", () => {
       (entry) => entry.blockPath === "blocks[0].content[0].rows[0].cells[0].content[0]"
     );
     expect(paragraph).toBeDefined();
-    expect(bundle.main.split("\n")[paragraph!.startLine - 1]).toContain('#par[#text("Nested")]');
+    expect(bundle.main.split("\n")[paragraph!.startLine - 1]).toContain('#table-par(available-width => [#par[#dense-token(available-width, [#text("Nested")]');
     expect(
       mapPdfDiagnostics(
         [{ severity: "error", message: "fixture", path: "main.typ", line: paragraph!.startLine }],

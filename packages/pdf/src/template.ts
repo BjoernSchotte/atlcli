@@ -201,14 +201,19 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   text(font: "Source Code Pro", size: 7.5pt, weight: "bold", fill: rgb(color), label),
 )
 
-// layout is intentionally scoped to the one dense-table paragraph that
-// contains adaptive inline values. Ordinary table paragraphs never enter this
-// helper and retain the template's normal wrapping and hyphenation behavior.
-#let dense-par(body) = layout(size => body(size.width))
+// Every table paragraph receives its real content width. Narrow cells switch
+// to the simple breaker; wider cells retain the document's optimized breaker.
+// 18mm approximates the usable width of one track at the existing nine-column
+// dense-table boundary after cell insets.
+#let table-par(body) = layout(size => {
+  if size.width <= 18mm { set par(linebreaks: "simple") }
+  body(size.width)
+})
 
-#let dense-cell(body) = {
-  set par(linebreaks: "simple")
-  body
+// Preserve the original token whenever it fits. Only an actually over-wide
+// token receives rendering-only emergency break opportunities.
+#let dense-token(available-width, normal, breakable) = {
+  if measure(normal).width <= available-width { normal } else { breakable }
 }
 
 #let dense-link(available-width, target, full-label, compact-label, host-label) = {
@@ -246,7 +251,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
         fill: rgb(color),
         hyphenate: true,
       )
-      #set par(linebreaks: "optimized", leading: 0.72em)
+      #set par(linebreaks: "simple", leading: 0.72em)
       #label
     ]
   }
