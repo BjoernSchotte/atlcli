@@ -39,7 +39,7 @@ export type PreparedPdfBlock =
   | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
   | {
       type: "table";
-      rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; content: PreparedPdfBlock[] }> }>;
+      rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;
       columnWidths?: number[];
     }
   | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string }

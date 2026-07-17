@@ -1,4 +1,5 @@
 import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import { readableTextColor } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { ATLCLI_TYPST_TEMPLATE } from "./template.js";
 import type {
@@ -697,12 +698,13 @@ function serializeBlock(
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
+          const backgroundColor = cell.backgroundColor ?? (cell.header ? "#F4F5F7" : undefined);
           const args = [
             grid.requiresExplicitPlacement ? `x: ${columnIndex}` : "",
             grid.requiresExplicitPlacement ? `y: ${rowIndex}` : "",
             cell.colspan > 1 ? `colspan: ${cell.colspan}` : "",
             cell.rowspan > 1 ? `rowspan: ${cell.rowspan}` : "",
-            cell.header ? 'fill: rgb("#F4F5F7")' : "",
+            backgroundColor ? `fill: rgb(${typstString(backgroundColor)})` : "",
           ].filter(Boolean);
           const content = serializeBlocks(
             cell.content,
@@ -710,7 +712,10 @@ function serializeBlock(
             `${path}.rows[${rowIndex}].cells[${cellIndex}].content`,
             cellContext
           );
-          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${content}])`;
+          const styledContent = cell.backgroundColor
+            ? `#set text(fill: rgb(${typstString(readableTextColor(cell.backgroundColor))}))\n${content}`
+            : content;
+          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${styledContent}])`;
         });
         return {
           cells,

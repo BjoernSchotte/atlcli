@@ -194,7 +194,7 @@ chosen.
 | callout | semantic content inside a styled `callout` container; title and kind preserved |
 | codeBlock | safe raw-code representation with language metadata and native highlighting |
 | ordered/unordered/task list | semantic nested `enum`/`list`; checked state rendered visibly and announced in text |
-| table | semantic `table`; spans preserved where valid, leading complete header rows emitted as `table.header` |
+| table | semantic `table`; spans preserved where valid, leading complete header rows emitted as `table.header`; source cell backgrounds override the neutral header fallback and receive readable light/dark ink |
 | image attachment | semantic figure/image using resolved job asset; caption and alternative description remain separate |
 | image external | skipped with a stable report note unless already available through an approved resolver |
 | blockquote | semantic quote styling without flattening child content |

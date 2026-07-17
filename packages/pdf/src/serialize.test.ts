@@ -159,7 +159,12 @@ describe("PDF preparation and serialization", () => {
         { cells: [cell("One", { header: true }), cell("Two", { header: true }), cell("Three", { header: true }), cell("Four", { header: true })] },
         { cells: [cell("Vertical", { rowspan: 2 }), cell("Upper", { colspan: 2 }), cell("Tail")] },
         { cells: [cell("Lower", { colspan: 3 })] },
-        { cells: [cell("Synthetic section", { header: true, colspan: 4 })] },
+        {
+          cells: [{
+            ...cell("Synthetic section", { header: true, colspan: 4 }),
+            backgroundColor: "#334455",
+          }],
+        },
       ],
     }], {
       resolve: async () => { throw new Error("unused"); },
@@ -169,7 +174,8 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
     expect(bundle.main).toContain("table.cell(x: 0, y: 1, rowspan: 2");
     expect(bundle.main).toContain("table.cell(x: 1, y: 2, colspan: 3");
-    expect(bundle.main).toContain("table.cell(x: 0, y: 3, colspan: 4, fill:");
+    expect(bundle.main).toContain('table.cell(x: 0, y: 3, colspan: 4, fill: rgb("#334455")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FFFFFF"))');
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
   });
 

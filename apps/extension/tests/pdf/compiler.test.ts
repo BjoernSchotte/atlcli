@@ -642,7 +642,12 @@ This is a real PDF.
       rows: [
         { cells: [cell("Key", true), cell("Scope", true), cell("Cadence", true), cell("Owner", true)] },
         { cells: [cell("A"), cell("Shared"), cell("Monthly"), cell("Team")] },
-        { cells: [cell("Synthetic section", true, 4)] },
+        {
+          cells: [{
+            ...cell("Synthetic section", true, 4),
+            backgroundColor: "#334455",
+          }],
+        },
         { cells: [cell("B"), cell("Local"), cell("Weekly"), cell("Team")] },
       ],
     }];
@@ -662,6 +667,8 @@ This is a real PDF.
     const result = await compiler.compile(bundle);
 
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
+    expect(bundle.main).toContain('fill: rgb("#334455")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FFFFFF"))');
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
   }, 30_000);
