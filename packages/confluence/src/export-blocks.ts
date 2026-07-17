@@ -69,6 +69,8 @@ export interface TableCell {
   header: boolean;
   colspan: number;
   rowspan: number;
+  /** Canonical source background color (`#RRGGBB`), when Confluence supplied one. */
+  backgroundColor?: string;
   content: ExportBlock[];
 }
 
@@ -523,6 +525,75 @@ function tableColumnWidths(table: XmlElement): number[] | undefined {
   return widths.length > 0 ? widths : undefined;
 }
 
+const EXPORT_NAMED_COLORS: Readonly<Record<string, string>> = {
+  black: "#000000",
+  silver: "#C0C0C0",
+  gray: "#808080",
+  grey: "#808080",
+  white: "#FFFFFF",
+  maroon: "#800000",
+  red: "#FF0000",
+  purple: "#800080",
+  fuchsia: "#FF00FF",
+  green: "#008000",
+  lime: "#00FF00",
+  olive: "#808000",
+  yellow: "#FFFF00",
+  navy: "#000080",
+  blue: "#0000FF",
+  teal: "#008080",
+  aqua: "#00FFFF",
+  orange: "#FFA500",
+};
+
+/** Normalize an export color to `#RRGGBB`; invalid/transparent values are omitted. */
+export function normalizeExportColor(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const raw = value.trim();
+  if (!raw || raw.toLowerCase() === "transparent") return undefined;
+
+  const hex = raw.match(/^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
+  if (hex) return `#${hex[1].toUpperCase()}`;
+
+  const short = raw.match(/^#?([0-9a-f]{3})$/i);
+  if (short) {
+    const expanded = short[1].split("").map((digit) => `${digit}${digit}`).join("");
+    return `#${expanded.toUpperCase()}`;
+  }
+
+  const rgb = raw.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i);
+  if (rgb) {
+    const channels = rgb.slice(1, 4).map((channel) => Number.parseInt(channel!, 10));
+    if (channels.some((channel) => channel < 0 || channel > 255)) return undefined;
+    return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  }
+
+  return EXPORT_NAMED_COLORS[raw.toLowerCase()];
+}
+
+/** Choose the document's light/dark ink for readable text on a source cell fill. */
+export function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D" {
+  const normalized = normalizeExportColor(backgroundColor) ?? "#FFFFFF";
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  // YIQ matches the editor's practical light/dark split for its muted table palette.
+  const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+  return brightness < 160 ? "#FFFFFF" : "#172B4D";
+}
+
+function tableCellBackground(cell: XmlElement): string | undefined {
+  const styleColor = (cell.attrs.style ?? "")
+    .match(/(?:^|;)\s*background-color\s*:\s*([^;]+)/i)?.[1];
+  return normalizeExportColor(
+    cell.attrs["data-highlight-colour"]
+      ?? cell.attrs["data-highlight-color"]
+      ?? cell.attrs["data-background-color"]
+      ?? styleColor
+      ?? cell.attrs.bgcolor
+  );
+}
+
 function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const rows: TableRow[] = [];
   const rowEls: XmlElement[] = [];
@@ -541,10 +612,12 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
     for (const cell of tr.children) {
       if (cell.type !== "element") continue;
       if (cell.name !== "td" && cell.name !== "th") continue;
+      const backgroundColor = tableCellBackground(cell);
       cells.push({
         header: cell.name === "th",
         colspan: parsePositiveInt(cell.attrs.colspan) ?? 1,
         rowspan: parsePositiveInt(cell.attrs.rowspan) ?? 1,
+        ...(backgroundColor ? { backgroundColor } : {}),
         content: walkBlocks(cell.children, ctx),
       });
     }

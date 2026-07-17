@@ -19,6 +19,7 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
+import { readableTextColor } from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
 import {
   calloutTable,
@@ -104,6 +105,8 @@ interface InternalContext extends SerializeContext {
    * the document maps to Heading 1 ("promotion"; see {@link computeHeadingOffset}).
    */
   headingOffset: number;
+  /** Default ink inherited by plain text inside a colored table cell. */
+  defaultTextColor?: string;
 }
 
 export interface SerializeResult {
@@ -118,7 +121,10 @@ const INDENT_STEP = 360;
 // Inline
 // ---------------------------------------------------------------------------
 
-function styleFromInline(node: Extract<InlineNode, { type: "text" }>): RunStyle {
+function styleFromInline(
+  node: Extract<InlineNode, { type: "text" }>,
+  defaultTextColor?: string
+): RunStyle {
   const marks = node.marks ?? [];
   return {
     bold: marks.includes("bold"),
@@ -128,17 +134,17 @@ function styleFromInline(node: Extract<InlineNode, { type: "text" }>): RunStyle 
     underline: marks.includes("underline"),
     subscript: marks.includes("subscript"),
     superscript: marks.includes("superscript"),
-    color: node.color,
+    color: node.color ?? defaultTextColor,
   };
 }
 
 /** Serialize inline nodes to run XML. */
-export function serializeInline(nodes: InlineNode[]): string {
+export function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string {
   let out = "";
   for (const node of nodes) {
     switch (node.type) {
       case "text":
-        out += run(node.text, styleFromInline(node));
+        out += run(node.text, styleFromInline(node, defaultTextColor));
         break;
       case "lineBreak":
         out += lineBreakRun();
@@ -351,14 +357,14 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
-      return paragraph(serializeInline(block.content), {
+      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
         styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
     }
 
     case "paragraph":
-      return paragraph(serializeInline(block.content));
+      return paragraph(serializeInline(block.content, ctx.defaultTextColor));
 
     case "codeBlock": {
       // A ```mermaid block takes the diagram path (spec 005a); every other
@@ -387,7 +393,7 @@ async function serializeBlock(
       return serializeList(block, ctx, notes, depth);
 
     case "table":
-      return serializeTable(block.rows, ctx, notes);
+      return serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
 
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
@@ -556,6 +562,7 @@ async function serializeListItem(
 interface Carry {
   colspan: number;
   rowsRemaining: number;
+  backgroundColor?: string;
 }
 
 async function serializeTable(
@@ -583,7 +590,11 @@ async function serializeTable(
     while (sourceIdx < r.cells.length || hasCarryFrom(carry, col)) {
       const active = carry[col];
       if (active) {
-        cellsXml += tableCell("", { colspan: active.colspan, vMerge: "continue" });
+        cellsXml += tableCell("", {
+          colspan: active.colspan,
+          vMerge: "continue",
+          backgroundColor: active.backgroundColor,
+        });
         active.rowsRemaining -= 1;
         const span = active.colspan;
         if (active.rowsRemaining <= 0) {
@@ -596,15 +607,28 @@ async function serializeTable(
       if (sourceIdx >= r.cells.length) break;
       const cell = r.cells[sourceIdx++];
       const colspan = Math.max(1, cell.colspan);
-      const body = await serializeChildren(cell.content, ctx, notes, 1);
+      const defaultTextColor = cell.backgroundColor
+        ? readableTextColor(cell.backgroundColor).slice(1)
+        : undefined;
+      const body = await serializeChildren(
+        cell.content,
+        { ...ctx, defaultTextColor },
+        notes,
+        1
+      );
       cellsXml += tableCell(body || paragraph(run("")), {
         colspan,
         vMerge: cell.rowspan > 1 ? "restart" : undefined,
         header: cell.header,
+        backgroundColor: cell.backgroundColor,
       });
       if (cell.rowspan > 1) {
         for (let k = col; k < col + colspan; k++) {
-          carry[k] = { colspan, rowsRemaining: cell.rowspan - 1 };
+          carry[k] = {
+            colspan,
+            rowsRemaining: cell.rowspan - 1,
+            backgroundColor: cell.backgroundColor,
+          };
         }
       }
       col += colspan;
