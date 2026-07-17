@@ -168,7 +168,78 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
   }
 }
 
-function serializeInline(nodes: InlineNode[], labels: Map<string, string>, notes: ExportNote[]): string {
+type TableDensity = "normal" | "dense";
+
+interface RenderContext {
+  tableDensity: TableDensity;
+  availableWidth?: string;
+}
+
+const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
+const DENSE_BREAK_OPPORTUNITY = "\u200B";
+
+function denseAccountId(value: string): string {
+  return value.replace(/([/.\-_?&=:])/g, `$1${DENSE_BREAK_OPPORTUNITY}`);
+}
+
+function denseHostLabel(value: string): string {
+  return value
+    .split(/([.-])/)
+    .map((part) => {
+      if (part === "." || part === "-") return `${part}${DENSE_BREAK_OPPORTUNITY}`;
+      return part.replace(/([a-z0-9]{4})(?=[a-z0-9])/gi, `$1${DENSE_BREAK_OPPORTUNITY}`);
+    })
+    .join("");
+}
+
+function plainUnmarkedText(nodes: InlineNode[]): string | null {
+  if (nodes.length !== 1) return null;
+  const [node] = nodes;
+  if (node?.type !== "text" || node.color || (node.marks?.length ?? 0) > 0) return null;
+  return node.text;
+}
+
+function normalizedHttpUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+interface DenseUrlLabels {
+  compact: string;
+  host: string;
+}
+
+function denseRawUrlLabels(href: string, label: string): DenseUrlLabels | null {
+  const target = normalizedHttpUrl(href);
+  const visible = normalizedHttpUrl(label);
+  if (!target || !visible || target.href !== visible.href) return null;
+
+  const hasDetails = target.pathname !== "/" || Boolean(target.search || target.hash);
+  return {
+    compact: hasDetails ? `${target.hostname}/…` : target.hostname,
+    host: denseHostLabel(target.hostname),
+  };
+}
+
+function hasDenseAdaptiveInline(nodes: InlineNode[]): boolean {
+  return nodes.some((node) => {
+    if (node.type === "status") return true;
+    if (node.type !== "link" || node.target.kind !== "external") return false;
+    const label = plainUnmarkedText(node.content);
+    return label !== null && denseRawUrlLabels(node.target.href, label) !== null;
+  });
+}
+
+function serializeInline(
+  nodes: InlineNode[],
+  labels: Map<string, string>,
+  notes: ExportNote[],
+  context: RenderContext = NORMAL_RENDER_CONTEXT
+): string {
   return nodes
     .map((node) => {
       switch (node.type) {
@@ -208,12 +279,21 @@ function serializeInline(nodes: InlineNode[], labels: Map<string, string>, notes
         }
         case "lineBreak":
           return "#linebreak()";
-        case "mention":
-          return `#text(fill: rgb(\"#0747A6\"))[${literalText(`@${node.displayName ?? node.accountId}`)}]`;
-        case "status":
+        case "mention": {
+          const label = node.displayName ?? (
+            context.tableDensity === "dense" ? denseAccountId(node.accountId) : node.accountId
+          );
+          const prefix = context.tableDensity === "dense" ? `@${DENSE_BREAK_OPPORTUNITY}` : "@";
+          return `#text(fill: rgb(\"#0747A6\"))[${literalText(`${prefix}${label}`)}]`;
+        }
+        case "status": {
+          if (context.tableDensity === "dense" && context.availableWidth) {
+            return `#dense-status-badge(${context.availableWidth}, ${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
+          }
           return `#status-badge(${typstString(node.text || node.color)}, color: ${typstString(safeColor(node.color))})`;
+        }
         case "link": {
-          const content = serializeInline(node.content, labels, notes);
+          const content = serializeInline(node.content, labels, notes, context);
           const href = resolveLink(node.target, labels);
           if (!href) {
             notes.push({
@@ -224,6 +304,13 @@ function serializeInline(nodes: InlineNode[], labels: Map<string, string>, notes
             return content;
           }
           if (href.startsWith("<")) return `#link(${href})[${content}]`;
+          if (context.tableDensity === "dense" && context.availableWidth) {
+            const label = plainUnmarkedText(node.content);
+            const denseLabels = label === null ? null : denseRawUrlLabels(href, label);
+            if (denseLabels !== null) {
+              return `#dense-link(${context.availableWidth}, ${typstString(href)}, ${typstString(label!)}, ${typstString(denseLabels.compact)}, ${typstString(denseLabels.host)})`;
+            }
+          }
           return `#link(${typstString(href)})[${content}]`;
         }
         default: {
@@ -299,9 +386,33 @@ interface Writer {
   headingCounts: Map<string, number>;
 }
 
-function serializeBlocks(blocks: PreparedPdfBlock[], writer: Writer, parentPath = "blocks"): string {
+function serializeParagraphInline(
+  content: InlineNode[],
+  writer: Writer,
+  context: RenderContext,
+  wrapInParagraph: boolean
+): string {
+  if (context.tableDensity === "dense" && hasDenseAdaptiveInline(content)) {
+    const availableWidth = "available-width";
+    const inline = serializeInline(content, writer.labels, writer.notes, {
+      ...context,
+      availableWidth,
+    });
+    const body = wrapInParagraph ? `#par[${inline}]` : inline;
+    return `#dense-par(${availableWidth} => [${body}])`;
+  }
+  const inline = serializeInline(content, writer.labels, writer.notes, context);
+  return wrapInParagraph ? `#par[${inline}]` : inline;
+}
+
+function serializeBlocks(
+  blocks: PreparedPdfBlock[],
+  writer: Writer,
+  parentPath = "blocks",
+  context: RenderContext = NORMAL_RENDER_CONTEXT
+): string {
   return blocks
-    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index}]`))
+    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index}]`, context))
     .join("\n");
 }
 
@@ -366,7 +477,12 @@ function resolveSourceMap(main: string, entries: PdfSourceMapEntry[]): PdfSource
   return entries.map((entry) => byPath.get(entry.blockPath) ?? entry);
 }
 
-function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): string {
+function serializeBlock(
+  block: PreparedPdfBlock,
+  writer: Writer,
+  path: string,
+  context: RenderContext
+): string {
   let value: string;
   let summary: string | undefined;
   switch (block.type) {
@@ -377,11 +493,21 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
       writer.headingCounts.set(base, count);
       const label = count === 1 ? base : `${base}-${count}`;
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
-      value = `#heading(level: ${level}, outlined: true)[${serializeInline(block.content, writer.labels, writer.notes)}] <${label}>`;
+      const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
+      if (context.tableDensity === "dense" && hasDenseAdaptiveInline(block.content)) {
+        const availableWidth = "available-width";
+        const content = serializeInline(block.content, writer.labels, writer.notes, {
+          ...context,
+          availableWidth,
+        });
+        value = `#dense-par(${availableWidth} => [${heading(content)}]) <${label}>`;
+      } else {
+        value = `${heading(serializeInline(block.content, writer.labels, writer.notes, context))} <${label}>`;
+      }
       break;
     }
     case "paragraph":
-      value = `#par[${serializeInline(block.content, writer.labels, writer.notes)}]`;
+      value = serializeParagraphInline(block.content, writer, context, true);
       break;
     case "codeBlock":
       value = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
@@ -408,11 +534,11 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
       break;
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
-      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`)}\n]`;
+      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, context)}\n]`;
       break;
     }
     case "blockquote":
-      value = `#quote(block: true)[\n${serializeBlocks(block.content, writer, `${path}.content`)}\n]`;
+      value = `#quote(block: true)[\n${serializeBlocks(block.content, writer, `${path}.content`, context)}\n]`;
       break;
     case "list": {
       const fn = block.ordered ? "enum" : "list";
@@ -426,12 +552,12 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
             first,
             writer,
             `${itemPath}[0]`,
-            serializeInline(first.content, writer.labels, writer.notes)
+            serializeParagraphInline(first.content, writer, context, false)
           );
-          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath) : "";
+          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath, context) : "";
           content = `${inline}${tail}`;
         } else {
-          content = serializeBlocks(item.content, writer, itemPath);
+          content = serializeBlocks(item.content, writer, itemPath, context);
         }
         if (!isTaskList) return `[${content}]`;
         const checked = item.checked === true ? "true" : "false";
@@ -443,6 +569,9 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
     }
     case "table": {
       const columnCount = Math.max(1, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+      const cellContext: RenderContext = {
+        tableDensity: columnCount >= 9 ? "dense" : "normal",
+      };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const rows = block.rows.map((row, rowIndex) => {
         const cells = row.cells.map((cell, cellIndex) => {
@@ -451,7 +580,12 @@ function serializeBlock(block: PreparedPdfBlock, writer: Writer, path: string): 
             cell.rowspan > 1 ? `rowspan: ${cell.rowspan}` : "",
             cell.header ? 'fill: rgb("#F4F5F7")' : "",
           ].filter(Boolean);
-          const content = serializeBlocks(cell.content, writer, `${path}.rows[${rowIndex}].cells[${cellIndex}].content`);
+          const content = serializeBlocks(
+            cell.content,
+            writer,
+            `${path}.rows[${rowIndex}].cells[${cellIndex}].content`,
+            cellContext
+          );
           return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${content}])`;
         });
         return row.cells.every((cell) => cell.header)
@@ -512,7 +646,7 @@ export function serializePdfDocument(
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, task-item
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, dense-par, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},

@@ -194,12 +194,58 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   ]
 }
 
-#let status-badge(label, color: "#42526E") = box(
+#let status-badge(label, color: "#42526E", inset-x: 5pt) = box(
   fill: rgb(color).lighten(82%),
-  inset: (x: 5pt, y: 2pt),
+  inset: (x: inset-x, y: 2pt),
   radius: 3pt,
-  text(font: "Source Sans 3", size: 7.5pt, weight: "semibold", fill: rgb(color), label),
+  text(font: "Source Code Pro", size: 7.5pt, weight: "bold", fill: rgb(color), label),
 )
+
+// layout is intentionally scoped to the one dense-table paragraph that
+// contains adaptive inline values. Ordinary table paragraphs never enter this
+// helper and retain the template's normal wrapping and hyphenation behavior.
+#let dense-par(body) = layout(size => body(size.width))
+
+#let dense-link(available-width, target, full-label, compact-label, host-label) = {
+  let full = text(full-label)
+  let compact = text(compact-label)
+  let host = text(host-label)
+  let visible = if measure(full).width <= available-width {
+    full
+  } else if measure(compact).width <= available-width {
+    compact
+  } else {
+    host
+  }
+  link(target, visible)
+}
+
+#let dense-status-badge(available-width, label, color: "#42526E") = {
+  let normal = status-badge(label, color: color)
+  let compact = status-badge(label, color: color, inset-x: 2pt)
+  if measure(normal).width <= available-width {
+    normal
+  } else if measure(compact).width <= available-width {
+    compact
+  } else {
+    box(
+      width: available-width,
+      fill: rgb(color).lighten(82%),
+      inset: (x: 2pt, y: 2pt),
+      radius: 3pt,
+    )[
+      #set text(
+        font: "Source Code Pro",
+        size: 7.5pt,
+        weight: "bold",
+        fill: rgb(color),
+        hyphenate: true,
+      )
+      #set par(linebreaks: "optimized", leading: 0.72em)
+      #label
+    ]
+  }
+}
 
 #let task-item(checked, body) = grid(
   columns: (1.05em, 1fr),

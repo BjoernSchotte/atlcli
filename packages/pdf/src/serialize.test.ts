@@ -195,6 +195,172 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr,)");
   });
 
+  it("keeps adaptive inline layout disabled below nine effective table columns", async () => {
+    const cells = Array.from({ length: 8 }, (_, index) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [
+        {
+          type: "paragraph" as const,
+          content: index === 0
+            ? [{ type: "status" as const, text: "IN REVIEW", color: "#FF8B00" }]
+            : index === 1
+              ? [{
+                  type: "link" as const,
+                  target: { kind: "external" as const, href: "https://example.com/releases/2026/details" },
+                  content: [{ type: "text" as const, text: "https://example.com/releases/2026/details" }],
+                }]
+              : [{ type: "text" as const, text: `Column ${index + 1}` }],
+        },
+      ],
+    }));
+    const prepared = await preparePdfDocument([{ type: "table", rows: [{ cells }] }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain('#status-badge("IN REVIEW"');
+    expect(bundle.main).toContain('#link("https://example.com/releases/2026/details")');
+    expect(bundle.main).not.toContain("#dense-par(available-width =>");
+    expect(bundle.main).not.toContain("#dense-status-badge(available-width,");
+    expect(bundle.main).not.toContain("#dense-link(available-width,");
+  });
+
+  it("uses width-aware status badges and raw URL labels from nine effective columns", async () => {
+    const cells = Array.from({ length: 8 }, (_, index) => ({
+      header: false,
+      colspan: index === 0 ? 2 : 1,
+      rowspan: 1,
+      content: [
+        {
+          type: "paragraph" as const,
+          content: index === 0
+            ? [{ type: "status" as const, text: "DEPLOYMENT PENDING", color: "#FF8B00" }]
+            : index === 1
+              ? [{
+                  type: "link" as const,
+                  target: { kind: "external" as const, href: "https://example.com/releases/2026/details?view=full" },
+                  content: [{ type: "text" as const, text: "https://example.com/releases/2026/details?view=full" }],
+                }]
+              : index === 2
+                ? [{
+                    type: "link" as const,
+                    target: { kind: "external" as const, href: "https://example.com/reference" },
+                    content: [{ type: "text" as const, text: "Release notes" }],
+                  }]
+                : [{ type: "text" as const, text: `Column ${index + 1}` }],
+        },
+      ],
+    }));
+    const prepared = await preparePdfDocument([{ type: "table", rows: [{ cells }] }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain(
+      '#dense-status-badge(available-width, "DEPLOYMENT PENDING", color: "#FF8B00")'
+    );
+    expect(bundle.main).toContain(
+      '#dense-link(available-width, "https://example.com/releases/2026/details?view=full", "https://example.com/releases/2026/details?view=full", "example.com/…", "exam\u200Bple.\u200Bcom")'
+    );
+    expect(bundle.main).toContain('#link("https://example.com/reference")[#text("Release notes")]');
+    expect(bundle.main.match(/#dense-par\(available-width =>/g)).toHaveLength(2);
+  });
+
+  it("recalculates density for nested tables instead of inheriting the outer table mode", async () => {
+    const nested: ExportBlock = {
+      type: "table",
+      rows: [{
+        cells: [
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "NESTED", color: "#00875A" }] }],
+          },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Two" }] }],
+          },
+        ],
+      }],
+    };
+    const cells = Array.from({ length: 9 }, (_, index) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: index === 0
+        ? [nested]
+        : [{
+            type: "paragraph" as const,
+            content: index === 1
+              ? [{ type: "status" as const, text: "OUTER", color: "#0052CC" }]
+              : [{ type: "text" as const, text: `Column ${index + 1}` }],
+          }],
+    }));
+    const prepared = await preparePdfDocument([{ type: "table", rows: [{ cells }] }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain('#status-badge("NESTED", color: "#00875A")');
+    expect(bundle.main).not.toContain('#dense-status-badge(available-width, "NESTED"');
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "OUTER", color: "#0052CC")');
+  });
+
+  it("adds delimiter-only break opportunities to accountId-only mentions in dense tables", async () => {
+    const paragraph = (content: ExportBlock & { type: "paragraph" }): ExportBlock => content;
+    const cell = (content: Extract<ExportBlock, { type: "paragraph" }> ["content"]) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [paragraph({ type: "paragraph", content })],
+    });
+    const technicalId = "team.alpha-beta_user?role=reader&scope:wiki/path";
+    const unicodeId = "مرحبا:δοκιμή_用户";
+    const ordinaryProse = "release/path.alpha-beta_key?x=1&y:2";
+    const normalCells = Array.from({ length: 8 }, (_, index) =>
+      index === 0
+        ? cell([{ type: "mention", accountId: technicalId }])
+        : cell([{ type: "text", text: `Normal ${index + 1}` }])
+    );
+    const denseCells = Array.from({ length: 9 }, (_, index) => {
+      if (index === 0) return cell([{ type: "mention", accountId: technicalId }]);
+      if (index === 1) return cell([{ type: "mention", accountId: unicodeId }]);
+      if (index === 2) {
+        return cell([{
+          type: "mention",
+          accountId: technicalId,
+          displayName: "ريم.李-User",
+        }]);
+      }
+      if (index === 3) return cell([{ type: "text", text: ordinaryProse }]);
+      return cell([{ type: "text", text: `Dense ${index + 1}` }]);
+    });
+    const prepared = await preparePdfDocument([
+      { type: "table", rows: [{ cells: normalCells }] },
+      { type: "table", rows: [{ cells: denseCells }] },
+    ], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+    const breakOpportunity = "\u200B";
+
+    expect(bundle.main).toContain(`#text("@${technicalId}")`);
+    expect(bundle.main).toContain(
+      `#text("@${breakOpportunity}team.${breakOpportunity}alpha-${breakOpportunity}beta_${breakOpportunity}user?${breakOpportunity}role=${breakOpportunity}reader&${breakOpportunity}scope:${breakOpportunity}wiki/${breakOpportunity}path")`
+    );
+    expect(bundle.main).toContain(
+      `#text("@${breakOpportunity}مرحبا:${breakOpportunity}δοκιμή_${breakOpportunity}用户")`
+    );
+    expect(bundle.main).toContain(`#text("@${breakOpportunity}ريم.李-User")`);
+    expect(bundle.main).toContain(`#text("${ordinaryProse}")`);
+    expect(bundle.main.match(/\u200B/g)).toHaveLength(13);
+  });
+
   it("deduplicates image bytes and reports missing alt text", async () => {
     const blocks: ExportBlock[] = [
       { type: "image", source: { kind: "attachment", filename: "same.png" } },
