@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../../utils/read-path.js";
 import {
   normalizePdfLocale,
+  resolvePdfMentionNames,
   runPdfExport,
   type PdfExportPhase,
 } from "../../utils/pdf/run-export.js";
@@ -32,6 +34,112 @@ describe("runPdfExport", () => {
     expect(normalizePdfLocale("pt_BR")).toEqual({ language: "pt", region: "BR" });
     expect(normalizePdfLocale("zh-Hant-TW")).toEqual({ language: "zh", region: "TW" });
     expect(normalizePdfLocale("invalid-locale")).toEqual({ language: "en" });
+  });
+
+  it("resolves unique missing mention names throughout nested export blocks", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "list",
+              ordered: false,
+              items: [{
+                content: [{
+                  type: "paragraph",
+                  content: [
+                    { type: "mention", accountId: "synthetic-user-a" },
+                    { type: "text", text: " and " },
+                    { type: "link", target: { kind: "external", href: "https://example.invalid" }, content: [
+                      { type: "mention", accountId: "synthetic-user-a" },
+                    ] },
+                    { type: "mention", accountId: "synthetic-user-b", displayName: "Existing Name" },
+                    { type: "mention", accountId: "synthetic-user-c" },
+                  ],
+                }],
+              }],
+            }],
+          }],
+        }],
+      },
+    ];
+    let requestedIds: string[] = [];
+
+    const resolved = await resolvePdfMentionNames(blocks, async (accountIds) => {
+      requestedIds = accountIds;
+      return new Map([
+        ["synthetic-user-a", { displayName: "Example Person" }],
+        ["synthetic-user-c", null],
+      ]);
+    });
+
+    expect(requestedIds).toEqual(["synthetic-user-a", "synthetic-user-c"]);
+    expect(resolved.unresolved).toBe(1);
+    expect(JSON.stringify(resolved.blocks)).toContain('"displayName":"Example Person"');
+    expect(JSON.stringify(resolved.blocks)).toContain('"displayName":"Existing Name"');
+    expect(JSON.stringify(resolved.blocks)).not.toContain('"synthetic-user-b","displayName":"Example Person"');
+  });
+
+  it("serializes a resolved display name instead of a technical mention identifier", async () => {
+    const mentionPage: LoadedPage = {
+      ...page,
+      details: {
+        ...page.details,
+        storage: '<p>Owner: <ac:link><ri:user ri:account-id="synthetic-user-id"/></ac:link></p>',
+      },
+    };
+    let stored: StoredPdfJob | undefined;
+    let bundle: PdfSourceBundle | undefined;
+    const requestedUrls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return new Response(JSON.stringify({
+        accountId: "synthetic-user-id",
+        displayName: "Example Person",
+        accountStatus: "active",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    try {
+      await runPdfExport(
+        { page: mentionPage, pageUrl: "https://acme.atlassian.net/wiki/spaces/DOCSY/pages/123/Guide" },
+        {
+          makeJobId: () => jobId,
+          cleanupJobs: async () => 0,
+          createJob: async (input) => {
+            bundle = input.bundle;
+            stored = {
+              id: input.id,
+              sourceIdentity: input.sourceIdentity,
+              createdAt: 1,
+              status: "prepared",
+              inputBytes: 1,
+              bundle: input.bundle,
+            };
+            return stored;
+          },
+          sendMessage: async () => {
+            stored = { ...stored!, status: "complete", pdf: validPdf, compilerVersion: "test" };
+            return { kind: "pdf:compile-result", jobId, ok: true };
+          },
+          getJob: async () => stored,
+          deleteJob: async () => undefined,
+          download: async () => undefined,
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain("/wiki/rest/api/user?accountId=synthetic-user-id");
+    expect(bundle?.main).toContain("@Example Person");
+    expect(bundle?.main).not.toContain("synthetic-user-id");
   });
 
   it("prepares, compiles, downloads and cleans a correlated job", async () => {
