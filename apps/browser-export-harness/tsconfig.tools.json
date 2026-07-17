@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "customConditions": ["browser"],
+    "types": ["bun-types"],
+    "skipLibCheck": true
+  },
+  "include": [
+    "playwright.config.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "src/vite-env.d.ts"
+  ]
+}

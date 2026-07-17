@@ -111,3 +111,35 @@ jobs:
       - name: Run Python tests
         working-directory: packages/export
         run: uv run pytest tests/ -v
+
+  browser-export-harness:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Type check browser export harness
+        run: bun run typecheck:browser-export-harness
+
+      - name: Build browser export harness
+        run: bun run build:browser-export-harness
+
+      - name: Check browser export harness artifact
+        run: bun run check:browser-export-harness
+
+      - name: Run browser export harness E2E
+        run: bun run test:browser-export-harness

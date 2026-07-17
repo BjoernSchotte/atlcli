@@ -65,7 +65,10 @@ function assertStaticAssetParity(): void {
   if (!sameNames(licenseUrls.keys(), PDF_RUNTIME_ASSETS.licenses.map((asset) => asset.fileName))) {
     throw new Error("Extension PDF license imports do not match the canonical manifest.");
   }
-  if (PDF_RUNTIME_ASSETS.compilerLicense.fileName !== "LICENSE" || !compilerLicenseUrl) {
+  // The static import itself is the compile-time existence proof. Avoid a
+  // unary truthiness check because Vite rewrites `?url` bindings to URL
+  // expressions and can otherwise change operator precedence in output.
+  if (PDF_RUNTIME_ASSETS.compilerLicense.fileName !== "LICENSE") {
     throw new Error("Extension compiler license import does not match the canonical manifest.");
   }
 }

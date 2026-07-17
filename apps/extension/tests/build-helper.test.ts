@@ -15,6 +15,20 @@ describe("isBuildStale", () => {
     expect(BUILD_INPUTS).toContain("../../packages/docx/package.json");
   });
 
+  it("tracks every workspace source and runtime asset consumed by the extension", () => {
+    expect(BUILD_INPUTS).toEqual(expect.arrayContaining([
+      "../../packages/core/src",
+      "../../packages/confluence/src",
+      "../../packages/diagram/src",
+      "../../packages/docx/src",
+      "../../packages/pdf/src",
+      "../../packages/pdf-compiler-browser/src",
+      "../../packages/pdf/.fonts",
+      "../../packages/pdf/licenses",
+      "../../LICENSE",
+    ]));
+  });
+
   it("is stale when no build exists (manifest mtime null)", () => {
     expect(isBuildStale(null, [])).toBe(true);
     expect(isBuildStale(null, [100, 200])).toBe(true);

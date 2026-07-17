@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "WebWorker"],
+    "customConditions": ["browser"],
+    "types": ["bun-types"],
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/pdf-worker.ts",
+    "src/pdf-worker-protocol.ts",
+    "src/worker-assets.d.ts",
+    "src/vite-env.d.ts"
+  ]
+}

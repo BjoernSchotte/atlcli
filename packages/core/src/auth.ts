@@ -56,10 +56,17 @@ export function decodeBase64(encoded: string): string {
  *
  * @param profile - The profile to build the header for.
  * @param resolveToken - Injected token resolver (env/keychain/config in Node).
+ *   Browser session-auth callers may omit it because they never build an
+ *   Authorization header; non-session callers receive an explicit error.
  * @returns The Authorization header value (e.g. `Bearer <token>` or `Basic <encoded>`).
  * @throws Error if the resolver yields no token, or if Basic auth is missing an email.
  */
-export function buildAuthHeader(profile: Profile, resolveToken: TokenResolver): string {
+export function buildAuthHeader(profile: Profile, resolveToken?: TokenResolver): string {
+  if (!resolveToken) {
+    throw new Error(
+      `No token resolver configured for profile '${profile.name}'. Browser hosts must use session auth or inject a resolver.`
+    );
+  }
   const token = resolveToken(profile);
   if (!token) {
     throw new Error(`No token resolved for profile '${profile.name}' by the configured token resolver.`);

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>atlcli browser export conformance</title>
+  </head>
+  <body>
+    <main>
+      <h1>Browser export conformance</h1>
+      <p>This deliberately plain page exercises the public browser package contracts.</p>
+      <p>Global Buffer: <output data-testid="buffer-state">checking</output></p>
+
+      <section aria-labelledby="docx-heading">
+        <h2 id="docx-heading">DOCX</h2>
+        <button type="button" data-testid="run-docx">Run DOCX case</button>
+        <output data-testid="docx-state">idle</output>
+        <pre data-testid="docx-result"></pre>
+      </section>
+
+      <section aria-labelledby="pdf-heading">
+        <h2 id="pdf-heading">PDF</h2>
+        <button type="button" data-testid="run-pdf-abort">Run PDF abort case</button>
+        <output data-testid="pdf-abort-state">idle</output>
+        <button type="button" data-testid="run-pdf">Run PDF warm-repeat case</button>
+        <output data-testid="pdf-state">idle</output>
+        <pre data-testid="pdf-result"></pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "scripts/**",
+        "index.html",
+        "vite.config.ts",
+        "playwright.config.ts",
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.worker.json",
+        "tsconfig.tools.json",
+        "$TURBO_ROOT$/packages/confluence/src/**",
+        "$TURBO_ROOT$/packages/diagram/src/**",
+        "$TURBO_ROOT$/packages/docx/src/**",
+        "$TURBO_ROOT$/packages/pdf/src/**",
+        "$TURBO_ROOT$/packages/pdf/.fonts/**",
+        "$TURBO_ROOT$/packages/pdf/licenses/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/src/**",
+        "$TURBO_ROOT$/LICENSE"
+      ]
+    },
+    "typecheck": {
+      "cache": true,
+      "outputs": [],
+      "inputs": [
+        "src/**",
+        "tests/**",
+        "scripts/**",
+        "vite.config.ts",
+        "playwright.config.ts",
+        "package.json",
+        "tsconfig*.json"
+      ]
+    },
+    "check:output": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "test:e2e": {
+      "cache": false,
+      "dependsOn": ["build"],
+      "outputs": ["test-results/**"]
+    }
+  }
+}
