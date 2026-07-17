@@ -14,7 +14,7 @@ export interface RouterDeps {
   /** Runs the WASM smoke computation (in practice: round-trip to offscreen). */
   runWasmSmoke: (a: number, b: number) => Promise<number>;
   /** Resolves the active tab's current entity (queries `chrome.tabs`). */
-  getCurrentEntity: () => Promise<EntityDetection>;
+  getCurrentEntity: (windowId: number) => Promise<EntityDetection>;
   /** Compiles a prepared PDF job through the offscreen worker. */
   runPdfCompile: (jobId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Cancels a queued or active PDF job. */
@@ -46,7 +46,7 @@ export async function routeMessage(
       }
     }
     case "get-current-entity": {
-      const detection = await deps.getCurrentEntity();
+      const detection = await deps.getCurrentEntity(msg.windowId);
       return { kind: "current-entity", detection };
     }
     case "pdf:compile": {
