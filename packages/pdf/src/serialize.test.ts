@@ -225,6 +225,8 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).not.toContain("#dense-par(available-width =>");
     expect(bundle.main).not.toContain("#dense-status-badge(available-width,");
     expect(bundle.main).not.toContain("#dense-link(available-width,");
+    expect(bundle.main).not.toContain("#dense-cell[");
+    expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
   });
 
   it("uses width-aware status badges and raw URL labels from nine effective columns", async () => {
@@ -266,6 +268,8 @@ describe("PDF preparation and serialization", () => {
     );
     expect(bundle.main).toContain('#link("https://example.com/reference")[#text("Release notes")]');
     expect(bundle.main.match(/#dense-par\(available-width =>/g)).toHaveLength(2);
+    expect(bundle.main).toContain("inset: (x: 2pt, y: 7pt)");
+    expect(bundle.main).toContain("#dense-cell[");
   });
 
   it("recalculates density for nested tables instead of inheriting the outer table mode", async () => {

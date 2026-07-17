@@ -176,6 +176,7 @@ interface RenderContext {
 }
 
 const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
+const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 
 function denseAccountId(value: string): string {
@@ -569,8 +570,9 @@ function serializeBlock(
     }
     case "table": {
       const columnCount = Math.max(1, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+      const isDense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
       const cellContext: RenderContext = {
-        tableDensity: columnCount >= 9 ? "dense" : "normal",
+        tableDensity: isDense ? "dense" : "normal",
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const rows = block.rows.map((row, rowIndex) => {
@@ -586,13 +588,15 @@ function serializeBlock(
             `${path}.rows[${rowIndex}].cells[${cellIndex}].content`,
             cellContext
           );
-          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${content}])`;
+          const cellContent = isDense ? `#dense-cell[${content}]` : content;
+          return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${cellContent}])`;
         });
         return row.cells.every((cell) => cell.header)
           ? `table.header(${cells.join(", ")})`
           : cells.join(", ");
       });
-      value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: 6pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
+      const horizontalInset = isDense ? 2 : 6;
+      value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
       break;
     }
     case "divider":
@@ -646,7 +650,7 @@ export function serializePdfDocument(
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, dense-par, dense-link, dense-status-badge, task-item
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, dense-cell, dense-par, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},

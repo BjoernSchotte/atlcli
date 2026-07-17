@@ -206,6 +206,11 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
 // helper and retain the template's normal wrapping and hyphenation behavior.
 #let dense-par(body) = layout(size => body(size.width))
 
+#let dense-cell(body) = {
+  set par(linebreaks: "simple")
+  body
+}
+
 #let dense-link(available-width, target, full-label, compact-label, host-label) = {
   let full = text(full-label)
   let compact = text(compact-label)
