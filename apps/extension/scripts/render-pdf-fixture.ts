@@ -190,6 +190,32 @@ const blocks: ExportBlock[] = [
       },
     ],
   },
+  { type: "heading", level: 3, content: [{ type: "text", text: "Merged section table" }] },
+  {
+    type: "table",
+    columnWidths: [1, 2, 2, 1],
+    rows: [
+      {
+        cells: ["Key", "Scope", "Cadence", "Owner"].map((text) => textCell(text, true)),
+      },
+      {
+        cells: [
+          { ...textCell("Vertical"), rowspan: 2 },
+          { ...textCell("Upper span"), colspan: 2 },
+          textCell("Team"),
+        ],
+      },
+      {
+        cells: [{ ...textCell("Lower span"), colspan: 3 }],
+      },
+      {
+        cells: [{ ...textCell("Synthetic section", true), colspan: 4 }],
+      },
+      {
+        cells: [textCell("B"), textCell("Local"), textCell("Weekly"), textCell("Team")],
+      },
+    ],
+  },
   { type: "heading", level: 3, content: [{ type: "text", text: "Dense table" }] },
   {
     type: "table",

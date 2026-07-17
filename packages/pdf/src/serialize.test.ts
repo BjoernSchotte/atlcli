@@ -142,6 +142,37 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr,)");
   });
 
+  it("lays out merged cells on an explicit grid and keeps body section rows out of the repeated header", async () => {
+    const paragraph = (text: string): ExportBlock[] => [{
+      type: "paragraph",
+      content: [{ type: "text", text }],
+    }];
+    const cell = (text: string, options: { header?: boolean; colspan?: number; rowspan?: number } = {}) => ({
+      header: options.header ?? false,
+      colspan: options.colspan ?? 1,
+      rowspan: options.rowspan ?? 1,
+      content: paragraph(text),
+    });
+    const prepared = await preparePdfDocument([{
+      type: "table",
+      rows: [
+        { cells: [cell("One", { header: true }), cell("Two", { header: true }), cell("Three", { header: true }), cell("Four", { header: true })] },
+        { cells: [cell("Vertical", { rowspan: 2 }), cell("Upper", { colspan: 2 }), cell("Tail")] },
+        { cells: [cell("Lower", { colspan: 3 })] },
+        { cells: [cell("Synthetic section", { header: true, colspan: 4 })] },
+      ],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
+    expect(bundle.main).toContain("table.cell(x: 0, y: 1, rowspan: 2");
+    expect(bundle.main).toContain("table.cell(x: 1, y: 2, colspan: 3");
+    expect(bundle.main).toContain("table.cell(x: 0, y: 3, colspan: 4, fill:");
+    expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
+  });
+
   it("widens a dominant narrative column when source tracks are only equal defaults", async () => {
     const paragraph = (text: string): ExportBlock => ({
       type: "paragraph",

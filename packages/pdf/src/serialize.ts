@@ -45,6 +45,72 @@ function literalText(value: string): string {
 }
 
 type PreparedTableRow = Extract<PreparedPdfBlock, { type: "table" }>["rows"][number];
+type PreparedTableCell = PreparedTableRow["cells"][number];
+
+interface PositionedTableCell {
+  cell: PreparedTableCell;
+  cellIndex: number;
+  columnIndex: number;
+}
+
+interface TableGrid {
+  columnCount: number;
+  rows: PositionedTableCell[][];
+  requiresExplicitPlacement: boolean;
+}
+
+/**
+ * Lay out the HTML-style cell grid before emitting Typst.
+ *
+ * Summing each row's colspans is insufficient when a rowspan from an earlier
+ * row still occupies columns. Typst also receives a flat cell stream, so tables
+ * with merged or incomplete rows need explicit coordinates to preserve source
+ * row boundaries.
+ */
+function tableGrid(rows: PreparedTableRow[], sourceWidths?: number[]): TableGrid {
+  const occupiedUntilRow: number[] = [];
+  const positionedRows: PositionedTableCell[][] = [];
+  let columnCount = sourceWidths?.length ?? 0;
+  let hasMergedCells = false;
+
+  rows.forEach((row, rowIndex) => {
+    let cursor = 0;
+    const positioned = row.cells.map((cell, cellIndex) => {
+      const colspan = Math.max(1, cell.colspan);
+      const rowspan = Math.max(1, cell.rowspan);
+      hasMergedCells ||= colspan > 1 || rowspan > 1;
+
+      while (true) {
+        while ((occupiedUntilRow[cursor] ?? 0) > rowIndex) cursor += 1;
+        const blockedOffset = Array.from({ length: colspan }, (_, offset) => offset)
+          .find((offset) => (occupiedUntilRow[cursor + offset] ?? 0) > rowIndex);
+        if (blockedOffset === undefined) break;
+        cursor += blockedOffset + 1;
+      }
+
+      const columnIndex = cursor;
+      const occupiedUntil = rowIndex + rowspan;
+      for (let offset = 0; offset < colspan; offset += 1) {
+        const column = columnIndex + offset;
+        occupiedUntilRow[column] = Math.max(occupiedUntilRow[column] ?? 0, occupiedUntil);
+      }
+      cursor += colspan;
+      columnCount = Math.max(columnCount, cursor);
+      return { cell, cellIndex, columnIndex };
+    });
+    positionedRows.push(positioned);
+  });
+
+  const incompleteRows = positionedRows.some((row) => {
+    const last = row.at(-1);
+    return !last || last.columnIndex + Math.max(1, last.cell.colspan) < columnCount;
+  });
+  return {
+    columnCount: Math.max(1, columnCount),
+    rows: positionedRows,
+    requiresExplicitPlacement: hasMergedCells || incompleteRows,
+  };
+}
 
 function blocksPlainText(blocks: PreparedPdfBlock[]): string {
   return blocks
@@ -621,16 +687,19 @@ function serializeBlock(
       break;
     }
     case "table": {
-      const columnCount = Math.max(1, ...block.rows.map((row) => row.cells.reduce((sum, cell) => sum + cell.colspan, 0)));
+      const grid = tableGrid(block.rows, block.columnWidths);
+      const { columnCount } = grid;
       const isDense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
       const cellContext: RenderContext = {
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
-      const rows = block.rows.map((row, rowIndex) => {
-        const cells = row.cells.map((cell, cellIndex) => {
+      const serializedRows = grid.rows.map((row, rowIndex) => {
+        const cells = row.map(({ cell, cellIndex, columnIndex }) => {
           const args = [
+            grid.requiresExplicitPlacement ? `x: ${columnIndex}` : "",
+            grid.requiresExplicitPlacement ? `y: ${rowIndex}` : "",
             cell.colspan > 1 ? `colspan: ${cell.colspan}` : "",
             cell.rowspan > 1 ? `rowspan: ${cell.rowspan}` : "",
             cell.header ? 'fill: rgb("#F4F5F7")' : "",
@@ -643,10 +712,21 @@ function serializeBlock(
           );
           return `table.cell(${args.length ? `${args.join(", ")}, ` : ""}[${content}])`;
         });
-        return row.cells.every((cell) => cell.header)
-          ? `table.header(${cells.join(", ")})`
-          : cells.join(", ");
+        return {
+          cells,
+          isHeader: row.length > 0 && row.every(({ cell }) => cell.header),
+        };
       });
+      const firstBodyRow = serializedRows.findIndex((row) => !row.isHeader);
+      const leadingHeaderCount = firstBodyRow === -1 ? serializedRows.length : firstBodyRow;
+      const rows: string[] = [];
+      if (leadingHeaderCount > 0) {
+        const headerCells = serializedRows
+          .slice(0, leadingHeaderCount)
+          .flatMap((row) => row.cells);
+        rows.push(`table.header(${headerCells.join(", ")})`);
+      }
+      rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = isDense ? 2 : 6;
       value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
       break;

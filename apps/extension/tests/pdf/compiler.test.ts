@@ -590,6 +590,82 @@ This is a real PDF.
     }
   }, 30_000);
 
+  it("accounts for active rowspans when a following colspan determines the table width", async () => {
+    const paragraph = (text: string) => [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }];
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      rows: [
+        {
+          cells: [
+            { header: false, colspan: 1, rowspan: 2, content: paragraph("Vertical") },
+            { header: false, colspan: 2, rowspan: 1, content: paragraph("Upper span") },
+          ],
+        },
+        {
+          cells: [
+            { header: false, colspan: 3, rowspan: 1, content: paragraph("Lower span") },
+          ],
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Spanned grid regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+  }, 30_000);
+
+  it("keeps a full-width section row in the table body instead of promoting it to a repeated header", async () => {
+    const paragraph = (text: string) => [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }];
+    const cell = (text: string, header = false, colspan = 1) => ({
+      header,
+      colspan,
+      rowspan: 1,
+      content: paragraph(text),
+    });
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      columnWidths: [1, 2, 2, 1],
+      rows: [
+        { cells: [cell("Key", true), cell("Scope", true), cell("Cadence", true), cell("Owner", true)] },
+        { cells: [cell("A"), cell("Shared"), cell("Monthly"), cell("Team")] },
+        { cells: [cell("Synthetic section", true, 4)] },
+        { cells: [cell("B"), cell("Local"), cell("Weekly"), cell("Team")] },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Section row regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+  }, 30_000);
+
   it("compiles literal office-style text safely inside lists and tables", async () => {
     const blocks: ExportBlock[] = [
       {
