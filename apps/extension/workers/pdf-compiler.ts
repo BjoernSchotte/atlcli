@@ -17,9 +17,8 @@ import codeLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Code-Pro.txt?url
 import compilerLicenseUrl from "../../../LICENSE?url&no-inline";
 import {
   BrowserPdfCompiler,
-  PDF_COMPILER_VERSION,
-  formatPdfDiagnostics,
-} from "../utils/pdf/compiler.js";
+} from "@atlcli/pdf-compiler-browser";
+import { PDF_RUNTIME_ASSETS, formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
   claimPdfJob,
   completePdfJob,
@@ -37,27 +36,53 @@ async function fetchBytes(url: string): Promise<Uint8Array<ArrayBuffer>> {
 }
 
 let compilerPromise: Promise<BrowserPdfCompiler> | null = null;
-const packagedLicenses = [sansLicenseUrl, serifLicenseUrl, codeLicenseUrl, compilerLicenseUrl];
+const fontUrls = new Map<string, string>([
+  ["SourceSans3-Regular.ttf", sansRegularUrl],
+  ["SourceSans3-It.ttf", sansItalicUrl],
+  ["SourceSans3-Semibold.ttf", sansSemiBoldUrl],
+  ["SourceSans3-Bold.ttf", sansBoldUrl],
+  ["SourceSerif4-Regular.ttf", serifRegularUrl],
+  ["SourceSerif4-It.ttf", serifItalicUrl],
+  ["SourceSerif4-Semibold.ttf", serifSemiBoldUrl],
+  ["SourceSerif4-Bold.ttf", serifBoldUrl],
+  ["SourceCodePro-Regular.ttf", codeRegularUrl],
+  ["SourceCodePro-Bold.ttf", codeBoldUrl],
+]);
+const licenseUrls = new Map<string, string>([
+  ["LICENSE-Source-Sans-3.txt", sansLicenseUrl],
+  ["LICENSE-Source-Serif-4.txt", serifLicenseUrl],
+  ["LICENSE-Source-Code-Pro.txt", codeLicenseUrl],
+]);
+
+function sameNames(actual: Iterable<string>, expected: Iterable<string>): boolean {
+  return JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+}
+
+function assertStaticAssetParity(): void {
+  if (!sameNames(fontUrls.keys(), PDF_RUNTIME_ASSETS.fonts.map((asset) => asset.fileName))) {
+    throw new Error("Extension PDF font imports do not match the canonical manifest.");
+  }
+  if (!sameNames(licenseUrls.keys(), PDF_RUNTIME_ASSETS.licenses.map((asset) => asset.fileName))) {
+    throw new Error("Extension PDF license imports do not match the canonical manifest.");
+  }
+  if (PDF_RUNTIME_ASSETS.compilerLicense.fileName !== "LICENSE" || !compilerLicenseUrl) {
+    throw new Error("Extension compiler license import does not match the canonical manifest.");
+  }
+}
 
 function getCompiler(): Promise<BrowserPdfCompiler> {
   if (!compilerPromise) {
-    if (packagedLicenses.some((url) => !url)) {
-      return Promise.reject(new Error("PDF runtime license assets are missing."));
-    }
+    assertStaticAssetParity();
     compilerPromise = Promise.all([
       fetchBytes(wasmUrl),
-      fetchBytes(sansRegularUrl),
-      fetchBytes(sansItalicUrl),
-      fetchBytes(sansSemiBoldUrl),
-      fetchBytes(sansBoldUrl),
-      fetchBytes(serifRegularUrl),
-      fetchBytes(serifItalicUrl),
-      fetchBytes(serifSemiBoldUrl),
-      fetchBytes(serifBoldUrl),
-      fetchBytes(codeRegularUrl),
-      fetchBytes(codeBoldUrl),
+      ...PDF_RUNTIME_ASSETS.fonts.map((asset) => fetchBytes(fontUrls.get(asset.fileName)!)),
+      ...PDF_RUNTIME_ASSETS.licenses.map((asset) => fetchBytes(licenseUrls.get(asset.fileName)!)),
+      fetchBytes(compilerLicenseUrl),
     ])
-      .then(([wasm, ...fonts]) => new BrowserPdfCompiler({ wasm: wasm.buffer, fonts }))
+      .then(([wasm, ...fontAndLicenseBytes]) => new BrowserPdfCompiler({
+        wasm: wasm.buffer,
+        fonts: fontAndLicenseBytes.slice(0, PDF_RUNTIME_ASSETS.fonts.length),
+      }))
       .catch((error) => {
         compilerPromise = null;
         throw error;
@@ -75,14 +100,14 @@ async function compileJob(jobId: string): Promise<PdfWorkerResponse> {
     const compiler = await getCompiler();
     const result = await compiler.compile(claimed.bundle);
     if (!result.pdf) {
-      const error = formatPdfDiagnostics(result.diagnostics, claimed.bundle.sourceMap);
+      const error = formatPdfCompilerDiagnostics(result.diagnostics);
       await failPdfJob(jobId, error, result.diagnostics);
       return { kind: "pdf-worker:complete", jobId, ok: false, error, fatal: false };
     }
     const completed = await completePdfJob(jobId, {
       pdf: result.pdf,
       diagnostics: result.diagnostics,
-      compilerVersion: PDF_COMPILER_VERSION,
+      compilerVersion: result.compilerVersion,
     });
     if (!completed || completed.status !== "complete") {
       throw new Error("PDF job was cancelled before the result could be stored.");

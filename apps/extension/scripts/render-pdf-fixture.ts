@@ -3,9 +3,8 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import type { ExportBlock } from "@atlcli/confluence/browser";
-import { preparePdfDocument, serializePdfDocument } from "@atlcli/pdf/browser";
-import { BrowserPdfCompiler } from "../utils/pdf/compiler.js";
-import { validatePdfOutput } from "../utils/pdf/validate.js";
+import { preparePdfDocument, serializePdfDocument, validatePdfOutput } from "@atlcli/pdf/browser";
+import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 
 type ExportTableCell = Extract<ExportBlock, { type: "table" }>["rows"][number]["cells"][number];
@@ -374,4 +373,10 @@ const outputDir = join(import.meta.dir, "..", "..", "..", "tmp", "pdfs");
 mkdirSync(outputDir, { recursive: true });
 const outputPath = process.argv[2] ?? join(outputDir, "pdf-export-feature-zoo.pdf");
 await Bun.write(outputPath, result.pdf);
-console.log(JSON.stringify({ outputPath, bytes: result.pdf.byteLength, compileMs, ...inspection }, null, 2));
+console.log(JSON.stringify({
+  outputPath,
+  bytes: result.pdf.byteLength,
+  compileMs,
+  compilerVersion: result.compilerVersion,
+  ...inspection,
+}, null, 2));

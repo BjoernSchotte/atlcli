@@ -21,6 +21,7 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/pdf": "workspace:*",
+    "@atlcli/pdf-compiler-browser": "workspace:*",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -39,6 +39,12 @@ const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
  */
 const NODE_GLOBAL_RE = /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b/g;
 
+/** A browser bundle must not hide the same dependency behind a fake global Buffer. */
+const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
+  /\b(?:globalThis|self|window)\s*(?:\.\s*Buffer|\[\s*["']Buffer["']\s*\])\s*=/g,
+  /\bObject\.defineProperty\(\s*(?:globalThis|self|window)\s*,\s*["']Buffer["']/g,
+];
+
 /** Dynamic code execution is forbidden by the extension page CSP. */
 const DYNAMIC_CODE_RES: RegExp[] = [
   /\bnew\s+Function\s*\(/g,
@@ -180,6 +186,9 @@ export function scanText(text: string): string[] {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
   for (const m of text.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
+  for (const re of FAKE_BUFFER_GLOBAL_RES) {
+    for (const m of text.matchAll(re)) found.add(m[0]);
+  }
   for (const re of DYNAMIC_CODE_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }

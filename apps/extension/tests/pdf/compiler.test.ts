@@ -7,9 +7,10 @@ import {
   ATLCLI_TYPST_TEMPLATE,
   preparePdfDocument,
   serializePdfDocument,
+  formatPdfCompilerDiagnostics,
+  validatePdfOutput,
 } from "@atlcli/pdf/browser";
-import { BrowserPdfCompiler, formatPdfDiagnostics } from "../../utils/pdf/compiler.js";
-import { validatePdfOutput } from "../../utils/pdf/validate.js";
+import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 
 beforeAll(async () => {
@@ -287,18 +288,8 @@ function extractPdfText(pdf: Uint8Array): string | null {
 describe("BrowserPdfCompiler", () => {
   it("maps a Typst source range back to its nested content path", () => {
     expect(
-      formatPdfDiagnostics(
-        [{ package: "", path: "/main.typ", severity: "error", range: "27:5-27:6", message: "bad content" }],
-        [
-          {
-            blockPath: "blocks[2].content[0]",
-            blockType: "paragraph",
-            startLine: 25,
-            startColumn: 1,
-            endLine: 29,
-            endColumn: 80,
-          },
-        ]
+      formatPdfCompilerDiagnostics(
+        [{ path: "/main.typ", severity: "error", startLine: 27, startColumn: 5, endLine: 27, endColumn: 6, blockPath: "blocks[2].content[0]", message: "bad content" }]
       )
     ).toBe("blocks[2].content[0]: error: bad content");
   });

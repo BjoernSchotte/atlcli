@@ -2,6 +2,11 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["package.json", "bun.lock", "tsconfig.json"],
   "tasks": {
+    "typecheck": {
+      "cache": true,
+      "outputs": [],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "tsconfig.json", "package.json"]
+    },
     "build": {
       "cache": true,
       "dependsOn": ["^build"],
@@ -17,6 +22,7 @@
         "packages/core/src/**/*.ts",
         "packages/docx/src/**/*.ts",
         "packages/pdf/src/**/*.ts",
+        "packages/pdf-compiler-browser/src/**/*.ts",
         "packages/diagram/src/**/*.ts"
       ]
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { validatePdfOutput } from "../../utils/pdf/validate.js";
+import { validatePdfOutput } from "@atlcli/pdf/browser";
 
 function fixture(body: string): Uint8Array {
   return new TextEncoder().encode(`%PDF-1.7\n${body}\n%%EOF\n`);

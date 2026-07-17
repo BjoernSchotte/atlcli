@@ -22,6 +22,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/docx/src/browser-runtime.ts",
   "packages/diagram/src/index.ts",
   "packages/pdf/src/index.browser.ts",
+  "packages/pdf-compiler-browser/src/index.ts",
 ];
 
 /**
