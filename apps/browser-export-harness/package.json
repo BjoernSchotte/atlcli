@@ -7,7 +7,7 @@
   "scripts": {
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.tools.json",
-    "prebuild": "bun run --cwd ../.. fonts:ensure",
+    "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. clean:browser-export-harness-output",
     "build": "vite build",
     "check:output": "bun scripts/check-output.ts",
     "test:unit": "bun test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts",

@@ -32,13 +32,13 @@ No package was published and no release was created. Runtime fonts remain in the
 
 | Gate | Result |
 |---|---|
-| `bun test` | 1,868 pass, 0 fail across 118 files |
+| `bun test` | 1,872 pass, 0 fail across 119 files |
 | `bun run typecheck` | pass; root, extension, compiler package, and three harness TS programs |
 | `bun run check:browser` | pass; 10 browser entrypoints |
 | `bun run build` | pass; CLI, extension, and harness rebuilt |
 | `bun run check:extension-output` | pass; complete local MV3 PDF runtime and CSP-safe output |
 | `bun run check:browser-export-harness` | pass; complete local, relative nested-path artifact |
-| `bun run test:browser-export-harness` | pass; Chromium production E2E in 1.1 seconds |
+| `bun run test:browser-export-harness` | pass; final Chromium production E2E in 1.4 seconds |
 | `bun run docs:check` / `bun run docs:build` | pass; 0 diagnostics, 59 pages built |
 | `bun ./dist/index.js --help` | pass; atlcli 0.17.2 command shape rendered |
 
@@ -49,7 +49,13 @@ workspace package exports and observes `globalThis.Buffer === undefined`.
 
 The first sandboxed full-suite attempt could not bind `Bun.serve({ port: 0 })`, producing 12
 WebhookServer failures. Re-running the identical suite with local socket access produced the
-1,868/0 result above; the export tests themselves did not fail in either run.
+1,868/0 pre-hardening result above; the final suite including artifact-cleanup regressions is
+1,872/0. The export tests themselves did not fail in either run.
+
+The first GitHub Actions run exposed a stale-output merge between an on-demand WXT test build
+and a restored Turbo build artifact. The artifact scanner correctly rejected two compiler-worker
+files. Browser output roots are now removed through an exact-path, regression-tested cleaner
+before direct and Turbo build routes; neighboring source directories are explicitly preserved.
 
 ## Output parity
 

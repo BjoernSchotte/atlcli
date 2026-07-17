@@ -7,7 +7,7 @@
   "scripts": {
     "predev": "bun run --cwd ../.. fonts:ensure",
     "dev": "wxt",
-    "prebuild": "bun run --cwd ../.. fonts:ensure",
+    "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. clean:extension-output",
     "build": "wxt build",
     "prepdf:fixture": "bun run --cwd ../.. fonts:ensure",
     "pdf:fixture": "bun scripts/render-pdf-fixture.ts",

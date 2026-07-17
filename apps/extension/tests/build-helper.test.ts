@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILD_INPUTS, collectMtimes, isBuildStale } from "./build-helper.js";
@@ -10,6 +10,13 @@ import { BUILD_INPUTS, collectMtimes, isBuildStale } from "./build-helper.js";
  * tested here so a stale build is never silently reused.
  */
 describe("isBuildStale", () => {
+  it("cleans restored output before every direct extension build", () => {
+    const extensionPackage = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")
+    ) as { scripts: { prebuild: string } };
+    expect(extensionPackage.scripts.prebuild).toContain("clean:extension-output");
+  });
+
   it("tracks the DOCX package that supplies the browser runtime", () => {
     expect(BUILD_INPUTS).toContain("../../packages/docx/src");
     expect(BUILD_INPUTS).toContain("../../packages/docx/package.json");
