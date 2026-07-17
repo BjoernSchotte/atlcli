@@ -8,10 +8,6 @@ Blocks: `003-page-detection-read-path`, `004-docx-export`, `007-pdf-export`
 Related strategy: `~/code/rovo-skills/FAHRPLAN.md` Phase 1 Task 1.1 · `~/code/rovo-skills/research/TYPST-EXPORT-ANGLE.md` §1b (WASM in MV3), §7.4/§7.5 Schritt 2
 Origin: FAHRPLAN Phase 1 — "Workspace `apps/extension`"
 
-Supersession note (spec 009): §2.2's post-PoC hosted-UI discussion is historical context, not
-a runtime delivered or certified by spec 009. The implemented reusable boundary is the pair of
-format-specific package contracts; Chrome messaging and all extension policy remain host-owned.
-
 ---
 
 ## 1. Overview
@@ -101,6 +97,10 @@ iterates. Trade-offs to weigh at that point: privacy story changes (UI assets lo
 remote origin — telemetry/asset hosting must be squeaky clean even if Confluence data
 never leaves the browser), offline behavior, and CSP/frame wiring. Candidate trigger:
 Phase 3 agent chat UI (CopilotKit), where UI iteration speed matters most.
+
+Supersession note (spec 009): this post-PoC hosted-UI discussion is historical context, not a
+runtime delivered or certified by spec 009. The implemented reusable boundary is the pair of
+format-specific package contracts; Chrome messaging and all extension policy remain host-owned.
 
 ### 2.3 Extension surfaces and message protocol
 

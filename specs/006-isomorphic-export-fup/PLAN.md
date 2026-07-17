@@ -8,12 +8,6 @@ Sequencing: **before `007-pdf-export`** (Björn 2026-07-16) — do the isomorphi
 Related strategy: `~/code/rovo-skills/FAHRPLAN.md` Phase 5 (Org-Server / Export-Zentrale), Phase 6 (Tauri Studio) · `~/code/rovo-skills/research/TYPST-EXPORT-ANGLE.md` §7.6 (server-side rendering with "the same isomorphic code")
 Origin: raised by Björn 2026-07-16 during the 004 DOCX cycle — the export code landed in `apps/extension/utils/docx/` (extension-only) but the pipeline is meant for reuse across surfaces.
 
-Supersession note (spec 009): the historical move record remains valid, but the ownership
-statements in §2.2/§2.4 that keep the byte shim and canvas adapter inside the extension are no
-longer future-facing. Multiple browser consumers now use `@atlcli/docx/browser-runtime` and
-`@atlcli/docx/vite`; extension storage, authenticated fetch, download, session, and UI policy
-remain in `apps/extension`.
-
 ---
 
 ## 1. Overview
@@ -128,6 +122,12 @@ Node those globals exist for real. Therefore the shim **stays in the extension**
 engine must not import it — the engine uses `Uint8Array` at its own boundaries and lets the
 host resolve `Buffer`. The `check:extension-output` node-globals scan continues to guard the
 browser bundle.
+
+Supersession note (spec 009): the historical move record remains valid, but the ownership
+statements in §2.2/§2.4 that keep the byte shim and canvas adapter inside the extension are no
+longer future-facing. Multiple browser consumers now use `@atlcli/docx/browser-runtime` and
+`@atlcli/docx/vite`; extension storage, authenticated fetch, download, session, and UI policy
+remain in `apps/extension`.
 
 ---
 
