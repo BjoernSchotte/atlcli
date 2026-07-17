@@ -53,33 +53,3 @@ declare module "*?url&no-inline" {
   const url: string;
   export default url;
 }
-
-/**
- * The package ships this declaration next to the ESM file but omits an exports
- * mapping for it. Keep the adapter's deliberately small API surface typed.
- */
-declare module "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs" {
-  export interface TypstCompiler {
-    free(): void;
-    reset(): void;
-    add_source(path: string, content: string): boolean;
-    map_shadow(path: string, content: Uint8Array): boolean;
-    reset_shadow(): void;
-    get_loaded_fonts(): string[];
-    compile(
-      mainFilePath: string,
-      inputs: Array<unknown>,
-      format: string,
-      diagnosticsFormat: number
-    ): unknown;
-  }
-
-  export class TypstCompilerBuilder {
-    add_raw_font(data: Uint8Array): Promise<void>;
-    build(): Promise<TypstCompiler>;
-  }
-
-  export default function initTypst(options: {
-    module_or_path: ArrayBuffer | URL | Response;
-  }): Promise<unknown>;
-}

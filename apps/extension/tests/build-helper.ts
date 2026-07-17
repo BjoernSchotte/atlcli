@@ -4,8 +4,8 @@
  * `build` step, so tests that inspect `.output/chrome-mv3` build on-demand.
  *
  * The build is reused only when it is NOT stale: a rebuild is forced when any
- * build input (extension sources plus the PDF template, font manifest and
- * licenses) is newer than the emitted manifest — otherwise a stale `.output`
+ * build input (extension sources plus every consumed workspace source and
+ * runtime asset) is newer than the emitted manifest — otherwise a stale `.output`
  * from an earlier source revision would be asserted against.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -24,9 +24,17 @@ export const BUILD_INPUTS = [
   "utils",
   "workers",
   "types",
+  "../../packages/core/src",
+  "../../packages/confluence/src",
+  "../../packages/diagram/src",
+  "../../packages/docx/src",
+  "../../packages/docx/package.json",
   "../../packages/pdf/src",
+  "../../packages/pdf-compiler-browser/src",
   "../../packages/pdf/scripts/ensure-fonts.ts",
+  "../../packages/pdf/.fonts",
   "../../packages/pdf/licenses",
+  "../../LICENSE",
 ];
 
 /**

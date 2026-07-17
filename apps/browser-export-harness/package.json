@@ -1,0 +1,29 @@
+{
+  "name": "@atlcli/browser-export-harness",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pretypecheck": "bun run --cwd ../.. fonts:ensure",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.tools.json",
+    "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. clean:browser-export-harness-output",
+    "build": "vite build",
+    "check:output": "bun scripts/check-output.ts",
+    "test:unit": "bun test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts",
+    "pretest:e2e": "bun run --cwd ../.. fonts:ensure",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@atlcli/confluence": "workspace:*",
+    "@atlcli/docx": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@atlcli/pdf-compiler-browser": "workspace:*",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0",
+    "typescript": "5.9.3",
+    "vite": "8.1.4"
+  }
+}

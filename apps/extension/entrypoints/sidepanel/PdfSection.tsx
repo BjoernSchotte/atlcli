@@ -106,7 +106,7 @@ export function PdfReportView({ report }: { report: PdfExportReport }): React.JS
         aria-label="PDF export timing breakdown"
         style={{ marginTop: 2, color: "#42526e", fontSize: 12 }}
       >
-        Prepare {formatDuration(report.timings.prepareMs)} · Compile {formatDuration(report.timings.compileMs)} · Download {formatDuration(report.timings.downloadMs)}
+        Prepare {formatDuration(report.timings.prepareMs)} · Compile {formatDuration(report.timings.compileMs)} · Download {formatDuration(report.timings.emitMs)}
       </div>
       {report.notes.length > 0 && (
         <details>

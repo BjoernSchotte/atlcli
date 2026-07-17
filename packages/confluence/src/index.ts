@@ -15,6 +15,7 @@ export * from "./page-properties.js";
 export * from "./merge.js";
 export * from "./poller.js";
 export * from "./reorder.js";
+export * from "./resolve-mentions.js";
 export * from "./scope.js";
 export * from "./sync-db/index.js";
 export * from "./sync-state-manager.js";

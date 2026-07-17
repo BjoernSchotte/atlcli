@@ -5,11 +5,7 @@ export interface PdfOutputInspection {
   embeddedFontFiles: number;
 }
 
-/**
- * Cheap in-browser structural gate before download. Deep parsing and visual QA
- * stay in the automated fixture workflow, but malformed or untagged output
- * must never be presented as a successful export.
- */
+/** Cheap structural gate before a browser host emits compiled PDF bytes. */
 export function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection {
   if (bytes.byteLength < 32) throw new Error("PDF compiler returned a truncated document.");
   const text = new TextDecoder("latin1").decode(bytes);

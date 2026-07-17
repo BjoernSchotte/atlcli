@@ -27,4 +27,27 @@ describe("downloadBytes", () => {
     expect(clickedAnchor.href).toStartWith("blob:");
     expect(doc.body.querySelector("a")).toBeNull();
   });
+
+  it("does not click when aborted immediately before the irreversible boundary", async () => {
+    const window = new Window();
+    const doc = window.document as unknown as Document;
+    const controller = new AbortController();
+    let clicks = 0;
+    doc.body.addEventListener("click", () => { clicks += 1; });
+    const append = doc.body.appendChild.bind(doc.body);
+    doc.body.appendChild = ((node: Node) => {
+      const result = append(node);
+      controller.abort();
+      return result;
+    }) as typeof doc.body.appendChild;
+    await expect(downloadBytes({
+      name: "Page.pdf",
+      bytes: new Uint8Array([37, 80, 68, 70]),
+      mimeType: "application/pdf",
+      document: doc,
+      signal: controller.signal,
+    })).rejects.toHaveProperty("name", "AbortError");
+    expect(clicks).toBe(0);
+    expect(doc.body.querySelector("a")).toBeNull();
+  });
 });

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "customConditions": ["browser"],
+    "types": ["vite/client", "bun-types"],
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "vite.config.ts"],
+  "exclude": ["src/pdf-worker.ts", "src/worker-assets.d.ts"]
+}

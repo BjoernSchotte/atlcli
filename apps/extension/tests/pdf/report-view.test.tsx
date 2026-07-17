@@ -14,7 +14,7 @@ describe("PdfReportView", () => {
         renderedDiagrams: 1,
         skippedAssets: 0,
         notes: [{ level: "warning", code: "pdf-image-alt-fallback", message: "Alt text missing" }],
-        timings: { prepareMs: 1, compileMs: 2, downloadMs: 1, totalMs: 4 },
+        timings: { prepareMs: 1, compileMs: 2, emitMs: 1, totalMs: 4 },
       }} />
     );
     expect(html).toContain("Guide.pdf");
@@ -38,7 +38,7 @@ describe("PdfReportView", () => {
         renderedDiagrams: 0,
         skippedAssets: 0,
         notes: [],
-        timings: { prepareMs: 3650, compileMs: 1042, downloadMs: 200, totalMs: 4892 },
+        timings: { prepareMs: 3650, compileMs: 1042, emitMs: 200, totalMs: 4892 },
       }} />
     );
 

@@ -123,6 +123,12 @@ engine must not import it — the engine uses `Uint8Array` at its own boundaries
 host resolve `Buffer`. The `check:extension-output` node-globals scan continues to guard the
 browser bundle.
 
+Supersession note (spec 009): the historical move record remains valid, but the ownership
+statements in §2.2/§2.4 that keep the byte shim and canvas adapter inside the extension are no
+longer future-facing. Multiple browser consumers now use `@atlcli/docx/browser-runtime` and
+`@atlcli/docx/vite`; extension storage, authenticated fetch, download, session, and UI policy
+remain in `apps/extension`.
+
 ---
 
 ## 3. Task breakdown (ordered)

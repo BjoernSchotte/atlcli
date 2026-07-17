@@ -1,5 +1,4 @@
-import type { PdfSourceBundle } from "@atlcli/pdf/browser";
-import type { RawPdfDiagnostic } from "./compiler.js";
+import type { PdfCompilerDiagnostic, PdfSourceBundle } from "@atlcli/pdf/browser";
 
 const DB_NAME = "atlcli-pdf";
 const DB_VERSION = 1;
@@ -18,7 +17,7 @@ export interface StoredPdfJob {
   inputBytes: number;
   bundle: PdfSourceBundle;
   pdf?: Uint8Array;
-  diagnostics?: RawPdfDiagnostic[];
+  diagnostics?: PdfCompilerDiagnostic[];
   compilerVersion?: string;
   error?: string;
 }
@@ -189,7 +188,7 @@ export function claimPdfJob(id: string, factory?: IDBFactory): Promise<StoredPdf
 
 export async function completePdfJob(
   id: string,
-  output: { pdf: Uint8Array; diagnostics: RawPdfDiagnostic[]; compilerVersion: string },
+  output: { pdf: Uint8Array; diagnostics: PdfCompilerDiagnostic[]; compilerVersion: string },
   factory?: IDBFactory
 ): Promise<StoredPdfJob | undefined> {
   if (output.pdf.byteLength > PDF_JOB_MAX_BYTES) {
@@ -232,7 +231,7 @@ export async function completePdfJob(
 export function failPdfJob(
   id: string,
   error: string,
-  diagnostics: RawPdfDiagnostic[] = [],
+  diagnostics: PdfCompilerDiagnostic[] = [],
   factory?: IDBFactory
 ): Promise<StoredPdfJob | undefined> {
   return updateExisting(id, (job) =>

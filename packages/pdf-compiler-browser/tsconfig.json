@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": [
+    "src/**/*.ts",
+    "../confluence/src/types.d.ts",
+    "../core/src/ambient.d.ts"
+  ]
+}

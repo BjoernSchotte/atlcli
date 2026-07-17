@@ -60,6 +60,10 @@ describe("decodeBase64 (browser-safe, used for unknown-macro preservation)", () 
 });
 
 describe("buildAuthHeader (core, injected resolver)", () => {
+  test("requires an explicit resolver for non-session browser use", () => {
+    expect(() => buildAuthHeader(bearerProfile())).toThrow(/token resolver/i);
+  });
+
   test("bearer → Bearer <token>", () => {
     expect(buildAuthHeader(bearerProfile(), yes)).toBe("Bearer resolved-token");
   });

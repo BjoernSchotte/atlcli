@@ -16,4 +16,5 @@
 export * from "./client.js";
 export * from "./markdown.js";
 export * from "./export-blocks.js";
+export * from "./resolve-mentions.js";
 export * from "./page-properties.js";

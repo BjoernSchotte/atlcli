@@ -14,7 +14,8 @@ inject.
 ## In this page
 
 - [Architecture](#architecture)
-- [The three injected interfaces](#the-three-injected-interfaces)
+- [Host ports](#host-ports)
+- [Browser hosts](#browser-hosts)
 - [Image embedding](#image-embedding)
 - [Mermaid diagrams](#mermaid-diagrams)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
@@ -37,12 +38,17 @@ Entry points (package `exports` conditions, mirroring `@atlcli/core`):
 |--------|-------------|-----|
 | `@atlcli/docx` | Node barrel | engine + Node filesystem adapters |
 | `@atlcli/docx/browser` | browser barrel | engine only (no `node:` imports, CI-gated) |
+| `@atlcli/docx/browser-runtime` | browser support | byte compatibility bootstrap plus memory/canvas adapters |
+| `@atlcli/docx/vite` | Vite defines | build-time replacements required by PizZip/docxtemplater |
 | `@atlcli/docx/scan` | scan module | lightweight template scan without pulling the full engine |
 
-## The three injected interfaces
+DOCX and PDF deliberately remain separate engines. They share the structured Confluence
+`ExportBlock[]` input model, not a generic export runner, report, or output sink.
 
-`runExport(input, env)` is the cross-host entry. `env` is an `ExportEnv` with exactly the three
-places hosts differ:
+## Host ports
+
+`runExport(input, env)` is the cross-host entry. `env` is an `ExportEnv` with the format-specific
+ports where hosts differ:
 
 ```ts
 interface TemplateSource {
@@ -71,7 +77,7 @@ pre-005 behavior — every image degrades to an `image-skipped` report note inst
 `SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
 fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
 blocks as readable source code blocks with a `diagram-skipped` report note. Two implementations
-ship: the extension's canvas rasterizer (`apps/extension/utils/docx/env.ts`) and a Node
+ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-runtime`) and a Node
 rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 `packages/docx/src/node-adapters.ts`) that the CLI uses.
 
@@ -170,9 +176,29 @@ extension both do). Details:
 - **Missing dep/fetcher, fetch errors, no space key** all degrade to `logo-skipped` notes; the
   token is blanked, never left literal.
 
+## Browser hosts
+
+Browser consumers install the DOCX-specific compatibility layer before importing the engine:
+
+```ts
+import "@atlcli/docx/browser-runtime";
+
+const { runExport } = await import("@atlcli/docx/browser");
+```
+
+`installDocxBrowserRuntime()` installs namespaced `Uint8Array` helpers; it does not create a
+fake global `Buffer`. `memoryTemplateSource()` and `canvasSvgRasterizer()` provide neutral DOM
+adapters. Storage, authenticated asset fetching, download/save behavior, and UI remain owned by
+the consuming host. Vite hosts also spread `docxViteDefines` from `@atlcli/docx/vite` into their
+`define` configuration.
+
+`apps/browser-export-harness` is the permanent package-conformance consumer. Its production
+build runs the real engine and canvas path in Chromium without extension APIs or native Node
+globals. A host still needs its own packaging, CSP, authentication, and output integration tests.
+
 ## Plugging in a new surface
 
-A new consumer (MCP server, Tauri Studio, Org-Server) implements the three interfaces and calls
+A new consumer implements the DOCX host ports and calls
 `runExport`. Minimal Node example:
 
 ```ts
@@ -202,11 +228,11 @@ const report = await runExport(
 );
 ```
 
-A browser surface supplies its own implementations instead (see
-`apps/extension/utils/docx/env.ts` for the extension's adapters). Browser bundling note: PizZip
-and docxtemplater reference `Buffer.*`; that is a **host** bundling concern — the extension
-installs a `Uint8Array` shim + Vite `define`, a Node host has the real `Buffer`, and the engine
-itself never touches either.
+A browser surface composes the neutral browser runtime with its own storage, authenticated
+fetch, and output adapters. PizZip and docxtemplater reference `Buffer.*`; the package-owned
+browser runtime and Vite configuration handle that compatibility without leaking it into the
+engine or defining `globalThis.Buffer`. A Node host uses the real `Buffer` through the default
+entrypoint.
 
 ## Performance model
 
@@ -259,8 +285,10 @@ latency plus the heaviest CPU leg:
   filesystem adapters.
 - **Determinism:** highlighting warms the Shiki grammar on load, so the same input always yields
   the same OOXML (a first-call tokenization drift would otherwise break golden equality).
-- **Roadmap:** the PDF export (spec 007) builds its Typst serializer directly into this engine —
-  same `ExportBlock` model, same env contract, no second extraction.
+- **Second browser consumer:** the production Vite harness exports a real DOCX with a Mermaid
+  diagram and asserts the expected OOXML media parts under headless Chromium.
+- **Separate PDF lane:** `@atlcli/pdf` consumes the same `ExportBlock[]` model but owns a
+  different runner, report, validation path, and compiler port.
 
 ## Related topics
 

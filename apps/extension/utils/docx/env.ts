@@ -3,8 +3,9 @@
  * (spec 006 Task 3). The engine is isomorphic; these thin adapters are the
  * extension's imperative shell: template bytes come from the IndexedDB store,
  * asset bytes ride the user's Atlassian session cookies, and the finished
- * document leaves through a browser download. No engine code touches
- * `chrome.*` / DOM — it all lives here, next to the host that owns it.
+ * document leaves through a browser download. Neutral memory/canvas support
+ * comes from `@atlcli/docx/browser-runtime`; session, storage, cache, download,
+ * and report policy remain here with the extension host.
  */
 import type {
   AssetFetcher,
@@ -13,8 +14,14 @@ import type {
   SvgRasterizer,
   TemplateSource,
 } from "@atlcli/docx/browser";
+import {
+  canvasSvgRasterizer as neutralCanvasSvgRasterizer,
+  memoryTemplateSource,
+} from "@atlcli/docx/browser-runtime";
 import { getTemplate } from "./template-store.js";
 import { downloadBytes } from "../download.js";
+
+export { memoryTemplateSource };
 
 /**
  * {@link TemplateSource} over the panel's IndexedDB template store. The id is
@@ -28,15 +35,6 @@ export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
       const stored = await getTemplate(id, factory);
       if (!stored) throw new Error(`No template stored under id "${id}". Upload a template first.`);
       return new Uint8Array(stored.bytes);
-    },
-  };
-}
-
-/** Template source over bytes the panel already has in memory. */
-export function memoryTemplateSource(bytes: ArrayBuffer): TemplateSource {
-  return {
-    async getBytes(): Promise<Uint8Array> {
-      return new Uint8Array(bytes);
     },
   };
 }
@@ -152,60 +150,18 @@ export function getRasterizerStats(): RasterizerStats {
   return { ...rasterizerStats, encodeCallsMs: [...rasterizerStats.encodeCallsMs] };
 }
 
-function pngDataUrlBytes(dataUrl: string, view: Window & typeof globalThis): Uint8Array {
-  const marker = ";base64,";
-  const offset = dataUrl.indexOf(marker);
-  if (!dataUrl.startsWith("data:image/png") || offset === -1) {
-    throw new Error("PNG encoding failed");
-  }
-  const binary = view.atob(dataUrl.slice(offset + marker.length));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
 export function canvasSvgRasterizer(doc: Document = document, decodeTimeoutMs = 10_000): SvgRasterizer {
-  return {
-    async rasterize(svg, { widthPx, heightPx }): Promise<Uint8Array> {
-      // Image/Blob/URL come from the document's own window so the rasterizer
-      // works against any real DOM handed in (panel window, happy-dom tests).
-      const view = (doc.defaultView ?? globalThis) as Window & typeof globalThis;
-      const url = view.URL.createObjectURL(new view.Blob([svg], { type: "image/svg+xml" }));
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const decodeStart = Date.now();
-        const img = new view.Image();
-        await new Promise<void>((resolve, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`the diagram SVG did not decode within ${decodeTimeoutMs} ms`)),
-            decodeTimeoutMs
-          );
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error("the diagram SVG could not be decoded"));
-          img.src = url;
-        });
-        rasterizerStats.decodeMs += Date.now() - decodeStart;
-        const drawStart = Date.now();
-        const canvas = doc.createElement("canvas");
-        canvas.width = widthPx;
-        canvas.height = heightPx;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("no 2d canvas context available");
-        ctx.drawImage(img, 0, 0, widthPx, heightPx);
-        rasterizerStats.drawMs += Date.now() - drawStart;
-        const encodeStart = Date.now();
-        const bytes = pngDataUrlBytes(canvas.toDataURL("image/png"), view);
-        const encodeMs = Date.now() - encodeStart;
-        rasterizerStats.encodeMs += encodeMs;
-        rasterizerStats.encodeCallsMs.push(encodeMs);
-        rasterizerStats.calls += 1;
-        return bytes;
-      } finally {
-        clearTimeout(timer);
-        view.URL.revokeObjectURL(url);
-      }
+  return neutralCanvasSvgRasterizer({
+    document: doc,
+    decodeTimeoutMs,
+    onTiming(timing) {
+      rasterizerStats.decodeMs += timing.decodeMs;
+      rasterizerStats.drawMs += timing.drawMs;
+      rasterizerStats.encodeMs += timing.encodeMs;
+      rasterizerStats.encodeCallsMs.push(timing.encodeMs);
+      rasterizerStats.calls += 1;
     },
-  };
+  });
 }
 
 /**

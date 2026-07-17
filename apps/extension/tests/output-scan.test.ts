@@ -85,6 +85,18 @@ describe("scanText classification", () => {
   });
 
   it.each([
+    ["globalThis property", `globalThis.Buffer = fake;`],
+    ["window bracket property", `window["Buffer"] = fake;`],
+    ["defineProperty", `Object.defineProperty(self, "Buffer", { value: fake });`],
+  ])("flags a fake global Buffer via %s", (_label, source) => {
+    expect(scanText(source).some((finding) => finding.includes("Buffer"))).toBe(true);
+  });
+
+  it("allows the DOCX-specific byte-helper namespace", () => {
+    expect(scanText(`globalThis.__atlDocxByteHelpers = helpers;`)).toEqual([]);
+  });
+
+  it.each([
     ["Function constructor", `const make = Function("return 1");`, "Function("],
     ["new Function constructor", `const make = new Function("return 1");`, "Function("],
     ["direct eval", `const value = eval("1 + 1");`, "eval("],

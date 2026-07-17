@@ -5,10 +5,29 @@ description: "Architecture, pinned runtime and verification for the browser PDF 
 
 # PDF Export Engine (`@atlcli/pdf`)
 
-`packages/pdf` is the browser-safe preparation and Typst serialization layer used by the
-atlcli extension. It consumes the same structured Confluence `ExportBlock[]` tree as the
-working Word exporter. Browser integration - authentication, IndexedDB jobs, worker lifecycle
-and download - stays in `apps/extension`.
+`packages/pdf` is the host-neutral preparation, Typst serialization, validation, and export
+orchestration layer. It consumes the same structured Confluence `ExportBlock[]` tree as the
+DOCX engine, but PDF and DOCX remain independent pipelines with format-specific ports, reports,
+and output semantics.
+
+The low-level Typst-WASM implementation lives in the private browser-only package
+`@atlcli/pdf-compiler-browser`. A host injects it through `PdfCompilePort`; importing
+`@atlcli/pdf` or `@atlcli/pdf/browser` does not pull compiler or WASM code into preparation-only
+consumers. Authentication, worker/job topology, persistence, cancellation policy, download/save
+behavior, and UI remain host-owned.
+
+## Architecture
+
+```text
+Confluence storage -> ExportBlock[] -> @atlcli/pdf -> PdfCompilePort -> PDF bytes
+                                           ^               |
+                                           |               +-- browser: @atlcli/pdf-compiler-browser
+                                           +-- assets/output supplied by the host
+```
+
+The extension implements `PdfCompilePort` over its offscreen document, dedicated worker, and
+IndexedDB job store. The neutral Vite harness uses a direct module Worker and in-memory output
+sink. These are intentionally different topologies exercising the same package contracts.
 
 ## Built-in document design
 
@@ -66,8 +85,8 @@ outside the current standard template.
 | Source Serif 4 Regular / Italic / SemiBold / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 | Source Code Pro Regular / Bold | Adobe commit and SHA-256 values pinned in `ensure-fonts.ts` | Build fetch and inventory gates |
 
-The production extension artifact includes the 28.3 MB compiler WASM, ten static font files
-and their shipped license texts. The build gate fails
+Each production browser host artifact includes the 28.3 MB compiler WASM, ten static font files
+and their shipped license texts. The build gates fail
 if any runtime asset is absent, the WASM is unexpectedly small, or generated JavaScript
 contains a known Manifest V3-incompatible dynamic-code constructor.
 
@@ -78,16 +97,19 @@ file only after its SHA-256 value matches the manifest. A valid cache performs n
 request. OFL license texts remain tracked and ship in the extension. PDF export itself never
 contacts Adobe, Google Fonts, Fontsource or another font service.
 
-## Export flow
+## Neutral export flow
 
 1. Convert Confluence storage to exhaustive `ExportBlock[]` values.
-2. Resolve approved attachments with the active Atlassian session and render Mermaid through
+2. Resolve approved assets through the host's `PdfAssetResolver` and render Mermaid through
    `@atlcli/diagram`.
 3. Serialize deterministic `main.typ`, the pinned template, assets and nested source mappings.
-4. Store the binary job in IndexedDB and send only `{ jobId }` control messages.
-5. Compile FIFO in a dedicated worker hosted by the offscreen extension document.
-6. Validate pages, tag structure and embedded font programs, then download as `application/pdf`.
-7. Delete the job in `finally`; startup cleanup removes records older than 24 hours.
+4. Compile through the injected `PdfCompilePort` and normalized diagnostics contract.
+5. Validate pages, tag structure and embedded font programs.
+6. Emit through the host's `PdfOutputSink`, with an abort check before and after emission.
+
+The extension adapter additionally stores binary jobs in IndexedDB, sends bounded control
+messages, compiles FIFO in its offscreen worker, downloads as `application/pdf`, and removes job
+state in `finally`. Those policies are not part of `@atlcli/pdf` or the compiler package.
 
 The completion report shows total time together with preparation, compilation, and download
 time. Preparation includes attachment resolution and Mermaid rendering, which makes network-
@@ -96,6 +118,14 @@ or asset-heavy exports distinguishable from compiler time.
 Cancellation terminates an active compiler worker. A 60-second timeout also terminates it, so
 the next attempt starts in a clean compiler and virtual filesystem rather than merely rejecting
 an unresolved promise.
+
+## Browser conformance harness
+
+`apps/browser-export-harness` is a private vanilla Vite consumer that imports only public package
+exports. Its production artifact is served below a nested path with a local CSP and exercised by
+Playwright Chromium. The test performs a real Worker/WASM/font compile, verifies deterministic
+warm output and abort-without-emission, and scans all JavaScript and assets for native-runtime or
+extension leaks. This is package conformance evidence, not certification for every browser host.
 
 ## Verification fixture
 

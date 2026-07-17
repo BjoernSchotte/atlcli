@@ -15,6 +15,7 @@ import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type { ScanResult, ExportReport } from "@atlcli/docx/browser";
+import type { RasterizerStats } from "../../utils/docx/env.js";
 import {
   deleteTemplate,
   getTemplate,
@@ -36,6 +37,21 @@ const loadExport = () => import("@atlcli/docx/browser");
 const loadEnv = () => import("../../utils/docx/env.js");
 
 const MAX_MB = 20;
+
+/** Build the extension-owned rasterizer timing note, if any call succeeded. */
+export function rasterizerTimingNote(
+  stats: RasterizerStats
+): ExportReport["notes"][number] | null {
+  if (stats.calls === 0) return null;
+  return {
+    level: "info",
+    code: "perf-timing",
+    message:
+      `Panel rasterizer: ${stats.calls} call(s) — decode ${stats.decodeMs} ms, ` +
+      `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums; per call ` +
+      `${stats.encodeCallsMs.join("/")} ms).`,
+  };
+}
 
 /**
  * Panel-lifetime TTL cache for the space + icon metadata round-trip, keyed by
@@ -264,16 +280,8 @@ export function TemplateSection({
       // Panel-side rasterizer sub-timings (decode/draw/encode sums) join the
       // report so a slow diagram pipeline names its slow sub-step.
       const stats = env.getRasterizerStats();
-      if (stats.calls > 0) {
-        rep.notes.push({
-          level: "info",
-          code: "perf-timing",
-          message:
-            `Panel rasterizer: ${stats.calls} call(s) — decode ${stats.decodeMs} ms, ` +
-            `draw ${stats.drawMs} ms, encode ${stats.encodeMs} ms (sums; per call ` +
-            `${stats.encodeCallsMs.join("/")} ms).`,
-        });
-      }
+      const timingNote = rasterizerTimingNote(stats);
+      if (timingNote) rep.notes.push(timingNote);
       setReport(rep);
     } catch (err) {
       setError(exportErrorMessage(err));

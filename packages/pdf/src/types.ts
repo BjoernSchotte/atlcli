@@ -121,7 +121,7 @@ export interface PdfSerializeOptions {
 export interface PdfExportTimings {
   prepareMs: number;
   compileMs: number;
-  downloadMs: number;
+  emitMs: number;
   totalMs: number;
 }
 
