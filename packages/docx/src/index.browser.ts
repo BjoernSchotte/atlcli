@@ -7,7 +7,9 @@
  * `node:`/`bun:` specifiers in its transitive graph — enforced by
  * `scripts/check-browser-build.ts`. Host adapters live with their hosts:
  * the Node filesystem adapters in `./node-adapters.ts` (node barrel only),
- * the extension's IndexedDB/download adapters in `apps/extension`.
+ * host-specific IndexedDB/session/download adapters stay with their host.
+ * Neutral browser bootstrap/canvas capability is available only through the
+ * explicit `./browser-runtime` subpath and is not re-exported here.
  */
 export * from "./placeholder-map.js";
 export * from "./dateformat.js";

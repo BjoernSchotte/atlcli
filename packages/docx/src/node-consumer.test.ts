@@ -3,8 +3,8 @@
  * `runExport` with the NODE-side env implementations — a real template file
  * on disk in, a real `.docx` file on disk out — produces output structurally
  * equal to the extension's golden capture. Runs under Bun/Node with the real
- * `Buffer`; the extension's byte-helpers shim is never imported (it lives in
- * `apps/extension`, outside this package's graph — see the import test).
+ * `Buffer`; the package's explicit browser-runtime subpath is never imported
+ * by the default/Node barrel.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

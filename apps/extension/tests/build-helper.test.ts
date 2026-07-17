@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collectMtimes, isBuildStale } from "./build-helper.js";
+import { BUILD_INPUTS, collectMtimes, isBuildStale } from "./build-helper.js";
 
 /**
  * Regression (finding 7): ensureExtensionBuilt reused any existing `.output`
@@ -10,6 +10,11 @@ import { collectMtimes, isBuildStale } from "./build-helper.js";
  * tested here so a stale build is never silently reused.
  */
 describe("isBuildStale", () => {
+  it("tracks the DOCX package that supplies the browser runtime", () => {
+    expect(BUILD_INPUTS).toContain("../../packages/docx/src");
+    expect(BUILD_INPUTS).toContain("../../packages/docx/package.json");
+  });
+
   it("is stale when no build exists (manifest mtime null)", () => {
     expect(isBuildStale(null, [])).toBe(true);
     expect(isBuildStale(null, [100, 200])).toBe(true);

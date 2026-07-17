@@ -24,6 +24,8 @@ export const BUILD_INPUTS = [
   "utils",
   "workers",
   "types",
+  "../../packages/docx/src",
+  "../../packages/docx/package.json",
   "../../packages/pdf/src",
   "../../packages/pdf/scripts/ensure-fonts.ts",
   "../../packages/pdf/licenses",

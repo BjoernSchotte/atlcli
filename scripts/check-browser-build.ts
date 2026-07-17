@@ -19,6 +19,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
   "packages/docx/src/index.browser.ts",
+  "packages/docx/src/browser-runtime.ts",
   "packages/diagram/src/index.ts",
   "packages/pdf/src/index.browser.ts",
 ];

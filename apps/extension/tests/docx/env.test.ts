@@ -5,15 +5,17 @@
  * fake-indexeddb (spec-complete IndexedDB, real transactions), the download
  * sink against a happy-dom document; only the network `fetch` is stubbed.
  */
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import { Window } from "happy-dom";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import {
   canvasSvgRasterizer,
   downloadOutputSink,
+  getRasterizerStats,
   idbTemplateSource,
   memoryTemplateSource,
+  resetRasterizerStats,
   sessionAssetFetcher,
 } from "../../utils/docx/env.js";
 import { putTemplate } from "../../utils/docx/template-store.js";
@@ -125,6 +127,8 @@ describe("sessionAssetFetcher", () => {
 });
 
 describe("canvasSvgRasterizer", () => {
+  beforeEach(() => resetRasterizerStats());
+
   // happy-dom has no rendering engine: an <img> never fires load/error for a
   // blob SVG, and canvas.getContext("2d") is null — so the REAL rasterization
   // is covered by the manual extension E2E (spec 005a Task 6). What IS
@@ -187,6 +191,71 @@ describe("canvasSvgRasterizer", () => {
     expect(canvas.height).toBe(6);
     expect(toBlobCalled).toBe(false);
     expect(revoked).toBe(true);
+  });
+
+  it("keeps exact per-call and summed timing statistics in the extension host", async () => {
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: () => {} }),
+      toDataURL: () => "data:image/png;base64,AQIDBA==",
+    };
+    const doc = {
+      defaultView: {
+        URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
+        Blob,
+        Image: FakeImage,
+        atob,
+      },
+      createElement: () => canvas,
+    } as unknown as Document;
+    const values = [0, 5, 5, 8, 8, 12, 12, 14, 14, 15, 15, 21];
+    const originalNow = Date.now;
+    Date.now = () => values.shift()!;
+    try {
+      const rasterizer = canvasSvgRasterizer(doc);
+      await rasterizer.rasterize("<svg/>", { widthPx: 8, heightPx: 6 });
+      await rasterizer.rasterize("<svg/>", { widthPx: 8, heightPx: 6 });
+    } finally {
+      Date.now = originalNow;
+    }
+
+    expect(getRasterizerStats()).toEqual({
+      calls: 2,
+      decodeMs: 7,
+      drawMs: 4,
+      encodeMs: 10,
+      encodeCallsMs: [4, 6],
+    });
+  });
+
+  it("resets between exports and returns defensive timing snapshots", () => {
+    const snapshot = getRasterizerStats();
+    snapshot.calls = 9;
+    snapshot.encodeCallsMs.push(99);
+    expect(getRasterizerStats()).toEqual({
+      calls: 0,
+      decodeMs: 0,
+      drawMs: 0,
+      encodeMs: 0,
+      encodeCallsMs: [],
+    });
+
+    resetRasterizerStats();
+    expect(getRasterizerStats()).toEqual({
+      calls: 0,
+      decodeMs: 0,
+      drawMs: 0,
+      encodeMs: 0,
+      encodeCallsMs: [],
+    });
   });
 
 });

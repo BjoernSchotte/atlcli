@@ -10,6 +10,8 @@
       "default": "./src/index.ts"
     },
     "./browser": "./src/index.browser.ts",
+    "./browser-runtime": "./src/browser-runtime.ts",
+    "./vite": "./src/vite.ts",
     "./node": "./src/index.ts",
     "./scan": "./src/scan.ts",
     "./fixtures": "./src/fixtures.ts",
