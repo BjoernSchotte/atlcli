@@ -1,17 +1,23 @@
 # Multi-Host Browser Export Runtime — extension, embedded web, and desktop webview reuse
 
-Status: **Planned**
+Status: **Implemented — automated verification complete; user-assisted extension E2E pending**
 
 Planned at: `9a3c950ce36e63a88fbffe2f47172ebaf9cb9a95` (`feat(pdf): adapt inline layout in dense tables (#44)`)
 
-Implementation branch: create a fresh `codex/` branch from the current `main` when execution starts. This plan was authored on `codex/spec-009-multi-host-browser-runtime`; that planning branch is not an implementation baseline.
+Implementation branch: `codex/spec-009-multi-host-browser-runtime`. Current `origin/main` was
+merged before implementation (`e925d1e`), then the work was delivered as format-specific,
+harness, and documentation commits. See `EVIDENCE.md` for the exact chain and results.
+
+Delivery note: the user explicitly requested intermediate commits/pushes and will perform the
+load-unpacked extension E2E after receiving the final production build. The automated
+implementation is therefore committed while §8.6 remains an explicit pending acceptance gate.
 
 Depends on:
 
 - `specs/001-browser-ready-core/PLAN.md` — browser-safe package entrypoints and browser-build gate
 - `specs/002-extension-workspace/PLAN.md` — extension workspace and MV3 host shell
 - `specs/006-isomorphic-export-fup/PLAN.md` — implemented `@atlcli/docx` extraction
-- `specs/007-pdf-export/PLAN.md` — implemented PDF preparation/compiler behavior, despite its stale `Planned` status
+- `specs/007-pdf-export/PLAN.md` — implemented PDF preparation/compiler behavior
 
 Sequencing: implement this spec before the final cross-format validation in `specs/008-export-poc-validation/PLAN.md`. Spec 008 must validate the post-009 boundaries rather than only the original extension-owned PDF path.
 
@@ -1011,7 +1017,11 @@ Using the configured test profile/space from repository instructions:
 5. Repeat a warm PDF export; verify deterministic output contract.
 6. Clean any page/attachment/test resources created by the E2E.
 
-If credentials or browser access are unavailable, mark this gate **not executed**, leave the implementation uncommitted, and report Task 8/Definition of Done as blocked. Tests read or harness E2E are not substitutes for the extension E2E claim.
+If credentials or browser access are unavailable, mark this gate **not executed** and do not
+claim extension E2E success. The default is to leave the implementation uncommitted. For this
+delivery, the user explicitly requested intermediate commits/pushes and will run the gate from
+the final build, so the automated implementation is committed with this item visibly pending.
+Tests read or harness E2E are not substitutes for the extension E2E claim.
 
 ---
 
@@ -1019,29 +1029,30 @@ If credentials or browser access are unavailable, mark this gate **not executed*
 
 The implementation is complete only when all of the following are true:
 
-- [ ] DOCX and PDF remain separate engines/packages with no dependency between them.
-- [ ] `@atlcli/confluence` owns reusable mention normalization while authenticated lookup and warning policy remain host-owned.
-- [ ] `@atlcli/docx/browser-runtime` owns the reusable DOCX browser bootstrap/config and neutral DOM capability.
-- [ ] `@atlcli/pdf` owns neutral PDF runner contracts, validation, normalized diagnostics, and the asset manifest without importing Typst.
-- [ ] The neutral PDF runner preserves explicit theme/profile options and reports the effective profile.
-- [ ] `@atlcli/pdf-compiler-browser` exists as a private, browser-only implementation package.
-- [ ] The extension consumes all new public surfaces and retains Chrome/session/job/offscreen/UI policy.
-- [ ] The old extension-local compiler and byte-helper implementations are deleted after migration.
-- [ ] Raw Typst diagnostics do not cross the compiler package boundary.
-- [ ] PDF preparation consumers do not bundle compiler/WASM code.
-- [ ] Static host asset imports match the canonical manifest.
-- [ ] The permanent Vite harness runs DOCX and PDF independently in Chromium.
-- [ ] The harness proves real Worker/WASM and real canvas behavior without extension APIs or native `Buffer`.
-- [ ] The harness artifact uses relative asset URLs and passes production Chromium E2E when served below a non-root path.
-- [ ] Harness evidence is described only as package conformance; host-specific packaging/CSP/iframe claims require separate host evidence.
-- [ ] DOCX structural golden parity and PDF pre/post byte parity pass.
-- [ ] PDF abort/cancel/timeout/cleanup behavior remains covered and no PDF export starts emission after observing abort.
-- [ ] Browser source, extension artifact, and harness artifact gates all pass.
-- [ ] Typecheck/Turbo/CI inputs cover TSX, workers, configs, fixtures, fonts, licenses, and transitive workspace sources.
-- [ ] Current docs and narrow historical supersession notes are updated.
-- [ ] Full automated suite passes.
-- [ ] User-assisted extension E2E passes and all created resources are cleaned; if it cannot run, implementation remains blocked and uncommitted rather than being declared done.
-- [ ] No package is published, no release is made, and no push occurs without explicit instruction.
+- [x] DOCX and PDF remain separate engines/packages with no dependency between them.
+- [x] `@atlcli/confluence` owns reusable mention normalization while authenticated lookup and warning policy remain host-owned.
+- [x] `@atlcli/docx/browser-runtime` owns the reusable DOCX browser bootstrap/config and neutral DOM capability.
+- [x] `@atlcli/pdf` owns neutral PDF runner contracts, validation, normalized diagnostics, and the asset manifest without importing Typst.
+- [x] The neutral PDF runner preserves explicit theme/profile options and reports the effective profile.
+- [x] `@atlcli/pdf-compiler-browser` exists as a private, browser-only implementation package.
+- [x] The extension consumes all new public surfaces and retains Chrome/session/job/offscreen/UI policy.
+- [x] The old extension-local compiler and byte-helper implementations are deleted after migration.
+- [x] Raw Typst diagnostics do not cross the compiler package boundary.
+- [x] PDF preparation consumers do not bundle compiler/WASM code.
+- [x] Static host asset imports match the canonical manifest.
+- [x] The permanent Vite harness runs DOCX and PDF independently in Chromium.
+- [x] The harness proves real Worker/WASM and real canvas behavior without extension APIs or native `Buffer`.
+- [x] The harness artifact uses relative asset URLs and passes production Chromium E2E when served below a non-root path.
+- [x] Harness evidence is described only as package conformance; host-specific packaging/CSP/iframe claims require separate host evidence.
+- [x] DOCX structural golden parity and PDF pre/post byte parity pass.
+- [x] PDF abort/cancel/timeout/cleanup behavior remains covered and no PDF export starts emission after observing abort.
+- [x] Browser source, extension artifact, and harness artifact gates all pass.
+- [x] Typecheck/Turbo/CI inputs cover TSX, workers, configs, fixtures, fonts, licenses, and transitive workspace sources.
+- [x] Current docs and narrow historical supersession notes are updated.
+- [x] Full automated suite passes.
+- [ ] User-assisted extension E2E passes and all created resources are cleaned; until then it is
+  recorded as pending and no extension E2E claim is made.
+- [x] No package is published, no release is made, and every push was explicitly requested.
 
 ---
 
