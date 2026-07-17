@@ -1,10 +1,18 @@
-import { storageToBlocks, type ExportBlock, type ExportNote } from "@atlcli/confluence/browser";
+import {
+  ConfluenceClient,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNote,
+  type InlineNode,
+  type UserInfo,
+} from "@atlcli/confluence/browser";
 import {
   preparePdfDocument,
   serializePdfDocument,
   type PdfAssetResolver,
   type PdfExportReport,
   type PdfSourceBundle,
+  type PdfThemeOptions,
   type PreparedPdfBlock,
 } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../read-path.js";
@@ -31,6 +39,8 @@ export type PdfExportPhase =
 export interface RunPdfExportInput {
   page: LoadedPage;
   pageUrl: string;
+  /** Optional Typst theme overrides for this export. */
+  theme?: PdfThemeOptions;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
 }
@@ -46,7 +56,133 @@ export interface RunPdfExportDeps {
   download: (name: string, bytes: Uint8Array) => Promise<void>;
   prepare: typeof preparePdfDocument;
   serialize: typeof serializePdfDocument;
+  resolveMentions: (
+    blocks: ExportBlock[],
+    pageUrl: string,
+    signal?: AbortSignal
+  ) => Promise<PdfMentionResolution>;
   resolver?: PdfAssetResolver;
+}
+
+type PdfMentionUser = Pick<UserInfo, "displayName">;
+
+export interface PdfMentionResolution {
+  blocks: ExportBlock[];
+  unresolved: number;
+}
+
+function unresolvedMentionIds(blocks: ExportBlock[]): string[] {
+  const ids = new Set<string>();
+  const visitInline = (nodes: InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "mention" && !node.displayName?.trim() && node.accountId.trim()) {
+        ids.add(node.accountId);
+      } else if (node.type === "link") {
+        visitInline(node.content);
+      }
+    }
+  };
+  const visitBlocks = (items: ExportBlock[]): void => {
+    for (const block of items) {
+      switch (block.type) {
+        case "heading":
+        case "paragraph":
+          visitInline(block.content);
+          break;
+        case "callout":
+        case "blockquote":
+          visitBlocks(block.content);
+          break;
+        case "list":
+          for (const item of block.items) visitBlocks(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) visitBlocks(cell.content);
+          break;
+      }
+    }
+  };
+  visitBlocks(blocks);
+  return [...ids];
+}
+
+function resolveInlineMentions(
+  nodes: InlineNode[],
+  users: ReadonlyMap<string, PdfMentionUser | null>
+): InlineNode[] {
+  return nodes.map((node) => {
+    if (node.type === "link") {
+      return { ...node, content: resolveInlineMentions(node.content, users) };
+    }
+    if (node.type !== "mention" || node.displayName?.trim()) return node;
+    const displayName = users.get(node.accountId)?.displayName?.trim();
+    return displayName ? { ...node, displayName } : node;
+  });
+}
+
+function resolveBlockMentions(
+  blocks: ExportBlock[],
+  users: ReadonlyMap<string, PdfMentionUser | null>
+): ExportBlock[] {
+  return blocks.map((block): ExportBlock => {
+    switch (block.type) {
+      case "heading":
+      case "paragraph":
+        return { ...block, content: resolveInlineMentions(block.content, users) };
+      case "callout":
+      case "blockquote":
+        return { ...block, content: resolveBlockMentions(block.content, users) };
+      case "list":
+        return {
+          ...block,
+          items: block.items.map((item) => ({
+            ...item,
+            content: resolveBlockMentions(item.content, users),
+          })),
+        };
+      case "table":
+        return {
+          ...block,
+          rows: block.rows.map((row) => ({
+            ...row,
+            cells: row.cells.map((cell) => ({
+              ...cell,
+              content: resolveBlockMentions(cell.content, users),
+            })),
+          })),
+        };
+      default:
+        return block;
+    }
+  });
+}
+
+export async function resolvePdfMentionNames(
+  blocks: ExportBlock[],
+  loadUsers: (
+    accountIds: string[]
+  ) => Promise<ReadonlyMap<string, PdfMentionUser | null>>
+): Promise<PdfMentionResolution> {
+  const accountIds = unresolvedMentionIds(blocks);
+  if (accountIds.length === 0) return { blocks, unresolved: 0 };
+  const users = await loadUsers(accountIds);
+  const unresolved = accountIds.filter((accountId) => !users.get(accountId)?.displayName?.trim()).length;
+  return { blocks: resolveBlockMentions(blocks, users), unresolved };
+}
+
+async function defaultResolveMentions(
+  blocks: ExportBlock[],
+  pageUrl: string,
+  signal?: AbortSignal
+): Promise<PdfMentionResolution> {
+  return resolvePdfMentionNames(blocks, async (accountIds) => {
+    throwIfAborted(signal);
+    const profile = profileFromTabUrl(pageUrl);
+    if (!profile) throw new Error("The active page is not on an approved Atlassian host.");
+    const users = await new ConfluenceClient(profile).getUsersBulk(accountIds);
+    throwIfAborted(signal);
+    return users;
+  });
 }
 
 const defaultDeps: RunPdfExportDeps = {
@@ -60,6 +196,7 @@ const defaultDeps: RunPdfExportDeps = {
   download: (name, bytes) => downloadBytes({ name, bytes, mimeType: "application/pdf" }),
   prepare: preparePdfDocument,
   serialize: serializePdfDocument,
+  resolveMentions: defaultResolveMentions,
 };
 
 export function normalizePdfLocale(locale: string | undefined): {
@@ -163,8 +300,28 @@ export async function runPdfExport(
   throwIfAborted(input.signal);
 
   input.onPhase?.("preparing");
-  const { blocks, notes: walkerNotes } = storageToBlocks(input.page.details.storage ?? "");
+  const { blocks: walkedBlocks, notes: walkerNotes } = storageToBlocks(input.page.details.storage ?? "");
   input.onPhase?.("fetching");
+  let blocks = walkedBlocks;
+  const mentionNotes: ExportNote[] = [];
+  try {
+    const resolved = await deps.resolveMentions(blocks, input.pageUrl, input.signal);
+    blocks = resolved.blocks;
+    if (resolved.unresolved > 0) {
+      mentionNotes.push({
+        level: "warning",
+        code: "pdf-mention-unresolved",
+        message: `${resolved.unresolved} mention display name(s) could not be resolved; technical identifiers were retained.`,
+      });
+    }
+  } catch {
+    throwIfAborted(input.signal);
+    mentionNotes.push({
+      level: "warning",
+      code: "pdf-mention-resolution-failed",
+      message: "Mention display names could not be resolved; technical identifiers were retained.",
+    });
+  }
   const prepareStarted = deps.now();
   const prepared = await deps.prepare(
     blocks,
@@ -180,6 +337,7 @@ export async function runPdfExport(
     "en";
   const locale = normalizePdfLocale(runtimeLocale);
   const bundle: PdfSourceBundle = deps.serialize(prepared, {
+    theme: input.theme,
     metadata: {
       title: input.page.details.title,
       space: input.page.details.spaceKey,
@@ -191,7 +349,7 @@ export async function runPdfExport(
       exportedAt,
     },
   });
-  const notes: ExportNote[] = [...walkerNotes, ...bundle.notes];
+  const notes: ExportNote[] = [...walkerNotes, ...mentionNotes, ...bundle.notes];
   const counts = countPrepared(prepared.blocks);
   const jobId = deps.makeJobId();
   const sourceIdentity = `${input.pageUrl}|${input.page.details.id}|${input.page.details.version ?? ""}`;

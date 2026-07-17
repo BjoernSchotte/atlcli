@@ -209,6 +209,25 @@ describe("storageToBlocks — tables", () => {
     expect(table.rows[1].cells[0]).toMatchObject({ header: false, rowspan: 2, colspan: 1 });
   });
 
+  test("preserves normalized cell backgrounds from Confluence storage attributes", () => {
+    const out = blocks(
+      "<table><tbody><tr>" +
+        '<th data-highlight-colour="#334455"><p>Dark</p></th>' +
+        '<td style="width: 20px; background-color: rgb(233, 242, 255);"><p>Light</p></td>' +
+        '<td bgcolor="#abc"><p>Short</p></td>' +
+        '<td data-highlight-color="transparent"><p>Clear</p></td>' +
+        "</tr></tbody></table>"
+    );
+    const table = out[0] as Extract<ExportBlock, { type: "table" }>;
+
+    expect(table.rows[0].cells.map((cell) => cell.backgroundColor)).toEqual([
+      "#334455",
+      "#E9F2FF",
+      "#AABBCC",
+      undefined,
+    ]);
+  });
+
   test("modern Cloud markup: <colgroup> + ac:local-id + <p local-id> wrappers (regression)", () => {
     // This is the exact shape that broke the markdown table path: a leading
     // <colgroup> made <tbody> a non-first sibling. The rich walker tolerates

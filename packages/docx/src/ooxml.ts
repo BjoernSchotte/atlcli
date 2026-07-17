@@ -11,6 +11,7 @@
  * id ({@link resolveHeadingStyleId}). Code blocks reference a synthesized
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
+import { normalizeExportColor } from "@atlcli/confluence";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Escape text for a `<w:t>` / attribute value. */
@@ -245,12 +246,13 @@ export function dataTable(gridCols: number, rowsXml: string): string {
 /** A table cell with colspan (gridSpan), rowspan (vMerge), header shading. */
 export function tableCell(
   paragraphsXml: string,
-  opts: { colspan?: number; vMerge?: "restart" | "continue"; header?: boolean } = {}
+  opts: { colspan?: number; vMerge?: "restart" | "continue"; header?: boolean; backgroundColor?: string } = {}
 ): string {
   const props: string[] = [];
   if (opts.colspan && opts.colspan > 1) props.push(`<w:gridSpan w:val="${opts.colspan}"/>`);
   if (opts.vMerge) props.push(`<w:vMerge w:val="${opts.vMerge}"/>`);
-  if (opts.header) props.push('<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>');
+  const fill = normalizeExportColor(opts.backgroundColor)?.slice(1) ?? (opts.header ? "F4F5F7" : undefined);
+  if (fill) props.push(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
   const body = paragraphsXml || "<w:p/>";
   return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${body}</w:tc>`;
 }

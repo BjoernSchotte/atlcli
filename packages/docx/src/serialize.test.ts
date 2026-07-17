@@ -265,6 +265,50 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain('<w:vMerge w:val="continue"/>');
   });
 
+  it("preserves source cell backgrounds, readable text, and shading across rowspans", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [
+          {
+            cells: [
+              {
+                header: true,
+                colspan: 1,
+                rowspan: 2,
+                backgroundColor: "#334455",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Dark section" }] }],
+              },
+              {
+                header: true,
+                colspan: 1,
+                rowspan: 1,
+                backgroundColor: "#E9F2FF",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Light section" }] }],
+              },
+            ],
+          },
+          {
+            cells: [
+              {
+                header: false,
+                colspan: 1,
+                rowspan: 1,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml.match(/w:fill="334455"/g)).toHaveLength(2);
+    expect(xml).toContain('<w:color w:val="FFFFFF"/>');
+    expect(xml).toContain('<w:shd w:val="clear" w:color="auto" w:fill="E9F2FF"/>');
+    expect(xml).toContain('<w:color w:val="172B4D"/>');
+  });
+
   it("skips images (deferred) with a report note and no drawing", async () => {
     const blocks: ExportBlock[] = [
       { type: "image", source: { kind: "attachment", filename: "diagram.png" }, alt: "d" },

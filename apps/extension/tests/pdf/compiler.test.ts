@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
@@ -45,6 +46,242 @@ function anonymousText(length: number, special: Record<number, string> = {}): st
   const characters = Array<string>(length).fill("x");
   for (const [offset, value] of Object.entries(special)) characters[Number(offset)] = value;
   return characters.join("");
+}
+
+const DENSE_TABLE_LINK =
+  "https://docs.example.com/platform/integration/deployment-guide?environment=staging&source=pdf-test";
+const CUSTOM_LABEL_LINK = "https://docs.example.com/platform/overview";
+
+function denseTableFixture(): ExportBlock {
+  const cell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: Array<number>(14).fill(1),
+    rows: [
+      {
+        cells: [
+          "Updated",
+          "Component",
+          "Stage",
+          "Priority",
+          "Description",
+          "Reference",
+          "Owner",
+          "Release",
+          "Branch",
+          "Review",
+          "Fallback",
+          "Notes",
+          "Guide",
+          "Result",
+        ].map((text) => cell(text, true)),
+      },
+      {
+        cells: [
+          cell("2031-12-31 23:59"),
+          cell("Integration gateway"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "SYNCHRONIZED", color: "#DE350B" }] }],
+          },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "READY FOR RELEASE", color: "#00875A" }] }],
+          },
+          cell("Normal prose keeps natural word wrapping in narrow columns without turning every token into an atom."),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "link",
+                    target: { kind: "external", href: DENSE_TABLE_LINK },
+                    content: [{ type: "text", text: DENSE_TABLE_LINK }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:account-123456789", displayName: "Alexanderson Exampleton" }] }],
+          },
+          cell("1.13.1"),
+          cell("development"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "WAITING FOR REVIEW", color: "#FF991F" }] }],
+          },
+          cell("AlphabeticOverflowGuard"),
+          cell("-"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "link",
+                    target: { kind: "external", href: CUSTOM_LABEL_LINK },
+                    content: [{ type: "text", text: "Deployment guide" }],
+                  },
+                ],
+              },
+            ],
+          },
+          cell("Synthetic fixture"),
+        ],
+      },
+      {
+        cells: [
+          cell("21 May 2026 09:30"),
+          cell("Event processor"),
+          cell("ON"),
+          cell("LOW"),
+          cell("Ordinary descriptive sentences continue to wrap at meaningful word boundaries in dense mode."),
+          cell("Reference"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "mention", accountId: "synthetic:user-1234567890-abcdef" }] }],
+          },
+          cell("1.13.2"),
+          cell("release-candidate"),
+          cell("OK"),
+          cell("Available"),
+          cell("REF-1234567890, TASK-9876543210 alphaomegaworkflow-beta"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "link",
+                target: { kind: "external", href: CUSTOM_LABEL_LINK },
+                content: [{ type: "text", text: "portal.example.invalid" }],
+              }],
+            }],
+          },
+          cell("Verified"),
+        ],
+      },
+      ...Array.from({ length: 30 }, (_, index) => ({
+        cells: [
+          cell(`D${index + 1}`),
+          cell(`S${index + 1}`),
+          cell("ON"),
+          cell("LOW"),
+          cell("Text"),
+          cell("Ref"),
+          cell("Team"),
+          cell(`1.14.${index}`),
+          cell("main"),
+          cell("OK"),
+          cell("Ja"),
+          cell("Test"),
+          cell("Guide"),
+          cell("OK"),
+        ],
+      })),
+    ],
+  };
+}
+
+function narrowTrackFixture(): ExportBlock {
+  const cell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: [1, 1, 0.75, 2, 2, 2, 2],
+    rows: [
+      {
+        cells: ["Level", "Type", "Impact", "Description", "Operations", "Timing", "Decision"]
+          .map((text) => cell(text, true)),
+      },
+      {
+        cells: [
+          cell("3"),
+          cell("Scheduled review"),
+          cell("Moderate / Severe"),
+          cell("Cross-team dependency coordination"),
+          cell("Architecture and platform alignment"),
+          cell("Verification before rollout"),
+          cell("Approval required"),
+        ],
+      },
+    ],
+  };
+}
+
+function narrowStatusFixture(): ExportBlock {
+  const textCell = (text: string, header = false) => ({
+    header,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  return {
+    type: "table",
+    columnWidths: [1.2, 0.45, 2.1, 3.5, 1.2, 0.7],
+    rows: [
+      {
+        cells: ["Recorded", "State", "Summary", "Notes", "Owner", "Length"]
+          .map((text) => textCell(text, true)),
+      },
+      {
+        cells: [
+          textCell("2032-02-29"),
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "status", text: "PASS", color: "green" }] }],
+          },
+          textCell("Synthetic review"),
+          textCell("Width-aware badge regression"),
+          textCell("Team"),
+          textCell("4 min"),
+        ],
+      },
+    ],
+  };
+}
+
+function extractPdfText(pdf: Uint8Array): string | null {
+  const pdftotext = Bun.which("pdftotext");
+  if (!pdftotext) return null;
+  const result = spawnSync(pdftotext, ["-raw", "-", "-"], {
+    input: pdf,
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`pdftotext failed: ${result.stderr.trim()}`);
+  return result.stdout;
 }
 
 describe("BrowserPdfCompiler", () => {
@@ -229,7 +466,219 @@ This is a real PDF.
     });
     const compiler = await createCompiler();
     const result = await compiler.compile(bundle);
+    const repeat = await compiler.compile(bundle);
 
+    expect(result.diagnostics).toEqual([]);
+    expect(repeat.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(repeat.pdf).toEqual(result.pdf);
+  }, 30_000);
+
+  it("compiles a dense table without losing prose, status labels, or the full link target", async () => {
+    const prepared = await preparePdfDocument([denseTableFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Dense table regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    const inspection = validatePdfOutput(result.pdf!);
+    expect(inspection.tagged).toBe(true);
+    expect(inspection.pageCount).toBeGreaterThan(4);
+    expect(inspection.embeddedFontFiles).toBeGreaterThanOrEqual(3);
+
+    const pdfSource = new TextDecoder("latin1").decode(result.pdf);
+    expect(pdfSource).toContain(`/URI (${DENSE_TABLE_LINK})`);
+    expect(pdfSource).toContain(`/URI (${CUSTOM_LABEL_LINK})`);
+    expect(pdfSource).toMatch(/SourceCodePro-Bold/);
+
+    expect(bundle.main).toContain('[#text("Normal")], [#text("Norm\u200Bal")]');
+    expect(bundle.main).toContain('"SYNCHRONIZED", "SY\u200BNC\u200BHR\u200BON\u200BIZ\u200BED"');
+    expect(bundle.main).toContain('[#text("Alexanderson")], [#text("Alex\u200Bande\u200Brson")]');
+    expect(bundle.main).toContain('[#text("Exampleton")], [#text("Exam\u200Bplet\u200Bon")]');
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      const extractedCompact = extracted
+        .replaceAll("\u00ad", "")
+        .replaceAll("\u200b", "")
+        .replace(/\s+/g, "");
+      expect(extractedCompact).toContain("prosekeeps");
+      expect(extractedCompact).toContain("naturalwordwrapping");
+      expect(extractedCompact).toContain("SYNCHRONIZED");
+      expect(extractedCompact).toContain("2031-12-3123:59");
+      expect(extractedCompact).toContain("portal.example.invalid");
+      expect(extractedCompact).toContain("REF-1234567890,TASK-9876543210");
+      expect(extractedCompact).toContain("alphaomegaworkflow-beta");
+      expect(extractedCompact).toContain("AlphabeticOverflowGuard");
+      expect(extractedCompact).toContain("synthetic:user-1234567890-abcdef");
+      expect(extractedCompact).toContain("READYFORRELEASE");
+      expect(extractedCompact).toContain("WAITINGFORREVIEW");
+      expect(extractedCompact).toContain("AlexandersonExampleton");
+      expect(extractedCompact).toContain("docs.example.com");
+      expect(extractedCompact).toContain("Deploymentguide");
+      expect(extractedCompact.match(/Updated/g)?.length ?? 0).toBeGreaterThan(1);
+    }
+
+    const repeat = await compiler.compile(bundle);
+    expect(repeat.diagnostics).toEqual([]);
+    expect(repeat.pdf).toEqual(result.pdf);
+  }, 30_000);
+
+  it("compiles a seven-column table with one narrow track without losing its phrase", async () => {
+    const prepared = await preparePdfDocument([narrowTrackFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Narrow track regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(bundle.main).toContain("columns: (0.093023fr, 0.093023fr, 0.069767fr");
+    expect(bundle.main).toContain('[#text("Moderate")], [#text("Mode\u200Brate")]');
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      const compact = extracted
+        .replaceAll("\u00ad", "")
+        .replaceAll("\u200b", "")
+        .replace(/\s+/g, "");
+      expect(compact).toContain("Moderate/Severe");
+      expect(compact).toContain("Cross-teamdependencycoordination");
+    }
+  }, 30_000);
+
+  it("compiles a semantic-color badge inside an extremely narrow status track", async () => {
+    const prepared = await preparePdfDocument([narrowStatusFixture()], {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Narrow status regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(bundle.main).toContain('#dense-status-badge(available-width, "PASS", "PA\u200BSS", color: "#00875A")');
+    const extracted = extractPdfText(result.pdf!);
+    if (extracted !== null) {
+      expect(extracted.replaceAll("\u200b", "").replace(/\s+/g, "")).toContain("PASS");
+    }
+  }, 30_000);
+
+  it("accounts for active rowspans when a following colspan determines the table width", async () => {
+    const paragraph = (text: string) => [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }];
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      rows: [
+        {
+          cells: [
+            { header: false, colspan: 1, rowspan: 2, content: paragraph("Vertical") },
+            { header: false, colspan: 2, rowspan: 1, content: paragraph("Upper span") },
+          ],
+        },
+        {
+          cells: [
+            { header: false, colspan: 3, rowspan: 1, content: paragraph("Lower span") },
+          ],
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Spanned grid regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+  }, 30_000);
+
+  it("keeps a full-width section row in the table body instead of promoting it to a repeated header", async () => {
+    const paragraph = (text: string) => [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }];
+    const cell = (text: string, header = false, colspan = 1) => ({
+      header,
+      colspan,
+      rowspan: 1,
+      content: paragraph(text),
+    });
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      columnWidths: [1, 2, 2, 1],
+      rows: [
+        { cells: [cell("Key", true), cell("Scope", true), cell("Cadence", true), cell("Owner", true)] },
+        { cells: [cell("A"), cell("Shared"), cell("Monthly"), cell("Team")] },
+        {
+          cells: [{
+            ...cell("Synthetic section", true, 4),
+            backgroundColor: "#8994A9",
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "text",
+                text: "Synthetic section",
+                marks: ["bold"],
+                color: "#172B4D",
+              }],
+            }],
+          }],
+        },
+        { cells: [cell("B"), cell("Local"), cell("Weekly"), cell("Team")] },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("no assets in fixture"); },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Section row regression",
+        language: "en",
+        region: "US",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-16T12:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+
+    expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
+    expect(bundle.main).toContain('fill: rgb("#8994A9")');
+    expect(bundle.main).toContain('#set text(fill: rgb("#FCFBF8"))');
+    expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#strong[');
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
   }, 30_000);

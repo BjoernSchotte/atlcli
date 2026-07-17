@@ -2,13 +2,18 @@
  * Pinned atlcli Typst standard template. It uses semantic Typst elements and
  * show rules so PDF tagging/outline information survives visual styling.
  */
+import { resolvePdfTheme } from "./theme.js";
+import type { PdfThemeOptions } from "./types.js";
+
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
 const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
 
-export const ATLCLI_TYPST_TEMPLATE = String.raw`
+export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string {
+  const theme = resolvePdfTheme(options);
+  return String.raw`
 #let editorial-numbering(..nums) = {
   let values = nums.pos()
   let current = values.last()
@@ -33,7 +38,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   let indigo = rgb("#4B57A3")
   let ink = rgb("#202A44")
   let warm-slate = rgb("#74727A")
-  let cover-paper = rgb("#FCFBF8")
+  let cover-paper = rgb("${theme.colors.paper}")
 
   set document(
     title: meta.title,
@@ -43,7 +48,7 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   set text(
     font: "Source Serif 4",
     size: 10pt,
-    fill: rgb("#172B4D"),
+    fill: rgb("${theme.colors.ink}"),
     lang: meta.at("language", default: "en"),
     region: meta.at("region", default: none),
   )
@@ -84,11 +89,11 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   )
 
   show heading.where(level: 1): it => {
-    set text(font: "Source Sans 3", size: 18pt, weight: "semibold", fill: rgb("#172B4D"))
+    set text(font: "Source Sans 3", size: 18pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
     block(above: 28pt, below: 14pt, sticky: true, it)
   }
   show heading.where(level: 2): it => {
-    set text(font: "Source Sans 3", size: 14pt, weight: "semibold", fill: rgb("#172B4D"))
+    set text(font: "Source Sans 3", size: 14pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
     block(above: 24pt, below: 12pt, sticky: true, it)
   }
   show heading.where(level: 3): it => {
@@ -194,12 +199,70 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   ]
 }
 
-#let status-badge(label, color: "#42526E") = box(
+#let status-badge(label, color: "#42526E", inset-x: 5pt) = box(
   fill: rgb(color).lighten(82%),
-  inset: (x: 5pt, y: 2pt),
+  inset: (x: inset-x, y: 2pt),
   radius: 3pt,
-  text(font: "Source Sans 3", size: 7.5pt, weight: "semibold", fill: rgb(color), label),
+  text(font: "Source Code Pro", size: 7.5pt, weight: "bold", fill: rgb(color), label),
 )
+
+// Every table paragraph receives its real content width. Narrow cells switch
+// to the simple breaker; wider cells retain the document's optimized breaker.
+// 18mm approximates the usable width of one track at the existing nine-column
+// dense-table boundary after cell insets.
+#let table-par(body) = layout(size => {
+  if size.width <= 18mm { set par(linebreaks: "simple") }
+  body(size.width)
+})
+
+// Preserve the original token whenever it fits. Only an actually over-wide
+// token receives rendering-only emergency break opportunities.
+#let dense-token(available-width, normal, breakable) = {
+  if measure(normal).width <= available-width { normal } else { breakable }
+}
+
+#let dense-link(available-width, target, full-label, compact-label, host-label) = {
+  let full = text(full-label)
+  let compact = text(compact-label)
+  let host = text(host-label)
+  let visible = if measure(full).width <= available-width {
+    full
+  } else if measure(compact).width <= available-width {
+    compact
+  } else {
+    host
+  }
+  link(target, visible)
+}
+
+#let dense-status-badge(available-width, label, breakable-label, color: "#42526E") = {
+  let normal = status-badge(label, color: color)
+  let compact = status-badge(label, color: color, inset-x: 2pt)
+  if measure(normal).width <= available-width {
+    normal
+  } else if measure(compact).width <= available-width {
+    compact
+  } else {
+    box(
+      // Typst adds horizontal inset outside an explicit box width. Subtract it
+      // so the fallback badge's painted bounds never exceed the table track.
+      width: available-width - 2pt,
+      fill: rgb(color).lighten(82%),
+      inset: (x: 1pt, y: 2pt),
+      radius: 3pt,
+    )[
+      #set text(
+        font: "Source Code Pro",
+        size: 7.5pt,
+        weight: "bold",
+        fill: rgb(color),
+        hyphenate: true,
+      )
+      #set par(linebreaks: "simple", leading: 0.72em)
+      #breakable-label
+    ]
+  }
+}
 
 #let task-item(checked, body) = grid(
   columns: (1.05em, 1fr),
@@ -215,3 +278,6 @@ export const ATLCLI_TYPST_TEMPLATE = String.raw`
   body,
 )
 `;
+}
+
+export const ATLCLI_TYPST_TEMPLATE = createAtlcliTypstTemplate();

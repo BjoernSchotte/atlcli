@@ -30,6 +30,31 @@ widths. Equal default widths may be replaced by a
 conservative content-aware ratio when one narrative column is substantially longer than the
 remaining short status columns. Complex tables and balanced prose tables remain unchanged.
 
+### Very wide tables
+
+Tables with at least nine effective columns keep the standard A4 portrait page and the
+existing column calculation, but use an adaptive inline policy for values that otherwise
+behave like indivisible UI elements. Ordinary cell prose remains Source Sans 3 at 9 pt with
+language-aware hyphenation. Dense cells reduce horizontal padding from 6 pt to 2 pt and use
+Typst's simple line breaker; the optimized breaker can deliberately accept visibly overfull
+lines at these extreme widths. Tables below the dense threshold retain optimized line breaking
+and their existing 6 pt padding.
+
+- A raw HTTP(S) URL first uses its complete visible form. If it does not fit, the renderer
+  tries `hostname/…` and then a delimiter-aware, wrapping hostname. The PDF annotation always
+  retains the complete original target. Custom human-readable link labels are never shortened.
+- A status always remains a colored badge with its complete label. Badges use Source Code Pro
+  Bold, try normal and reduced horizontal padding, and finally wrap the complete label inside
+  the available cell width while retaining their background, foreground color, and radius.
+- Mentions keep their complete display name. In dense cells, an invisible break opportunity
+  after `@` and after safe account-ID delimiters prevents technical identifiers from painting
+  into the next column. These break characters are rendering-only and do not change the source
+  model.
+
+The exporter does not automatically switch page orientation, clip a paragraph or table cell,
+or shrink every table font. Landscape pages and user-configurable wide-table policies remain
+outside the current standard template.
+
 ## Runtime matrix
 
 | Component | Pinned value | Verification |
@@ -83,8 +108,11 @@ pdftoppm -png tmp/pdfs/pdf-export-feature-zoo.pdf tmp/pdfs/pdf-export-feature-zo
 ```
 
 The fixed fixture produces an A4 document with title and author metadata, outline,
-internal TOC links, semantic tags, embedded font programs, highlighted code and a native
-vector Mermaid diagram. A warm repeat compile is required to be byte-identical.
+internal TOC links, semantic tags, embedded font programs, highlighted code, a native
+vector Mermaid diagram, a normal four-column table, and a synthetic fourteen-column dense
+table. The dense section covers full-target raw links, custom link labels, complete visual
+status badges, mentions, and normal wrapping prose. A warm repeat compile is required to be
+byte-identical.
 
 ## Known profile boundary
 
