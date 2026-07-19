@@ -673,3 +673,93 @@ describe("PDF preparation and serialization", () => {
     ).toBe(second!.blockPath);
   });
 });
+
+describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () => {
+  const strip = (main: string): string =>
+    main.replace(/\/\* atlcli:(?:start|end):[^*]+ \*\//g, "");
+
+  // "Semantic" = the non-empty content lines are identical. Byte-identity is
+  // unreachable by design: writeMapped wraps EVERY block (including the empty
+  // pageBreak/anchor) in path-bearing comment markers, and array-index shifts
+  // change sibling paths even when content is unchanged (see the Engines note).
+  const contentLines = (main: string): string =>
+    strip(main)
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .join("\n");
+
+  it("renders pageBreak/anchor/orientation with no semantic change to main.typ", async () => {
+    const reference: ExportBlock[] = [
+      { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
+      { type: "paragraph", content: [{ type: "text", text: "before" }] },
+      { type: "paragraph", content: [{ type: "text", text: "inside" }] },
+      { type: "paragraph", content: [{ type: "text", text: "after" }] },
+    ];
+    const withNew: ExportBlock[] = [
+      { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
+      { type: "paragraph", content: [{ type: "text", text: "before" }] },
+      { type: "pageBreak" },
+      { type: "anchor", name: "bm" },
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "inside" }] }],
+      },
+      { type: "paragraph", content: [{ type: "text", text: "after" }] },
+    ];
+    const resolver = { resolve: async () => { throw new Error("unused"); } };
+    const refBundle = serializePdfDocument(await preparePdfDocument(reference, resolver), { metadata });
+    const newBundle = serializePdfDocument(await preparePdfDocument(withNew, resolver), { metadata });
+
+    // Semantic identity: content lines match once the comment markers are gone.
+    expect(contentLines(newBundle.main)).toBe(contentLines(refBundle.main));
+    // No new notes (no pdf-unknown-block, nothing) from the no-op blocks.
+    expect(newBundle.notes).toEqual([]);
+  });
+
+  it("gives pageBreak and anchor their own zero-width sourceMap entries", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "paragraph", content: [{ type: "text", text: "x" }] },
+      { type: "pageBreak" },
+      { type: "anchor", name: "bm" },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    for (const blockType of ["pageBreak", "anchor"] as const) {
+      const entry = bundle.sourceMap.find((e) => e.blockType === blockType);
+      expect(entry).toBeDefined();
+      // Zero-width: the wrapped value is empty, so start position == end position.
+      expect(entry!.startLine).toBe(entry!.endLine);
+      expect(entry!.startColumn).toBe(entry!.endColumn);
+    }
+  });
+
+  it("sees a heading nested inside an orientation region (promotion + label link)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "heading", level: 2, content: [{ type: "text", text: "Wide Section" }] }],
+      },
+      {
+        type: "paragraph",
+        content: [
+          { type: "link", target: { kind: "anchor", anchor: "Wide Section" }, content: [{ type: "text", text: "jump" }] },
+        ],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    // minHeadingLevel recursed into the region → the lone H2 promotes to level 1.
+    expect(bundle.main).toContain("#heading(level: 1, outlined: true)");
+    // collectHeadingLabels recursed into the region → the internal link resolves
+    // to the heading's <wide-section> label instead of degrading to plain text.
+    expect(bundle.main).toContain("<wide-section>");
+    expect(bundle.main).toContain("#link(<wide-section>)");
+    expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+});

@@ -2,8 +2,24 @@
 
 Reference: UMSETZUNGSPLAN T0.1/T0.2 · BASELINE-DESIGN cluster C/E (prerequisites)
 
-Status: Plan. Owner: one developer/agent, serial — this is the single
-non-parallelizable foundation. Everything in Phase 1 (lanes A, C, E, G and the
+Status: **Erledigt** (implementiert 2026-07-19, Branch
+`claude/exportblock-model-subagents-82d71f`, Commits `e7e693b` +
+`061e361`; Review: approve, keine Defekte). Typecheck grün, 1905 Tests
+grün, DOCX-Golden ohne Recapture, E2E gegen DOCSY inkl. verifiziertem
+Cleanup (Seite 1124565000 gelöscht, 404 bestätigt). Beide offenen
+Fragen wurden gemäß Empfehlung entschieden: `heading.explicitAnchor?`
+ist mit drin, `{ exporter: "word" }` ist in `packages/docx/src/export.ts`
+verdrahtet. Zwei dokumentierte E2E-Abweichungen: die Zoo-Seite wurde per
+Storage-Representation-Update statt Markdown-Passthrough befüllt (der
+Converter escapte die rohen Makros; Endzustand identisch), und die Makros
+erscheinen im ts-Engine-Report als `notes` statt `unsupportedNames`
+(Python-Engine-Konzept; Vorher/Nachher-Parität war der Prüfpunkt und ist
+erfüllt). Der Cross-Plan-Follow-up an 004-macro-renderer (Adoption der
+`MacroParameter[]`-Form, `bodyNotes`-Promotion, `unknown.body`-Mention-
+Resolution) ist erledigt: Commit `43136b4`.
+
+Ursprünglicher Plan-Kopf: Owner: one developer/agent, serial — this is the
+single non-parallelizable foundation. Everything in Phase 1 (lanes A, C, E, G and the
 engine parts of D/P/K) depends on this landing first, in **one PR**, so that
 `packages/confluence/src/export-blocks.ts` is touched exactly once before the
 lanes fork.
@@ -174,34 +190,34 @@ Every task is sized for one reviewable commit inside the single T0 PR.
 
 ### Model (@atlcli/confluence)
 
-- [ ] Add `CaptionKind` and `Caption` to
+- [x] Add `CaptionKind` and `Caption` to
       `packages/confluence/src/export-blocks.ts`, exported next to
       `InlineNode`/`LinkTarget` (model section, around line 90–113).
-- [ ] Extend the `codeBlock`, `table` and `image` variants of `ExportBlock`
+- [x] Extend the `codeBlock`, `table` and `image` variants of `ExportBlock`
       (`export-blocks.ts:102`) with `caption?: Caption`. No walker emits a
       caption yet (that is T1.4, `scroll-title`).
-- [ ] Add the three new variants to `ExportBlock`: `{ type: "pageBreak" }`,
+- [x] Add the three new variants to `ExportBlock`: `{ type: "pageBreak" }`,
       `{ type: "orientation"; landscape: boolean; content: ExportBlock[] }`,
       `{ type: "anchor"; name: string }`. Update the doc comment on the union
       to state which walker features feed them (T1.4) and that engines render
       them as no-ops until T1.3/T1.5.
-- [ ] Add `MacroParamRef`, `MacroParameter` and the `macroParamText()`
+- [x] Add `MacroParamRef`, `MacroParameter` and the `macroParamText()`
       convenience export to `export-blocks.ts`, next to `Caption` (model
       section). `macroParamText` is a straight lift of the existing
       case-insensitive lookup loop in `macroParam` (`:458`), just reading
       `.text` instead of `elementText(p)`.
-- [ ] Enrich the `unknown` variant (`export-blocks.ts:113`) with
+- [x] Enrich the `unknown` variant (`export-blocks.ts:113`) with
       `params?: MacroParameter[]`, `body?`, `plainBody?`, `macroId?`,
       `bodyNotes?: ExportNote[]` as sketched above; update its doc comment
       ("never carries raw XML" still holds — parameters and a walked body
       are structured data, not passthrough XML).
-- [ ] Add `StorageToBlocksOptions` (with `exporter?: "pdf" | "word"`) and
+- [x] Add `StorageToBlocksOptions` (with `exporter?: "pdf" | "word"`) and
       change `storageToBlocks(storage)` (`export-blocks.ts:330`) to
       `storageToBlocks(storage, options?)`. Thread `exporter` into `WalkCtx`
       (`export-blocks.ts:278`) as an optional field. **No behavioral use yet**
       — semantics arrive with `scroll-only`/`scroll-ignore` in T1.4. Existing
       call sites keep compiling (optional parameter).
-- [ ] Add a `forkWalkCtx(ctx: WalkCtx, notes: ExportNote[]): WalkCtx` helper
+- [x] Add a `forkWalkCtx(ctx: WalkCtx, notes: ExportNote[]): WalkCtx` helper
       next to `WalkCtx` (`export-blocks.ts:278`) that returns
       `{ ...ctx, notes }`. Every current and future scratch walk (today: only
       the `unknown.body` capture below) must go through this helper instead
@@ -212,7 +228,7 @@ Every task is sized for one reviewable commit inside the single T0 PR.
       whichever lane discovers the gap. Document the invariant on `WalkCtx`'s
       doc comment: "a scratch walk replaces only the note sink; it inherits
       every other field via `forkWalkCtx`."
-- [ ] Implement the lossless capture in the unknown-macro fallback of
+- [x] Implement the lossless capture in the unknown-macro fallback of
       `walkMacro` (`export-blocks.ts:698–710`):
       - `params`: iterate `childrenByName(el, "ac:parameter")` in document
         order; for each, `name` = lowercased `ac:name` attr (empty string
@@ -248,15 +264,15 @@ Every task is sized for one reviewable commit inside the single T0 PR.
       - `macroId`: `el.attrs["ac:macro-id"]` when present.
       - The existing note push (`macro-not-rendered` / `unknown-macro`,
         `:701–708`) stays byte-identical.
-- [ ] Pass the engine identity at the one call site an engine owns:
+- [x] Pass the engine identity at the one call site an engine owns:
       `packages/docx/src/export.ts:235` becomes
       `storageToBlocks(input.details.storage ?? "", { exporter: "word" })`.
       Pure plumbing — zero behavior until T1.4. (PDF hosts call
       `storageToBlocks` themselves and wire `{ exporter: "pdf" }` in Lane C.)
-- [ ] `isInlineMacro` (`export-blocks.ts:397`) is intentionally **not**
+- [x] `isInlineMacro` (`export-blocks.ts:397`) is intentionally **not**
       touched here — the `scroll-only-inline`/`scroll-ignore-inline` handling
       is T1.4. Leave a one-line pointer comment so Lane C finds the seam.
-- [ ] Extend the two non-exhaustive `switch (block.type)` walks in
+- [x] Extend the two non-exhaustive `switch (block.type)` walks in
       `packages/confluence/src/resolve-mentions.ts` —
       `collectUnresolvedMentionIds` (`:25`) and `resolveBlockMentions`
       (`:68`) — with a `case "orientation":` that recurses into
@@ -297,7 +313,7 @@ Every task is sized for one reviewable commit inside the single T0 PR.
 
 DOCX (`packages/docx/src/serialize.ts`):
 
-- [ ] Resolve the compile errors in the exhaustive `switch` of
+- [x] Resolve the compile errors in the exhaustive `switch` of
       `serializeBlock` (`serialize.ts:344–438`) with three new cases placed
       before the `never` default (`:434`):
       - `case "pageBreak": return "";`
@@ -307,20 +323,20 @@ DOCX (`packages/docx/src/serialize.ts`):
         children render exactly as if the region wrapper did not exist).
       No notes are pushed: today's walker never emits these blocks, so silent
       no-ops keep output and report byte-identical.
-- [ ] Extend the two non-exhaustive recursive walks so an `orientation`
+- [x] Extend the two non-exhaustive recursive walks so an `orientation`
       region's children are not skipped once T1.4 emits it:
       `minHeadingLevel` (`serialize.ts:249`, heading promotion must see
       headings inside regions) and `prefetchBlocks` (`serialize.ts:281`,
       images/diagrams inside regions must prefetch). Both get
       `case "orientation": … recurse into block.content …`.
-- [ ] `caption?` on `codeBlock`/`table`/`image` needs **no** DOCX change
+- [x] `caption?` on `codeBlock`/`table`/`image` needs **no** DOCX change
       (optional field, ignored by `serializeBlock`); confirm the `unknown`
       placeholder (`serialize.ts:431–432`) still renders from `macroName`
       only and ignores the enrichment fields.
 
 PDF (`packages/pdf/src/{types,prepare,serialize,run-export}.ts`):
 
-- [ ] `packages/pdf/src/types.ts` — extend `PreparedPdfBlock`
+- [x] `packages/pdf/src/types.ts` — extend `PreparedPdfBlock`
       (`types.ts:36`):
       - Add `"orientation"` to the `Exclude<…>` passthrough list and
         re-declare it with prepared children:
@@ -332,7 +348,7 @@ PDF (`packages/pdf/src/{types,prepare,serialize,run-export}.ts`):
         and the `image`/`diagram` variants gain `caption?: Caption`
         (import `Caption` as a type from `@atlcli/confluence`), so Lane C's
         rendering task never has to touch this file again.
-- [ ] `packages/pdf/src/prepare.ts` — extend the `walk` switch
+- [x] `packages/pdf/src/prepare.ts` — extend the `walk` switch
       (`prepare.ts:192–281`):
       - `case "orientation": return { ...block, content: await walk(block.content) };`
         (same shape as the `blockquote` arm, `:198`).
@@ -343,7 +359,7 @@ PDF (`packages/pdf/src/{types,prepare,serialize,run-export}.ts`):
         the `image` arm (`:229–236` and the failure arm `:243`) and the
         `diagram` arm (`:255`) copy `caption: block.caption`. (`table` and
         non-mermaid `codeBlock` spread `...block` and carry it for free.)
-- [ ] `packages/pdf/src/serialize.ts` — resolve the compile errors in
+- [x] `packages/pdf/src/serialize.ts` — resolve the compile errors in
       `serializeBlock` (`serialize.ts:639–811`) before the `never` default
       (`:805`):
       - `case "pageBreak": value = ""; break;`
@@ -365,13 +381,13 @@ PDF (`packages/pdf/src/{types,prepare,serialize,run-export}.ts`):
       block shifts every later sibling's array index, and therefore its
       `writeMapped` path/comment text, even though nothing about that
       sibling's own content changed) — assert semantic identity instead.
-- [ ] Extend the non-exhaustive recursive walks in the PDF engine with an
+- [x] Extend the non-exhaustive recursive walks in the PDF engine with an
       `orientation` recursion (and a `""` result for `pageBreak`/`anchor`
       where a value is required): `blocksPlainText` (`serialize.ts:122`),
       `minHeadingLevel` (`serialize.ts:464`), `collectHeadingLabels`
       (`serialize.ts:488`), and `countPrepared`
       (`packages/pdf/src/run-export.ts:74`).
-- [ ] Run `bun run typecheck` at the repo root — the `never` checks in both
+- [x] Run `bun run typecheck` at the repo root — the `never` checks in both
       engines are the completeness proof; typecheck green means no switch was
       missed.
 
@@ -389,7 +405,7 @@ instance (profile `mayflower`, space `DOCSY` — CLAUDE.md workflow rule).
 
 Unit — walker (`packages/confluence/src/export-blocks.test.ts`):
 
-- [ ] New `describe("storageToBlocks — lossless unknown macros")` with real
+- [x] New `describe("storageToBlocks — lossless unknown macros")` with real
       storage fixtures:
       - a `drawio`-style macro with `ac:macro-id`, several plain-text
         `<ac:parameter>`s and no body → `params` (as `{ name, text }`
@@ -428,29 +444,29 @@ Unit — walker (`packages/confluence/src/export-blocks.test.ts`):
       - a bare `<ac:structured-macro ac:name="x"/>` → block equals
         `{ type: "unknown", macroName: "x" }` with no extra fields
         (backward-compat pin).
-- [ ] `macroParamText()` unit tests: returns the `text` of a matching
+- [x] `macroParamText()` unit tests: returns the `text` of a matching
       parameter case-insensitively, `undefined` for a ref-only or absent
       parameter, and the first match when duplicate names exist (documents
       the convenience API's tie-breaking behavior for callers, e.g. 004's
       renderer registry, that only need simple string params).
-- [ ] Options test: `storageToBlocks(xml, { exporter: "pdf" })` and
+- [x] Options test: `storageToBlocks(xml, { exporter: "pdf" })` and
       `storageToBlocks(xml)` return deeply-equal results for a fixture with
       mixed content (pins "no semantics before T1.4").
-- [ ] Review the updated snapshot
+- [x] Review the updated snapshot
       (`packages/confluence/src/__snapshots__/export-blocks.test.ts.snap`):
       the only permitted diffs are **additive fields on `unknown` blocks**.
       Any other diff is a regression — reject it.
-- [ ] Compile-shape test constructing an `ExportBlock[]` literal containing
+- [x] Compile-shape test constructing an `ExportBlock[]` literal containing
       `pageBreak`, `orientation` (with children), `anchor`, and captioned
       `codeBlock`/`table`/`image` — pins the public type shape hosts rely on.
 
 Unit — mention resolution (`packages/confluence/src/resolve-mentions.test.ts`):
 
-- [ ] New test: an unresolved mention nested inside `{ type: "orientation",
+- [x] New test: an unresolved mention nested inside `{ type: "orientation",
       content: [...] }` is returned by `collectUnresolvedMentionIds` and gets
       its `displayName` filled by `resolveExportMentions` — regression for
       the new `orientation` recursion case.
-- [ ] New test: an unresolved mention inside a hand-built `caption?.content`
+- [x] New test: an unresolved mention inside a hand-built `caption?.content`
       on each of `codeBlock`, `image` and `table` (the walker does not emit
       captions until T1.4, so build the `ExportBlock[]` literal directly —
       same pattern as the compile-shape test above) is collected and
@@ -459,7 +475,7 @@ Unit — mention resolution (`packages/confluence/src/resolve-mentions.test.ts`)
       ship a caption-producing walker change that passes typecheck while
       silently leaving mentions unresolved in visible `scroll-title`
       captions, with no test anywhere catching it.
-- [ ] New **negative** test: an unresolved mention nested inside
+- [x] New **negative** test: an unresolved mention nested inside
       `{ type: "unknown", macroName, body: [...] }` is **not** returned by
       `collectUnresolvedMentionIds` and **not** touched by
       `resolveExportMentions` (`unresolved` count and returned `blocks` are
@@ -472,14 +488,14 @@ Unit — mention resolution (`packages/confluence/src/resolve-mentions.test.ts`)
 
 Unit — DOCX engine (`packages/docx/src/serialize.test.ts` + golden):
 
-- [ ] New test: serialize a document containing the three new blocks plus
+- [x] New test: serialize a document containing the three new blocks plus
       captioned image/table/codeBlock through `serializeBlocks` with a
       minimal `SerializeContext`; assert (a) `pageBreak`/`anchor` contribute
       zero XML — output equals the same document without them, (b)
       `orientation` output equals its children serialized bare, (c) headings
       inside an `orientation` region still drive promotion
       (`computeHeadingOffset` regression), (d) zero notes added.
-- [ ] New test: an `orientation` region containing an image and a mermaid
+- [x] New test: an `orientation` region containing an image and a mermaid
       `codeBlock` — assert `ctx.images?.prefetch`/`ctx.diagrams?.prefetch`
       are invoked for the nested blocks (spy/fake port, not a mock of an
       HTTP or Confluence client), regression for the `prefetchBlocks`
@@ -487,20 +503,20 @@ Unit — DOCX engine (`packages/docx/src/serialize.test.ts` + golden):
       change to `prefetchBlocks`'s switch could silently stop prefetching
       images/diagrams inside a region and nothing but a slower serial fetch
       at render time would reveal it.
-- [ ] Golden pin: `packages/docx/src/golden.test.ts` must pass **unchanged —
+- [x] Golden pin: `packages/docx/src/golden.test.ts` must pass **unchanged —
       no recapture of `golden-extension-export.json`**. This is the
       engine-level proof that T0 changed nothing observable (same role the
       golden played for the spec-006 extraction).
 
 Unit — PDF engine (`packages/pdf/src/{prepare,serialize}.test.ts`):
 
-- [ ] `prepare.test.ts`: prepare a document with an `orientation` region
+- [x] `prepare.test.ts`: prepare a document with an `orientation` region
       containing an attachment image (real bytes via the local
       `PdfAssetResolver` fixture pattern already used there — an in-memory
       resolver is a real implementation of the port, not an HTTP mock);
       assert the image inside the region is resolved into `assets` and
       `caption` fields survive `preparePdfDocument` on table/codeBlock/image.
-- [ ] `serialize.test.ts` (the PDF engine's golden-style suite — it pins
+- [x] `serialize.test.ts` (the PDF engine's golden-style suite — it pins
       `main.typ` content): assert a document with `pageBreak`/`anchor`/
       `orientation` produces `main.typ` **semantically identical** — equal
       after stripping every `/* atlcli:start:<path> */`/`/* atlcli:end:<path>
@@ -514,18 +530,18 @@ Unit — PDF engine (`packages/pdf/src/{prepare,serialize}.test.ts`):
       `unknown`-block precedent — this is intentional, not a leak, and keeps
       `mapPdfDiagnostics` able to attribute a future Typst error to the
       right block); no `pdf-unknown-block` or other new notes.
-- [ ] New test: a heading nested inside an `orientation` region — assert
+- [x] New test: a heading nested inside an `orientation` region — assert
       `minHeadingLevel`/`collectHeadingLabels` see it (heading-offset
       promotion and an internal link resolving to the label), regression for
       the `orientation` cases added to those two walks in Engines above (no
       exhaustiveness check protects them from silently skipping a new
       container).
-- [ ] `run-export.test.ts`: `countPrepared` counts an image inside an
+- [x] `run-export.test.ts`: `countPrepared` counts an image inside an
       `orientation` region (report `embeddedImages` regression).
 
 E2E — real Confluence (profile `mayflower`, space `DOCSY`):
 
-- [ ] Compute the title once, up front:
+- [x] Compute the title once, up front:
       `atlcli-e2e-exportblock-model-<epoch-seconds>` — the
       `atlcli-e2e-<feature>-<timestamp>` convention
       `specs/export-expansion/011-quality-gates/PLAN.md` establishes for all
@@ -537,7 +553,7 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       parallel/repeated runs in the shared `DOCSY` space. Adopt 011's shared
       `makeE2eTitle`/cleanup helper once it exists instead of inlining the
       timestamp logic.
-- [ ] Create the test page containing the affected macros. Author
+- [x] Create the test page containing the affected macros. Author
       `/tmp/t0-zoo.md` with raw storage passthrough (the markdown→storage
       converter allows HTML/macro passthrough — `html: true` in
       `packages/confluence/src/markdown.ts:64`; verify the macros survive
@@ -553,7 +569,7 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       `trap`) so the delete in the last bullet always runs, including on
       assertion failure; on a cleanup failure, print the page id prominently
       so it can be deleted manually.
-- [ ] Fetch the server-normalized storage and assert real capture — this is
+- [x] Fetch the server-normalized storage and assert real capture — this is
       the step that actually exercises `macroId`/`params`/`body` against a
       live Cloud instance, which the no-op export below cannot do (both
       no-op serializers ignore those fields by design — see Engines):
@@ -567,7 +583,7 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       the walker's `MacroParamRef` recognition changes, not this test's
       shape), and `body` present for the `scroll-landscape` macro's
       rich-text body.
-- [ ] Export the page with the ts engine and assert **today's behavior**:
+- [x] Export the page with the ts engine and assert **today's behavior**:
       `bun run --cwd apps/cli src/index.ts wiki export <pageId> --engine ts -o /tmp/t0-zoo.docx --profile mayflower`
       — `apps/cli/src/commands/export.ts:873–890`'s `output()` call already
       emits the full JSON report to stdout by default, no extra flag needed;
@@ -590,7 +606,7 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       is reproducible, not ad hoc. PDF has no CLI command until T3.1/T3.2 —
       the PDF no-op proof at sync point 0 is the unit/`main.typ` pin above;
       note this limitation in the PR description.
-- [ ] Cleanup (workflow rule, guaranteed by the `try/finally`/`trap` above):
+- [x] Cleanup (workflow rule, guaranteed by the `try/finally`/`trap` above):
       delete the test page —
       `bun run --cwd apps/cli src/index.ts wiki page delete --id <pageId> --confirm --profile mayflower`
       (`--confirm` or `--dry-run` is required by `page.ts`'s delete handler;
@@ -599,29 +615,29 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
 
 ## Definition of Done
 
-- [ ] `bun run typecheck` and `bun test` green at the repo root; both
+- [x] `bun run typecheck` and `bun test` green at the repo root; both
       engines' exhaustive `never` checks compile with the new variants
       handled.
-- [ ] `packages/docx/src/golden.test.ts` passes **without recapturing**
+- [x] `packages/docx/src/golden.test.ts` passes **without recapturing**
       `golden-extension-export.json`; PDF `serialize.test.ts` expectations
       pass without loosening existing assertions.
-- [ ] Walker snapshot diffs are limited to additive optional fields on
+- [x] Walker snapshot diffs are limited to additive optional fields on
       `unknown` blocks; `storageToBlocks(...).notes` output is proven
       unchanged by tests.
-- [ ] No new `ExportNote` codes, no changed note messages, no new public API
+- [x] No new `ExportNote` codes, no changed note messages, no new public API
       surface beyond: `Caption`, `CaptionKind`, `MacroParamRef`,
       `MacroParameter`, `macroParamText`, `StorageToBlocksOptions`, the
       new/extended `ExportBlock` variants, and the widened `storageToBlocks`
       signature — all exported through `index.ts` **and** `index.browser.ts`
       (existing `export *`).
-- [ ] Macro-parameter capture is verified lossless against every structured
+- [x] Macro-parameter capture is verified lossless against every structured
       reference shape `markdown.ts` actually produces (`ri:page`,
       `ri:attachment`, `ri:url`, `ri:user`, `ri:space`, including the
       multi-`ri:space` `spaces` parameter) plus unnamed parameters,
       duplicate/case-colliding names, and whitespace — no parameter is
       silently omitted because its value lived in element attributes rather
       than text.
-- [ ] `resolveExportMentions` (`packages/confluence/src/resolve-mentions.ts`)
+- [x] `resolveExportMentions` (`packages/confluence/src/resolve-mentions.ts`)
       resolves mentions nested inside `orientation.content` and inside
       `caption?.content` on `codeBlock`/`image`/`table`, proven by the new
       `resolve-mentions.test.ts` cases — every container type this repo's
@@ -630,15 +646,15 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       which is deliberately deferred to Lane E (T1.7) and pinned by the new
       negative test — not a gap, a scoping decision recorded here and in
       Risks.
-- [ ] Scratch-walked notes for `unknown.body` are never permanently lost:
+- [x] Scratch-walked notes for `unknown.body` are never permanently lost:
       either they never occur (empty scratch walk) or they land in
       `bodyNotes` on the block — `storageToBlocks(...).notes` (the top-level
       report) still stays exactly as today, proven by the `bodyNotes`
       regression test.
-- [ ] `forkWalkCtx` is the only way a scratch `WalkCtx` is constructed
+- [x] `forkWalkCtx` is the only way a scratch `WalkCtx` is constructed
       anywhere in `export-blocks.ts` (no hand-built `{ notes: [] }` literal
       that would silently drop `exporter` or a future `WalkCtx` field).
-- [ ] E2E run against DOCSY performed under the
+- [x] E2E run against DOCSY performed under the
       `atlcli-e2e-exportblock-model-<timestamp>` naming convention with
       guaranteed cleanup (`try/finally`/`trap`); the E2E independently fetches
       real Cloud storage and asserts `macroId`/`params`/`body` capture (not
@@ -647,7 +663,7 @@ E2E — real Confluence (profile `mayflower`, space `DOCSY`):
       before/after CLI report diff is empty **after** the documented
       `durationMs`/`perf-timing`-note normalization; test page deleted and
       deletion verified.
-- [ ] One PR, conventional commit style
+- [x] One PR, conventional commit style
       (`feat(confluence): extend ExportBlock model …` +
       `feat(docx,pdf): compile no-op renderings …`), merged before any lane
       branch is cut; lanes rebase on it.

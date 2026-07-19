@@ -85,6 +85,7 @@ function countPrepared(blocks: PreparedPdfBlock[]): { images: number; diagrams: 
           break;
         case "callout":
         case "blockquote":
+        case "orientation":
           walk(block.content);
           break;
         case "list":

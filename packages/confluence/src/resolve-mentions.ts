@@ -1,4 +1,4 @@
-import type { ExportBlock, InlineNode } from "./export-blocks.js";
+import type { Caption, ExportBlock, InlineNode } from "./export-blocks.js";
 
 export interface ExportMentionResolution {
   blocks: ExportBlock[];
@@ -31,6 +31,9 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
         case "blockquote":
           visitBlocks(block.content);
           break;
+        case "orientation":
+          visitBlocks(block.content);
+          break;
         case "list":
           for (const item of block.items) visitBlocks(item.content);
           break;
@@ -38,6 +41,11 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
           for (const row of block.rows) {
             for (const cell of row.cells) visitBlocks(cell.content);
           }
+          if (block.caption) visitInline(block.caption.content);
+          break;
+        case "codeBlock":
+        case "image":
+          if (block.caption) visitInline(block.caption.content);
           break;
       }
     }
@@ -64,6 +72,11 @@ function resolveBlockMentions(
   blocks: ExportBlock[],
   displayNames: ReadonlyMap<string, string | null>
 ): ExportBlock[] {
+  const resolveCaption = (caption: Caption): Caption => ({
+    ...caption,
+    content: resolveInlineMentions(caption.content, displayNames),
+  });
+
   return blocks.map((block): ExportBlock => {
     switch (block.type) {
       case "heading":
@@ -71,6 +84,8 @@ function resolveBlockMentions(
         return { ...block, content: resolveInlineMentions(block.content, displayNames) };
       case "callout":
       case "blockquote":
+        return { ...block, content: resolveBlockMentions(block.content, displayNames) };
+      case "orientation":
         return { ...block, content: resolveBlockMentions(block.content, displayNames) };
       case "list":
         return {
@@ -90,7 +105,16 @@ function resolveBlockMentions(
               content: resolveBlockMentions(cell.content, displayNames),
             })),
           })),
+          ...(block.caption ? { caption: resolveCaption(block.caption) } : {}),
         };
+      case "codeBlock":
+      case "image":
+        return block.caption ? { ...block, caption: resolveCaption(block.caption) } : block;
+      // NOTE: `unknown.body` is deliberately NOT traversed here. It is populated
+      // unconditionally by the walker but nothing renders it yet; resolving
+      // mentions inside it would make the extension's PDF path issue live user
+      // lookups for invisible content. Traversal belongs with Lane E (T1.7),
+      // once a macro renderer turns that body into visible output.
       default:
         return block;
     }

@@ -82,4 +82,67 @@ describe("resolveExportMentions", () => {
       throw new Error("lookup unavailable");
     })).rejects.toThrow("lookup unavailable");
   });
+
+  it("resolves a mention nested inside an orientation region", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "orientation",
+      landscape: true,
+      content: [{ type: "paragraph", content: [{ type: "mention", accountId: "a" }] }],
+    }];
+    let requested: string[] = [];
+    const result = await resolveExportMentions(blocks, async (ids) => {
+      requested = ids;
+      return new Map([["a", "Ada"]]);
+    });
+    expect(requested).toEqual(["a"]);
+    expect(result.unresolved).toBe(0);
+    expect(JSON.stringify(result.blocks)).toContain('"displayName":"Ada"');
+  });
+
+  it("resolves a mention inside a caption on codeBlock, image and table", async () => {
+    const caption = (accountId: string) => ({
+      kind: "figure" as const,
+      content: [{ type: "mention" as const, accountId }],
+    });
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", code: "x=1", caption: { ...caption("a"), kind: "code" } },
+      { type: "image", source: { kind: "external", url: "https://x.test/i.png" }, caption: caption("b") },
+      { type: "table", rows: [], caption: { ...caption("c"), kind: "table" } },
+    ];
+    let requested: string[] = [];
+    const result = await resolveExportMentions(blocks, async (ids) => {
+      requested = ids;
+      return new Map([["a", "Ada"], ["b", "Bo"], ["c", "Cy"]]);
+    });
+    expect(requested.sort()).toEqual(["a", "b", "c"]);
+    expect(result.unresolved).toBe(0);
+    const json = JSON.stringify(result.blocks);
+    expect(json).toContain('"displayName":"Ada"');
+    expect(json).toContain('"displayName":"Bo"');
+    expect(json).toContain('"displayName":"Cy"');
+  });
+
+  it("does NOT traverse unknown.body — deferred to Lane E (T1.7)", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "unknown",
+      macroName: "drawio",
+      body: [{ type: "paragraph", content: [{ type: "mention", accountId: "a" }] }],
+    }];
+    let calls = 0;
+    const result = await resolveExportMentions(blocks, async () => {
+      calls += 1;
+      return new Map([["a", "Ada"]]);
+    });
+    // The mention buried in unknown.body is neither collected nor resolved.
+    expect(calls).toBe(0);
+    expect(result.unresolved).toBe(0);
+    expect(result.blocks).toEqual(blocks);
+    expect(JSON.stringify(result.blocks)).not.toContain("Ada");
+  });
+
+  it("leaves a bare unknown block (no body) untouched", async () => {
+    const blocks: ExportBlock[] = [{ type: "unknown", macroName: "drawio" }];
+    const result = await resolveExportMentions(blocks, async () => new Map());
+    expect(result).toEqual({ blocks, unresolved: 0 });
+  });
 });

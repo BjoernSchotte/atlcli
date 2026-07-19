@@ -255,6 +255,7 @@ function minHeadingLevel(blocks: ExportBlock[]): number {
         break;
       case "callout":
       case "blockquote":
+      case "orientation":
         min = Math.min(min, minHeadingLevel(block.content));
         break;
       case "list":
@@ -305,6 +306,7 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
         }
         case "callout":
         case "blockquote":
+        case "orientation":
           walk(block.content);
           break;
         case "list":
@@ -430,6 +432,19 @@ async function serializeBlock(
 
     case "unknown":
       return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));
+
+    // No-op renderings (T0.2): today's walker never emits these; real rendering
+    // lands in T1.3/T1.5. Silent no-ops keep output and report byte-identical.
+    case "pageBreak":
+      return "";
+
+    case "anchor":
+      return "";
+
+    case "orientation":
+      // Transparent passthrough — children render exactly as if the region
+      // wrapper did not exist, so no content is lost before T1.5.
+      return serializeChildren(block.content, ctx, notes, depth);
 
     default: {
       const _exhaustive: never = block;

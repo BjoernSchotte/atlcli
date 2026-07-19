@@ -95,22 +95,118 @@ export type ImageSource =
 /** Confluence callout kinds plus the generic titled panel. */
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+/** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
+export type CaptionKind = "figure" | "table" | "code" | "equation";
+
+/**
+ * A caption attached to a captionable block (figure/table/code/equation). Its
+ * `content` is typed inline nodes so a mention inside a caption resolves the
+ * same way as anywhere else (see `resolve-mentions.ts`). No walker emits a
+ * caption yet — that arrives with `scroll-title` (T1.4).
+ */
+export interface Caption {
+  kind: CaptionKind;
+  content: InlineNode[];
+}
+
+/**
+ * A structured reference captured from a macro parameter's `ri:*` child
+ * element (never raw XML — a typed projection of the five reference shapes
+ * the markdown→storage converter and hand-authored storage both emit:
+ * `ri:page`, `ri:attachment`, `ri:url`, `ri:user`, `ri:space`).
+ */
+export type MacroParamRef =
+  | { kind: "page"; contentId?: string; contentTitle?: string; spaceKey?: string; anchor?: string }
+  | { kind: "attachment"; filename: string }
+  | { kind: "url"; value: string }
+  | { kind: "user"; accountId: string }
+  | { kind: "space"; spaceKey: string };
+
+/**
+ * One `<ac:parameter>`. `name` is the lowercased `ac:name` attribute — the
+ * empty string for the unnamed first parameter some macros use (e.g.
+ * `include`/`excerpt-include`'s page ref, `markdown.ts:333`). `text` holds
+ * trimmed text content when present (today's `elementText` semantics);
+ * `refs` holds every `ri:*` child in document order — most parameters have
+ * at most one, but `spaces` (`blog-posts`) can carry several sibling
+ * `ri:space` refs under a single parameter. A parameter can have `text`,
+ * `refs`, both (mixed content), or neither (empty parameter).
+ */
+export interface MacroParameter {
+  name: string;
+  text?: string;
+  refs?: MacroParamRef[];
+}
+
+/**
+ * Case-insensitive convenience lookup for a parameter's plain-text value only
+ * (mirrors the internal `macroParam` helper). Returns `undefined` for
+ * ref-only or absent parameters — callers that need `ri:*` data read `refs`
+ * directly. When duplicate names exist, the first match wins.
+ */
+export function macroParamText(
+  params: MacroParameter[] | undefined,
+  name: string
+): string | undefined {
+  if (!params) return undefined;
+  const target = name.toLowerCase();
+  for (const p of params) {
+    if (p.name.toLowerCase() === target) return p.text;
+  }
+  return undefined;
+}
+
 /**
  * A block-level element. Discriminated on `type`. This is the unit both the
  * DOCX and Typst serializers iterate.
+ *
+ * The `pageBreak`, `orientation` and `anchor` variants are fed by the
+ * `scroll-pagebreak`/`scroll-landscape`/`scroll-bookmark` walker features
+ * (T1.4); until the engines learn real rendering (T1.3/T1.5) both serializers
+ * render them as no-ops (`pageBreak`/`anchor` → nothing, `orientation` →
+ * its `content` children rendered transparently, never dropped).
  */
 export type ExportBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineNode[] }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineNode[]; explicitAnchor?: string }
   | { type: "paragraph"; content: InlineNode[] }
-  | { type: "codeBlock"; language?: string; code: string }
+  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | { type: "list"; ordered: boolean; items: ListItem[] }
-  | { type: "table"; rows: TableRow[]; columnWidths?: number[] }
-  | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number }
+  | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
+  | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
   | { type: "blockquote"; content: ExportBlock[] }
   | { type: "divider" }
-  /** An unrecognized macro. Never carries raw XML; the macro name is enough for a report line. */
-  | { type: "unknown"; macroName: string };
+  /** A hard page break (`scroll-pagebreak`). Engines render nothing until T1.3/T1.5. */
+  | { type: "pageBreak" }
+  /**
+   * A page-orientation region (`scroll-landscape`). `content` is walked
+   * recursively; engines render the children transparently (no real
+   * orientation switch) until T1.5, so no content is ever lost.
+   */
+  | { type: "orientation"; landscape: boolean; content: ExportBlock[] }
+  /** A named in-page anchor / bookmark (`scroll-bookmark`). No nested content. */
+  | { type: "anchor"; name: string }
+  /**
+   * An unrecognized macro. Never carries raw XML — the captured parameters and
+   * body are structured data (typed refs + walked blocks), not passthrough. All
+   * enrichment fields are optional so the block stays backward-compatible with
+   * `{ type: "unknown", macroName }`.
+   */
+  | { type: "unknown"; macroName: string;
+      /** Every `<ac:parameter>`, in document order, losslessly typed. */
+      params?: MacroParameter[];
+      /** `<ac:rich-text-body>`, recursively walked. */
+      body?: ExportBlock[];
+      /** `<ac:plain-text-body>` text, verbatim. */
+      plainBody?: string;
+      /** The `ac:macro-id` attribute. */
+      macroId?: string;
+      /**
+       * Notes the scratch walk of `body` produced but did NOT merge into the
+       * top-level report — preserved on the block for a later consumer (Lane E,
+       * T1.7) to promote rather than silently discarded.
+       */
+      bodyNotes?: ExportNote[] };
 
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
@@ -125,6 +221,15 @@ export interface ExportNote {
 export interface StorageToBlocksResult {
   blocks: ExportBlock[];
   notes: ExportNote[];
+}
+
+/** Options for {@link storageToBlocks}. */
+export interface StorageToBlocksOptions {
+  /**
+   * Exporter identity for `scroll-only` / `scroll-ignore` scoping. Consumed
+   * from T1.4 on — no behavioral effect yet.
+   */
+  exporter?: "pdf" | "word";
 }
 
 // ---------------------------------------------------------------------------
@@ -275,8 +380,27 @@ function parseAttributes(source: string): Record<string, string> {
 // Walker
 // ---------------------------------------------------------------------------
 
+/**
+ * Walk context threaded through the whole storage→blocks traversal. Beyond the
+ * note sink it carries the {@link StorageToBlocksOptions.exporter} identity for
+ * exporter-scoped decisions (T1.4). A scratch walk replaces ONLY the note sink;
+ * it inherits every other field via {@link forkWalkCtx}.
+ */
 interface WalkCtx {
   notes: ExportNote[];
+  /** Exporter identity (from options); undefined for hosts that don't set it. */
+  exporter?: "pdf" | "word";
+}
+
+/**
+ * Build a scratch {@link WalkCtx} that reuses every field of `ctx` but swaps in
+ * a fresh note sink. The ONLY sanctioned way to construct a scratch context —
+ * a hand-built `{ notes: [] }` literal would silently drop `exporter` (and any
+ * field added to `WalkCtx` later), producing exporter-blind decisions inside
+ * whatever body it walks.
+ */
+function forkWalkCtx(ctx: WalkCtx, notes: ExportNote[]): WalkCtx {
+  return { ...ctx, notes };
 }
 
 const HEADING_TAGS: Record<string, 1 | 2 | 3 | 4 | 5 | 6> = {
@@ -325,10 +449,14 @@ const TRANSPARENT_BLOCK_TAGS = new Set([
  * Convert a Confluence storage fragment to the intermediate export model.
  *
  * @param storage - Confluence storage-format XML (a fragment, not a full doc).
+ * @param options - Optional exporter identity ({@link StorageToBlocksOptions}).
  * @returns The block tree plus any {@link ExportNote}s for the export report.
  */
-export function storageToBlocks(storage: string): StorageToBlocksResult {
-  const ctx: WalkCtx = { notes: [] };
+export function storageToBlocks(
+  storage: string,
+  options?: StorageToBlocksOptions
+): StorageToBlocksResult {
+  const ctx: WalkCtx = { notes: [], exporter: options?.exporter };
   const nodes = parseXml(storage);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
@@ -393,7 +521,12 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
   return out;
 }
 
-/** A `status` structured-macro is the only inline-level macro. */
+/**
+ * A `status` structured-macro is the only inline-level macro.
+ *
+ * Seam for Lane C (T1.4): the `scroll-only-inline`/`scroll-ignore-inline`
+ * exporter-scoped inline handling lands here, not in T0.
+ */
 function isInlineMacro(node: XmlElement): boolean {
   return node.name === "ac:structured-macro" && (node.attrs["ac:name"] ?? "").toLowerCase() === "status";
 }
@@ -706,7 +839,99 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       : `Unknown macro "${macroName}" was emitted as a placeholder (no raw XML passthrough).`,
     macroName,
   });
-  return [{ type: "unknown", macroName: macroName || "unknown" }];
+
+  // Lossless capture: keep parameters (typed, ordered), the plain-text body,
+  // the recursively-walked rich-text body, and the macro id — so any future
+  // renderer (Lane E) can act on the macro instead of only its name.
+  const block: Extract<ExportBlock, { type: "unknown" }> = {
+    type: "unknown",
+    macroName: macroName || "unknown",
+  };
+
+  const params = captureMacroParams(el);
+  if (params.length > 0) block.params = params;
+
+  const plainBodyEl = childByName(el, "ac:plain-text-body");
+  if (plainBodyEl) block.plainBody = elementText(plainBodyEl);
+
+  const bodyEl = childByName(el, "ac:rich-text-body");
+  if (bodyEl) {
+    const scratchNotes: ExportNote[] = [];
+    const body = walkBlocks(bodyEl.children, forkWalkCtx(ctx, scratchNotes));
+    if (body.length > 0) block.body = body;
+    // Keep the scratch observations on the block (never merged into ctx.notes,
+    // so the top-level report stays byte-identical) rather than discarding them.
+    if (scratchNotes.length > 0) block.bodyNotes = scratchNotes;
+  }
+
+  const macroId = el.attrs["ac:macro-id"];
+  if (macroId !== undefined) block.macroId = macroId;
+
+  return [block];
+}
+
+/** The `ri:*` child names {@link captureMacroParams} recognizes as references. */
+function captureMacroRef(el: XmlElement): MacroParamRef | undefined {
+  switch (el.name) {
+    case "ri:page": {
+      const ref: Extract<MacroParamRef, { kind: "page" }> = { kind: "page" };
+      const contentId = el.attrs["ri:content-id"];
+      const contentTitle = el.attrs["ri:content-title"];
+      const spaceKey = el.attrs["ri:space-key"];
+      if (contentId) ref.contentId = contentId;
+      if (contentTitle) ref.contentTitle = contentTitle;
+      if (spaceKey) ref.spaceKey = spaceKey;
+      return ref;
+    }
+    case "ri:attachment": {
+      const filename = el.attrs["ri:filename"];
+      return filename ? { kind: "attachment", filename } : undefined;
+    }
+    case "ri:url": {
+      const value = el.attrs["ri:value"];
+      return value ? { kind: "url", value } : undefined;
+    }
+    case "ri:user": {
+      const accountId = el.attrs["ri:account-id"] ?? el.attrs["ri:userkey"];
+      return accountId ? { kind: "user", accountId } : undefined;
+    }
+    case "ri:space": {
+      const spaceKey = el.attrs["ri:space-key"];
+      return spaceKey ? { kind: "space", spaceKey } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Capture every `<ac:parameter>` of a macro as a {@link MacroParameter}. `text`
+ * is trimmed text content (when non-empty); `refs` is one typed reference per
+ * recognized `ri:*` element child (in document order, multiple allowed).
+ * Unrecognized `ri:*` names are skipped rather than misclassified. A parameter
+ * with neither text nor refs is omitted entirely.
+ *
+ * `elementText` is deliberately NOT the sole read path: it returns `""` for an
+ * element-only parameter (e.g. `<ac:parameter><ri:page .../></ac:parameter>`),
+ * which would drop the reference silently.
+ */
+function captureMacroParams(macro: XmlElement): MacroParameter[] {
+  const params: MacroParameter[] = [];
+  for (const p of childrenByName(macro, "ac:parameter")) {
+    const name = (p.attrs["ac:name"] ?? "").toLowerCase();
+    const text = elementText(p).trim();
+    const refs: MacroParamRef[] = [];
+    for (const child of p.children) {
+      if (child.type !== "element") continue;
+      const ref = captureMacroRef(child);
+      if (ref) refs.push(ref);
+    }
+    const param: MacroParameter = { name };
+    if (text) param.text = text;
+    if (refs.length > 0) param.refs = refs;
+    if (param.text !== undefined || param.refs !== undefined) params.push(param);
+  }
+  return params;
 }
 
 // ---------------------------------------------------------------------------

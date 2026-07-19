@@ -53,6 +53,52 @@ describe("PDF asset preparation", () => {
     expect(prepared.notes[0]?.message).toContain("declared media type");
   });
 
+  it("resolves an image nested inside an orientation region", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "orientation",
+        landscape: true,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "wide.png" }, alt: "Wide" },
+        ],
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }),
+    });
+    expect(prepared.assets).toHaveLength(1);
+    const region = prepared.blocks[0] as { type: "orientation"; content: Array<{ type: string; assetPath?: string }> };
+    expect(region.type).toBe("orientation");
+    expect(region.content[0]).toMatchObject({ type: "image", assetPath: prepared.assets[0]!.path });
+  });
+
+  it("carries caption fields through preparation on table/codeBlock/image", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },
+      { type: "table", rows: [], caption: { kind: "table", content: [{ type: "text", text: "Table 1" }] } },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "fig.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Figure 1" }] },
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }),
+    });
+    expect((prepared.blocks[0] as { caption?: unknown }).caption).toEqual({
+      kind: "code",
+      content: [{ type: "text", text: "Listing 1" }],
+    });
+    expect((prepared.blocks[1] as { caption?: unknown }).caption).toEqual({
+      kind: "table",
+      content: [{ type: "text", text: "Table 1" }],
+    });
+    expect((prepared.blocks[2] as { caption?: unknown }).caption).toEqual({
+      kind: "figure",
+      content: [{ type: "text", text: "Figure 1" }],
+    });
+  });
+
   it("bounds parallel attachment resolution and preserves deterministic order", async () => {
     let active = 0;
     let peak = 0;

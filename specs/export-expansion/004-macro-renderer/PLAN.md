@@ -10,11 +10,16 @@ Status: Plan, 2026-07-19. Part of the `export-expansion` series.
   (`MacroRendererRegistry` port + staged fallback chain), E1 (`export_view`/ADF
   fallback), E2 (Jira macro), E3 (draw.io/Gliffy preview PNG).
 - Code seams this plan builds on (verified):
-  - `packages/confluence/src/export-blocks.ts:113` — today's lossy
-    `{ type: "unknown"; macroName }` block; `walkMacro` at `:666` drops params
-    and body at `:698–:709`.
-  - `packages/docx/src/serialize.ts:431` and `packages/pdf/src/serialize.ts:796`
-    — current placeholder rendering of `unknown` blocks.
+  - `packages/confluence/src/export-blocks.ts:195` — the enriched
+    `{ type: "unknown" }` block spec 001 landed: `walkMacro` (`:800`) now
+    captures `params`/`body`/`plainBody`/`macroId` losslessly and parks the
+    scratch-walk notes of the body in `bodyNotes` (`:864`) instead of
+    discarding them — precisely so this lane can promote them (see the
+    `bodyNotes` task under T1.7). The walker's own note push
+    (`macro-not-rendered`/`unknown-macro`) is at `:836`.
+  - `packages/docx/src/serialize.ts:433` and `packages/pdf/src/serialize.ts:802`
+    — current placeholder rendering of `unknown` blocks (still `macroName`
+    only; 001 deliberately did not render the enrichment fields).
   - `packages/jira/src/client.ts:725` (`getIssue`) and `:855` (`search`, JQL via
     `POST /search/jql`) — the complete Jira API surface the CLI adapter needs.
   - `packages/confluence/src/client.ts:247` (`request` helper), `:512`
@@ -115,16 +120,21 @@ This spec delivers the pipeline that closes it:
 
 ## Dependencies (001)
 
-- **001 — ExportBlock model extension (T0.1/T0.2)** must be merged first. This
-  spec consumes the enriched `unknown` block it introduces in
-  `packages/confluence/src/export-blocks.ts`:
+- **001 — ExportBlock model extension (T0.1/T0.2)** must be merged first
+  (implemented 2026-07-19 on `claude/exportblock-model-subagents-82d71f`;
+  the shape below is the **as-built** one, verified against
+  `packages/confluence/src/export-blocks.ts:195`, not a sketch). This
+  spec consumes the enriched `unknown` block it introduces:
 
   ```ts
   | { type: "unknown"; macroName: string;
       params?: MacroParameter[];         // every <ac:parameter>, ordered, losslessly typed
       body?: ExportBlock[];              // ac:rich-text-body, walked recursively
       plainBody?: string;                // ac:plain-text-body
-      macroId?: string }                 // ac:macro-id (for REST macro rendering)
+      macroId?: string;                  // ac:macro-id (for REST macro rendering)
+      bodyNotes?: ExportNote[] }         // notes from 001's scratch walk of `body`,
+                                         // parked on the block for THIS lane to
+                                         // promote (see T1.7 bodyNotes task)
   ```
 
   **Post-hardening correction:** 001's own hardening round replaced the
@@ -141,6 +151,15 @@ This spec delivers the pipeline that closes it:
   convenience export 001 also adds) **except** the `include`/`excerpt-include`
   page reference (E5 task), which reads `m.params`' unnamed parameter's
   `refs` directly, since that parameter carries a `ri:page` ref, not text.
+  001's landing also recorded **two further obligations it explicitly
+  deferred to this lane (T1.7)** — both now have owning tasks below:
+  (a) promoting `unknown.bodyNotes` into the export report once body content
+  becomes visible (001 Risks, "Scratch-ctx decision" — see the `bodyNotes`
+  task under "Registry & resolver pass"); (b) extending
+  `resolve-mentions.ts` to traverse `unknown.body`
+  (`packages/confluence/src/resolve-mentions.ts:113–116` carries the pointer
+  comment; 001's negative regression test pins the current non-traversal —
+  see the mention-resolution task under "Placeholder floor keeps content").
   Without `params`/`macroId` no renderer can act; without the compiling no-op
   renderings (T0.2) the engines are not green. This is the only ordered landing
   in the hot file `export-blocks.ts` that Lane E waits for (T1.1 → T1.4 → T1.8
@@ -561,7 +580,7 @@ See T1.10 task and Risks.
 
 **Report/UX — exactly one terminal outcome per macro instance.** The walker
 already emits `unknown-macro`/`macro-not-rendered` for every unresolved macro
-during `storageToBlocks` (`packages/confluence/src/export-blocks.ts:698–709`),
+during `storageToBlocks` (`packages/confluence/src/export-blocks.ts:836`),
 *before* the resolver ever runs. Left alone, a macro the resolver successfully
 renders would show up in the report as both "not rendered" and
 "rendered via …" — confusing and wrong. `resolveMacroBlocks` therefore takes
@@ -571,10 +590,10 @@ walker's original note for that exact instance and appends exactly one new
 note — `rendered-via`, `degraded`, or `skipped-by-config`.
 
 **Matching is positional, not by `macroId`** — `ExportNote`
-(`packages/confluence/src/export-blocks.ts:114–121`) has no `macroId` field
-today, and spec 001 deliberately adds none ("Report-identical",
-`001-exportblock-model/PLAN.md:87`); `walkMacro` writes only `macroName`
-(`export-blocks.ts:705–709`), which is not unique across instances. The only
+(`packages/confluence/src/export-blocks.ts:212`) has no `macroId` field
+today, and spec 001 deliberately added none ("Report-identical",
+`001-exportblock-model/PLAN.md:94`); `walkMacro` writes only `macroName`
+(`export-blocks.ts:836`), which is not unique across instances. The only
 reliable correlation is emission order: `walkMacro` pushes exactly one
 `unknown-macro`/`macro-not-rendered` note per `unknown` block, in the same
 pre-order sequence the blocks themselves appear in. `resolveMacroBlocks`
@@ -699,12 +718,35 @@ macros in the registry are.
       `macro-degraded`, `macro-skipped-by-config` that **replace** (not
       "alongside", per outcome ownership above) the walker's
       `unknown-macro`/`macro-not-rendered` notes from
-      `packages/confluence/src/export-blocks.ts:698` for every macro
+      `packages/confluence/src/export-blocks.ts:836` for every macro
       instance the resolver actually touches; macros the resolver never
       reaches (e.g. `env.macros` unset) keep today's walker notes unchanged.
       These three codes populate `ExportNote.source` using the `source`
       field 003-content-features introduces on `ExportNote` (see
       `003-content-features/PLAN.md`, Walker tasks), once that field lands.
+- [ ] **`unknown.bodyNotes` promotion (deferred from 001)**: 001's walker
+      parks the notes produced while scratch-walking an `unknown` macro's
+      rich-text body in `bodyNotes` on the block
+      (`packages/confluence/src/export-blocks.ts:207,:864`) instead of the
+      top-level report — deliberately, so that report stays byte-identical
+      while nothing renders the body, and so *this* resolver can promote
+      them once something does. `resolveMacroBlocks` owns them now, exactly
+      once per instance: when the instance's terminal outcome makes the
+      preserved `body` visible — the stage-4 placeholder floor below, or a
+      renderer whose `{ kind: "blocks" }` output derives from `m.body`
+      (scroll-tablelayout, excerpt, the transparent passthroughs) — append
+      `bodyNotes` to the returned `notes` right after the instance's
+      terminal note; when the body is superseded wholesale by port-fetched
+      content (Jira table, `export_view` HTML), drop them with the body they
+      described (they annotate content that no longer appears — keeping
+      them would report problems in invisible content). Never merge them
+      twice, never keep a `bodyNotes` note whose content is visible without
+      surfacing it. This resolves 001's open revisit note ("`bodyNotes` may
+      fold into the resolver's note model"): the field stays on the model;
+      the resolver is its only consumer. Test in `resolve.test.ts`: an
+      `unknown` block with `bodyNotes` that falls through to the placeholder
+      floor surfaces them in the result `notes`; the same block resolved by
+      a port-backed renderer does not.
 
 ### TOC renderer (E5 — pure, no-IO reference renderer)
 
@@ -894,13 +936,13 @@ here and reused by every E4/E5 renderer below.
       `multiexcerpt-macro`/`multiexcerpt` body with a new
       `extractMacroBody(storage, macroNames, name)` helper (reuses the XML
       tokenizer `export-blocks.ts` already exports — never regex-parse
-      markup, `export-blocks.ts:170`), then `deps.storageToBlocks(fragment,
+      markup, `parseXml`, `export-blocks.ts:280`), then `deps.storageToBlocks(fragment,
       { walkContext: { depth: ctx.depth + 1 } })` and return `{ kind:
       "blocks", blocks, notes }`. No fragment found → `{ kind: "skip" }`.
       Definition-side `multiexcerpt-macro`/`multiexcerpt` (the macro on the
       page that *defines* the excerpt, not the include) renders its body
       transparently — same one-line treatment as `expand` in the walker
-      (`export-blocks.ts:693`); this half needs a `walkMacro` addition, so
+      (`export-blocks.ts:826`); this half needs a `walkMacro` addition, so
       land it alongside spec 001's other walker changes or as its own
       additive hunk in `export-blocks.ts` (see Dependencies — hot file).
 - [ ] `packages/export-macros/src/table-layout.ts` —
@@ -909,7 +951,7 @@ here and reused by every E4/E5 renderer below.
       transparent body wrapper, no port): no `m.body` → `{ kind: "skip" }`.
       Parse `macroParamText(m.params, "widths")` (comma-separated) and apply to every `table`
       block found at the top level of `m.body` via the existing
-      `columnWidths` field (`export-blocks.ts:108`; PDF already honors it,
+      `columnWidths` field (`export-blocks.ts:175`; PDF already honors it,
       G3/`006-word-quality` documents the DOCX gap — this renderer does not
       duplicate that work, it only sets the field). Unparseable/absent
       widths → pass `m.body` through unchanged with an info note ("widths not
@@ -1101,7 +1143,7 @@ here and reused by every E4/E5 renderer below.
       `ExternalAssetPolicy`/`ExternalAssetFetcher`, an optional
       `externalAssets` field on `MacroExportContext`. Add the additive
       `trust?: "page" | "export-view"` field to `ImageSource`'s external
-      variant (`packages/confluence/src/export-blocks.ts:91`), `AssetRef`
+      variant (`packages/confluence/src/export-blocks.ts:93`), `AssetRef`
       (`packages/docx/src/env.ts:26–38`), and `PdfAssetRef`
       (`packages/pdf/src/types.ts:14–28`); thread it from
       `htmlToExportBlocks` through to both asset seams. CLI host wiring's
@@ -1133,7 +1175,24 @@ Spec 001 deliberately keeps stage-4 rendering byte-identical to today
 yet. This plan is what actually uses them, since "never silently drop" is
 this spec's invariant, not 001's.
 
-- [ ] `packages/docx/src/serialize.ts` (`case "unknown"`, line 431): when
+- [ ] **Mention resolution for `unknown.body` (deferred from 001)**:
+      `packages/confluence/src/resolve-mentions.ts` deliberately does not
+      traverse `unknown.body` today (pointer comment at
+      `resolve-mentions.ts:113–116`; pinned by 001's negative test in
+      `resolve-mentions.test.ts`), because nothing rendered that body and
+      traversing it would have made the extension's PDF path — which calls
+      `resolveExportMentions` unconditionally
+      (`apps/extension/utils/pdf/run-export.ts:165`) — issue live
+      `getUsersBulk` lookups for invisible content. The moment this section
+      makes the body visible, that reasoning inverts: the **same PR** that
+      lands the placeholder-floor body rendering must add a
+      `case "unknown":` recursing into `block.body` to both
+      `collectUnresolvedMentionIds` and `resolveBlockMentions`, flip 001's
+      negative test into a positive regression test, and remove the pointer
+      comment — otherwise a mention inside a rendered macro body ships as a
+      raw technical `accountId` in visible output (exactly the silent-drop
+      class 001's plan documents).
+- [ ] `packages/docx/src/serialize.ts` (`case "unknown"`, line 433): when
       `block.body` is present, render the existing placeholder line followed
       by the body's blocks serialized through the normal `serializeChildren`
       path (recursive, so a table/list/nested-unknown-macro inside an
@@ -1141,7 +1200,7 @@ this spec's invariant, not 001's.
       present, render it as a `codeBlock`-styled paragraph. Cap recursion
       depth and total rendered length (reuse the resolver's depth guard
       shape) so a pathological macro body can't blow up a single page.
-- [ ] `packages/pdf/src/serialize.ts` (`case "unknown"`, line 796): same
+- [ ] `packages/pdf/src/serialize.ts` (`case "unknown"`, line 802): same
       treatment — today it emits nothing but a report note; render the
       preserved body/plain-body content instead of silently omitting it.
 - [ ] Tests: unresolved unknown macro with a table in `body`, with a list,
@@ -1328,6 +1387,12 @@ real instance.
   "network-free" — the page body and its page-authored attachments still
   fetch over the network; the guarantee is "no additional
   Jira/export_view/attachment-lookup calls".
+- Both obligations 001 deferred to this lane are closed: `unknown.bodyNotes`
+  are promoted into the report exactly when the body content they describe
+  becomes visible (and dropped when it is superseded — `resolve.test.ts`
+  covers both directions), and `resolve-mentions.ts` traverses `unknown.body`
+  in the same PR that renders it, with 001's negative test flipped to a
+  positive one and the pointer comment removed.
 - Per-port circuit breaker verified: a rate-limited port stops receiving
   further calls for the rest of the export instead of every remaining macro
   independently exhausting the same limit.
