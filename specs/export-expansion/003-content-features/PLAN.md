@@ -281,7 +281,11 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `CaptionKind`, unknown input → target block's natural kind + warning
       note, `equation` rejected until a real math block exists (see
       Architecture).
-- [x] C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
+- [x] *(implemented on PROVISIONAL fixtures — macro names, the `exporter`
+      parameter key/value set, and body wrapping are modeled on the documented
+      Scroll storage shape, NOT yet reconciled against live-captured storage;
+      the fixture-capture task above stays open and any drift found there must
+      be corrected here)* C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
       fallback), implementing the full C4 truth table from Architecture:
       `scroll-ignore` → when `exportControls === "passthrough"` or the
       `exporter` param is absent/matches `ctx.exporter`: `[]` + info note
@@ -292,18 +296,24 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `scroll-only-skipped-other-exporter` on mismatch. Unknown `exporter`
       values fail safe (include + warning note) regardless of
       `exportControls`, never drop silently.
-- [x] C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
+- [x] *(provisional fixtures — see C4 above; inline variant names unverified
+      against live capture)* C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
       to also return true for `scroll-only-inline`/`scroll-ignore-inline`, and
       handle them in `walkInlineElement` (ignore-inline → `[]` + note,
       only-inline → inline content of its body), same truth table and
       `exportControls` gate as the block form.
-- [x] C5 in `walkMacro()`: `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
-- [x] C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
+- [x] *(provisional fixtures — see C4 above)* C5 in `walkMacro()`:
+      `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
+- [x] *(provisional fixtures — see C4 above. BOTH shapes are implemented
+      pending the C6 fixture gate: body-wrapped parsing AND the
+      `normalizeOrientationMarkers()` paired-marker fallback, so whichever
+      shape live capture confirms is already handled)* C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
       `{ type: "orientation", landscape, content: walkBlocks(body) }` (body
       shape) or the output of `normalizeOrientationMarkers()` (marker
       shape) per the C6 fixture gate above; nested orientation regions in
       the body-wrapped case: outer wins + warning note.
-- [x] C3 in `walkMacro()`: `scroll-title` → build
+- [x] *(provisional fixtures — see C4 above; the `type`/`title` parameter
+      names and body wrapping are unverified against live capture)* C3 in `walkMacro()`: `scroll-title` → build
       `Caption { kind: normalizeCaptionKind(param "type", targetBlockType),
       content }` and attach via new helper `attachCaption(inner, caption,
       ctx)` to the first caption-capable block (`image`/`table`/`codeBlock`)
@@ -311,7 +321,10 @@ further hosts consume it purely through `storageToBlocks → engine`.
       paragraph + info note. Verify against the fixture whether the
       captioned element is body-wrapped or adjacent, and support the
       verified shape.
-- [ ] Wire hosts, as a call-site matrix (not one shared assumption — the
+- [ ] *(partial: DOCX `{ exporter: "word" }` verified end-to-end in
+      `export.test.ts`; PDF extension wired at `run-export.ts` with
+      `{ exporter: "pdf" }`; CLI PDF still blocked on T3.2 — no call site
+      exists)* Wire hosts, as a call-site matrix (not one shared assumption — the
       real call sites differ per host and engine):
       - DOCX / `{ exporter: "word" }`: already planned in
         001-exportblock-model at `packages/docx/src/export.ts:235`, ahead of
@@ -329,11 +342,21 @@ further hosts consume it purely through `storageToBlocks → engine`.
         lands, not as a standalone edit to a non-existent call site.
       - Any further host picks `exporter` up through the same
         `StorageToBlocksOptions` object at its own `storageToBlocks` call.
-- [ ] Optional (progressive disclosure): CLI flag `--keep-ignored` in
+- [x] *(implemented: ts engine, single-page scope; tree/space + python engine
+      rejected with a USAGE error until tree-fetch threads export controls)*
+      Optional (progressive disclosure): CLI flag `--keep-ignored` in
       `apps/cli/src/commands/export.ts` that sets `exportControls:
       "passthrough"` (not "omits `exporter`" — see Architecture) for
       debugging, documented in the command help.
-- [x] **`ExportNote.source` provenance contract (owner: this plan).** Add an
+- [x] *(populated: walker notes carry `pageId`/`pageTitle`/`pageUrl` — when
+      the host threads them via `pageContext` — plus a real `blockPath`
+      threaded through `walkBlocks`; the PDF serializer's new note codes carry
+      `source.blockPath` from its serializer path. NOT yet populated: the DOCX
+      serializer's container-suppression notes — that serializer tracks no
+      block path or page context today; `assetName` — no note this plan adds
+      is asset-scoped. Single-page walks without `pageContext` stay
+      source-less by design, keeping output byte-identical.)*
+      **`ExportNote.source` provenance contract (owner: this plan).** Add an
       additive optional `source?: { pageId?: string; pageTitle?: string;
       pageUrl?: string; blockPath?: string; assetName?: string }` field to
       `ExportNote` (`packages/confluence/src/export-blocks.ts:116`), the
@@ -665,8 +688,12 @@ Hard rule: NEVER mock. Unit tests run real storage XML through the real
 walker; golden tests run the real serializers; E2E runs the real CLI against a
 real instance.
 
-- [x] Walker unit tests in `packages/confluence/src/export-blocks.test.ts`
-      using the captured real storage fixtures: scroll-only kept /
+- [x] *(tests run against the PROVISIONAL fixture set, not live-captured
+      storage — reconcile when the capture task above lands; marker-shape
+      `normalizeOrientationMarkers()` sequencing IS covered: open→close,
+      open→EOF restores base, unmatched close)* Walker unit tests in
+      `packages/confluence/src/export-blocks.test.ts`
+      using the provisional storage fixtures: scroll-only kept /
       scroll-ignore dropped (+ note), full C4 truth table — exporter
       parameter match/mismatch/absent/unknown-value crossed with
       `exportControls: "apply" | "passthrough"` (mismatch must produce the

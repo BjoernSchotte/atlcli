@@ -121,8 +121,15 @@ Orientation regions inside a table cell or callout are rendered without an
 orientation change (a section break / page rule cannot live there) and the
 report notes `orientation-suppressed-in-container`. The content is kept.
 
+Both source shapes are recognized: a body-wrapped macro (the region content
+sits inside the macro body) and the paired open/close marker form (a body-less
+`scroll-landscape` orients everything up to the next body-less
+`scroll-portrait`; an unclosed region ends at the end of its content with the
+base orientation restored and an info note).
+
 A nested orientation region collapses into its enclosing region (the outer
-orientation wins) with a warning note.
+orientation wins) with a warning note — including regions nested deeper inside
+lists, quotes, callouts, or table cells.
 
 ## Captions
 
@@ -147,9 +154,11 @@ note. `equation` is not supported yet.
 ### Locale (DOCX)
 
 Caption labels are localized: `Figure`/`Table`/`Listing` (English) or
-`Abbildung`/`Tabelle`/`Listing` (German). The locale resolves as: explicit
-export option, then the host-supplied locale, then English. An unrecognized
-locale falls back to English with a warning note.
+`Abbildung`/`Tabelle`/`Listing` (German). The label set comes from the export's
+explicit caption-language option (a BCP-47 tag such as `de` or `de-DE`; the
+primary language subtag decides) and defaults to English. A language without a
+shipped label set falls back to English with a `caption-lang-fallback` warning
+note in the report.
 
 ### Broken images
 
@@ -159,10 +168,18 @@ figures.
 
 ## Keeping ignored content for debugging
 
-To inspect what an export normally drops, run it in passthrough mode: both
-`scroll-only` and `scroll-ignore` bodies are kept, and the report records
+To inspect what an export normally drops, run the CLI export with
+`--keep-ignored` (DOCX, `--engine ts`, single-page scope):
+
+```bash
+atlcli wiki export <page> --template mytemplate --output out.docx \
+  --engine ts --keep-ignored
+```
+
+Both `scroll-only` and `scroll-ignore` bodies are kept, and the report records
 `export-controls-passthrough` so you know the output is not representative of a
-normal run. Page breaks and orientation regions still render.
+normal run. Page breaks and orientation regions still render. The flag is not
+available for `--scope tree/space` or the Python engine yet.
 
 > **Tip:** Passthrough is a debugging aid. Do not ship a passthrough export as
 > the final document — it contains content the author marked for exclusion.
