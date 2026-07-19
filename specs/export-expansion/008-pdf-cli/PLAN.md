@@ -112,6 +112,26 @@ The CLI is the first consumer of the export baseline and the reference
   the minimal kernel early; T3.4 extends it (`--strict`, error
   classification, `--out-dir`, profile-free auth, CI recipes) without
   redefining it.
+- **Deferred hand-off from folder 002** (002 implemented 2026-07-19, PR #51;
+  DOCX(ts) scope/label/completeness CLI landed there): per 002's own clause
+  ("if 008 has not merged, land DOCX(ts) first; the PDF wiring task is a
+  follow-up commit on 008's seam, not a fork"), three 002 items are open and
+  land **in this folder** once T3.2's `--format pdf` command exists:
+  1. **PDF CLI wiring** of `--scope tree|space` / `--label-*` /
+     `--completeness` onto `--format pdf` (T3.3 call site). The orchestration
+     (`fetchExportTree` → `composeChapters`) and flag parsing
+     (`parseExportRequest` → `ExportScope`/`LabelFilter`) are shared and
+     already live; the engine side is fully ready — `runPdfExport` accepts
+     composed blocks, renders sanitized/deduped Typst labels +
+     `#pagebreak(weak: true)`, enforces the shared `AssetBudget`, and reports
+     `sourceNotes` + `complete`. Only the CLI call site differs from DOCX.
+  2. **PDF E2E variants** of 002's tree/label runs (assert one PDF, outline
+     entries per chapter), reusing 002's DOCSY fixture-tree recipe.
+  3. 002's DoD line "PDF path integrated on 008's seam" — tick it in
+     `002-scope-orchestration/PLAN.md` when (1)+(2) are done.
+  Already delivered by 002 for this folder: `signal` is threaded through
+  `requestBinary` (asset downloads) — the cancellation-contract prerequisite
+  below is met; `ImageSource.pageId` exists on the model/walker side.
 - **File ownership conflict with folder 007**: T3.3 needs a small additive
   change to `packages/pdf/src/types.ts` (`PdfAssetRef.pageId`) and
   `packages/pdf/src/prepare.ts` (thread `pageId` through image
