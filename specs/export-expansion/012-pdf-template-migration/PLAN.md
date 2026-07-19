@@ -446,6 +446,42 @@ mocked HTTP, no stubbed compiler.
   cmap preflight is expensive, deferred to whichever folder first ships
   non-bundled fonts.
 
+### Open questions carried over from draft PR #48 (§16)
+
+These product decisions were deliberately **not** answered when PR #48 was
+distilled into this folder. Resolve them during this folder's review /
+first task before the affected work starts; the recommended defaults are
+the ones PR #48 stated.
+
+- [ ] **Preference scope for persisted template settings:** confirm the
+      recommended local `tenant origin + space key` scope, or start with
+      browser-global defaults for the first slice. (Persistence itself is
+      implemented in `010-extension-integration/PLAN.md` T5.2 — this
+      decision feeds that work, but is recorded here because it shapes
+      which manifest `settings` make sense per scope.)
+- [ ] **Initially editable subset:** all current defaults migrate into the
+      manifest, but confirm whether logo, header/footer text, page size,
+      cover, outline, organization name, and accent color should all
+      receive first-slice `settings`/`bindings`, or whether some remain
+      manifest-owned but not yet user-editable. (007's Level-A set —
+      including accent/organization/logo — is the current baseline;
+      this question is about everything beyond it.)
+- [ ] **Legacy compatibility alias:** keep `ATLCLI_TYPST_TEMPLATE` for one
+      repository release cycle as a deprecated alias, or remove it
+      immediately once all in-repo consumers are migrated. (Interacts
+      with the product-rename decision tracked in
+      `009-package-publishing/PLAN.md` — a soon-to-be-renamed env var is
+      a weak argument for a long deprecation window.)
+- [ ] **Unknown manifest fields:** retain PR #48's proposed split
+      (hard error for built-in templates, development-mode warning for
+      imported ones), or reject unknown keys unconditionally from day
+      one. (007's T2.4 validation currently rejects unknown top-level
+      keys; whichever answer wins must be applied consistently there.)
+- [ ] **Initially shipped locales:** recommended baseline is a complete
+      English fallback plus a complete German bundle for the built-in
+      template; confirm whether the second curated template must ship
+      both immediately or only the complete fallback locale.
+
 ---
 
 Distilled from draft PR #48 (`specs/pdf-template-editor/PLAN.md`, branch
