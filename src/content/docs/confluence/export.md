@@ -13,6 +13,7 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [Browser extension: PDF export](#browser-extension-pdf-export)
 - [CLI: DOCX quick start](#quick-start)
 - [Rendering engines](#rendering-engines)
+- [Tree and space export](#tree-and-space-export)
 - [Templates](#templates)
 - [Table of contents](#table-of-contents)
 - [Template variables](#template-variables)
@@ -87,11 +88,29 @@ atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 | `--template, -t` | Template name or path (required) |
 | `--output, -o` | Output file path (required) |
 | `--no-images` | Don't embed images from attachments |
-| `--include-children` | Include child pages in export |
-| `--no-merge` | Keep children as separate array for template loops |
+| `--include-children` | Deprecated alias for `--scope tree` (with `--engine ts`); legacy child-merge with `--engine python` |
+| `--no-merge` | Keep children as separate array for template loops (python engine) |
 | `--no-toc-prompt` | Disable TOC update prompt in Word |
 | `--engine` | Rendering engine: `python` (default) or `ts` (see [Rendering Engines](#rendering-engines)) |
 | `--profile` | Use a specific auth profile |
+
+### Scope options (`--engine ts`)
+
+These flags turn a single-page export into a tree or whole-space export. They
+require `--engine ts`; using them with `--engine python` is rejected with a clear
+error. See [Tree and space export](#tree-and-space-export).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--scope` | `page` \| `tree` \| `space` | `page` | What to export |
+| `--space <KEY>` | string | — | Export a whole space (implies `--scope space`); the homepage is the root chapter. Takes **no** positional page reference |
+| `--max-depth <n>` | integer ≥ 0 | unbounded | Cap traversal depth (root = depth 0, so `0` exports the root page only) |
+| `--max-pages <n>` | integer ≥ 1 | `500` | Hard page cap; the export aborts early with a suggestion when exceeded |
+| `--max-folders <n>` | integer ≥ 1 | `200` | Hard folder cap; same early-abort behavior for folder-heavy trees |
+| `--label-include <a,b>` | comma list | — | Keep only pages carrying **any** of these labels (OR) |
+| `--label-exclude <c,d>` | comma list | — | Drop pages carrying **any** of these labels (OR) |
+| `--label-exclude-mode` | `prune-subtree` \| `page-only` | `prune-subtree` | Whether an excluded page also removes its descendants |
+| `--completeness` | `strict` \| `partial` | `strict` | `strict` aborts on an unreadable or changed page; `partial` renders a placeholder chapter and sets `complete: false` |
 
 ## Rendering Engines
 
@@ -99,8 +118,8 @@ atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 
 | Engine | Templates | Requirements | Feature scope |
 |--------|-----------|--------------|---------------|
-| `python` (default) | Jinja2 variables (`{{ title }}`, …) | Python 3.12+ with `atlcli-export` | Images, children, content-by-label |
-| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page; embeds PNG/JPEG/GIF images (SVG not yet) |
+| `python` (default) | Jinja2 variables (`{{ title }}`, …) | Python 3.12+ with `atlcli-export` | Single page + legacy `--include-children` merge, content-by-label |
+| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page **plus** page-tree / whole-space export with label filters, chapter merge, working TOC and cross-page links; embeds PNG/JPEG/GIF images (SVG not yet) |
 
 The `ts` engine is the isomorphic [`@atlcli/docx` export engine](/reference/docx-engine/) — the exact
 same code the atlcli browser extension uses for its "Export to Word" button, driven here with
@@ -135,6 +154,135 @@ to source code blocks and the report says so in a note.
 
 Diagram theming follows the export's brand colors when configured; the default is a neutral
 light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
+
+## Tree and space export
+
+"Export this handbook" almost never means one page — documentation lives as a page
+tree. With `--engine ts`, `atlcli wiki export` can turn a page tree, or a whole
+space, into **one** DOCX: chapters follow the page hierarchy (page depth becomes
+chapter level), with a working table of contents and working cross-page links.
+Label filters curate the result — drop `internal` pages, or keep only `handbook`
+ones — the standard migration pattern from established exporter workflows.
+
+The same fetch → compose → serialize pipeline is the library API, and the CLI with
+`--json` reports and deterministic exit codes is the automation interface: there is
+no hosted job to poll and no data egress to third parties. Automation is the CLI.
+
+### Prerequisites
+
+- Authenticated profile (`atlcli auth login`)
+- **View permission** on every page in the tree/space (see [Completeness](#completeness-strict-vs-partial))
+- A Word-compatible template (`.docx`/`.docm`)
+- `--engine ts` (the scope/label flags require it)
+
+### Steps
+
+1. Find the root page ID (for a tree) or the space key (for a space) — see [Pages](pages.md).
+2. Choose a scope: `--scope tree <pageId>` or `--scope space --space <KEY>`.
+3. Optionally curate with `--label-include` / `--label-exclude` and bound the walk with `--max-depth` / `--max-pages`.
+4. Run the export; add `--json` for a machine-readable report.
+5. Open the DOCX and update the TOC field (see [Table of Contents](#table-of-contents)).
+
+### Minimal example
+
+Export a page and all its descendants into one document:
+
+```bash
+atlcli wiki export 12345678 \
+  --engine ts --scope tree \
+  --template corporate --output ./handbook.docx
+```
+
+`--include-children` is a deprecated alias for `--scope tree` and still works.
+
+### Advanced example
+
+Export a whole space, drop everything labelled `internal` (and its subtrees),
+keep only pages labelled `public`, cap the walk, and emit a JSON report for CI:
+
+```bash
+atlcli wiki export \
+  --engine ts --scope space --space DOCSY \
+  --label-exclude internal --label-exclude-mode prune-subtree \
+  --label-include public \
+  --max-pages 500 --completeness partial \
+  --template corporate --output ./docsy.docx --json
+```
+
+### Completeness: strict vs partial
+
+Long tree walks are not a point-in-time snapshot, and permission gaps are common.
+The completeness contract makes "looks complete but silently isn't" impossible:
+
+- `--completeness strict` (default) — the export **aborts** if any page is
+  unreadable (401/403), returns an ambiguous 404 (deleted vs. no permission), or
+  changes version mid-walk. The error names the affected pages.
+- `--completeness partial` — each of those becomes a placeholder chapter and a
+  structured note, and the report's top-level `complete` is set to `false`.
+
+### JSON report and exit codes
+
+With `--json`, **stdout carries exactly one JSON document** (schema
+`atlcli.export-report/v1`) and nothing else; progress events go to **stderr** as
+JSONL (one event per line), and the human page-count line is suppressed. This is
+what makes the command safe to pipe in a headless job:
+
+| Field | Meaning |
+|-------|---------|
+| `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) |
+| `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) |
+| `complete` | `false` when partial mode omitted content |
+| `counts` | `pages`, `embeddedImages`, `skippedImages`, `renderedDiagrams` |
+| `notes` / `notesByCode` | Structured notes plus a per-code tally |
+| `timings` | Per-phase wall clocks |
+
+Exit codes: `0` success · `1` usage/validation/API error · `130` cancelled (Ctrl-C).
+
+### CI / headless recipe
+
+Automation uses the CLI directly — no hosted job API, no polling. Parse the single
+JSON document and branch on `complete` and the note counts:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+report=$(atlcli wiki export \
+  --engine ts --scope space --space DOCSY \
+  --label-exclude internal --completeness strict \
+  --template corporate --output ./docsy.docx --json)   # progress → stderr
+
+# Fail the build if the export was incomplete.
+complete=$(echo "$report" | jq -r '.complete')
+if [ "$complete" != "true" ]; then
+  echo "Export incomplete:" >&2
+  echo "$report" | jq '.notesByCode' >&2
+  exit 1
+fi
+
+pages=$(echo "$report" | jq -r '.counts.pages')
+echo "Exported $pages pages to ./docsy.docx"
+```
+
+Ctrl-C (or `SIGINT` from a CI timeout) aborts discovery, body fetch, asset
+download and the final write promptly; the output file is written atomically, so a
+cancelled run never leaves a corrupt or partial `.docx` at the destination.
+
+### Report notes you may see
+
+Missing chapters are never a silent bug — they are always explained by a note:
+
+| Code | Meaning |
+|------|---------|
+| `label-filtered` | Pages omitted by a label filter (with a count) |
+| `root-filter-bypassed` | The root would have been filtered out but was kept as structure |
+| `tree-cycle` | A cycle was detected and the repeated node skipped |
+| `unsupported-child-type` | A whiteboard/database/embed child was skipped |
+| `folder-position-unknown` | A folder has no UI position; ordered by title |
+| `heading-depth-clamped` | A heading exceeded level 6 after the chapter shift |
+| `link-outside-scope` | A cross-page link points outside the export; linked absolutely |
+| `link-anchor-missing` / `link-target-ambiguous` | A link could not be resolved; rendered as text |
+| `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | Completeness events (abort in `strict`, placeholder in `partial`) |
 
 ## Templates
 
@@ -319,9 +467,41 @@ embedding.
 - Check that `--no-images` flag is not set
 - Embedded images use the template's image placeholder styling
 
+### "require --engine ts" Error
+
+The scope, label, completeness and traversal flags are only implemented by the
+`ts` engine. Add `--engine ts` (the `python` engine only does single-page export
+and the legacy `--include-children` merge).
+
+### "exceeds the maximum of N pages"
+
+The tree/space is larger than `--max-pages` (default 500). Narrow the scope with
+`--max-depth` or label filters, or raise `--max-pages`. The same guard exists for
+folders (`--max-folders`, default 200).
+
+### Export Aborted on an Unreadable Page
+
+In the default `strict` mode a single unreadable/changed page aborts the export so
+a document that *looks* complete can never silently omit content. Either fix the
+permission gap, or re-run with `--completeness partial` to render a placeholder
+chapter and continue (`complete` will be `false` in the report).
+
+### A Space Has No Homepage
+
+`--scope space` uses the space homepage as the root chapter. A folder-only space
+root has no classic homepage; export a specific page tree with
+`--scope tree <pageId>` instead.
+
+### Missing Chapters
+
+Missing pages are always explained by a report note (see
+[Report notes](#report-notes-you-may-see)) — most often `label-filtered`. Check
+the `--json` report's `notesByCode` before assuming a bug.
+
 ## Related Topics
 
 - [Pages](pages.md) - Page operations and finding page IDs
+- [Labels](labels.md) - Managing the labels that `--label-include`/`--label-exclude` filter on
 - [Attachments](attachments.md) - Managing page attachments for export
 - [Templates](templates.md) - Page templates (different from export templates)
 - [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine behind `--engine ts`
