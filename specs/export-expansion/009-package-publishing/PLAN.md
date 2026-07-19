@@ -621,7 +621,7 @@ model); note it as the designated fallback.
       contents — `dist/*.js`, `dist/*.d.ts` present; no `src/**/*.ts` leaked;
       asset files present (see Special cases); `exports` targets all exist
       inside the tarball (catches the classic broken-subpath publish).
-- [ ] Declare and test a Node/Bun/package-manager support matrix: add
+- [x] Declare and test a Node/Bun/package-manager support matrix: add
       `engines` to each publishable `package.json` reflecting the real
       constraint (Bun-only vs. Node-LTS-compatible per package, after the
       `bun:sqlite` fix above), and extend `pack-check.test.ts` (or a sibling
@@ -645,9 +645,13 @@ model); note it as the designated fallback.
       install -g @atlcli/cli` path" framing assumed a live publish and is
       preserved, unimplemented, in the Deferred appendix for whichever way
       the product rename lands.
-- [ ] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
+- [x] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
       tarballs; add a regression test in `scripts/release.test.ts` (inspect a
-      packed manifest, assert no `workspace:` protocol survives).
+      packed manifest, assert no `workspace:` protocol survives). (Covered by
+      `scripts/pack-check.test.ts` — it inspects every packed manifest and
+      fails on any surviving `workspace:` range — plus the consumer-smoke and
+      install-matrix suites, which assert the same on the *installed*
+      manifests; a separate `release.test.ts` duplicate is unnecessary.)
 - [ ] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
       Conventional-Commit scopes as the per-package changelog) as a new page
       under `src/content/docs/reference/` (sibling to the existing
@@ -833,7 +837,7 @@ model); note it as the designated fallback.
 
 ### Consumer smoke
 
-- [ ] `scripts/consumer-smoke.ts` (+ `scripts/consumer-smoke.test.ts` wiring
+- [x] `scripts/consumer-smoke.ts` (+ `scripts/consumer-smoke.test.ts` wiring
       it into `bun test` behind an env flag for CI): creates a temp project
       via `bun init` in the scratch dir, runs `bun pm pack` for every
       publishable package, installs the **local tarballs** (`bun add
@@ -841,7 +845,7 @@ model); note it as the designated fallback.
       resolving to the sibling tarballs), and asserts installation succeeds
       with no `workspace:` leakage. Real packages, real wasm, no registry —
       and no mocks anywhere in this suite.
-- [ ] **Filesystem-link smoke** (`scripts/consumer-smoke-filelink.ts`, wired
+- [x] **Filesystem-link smoke** (`scripts/consumer-smoke-filelink.ts`, wired
       into `bun test` next to the tarball suite): scaffold a throwaway
       consumer project that declares `@atlcli/docx`/`@atlcli/pdf` (and their
       transitive `@atlcli/*` deps) as `file:`-protocol dependencies pointing
@@ -852,7 +856,7 @@ model); note it as the designated fallback.
       linking against this repo or a sibling checkout, see Goal) and is not
       exercised by the tarball-install suite, which only proves `bun pm
       pack` output.
-- [ ] DOCX smoke inside the temp project: a script that imports `runExport`
+- [x] DOCX smoke inside the temp project: a script that imports `runExport`
       from the installed `@atlcli/docx`, provides a minimal real `ExportEnv`
       (template bytes from the installed package's shipped default template
       path — verify what `TemplateSource` needs and ship a usable default;
@@ -860,7 +864,7 @@ model); note it as the designated fallback.
       `storageToBlocks` from installed `@atlcli/confluence`, and asserts the
       emitted bytes are a valid DOCX (unzip, check `word/document.xml`
       contains the fixture heading).
-- [ ] PDF smoke inside the temp project: imports `runPdfExport` from installed
+- [x] PDF smoke inside the temp project: imports `runPdfExport` from installed
       `@atlcli/pdf` and `BrowserPdfCompiler` from installed
       `@atlcli/pdf-compiler-browser`, loads wasm bytes from the installed
       package's `./wasm` subpath and fonts from installed
@@ -868,11 +872,11 @@ model); note it as the designated fallback.
       already proven in `packages/pdf-compiler-browser/src/compiler.test.ts`,
       but now against `node_modules`, not the workspace), compiles a fixture,
       and asserts `%PDF-` magic bytes + `validatePdfOutput` passes.
-- [ ] Type-consumption check in the temp project: `tsc --noEmit` against a
+- [x] Type-consumption check in the temp project: `tsc --noEmit` against a
       consumer `main.ts` importing from `@atlcli/{docx,pdf,confluence,pdf-compiler-browser}`
       with `"skipLibCheck": false` — proves shipped `.d.ts` are self-contained
       (catches leaked `src/` type imports and missing declaration deps).
-- [ ] **Node-LTS tarball smoke** (`scripts/consumer-smoke-node.ts`), separate
+- [x] **Node-LTS tarball smoke** (`scripts/consumer-smoke-node.ts`), separate
       from the Bun-based suite above: a fresh `npm init` project on the
       oldest supported Node LTS (per the `engines` support-matrix task in
       Build artifacts), `"moduleResolution": "NodeNext"`,
@@ -894,7 +898,7 @@ model); note it as the designated fallback.
       `packages/pdf-compiler-browser/src/compiler.test.ts`'s pattern —
       compile a fixture inside a Worker to real PDF bytes. Fails if any
       resolution falls through to a `src/` path or a `workspace:` symlink.
-- [ ] CI job (`.github/workflows/`): run the consumer smoke on every PR that
+- [x] CI job (`.github/workflows/`): run the consumer smoke on every PR that
       touches `packages/**` or the publish tooling (path filter), Linux
       runner, no registry credentials needed.
 - [ ] **E2E final gate** (before the freeze release, per CLAUDE.md workflow
