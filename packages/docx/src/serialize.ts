@@ -19,15 +19,24 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
-import { readableTextColor } from "@atlcli/confluence";
+import {
+  computeHeadingOffset,
+  readableTextColor,
+  sanitizeAnchorId,
+  uniqueAnchorId,
+} from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
 import {
+  bookmarkEnd,
+  bookmarkStart,
   calloutTable,
   codeLineParagraph,
   dataTable,
   dividerParagraph,
   hyperlinkField,
+  internalHyperlink,
   lineBreakRun,
+  pageBreakParagraph,
   paragraph,
   resolveHeadingStyleId,
   run,
@@ -107,6 +116,14 @@ interface InternalContext extends SerializeContext {
   headingOffset: number;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
+  /**
+   * Per-export bookmark state (spec 002 anchors): the numeric id counter and
+   * the set of bookmark NAMES already emitted. A mutable object so the state
+   * stays shared when a derived context is spread (`{ ...ctx }`). `used` is
+   * what keeps single-page exports (no compose-time registry) free of duplicate
+   * bookmark names when two raw anchor names sanitize to the same id.
+   */
+  bookmarks: { next: number; used: Set<string> };
 }
 
 export interface SerializeResult {
@@ -159,11 +176,18 @@ export function serializeInline(nodes: InlineNode[], defaultTextColor?: string):
         const innerRuns = serializeInline(
           node.content.length ? node.content : [{ type: "text", text: "" }]
         );
+        const styled = linkStyledRuns(node.content) || innerRuns;
         if (node.target.kind === "external" && node.target.href) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
           out += hyperlinkField(node.target.href, linkStyledRuns(node.content));
+        } else if (node.target.kind === "anchor") {
+          // Internal anchor link → a real in-document jump (spec 002). The
+          // anchor is the sanitized destination id compose-document assigned;
+          // re-sanitize defensively so a raw single-page anchor still matches
+          // the bookmark name the anchor/heading emits.
+          out += internalHyperlink(sanitizeAnchorId(node.target.anchor), styled);
         } else {
-          out += linkStyledRuns(node.content) || innerRuns;
+          out += styled;
         }
         break;
       }
@@ -226,49 +250,9 @@ function placeMarker(frag: string, markerRun: string): string {
 // Blocks
 // ---------------------------------------------------------------------------
 
-/**
- * Heading-level normalization ("promotion"), matching Scroll Office.
- *
- * Confluence pages usually omit H1 (the page title is the implicit Heading 1)
- * and start their body headings at H2. Preserving levels would leave the top
- * TOC level empty, so Scroll promotes the SHALLOWEST heading in the document to
- * Heading 1. We do the same: `offset = minLevel - 1`, and every heading's
- * effective level is `block.level - offset` (shallowest → 1).
- *
- * The scan spans the WHOLE block tree — headings nested in callouts,
- * blockquotes, list items and table cells count — so a single document-wide
- * offset governs every heading. A document with no headings yields offset 0
- * (no-op); one already starting at H1 (minLevel 1) also yields offset 0.
- */
-function computeHeadingOffset(blocks: ExportBlock[]): number {
-  const min = minHeadingLevel(blocks);
-  return min === Infinity ? 0 : min - 1;
-}
-
-/** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
-function minHeadingLevel(blocks: ExportBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        if (block.level < min) min = block.level;
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows)
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        break;
-    }
-  }
-  return min;
-}
+// Heading-level promotion ("promotion", matching Scroll Office) now lives once
+// in `@atlcli/confluence` (`computeHeadingOffset`, imported above) — the single
+// home of the min-heading scan both this engine and the PDF engine consume.
 
 /**
  * Kick off every deferrable cost up front (perf): image asset fetches and
@@ -329,7 +313,11 @@ export async function serializeBlocks(
 ): Promise<SerializeResult> {
   const notes: ExportNote[] = [];
   const parts: string[] = [];
-  const internal: InternalContext = { ...ctx, headingOffset: computeHeadingOffset(blocks) };
+  const internal: InternalContext = {
+    ...ctx,
+    headingOffset: computeHeadingOffset(blocks),
+    bookmarks: { next: 1, used: new Set() },
+  };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
@@ -359,10 +347,22 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
         styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
+      // An explicit anchor (chapter start / in-page heading anchor, spec 002)
+      // wraps the heading paragraph in a real bookmark so `w:hyperlink w:anchor`
+      // jumps land here. `uniqueAnchorId` sanitizes (composed ids pass through
+      // unchanged) AND dedupes per document, so two single-page anchors whose
+      // raw names sanitize identically never emit duplicate bookmark names.
+      if (block.explicitAnchor) {
+        const id = ctx.bookmarks.next++;
+        const name = uniqueAnchorId(block.explicitAnchor, ctx.bookmarks.used);
+        ctx.bookmarks.used.add(name);
+        return `${bookmarkStart(id, name)}${headingPara}${bookmarkEnd(id)}`;
+      }
+      return headingPara;
     }
 
     case "paragraph":
@@ -433,13 +433,19 @@ async function serializeBlock(
     case "unknown":
       return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));
 
-    // No-op renderings (T0.2): today's walker never emits these; real rendering
-    // lands in T1.3/T1.5. Silent no-ops keep output and report byte-identical.
+    // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      return "";
+      return pageBreakParagraph();
 
-    case "anchor":
-      return "";
+    case "anchor": {
+      // A standalone named anchor → a zero-width bookmark at this position, so
+      // `page-<id>` chapter-start links and in-page anchor links resolve here.
+      // Sanitized + per-document deduped like heading anchors (see above).
+      const id = ctx.bookmarks.next++;
+      const name = uniqueAnchorId(block.name, ctx.bookmarks.used);
+      ctx.bookmarks.used.add(name);
+      return `${bookmarkStart(id, name)}${bookmarkEnd(id)}`;
+    }
 
     case "orientation":
       // Transparent passthrough — children render exactly as if the region

@@ -4,8 +4,10 @@ import { deflateSync, inflateSync } from "node:zlib";
 import {
   ATLCLI_TYPST_TEMPLATE,
   PDF_RUNTIME_ASSETS,
+  preparePdfDocument,
   serializePdfDocument,
   validatePdfOutput,
+  type ExportBlock,
   type PdfSourceBundle,
   type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
@@ -159,6 +161,41 @@ describe("BrowserPdfCompiler package", () => {
     const source = await Bun.file(new URL("./compiler.ts", import.meta.url)).text();
     expect(source).not.toMatch(/\?url|chrome|indexedDB|wxt|apps\/extension/);
   });
+
+  it("compiles a document whose anchor macro carries a raw multi-word name (spec 002 regression)", async () => {
+    // Regression repro against the REAL Typst compiler: a Confluence anchor
+    // macro named "Table of Contents" previously serialized as the raw
+    // `<Table of Contents>` — an unclosed Typst label — failing the whole
+    // export with a compile error. The serializer now sanitizes anchor names,
+    // so this document must compile cleanly with a working internal link.
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "Table of Contents" },
+      { type: "paragraph", content: [{ type: "text", text: "Chapter body" }] },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "link",
+            target: { kind: "anchor", anchor: "Table of Contents" },
+            content: [{ type: "text", text: "back to top" }],
+          },
+        ],
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const source = serializePdfDocument(prepared, {
+      metadata: { title: "Anchor names", exportedAt: new Date("2026-07-19T00:00:00Z") },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(source);
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(1);
+  }, 30_000);
 });
 
 describe("template settings compiled output", () => {

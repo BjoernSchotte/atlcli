@@ -15,6 +15,13 @@
 
 export * from "./client.js";
 export * from "./markdown.js";
+export * from "./asset-budget.js";
+export * from "./compose-document.js";
 export * from "./export-blocks.js";
+export * from "./export-progress.js";
+export * from "./export-scope.js";
+export * from "./in-order-limiter.js";
+export * from "./pagination.js";
+export * from "./tree-fetch.js";
 export * from "./resolve-mentions.js";
 export * from "./page-properties.js";

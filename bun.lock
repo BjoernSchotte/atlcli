@@ -136,6 +136,9 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
       },
+      "devDependencies": {
+        "@atlcli/docx": "workspace:*",
+      },
     },
     "packages/pdf-compiler-browser": {
       "name": "@atlcli/pdf-compiler-browser",

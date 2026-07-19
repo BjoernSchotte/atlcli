@@ -36,7 +36,14 @@
  */
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { storageToBlocks, type ConfluencePageDetails, type ExportNote } from "@atlcli/confluence";
+import {
+  AssetBudget,
+  storageToBlocks,
+  type ConfluencePageDetails,
+  type ExportBlock,
+  type ExportNote,
+  type ExportProgressCallback,
+} from "@atlcli/confluence";
 import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
 import {
   resolvePlaceholders,
@@ -54,7 +61,7 @@ import {
 import { ImageEmbedder, ImageEmbedError } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseLogoArgs } from "./placeholder-map.js";
-import type { AssetFetcher, AssetRef, SvgRasterizer } from "./env.js";
+import type { AssetFetcher, AssetRef, HostCallContext, SvgRasterizer } from "./env.js";
 import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
 import {
   encodeXmlText,
@@ -96,8 +103,14 @@ export interface ExportReport {
   durationMs: number;
   /** Suggested download filename (`<page-title>.docx`). */
   filename: string;
-  /** All non-fatal notes (resolver + serializer + flow). */
+  /** All non-fatal notes (resolver + serializer + flow + compose/fetch). */
   notes: ExportNote[];
+  /**
+   * False when the composed document omitted content (partial-mode unreadable
+   * pages, spec 002). Single-page/normal exports are `true`. Carried from
+   * {@link ExportInput.complete}.
+   */
+  complete: boolean;
   /** The template scan (reused classification), for the panel. */
   scan: ScanResult;
   /** Per-phase wall clocks (overlapping) + seam aggregates. */
@@ -111,7 +124,34 @@ export interface ExportResult {
 
 export interface ExportInput {
   templateBytes: Uint8Array;
+  /**
+   * The ROOT page. Template placeholders (title/author/…) resolve against it.
+   * In a single-page export it is also the content source; in a tree/space
+   * export the content comes from {@link blocks} and this stays the root so
+   * placeholders keep the existing convention (spec 002).
+   */
   details: ConfluencePageDetails;
+  /**
+   * Pre-composed document blocks (spec 002 `composeChapters` output). When set,
+   * the engine serializes THESE instead of walking `details.storage`, so a
+   * multi-page tree/space export flows through the same serializer as a single
+   * page. Absent → single-page behavior (walk `details.storage`).
+   */
+  blocks?: ExportBlock[];
+  /**
+   * Notes from the fetch/compose phases (tree-cycle, label-filtered, …, spec
+   * 002) to surface in the report alongside the engine's own notes.
+   */
+  sourceNotes?: ExportNote[];
+  /**
+   * Whether the composed document is complete (spec 002 completeness contract).
+   * Defaults to `true` (single-page/normal exports are always complete).
+   */
+  complete?: boolean;
+  /** Abort signal threaded into asset fetches + the final emit (spec 002). */
+  signal?: AbortSignal;
+  /** Granular progress callback (spec 002 — asset embedding + emit phases). */
+  onProgress?: ExportProgressCallback;
   template: TemplateMeta;
   exportDate?: Date;
   deps?: ResolveDeps;
@@ -232,7 +272,13 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    (and images aren't disabled), the serializer's image seam embeds each
   //    image into THIS zip (media + rel + content type) before render — the
   //    rendered rawxml body then references relationships that already exist.
-  const { blocks, notes: walkNotes } = storageToBlocks(input.details.storage ?? "", { exporter: "word" });
+  // Pre-composed blocks (tree/space export) bypass the single-page walk; the
+  // root page's storage is only walked when no composed blocks were supplied.
+  const walked = input.blocks
+    ? { blocks: input.blocks, notes: [] as ExportNote[] }
+    : storageToBlocks(input.details.storage ?? "", { exporter: "word" });
+  const blocks = walked.blocks;
+  const walkNotes = walked.notes;
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
@@ -240,10 +286,23 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // diagrams additionally need a rasterizer — each seam exists independently.
   const wantImages = Boolean(input.assets) && input.embedImages !== false;
   const embedder = wantImages || input.rasterizer ? new ImageEmbedder(zip) : undefined;
-  const images = embedder && wantImages ? imageSeam(embedder, input.assets!, input.details.id, timings) : undefined;
+  // One shared asset budget per export (spec 002): total-byte cap + content
+  // dedup, identical to the PDF engine. A breach is a FATAL scope-level error
+  // (thrown out of the seam, aborting before any output), unlike per-image
+  // decode failures which stay warnings.
+  const budget = new AssetBudget();
+  const imageBlockCount = wantImages ? countImageBlocks(blocks) : 0;
+  const images = embedder && wantImages
+    ? imageSeam(embedder, input.assets!, input.details.id, timings, {
+        budget,
+        signal: input.signal,
+        onProgress: input.onProgress,
+        total: imageBlockCount,
+      })
+    : undefined;
   const diagrams =
     embedder && input.rasterizer
-      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme, timings)
+      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme, timings, budget)
       : undefined;
 
   // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
@@ -311,7 +370,14 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
   timings.renderMs = Date.now() - renderStart;
 
-  const notes = [...resolved.notes, ...walkNotes, ...body.notes, ...flowNotes, timingNote(timings, Date.now() - start)];
+  const notes = [
+    ...(input.sourceNotes ?? []),
+    ...resolved.notes,
+    ...walkNotes,
+    ...body.notes,
+    ...flowNotes,
+    timingNote(timings, Date.now() - start),
+  ];
   // Every image-skip note kind counts toward the report's skipped-image total:
   // serializer `image-skipped`/`image-embed-failed`, walker `image-unresolved`
   // and `inline-image-skipped`.
@@ -328,10 +394,38 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       durationMs: Date.now() - start,
       filename: toDownloadFilename(input.details.title),
       notes,
+      complete: input.complete ?? true,
       scan,
       timings,
     },
   };
+}
+
+/** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
+function countImageBlocks(blocks: ExportBlock[]): number {
+  let count = 0;
+  const walk = (list: ExportBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "image":
+          count += 1;
+          break;
+        case "callout":
+        case "blockquote":
+        case "orientation":
+          walk(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walk(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+      }
+    }
+  };
+  walk(blocks);
+  return count;
 }
 
 /**
@@ -641,13 +735,24 @@ function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
  * instead of N; embedding (and thus relationship-id allocation) still
  * happens in document order through {@link ImageEmbedSeam.embed}.
  */
+interface ImageSeamOptions {
+  budget: AssetBudget;
+  signal?: AbortSignal;
+  onProgress?: ExportProgressCallback;
+  total: number;
+}
+
 function imageSeam(
   embedder: ImageEmbedder,
   assets: AssetFetcher,
   pageId: string,
-  timings: ExportTimings
+  timings: ExportTimings,
+  seamOpts: ImageSeamOptions
 ): ImageEmbedSeam {
+  const { budget, signal, onProgress, total } = seamOpts;
+  const context: HostCallContext = { signal };
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
+  let done = 0;
   // Keyed by the CANONICAL asset URL, not block identity: a page that shows
   // the same attachment twice downloads it once (the embedder already
   // deduplicates the media part; this deduplicates the network fetch).
@@ -659,7 +764,8 @@ function imageSeam(
       p = limit(async () => {
         const t = Date.now();
         try {
-          return await assets.fetch(ref);
+          // Thread the abort signal so a mid-export Ctrl-C stops the download.
+          return await assets.fetch(ref, context);
         } finally {
           timings.imageFetches += 1;
           timings.imageFetchMs += Date.now() - t;
@@ -674,22 +780,47 @@ function imageSeam(
     }
     return p;
   };
+  const budgetMeta = (block: ImageBlock): { filename: string; pageId?: string } => {
+    const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
+    const owningPage = block.source.kind === "attachment" ? block.source.pageId ?? pageId : pageId;
+    return { filename, ...(owningPage ? { pageId: owningPage } : {}) };
+  };
+  // One progress event per SETTLED image — success or per-image failure alike
+  // (matching the PDF engine's per-asset reporting) — so `done` reaches `total`
+  // even when some images degrade to report notes. A fatal budget breach aborts
+  // without reporting: the export is over, not progressing.
+  const reportDone = (detail?: string): void => {
+    done += 1;
+    onProgress?.({ phase: "assets", done, total, ...(detail !== undefined ? { detail } : {}) });
+  };
   return {
     prefetch(block: ImageBlock) {
       void fetchBytes(block);
     },
     async embed(block: ImageBlock) {
+      const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+      let bytes: Uint8Array;
       try {
-        const bytes = await fetchBytes(block);
-        const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+        bytes = await fetchBytes(block);
+      } catch (err) {
+        reportDone(name);
+        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+      }
+      // Budget accounting BEFORE embed: a total-cap breach is fatal and must
+      // abort the whole export (never a per-image warning), so it is NOT caught
+      // by the per-image failure branch below — it propagates out of the seam.
+      budget.account(bytes, budgetMeta(block));
+      try {
         const xml = embedder.embed(bytes, {
           alt: block.alt,
           name,
           widthPx: block.width,
           heightPx: block.height,
         });
+        reportDone(name);
         return { ok: true as const, xml };
       } catch (err) {
+        reportDone(name);
         return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
       }
     },
@@ -714,7 +845,8 @@ function diagramSeam(
   embedder: ImageEmbedder,
   rasterizer: SvgRasterizer,
   theme: DiagramTheme | undefined,
-  timings: ExportTimings
+  timings: ExportTimings,
+  budget: AssetBudget
 ): DiagramEmbedSeam {
   let count = 0;
   // Render + rasterize results, keyed by exact source: the serializer's prefetch
@@ -787,6 +919,14 @@ function diagramSeam(
       if (prep.kind === "failed") {
         return { ok: false as const, route: "failed" as const, reason: prep.reason };
       }
+      // Diagram bytes count against the SAME shared budget as page images
+      // (spec 002): both the SVG and its mandatory PNG fallback are embedded
+      // into the archive, so both are accounted. A total-cap breach is fatal —
+      // it stays OUTSIDE the try/catch below so it propagates out of the seam
+      // (aborting the export) instead of degrading to a code-block fallback.
+      // Repeated occurrences of the same diagram share bytes → budget dedups.
+      budget.account(new TextEncoder().encode(prep.svg), { filename: "diagram.svg" });
+      budget.account(prep.png, { filename: "diagram.png" });
       try {
         count += 1;
         const xml = embedder.embedSvg(prep.svg, prep.png, {
@@ -818,9 +958,14 @@ function diagramSeam(
  */
 function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
   if (block.source.kind === "attachment") {
+    // Composed tree/space documents carry the owning page on the block
+    // (ImageSource.pageId, spec 002); an attachment must be fetched from the
+    // page it lives on, not the export root. Single-page blocks have no
+    // per-block pageId and keep using the export's page.
+    const owningPage = block.source.pageId ?? pageId;
     return {
-      url: `/download/attachments/${encodeURIComponent(pageId)}/${encodeURIComponent(block.source.filename)}`,
-      pageId,
+      url: `/download/attachments/${encodeURIComponent(owningPage)}/${encodeURIComponent(block.source.filename)}`,
+      pageId: owningPage,
       filename: block.source.filename,
     };
   }

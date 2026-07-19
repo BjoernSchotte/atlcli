@@ -1,4 +1,5 @@
 import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -467,68 +468,110 @@ function serializeInline(
     .join("");
 }
 
-function minHeadingLevel(blocks: PreparedPdfBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        min = Math.min(min, block.level);
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        }
-        break;
-    }
-  }
-  return min;
+// Heading-level promotion now lives once in `@atlcli/confluence`
+// (`computeHeadingOffset`, imported above); the local min-heading scan that fed
+// `headingOffset` here was removed so both engines share one implementation.
+
+interface CollectedLabels {
+  /** Link resolution: raw anchor name / heading text → the emitted label. */
+  lookup: Map<string, string>;
+  /**
+   * The EXACT label each explicit-anchor heading / anchor block emits (by
+   * block identity), assigned once here so link resolution and serialization
+   * can never drift.
+   */
+  byBlock: Map<PreparedPdfBlock, string>;
 }
 
-function collectHeadingLabels(blocks: PreparedPdfBlock[]): Map<string, string> {
-  const labels = new Map<string, string>();
+function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
+  const lookup = new Map<string, string>();
+  const byBlock = new Map<PreparedPdfBlock, string>();
   const counts = new Map<string, number>();
-  const walk = (list: PreparedPdfBlock[]): void => {
+  const used = new Set<string>();
+
+  // ---- Pass 1: text-slug labels for anchor-less headings (existing scheme,
+  // byte-stable for single-page exports). Registered into `used` FIRST so an
+  // anchor whose sanitized name collides with a heading slug gets suffixed —
+  // duplicate Typst labels are a compile error.
+  const walkSlugs = (list: PreparedPdfBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
         case "heading": {
+          if (block.explicitAnchor) break;
           const text = inlinePlainText(block.content);
           const base = typstLabel(text);
           const count = (counts.get(base) ?? 0) + 1;
           counts.set(base, count);
           const label = count === 1 ? base : `${base}-${count}`;
-          if (!labels.has(text)) labels.set(text, label);
+          used.add(label);
+          if (!lookup.has(text)) lookup.set(text, label);
           break;
         }
         case "callout":
         case "blockquote":
         case "orientation":
-          walk(block.content);
+          walkSlugs(block.content);
           break;
         case "list":
-          for (const item of block.items) walk(item.content);
+          for (const item of block.items) walkSlugs(item.content);
           break;
         case "table":
-          for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          for (const row of block.rows) for (const cell of row.cells) walkSlugs(cell.content);
           break;
       }
     }
   };
-  walk(blocks);
-  return labels;
+
+  // ---- Pass 2: explicit-anchor headings + anchor blocks. Names are SANITIZED
+  // (raw Confluence anchor macro names like "Table of Contents" are not legal
+  // Typst labels — an unsanitized `<Table of Contents>` fails to compile) and
+  // deduped per document via `uniqueAnchorId` (duplicate labels are a compile
+  // error too). Composed documents arrive pre-sanitized and pre-unique, so
+  // sanitize+dedupe is a no-op there and their ids pass through unchanged.
+  const walkAnchors = (list: PreparedPdfBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "heading": {
+          if (!block.explicitAnchor) break;
+          const label = uniqueAnchorId(block.explicitAnchor, used);
+          used.add(label);
+          byBlock.set(block, label);
+          if (!lookup.has(block.explicitAnchor)) lookup.set(block.explicitAnchor, label);
+          break;
+        }
+        case "anchor": {
+          const label = uniqueAnchorId(block.name, used);
+          used.add(label);
+          byBlock.set(block, label);
+          if (!lookup.has(block.name)) lookup.set(block.name, label);
+          break;
+        }
+        case "callout":
+        case "blockquote":
+        case "orientation":
+          walkAnchors(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walkAnchors(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) walkAnchors(cell.content);
+          break;
+      }
+    }
+  };
+
+  walkSlugs(blocks);
+  walkAnchors(blocks);
+  return { lookup, byBlock };
 }
 
 interface Writer {
   sourceMap: PdfSourceMapEntry[];
   notes: ExportNote[];
   labels: Map<string, string>;
+  /** Pre-assigned labels for explicit-anchor headings + anchor blocks. */
+  anchorByBlock: Map<PreparedPdfBlock, string>;
   headingOffset: number;
   headingCounts: Map<string, number>;
   theme: PdfTheme;
@@ -655,10 +698,19 @@ function serializeBlock(
   switch (block.type) {
     case "heading": {
       summary = inlinePlainText(block.content);
-      const base = typstLabel(summary);
-      const count = (writer.headingCounts.get(base) ?? 0) + 1;
-      writer.headingCounts.set(base, count);
-      const label = count === 1 ? base : `${base}-${count}`;
+      // Explicit anchor (spec 002) → the heading emits the sanitized, deduped
+      // label the collect pass assigned (the same one links resolve to).
+      // Anchor-less headings keep the text-slug label + dedup counter, so
+      // single-page output is unchanged.
+      let label: string;
+      if (block.explicitAnchor) {
+        label = writer.anchorByBlock.get(block) ?? uniqueAnchorId(block.explicitAnchor, new Set());
+      } else {
+        const base = typstLabel(summary);
+        const count = (writer.headingCounts.get(base) ?? 0) + 1;
+        writer.headingCounts.set(base, count);
+        label = count === 1 ? base : `${base}-${count}`;
+      }
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
       const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
       if (context.inTable) {
@@ -810,13 +862,17 @@ function serializeBlock(
       });
       value = "";
       break;
-    // No-op renderings (T0.2): the walker never emits these yet; real rendering
-    // lands in T1.5. `writeMapped` still wraps them (source-map precedent).
+    // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      value = "";
+      value = "#pagebreak(weak: true)";
       break;
     case "anchor":
-      value = "";
+      // A zero-width labelable target at this position (`#box[]<label>`), so
+      // `page-<id>` chapter-start links and in-page anchor links resolve here.
+      // The label is the SANITIZED, per-document-unique id from the collect
+      // pass — raw Confluence anchor names ("Table of Contents") are not legal
+      // Typst labels and would fail the compile.
+      value = `#box[]<${writer.anchorByBlock.get(block) ?? uniqueAnchorId(block.name, new Set())}>`;
       break;
     case "orientation":
       // Transparent — no `#set page(flipped:)` yet (T1.5); children serialize
@@ -850,13 +906,13 @@ export function serializePdfDocument(
   options: PdfSerializeOptions
 ): PdfSourceBundle {
   const theme = resolvePdfTheme(options.theme);
-  const labels = collectHeadingLabels(document.blocks);
-  const min = minHeadingLevel(document.blocks);
+  const collected = collectHeadingLabels(document.blocks);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
-    labels,
-    headingOffset: min === Infinity ? 0 : min - 1,
+    labels: collected.lookup,
+    anchorByBlock: collected.byBlock,
+    headingOffset: computeHeadingOffset(document.blocks),
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
