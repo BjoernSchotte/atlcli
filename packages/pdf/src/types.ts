@@ -15,6 +15,13 @@ export interface PdfAssetRef {
   kind: "attachment" | "external";
   filename?: string;
   url?: string;
+  /**
+   * Provenance (spec 004). `"export-view"` marks a URL from a third-party app's
+   * rendered macro HTML (untrusted) that a host SHOULD route through its
+   * stricter external-asset fetcher/policy; `"page"`/absent is the trusted
+   * page-author path.
+   */
+  trust?: "page" | "export-view";
 }
 
 export interface PdfResolvedAsset {

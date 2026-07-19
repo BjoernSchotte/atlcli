@@ -41,6 +41,13 @@ export interface AssetRef {
   pageId?: string;
   /** Attachment filename, when known. */
   filename?: string;
+  /**
+   * Provenance (spec 004). `"page"` (default/absent) is a page-author ref on the
+   * trusted asset path; `"export-view"` is a URL from a third-party app's
+   * rendered macro HTML, which a host SHOULD route through its stricter
+   * `ExternalAssetFetcher`/policy rather than an unrestricted fetch.
+   */
+  trust?: "page" | "export-view";
 }
 
 /** How asset bytes are fetched (extension: session fetch · CLI: token client). */

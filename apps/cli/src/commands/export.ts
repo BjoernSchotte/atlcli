@@ -15,6 +15,7 @@ import {
   hasFlag,
   loadConfig,
   output,
+  type Profile,
 } from "@atlcli/core";
 import {
   AttachmentInfo,
@@ -113,6 +114,14 @@ export async function handleExport(
     fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored is not supported with --scope tree/space yet.");
   }
 
+  // spec 004: `--no-live-macros` suppresses live (port-backed) macro renderers
+  // for deterministic/compliance exports. The macro chain only exists on the
+  // ts engine, so fail fast rather than silently no-op on the python path.
+  const noLiveMacros = hasFlag(flags, "no-live-macros");
+  if (noLiveMacros && engine !== "ts") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--no-live-macros requires --engine ts.");
+  }
+
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
   }
@@ -145,6 +154,7 @@ export async function handleExport(
       resolvedTemplatePath,
       outputPath,
       embedImages,
+      liveMacros: !noLiveMacros,
       opts,
     });
     return;
@@ -166,6 +176,7 @@ export async function handleExport(
     pagePromise.catch(() => {});
     await exportWithTsEngine({
       client,
+      profile,
       pagePromise,
       pageId,
       baseUrl,
@@ -173,6 +184,7 @@ export async function handleExport(
       outputPath,
       embedImages,
       keepIgnored,
+      liveMacros: !noLiveMacros,
       opts,
     });
     return;
@@ -748,6 +760,7 @@ async function resolveContentByLabel(
 
 interface TsEngineArgs {
   client: ConfluenceClient;
+  profile: Profile;
   pagePromise: Promise<ConfluencePageDetails>;
   pageId: string;
   baseUrl: string;
@@ -756,6 +769,8 @@ interface TsEngineArgs {
   embedImages: boolean;
   /** `--keep-ignored`: run export-control macros in passthrough mode (spec 003). */
   keepIgnored?: boolean;
+  /** spec 004: `false` under `--no-live-macros` suppresses port-backed macros. */
+  liveMacros: boolean;
   opts: OutputOptions;
 }
 
@@ -777,9 +792,36 @@ interface TsEngineArgs {
  * token auth. The listing is cached per page — one extra round-trip per page,
  * not per image. External image URLs are absolute and fetched without auth.
  */
+/**
+ * Build the spec-004 macro-resolution options for a ts-engine export. Lazily
+ * imports the wiring module + Jira client so the macro path adds no startup
+ * cost to exports that don't need it. A `JiraClient` is always constructed from
+ * the same profile (Cloud shares the site); if Jira isn't accessible the chain
+ * degrades gracefully (403/404 → note, never a hard failure).
+ */
+async function buildTsEngineMacroOptions(
+  profile: Profile,
+  client: ConfluenceClient,
+  targetEngine: "docx" | "pdf",
+  live: boolean
+) {
+  const [{ buildMacroResolutionOptions }, { JiraClient }] = await Promise.all([
+    import("./export-macros-wiring.js"),
+    import("@atlcli/jira"),
+  ]);
+  return buildMacroResolutionOptions({
+    profile,
+    confluence: client,
+    jira: new JiraClient(profile),
+    targetEngine,
+    live,
+  });
+}
+
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const {
     client,
+    profile,
     pagePromise,
     pageId,
     baseUrl,
@@ -787,6 +829,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     outputPath,
     embedImages,
     keepIgnored,
+    liveMacros,
     opts,
   } = args;
   // Everything local (engine import + template bytes) loads WHILE the page
@@ -916,6 +959,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       templates: { getBytes: async () => templateBytes },
       assets: tokenAssetFetcher(client, assetCache),
       rasterizer: rasterizer ?? undefined,
+      macros: await buildTsEngineMacroOptions(profile, client, "docx", liveMacros),
       output: fileOutputSink(resolvedOutputPath),
     }
   );
@@ -942,12 +986,14 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
 
 interface TreeEngineArgs {
   client: ConfluenceClient;
-  profile: any;
+  profile: Profile;
   request: ParsedExportRequest;
   baseUrl: string;
   resolvedTemplatePath: string;
   outputPath: string;
   embedImages: boolean;
+  /** spec 004: `false` under `--no-live-macros`. */
+  liveMacros: boolean;
   opts: OutputOptions;
 }
 
@@ -1032,7 +1078,7 @@ function failTreeExport(opts: OutputOptions, error: unknown): never {
  * scope still recorded for the `--json` report.
  */
 async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
-  const { client, profile, request, baseUrl, resolvedTemplatePath, outputPath, embedImages, opts } =
+  const { client, profile, request, baseUrl, resolvedTemplatePath, outputPath, embedImages, liveMacros, opts } =
     args;
 
   // Ctrl-C → AbortController, installed BEFORE any network work so root
@@ -1162,6 +1208,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
         templates: { getBytes: async () => templateBytes },
         assets: tokenAssetFetcher(client, assetCache),
         ...(rasterizer ? { rasterizer } : {}),
+        macros: await buildTsEngineMacroOptions(profile, client, "docx", liveMacros),
         output: fileOutputSink(resolvedOutputPath),
       }
     );
@@ -1328,6 +1375,10 @@ Options:
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
   --keep-ignored      Keep scroll-only/scroll-ignore content for debugging
                       (--engine ts, single page; export is marked in the report)
+  --no-live-macros    Deterministic export: skip live (Jira/export_view/attachment)
+                      macro rendering. Pure macros (TOC, includes) still render.
+                      Requires --engine ts. NOT network-free — the page body and
+                      its own attachments still fetch.
   --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
                       (isomorphic @atlcli/docx engine — same as the browser
                       extension; $scroll.* placeholders + image embedding +
