@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock } from "@atlcli/confluence";
+import type { ExportBlock, ExportNode } from "@atlcli/confluence";
+import { composeChapters } from "@atlcli/confluence";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
 
@@ -761,6 +762,50 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     expect(bundle.main).toContain("<wide-section>");
     expect(bundle.main).toContain("#link(<wide-section>)");
     expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+
+  it("a composed multi-page document serializes with promotion offset 0 (chapter levels preserved)", async () => {
+    // Root (effectiveDepth 0 → chapter level 1) + child (effectiveDepth 1 →
+    // chapter level 2). Since the composed document already starts at level 1,
+    // the shared computeHeadingOffset yields 0 and the level-2 chapter is NOT
+    // wrongly promoted back to level 1.
+    const nodes: ExportNode[] = [
+      {
+        kind: "page",
+        pageId: "1",
+        title: "Root",
+        depth: 0,
+        effectiveDepth: 0,
+        parentId: null,
+        position: 0,
+        blocks: [],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+      {
+        kind: "page",
+        pageId: "2",
+        title: "Child",
+        depth: 1,
+        effectiveDepth: 1,
+        parentId: "1",
+        position: 0,
+        // Body starts at H3 — per-page promotion happens during composition, not
+        // in the engine, so the engine sees a document already normalized to L1.
+        blocks: [{ type: "heading", level: 3, content: [{ type: "text", text: "Body" }] }],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+    ];
+    const { blocks } = composeChapters(nodes, { chapterBreak: "none" });
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    // Offset 0: the level-1 Root chapter stays level 1, the level-2 Child chapter
+    // stays level 2 (a nonzero offset would collapse them).
+    expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#text("Root")]');
+    expect(bundle.main).toContain('#heading(level: 2, outlined: true)[#text("Child")]');
   });
 });
 

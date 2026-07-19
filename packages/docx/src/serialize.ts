@@ -19,7 +19,7 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
-import { readableTextColor } from "@atlcli/confluence";
+import { computeHeadingOffset, readableTextColor } from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
 import {
   calloutTable,
@@ -226,49 +226,9 @@ function placeMarker(frag: string, markerRun: string): string {
 // Blocks
 // ---------------------------------------------------------------------------
 
-/**
- * Heading-level normalization ("promotion"), matching Scroll Office.
- *
- * Confluence pages usually omit H1 (the page title is the implicit Heading 1)
- * and start their body headings at H2. Preserving levels would leave the top
- * TOC level empty, so Scroll promotes the SHALLOWEST heading in the document to
- * Heading 1. We do the same: `offset = minLevel - 1`, and every heading's
- * effective level is `block.level - offset` (shallowest → 1).
- *
- * The scan spans the WHOLE block tree — headings nested in callouts,
- * blockquotes, list items and table cells count — so a single document-wide
- * offset governs every heading. A document with no headings yields offset 0
- * (no-op); one already starting at H1 (minLevel 1) also yields offset 0.
- */
-function computeHeadingOffset(blocks: ExportBlock[]): number {
-  const min = minHeadingLevel(blocks);
-  return min === Infinity ? 0 : min - 1;
-}
-
-/** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
-function minHeadingLevel(blocks: ExportBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        if (block.level < min) min = block.level;
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows)
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        break;
-    }
-  }
-  return min;
-}
+// Heading-level promotion ("promotion", matching Scroll Office) now lives once
+// in `@atlcli/confluence` (`computeHeadingOffset`, imported above) — the single
+// home of the min-heading scan both this engine and the PDF engine consume.
 
 /**
  * Kick off every deferrable cost up front (perf): image asset fetches and

@@ -15,6 +15,8 @@ import {
   type TreeFetchProgress,
 } from "./tree-fetch.js";
 import type { ExportScope } from "./export-scope.js";
+import { composeChapters } from "./compose-document.js";
+import type { ExportBlock } from "./export-blocks.js";
 
 // ---------------------------------------------------------------------------
 // In-memory TreeSource (a legitimate port implementation, NOT an API mock)
@@ -842,5 +844,52 @@ describe("applyLabelFilter — pure", () => {
     );
     expect(out.map(nodeId)).toEqual(["b"]);
     expect(notes.filter((n) => n.code === "root-filter-bypassed").length).toBe(1);
+  });
+
+  // PLAN reparenting matrix: reparented effectiveDepth must drive chapter levels
+  // THROUGH composeChapters (not just be present on the raw fetch result) — proof
+  // that a filtered-out intermediate page never leaves an orphaned deep chapter.
+  test("reparented effectiveDepth drives chapter levels through composeChapters", () => {
+    // root(0) -> mid(1) -> leaf(2); remove mid page-only → leaf reparents to
+    // effectiveDepth 1. Its chapter heading must land at level 2, not level 3.
+    const nodes: ExportNode[] = [
+      { ...mkPage("root", 0, null), title: "Root", blocks: [] },
+      { ...mkPage("mid", 1, "root"), title: "Mid", blocks: [] },
+      {
+        ...mkPage("leaf", 2, "mid"),
+        title: "Leaf",
+        blocks: [
+          { type: "heading", level: 2, content: [{ type: "text", text: "Body" }] },
+        ] as ExportBlock[],
+      },
+    ];
+    const labels = new Map<string, string[]>([
+      ["root", []],
+      ["mid", ["internal"]],
+      ["leaf", []],
+    ]);
+    const { nodes: filtered } = applyLabelFilter(nodes, labels, {
+      exclude: ["internal"],
+      excludeMode: "page-only",
+    });
+    const leaf = filtered.find((n) => nodeId(n) === "leaf")!;
+    expect(leaf.effectiveDepth).toBe(1);
+
+    const { blocks } = composeChapters(filtered, { chapterBreak: "none" });
+    // Chapter headings: Root at level 1 (eff 0), Leaf at level 2 (eff 1 → clamp+1).
+    const chapters = blocks.filter(
+      (b): b is Extract<ExportBlock, { type: "heading" }> =>
+        b.type === "heading" && b.explicitAnchor !== undefined
+    );
+    const rootChapter = chapters.find((h) => h.explicitAnchor === "page-root")!;
+    const leafChapter = chapters.find((h) => h.explicitAnchor === "page-leaf")!;
+    expect(rootChapter.level).toBe(1);
+    expect(leafChapter.level).toBe(2);
+    // The leaf's own body H2 shifts to sit directly below its level-2 chapter (→ 3),
+    // never orphaned at a level with no surviving ancestor chapter.
+    const bodyHeading = blocks.find(
+      (b) => b.type === "heading" && b.explicitAnchor === "pleaf-body"
+    ) as Extract<ExportBlock, { type: "heading" }>;
+    expect(bodyHeading.level).toBe(3);
   });
 });

@@ -121,6 +121,20 @@ describe("storageToBlocks — links & mentions", () => {
     ]);
   });
 
+  test("page link carries ri:content-id when the page picker emitted one", () => {
+    const out = blocks(
+      '<p><ac:link ac:anchor="sec"><ri:page ri:content-id="123456" ri:content-title="Target" ri:space-key="DOCSY"/><ac:plain-text-link-body>see</ac:plain-text-link-body></ac:link></p>'
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toEqual([
+      {
+        type: "link",
+        target: { kind: "page", contentTitle: "Target", contentId: "123456", spaceKey: "DOCSY", anchor: "sec" },
+        content: [{ type: "text", text: "see" }],
+      },
+    ]);
+  });
+
   test("attachment link falls back to filename", () => {
     const out = blocks(
       '<p><ac:link><ri:attachment ri:filename="spec.pdf"/></ac:link></p>'
@@ -400,6 +414,30 @@ describe("storageToBlocks — unknown macros", () => {
     const { blocks: b, notes } = storageToBlocks('<ac:structured-macro ac:name="jira"/>');
     expect(b).toEqual([{ type: "unknown", macroName: "jira" }]);
     expect(notes[0]).toMatchObject({ level: "info", code: "macro-not-rendered", macroName: "jira" });
+  });
+});
+
+describe("storageToBlocks — anchor macro", () => {
+  test("anchor macro round-trips to an anchor block, not an unknown one", () => {
+    const { blocks: b, notes } = storageToBlocks(
+      '<ac:structured-macro ac:name="anchor"><ac:parameter ac:name="">myanchor</ac:parameter></ac:structured-macro>'
+    );
+    expect(b).toEqual([{ type: "anchor", name: "myanchor" }]);
+    // No unknown-macro / macro-not-rendered note is produced for a mapped macro.
+    expect(notes).toEqual([]);
+    expect(JSON.stringify(b)).not.toContain("unknown");
+  });
+
+  test("anchor macro with an omitted ac:name attribute still resolves its name", () => {
+    const b = blocks(
+      '<ac:structured-macro ac:name="anchor"><ac:parameter>bare</ac:parameter></ac:structured-macro>'
+    );
+    expect(b).toEqual([{ type: "anchor", name: "bare" }]);
+  });
+
+  test("nameless anchor macro falls back to lossless unknown capture", () => {
+    const { blocks: b } = storageToBlocks('<ac:structured-macro ac:name="anchor"/>');
+    expect(b).toEqual([{ type: "unknown", macroName: "anchor" }]);
   });
 });
 

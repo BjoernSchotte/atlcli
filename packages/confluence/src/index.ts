@@ -2,6 +2,7 @@ export * from "./atlcli-dir.js";
 export * from "./client.js";
 export * from "./comments.js";
 export * from "./diff.js";
+export * from "./compose-document.js";
 export * from "./export-blocks.js";
 export * from "./export-scope.js";
 export * from "./in-order-limiter.js";

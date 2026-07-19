@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { storageToBlocks, type ExportBlock, type InlineNode } from "@atlcli/confluence";
+import { composeChapters, storageToBlocks, type ExportBlock, type ExportNode, type InlineNode } from "@atlcli/confluence";
 import {
   serializeBlocks,
   serializeInline,
@@ -191,6 +191,48 @@ describe("serializeBlocks — heading-level promotion (match Scroll Office)", ()
     expect(xml).toContain("just prose");
     expect(xml).not.toContain("<w:outlineLvl");
     expect(xml).not.toContain("<w:pStyle");
+  });
+
+  it("a composed multi-page document yields promotion offset 0 (chapter levels preserved)", async () => {
+    // A composed document always starts at chapter level 1, so the shared
+    // computeHeadingOffset yields 0: the level-1 root chapter and the level-2
+    // child chapter keep their levels (a nonzero offset would collapse them).
+    const nodes: ExportNode[] = [
+      {
+        kind: "page",
+        pageId: "1",
+        title: "Root",
+        depth: 0,
+        effectiveDepth: 0,
+        parentId: null,
+        position: 0,
+        blocks: [],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+      {
+        kind: "page",
+        pageId: "2",
+        title: "Child",
+        depth: 1,
+        effectiveDepth: 1,
+        parentId: "1",
+        position: 0,
+        blocks: [{ type: "heading", level: 3, content: [{ type: "text", text: "Body" }] }],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+    ];
+    const { blocks } = composeChapters(nodes);
+    const styles = parseStyleNames(
+      stylesXml(headingStyle("Heading1", "Heading 1") + headingStyle("Heading2", "Heading 2"))
+    );
+    const { xml } = await serializeBlocks(blocks, { styleNames: styles });
+    // Root chapter → level 1; Child chapter → level 2 (offset 0, no promotion).
+    expect(xml).toContain('<w:outlineLvl w:val="0"/>');
+    expect(xml).toContain('<w:outlineLvl w:val="1"/>');
+    // The lone level-2 chapter is NOT promoted back to a top-level Heading 1.
+    expect(xml).toContain('<w:pStyle w:val="Heading2"/>');
   });
 });
 

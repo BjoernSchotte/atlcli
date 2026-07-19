@@ -1,4 +1,5 @@
 import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import { computeHeadingOffset } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -467,30 +468,9 @@ function serializeInline(
     .join("");
 }
 
-function minHeadingLevel(blocks: PreparedPdfBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        min = Math.min(min, block.level);
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        }
-        break;
-    }
-  }
-  return min;
-}
+// Heading-level promotion now lives once in `@atlcli/confluence`
+// (`computeHeadingOffset`, imported above); the local min-heading scan that fed
+// `headingOffset` here was removed so both engines share one implementation.
 
 function collectHeadingLabels(blocks: PreparedPdfBlock[]): Map<string, string> {
   const labels = new Map<string, string>();
@@ -851,12 +831,11 @@ export function serializePdfDocument(
 ): PdfSourceBundle {
   const theme = resolvePdfTheme(options.theme);
   const labels = collectHeadingLabels(document.blocks);
-  const min = minHeadingLevel(document.blocks);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
     labels,
-    headingOffset: min === Infinity ? 0 : min - 1,
+    headingOffset: computeHeadingOffset(document.blocks),
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),

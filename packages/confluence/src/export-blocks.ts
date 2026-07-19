@@ -44,7 +44,14 @@ export type InlineMark =
 /** Where a link points. External URLs, Confluence page refs, attachments, in-page anchors. */
 export type LinkTarget =
   | { kind: "external"; href: string }
-  | { kind: "page"; contentTitle: string; spaceKey?: string; anchor?: string }
+  /**
+   * A link to another Confluence page. `contentId` is the `ri:content-id`
+   * attribute Confluence emits for links created via its page picker; it is the
+   * most reliable target key when duplicate page titles exist (spec 002 anchor
+   * rewrite resolves by `contentId` first). Optional + backwards compatible:
+   * hand-authored `ri:content-title`-only links leave it unset.
+   */
+  | { kind: "page"; contentTitle: string; contentId?: string; spaceKey?: string; anchor?: string }
   | { kind: "attachment"; filename: string }
   | { kind: "anchor"; anchor: string };
 
@@ -866,6 +873,17 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     return body ? walkBlocks(body.children, ctx) : [];
   }
 
+  // Anchor macro (`<ac:structured-macro ac:name="anchor">`): the anchor name is
+  // the macro's first (unnamed) parameter. Map it to the typed `anchor` block so
+  // the composition anchor rewrite (spec 002) can register it as a jump target,
+  // instead of dropping it into the unknown-macro placeholder branch below (which
+  // silently loses every explicit Scroll/Confluence anchor).
+  if (macroName === "anchor") {
+    const name = macroParam(el, "");
+    if (name) return [{ type: "anchor", name }];
+    // A nameless anchor macro anchors nothing — fall through to unknown capture.
+  }
+
   // Anything else is an unknown/unhandled macro → explicit block + note. We
   // consult KNOWN_MACROS (shared with the converter) only to grade the note.
   const known = KNOWN_MACROS.includes(macroName);
@@ -1101,10 +1119,15 @@ function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
 
   if (page) {
     const contentTitle = page.attrs["ri:content-title"] ?? "";
+    const contentId = page.attrs["ri:content-id"] || undefined;
     const spaceKey = page.attrs["ri:space-key"] || undefined;
     const anchor = anchorAttr || undefined;
     const content = hasMeaningfulInline(bodyInline) ? bodyInline : [{ type: "text" as const, text: contentTitle }];
-    return [{ type: "link", target: { kind: "page", contentTitle, spaceKey, anchor }, content }];
+    const target: Extract<LinkTarget, { kind: "page" }> = { kind: "page", contentTitle };
+    if (contentId) target.contentId = contentId;
+    if (spaceKey) target.spaceKey = spaceKey;
+    if (anchor) target.anchor = anchor;
+    return [{ type: "link", target, content }];
   }
 
   if (attachment) {

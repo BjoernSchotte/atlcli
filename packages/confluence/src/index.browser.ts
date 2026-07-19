@@ -15,6 +15,7 @@
 
 export * from "./client.js";
 export * from "./markdown.js";
+export * from "./compose-document.js";
 export * from "./export-blocks.js";
 export * from "./export-scope.js";
 export * from "./in-order-limiter.js";
