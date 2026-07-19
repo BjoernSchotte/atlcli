@@ -158,9 +158,11 @@ only timing and host-specific free text. This requires `ExportNote` to carry
 stable source provenance (`pageId`, `pageTitle`, `pageUrl`, `blockPath`,
 `assetName`) beyond today's `level`/`code`/`message`/`macroName`
 (`packages/confluence/src/export-blocks.ts:115-122`); see Tasks and the
-cross-plan note there — the type lives in the hot file owned in sequence by
-001→003→004, so 011 specifies and gates the contract, the type extension
-itself lands coordinated with that sequence.
+cross-plan note there — the type lives in the hot file sequenced
+001→003→004, and the `source` field is owned by 003-content-features
+(`003-content-features/PLAN.md`, Walker tasks), which lands it coordinated
+with that sequence; 011 specifies and gates the contract, it does not
+implement the type extension.
 
 **Security ownership stays with the feature lane that imports the untrusted
 input; 011 is the cross-plan gate.** 006 owns the SVG sanitizer consumed by
@@ -421,23 +423,24 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
 - [ ] HEAD-bound security attestation artifact: `scripts/security/
       attest.ts` emits `security-attestation.json` (`{commit, date,
       veraPdfDigestOk, veraPdfBaselineDelta, securityReviewNote, m1
-      AcceptanceOk}`) as a CI artifact on every push to `main` and on
-      release tags — a machine-checkable summary a future release-gate job
-      can `needs:` on. **Wiring this artifact as a hard `needs:` gate on
-      every publish job is 009's responsibility** (it owns the consolidated
-      release pipeline per `specs/export-expansion/009-package-publishing/
-      PLAN.md`, which already commits to refusing the first public
-      `npm publish` without a T4.7 security review); recorded as a
-      cross-plan dependency, not built here (see Risks and
-      crossPlanImpacts). **Schema gap with 009's release sign-off**: 009's
-      "machine-checked release sign-off artifact" task wants a superset of
-      this shape (reviewed tarball SHA-512/SRI digests, a named reviewer,
-      structured T4.7 scope/result rather than a free-text
-      `securityReviewNote`) — the two folders should converge on one
-      artifact rather than 009 validating a second, differently-shaped
-      file; whichever of 009/011 lands first should own the canonical
-      schema and the other extends/consumes it (open point, not decided
-      here).
+      AcceptanceOk}`, unchanged shape) as a CI artifact on every push to
+      `main` and on release tags — a machine-checkable summary a future
+      release-gate job can `needs:` on. **Decided (was an open point in an
+      earlier draft): 009-package-publishing owns the canonical release
+      sign-off schema; this artifact is that schema's embedded `security`
+      sub-object, not a second parallel file.** 009's "machine-checked
+      release sign-off artifact" task (`009-package-publishing/PLAN.md`,
+      Versioning & release) defines a superset schema (reviewed tarball
+      SHA-512/SRI digests, a named reviewer, structured T4.7 scope/result)
+      that embeds exactly this artifact's fields under a `security` key;
+      this task's output file name/path follows whatever 009's schema
+      specifies for that embedding, still produced on the same cadence
+      (every `main` push and release tag) described above. **Wiring this
+      artifact as a hard `needs:` gate on every publish job is 009's
+      responsibility** (it owns the consolidated release pipeline and
+      already commits to refusing the first public `npm publish` without a
+      T4.7 security review); recorded as a cross-plan dependency, not built
+      here (see Risks and crossPlanImpacts).
 
 ### Security hardening
 

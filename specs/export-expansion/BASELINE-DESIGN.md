@@ -57,6 +57,12 @@ export async function fetchExportTree(
 ): Promise<{ pages: ExportPageNode[]; notes: ExportNote[] }>
 ```
 
+*Superseded: the implemented model discriminates tree nodes by kind —
+`ExportNode = ExportPageNode | ExportFolderNode` (folder nodes carry no
+`blocks`/`storage`), fetched via `TreeFetchOptions`/`FetchExportTreeResult`
+(`{ nodes, notes, complete }`), not a bare `{ pages, notes }` tuple — see
+002-scope-orchestration/PLAN.md.*
+
 Implementierungsdetails `fetchExportTree`:
 - **Reihenfolge**: Tiefensuche pre-order; Kindreihenfolge aus `ConfluenceClient.getChildrenWithPosition` (`client.ts:911`, echte UI-Position) — nicht das CQL-basierte `getChildren` (`client.ts:998`), das keine Positionsgarantie hat. Der Node-Adapter des Ports mappt 1:1 auf den bestehenden Client; `getFolderChildren` (`client.ts:2521`) für Folder-Knoten (Folder = Struktur ohne Body → Kapitel-Heading ohne Inhalt).
 - **Zyklen/Duplikate**: `visited: Set<pageId>`; bei Wiedersehen `ExportNote { code: "tree-cycle" }` und Skip. Confluence-Bäume sind azyklisch, aber der Guard kostet nichts und macht die Funktion gegen kaputte APIs robust.
@@ -72,6 +78,11 @@ export interface ComposeOptions {
 export function composeChapters(pages: ExportPageNode[], opts?: ComposeOptions):
   { blocks: ExportBlock[]; notes: ExportNote[] }
 ```
+
+*Superseded: `composeChapters` is total over `ExportNode` (not
+`ExportPageNode`-only) via an exhaustive `switch (node.kind)` — `"folder"`
+nodes emit a chapter heading with no body content — see
+002-scope-orchestration/PLAN.md.*
 
 Dafür zwei kleine, rückwärtskompatible Modell-Erweiterungen in `export-blocks.ts`:
 - `{ type: "heading"; ...; explicitAnchor?: string }` — stabiler Anker unabhängig vom Text (nötig für Duplikat-Titel und seitenübergreifende Links).
@@ -829,6 +840,10 @@ Heute endet jedes nicht nativ konvertierte Makro in `walkMacro` (`packages/confl
     macroId?: string }                        // ac:macro-id (für REST-Makro-Rendering)
 ```
 
+*Superseded: the implemented model uses an ordered `MacroParameter[]`
+(named/unnamed params with `ri:*` refs) — see
+001-exportblock-model/PLAN.md and 004-macro-renderer/PLAN.md.*
+
 **2. Async-Resolver-Pass zwischen `storageToBlocks` und Engine** (neues Paket `packages/export-macros`, nur Typ-Dependency auf `@atlcli/confluence`):
 
 ```ts
@@ -852,6 +867,10 @@ export interface MacroExportContext {
 export async function resolveMacroBlocks(blocks: ExportBlock[],
   registry: MacroRenderer[], ctx: MacroExportContext): Promise<{ blocks: ExportBlock[]; notes: ExportNote[] }>
 ```
+
+*Superseded: the implemented model uses an ordered `MacroParameter[]`
+(named/unnamed params with `ri:*` refs) — see
+001-exportblock-model/PLAN.md and 004-macro-renderer/PLAN.md.*
 
 `resolveMacroBlocks` traversiert auch verschachtelte Container (table/callout/list/blockquote — gleiche Walk-Struktur wie `countPrepared` in `packages/pdf/src/run-export.ts:74`). Einhängung: als optionales Feld `macros?` in `ExportEnv` (`packages/docx/src/env.ts:59`), angewandt in `exportDocx` direkt nach `storageToBlocks` (`packages/docx/src/export.ts:235`), und in `PdfExportEnv` (`packages/pdf/src/run-export.ts:33`), angewandt in der `preparing`-Phase vor `preparePdfDocument`. Ports statt Clients: CLI adaptiert `JiraClient`/`ConfluenceClient`, Extension nutzt Session-`fetch`, weitere Hosts ihren jeweiligen HTTP-Adapter — **eine** Renderer-Implementierung für alle Hosts.
 

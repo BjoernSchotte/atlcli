@@ -333,6 +333,27 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `apps/cli/src/commands/export.ts` that sets `exportControls:
       "passthrough"` (not "omits `exporter`" — see Architecture) for
       debugging, documented in the command help.
+- [ ] **`ExportNote.source` provenance contract (owner: this plan).** Add an
+      additive optional `source?: { pageId?: string; pageTitle?: string;
+      pageUrl?: string; blockPath?: string; assetName?: string }` field to
+      `ExportNote` (`packages/confluence/src/export-blocks.ts:116`), the
+      shape 011-quality-gates specifies for its cross-engine report-parity
+      check (`011-quality-gates/PLAN.md`, Architecture — "Parity is a report
+      contract too"). Introduce the field in the same commit that adds this
+      plan's new note codes and populate `source.pageId`/`pageTitle`/
+      `pageUrl` from the walker's page context and `source.blockPath` from
+      the emitting block's tree position for every code this plan adds
+      (`scroll-ignore-applied`, `scroll-only-applied`,
+      `scroll-ignore-skipped-other-exporter`,
+      `scroll-only-skipped-other-exporter`, the orientation-nesting warning,
+      the exporter-mismatch fail-safe warning, the scroll-title
+      caption-fallback note, `pagebreak-suppressed-in-container`,
+      `orientation-suppressed-in-container`, `table-text-scaled`,
+      `table-overflow-warned`) — so the field lands populated for at least
+      one plan's notes rather than as a dormant optional. 004-macro-renderer
+      adopts the same field for its own note codes once this lands (see
+      `004-macro-renderer/PLAN.md`, Registry & resolver pass — "Note
+      taxonomy").
 
 ### DOCX rendering
 
@@ -763,6 +784,10 @@ real instance.
 - Follow-up packages C1/C2/C7–C9 remain as unchecked tasks with their design
   anchored here (not required for this plan's merge, but the model/API choices
   made here must not block them).
+- `ExportNote.source` (`pageId`/`pageTitle`/`pageUrl`/`blockPath`/
+  `assetName`) lands as an additive optional field on `ExportNote`, populated
+  for every new note code this plan introduces — satisfies
+  011-quality-gates' report-parity contract (see Walker tasks).
 - `docs/` updated with a feature guide for export-control macros, page breaks,
   orientation regions, and captions, including a compatibility matrix of
   supported `scroll-*` macros (docs are first-class; same PR as the behavior
@@ -813,19 +838,12 @@ real instance.
   scoped as possibly not landing. C9 must not silently degrade to "explicit >
   macro > page" without a note explaining the content-property source was
   unavailable — see the C9 task's `export-title-property-fetch-failed` note.
-- **`ExportNote.source` provenance contract (owned by 011, coordinated
-  001→003→004, not a task of this plan):** 011-quality-gates specifies that
-  `ExportNote` needs stable source fields (`pageId`, `pageTitle`, `pageUrl`,
-  `blockPath`, `assetName`) beyond today's `level`/`code`/`message`/
-  `macroName` (`export-blocks.ts:116-122`), gated by its cross-engine report-
-  parity check. This plan's new note codes (`scroll-ignore-applied`,
-  `scroll-only-applied`, orientation-nesting warning, exporter-mismatch
-  fail-safe warning, scroll-title caption-fallback) do not block on that
-  contract and should land on schedule — but once `ExportNote.source` exists,
-  a follow-up commit must backfill it on these codes, otherwise this plan's
-  own goal ("why is section X missing is never a mystery") stops being true
-  the moment content lives in a multi-page tree export (Lane A) instead of a
-  single page. Track here so the follow-up isn't missed.
+- **Resolved (was tracked as an untaken follow-up in an earlier draft):
+  `ExportNote.source` provenance contract.** Owner is this plan (003),
+  coordinated 001→003→004 — see the Walker task above that adds the
+  additive `source` field to `ExportNote` and populates it for every note
+  code this plan introduces, satisfying 011-quality-gates' cross-engine
+  report-parity check (`011-quality-gates/PLAN.md`).
 - Resolved (was open in an earlier draft): `pageBreak`/`orientation` inside
   callouts now follow the same container matrix as table cells — suppress +
   container-specific note, children kept — see Architecture's "Layout-control

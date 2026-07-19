@@ -665,31 +665,35 @@ model); note it as the designated fallback.
       bullet) matches `GITHUB_SHA`, then `npm publish` each package via
       OIDC in dependency order. Any gate failure fails the job and leaves
       nothing published for that package.
-- [ ] **Define the machine-checked release sign-off artifact.** Add a
-      committed schema (`specs/export-expansion/009-package-publishing/
+- [ ] **Define the machine-checked release sign-off artifact — the
+      canonical schema (decided: one schema, not two).** Add a committed
+      schema (`specs/export-expansion/009-package-publishing/
       release-signoff.schema.json` or a `scripts/release-signoff.ts` type)
       for the record the `publish-packages` job (and `release.ts`'s
       pre-flight) validate before a **first-ever** public-registry publish
       runs without `--dry-run`: commit SHA it's bound to, M1 acceptance
       reference (the M1 conformance run — see Dependencies — has no
       artifact today; this task defines the shape it must produce, not
-      just what 009 consumes), reviewed tarball SHA-512/SRI digests, the
-      T4.7 security-review scope and result, and the reviewer. The
-      validator hard-fails (not warns) on a missing file, a SHA mismatch
-      against `GITHUB_SHA`, or a schema violation. **Cross-plan note**:
-      producing this artifact is out of scope for this folder — see
-      `crossPlanImpacts`. **Reconcile with 011's `security-attestation.json`
-      rather than shipping two sign-off files**: `011-quality-gates/PLAN.md`
-      (`scripts/security/attest.ts`) already emits a HEAD-bound
-      `security-attestation.json` with `{commit, date, veraPdfDigestOk,
-      veraPdfBaselineDelta, securityReviewNote, m1AcceptanceOk}` on every
-      `main` push and release tag — narrower than this schema (no tarball
-      digests, no reviewer field, boolean flags instead of structured
-      scope/result). Whichever folder's artifact lands first should be the
-      one this validator checks (extended with the missing fields, i.e.
-      tarball digests + reviewer, rather than a second parallel file); this
-      is an open point for whoever implements 009/011's overlapping tasks
-      to settle, not decided here.
+      just what 009 consumes), reviewed tarball SHA-512/SRI digests, a
+      named reviewer, structured T4.7 scope/result, and an embedded
+      `security` sub-object carrying exactly 011-quality-gates'
+      `security-attestation.json` fields (`{commit, date, veraPdfDigestOk,
+      veraPdfBaselineDelta, securityReviewNote, m1AcceptanceOk}` —
+      `011-quality-gates/PLAN.md`, PDF/UA — "HEAD-bound security attestation
+      artifact"), unchanged shape. This is the canonical release sign-off
+      artifact: 011's `scripts/security/attest.ts` job keeps emitting that
+      sub-object on every push to `main` and on release tags (same cadence
+      and shape as today, still independently useful outside a release);
+      009's validator (local pre-flight **and** the `publish-packages` CI
+      job) validates the whole assembled artifact — top-level fields plus
+      the embedded `security` sub-object — as one record. The validator
+      hard-fails (not warns) on a missing file, a SHA mismatch against
+      `GITHUB_SHA`, a stale/mismatched `security.commit`, or a schema
+      violation. **Cross-plan note**: assembling the artifact still needs a
+      release-time step that folds 011's `security-attestation.json` output
+      into this schema's `security` key — see `crossPlanImpacts` for who
+      wires that step; the schema itself, and the fact that it is the one
+      canonical sign-off file, are decided here.
 - [ ] Extend `scripts/release.ts` with a package-publish stage that
       **triggers and polls** the `publish-packages` workflow run for the
       pushed tag (mirroring the existing `waitForRelease()` polling

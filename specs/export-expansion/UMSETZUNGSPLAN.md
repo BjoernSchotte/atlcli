@@ -28,14 +28,37 @@ gegen den Confluence-Space `DOCSY`, Profil `mayflower` — nie mocken):
 Leitidee: **Parallelisierung durch Datei-Ownership.** Jede Lane besitzt eine
 disjunkte Menge von Paketen/Dateien; Lanes ohne gemeinsame Dateien laufen
 gleichzeitig (mehrere Entwickler oder Agent-Worktrees) ohne Merge-Konflikte.
-Die zwei Hot-Files mit Mehrfach-Interesse sind explizit sequenziert:
+Die Hot-Files mit Mehrfach-Interesse sind explizit sequenziert bzw. per
+additiver Konvention entschärft:
 
 - `packages/confluence/src/export-blocks.ts` — gewollt von Block-Modell (C),
   Makro-Registry (E) und Scope-Komposition (A). → Ein Owner, drei geordnete
   Landungen (T1.1 → T1.4 → T1.8).
-- `packages/pdf/src/template.ts`/`serialize.ts` — gewollt von
-  Settings-Threading, Watermark, Kapitel-Rendering. → T2.1 landet zuerst,
-  alles Weitere baut auf `settings` auf.
+- `packages/pdf/src/{template.ts, serialize.ts, types.ts, run-export.ts}` —
+  gewollt von Settings-Threading/Watermark/Kapitel-Rendering (Lane P, T2.1
+  zuerst, alles Weitere baut auf `settings` auf) UND von PDF-CLI (Lane K,
+  T3.3) für eine kleine additive Ergänzung (`PdfAssetRef.pageId` in
+  `types.ts`, Threading in `prepare.ts`). → 007 beansprucht exklusiven
+  Owner-Status für T2.1 auf allen vier Dateien; T3.3s Änderung ist die
+  einzige additive Ausnahme, koordiniert per Rebase (siehe
+  `008-pdf-cli/PLAN.md`).
+- `packages/confluence/src/client.ts` — zwei getrennte Konflikte: (1)
+  CQL-Escaping-Helfer `escapeCqlValue` wird sowohl von 002 (Label-Filter,
+  T1.2) als auch von 005 (Title-Form-Include-Lookup, D1) neu gebraucht;
+  welcher Ordner zuerst landet, exportiert die Funktion, der andere
+  importiert sie statt einen zweiten Helfer zu bauen (siehe
+  `005-placeholders/PLAN.md`). (2) Der Pagination-Early-Break-Bug in
+  `getChildrenWithPosition`/`getPageDirectChildren`/`getFolderChildren`/
+  `searchPages` wird von 002 (T1.1) gefixt; `listAttachments`s fehlende
+  Pagination ist ein separater Fix durch 008 (PDF-Asset-Lookup).
+- `apps/cli/src/commands/export.ts` — Scope-Flags (`--scope`,
+  `--label-include`/`--label-exclude`) von 002 (T3.3) und PDF-Format/
+  `--label-exclude-mode`/Report-DX von 008 (T3.2–T3.4) landen in derselben
+  Datei.
+- `packages/confluence/src/resolve-mentions.ts` — von 001 um `orientation`-
+  und `caption`-Traversal-Fälle erweitert; wird zusätzlich von 008s
+  CLI-PDF-Pfad konsumiert (`resolveExportMentions`-Aufruf in
+  `apps/cli/src/commands/export.ts`), ohne die Datei selbst zu ändern.
 
 ---
 
@@ -58,7 +81,7 @@ ADF-Fallback), Word-Qualität, PDF-Settings — plus CLI als erster Konsument
 **Lane A — Scope & Orchestrierung** (Owner: `packages/confluence`, neue Dateien)
 | ID | Task | Abhängig von | Aufwand |
 |---|---|---|---|
-| T1.1 | `export-scope.ts`, `tree-fetch.ts` (TreeSource-Port, BFS, Zyklen-/Tiefenschutz), `compose-document.ts` (Kapitel, Heading-Offset, Anker-Namespacing) | T0.1 | L |
+| T1.1 | `export-scope.ts`, `tree-fetch.ts` (TreeSource-Port, geordneter Walk — pre-order depth-first/Dokumentreihenfolge, nicht BFS —, Zyklen-/Tiefenschutz), `compose-document.ts` (Kapitel, Heading-Offset, Anker-Namespacing) | T0.1 | L |
 | T1.2 | Label-Filter (Include/Exclude, OR, prune-subtree) via CQL + lokale Filterung | T1.1 | S |
 | T1.3 | Engine-Integration: Kapitel-Merge durch beide Serializer (Kapitel = Heading-Baum; PDF: `pagebreak()` je Kapitel optional) + Golden-Tests Mehrseiten-Dokument | T1.1, T0.2 | M |
 

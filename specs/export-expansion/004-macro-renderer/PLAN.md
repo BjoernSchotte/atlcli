@@ -702,6 +702,9 @@ macros in the registry are.
       `packages/confluence/src/export-blocks.ts:698` for every macro
       instance the resolver actually touches; macros the resolver never
       reaches (e.g. `env.macros` unset) keep today's walker notes unchanged.
+      These three codes populate `ExportNote.source` using the `source`
+      field 003-content-features introduces on `ExportNote` (see
+      `003-content-features/PLAN.md`, Walker tasks), once that field lands.
 
 ### TOC renderer (E5 — pure, no-IO reference renderer)
 
