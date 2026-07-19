@@ -52,9 +52,8 @@ jobs:
   export:
     runs-on: ubuntu-latest
     steps:
-      - uses: oven-sh/setup-bun@v2
       - name: Install atlcli
-        run: bun install -g @atlcli/cli
+        run: curl -fsSL https://atlcli.sh/install.sh | bash
       - name: Export to PDF
         env:
           ATLCLI_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
@@ -77,13 +76,16 @@ jobs:
 
 ```yaml
 export_pdf:
-  image: oven/bun:1
+  image: ubuntu:24.04
   variables:
     ATLCLI_BASE_URL: "$CONFLUENCE_BASE_URL"
     ATLCLI_EMAIL: "$CONFLUENCE_EMAIL"
     # ATLCLI_API_TOKEN is a protected/masked CI variable
+  before_script:
+    - apt-get update && apt-get install -y curl jq ca-certificates unzip
+    - curl -fsSL https://atlcli.sh/install.sh | bash
+    - export PATH="$HOME/.local/bin:$PATH"
   script:
-    - bun install -g @atlcli/cli
     - atlcli wiki export "$PAGE_ID" --format pdf --out-dir dist --report json --strict | tee report.json
     - jq -r '.outputs[0]' report.json
   artifacts:

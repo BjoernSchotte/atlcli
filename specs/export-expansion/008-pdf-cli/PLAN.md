@@ -781,7 +781,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       `resolveExportMentions` run directly, and that a tree/space export
       with the same account ID on two pages issues exactly one bulk lookup
       call (dedup check).
-- [ ] E2E — single page (run before committing T3.2, per CLAUDE.md workflow):
+- [ ] *(harness authored & gated `ATLCLI_E2E=1` in `export-pdf.e2e.test.ts`; live DOCSY run pending — orchestrator)* E2E — single page (run before committing T3.2, per CLAUDE.md workflow):
       script/checklist against profile `mayflower`: create a DOCSY test page
       with a heading, table, and an image attachment; run
       `bun run --cwd apps/cli src/index.ts wiki export <id> --format pdf -o /tmp/atlcli-e2e.pdf --report json`;
@@ -803,7 +803,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       process exits `130`, and no attachment listing/download calls are
       still in flight afterward (regression for the fetch-path
       cancellation task above).
-- [ ] E2E — tree scope (after T3.3): reuse folder 002's E2E test tree in
+- [ ] *(harness authored & gated `ATLCLI_E2E=1`, DOCSY-only, incl. artifact-cardinality + outline asserts; live run pending — orchestrator)* E2E — tree scope (after T3.3): reuse folder 002's E2E test tree in
       DOCSY (cross-reference its PLAN's fixture naming; do not build a second
       tree) — export root with `--scope tree --label-exclude internal
       --out-dir`, assert chapter ordering matches the tree, excluded page
@@ -811,7 +811,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       artifact-cardinality contract) and one `sourcePages[]` entry per
       exported page, exit code 0; cleanup of any pages this test created
       itself (the shared tree is owned and cleaned by folder 002's tasks).
-- [ ] E2E — failure modes: nonexistent page id → exit 4 and a JSON report
+- [ ] *(harness authored & gated `ATLCLI_E2E=1`; live run pending — orchestrator)* E2E — failure modes: nonexistent page id → exit 4 and a JSON report
       with `errors` populated when `--report json` is set; bad token
       (`ATLCLI_API_TOKEN=wrong`) → exit 3; assert nothing is written to
       `--out-dir` on failure.
@@ -970,12 +970,13 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
   depth, cells, text bytes) at the `storageToBlocks` seam, with a hard,
   non-silent abort (pageId, measured value, limit) on overflow — see
   crossPlanImpacts.
-- **Filesystem commit-point ordering bug in a file this folder does not
-  own** (open, cross-lane): `runPdfExport` re-checks `input.signal`
-  immediately after `env.output.emit()` returns
-  (`packages/pdf/src/run-export.ts:165-173`, verified), so a signal firing
-  in that window turns an already-committed rename into a reported
-  failure. Fixing it means touching `run-export.ts`, which
-  `007-pdf-template-settings/PLAN.md`'s T2.1 claims exclusively — flagged
-  there rather than patched here; see crossPlanImpacts and T3.2's
-  `filePdfOutputSink` task above.
+- **Filesystem commit-point ordering bug — RESOLVED by folder 007's T2.1**
+  (was: open, cross-lane): earlier drafts of `runPdfExport` re-checked
+  `input.signal` immediately after `env.output.emit()` returned, so a signal
+  firing in that window turned an already-committed rename into a reported
+  failure. The merged `run-export.ts` deliberately has **no** post-emit abort
+  re-check (the emit block's comment documents this: abort is honored *before*
+  emit; once the sink has committed the bytes the export is never re-reported
+  as failed). This folder's `filePdfOutputSink` treats a successful commit as
+  its commit point for cleanup bookkeeping, consistent with that contract —
+  nothing left to flag.
