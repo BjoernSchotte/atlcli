@@ -16,6 +16,7 @@
     "clean:browser-artifacts": "bun scripts/clean-browser-artifacts.ts all",
     "clean:extension-output": "bun scripts/clean-browser-artifacts.ts extension",
     "clean:browser-export-harness-output": "bun scripts/clean-browser-artifacts.ts harness",
+    "postinstall": "bun run vendor:typst",
     "prebuild": "bun run fonts:ensure && bun run vendor:typst && bun run clean:browser-artifacts",
     "build": "turbo run build",
     "release": "bun scripts/release.ts",
