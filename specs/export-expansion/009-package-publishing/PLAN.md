@@ -631,7 +631,7 @@ model); note it as the designated fallback.
 
 ### Versioning & release
 
-- [ ] **Decide `@atlcli/cli`'s fate as a *local* concern, not a publish
+- [x] **Decide `@atlcli/cli`'s fate as a *local* concern, not a publish
       decision — publishing it is deferred regardless of which way this
       goes.** `apps/cli/package.json` has no `private` field today (see
       Reference); the Publish prevention task above already makes this safe
@@ -644,7 +644,13 @@ model); note it as the designated fallback.
       folder's active scope — the original "integrate vs. deprecate the `npm
       install -g @atlcli/cli` path" framing assumed a live publish and is
       preserved, unimplemented, in the Deferred appendix for whichever way
-      the product rename lands.
+      the product rename lands. **→ DECIDED (2026-07-19): `apps/cli` stays
+      purely this repo's own CLI entry point — `private: true`, bundled by
+      its existing `apps/cli/build.ts` into the repo-root `dist/` for the
+      GitHub-release binaries, with no external package-consumption story.
+      Recorded in `src/content/docs/reference/versioning.md` ("`apps/cli`
+      stays internal"); revisit only if the Deferred appendix is revived
+      after the product rename.**
 - [x] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
       tarballs; add a regression test in `scripts/release.test.ts` (inspect a
       packed manifest, assert no `workspace:` protocol survives). (Covered by
@@ -652,7 +658,7 @@ model); note it as the designated fallback.
       fails on any surviving `workspace:` range — plus the consumer-smoke and
       install-matrix suites, which assert the same on the *installed*
       manifests; a separate `release.test.ts` duplicate is unnecessary.)
-- [ ] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
+- [x] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
       Conventional-Commit scopes as the per-package changelog) as a new page
       under `src/content/docs/reference/` (sibling to the existing
       `docx-engine.md`/`pdf-engine.md`), registered in the `sidebar` array
@@ -662,13 +668,13 @@ model); note it as the designated fallback.
       that this is a version-numbering policy for packed/filesystem-linked
       artifacts today, and that registry publish is deferred (link to Goal
       and the Deferred appendix).
-- [ ] Decide and implement the changesets question as **rejected** in code:
+- [x] Decide and implement the changesets question as **rejected** in code:
       no `.changeset/`; add a short "why lockstep" note to the same
       reference page so future contributors don't re-litigate it blindly.
 
 ### Packaging documentation
 
-- [ ] Consumer install documentation page under `src/content/docs/reference/`
+- [x] Consumer install documentation page under `src/content/docs/reference/`
       (per docs standards: intro → prerequisites → steps → examples →
       troubleshooting, registered in `astro.config.mjs`'s `sidebar`):
       document the two supported install paths — **workspace/filesystem
@@ -682,7 +688,7 @@ model); note it as the designated fallback.
       recommended Node starting point. Explicitly state that a package
       registry install (`npm install @atlcli/pdf` from a public registry) is
       **not** available today and link to the Deferred appendix for why.
-- [ ] Add a short `README.md` to each of the eight publishable package
+- [x] Add a short `README.md` to each of the eight publishable package
       roots (package role, stable entry points, runtime support — see
       support-matrix task above — minimal import example via filesystem
       linking or tarball install, link to the canonical reference page);
@@ -759,7 +765,7 @@ model); note it as the designated fallback.
       the gitignored `.fonts/` when allowlisted (npm-compat rule says `files`
       wins over `.gitignore` — do not trust, test in `pack-check.test.ts` by
       listing tarball entries).
-- [ ] Document the `?url` asset contract in `docs/` reference: stable subpaths
+- [x] Document the `?url` asset contract in `docs/` reference: stable subpaths
       (`@atlcli/pdf/fonts/<file>.ttf`, `@atlcli/pdf/licenses/<file>`,
       `@atlcli/docx/fonts/<file>`, `@atlcli/pdf-compiler-browser/wasm`), the
       `BrowserPdfCompilerAssets` input shape, a Vite `?url` example matching
