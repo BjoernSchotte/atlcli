@@ -250,24 +250,24 @@ passing it with `--format pdf` is a usage error rather than a silent ignore.
 Goal: a written go/no-go on running the patched typst.ts wasm in the CLI
 process, with the port shape committed. Timebox: 2 days.
 
-- [ ] Confirm the baseline: run `bun test packages/pdf-compiler-browser/src/compiler.test.ts`
+- [x] Confirm the baseline: run `bun test packages/pdf-compiler-browser/src/compiler.test.ts`
       on Linux and macOS; record compile time and RSS for the smoke bundle
       (first data point for CI budget). Files: none (evidence in this
       folder's spike notes below the task list or in the PR description).
-- [ ] Audit the load path for browser APIs: read the wasm-bindgen glue
+- [x] Audit the load path for browser APIs: read the wasm-bindgen glue
       `node_modules/@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs`
       (as patched by `patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch`)
       and verify the `module_or_path: ArrayBuffer` branch reaches
       `WebAssembly.instantiate` without touching `document`, `window`,
       `URL`-relative script location, or `fetch`. Document which init branches
       (URL/Response) are browser-only and must never be used from the CLI.
-- [ ] Build `apps/cli/src/commands/export-pdf-assets.ts`: `with { type: "file" }`
+- [x] Build `apps/cli/src/commands/export-pdf-assets.ts`: `with { type: "file" }`
       imports for the typst wasm and the 10 fonts from `@atlcli/pdf/fonts/*`,
       `readFile` into `ArrayBuffer`/`Uint8Array[]`, parity check against
       `PDF_RUNTIME_ASSETS` (pattern: `apps/cli/src/commands/export-rasterizer.ts`,
       `apps/browser-export-harness/src/pdf-worker.ts`). Unlike the rasterizer,
       a load failure here is a hard error — PDF export cannot degrade.
-- [ ] Verify the three run modes compile a minimal bundle to `%PDF-` bytes:
+- [x] Verify the three run modes compile a minimal bundle to `%PDF-` bytes:
       source run (`bun run --cwd apps/cli src/index.ts`), built dist
       (`bun run build` then `bun ./dist/index.js`), and a
       `bun build --compile` binary (the Homebrew shape). Confirm the wasm
@@ -275,11 +275,11 @@ process, with the port shape committed. Timebox: 2 days.
       bundling to `dist/` — if dist emits a broken asset path, fall back to
       `import.meta.resolve` + `readFile` for the dist path and keep the
       embedded import for `--compile`.
-- [ ] Decide singleton lifecycle: one lazily created compiler per CLI process,
+- [x] Decide singleton lifecycle: one lazily created compiler per CLI process,
       `reset_shadow()` between pages (already inside `compile()`), `reset()`
       only on fatal diagnostics. Document memory expectations for tree exports
       (N pages through one instance).
-- [ ] Write the fallback plan (do not build it unless the spike fails):
+- [x] Write the fallback plan (do not build it unless the spike fails):
       `packages/pdf-compiler-node/` — a thin wrapper package implementing
       `PdfCompilePort` with the same `compile(bundle)` semantics, backed by a
       Node-targeted wasm-bindgen build of the same pinned typst.ts version, to
@@ -287,8 +287,42 @@ process, with the port shape committed. Timebox: 2 days.
       requiring `TextEncoder` quirks, `performance` APIs, or worker-only
       globals). The CLI depends on the port type from `packages/pdf/src/compiler.ts`
       either way, so swapping implementations is a one-line env change.
-- [ ] Record the spike verdict + measurements in this file (append a
+      **Not needed** — spike is a clear GO (see Spike results); the fallback
+      package was not built.
+- [x] Record the spike verdict + measurements in this file (append a
       "Spike results" subsection) before starting T3.2.
+
+#### Spike results (T3.1) — verdict: **GO**, no `pdf-compiler-node` fallback needed
+
+- **Baseline** (`bun test packages/pdf-compiler-browser/src/compiler.test.ts`,
+  macOS arm64, Bun 1.3.8): 9 tests green in ~282 ms wall; peak RSS ~515 MB
+  across the whole suite (many compiles incl. the 4-page settings matrix).
+- **Load-path audit**: `initTypst({ module_or_path })` with an `ArrayBuffer`
+  input takes the `else` branch of `__wbg_load` →
+  `WebAssembly.instantiate(module, imports)` (glue
+  `typst_ts_web_compiler.mjs:1163`), touching no `fetch`, `document`, `window`,
+  or `Response`. The `Response`/string branches (`:1144-1161`, `:1606-1607`)
+  and the `import.meta.url`-relative `importWasmModule` default (`:1602`) are
+  browser-only. The CLI always passes a copied standalone `ArrayBuffer`, so
+  only the runtime-neutral branch is ever reached.
+- **Three run modes** all compile a minimal bundle to `%PDF-` (10 080 bytes,
+  identical across modes): source run, `bun build --target bun` dist bundle,
+  and `bun build --compile` binary — verified from a foreign CWD too. The one
+  real gap the PLAN anticipated materialized: in the plain dist bundle the
+  `with { type: "file" }` import yields a bundle-relative path
+  (`./typst_ts_web_compiler_bg-<hash>.wasm`), which `readFile` resolved against
+  the process CWD and failed. Fix: anchor relative asset paths to
+  `import.meta.dir` (`assetFilePath()` in `export-pdf-assets.ts`) — this makes
+  all three modes work without the browser-only `import.meta.resolve` fallback.
+  These three modes are now a permanent CI gate
+  (`export-pdf-build-modes.test.ts`), not a one-time note.
+- **Single cold compile**: ~0.13 s wall incl. process start + wasm init + one
+  compile; peak RSS ~348 MB for a single page. Lifecycle: one lazily created
+  `BrowserPdfCompiler` per process (`getPdfCompiler()`), `reset_shadow()`
+  between pages inside `compile()`; `reset()` only after a fatal load failure
+  (the promise is cleared so a retry re-attempts). Tree/space exports reuse the
+  single instance — large-scale RSS across hundreds of pages remains unmeasured
+  (T4.3 owns the benchmark; see Risks).
 
 ### CLI command --format pdf (T3.2)
 
@@ -704,7 +738,7 @@ Hard rule: no mocks, no stubbed compilers, no fake clients. Unit tests use the
 real wasm; E2E tests use the real Confluence (profile `mayflower`, space
 `DOCSY` per `CLAUDE.md`), and clean up what they create.
 
-- [ ] Unit — compile-port smoke under `bun test`:
+- [x] Unit — compile-port smoke under `bun test`:
       `apps/cli/src/commands/export-pdf-assets.test.ts` — load wasm + fonts
       through the CLI asset module (the real load path, not the test-only
       `import.meta.resolve` variant), compile a minimal fixture
@@ -720,7 +754,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       `fonts:ensure`/`prebuild` step has already warmed `packages/pdf/.fonts/`
       — call that out as an explicit CI-ordering precondition, not an
       implicit assumption.
-- [ ] Regression guard — automate the T3.1 spike's three run-mode check as an
+- [x] Regression guard — automate the T3.1 spike's three run-mode check as an
       ongoing CI gate, not a one-time manual verification: source run, `bun
       run build` + `bun ./dist/index.js`, and a `bun build --compile` binary
       each compile the same minimal `PdfSourceBundle` to `%PDF-` bytes, on
