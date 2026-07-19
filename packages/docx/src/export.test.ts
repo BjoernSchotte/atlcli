@@ -1312,3 +1312,44 @@ describe("exportDocx — prefetch failure modes (Codex review findings)", () => 
     expect(calls).toBe(1);
   });
 });
+
+describe("exportDocx — spec 003 exporter-sensitive scroll macros", () => {
+  // The DOCX call site wires { exporter: "word" } (spec 001 plumbing verified
+  // here per the call-site matrix): a scroll-only[word] block is kept, a
+  // scroll-only[pdf] block is dropped, and a page break / caption render.
+  const STORAGE_003 =
+    '<h1>Doc</h1>' +
+    '<ac:structured-macro ac:name="scroll-only"><ac:parameter ac:name="exporter">word</ac:parameter><ac:rich-text-body><p>WORD_ONLY_KEEP</p></ac:rich-text-body></ac:structured-macro>' +
+    '<ac:structured-macro ac:name="scroll-only"><ac:parameter ac:name="exporter">pdf</ac:parameter><ac:rich-text-body><p>PDF_ONLY_DROP</p></ac:rich-text-body></ac:structured-macro>' +
+    '<ac:structured-macro ac:name="scroll-ignore"><ac:rich-text-body><p>IGNORED_DROP</p></ac:rich-text-body></ac:structured-macro>' +
+    '<p>a</p><ac:structured-macro ac:name="scroll-pagebreak"/><p>b</p>' +
+    '<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body><table><tbody><tr><td>wide</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>';
+
+  it("keeps word-only content, drops pdf-only + ignored, renders break + orientation", async () => {
+    const scrollDetails: ConfluencePageDetails = { ...details, storage: STORAGE_003 };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: scrollDetails,
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+
+    expect(doc).toContain("WORD_ONLY_KEEP");
+    expect(doc).not.toContain("PDF_ONLY_DROP");
+    expect(doc).not.toContain("IGNORED_DROP");
+    // Page break rendered.
+    expect(doc).toContain('<w:br w:type="page"/>');
+    // Orientation region → a landscape section (swapping the template's own
+    // Letter dimensions, never a hard-coded A4 constant).
+    expect(doc).toContain('w:orient="landscape"');
+    expect(doc).toContain('w:w="15840"');
+    // No scroll macro reached the unknown placeholder.
+    expect(doc).not.toContain("macro not rendered");
+    // Report explains every applied/skipped control.
+    const codes = report.notes.map((n) => n.code);
+    expect(codes).toContain("scroll-only-applied");
+    expect(codes).toContain("scroll-only-skipped-other-exporter");
+    expect(codes).toContain("scroll-ignore-applied");
+  });
+});

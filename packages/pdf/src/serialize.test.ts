@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock, ExportNode } from "@atlcli/confluence";
+import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
 import { composeChapters } from "@atlcli/confluence";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
@@ -991,7 +991,7 @@ describe("PDF settings threading into main.typ", () => {
 import { classifyTableLayout } from "./serialize.js";
 
 /** Prepare + serialize a block list to Typst source (no assets fetched). */
-async function toMain(blocks: ExportBlock[]): Promise<{ main: string; notes: ExportNode[] }> {
+async function toMain(blocks: ExportBlock[]): Promise<{ main: string; notes: ExportNote[] }> {
   const prepared = await preparePdfDocument(blocks, {
     resolve: async () => {
       throw new Error("no assets");
