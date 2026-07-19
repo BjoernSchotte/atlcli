@@ -11,7 +11,7 @@ import {
   type PageRecord,
   type LinkRecord,
   type UserRecord,
-} from "@atlcli/confluence";
+} from "@atlcli/confluence/internal";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import * as readline from "node:readline";

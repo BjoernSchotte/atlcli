@@ -10,7 +10,8 @@
       "default": "./src/index.ts"
     },
     "./browser": "./src/index.browser.ts",
-    "./node": "./src/index.ts"
+    "./node": "./src/index.ts",
+    "./internal": "./src/internal.ts"
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",

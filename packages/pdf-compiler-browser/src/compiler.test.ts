@@ -1,11 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
-import {
-  ATLCLI_TYPST_TEMPLATE,
-  PDF_RUNTIME_ASSETS,
-  validatePdfOutput,
-  type PdfSourceBundle,
-} from "@atlcli/pdf/browser";
+import { PDF_RUNTIME_ASSETS, type PdfSourceBundle } from "@atlcli/pdf/browser";
+import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 

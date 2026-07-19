@@ -1,13 +1,12 @@
 import {
-  ATLCLI_TYPST_TEMPLATE,
   runPdfExport,
-  validatePdfOutput,
   type PdfAssetResolver,
   type PdfCompilePort,
   type PdfCompilerDiagnostic,
   type PdfExportReport,
   type PdfSourceBundle,
 } from "@atlcli/pdf/browser";
+import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { PDF_BLOCKS, PDF_FILENAME, PDF_METADATA } from "./fixture.js";
 import { MemoryOutputSink } from "./memory-output.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";

@@ -14,7 +14,8 @@ import { ConfluenceClient } from "@atlcli/confluence/browser";
 import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
-import type { ScanResult, ExportReport } from "@atlcli/docx/browser";
+import type { ExportReport } from "@atlcli/docx/browser";
+import type { ScanResult } from "@atlcli/docx/scan";
 import type { RasterizerStats } from "../../utils/docx/env.js";
 import {
   deleteTemplate,

@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import type { ExportBlock } from "@atlcli/confluence/browser";
-import { preparePdfDocument, serializePdfDocument, validatePdfOutput } from "@atlcli/pdf/browser";
+import { preparePdfDocument, serializePdfDocument, validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 

@@ -1,24 +1,13 @@
-export * from "./atlcli-dir.js";
-export * from "./client.js";
-export * from "./comments.js";
-export * from "./diff.js";
-export * from "./export-blocks.js";
-export * from "./frontmatter.js";
-export * from "./hierarchy.js";
-export * from "./ignore.js";
-export * from "./links.js";
-export * from "./link-extractor-storage.js";
-export * from "./link-extractor-markdown.js";
-export * from "./link-validator.js";
-export * from "./markdown.js";
-export * from "./page-properties.js";
-export * from "./merge.js";
-export * from "./poller.js";
-export * from "./reorder.js";
-export * from "./resolve-mentions.js";
-export * from "./scope.js";
-export * from "./sync-db/index.js";
-export * from "./sync-state-manager.js";
-export * from "./user-fetcher.js";
-export * from "./validation.js";
-export * from "./webhook-server.js";
+/**
+ * Default (Node) entry point for `@atlcli/confluence` (spec 009).
+ *
+ * Trimmed to the documented v1 seams — identical to the browser barrel: the
+ * REST client, the storage<->markdown converter, the `ExportBlock` document
+ * model, mention resolution, and page properties. This barrel must never
+ * statically reach a `node:`/`bun:` builtin (the old wide barrel dragged in
+ * `bun:sqlite` via `sync-db`, breaking plain-Node consumers at import time).
+ *
+ * The repo-internal sync machinery (atlcli-dir, sync-db, webhook-server,
+ * poller, …) lives behind the explicitly non-frozen `./internal` subpath.
+ */
+export * from "./index.browser.js";

@@ -14,6 +14,7 @@
     "./vite": "./src/vite.ts",
     "./node": "./src/index.ts",
     "./scan": "./src/scan.ts",
+    "./internal": "./src/internal.ts",
     "./fixtures": "./src/fixtures.ts",
     "./fonts/*": "./fonts/*"
   },

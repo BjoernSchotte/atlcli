@@ -133,8 +133,8 @@ import {
   setPageEditorVersion,
   getAllEditorVersions,
   type EditorVersion,
-} from "@atlcli/confluence";
-import type { Ignore } from "@atlcli/confluence";
+} from "@atlcli/confluence/internal";
+import type { Ignore } from "@atlcli/confluence/internal";
 import { handleSync, syncHelp } from "./sync.js";
 
 /** Sync state for bidirectional sync tracking */
@@ -1327,7 +1327,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     await writeState(atlcliDir, state);
 
     // Populate sync.db after all content has been written.
-    const { createSyncDb } = await import("@atlcli/confluence");
+    const { createSyncDb } = await import("@atlcli/confluence/internal");
     const adapter = await createSyncDb(getAtlcliPath(atlcliDir), { autoMigrate: false });
     try {
       // Upsert all pages to sync.db (populates last_modified for stale detection)

@@ -4,11 +4,8 @@ import initTypst, {
   TypstCompilerBuilder,
   type TypstCompiler,
 } from "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs";
-import {
-  mapPdfDiagnostics,
-  type PdfCompileResult,
-  type PdfSourceBundle,
-} from "@atlcli/pdf/browser";
+import type { PdfCompileResult, PdfSourceBundle } from "@atlcli/pdf/browser";
+import { mapPdfDiagnostics } from "@atlcli/pdf/internal";
 
 export const PDF_BROWSER_COMPILER_VERSION = "typst.ts 0.7.0 / Typst 0.14.2";
 

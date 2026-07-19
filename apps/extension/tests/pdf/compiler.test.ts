@@ -3,13 +3,13 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
+import { formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
   ATLCLI_TYPST_TEMPLATE,
   preparePdfDocument,
   serializePdfDocument,
-  formatPdfCompilerDiagnostics,
   validatePdfOutput,
-} from "@atlcli/pdf/browser";
+} from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 

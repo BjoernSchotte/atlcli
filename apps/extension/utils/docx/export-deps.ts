@@ -1,5 +1,6 @@
 import type { ConfluenceClient } from "@atlcli/confluence/browser";
-import type { ResolveDeps, ScanResult } from "@atlcli/docx/browser";
+import type { ResolveDeps } from "@atlcli/docx/internal";
+import type { ScanResult } from "@atlcli/docx/scan";
 
 type SpaceInfo = Awaited<ReturnType<ConfluenceClient["getSpaceWithIcon"]>>;
 

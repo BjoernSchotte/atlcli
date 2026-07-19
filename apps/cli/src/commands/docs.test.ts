@@ -14,7 +14,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { AtlcliState } from "@atlcli/confluence";
+import type { AtlcliState } from "@atlcli/confluence/internal";
 
 const { resolvePageFile, findMarkdownFileByFrontmatterId } = await import("./docs.js");
 

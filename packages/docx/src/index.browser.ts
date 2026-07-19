@@ -13,9 +13,6 @@
  */
 export * from "./placeholder-map.js";
 export * from "./dateformat.js";
-export * from "./scan.js";
-export * from "./resolver.js";
-export * from "./serialize.js";
 // The mermaid renderer is the format-agnostic `@atlcli/diagram` adapter
 // (shared with the PDF path, spec 007); re-exported here so DOCX consumers
 // get `DiagramTheme`/`renderDiagram` from one barrel.
@@ -23,4 +20,6 @@ export * from "@atlcli/diagram";
 export * from "./export.js";
 export * from "./env.js";
 export * from "./image.js";
-export { CODE_STYLE_ID, resolveHeadingStyleId, parseStyleNames, normalizeColor } from "./ooxml.js";
+// Implementation-detail modules (scan/resolver/serialize/ooxml) are NOT part
+// of this barrel (spec 009 barrel trim): they stay reachable via the explicit
+// `./scan` subpath and the non-frozen `./internal` subpath.

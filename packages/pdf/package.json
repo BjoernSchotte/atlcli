@@ -11,6 +11,7 @@
     },
     "./browser": "./src/index.browser.ts",
     "./template": "./src/template.ts",
+    "./internal": "./src/internal.ts",
     "./fonts/*": "./.fonts/*",
     "./licenses/*": "./licenses/*"
   },

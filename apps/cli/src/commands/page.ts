@@ -37,7 +37,7 @@ import {
   sortChildren,
   parseFrontmatter,
   SortStrategy,
-} from "@atlcli/confluence";
+} from "@atlcli/confluence/internal";
 
 export async function handlePage(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
   // Show help if --help or -h flag is set
