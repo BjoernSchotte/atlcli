@@ -630,7 +630,7 @@ macros in the registry are.
 
 ### Registry & resolver pass (T1.7)
 
-- [ ] Scaffold `packages/export-macros/` (package.json `@atlcli/export-macros`,
+- [x] Scaffold `packages/export-macros/` (package.json `@atlcli/export-macros`,
       tsconfig, `src/index.ts` barrel) mirroring the existing workspace-package
       layout; type-only dependency on `@atlcli/confluence` for `ExportBlock`/
       `ExportNote` only — no runtime import from any `@atlcli/*` package.
@@ -639,7 +639,7 @@ macros in the registry are.
       `@atlcli/jira` or `html-to-blocks.ts`) fails CI the same way a
       `node:`/`bun:` specifier does today, instead of relying on an
       unenforced "type-only" comment.
-- [ ] `packages/export-macros/src/types.ts` — `MacroInstance`,
+- [x] `packages/export-macros/src/types.ts` — `MacroInstance`,
       `MacroRenderResult` (`{ kind: "blocks"; blocks; notes? }` |
       `{ kind: "skip"; notes? }` — `skip` carries notes too, so a permission
       or rate-limit skip is never silent), `PortErrorKind`/`PortError`
@@ -655,7 +655,7 @@ macros in the registry are.
       `PortError`; the resolver treats untagged errors as
       `"invalid-response"` (falls through) and `AbortError`/`signal.aborted`
       as always-propagating.
-- [ ] `packages/export-macros/src/resolve.ts` — `resolveMacroBlocks(input:
+- [x] `packages/export-macros/src/resolve.ts` — `resolveMacroBlocks(input:
       StorageToBlocksResult, registry, ctx)`: walk the block tree including
       nested containers (`table` cells, `callout`, `list` items,
       `blockquote` — same walk structure as `countPrepared`,
@@ -684,7 +684,7 @@ macros in the registry are.
       `registry`/`ctx` policy marks live resolution off, skip straight to
       `skipped-by-config` for every `requiresLivePort: true` renderer without
       calling it (pure renderers still run — see Architecture).
-- [ ] `packages/export-macros/src/registry.ts` — `createRegistry(renderers)`
+- [x] `packages/export-macros/src/registry.ts` — `createRegistry(renderers)`
       validating exactly one `"*"` catch-all and no duplicate non-catch-all
       macro name across renderers (throws at construction, not export time);
       `MacroRendererRegistry.compose(...overrides)` prepending overrides with
@@ -696,7 +696,7 @@ macros in the registry are.
       `exportViewFallbackRenderer` last; `opts` carries the injected
       `htmlToExportBlocks` and `storageToBlocks` dependencies the E1/E4/E5
       renderers need (see Architecture — DI, not runtime import).
-- [ ] Hook-in DOCX (two-hop, mirrors `assets`/`rasterizer`): add optional
+- [x] Hook-in DOCX (two-hop, mirrors `assets`/`rasterizer`): add optional
       `macros?: MacroResolutionOptions` to **both** `ExportInput`
       (`packages/docx/src/export.ts`, applied inside `exportDocx` right after
       `storageToBlocks`, line 235, via `macros.contextFor({id, version,
@@ -708,13 +708,13 @@ macros in the registry are.
       resolves macros identically to a `runExport()` call with `macros` set
       on `ExportEnv` — both entry points must work, per the documented host
       contract (`packages/docx/src/env.ts:84–88`).
-- [ ] Hook-in PDF: optional `macros?: MacroResolutionOptions` field directly
+- [x] Hook-in PDF: optional `macros?: MacroResolutionOptions` field directly
       on `PdfExportEnv` in `packages/pdf/src/run-export.ts:33` — no second
       hop needed, `runPdfExport` already has `env` in scope where it's
       applied, during the `preparing` phase before `preparePdfDocument`
       (`packages/pdf/src/run-export.ts:125`); abort/error mapping via the
       existing `wrapFailure(…, "prepare")` path.
-- [ ] Note taxonomy: introduce the codes `macro-rendered-via`,
+- [x] Note taxonomy: introduce the codes `macro-rendered-via`,
       `macro-degraded`, `macro-skipped-by-config` that **replace** (not
       "alongside", per outcome ownership above) the walker's
       `unknown-macro`/`macro-not-rendered` notes from
@@ -724,7 +724,7 @@ macros in the registry are.
       These three codes populate `ExportNote.source` using the `source`
       field 003-content-features introduces on `ExportNote` (see
       `003-content-features/PLAN.md`, Walker tasks), once that field lands.
-- [ ] **`unknown.bodyNotes` promotion (deferred from 001)**: 001's walker
+- [x] **`unknown.bodyNotes` promotion (deferred from 001)**: 001's walker
       parks the notes produced while scratch-walking an `unknown` macro's
       rich-text body in `bodyNotes` on the block
       (`packages/confluence/src/export-blocks.ts:207,:864`) instead of the
@@ -757,7 +757,7 @@ false` and needs no fixture beyond the composed block tree, so it is the
 cheapest way to prove the registry/resolver contract end-to-end before the
 port-backed renderers land.
 
-- [ ] `packages/export-macros/src/toc.ts` — pure `tocFromHeadings(blocks:
+- [x] `packages/export-macros/src/toc.ts` — pure `tocFromHeadings(blocks:
       ExportBlock[], opts: { minLevel?: number; maxLevel?: number }):
       ExportBlock[]` producing a `{ type: "list" }` of `link` inline nodes
       targeting `{ kind: "anchor", anchor }` for each heading in range
@@ -768,7 +768,7 @@ port-backed renderers land.
       false`; params `minLevel`/`maxLevel` (default 1/6) and `outline`
       (ignored — reserved). Never fails; empty heading set → `{ kind: "skip"
       }` (placeholder floor renders nothing rather than an empty list).
-- [ ] Native-TOC suppression: DOCX skips emitting the macro's body-TOC list
+- [x] Native-TOC suppression: DOCX skips emitting the macro's body-TOC list
       with an info note (`macro-skipped-by-config`-class, message
       "native Word TOC field present") when the resolved template already
       contains a TOC field (the scan already detects this —
@@ -779,7 +779,7 @@ port-backed renderers land.
       wiring passes the template's native-TOC-presence flag), not a
       hardcoded check inside `packages/export-macros` (which has no
       knowledge of templates).
-- [ ] Test: `packages/export-macros/src/toc.test.ts` — heading range
+- [x] Test: `packages/export-macros/src/toc.test.ts` — heading range
       filtering, empty-document skip, nested headings inside a composed
       multi-page document (anchor prefixing matches `composeChapters`'s
       `p<pageId>-<anchor>` scheme once 002 lands; single-page anchors
@@ -787,7 +787,7 @@ port-backed renderers land.
 
 ### Jira renderer (T1.8)
 
-- [ ] `packages/export-macros/src/jira.ts` — `jiraMacroRenderer()` for macros
+- [x] `packages/export-macros/src/jira.ts` — `jiraMacroRenderer()` for macros
       `["jira", "jiraissues"]`, `requiresLivePort: true`:
       - `macroParamText(m.params, "key")` → single-issue line: bold external link
         `KEY Summary` + existing `status` inline node with mapped color.
@@ -820,7 +820,7 @@ port-backed renderers land.
         already retried). None of these throw past the renderer; only
         `AbortError` does.
       - `serverId` (multi-site links): ignore in v1, emit info note.
-- [ ] CLI port adapter (see Host wiring): built on `JiraClient.getIssue`
+- [x] CLI port adapter (see Host wiring): built on `JiraClient.getIssue`
       (`packages/jira/src/client.ts:725`) and `JiraClient.search`
       (`packages/jira/src/client.ts:855`, `POST /search/jql`) — no new client
       features needed for the happy path; the adapter catches the client's
@@ -832,7 +832,7 @@ port-backed renderers land.
 
 ### Diagram renderers (T1.9)
 
-- [ ] `packages/export-macros/src/diagram.ts` — `diagramMacroRenderer()` for
+- [x] `packages/export-macros/src/diagram.ts` — `diagramMacroRenderer()` for
       `["drawio", "inc-drawio", "drawio-sketch", "gliffy"]`,
       `requiresLivePort: true`: resolve the diagram name
       (`macroParamText(m.params, "diagramName") ?? macroParamText(m.params, "name")`;
@@ -862,7 +862,7 @@ port-backed renderers land.
         `PdfAssetResolver`). Dedup key:
         `{ port: "confluence", method: "attachmentLookup", siteId, pageId,
         filename }`.
-- [ ] Prefer SVG when available: if `ctx.attachments.lookup(pageId,
+- [x] Prefer SVG when available: if `ctx.attachments.lookup(pageId,
       `${name}.svg`)` resolves, emit the SVG attachment instead of the PNG. **PDF
       only for v1** — PDF renders SVG natively. DOCX has no seam today that
       rasterizes an arbitrary attachment SVG: the general image embedder
@@ -875,7 +875,7 @@ port-backed renderers land.
       (see Dependencies); this renderer's DOCX branch takes an explicit
       `TODO(T1.15)` and a regression test that asserts DOCX still gets PNG
       even when an SVG preview exists.
-- [ ] Staleness note: `AttachmentMeta.modified` is only populated once CLI
+- [x] Staleness note: `AttachmentMeta.modified` is only populated once CLI
       host wiring's `attachmentLookupFromClient` adapter captures
       `version.when` from the raw Confluence response — today's
       `ConfluenceClient.parseAttachmentResponse` (`client.ts:1783`) reads
@@ -907,7 +907,7 @@ share of real-world pages, even though the registry task already lists their
 names in `defaultRegistry`'s order. `ConfluenceContentPort` is defined once
 here and reused by every E4/E5 renderer below.
 
-- [ ] `packages/export-macros/src/types.ts` addition —
+- [x] `packages/export-macros/src/types.ts` addition —
       `ConfluenceContentPort`: `getPageStorage(title: string, spaceKey?:
       string): Promise<{ id: string; version: number; storage: string } |
       undefined>` (undefined → page not found, distinct from a `PortError`),
@@ -918,7 +918,7 @@ here and reused by every E4/E5 renderer below.
       failure per the shared taxonomy (Architecture); a 403 on
       `getPageStorage` → `kind: "permission"`, mirroring the Jira renderer's
       pattern, never an uncaught throw.
-- [ ] `packages/export-macros/src/multiexcerpt.ts` —
+- [x] `packages/export-macros/src/multiexcerpt.ts` —
       `multiexcerptIncludeRenderer(deps: { storageToBlocks: typeof
       storageToBlocks })` for `["multiexcerpt-include-macro",
       "multiexcerpt-include"]`, `requiresLivePort: true`: resolve
@@ -945,7 +945,7 @@ here and reused by every E4/E5 renderer below.
       (`export-blocks.ts:826`); this half needs a `walkMacro` addition, so
       land it alongside spec 001's other walker changes or as its own
       additive hunk in `export-blocks.ts` (see Dependencies — hot file).
-- [ ] `packages/export-macros/src/table-layout.ts` —
+- [x] `packages/export-macros/src/table-layout.ts` —
       `scrollTableLayoutRenderer()` for `["scroll-tablelayout",
       "scroll-tablelayout-macro"]`, `requiresLivePort: false` (pure —
       transparent body wrapper, no port): no `m.body` → `{ kind: "skip" }`.
@@ -961,7 +961,7 @@ here and reused by every E4/E5 renderer below.
       (`BASELINE-DESIGN.md:1003` — full landscape-section support belongs
       with C6's page-orientation work in 003-content-features, not
       duplicated here).
-- [ ] Tests: `packages/export-macros/src/multiexcerpt.test.ts` — happy path
+- [x] Tests: `packages/export-macros/src/multiexcerpt.test.ts` — happy path
       via in-memory `ConfluenceContentPort`, both `PageWithExcerpt`/`page`
       and `MultiExcerptName`/`name` parameter spellings, missing page →
       skip, cycle (`A` includes `B` includes `A`) → depth/visited guard fires
@@ -972,7 +972,7 @@ here and reused by every E4/E5 renderer below.
 
 ### Confluence-native include renderers — children, include/excerpt, page properties report (E5)
 
-- [ ] `packages/export-macros/src/children.ts` — `childrenRenderer()` for
+- [x] `packages/export-macros/src/children.ts` — `childrenRenderer()` for
       `["children"]`, `requiresLivePort: true`: `ctx.confluence.getChildren(
       ctx.page.id, { limit: macroParamText(m.params, "depth") === "all" ? undefined : 50 })` →
       nested `{ type: "list" }` block of `link` inline nodes
@@ -987,7 +987,7 @@ here and reused by every E4/E5 renderer below.
       "sort")` (`"title" | "created"`, default `"title"`) selects the sort key when the port
       exposes it; unsupported sort → note + fall back to title order (never
       silently ignore a param without saying so).
-- [ ] `packages/export-macros/src/include-excerpt.ts` — three renderers
+- [x] `packages/export-macros/src/include-excerpt.ts` — three renderers
       sharing the same recursion guard as multiexcerpt-include:
       - `includeRenderer()` for `["include"]`, `requiresLivePort: true`:
         identical pattern to `multiexcerptIncludeRenderer` but fetches the
@@ -1029,7 +1029,7 @@ here and reused by every E4/E5 renderer below.
       `multiexcerpt-include`) is bounded by the same guard, not a
       per-renderer one — a cross-renderer cycle (A `include`s B, B
       `multiexcerpt-include`s A) must be caught too.
-- [ ] `packages/export-macros/src/page-properties-report.ts` —
+- [x] `packages/export-macros/src/page-properties-report.ts` —
       `pagePropertiesReportRenderer()` for `["detailssummary"]`,
       `requiresLivePort: true`: `ctx.confluence.searchCql(cqlFromParams(m.params))`
       (label/CQL param → `label = "…"`-shaped CQL, reusing the same
@@ -1050,7 +1050,7 @@ here and reused by every E4/E5 renderer below.
       Definition-side `details` macro (the property table on the page being
       aggregated) already renders as a native table via existing walker
       logic — no change needed there.
-- [ ] Tests: `packages/export-macros/src/children.test.ts` — cap/truncation
+- [x] Tests: `packages/export-macros/src/children.test.ts` — cap/truncation
       note, title sort determinism, empty children → empty list (not skip).
       `packages/export-macros/src/include-excerpt.test.ts` — `include` happy
       path, `excerpt-include` named-fragment extraction, `excerpt` hidden
@@ -1068,7 +1068,7 @@ here and reused by every E4/E5 renderer below.
 
 ### export_view fallback (T1.10)
 
-- [ ] `packages/confluence/src/client.ts` — two new REST methods on
+- [x] `packages/confluence/src/client.ts` — two new REST methods on
       `ConfluenceClient` using the existing `request` helper (`:247`):
       - `getMacroBodyByMacroId(pageId, version, macroId)` (v1 macro body API).
       - `convertToExportView(storageFragment)` (async contentbody convert to
@@ -1092,7 +1092,7 @@ here and reused by every E4/E5 renderer below.
       Regression test: export a page containing a unique sentinel string via
       one of these methods with logging enabled at `debug` level; assert the
       sentinel never appears in the resulting log file.
-- [ ] `packages/confluence/src/html-to-blocks.ts` — `htmlToExportBlocks(html,
+- [x] `packages/confluence/src/html-to-blocks.ts` — `htmlToExportBlocks(html,
       limits?: HtmlConversionLimits)`: HTML-subset → `ExportBlock[]`
       converter (`p`, `h1–h6`, `table`, `img`, `ul`/`ol`, `pre`, `br`, inline
       `a`/`strong`/`em`/`code`). Reuse the existing XML tokenizer that
@@ -1130,7 +1130,7 @@ here and reused by every E4/E5 renderer below.
       condition resolves there); `packages/export-macros` never imports it
       directly (see Architecture — DI); only host-wiring code (CLI,
       extension) imports it to build the `defaultRegistry(opts)` dependency.
-- [ ] `packages/export-macros/src/export-view.ts` —
+- [x] `packages/export-macros/src/export-view.ts` —
       `exportViewFallbackRenderer(deps: { htmlToExportBlocks })` for macros
       `["*"]`, `requiresLivePort: true`, registered last: skip without
       `ctx.exportView` or `m.macroId`; otherwise `renderMacroHtml(pageId,
@@ -1138,7 +1138,7 @@ here and reused by every E4/E5 renderer below.
       `{ kind: "blocks" }` with an info note (`macro-rendered-via`: "…
       rendered via Confluence export_view"), empty result → `{ kind: "skip" }`
       (placeholder floor).
-- [ ] External asset fetching (Architecture — "External asset fetching" /
+- [x] External asset fetching (Architecture — "External asset fetching" /
       "Trust marker"): `packages/export-macros/src/types.ts` —
       `ExternalAssetPolicy`/`ExternalAssetFetcher`, an optional
       `externalAssets` field on `MacroExportContext`. Add the additive
@@ -1159,7 +1159,7 @@ here and reused by every E4/E5 renderer below.
       redirect hop, not just the initial URL), and an oversized response
       (streaming byte cap fires before the full body is buffered, not "check
       after full buffer" like today's `tokenAssetFetcher`).
-- [ ] Determinism switch: when the host disables live macro resolution
+- [x] Determinism switch: when the host disables live macro resolution
       (`MacroResolutionOptions.live === false`), the resolver skips stages
       2–3 **only for `requiresLivePort: true` renderers** and emits
       `skipped-by-config` notes for those; renderers with `requiresLivePort:
@@ -1175,7 +1175,7 @@ Spec 001 deliberately keeps stage-4 rendering byte-identical to today
 yet. This plan is what actually uses them, since "never silently drop" is
 this spec's invariant, not 001's.
 
-- [ ] **Mention resolution for `unknown.body` (deferred from 001)**:
+- [x] **Mention resolution for `unknown.body` (deferred from 001)**:
       `packages/confluence/src/resolve-mentions.ts` deliberately does not
       traverse `unknown.body` today (pointer comment at
       `resolve-mentions.ts:113–116`; pinned by 001's negative test in
@@ -1192,7 +1192,7 @@ this spec's invariant, not 001's.
       comment — otherwise a mention inside a rendered macro body ships as a
       raw technical `accountId` in visible output (exactly the silent-drop
       class 001's plan documents).
-- [ ] `packages/docx/src/serialize.ts` (`case "unknown"`, line 433): when
+- [x] `packages/docx/src/serialize.ts` (`case "unknown"`, line 433): when
       `block.body` is present, render the existing placeholder line followed
       by the body's blocks serialized through the normal `serializeChildren`
       path (recursive, so a table/list/nested-unknown-macro inside an
@@ -1200,17 +1200,17 @@ this spec's invariant, not 001's.
       present, render it as a `codeBlock`-styled paragraph. Cap recursion
       depth and total rendered length (reuse the resolver's depth guard
       shape) so a pathological macro body can't blow up a single page.
-- [ ] `packages/pdf/src/serialize.ts` (`case "unknown"`, line 802): same
+- [x] `packages/pdf/src/serialize.ts` (`case "unknown"`, line 802): same
       treatment — today it emits nothing but a report note; render the
       preserved body/plain-body content instead of silently omitting it.
-- [ ] Tests: unresolved unknown macro with a table in `body`, with a list,
+- [x] Tests: unresolved unknown macro with a table in `body`, with a list,
       with a nested unknown macro inside `body`, and with a very large
       `plainBody` (assert the cap fires with a note, not an unbounded
       document).
 
 ### Host wiring
 
-- [ ] CLI adapters in `apps/cli/src/commands/export-internals.ts` (same
+- [x] CLI adapters in `apps/cli/src/commands/export-internals.ts` (same
       pattern as `tokenAssetFetcher`, line 119): `jiraIssuePortFromClient(JiraClient)`,
       `exportViewPortFromClient(ConfluenceClient)`,
       `attachmentLookupFromClient(ConfluenceClient)` (backed by the cached
@@ -1220,13 +1220,13 @@ this spec's invariant, not 001's.
       (backs the E4/E5 renderers: `getPageStorage`/`getChildren`/`searchCql`
       via `client.getPage`/`client.search`), and the default
       `ExternalAssetFetcher` (see export_view fallback task).
-- [ ] Wire the registry into the ts-engine paths in
+- [x] Wire the registry into the ts-engine paths in
       `apps/cli/src/commands/export.ts` (`exportWithTsEngine`, line ~729, and
       the PDF path): build `defaultRegistry`, populate `MacroResolutionOptions.contextFor`
       from the active profile, set `env.macros`. Jira port only when the
       profile has Jira access configured; otherwise the chain degrades
       gracefully.
-- [ ] **Engine/flag matrix for `--no-live-macros`** (deterministic exports
+- [x] **Engine/flag matrix for `--no-live-macros`** (deterministic exports
       for CI): the macro chain only exists on the ts-engine path
       (`exportWithTsEngine`); `--engine` defaults to `"python"`
       (`apps/cli/src/commands/export.ts:80`). So: `--no-live-macros` with
@@ -1247,13 +1247,13 @@ this spec's invariant, not 001's.
       ("this page has dynamic macros; re-run with `--engine ts` for live
       rendering") rather than silently exporting placeholders with no
       explanation of why.
-- [ ] Extension wiring notes only (implementation is T5.4, post-M1): the
+- [x] Extension wiring notes only (implementation is T5.4, post-M1): the
       extension supplies the same ports over its session `fetch` against the
       current site (`…/rest/api/3` for Jira on connected sites,
       `/wiki/rest/api` for export_view). Record the port contracts it needs in
       `packages/export-macros/src/index.ts` doc comments so T5.4 needs no
       package changes.
-- [ ] Further hosts: nothing host-specific leaks into
+- [x] Further hosts: nothing host-specific leaks into
       `packages/export-macros` — CI check: the package imports neither
       `@atlcli/jira` nor `ConfluenceClient` (types excepted).
 - [ ] **CLI `--json` report note fidelity** (synergy, not new scope): today
@@ -1268,7 +1268,7 @@ this spec's invariant, not 001's.
       note codes (`macro-rendered-via`, `macro-degraded`,
       `macro-skipped-by-config`) survive structured once 005 lands — add that
       assertion to this plan's E2E script rather than to 005's.
-- [ ] Docs (`docs/`): feature guide "Exporting pages with dynamic macros" —
+- [x] Docs (`docs/`): feature guide "Exporting pages with dynamic macros" —
       fallback chain explained, supported macros table, `--no-live-macros`,
       troubleshooting (403 from Jira, stale diagram previews, placeholder
       meaning). Same PR as the feature (workflow rule).
@@ -1280,7 +1280,7 @@ in-memory port implementations (real implementations of our own interfaces —
 not API mocks); anything talking to Confluence/Jira is an E2E test against the
 real instance.
 
-- [ ] `packages/export-macros/src/resolve.test.ts` — registry/fallback-chain
+- [x] `packages/export-macros/src/resolve.test.ts` — registry/fallback-chain
       as pure logic with in-memory renderers, called with a
       `StorageToBlocksResult`-shaped `input` (not bare blocks): order (first
       match wins), skip fall-through to catch-all and to placeholder floor,
@@ -1301,17 +1301,17 @@ real instance.
       `columns`/`maximumIssues` count as two. **Circuit breaker**: a
       `"rate-limited"` `PortError` from one macro's port call causes every
       later macro needing the same `service` to skip without a further call.
-- [ ] `packages/export-macros/src/registry.test.ts` — `createRegistry`
+- [x] `packages/export-macros/src/registry.test.ts` — `createRegistry`
       invariants: duplicate non-catch-all macro name across two renderers
       throws; more than one `"*"` catch-all throws; `compose(...)` places
       overrides before built-ins and still validates; introspecting
       `registry.renderers.flatMap(r => r.macros)` gives a stable, complete
       "supported macros" list (feeds the docs feature guide's table).
-- [ ] `packages/export-macros/src/jira.test.ts` — renderer against an
+- [x] `packages/export-macros/src/jira.test.ts` — renderer against an
       in-memory `JiraIssuePort` (fixed issue rows): single-issue block shape,
       table shape (header row, column selection, `maximumIssues` cap), status
       color mapping, missing-port skip, 403 → skip + note.
-- [ ] `packages/export-macros/src/diagram.test.ts` — name derivation across
+- [x] `packages/export-macros/src/diagram.test.ts` — name derivation across
       the four macro variants, PNG vs. SVG preference via in-memory
       `AttachmentLookupPort`, no-name skip.
 - [ ] `packages/confluence/src/html-to-blocks.test.ts` — converter against
@@ -1357,7 +1357,7 @@ real instance.
             without `env.macros` set — identical output (pass is additive).
       - [ ] Cleanup: delete the created test page(s) (and any test
             attachments) after the run; script is re-runnable.
-- [ ] `bun run typecheck` green; both engines' exhaustive block switches
+- [x] `bun run typecheck` green; both engines' exhaustive block switches
       untouched (no new block types in this spec).
 
 ## Definition of Done
