@@ -278,7 +278,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
 
 ### Level-A settings (T2.2)
 
-- [ ] `packages/pdf/src/template.ts` — page geometry: replace the fixed
+- [x] `packages/pdf/src/template.ts` — page geometry: replace the fixed
       `paper: "a4"` with
       ```typst
       set page(
@@ -290,7 +290,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       v1 supports exactly `a4 | letter` (Level A per TEMPLATE-UX §5.1);
       `legal`/`a3` from B8 stay behind the same validation switch and can
       be enabled later without a contract change.
-- [ ] `packages/pdf/src/template.ts` — section toggles: each toggle must
+- [x] `packages/pdf/src/template.ts` — section toggles: each toggle must
       wrap its **own trailing `pagebreak()`**, not just its content — in
       the current source the cover's `pagebreak()` sits right after the
       cover block, but the outline's `pagebreak()` is a *separate*
@@ -307,14 +307,14 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       page keeps rendering unconditionally in this task (a `colophon`
       toggle is a one-line B8 follow-up once product naming is settled —
       see open questions).
-- [ ] `packages/pdf/src/template.ts` — header/footer text:
+- [x] `packages/pdf/src/template.ts` — header/footer text:
       `settings.at("header-text", default: none)` replaces the
       `meta.title` / `meta.space` grid when set;
       `settings.at("footer-text", default: none)` renders left of the
       centered page number. Emission maps `headerText` → `header-text`
       (kebab-case keys on the Typst side, consistent with
       `exported-label`).
-- [ ] `packages/pdf/src/template.ts` — accent color, organization name,
+- [x] `packages/pdf/src/template.ts` — accent color, organization name,
       logo: `settings.at("accent-color", default: "#4B57A3")` replaces
       the hard-coded indigo accent wherever the template references it
       (cover rule, heading accent, table header); `settings.at(
@@ -325,7 +325,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       `image(...)`, never widening the fixed layout grid — same
       `typstString`/asset-path emission pattern as the watermark and
       font seams elsewhere in this folder.
-- [ ] `packages/pdf/src/settings.ts`: validation for the Level-A fields
+- [x] `packages/pdf/src/settings.ts`: validation for the Level-A fields
       (page enum, orientation enum, header/footer length cap of 200
       chars to keep the header grid sane), plus for the new fields:
       `accentColor` normalized via the same `normalizeExportColor` path
@@ -344,13 +344,13 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       manifest; for this folder's fixed Level-A shape, a present `logo`
       always requires a present `alt`, rejected otherwise with a
       `PdfSettingsError`).
-- [ ] Verify relative cover measurements (`v(37mm)`, `block(width: 90%)`
+- [x] Verify relative cover measurements (`v(37mm)`, `block(width: 90%)`
       in `template.ts` lines 116–139) on Letter/landscape; adjust to
       relative units where a fixed A4 assumption breaks (B8 risk note).
 
 ### Watermark (T2.3)
 
-- [ ] `packages/pdf/src/template.ts`: add the watermark layer and wire it
+- [x] `packages/pdf/src/template.ts`: add the watermark layer and wire it
       into the existing `set page(...)` call as `background:` — under the
       content, therefore automatically an Artifact in the tagged PDF
       (BASELINE-DESIGN B7; TEMPLATE-UX §8):
@@ -375,13 +375,13 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       `set page(fill: white)` / `set page(fill: cover-paper)` calls in the
       template keep the background rule — the watermark appears on cover,
       body, and end pages alike.
-- [ ] `packages/pdf/src/settings.ts`: watermark validation — non-empty
+- [x] `packages/pdf/src/settings.ts`: watermark validation — non-empty
       `text`, color normalized via the same `normalizeExportColor` path
       the theme uses, `opacity` **rejected** (not clamped — see T2.1's
       `resolvePdfSettings` bullet) outside `(0, 1]`, `size` in 8..400 pt,
       `angle` in -180..180 — all four throw the same `PdfSettingsError`
       shape as the Level-A fields.
-- [ ] Foreground layer is explicitly rejected (covers text, breaks
+- [x] Foreground layer is explicitly rejected (covers text, breaks
       copy/select); image watermarks are out of scope for v1 — record both
       in the docs page.
 
@@ -614,7 +614,7 @@ have to rediscover it by re-reading `template.ts` line by line.
 
 ### Fonts intake (B5 — engine seam only)
 
-- [ ] `packages/pdf/src/types.ts`: add the port next to `PdfAssetResolver`:
+- [x] `packages/pdf/src/types.ts`: add the port next to `PdfAssetResolver`:
       ```ts
       export interface FontAsset {
         family: string; style: "normal" | "italic"; weight: number;
@@ -626,7 +626,7 @@ have to rediscover it by re-reading `template.ts` line by line.
         getBytes(sha256: string): Promise<Uint8Array>;
       }
       ```
-- [ ] `packages/pdf/src/fonts.ts` (new, pure): `parseFontMeta(bytes)` —
+- [x] `packages/pdf/src/fonts.ts` (new, pure): `parseFontMeta(bytes)` —
       sfnt-only acceptance via magic bytes `00 01 00 00` (TrueType),
       `OTTO` (CFF), `ttcf` (collection); read the `name` table (IDs
       1/2/16/17) for family/subfamily — for `ttcf` collections, parse
@@ -643,7 +643,7 @@ have to rediscover it by re-reading `template.ts` line by line.
       value large enough to read out of bounds, and a zero-length
       buffer — `parseFontMeta` must reject cleanly, never throw an
       unrelated `RangeError` from an unchecked array read.
-- [ ] `packages/pdf/src/fonts.ts`: `verifyFontBytes(asset: FontAsset,
+- [x] `packages/pdf/src/fonts.ts`: `verifyFontBytes(asset: FontAsset,
       bytes: Uint8Array): Promise<void>` — hashes `bytes` via
       `sha256Hex` (mirroring `verifyTemplateBytes`'s pattern from T2.4)
       and throws a typed mismatch error when it disagrees with
@@ -657,7 +657,7 @@ have to rediscover it by re-reading `template.ts` line by line.
       approved font's license claim with no error. Document the call as
       mandatory host wiring next to the `BrowserPdfCompiler` construction
       note below.
-- [ ] Document the host wiring (no engine code): hosts construct
+- [x] Document the host wiring (no engine code): hosts construct
       `new BrowserPdfCompiler({ wasm, fonts: [...bundledFonts,
       ...(await Promise.all(customFonts.map(async (f) => { const bytes =
       await fontSource.getBytes(f.sha256); await verifyFontBytes(f,
@@ -665,7 +665,7 @@ have to rediscover it by re-reading `template.ts` line by line.
       is already `Uint8Array[]` and `add_raw_font` accepts arbitrary
       extra fonts; no change in `packages/pdf-compiler-browser` is
       needed.
-- [ ] Template manifests reference approved fonts as a `choice` setting
+- [x] Template manifests reference approved fonts as a `choice` setting
       whose options a host generates from `FontSource.list()` — keeping
       Level A's "font choice from an approved set" without free-form font
       input. Upload UI, license attestation flow, and storage are host
@@ -720,14 +720,14 @@ touching zips uses real archives built by the code under test.
       `PdfAssetResolver.resolve` is never called (assert call count `0`
       on the real resolver test double already used in this file's
       other cases) — settings validation runs before any asset fetch.
-- [ ] **Template source assertions** — `packages/pdf/src/template.test.ts`
+- [x] **Template source assertions** — `packages/pdf/src/template.test.ts`
       (extend): generated `atlcli.typ` contains `watermark-layer`,
       `settings.at("page"`, `flipped:`, and the cover/outline `#if`
       guards, with each guard wrapping its trailing `pagebreak()` (assert
       the `pagebreak()` call sites are *inside* the `#if` block bodies,
       not just present in the file); the template string still contains
       no unescaped `${` leftovers.
-- [ ] **Compiled-PDF checks** —
+- [x] **Compiled-PDF checks** —
       `packages/pdf-compiler-browser/src/compiler.test.ts` (extend; real
       compile, no mocks):
       - compile a small document with `settings: { page: "letter",
@@ -768,7 +768,7 @@ touching zips uses real archives built by the code under test.
         document stays tagged overall" — see the Definition of Done
         wording change and the corresponding risk entry below for what
         is and isn't proven at this layer.
-- [ ] **Font verification** — `packages/pdf/src/fonts.test.ts` (extend):
+- [x] **Font verification** — `packages/pdf/src/fonts.test.ts` (extend):
       `verifyFontBytes` accepts bytes matching `asset.sha256` and throws
       the typed mismatch error on a flipped bit (real bytes, WebCrypto —
       no fakes, mirroring the template-library hash tests); `parseFontMeta`
