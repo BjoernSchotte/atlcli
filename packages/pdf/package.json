@@ -49,7 +49,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "prepack": "bun scripts/ensure-fonts.ts && bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {

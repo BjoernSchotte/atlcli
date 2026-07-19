@@ -7,19 +7,18 @@
   "scripts": {
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.tools.json",
-    "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. clean:browser-export-harness-output",
+    "prebuild": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && bun run --cwd ../.. clean:browser-export-harness-output",
     "build": "vite build",
     "check:output": "bun scripts/check-output.ts",
     "test:unit": "bun test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts",
-    "pretest:e2e": "bun run --cwd ../.. fonts:ensure",
+    "pretest:e2e": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/pdf": "workspace:*",
-    "@atlcli/pdf-compiler-browser": "workspace:*",
-    "@myriaddreamin/typst-ts-web-compiler": "0.7.0"
+    "@atlcli/pdf-compiler-browser": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

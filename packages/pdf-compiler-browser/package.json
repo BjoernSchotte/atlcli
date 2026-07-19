@@ -8,6 +8,7 @@
   "sideEffects": false,
   "files": [
     "dist",
+    "vendor",
     "README.md"
   ],
   "type": "module",
@@ -16,17 +17,21 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./wasm": "./vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm",
+    "./vendor/*": "./vendor/*"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "clean": "rm -rf dist",
+    "build": "bun scripts/vendor-typst.ts && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist vendor",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "prepack": "bun scripts/vendor-typst.ts && bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/pdf": "workspace:*",
+    "@atlcli/pdf": "workspace:*"
+  },
+  "devDependencies": {
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0"
   }
 }

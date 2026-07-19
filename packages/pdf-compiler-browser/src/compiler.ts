@@ -1,9 +1,12 @@
 /// <reference path="./vendor.d.ts" />
 
+// The VENDORED, CSP-patched glue (spec 009 Special cases): a package
+// self-reference so the same specifier works from workspace source, from
+// dist, and inside packed tarballs (see exports "./vendor/*").
 import initTypst, {
   TypstCompilerBuilder,
   type TypstCompiler,
-} from "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs";
+} from "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs";
 import type { PdfCompileResult, PdfSourceBundle } from "@atlcli/pdf/browser";
 import { mapPdfDiagnostics } from "@atlcli/pdf/internal";
 
