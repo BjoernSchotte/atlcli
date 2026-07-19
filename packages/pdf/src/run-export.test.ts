@@ -20,7 +20,7 @@ describe("neutral runPdfExport", () => {
       filename: "Test.pdf",
       profile: "pdf-ua-1",
       theme: { colors: { paper: "#FFFDF5" } },
-      sourceNotes: [{ level: "info", code: "source", message: "source note" }],
+      sourceNotes: [{ level: "info", code: "browser-harness", message: "host source note" }],
       onPhase: (phase) => phases.push(phase),
     }, {
       assets,
@@ -32,7 +32,7 @@ describe("neutral runPdfExport", () => {
     });
     expect(template).toContain('let cover-paper = rgb("#FFFDF5")');
     expect(report.profile).toBe("pdf-ua-1");
-    expect(report.notes[0]?.code).toBe("source");
+    expect(report.notes[0]?.code).toBe("browser-harness");
     expect(phases).toEqual(["preparing", "fetching", "compiling", "validating", "emitting"]);
     expect(emitted).toBe(1);
   });

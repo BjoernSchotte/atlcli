@@ -120,7 +120,7 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   expect(report.filename).toBe(golden.report.filename);
   // The perf-timing diagnostic note is wall-clock-dependent and can never be
   // golden-pinned; the golden capture pins the SEMANTIC notes only.
-  expect(report.notes.map((n) => n.code).filter((c) => c !== "perf-timing")).toEqual(
+  expect(report.notes.map((n) => n.code as string).filter((c) => c !== "perf-timing")).toEqual(
     golden.report.noteCodes
   );
 }

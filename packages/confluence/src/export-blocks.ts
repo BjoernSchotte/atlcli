@@ -208,11 +208,69 @@ export type ExportBlock =
        */
       bodyNotes?: ExportNote[] };
 
+/**
+ * Every stable machine code an {@link ExportNote} can carry (spec 009,
+ * "Stabilize ExportNote.code"). This is the single registry: renaming or
+ * removing a member is a breaking API change (it shows up in the api-report
+ * diff), and emitting a code that is not listed here is a type error at the
+ * call site plus a failure of `scripts/export-note-codes.test.ts`, which
+ * walks every real emission site in the repo. Grouped by emitter.
+ */
+export const EXPORT_NOTE_CODES = [
+  // Confluence storage walk (storageToBlocks)
+  "unknown-macro",
+  "macro-not-rendered",
+  "image-unresolved",
+  "inline-image-skipped",
+  // DOCX placeholder resolver / export pipeline (@atlcli/docx)
+  "date-format-unknown",
+  "pageproperty-no-key",
+  "placeholder-empty",
+  "placeholder-substituted",
+  "placeholder-unsupported",
+  "placeholder-never",
+  "space-fetch-failed",
+  "space-unavailable",
+  "user-fetch-failed",
+  "user-unavailable",
+  "owner-fetch-failed",
+  "owner-unavailable",
+  "homepage-fetch-failed",
+  "homepage-unavailable",
+  "no-content-placeholder",
+  "logo-skipped",
+  "logo-embed-failed",
+  "perf-timing",
+  // DOCX block serializer (@atlcli/docx)
+  "code-highlight-skipped",
+  "image-skipped",
+  "image-embed-failed",
+  "diagram-skipped",
+  "diagram-unsupported",
+  "diagram-render-failed",
+  "table-shape-approximated",
+  // PDF pipeline (@atlcli/pdf)
+  "pdf-image-skipped",
+  "pdf-image-alt-fallback",
+  "pdf-diagram-unsupported",
+  "pdf-diagram-failed",
+  "pdf-link-unresolved",
+  "pdf-table-cell-contrast-low",
+  "pdf-unknown-block",
+  // Host-emitted source notes (extension panel / conformance harness)
+  "pdf-mention-unresolved",
+  "pdf-mention-resolution-failed",
+  "browser-harness",
+] as const;
+
+/** Stable machine code of an {@link ExportNote} — a member of {@link EXPORT_NOTE_CODES}. */
+export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
+
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
   level: "info" | "warning";
   /** Stable machine code, e.g. `"unknown-macro"`, `"inline-image-skipped"`. */
-  code: string;
+  code: ExportNoteCode;
   message: string;
   macroName?: string;
 }
