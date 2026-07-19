@@ -5,6 +5,26 @@ Code-Skizzen stehen dort; hier stehen Reihenfolge, Abhängigkeiten und
 Parallelisierungs-Schnitt). Host-spezifische Ausbaustufen jenseits von CLI und
 Extension werden außerhalb dieses Repos geplant.
 
+## Feature-Ordner (je einer pro Arbeitsstrang, PLAN.md auf Englisch)
+
+Jeder Strang hat einen Unterordner `NNN-slug/PLAN.md` mit ausführlichem,
+abhakbarem Umsetzungsplan inkl. Tests (Unit mit echten Fixtures, E2E via CLI
+gegen den Confluence-Space `DOCSY`, Profil `mayflower` — nie mocken):
+
+| Ordner | Inhalt (Task-IDs) | Startbar |
+|---|---|---|
+| [`001-exportblock-model/`](001-exportblock-model/PLAN.md) | T0.1/T0.2 — Blockmodell + No-op-Renderings (der sequenzielle Kern) | sofort |
+| [`002-scope-orchestration/`](002-scope-orchestration/PLAN.md) | A1–A5 Baum/Space/Label/Merge, Headless-Story | nach 001 |
+| [`003-content-features/`](003-content-features/PLAN.md) | C1–C9 inkl. `scroll-*`-Kompatmakros, Captions, Tabellen | nach 001 |
+| [`004-macro-renderer/`](004-macro-renderer/PLAN.md) | E1–E5 Registry, Jira, draw.io, export_view-Fallback | nach 001 |
+| [`005-placeholders/`](005-placeholders/PLAN.md) | D1/D2 includepage & metadata | sofort |
+| [`006-word-quality/`](006-word-quality/PLAN.md) | G1–G4 numPr, Spaltenbreiten, SVG, StyleRef | nach 001/003 |
+| [`007-pdf-template-settings/`](007-pdf-template-settings/PLAN.md) | T2.1–T2.4 + B-Cluster Settings/Watermark/Library | sofort |
+| [`008-pdf-cli/`](008-pdf-cli/PLAN.md) | T3.1–T3.5 Bun-WASM, `--format pdf`, CI/CD-DX | T3.1 sofort |
+| [`009-package-publishing/`](009-package-publishing/PLAN.md) | T4.1/T4.2 Publishing + API-Freeze | Infra sofort |
+| [`010-extension-integration/`](010-extension-integration/PLAN.md) | T5.1–T5.5 Scope-UI, Library-UI, Vorschau, Docs | nach M1 |
+| [`011-quality-gates/`](011-quality-gates/PLAN.md) | T4.3–T4.9 Harness, Benchmarks, PDF/UA, Security | wächst mit |
+
 Leitidee: **Parallelisierung durch Datei-Ownership.** Jede Lane besitzt eine
 disjunkte Menge von Paketen/Dateien; Lanes ohne gemeinsame Dateien laufen
 gleichzeitig (mehrere Entwickler oder Agent-Worktrees) ohne Merge-Konflikte.
