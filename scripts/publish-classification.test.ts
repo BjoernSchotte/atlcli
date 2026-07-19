@@ -105,16 +105,22 @@ describe("workflows never publish to a registry", () => {
     const offenders: string[] = [];
 
     for (const file of listWorkflowFiles()) {
-      const lines = readFileSync(file, "utf8").split("\n");
-      lines.forEach((line, idx) => {
-        // Ignore YAML comment lines (first non-whitespace char is '#') so a
-        // documentation note explaining that publishing was removed does not
-        // trip the guard.
-        if (line.trimStart().startsWith("#")) return;
+      // Normalize before scanning so trivial formatting cannot slip a publish
+      // past the guard: drop YAML comment lines (so documentation notes about
+      // removed publishing don't trip it), rejoin shell line continuations
+      // ("npm \\\n publish"), and collapse whitespace runs ("npm  publish").
+      const normalized = readFileSync(file, "utf8")
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n")
+        .replace(/\\\r?\n/g, " ")
+        .split("\n");
+      normalized.forEach((line, idx) => {
+        const collapsed = line.replace(/\s+/g, " ");
         for (const pattern of FORBIDDEN_PUBLISH_PATTERNS) {
-          if (line.includes(pattern)) {
+          if (collapsed.includes(pattern)) {
             offenders.push(
-              `${file.replace(`${repoRoot}/`, "")}:${idx + 1}: forbidden "${pattern}"`,
+              `${file.replace(`${repoRoot}/`, "")} (post-normalization line ${idx + 1}): forbidden "${pattern}"`,
             );
           }
         }
