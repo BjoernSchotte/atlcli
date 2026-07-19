@@ -262,7 +262,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       page's base orientation restored (info note). This keeps the
       body-wrapped `orientation` block the single downstream shape either
       way, so DOCX/PDF rendering tasks below do not fork on marker vs. body.
-- [ ] If 001 has not landed: extend `ExportBlock` in
+- [x] If 001 has not landed: extend `ExportBlock` in
       `packages/confluence/src/export-blocks.ts` with `caption?: Caption` on
       `codeBlock`/`table`/`image`, and new variants `pageBreak`,
       `orientation { landscape, content }`, `anchor { name }`; add
@@ -270,18 +270,18 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `exporter?: "pdf" | "word"` and `exportControls?: "apply" |
       "passthrough"` (default `"apply"`, see Architecture); re-export new
       types from `packages/confluence/src/index.ts` and `index.browser.ts`.
-- [ ] Thread options into the walk: `storageToBlocks(storage, options?)`
+- [x] Thread options into the walk: `storageToBlocks(storage, options?)`
       (`export-blocks.ts:330`) stores `exporter` AND `exportControls` on
       `WalkCtx` (`export-blocks.ts:278`) as two independent fields — do not
       collapse them into one flag (see Architecture's `exportControls` note
       on why `exporter` alone cannot implement `--keep-ignored`).
-- [ ] `normalizeCaptionKind(raw, targetBlockType)` in
+- [x] `normalizeCaptionKind(raw, targetBlockType)` in
       `packages/confluence/src/export-blocks.ts` (new, exported, unit-tested
       standalone): case-insensitive known-value/alias mapping to
       `CaptionKind`, unknown input → target block's natural kind + warning
       note, `equation` rejected until a real math block exists (see
       Architecture).
-- [ ] C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
+- [x] C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
       fallback), implementing the full C4 truth table from Architecture:
       `scroll-ignore` → when `exportControls === "passthrough"` or the
       `exporter` param is absent/matches `ctx.exporter`: `[]` + info note
@@ -292,18 +292,18 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `scroll-only-skipped-other-exporter` on mismatch. Unknown `exporter`
       values fail safe (include + warning note) regardless of
       `exportControls`, never drop silently.
-- [ ] C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
+- [x] C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
       to also return true for `scroll-only-inline`/`scroll-ignore-inline`, and
       handle them in `walkInlineElement` (ignore-inline → `[]` + note,
       only-inline → inline content of its body), same truth table and
       `exportControls` gate as the block form.
-- [ ] C5 in `walkMacro()`: `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
-- [ ] C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
+- [x] C5 in `walkMacro()`: `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
+- [x] C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
       `{ type: "orientation", landscape, content: walkBlocks(body) }` (body
       shape) or the output of `normalizeOrientationMarkers()` (marker
       shape) per the C6 fixture gate above; nested orientation regions in
       the body-wrapped case: outer wins + warning note.
-- [ ] C3 in `walkMacro()`: `scroll-title` → build
+- [x] C3 in `walkMacro()`: `scroll-title` → build
       `Caption { kind: normalizeCaptionKind(param "type", targetBlockType),
       content }` and attach via new helper `attachCaption(inner, caption,
       ctx)` to the first caption-capable block (`image`/`table`/`codeBlock`)
@@ -333,7 +333,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `apps/cli/src/commands/export.ts` that sets `exportControls:
       "passthrough"` (not "omits `exporter`" — see Architecture) for
       debugging, documented in the command help.
-- [ ] **`ExportNote.source` provenance contract (owner: this plan).** Add an
+- [x] **`ExportNote.source` provenance contract (owner: this plan).** Add an
       additive optional `source?: { pageId?: string; pageTitle?: string;
       pageUrl?: string; blockPath?: string; assetName?: string }` field to
       `ExportNote` (`packages/confluence/src/export-blocks.ts:116`), the
@@ -665,7 +665,7 @@ Hard rule: NEVER mock. Unit tests run real storage XML through the real
 walker; golden tests run the real serializers; E2E runs the real CLI against a
 real instance.
 
-- [ ] Walker unit tests in `packages/confluence/src/export-blocks.test.ts`
+- [x] Walker unit tests in `packages/confluence/src/export-blocks.test.ts`
       using the captured real storage fixtures: scroll-only kept /
       scroll-ignore dropped (+ note), full C4 truth table — exporter
       parameter match/mismatch/absent/unknown-value crossed with
