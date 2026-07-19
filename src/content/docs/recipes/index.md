@@ -17,6 +17,7 @@ Real-world workflows and use cases for atlcli.
 - [Team Docs Sync](team-docs.md) - Sync team documentation with Confluence
 - [Sprint Reporting](sprint-reporting.md) - Automated sprint reports
 - [CI/CD Docs](ci-cd-docs.md) - Publish documentation from CI/CD
+- [Export Automation](export-automation.md) - Export pages to PDF/DOCX in CI/CD
 - [Issue Triage](issue-triage.md) - Bulk issue triage workflow
 
 ## Common Patterns

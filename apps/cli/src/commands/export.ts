@@ -14,6 +14,7 @@ import {
   getFlag,
   hasFlag,
   loadConfig,
+  normalizeBaseUrl,
   output,
   type Profile,
 } from "@atlcli/core";
@@ -526,10 +527,88 @@ async function handlePdfExport(
   emitReportOutcome(outcome, opts);
 }
 
+/**
+ * Profile-free token mode for CI (spec 008 T3.4). Builds an ephemeral in-memory
+ * {@link Profile} from `--base-url`/`ATLCLI_BASE_URL` + `--auth-type` +
+ * (`--email`/`ATLCLI_EMAIL` for api-token) + the highest-priority
+ * `ATLCLI_API_TOKEN`, so an export runs with no `~/.atlcli/config.json`.
+ *
+ * FAIL-CLOSED: two disjoint modes only — named profile OR fully ephemeral, never
+ * a mix. A partial ephemeral set (or `--profile` alongside ephemeral fields) is a
+ * usage error raised BEFORE any config-file/keychain lookup, so a gap is never
+ * silently filled from a local profile. Returns `null` when no ephemeral field
+ * was supplied (fall back to the named-profile path).
+ */
+export function buildEphemeralProfile(
+  flags: Record<string, string | boolean | string[]>
+): Profile | null {
+  const baseUrlRaw = getFlag(flags, "base-url") ?? process.env.ATLCLI_BASE_URL;
+  const email = getFlag(flags, "email") ?? process.env.ATLCLI_EMAIL;
+  const authTypeRaw = getFlag(flags, "auth-type") ?? process.env.ATLCLI_AUTH_TYPE;
+  const requested = Boolean(baseUrlRaw || email || authTypeRaw);
+  if (!requested) return null;
+
+  if (hasFlag(flags, "profile")) {
+    throw new ExportRequestError(
+      "Ephemeral auth (--base-url/--email/--auth-type) cannot be combined with --profile. Use one or the other."
+    );
+  }
+  if (!baseUrlRaw) {
+    throw new ExportRequestError("Ephemeral auth requires --base-url (or ATLCLI_BASE_URL).");
+  }
+  const token = process.env.ATLCLI_API_TOKEN;
+  if (!token) {
+    throw new ExportRequestError("Ephemeral auth requires the ATLCLI_API_TOKEN environment variable.");
+  }
+  const authType = authTypeRaw ?? "api-token";
+  if (authType !== "api-token" && authType !== "bearer") {
+    throw new ExportRequestError(`Unknown --auth-type "${authType}". Use "api-token" or "bearer".`);
+  }
+  if (authType === "api-token" && !email) {
+    throw new ExportRequestError("--auth-type api-token requires --email (or ATLCLI_EMAIL).");
+  }
+  if (authType === "bearer" && email) {
+    throw new ExportRequestError("--auth-type bearer does not take --email.");
+  }
+
+  // HTTPS by default; plain HTTP only behind an explicit Data Center opt-in.
+  const normalized = normalizeBaseUrl(baseUrlRaw);
+  if (normalized.startsWith("http://") && !hasFlag(flags, "allow-http")) {
+    throw new ExportRequestError(
+      "Ephemeral --base-url must use HTTPS. Pass --allow-http for a Data Center deployment over plain HTTP."
+    );
+  }
+
+  return {
+    name: "ephemeral",
+    baseUrl: normalized,
+    ...(authType === "bearer" ? { deploymentType: "data-center" as const } : {}),
+    auth:
+      authType === "bearer"
+        ? { type: "bearer", pat: token, username: email }
+        : { type: "apiToken", email: email!, token },
+  };
+}
+
 async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<{ client: ConfluenceClient; profile: any }> {
+  // Fully ephemeral (CI) mode short-circuits before any config/keychain access.
+  let ephemeral: Profile | null;
+  try {
+    ephemeral = buildEphemeralProfile(flags);
+  } catch (error) {
+    if (error instanceof ExportRequestError) {
+      fail(opts, 1, ERROR_CODES.USAGE, error.message);
+    }
+    throw error;
+  }
+  if (ephemeral) {
+    assertCliAuthSupported(ephemeral, opts);
+    return { client: new ConfluenceClient(ephemeral), profile: ephemeral };
+  }
+
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -1561,7 +1640,18 @@ PDF Options (--format pdf):
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
                             honors the SOURCE_DATE_EPOCH env var)
+  --report json             Synonym for --json (emit the report to stdout)
   (--template and --engine are not valid with --format pdf.)
+
+Profile-free auth (CI, any format):
+  --base-url <url>          Confluence base URL (or ATLCLI_BASE_URL); requires
+                            HTTPS unless --allow-http
+  --email <addr>            Account email (or ATLCLI_EMAIL); required for
+                            api-token auth, forbidden for bearer
+  --auth-type <kind>        api-token (default) | bearer (or ATLCLI_AUTH_TYPE)
+  --allow-http              Permit a plain-HTTP --base-url (Data Center opt-in)
+  (The token comes from ATLCLI_API_TOKEN. Ephemeral mode is fail-closed: use a
+   named --profile OR a full ephemeral set, never a mix.)
 
 Scope Options (--engine ts):
   --scope <kind>            page (default) | tree | space

@@ -528,7 +528,7 @@ process, with the port shape committed. Timebox: 2 days.
       and the `export` line in `wikiHelp()` (`apps/cli/src/commands/wiki.ts`,
       currently "Export page to DOCX with Word templates" → "Export page to
       DOCX or PDF").
-- [ ] Docs: extend `src/content/docs/confluence/export.md` with a PDF section
+- [x] Docs: extend `src/content/docs/confluence/export.md` with a PDF section
       (minimal + advanced example per the docs standards in `CLAUDE.md`).
 
 ### Scope & label flags (T3.3)
@@ -581,12 +581,12 @@ Dependencies above). Wire after its merge.
       only.
 - [x] Progress reporting for multi-page scopes: surface `onPhase` +
       per-page progress on stderr (stdout stays clean for `--report json`).
-- [ ] Docs: scope/label section in `src/content/docs/confluence/export.md`
+- [x] Docs: scope/label section in `src/content/docs/confluence/export.md`
       cross-linking the tree-export feature guide owned by folder 002.
 
 ### CI/CD DX & docs (T3.4)
 
-- [ ] `--report json`: print a versioned report object to **stdout** as the
+- [x] `--report json`: print a versioned report object to **stdout** as the
       only stdout output. Schema (v1) in a new
       `apps/cli/src/commands/export-report.ts`:
       `{ schema: "atlcli.export-report/1", format, engine?, sourcePages: [{
@@ -630,7 +630,7 @@ Dependencies above). Wire after its merge.
       over `PdfExportReport` and the ts DOCX report; additive changes
       only, breaking changes bump the schema string (A5: "CLI report
       schema versioned and stable").
-- [ ] `--json` vs `--report json`: the CLI already has a generic `--json`
+- [x] `--json` vs `--report json`: the CLI already has a generic `--json`
       flag (`apps/cli/src/index.ts:34`, toggles `opts.json` through
       `output()`/`fail()` in `packages/core/src/utils.ts`) that other
       commands use for ad hoc JSON echoes. For `wiki export`, make `--json`
@@ -641,7 +641,7 @@ Dependencies above). Wire after its merge.
       (`page` → the single `sourcePages[0]`, `output` → `outputs[0]` plus
       `outputDetails[0]` for its metrics) so there is one JSON shape per
       invocation, not two competing ones.
-- [ ] Classify thrown errors for exit-code mapping instead of string-sniffing
+- [x] Classify thrown errors for exit-code mapping instead of string-sniffing
       Confluence's plain `Error` messages: `ConfluenceClient` throws
       un-typed `Error`s embedding the HTTP status in the message text
       (`packages/confluence/src/client.ts:335`, `:1727`), so today nothing
@@ -652,7 +652,7 @@ Dependencies above). Wire after its merge.
       `export-report.ts` that reads it — either way, exit-code tests must
       assert against real thrown errors from a live-shaped fixture, not
       constructed fakes (per the no-mocking rule below).
-- [ ] Deterministic exit codes, documented in help + docs and asserted in
+- [x] Deterministic exit codes, documented in help + docs and asserted in
       tests: `0` success; `1` usage/config error; `2` completed with warnings
       under `--strict` (new flag: any `warning`-severity entry in `issues[]`
       fails the build — including compiler diagnostics captured on a
@@ -662,7 +662,7 @@ Dependencies above). Wire after its merge.
       `export-report.ts` used by both DOCX and PDF paths (today everything
       exits `1` via `fail()`; extend `fail`'s call sites, not
       `packages/core`).
-- [ ] `--out-dir <dir>`: alternative to `--output` for choosing a directory
+- [x] `--out-dir <dir>`: alternative to `--output` for choosing a directory
       instead of an exact path; a deterministic slugified filename is
       derived (`<pageId>-<slug>.pdf` for `--scope page`, `<rootPageId|
       spaceKey>-<slug>.pdf` for `--scope tree|space` — one file either way,
@@ -670,7 +670,7 @@ Dependencies above). Wire after its merge.
       for every scope (it just names the one artifact); only passing both
       `--output` and `--out-dir` together is a usage error. Files:
       `apps/cli/src/commands/export-pdf.ts`, `export.ts`.
-- [ ] Profile-free token mode for CI: allow running without
+- [x] Profile-free token mode for CI: allow running without
       `~/.atlcli/config.json` by accepting `--base-url` (or `ATLCLI_BASE_URL`)
       + `--email` (or `ATLCLI_EMAIL`) + the existing `ATLCLI_API_TOKEN`
       (already highest-priority in `packages/core/src/auth.node.ts:resolveToken`).
@@ -697,7 +697,7 @@ Dependencies above). Wire after its merge.
       or from the token — a fixed CI profile name must not become a shared
       cache key across different real identities. Document that keychain
       lookup is skipped whenever all ephemeral fields are present.
-- [ ] Recipe docs (Starlight, `src/content/docs/recipes/`): new page
+- [x] Recipe docs (Starlight, `src/content/docs/recipes/`): new page
       `export-automation.md` — GitHub Actions job and GitLab CI job that
       install atlcli, set the token from secrets, run
       `atlcli wiki export … --format pdf --report json --out-dir dist`,
@@ -705,7 +705,7 @@ Dependencies above). Wire after its merge.
       `src/content/docs/recipes/index.md` and follow the existing
       `ci-cd-docs.md` page conventions (minimal + advanced example,
       troubleshooting section, related topics).
-- [ ] Positioning line in the docs per A5: automation = CLI/CI recipe; no
+- [x] Positioning line in the docs per A5: automation = CLI/CI recipe; no
       hosted job API exists or is needed (no polling, no data egress).
 
 ### ts-engine default preparation (T3.5)

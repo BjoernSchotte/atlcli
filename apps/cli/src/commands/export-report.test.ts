@@ -121,6 +121,30 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
   });
 
+  it("conforms to the checked-in JSON Schema (required keys, enums, issue shape)", async () => {
+    const schema = JSON.parse(await Bun.file(new URL("./export-report.schema.json", import.meta.url)).text());
+    const report = buildReport({
+      format: "pdf",
+      engine: undefined,
+      sourcePages: [{ id: "1", title: "P", notes: [] }],
+      outputDetails: [{ output: "/tmp/x.pdf", pageCount: 2, embeddedImages: 1, renderedDiagrams: 0, skippedAssets: 0 }],
+      issues: [{ code: "c", severity: "warning", phase: "prepare", retryable: false }],
+      strict: false,
+    });
+    // Top-level required keys present.
+    for (const key of schema.required) expect(report).toHaveProperty(key);
+    // Schema string + exitCode enum.
+    expect(report.schema).toBe(schema.properties.schema.const);
+    expect(schema.properties.exitCode.enum).toContain(report.exitCode);
+    // Every issue carries the required issue keys and a valid severity.
+    for (const issue of report.issues) {
+      for (const key of schema.definitions.issue.required) expect(issue).toHaveProperty(key);
+      expect(["error", "warning"]).toContain(issue.severity);
+    }
+    // outputs mirrors outputDetails paths.
+    expect(report.outputs).toEqual(report.outputDetails.map((d) => d.output));
+  });
+
   it("folds a compiler warning into issues and trips exit 2 under --strict", () => {
     const diagnostic: PdfCompilerDiagnostic = {
       severity: "warning",

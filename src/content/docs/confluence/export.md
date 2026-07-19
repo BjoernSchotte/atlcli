@@ -12,6 +12,7 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 
 - [Browser extension: PDF export](#browser-extension-pdf-export)
 - [CLI: DOCX quick start](#quick-start)
+- [CLI: PDF export](#cli-pdf-export)
 - [Rendering engines](#rendering-engines)
 - [Tree and space export](#tree-and-space-export)
 - [Templates](#templates)
@@ -72,6 +73,102 @@ atlcli wiki export 12345678 --template corporate --output ./report.docx
 # Export using space:title format
 atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 ```
+
+## CLI: PDF export
+
+`--format pdf` produces a tagged, font-embedded PDF entirely headless — no browser, no
+Python, no data leaving your runner. It uses the same built-in document design as the
+browser extension (cover, computed table of contents, running header, page-number footer,
+callouts, code, tables, images, and vector Mermaid diagrams). PDF templates are not yet
+configurable from the CLI; `--template` and `--engine` are therefore **not** valid with
+`--format pdf`.
+
+### Prerequisites
+
+- An authenticated profile (`atlcli auth login`) **or** the profile-free environment
+  variables described under [Profile-free auth](#profile-free-auth-for-ci).
+- View permission on the page(s) to export.
+
+### Minimal example
+
+```bash
+# One page → a tagged PDF, with a machine-readable report on stdout
+atlcli wiki export 12345678 --format pdf --output ./report.pdf --json
+```
+
+### Advanced example
+
+```bash
+# A whole page tree → ONE PDF (chapters), dropping internal pages, into a CI dir
+atlcli wiki export 12345678 --format pdf --scope tree \
+  --label-exclude internal --out-dir dist --report json --strict
+```
+
+`--scope tree|space` always yields **exactly one** PDF (chapters follow the page
+hierarchy), never one file per page. `--output` names that single file; `--out-dir`
+chooses a directory and derives a deterministic `<pageId|spaceKey>-<slug>.pdf` name.
+Pass one or the other, never both.
+
+### PDF options
+
+| Option | Description |
+|--------|-------------|
+| `--output, -o <path>` | Output file path (or use `--out-dir`) |
+| `--out-dir <dir>` | Write a derived filename into this directory |
+| `--force` | Overwrite an existing **regular** file (never a symlink or directory) |
+| `--strict` | Exit code `2` if the export completed with any warning |
+| `--no-cache` | Do not persist downloaded assets across invocations |
+| `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
+| `--report json` | Synonym for `--json` |
+
+All [scope and label options](#scope-options---engine-ts) work with `--format pdf` too.
+
+The output is written atomically: the bytes go to an exclusive-create temp file in the
+target directory and are renamed into place only on success, so a failed or cancelled run
+never leaves a partial or clobbered file for a CI artifact step. By default an existing
+file is **not** overwritten (`--force` opts in, for regular files only).
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Usage / config / local IO error |
+| `2` | Completed with warnings (only under `--strict`) |
+| `3` | Authentication error (401/403) |
+| `4` | Remote/API error (page not found, fetch failed) |
+| `5` | Compile / validation failure |
+| `130` | Cancelled (Ctrl-C / SIGINT) |
+
+These codes are derived from classified errors (HTTP status, compiler phase), not from
+string-matching messages, and apply to the whole export command. Under `--json` /
+`--report json`, stdout carries **exactly one** `atlcli.export-report/1` document; progress
+goes to stderr.
+
+### Profile-free auth (for CI)
+
+Run with no `~/.atlcli/config.json` by supplying the base URL, auth type, and token
+directly. The mode is **fail-closed** — a named `--profile` OR a full ephemeral set, never a
+mix:
+
+```bash
+export ATLCLI_API_TOKEN="$CONFLUENCE_TOKEN"      # required
+atlcli wiki export 12345678 --format pdf -o out.pdf \
+  --base-url mysite.atlassian.net --email ci@example.com
+```
+
+| Input | Env var | Notes |
+|-------|---------|-------|
+| `--base-url <url>` | `ATLCLI_BASE_URL` | HTTPS required unless `--allow-http` (Data Center) |
+| `--email <addr>` | `ATLCLI_EMAIL` | Required for `api-token`; forbidden for `bearer` |
+| `--auth-type <kind>` | `ATLCLI_AUTH_TYPE` | `api-token` (default) or `bearer` |
+| token | `ATLCLI_API_TOKEN` | Always from the environment |
+
+A partially specified set (e.g. token + email but no base URL) is a usage error raised
+before any config-file or keychain lookup — a gap is never silently filled from a local
+profile. `oauth` and `session` auth are out of scope for ephemeral mode.
+
+For a full CI job, see the [Export automation recipe](/recipes/export-automation/).
 
 ## Page Reference Formats
 
