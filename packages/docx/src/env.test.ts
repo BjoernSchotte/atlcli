@@ -115,3 +115,38 @@ describe("runExport — signal + progress threading (spec 002)", () => {
     expect(emitted).toBe(false);
   });
 });
+
+describe("runExport — attachment refs honor the owning page (spec 002)", () => {
+  // Regression: composed tree/space exports fetched every attachment from the
+  // export ROOT page (assetRefFor ignored ImageSource.pageId), so an image on
+  // a child/grandchild page 404ed as "not found on page <rootId>".
+  it("fetches an attachment from the block's source.pageId, not the root", async () => {
+    const refs: Array<{ url: string; pageId?: string; filename?: string }> = [];
+    await runExport(
+      {
+        details: { id: "1", title: "Root", storage: "", spaceKey: "DOC" },
+        template: { name: "t.docx", modificationDate: new Date(0) },
+        blocks: [
+          { type: "image", source: { kind: "attachment", filename: "deep.png", pageId: "424242" }, alt: "deep" },
+          { type: "image", source: { kind: "attachment", filename: "root.png" }, alt: "root" },
+        ] satisfies ExportBlock[],
+      },
+      {
+        templates: { getBytes: async () => TEMPLATE },
+        assets: {
+          fetch: async (ref) => {
+            refs.push(ref);
+            return png();
+          },
+        },
+        output: { emit: async () => {} },
+      }
+    );
+    const deep = refs.find((r) => r.filename === "deep.png");
+    const root = refs.find((r) => r.filename === "root.png");
+    expect(deep?.pageId).toBe("424242");
+    expect(deep?.url).toContain("/download/attachments/424242/");
+    expect(root?.pageId).toBe("1");
+    expect(root?.url).toContain("/download/attachments/1/");
+  });
+});

@@ -958,9 +958,14 @@ function diagramSeam(
  */
 function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
   if (block.source.kind === "attachment") {
+    // Composed tree/space documents carry the owning page on the block
+    // (ImageSource.pageId, spec 002); an attachment must be fetched from the
+    // page it lives on, not the export root. Single-page blocks have no
+    // per-block pageId and keep using the export's page.
+    const owningPage = block.source.pageId ?? pageId;
     return {
-      url: `/download/attachments/${encodeURIComponent(pageId)}/${encodeURIComponent(block.source.filename)}`,
-      pageId,
+      url: `/download/attachments/${encodeURIComponent(owningPage)}/${encodeURIComponent(block.source.filename)}`,
+      pageId: owningPage,
       filename: block.source.filename,
     };
   }
