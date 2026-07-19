@@ -44,7 +44,19 @@
     `packages/pdf/licenses/`. Root `prebuild` runs `fonts:ensure`.
   - `scripts/release.ts`: single root-version release train (git-cliff
     changelog, `v*` tag, GitHub Release with compiled CLI binaries, Homebrew
-    tap trigger, rollback state machine). No npm publish step exists today.
+    tap trigger, rollback state machine). `scripts/release.ts` itself has no
+    npm publish step — **but two independent, already-live workflows do**:
+    `.github/workflows/release-core.yml` (`workflow_dispatch`, bumps and
+    `npm publish --access public`s `@atlcli/core`/`@atlcli/confluence`/
+    `@atlcli/plugin-api` under a `core-v*` tag) and
+    `.github/workflows/release-cli.yml` (same pattern for `@atlcli/cli`
+    under `cli-v*`, publishing `apps/cli` — which is **not** `private: true`
+    today and whose `bin.atlcli` points at raw `src/index.ts`, so an install
+    from that publish would not run without a TS runtime). Both use a
+    long-lived `NPM_TOKEN` repo secret and bypass every gate this folder
+    designs (no pack-check, no dist build, no API report, no consumer
+    smoke). They must be retired or folded into the canonical path (see
+    Architecture and Tasks) before this plan's guarantees hold.
   - Public API symbols: `ExportEnv`/`runExport` in
     `packages/docx/src/env.ts`; `PdfExportEnv`/`runPdfExport` in
     `packages/pdf/src/run-export.ts`; `PdfCompilePort`/`PdfCompileResult` in
@@ -95,6 +107,19 @@ T4.1/T4.2. Also improves our own hygiene: today `@atlcli/core`,
   parallel to the feature lanes (disjoint file ownership: `packages/*/package.json`
   build/exports fields, new `tsconfig.build.json` files, `scripts/`,
   `.github/workflows/`).
+- **Split T4.1 into infra (build/pack/local smoke) and the first live
+  registry publish — they are not the same gate.** Everything described
+  above (build, pack-check, patch vendoring, font shipping, local `bun pm
+  pack`/tarball-install smoke, dry-runs) is packaging-only and can run
+  before M1. The **first publish to the public registry** is a different,
+  effectively irreversible event: `UMSETZUNGSPLAN.md` places T4.1 at "Sync-
+  Punkt 1", explicitly *after* Meilenstein M1 (`UMSETZUNGSPLAN.md:111-150`),
+  and T4.7 requires a `/security-review` "vor jedem Release"
+  (`UMSETZUNGSPLAN.md:174-179`). The Tasks below must encode this: the
+  release path refuses the first public `npm publish` for any package
+  unless both an M1 acceptance record and a T4.7 security review exist.
+  Everything else in this folder — including 0.x dry-runs and pack-checks —
+  may proceed earlier.
 - **The API freeze (T4.2) comes last**: it must wait until the sibling
   folders 001–008 of this spec series have landed, because they add or reshape
   the very surfaces being frozen (`TreeSource` from 002, macro registry from
@@ -129,47 +154,127 @@ Decision: **`tsc` (emit + declarations), not `bun build`.**
   entries where applicable) and a `build` script `tsc -p tsconfig.build.json`.
   Turbo's existing `build` task (`dependsOn: ["^build"]`, outputs `dist/**`)
   already orchestrates this correctly once the scripts exist.
-- Exports maps are rewritten to `dist/` with `types` + `browser` + `default`
-  conditions, e.g. for `@atlcli/confluence`:
+- Exports maps are rewritten to `dist/` with `types` **nested inside each
+  runtime condition**, never hoisted above them, e.g. for
+  `@atlcli/confluence`:
 
   ```jsonc
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "browser": "./dist/index.browser.js",
-      "default": "./dist/index.js"
+      "browser": { "types": "./dist/index.browser.d.ts", "default": "./dist/index.browser.js" },
+      "default": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
     },
     "./browser": { "types": "./dist/index.browser.d.ts", "default": "./dist/index.browser.js" },
     "./node": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
   }
   ```
 
-  Non-JS subpaths (`./fonts/*`, `./licenses/*`, `./wasm`) stay raw file
-  exports so `?url` imports keep working.
+  A shared top-level `"types"` (a plausible first draft) lets TypeScript pick
+  the Node `.d.ts` for a browser consumer even though the runtime resolver
+  loads `index.browser.js` — TypeScript only honors extra resolution
+  conditions via `customConditions`, per the
+  [TSConfig reference](https://www.typescriptlang.org/tsconfig/customConditions.html),
+  so `types` must travel with its own condition, not sit above them. This is
+  not theoretical here: the two barrels are not near-identical re-exports of
+  one surface. `packages/confluence/src/index.ts` re-exports 23 modules
+  including `sync-db`, `webhook-server`, `atlcli-dir` (Node/Bun-only), while
+  `index.browser.ts` re-exports 5 (`client`, `markdown`, `export-blocks`,
+  `resolve-mentions`, `page-properties`); `@atlcli/core` and `@atlcli/docx`
+  have the same shape (`index.ts` = browser barrel + Node-only adapters). A
+  hoisted `types` field would let a bundler consumer type-check against
+  Node-only symbols that don't exist at runtime in their build.
+- **`@atlcli/confluence`'s default (Node) entrypoint is not portable to
+  plain Node today.** `packages/confluence/src/index.ts:20` re-exports
+  `./sync-db/index.js`, which statically imports `SqliteAdapter`
+  (`packages/confluence/src/sync-db/sqlite-adapter.ts:7`), which does
+  `import { Database, Statement } from "bun:sqlite"` — a Bun-only builtin
+  with no Node equivalent. This is invisible today because the workspace
+  only ever runs under Bun. Once `dist/index.js` ships to npm, any plain
+  Node (not Bun) consumer doing `import { runExport } from
+  "@atlcli/confluence"` — the exact minimal-import shape the consumer-smoke
+  and install-docs tasks below promise — throws at import time on
+  `Cannot find module 'bun:sqlite'`. Fix before the exports rewrite lands
+  (see Build artifacts tasks): move `sync-db`/`webhook-server`/`atlcli-dir`
+  out of the barrel that becomes the published `.`/`./node` export, or
+  lazy-import `bun:sqlite` so only constructing the adapter — not importing
+  the package — touches it. Then declare and test the actual Node/Bun
+  support matrix (see Tasks) instead of asserting "Node/Bun/bundlers can
+  load it" as given fact.
 - Workspace development keeps working without a watch step: bun resolves
   `workspace:*` to the package root, and we keep the source TS reachable via
   a `development` condition listed **first** (`"development": "./src/index.ts"`)
   which Bun honors by default; publish artifacts are unaffected. If this
   proves flaky in practice, fallback is `turbo build --watch` during dev —
   decide in the first PR, do not block on it.
+- **The `development` condition must not survive into the published
+  manifest.** It points at `./src/index.ts`, which the `files` allowlist
+  (`["dist", "fonts", "licenses", "README.md"]`) deliberately excludes from
+  every tarball — so a `package.json` that ships `development` as-is has an
+  `exports` target that can never resolve for an installed consumer, which
+  directly contradicts the pack-check requirement below that "exports
+  targets all exist inside the tarball". Keep two manifest shapes distinct:
+  the **workspace** `package.json` (with `development` first, for in-repo
+  DX) and the **published** manifest, from which a `prepack` step
+  deterministically strips the `development` condition before `bun pm pack`
+  runs. `pack-check.test.ts` validates only the manifest actually inside
+  the tarball, so it never sees — and never has to special-case — the
+  workspace-only condition.
 
 ### Package graph & what gets published
 
 Publish set (dependency order): `plugin-api`, `core`, `diagram`, `jira`,
 `confluence`, `docx`, `pdf`, `pdf-compiler-browser` (+ `export-macros` when it
-exists). `apps/*` stay private. Internal deps switch from `workspace:*` to
-real semver ranges **at pack time** (bun rewrites `workspace:*` to the current
-version on `bun pm pack` — verify; if not, a prepack script rewrites them).
+exists, + `template-pack` once folder 007 lands — the new isomorphic
+`packages/template-pack/` pack/unpack/validate package,
+`007-pdf-template-settings/PLAN.md:137-140,293-338`, is exactly the kind of
+shared byte-in/byte-out utility external template-contract consumers will
+need, and folder 007 does not itself decide whether it's public). `apps/*`
+stay private **by design, not by accident** — this must be enforced, not
+assumed: `apps/cli/package.json` is *not* `private: true` today (see
+Reference) and would be swept into any "publish everything non-private"
+derivation. Internal deps switch from `workspace:*` to real semver ranges
+**at pack time** (bun rewrites `workspace:*` to the current version on
+`bun pm pack` — verify; if not, a prepack script rewrites them).
+
+**Publish-set derivation is a positive classification, not "absence of
+`private: true`".** A workspace package with no `private` field is a
+demonstrated failure mode in this repo already, not a hypothetical: four of
+today's eight publishable packages (`docx`, `pdf`, `diagram`,
+`pdf-compiler-browser`) are `private: true` and need it removed, while
+`apps/cli` has no `private` field and must *not* publish under this scope.
+Add an explicit, required classification the publish pipeline reads (e.g. a
+`"atlcli": { "publish": "public-stable" | "public-0.x" | "private" }` field
+per `package.json`, or a single source-of-truth list owned by
+`scripts/release.ts`); a package with neither an explicit `private: true`
+nor an explicit publish classification fails the pipeline closed instead of
+being silently included or excluded. `pack-check.test.ts` additionally
+walks the publish set's runtime `dependencies` closure and fails if any
+resolves to a `workspace:*` package missing a classification — catches a
+forgotten `template-pack`-style addition before it becomes a silent leak or
+a silent omission.
 
 Each published package carries a `files` allowlist (e.g. `["dist", "fonts",
 "licenses", "README.md"]`) so tarballs are deterministic, and
-`publishConfig.access` set per the registry decision below.
+`publishConfig.access` set per the registry decision below. `README.md`
+does not exist yet for any of the eight packages — creating it is a task
+below, not an assumption.
 
 ### Versioning: lockstep train on the existing release script, no changesets
 
 Decision: **fixed/lockstep versioning for all `@atlcli/*` packages, driven by
 an extended `scripts/release.ts`** — not changesets.
 
+- **Precondition: exactly one publish authority.** Today three independent
+  paths can `npm publish` overlapping package sets: `scripts/release.ts`
+  (currently no publish step; this folder adds one),
+  `.github/workflows/release-core.yml` (`core-v*`, publishes
+  core/confluence/plugin-api), and `.github/workflows/release-cli.yml`
+  (`cli-v*`, publishes `apps/cli`) — see Reference. Retiring or converting
+  both `.yml` workflows into non-publishing wrappers (build+test only) is a
+  Versioning & release task below, not cleanup-later: every pack-check,
+  API-report, and consumer-smoke gate this folder builds is optional, not
+  enforced, while a maintainer can still trigger a raw `npm publish` from
+  the old workflows without touching any of it.
 - The repo already runs a single-version release train (root `version`,
   git-cliff changelog from Conventional Commits, one tag). Changesets would
   introduce a second changelog system, per-package version drift, and a bot
@@ -206,6 +311,114 @@ Decision: **public npm registry (registry.npmjs.org), scope `@atlcli`,
   Packages fallback needs the classic `.npmrc` /
   `bunfig.toml` scoped-registry + token setup, which we document even if
   unused, because some external consumers may proxy through it.
+- **Publish auth: prefer npm Trusted Publishing (OIDC) over a long-lived
+  `NPM_TOKEN`.** npm's GitHub Actions OIDC integration issues short-lived,
+  per-run credentials and can auto-attach provenance
+  ([npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/));
+  npm's staged publishing additionally holds a package invisible until an
+  explicit promote step
+  ([npm Staged Publishing](https://docs.npmjs.com/staged-publishing/)). A
+  static `NPM_TOKEN` repo secret is exactly the pattern the two legacy
+  workflows above already use — do not repeat it for the canonical path.
+  Bootstrap exception: the very first publish of a brand-new package name
+  cannot use OIDC (npm requires the package to already exist to link a
+  Trusted Publisher), so document a one-time manual bootstrap publish (2FA,
+  scoped token, revoked immediately after) per new package name, then
+  switch that package to OIDC for every subsequent release.
+- **OIDC forces the actual `npm publish` call into a GitHub Actions job —
+  it cannot happen from `scripts/release.ts` itself.** npm's Trusted
+  Publishing verifies the *GitHub Actions* OIDC token
+  (`permissions: id-token: write` on the job), which only exists inside a
+  workflow run; a short-lived credential is never available to a script
+  invoked from a developer's terminal (`bun scripts/release.ts <type>`,
+  per the CLAUDE.md release workflow — "always dry-run first" implies a
+  human runs it locally). The two retired-or-converted legacy workflows
+  (`release-core.yml`, `release-cli.yml`) sidestep this by using a static
+  `NPM_TOKEN`; the canonical path cannot repeat that and also claim OIDC.
+  Resolution, mirroring the pattern `waitForRelease()` already uses for
+  GitHub release artifacts: `release.ts` pushes the `v*` tag as today, then
+  a new `publish-packages` job in `.github/workflows/release.yml` — gated
+  on that exact tag, `permissions: { id-token: write }`, an explicit
+  required GitHub `environment` (same mechanism `docs.yml:59` already uses
+  in this repo) — checks out the tagged commit, re-runs pack-check/
+  api-report/consumer-smoke as blocking steps, and OIDC-publishes in
+  dependency order; `release.ts` triggers/polls that job (`gh api
+  repos/.../actions/runs`, same idiom as `waitForRelease`) instead of
+  calling `npm publish` in-process. This makes the CI job — not the local
+  script — the sole technically-enforceable publish authority; see
+  Versioning & release tasks below.
+- **The publish gates must not depend on `release.ts`'s existing
+  free-text test check.** `runTests()` in `scripts/release.ts` treats `bun
+  test` as passed by string-matching stdout/stderr for `"fail"` /
+  `"0 fail"` rather than checking the process exit code, and is skippable
+  entirely via `--skip-tests`. Neither property may leak into the new
+  publish gate: the `publish-packages` job's pack-check/api-report/
+  consumer-smoke steps run as ordinary `bun test` invocations under `$`
+  (which throws on non-zero exit) inside CI, independently of whatever
+  flags were passed to the local `release.ts` invocation that triggered
+  the tag push — `--skip-tests` skips only `release.ts`'s own local
+  pre-flight, never the CI publish gate.
+- **Resumable publish must verify, not just skip.** The "skip versions
+  already on the registry" resumability (Versioning & release, below) is
+  only safe if a skipped version is guaranteed identical to what would have
+  been published. Store each package's packed-tarball **SRI sha512** (not
+  sha256 — `npm view <pkg>@<version> dist.shasum` is a legacy **sha1** of
+  the tarball, so a sha256 comparison against it would always mismatch;
+  `dist.integrity` is the modern SRI field and is what `npm pack`/`bun pm
+  pack` can both produce) in `ReleaseState` at pack time; on resume, before
+  skipping an already-present registry version, compare it against `npm
+  view <pkg>@<version> dist.integrity` and hard-abort the release on
+  mismatch instead of silently treating "present" as "correct".
+
+### Batteries-included Node consumer: `@atlcli/export-node` (new package)
+
+Decision: **ship a ninth package, `@atlcli/export-node`**, gated on folders
+002 and 008 landing (needs `fetchExportTree`/`composeChapters`/
+`confluenceTreeSource` from T1.1–T1.3 and the Bun/Node PDF compile port from
+T3.1) — additive to this folder's DoD, not a blocker for it.
+
+- `BASELINE-DESIGN.md` §A5 (lines 163-184) already specifies this package by
+  name with a concrete target DX (`nodePdfEnv`/`confluenceTreeSource`
+  bundling wasm/font/output-sink wiring so a consumer goes from a page tree
+  to a PDF/DOCX file in ~6 lines). Folder 002 implements
+  `confluenceTreeSource` inside `packages/confluence` (T1.1) and the CLI
+  headless story, but neither 002 nor this folder currently creates the
+  packaging layer BASELINE-DESIGN promises.
+- Without it, the publish set only ships low-level ports (`ExportEnv`,
+  `PdfExportEnv`, `PdfCompilePort`) and external Node consumers must
+  hand-wire wasm bytes, font bytes, and file-system adapters themselves —
+  exactly the ceremony `fileOutputSink`/`fileTemplateSource`
+  (`packages/docx/src/node-adapters.ts:21-38`, already proven isomorphic in
+  `packages/docx/src/node-consumer.test.ts`) and the CLI's internal token
+  asset resolution (`apps/cli/src/commands/export-internals.ts:118-159`)
+  already solve once, just not publicly. Rebuilding it per-consumer is the
+  gap between "technically consumable" and the "zero-egress, no job-polling"
+  positioning this plan's Goal section claims against ScrollOffice.
+- Mechanics: extract `fileOutputSink`/`fileTemplateSource` and the CLI's
+  token `AssetFetcher` into `packages/export-node/src/{docx-env,pdf-env,
+  tree-source}.ts`; add it to the publish set with its own
+  `tsconfig.build.json`/exports/`files`; document the BASELINE-DESIGN A5
+  target snippet as the package's minimal example in the consumer install
+  docs (Registry & auth tasks).
+- **Default DOCX template.** `TemplateSource.getBytes(id)`
+  (`packages/docx/src/env.ts:15-17`) has no built-in default — every host
+  today supplies its own template bytes — yet a "batteries-included"
+  package and the consumer-smoke DOCX test both need a working template
+  with zero setup. No committed `.docx` template exists anywhere under
+  `packages/docx` today (the package's own tests build minimal packages
+  in-memory via `packages/docx/src/fixtures.ts`'s `buildDocx`, using
+  PizZip, not a binary fixture). Prefer that same technique for
+  `export-node`: a `bundledDefaultTemplate(): Uint8Array` built
+  programmatically from `buildDocx`-style OOXML parts (headings, body,
+  minimal styles) — this sidesteps font/branding licensing questions
+  entirely, since nothing binary is shipped or redistributed. If a richer,
+  branded starter template is wanted instead, that requires a licensed,
+  committed `.docx` asset at a stable subpath (`@atlcli/export-node/
+  templates/default.docx`) with its sha256 pinned in `runtime-assets.ts`-
+  style code and verified by `pack-check`, same pattern as the PDF fonts.
+  Decide which in the implementation PR; either way `pack-check` must
+  structurally assert the default template resolves and produces a valid
+  DOCX via `runExport`, not just that a file exists.
 
 ### Special-case architecture (details in Tasks)
 
@@ -264,6 +477,54 @@ Public API v1 = the host-facing seams, documented in `docs/`:
 - `ExportBlock` and `storageToBlocks` (`packages/confluence/src/export-blocks.ts`)
   as the shared document model.
 
+**This top-level list is necessary but not sufficient — the frozen surface
+is whatever these seams transitively reach, not just their own names.**
+Verified today: `PdfExportEnv` (`packages/pdf/src/run-export.ts:16-38`)
+embeds `PdfCompilePort`, which in turn requires `PdfSourceBundle` and
+`PdfCompilerDiagnostic` (`packages/pdf/src/compiler.ts:1,13`) — a consumer
+cannot implement the frozen `PdfCompilePort` without those types also being
+stable; `RunPdfExportInput` additionally reaches `PdfExportMetadata`,
+`PdfProfile`, `PdfThemeOptions` (`packages/pdf/src/run-export.ts:5-13`,
+`packages/pdf/src/types.ts`). `RunExportInput extends Omit<ExportInput, …>`
+(`packages/docx/src/env.ts:75`) reaches `ConfluencePageDetails`,
+`TemplateMeta`, `ResolveDeps` (`packages/docx/src/export.ts:112-118`). None
+of these second-tier types is named above, so freezing only the top-level
+list would leave the guard blind to breaking changes in the types the v1
+seams are actually built from. Before the freeze release: for each
+entrypoint, generate its reachable declaration closure from the built
+`dist/*.d.ts` (the api-report generator below already flattens per-package
+declarations; reuse it per-entrypoint rather than per-package) and
+classify every reachable named type as `stable` (documented, frozen,
+covered by the api-report diff), `experimental` (exported, documented as
+unstable, excluded from the breaking-change policy), or `private` (not
+reachable from a v1 entrypoint at all — move it out of the barrel). Commit
+the classification next to each package's api-report. `@atlcli/core` and
+`@atlcli/diagram` currently have no freeze decision even though both are
+implicitly bound for 1.0: `core`'s barrel (`packages/core/src/index.ts`)
+re-exports `auth.node`, `keychain`, `tls.node`, `templates/index` — CLI/Bun
+internals, not seams any external export consumer needs — and `diagram`'s
+(`packages/diagram/src/index.ts`) re-exports render internals alongside
+`renderDiagram`. Classify both explicitly in the same pass; a package with
+no reviewed classification stays 0.x at freeze time rather than jumping to
+1.0 by default.
+
+**The root barrels are far wider than this v1 list today** — publishing `.`
+as specified in Build artifacts would make all of it part of the public
+surface the moment it ships, guard or no guard:
+`packages/docx/src/index.browser.ts` re-exports `scan.js`, `resolver.js`,
+`serialize.js`, and `ooxml.js` helpers alongside `env.js`/`export.js`;
+`packages/pdf/src/index.ts` re-exports `escape.js`, `compiler.js`,
+`prepare.js`, `theme.js`, `validate.js` alongside `run-export.js`;
+`packages/confluence/src/index.ts` re-exports all 23 modules including
+`sync-db`/`webhook-server` (see Build output model above). A docs page
+saying "internal" does not change what `import()` can reach. Before the
+freeze release, each package's root `exports["."]` must be trimmed to the
+documented v1 seams (re-export only those from the published entrypoint;
+move the rest behind `./internal/*` or drop them from the barrel, still
+reachable in-repo via the `development` condition) — the api-report guard
+then reports exactly the surface the docs promise, instead of also silently
+freezing every current implementation-detail export at 1.0.
+
 Guard: a **type-snapshot (api-report) test** rather than adopting
 `@microsoft/api-extractor` wholesale. The tsc build already emits rollup-able
 `.d.ts`; a bun test flattens each package's public entrypoint declarations
@@ -284,13 +545,52 @@ model); note it as the designated fallback.
       exclude `**/*.test.ts` (and `packages/docx/src/fixtures.ts` from the
       published `.` surface only if tests don't need it packaged — verify:
       it's an exported subpath today, keep `./fixtures` but mark it explicitly
-      non-frozen dev API).
+      non-frozen dev API). Root `tsconfig.json` sets `noEmit: true`,
+      `types: ["bun-types"]`, and monorepo-wide `include`
+      (`apps/**/src/**/*.ts`, `packages/**/src/**/*.ts`) — a
+      `tsconfig.build.json` that merely `extends` it inherits all three, so
+      it must explicitly override: `noEmit: false` (otherwise `tsc` emits
+      nothing regardless of `outDir`); a package-local `rootDir`/`include`
+      (e.g. `["src/**/*.ts"]` relative to the package) so the compiled
+      `dist/` and its `.d.ts`/`.map` files cannot pull in a sibling
+      package's or an app's source path; and `lib`/`types` scoped to the
+      package's actual runtime — do not blanket-inherit `bun-types` into a
+      package whose declared `engines` (see below) include plain Node,
+      since ambient Bun globals leaking into a public `.d.ts` break
+      type-checking for consumers who never install `bun-types`. Regression
+      test: after build, grep each package's `dist/**/*.{js,d.ts,map}` for
+      any `../` path segment escaping the package root or another
+      package's `src/`.
 - [ ] Rewrite `exports` in all eight `packages/*/package.json` to `dist/`
-      targets with `types` + `browser`/`default` conditions preserved 1:1;
-      keep raw-asset subpaths (`packages/docx`: `./fonts/*`; `packages/pdf`:
-      `./fonts/*`, `./licenses/*`; `packages/pdf-compiler-browser`: new
-      `./wasm`). Add a `development` condition pointing at `src/` for
+      targets, nesting `types` **inside** each of `browser`/`default`
+      (never a shared top-level `types` — see Architecture: Build output
+      model) so a browser consumer's type-checker cannot pick up Node-only
+      declarations; keep raw-asset subpaths (`packages/docx`: `./fonts/*`;
+      `packages/pdf`: `./fonts/*`, `./licenses/*`; `packages/pdf-compiler-browser`:
+      new `./wasm`). Add a `development` condition pointing at `src/` for
       in-repo DX and verify `bun test` + `apps/cli` still run from source.
+      Add the matching `prepack` step (`scripts/strip-dev-condition.ts`,
+      reused by every publishable package) that deletes the `development`
+      condition from the packed manifest before `bun pm pack` runs — see
+      Architecture: Build output model — so the published `exports` never
+      contains a target (`./src/index.ts`) that the `files` allowlist
+      excludes from the tarball.
+- [ ] Fix `@atlcli/confluence`'s default (Node) entrypoint so it doesn't
+      statically pull in `bun:sqlite` (see Architecture: Build output
+      model): move `sync-db`/`webhook-server`/`atlcli-dir`
+      (`packages/confluence/src/index.ts:1-24`) out of the barrel that
+      becomes the published `.`/`./node` export, or lazy-import
+      `SqliteAdapter` so constructing it — not importing the package —
+      touches `bun:sqlite`. Regression test: importing the packed tarball's
+      entrypoint under plain Node must not throw
+      `Cannot find module 'bun:sqlite'`.
+- [ ] Trim each package's root `exports["."]` to the documented v1 seams
+      (see Architecture: API freeze & guard architecture) — move
+      implementation-detail modules (`scan.js`, `resolver.js`, `ooxml.js`
+      helpers in `@atlcli/docx`; `escape.js`, `compiler.js`, `prepare.js`,
+      `theme.js`, `validate.js` in `@atlcli/pdf`) behind `./internal/*` or
+      out of the barrel, still reachable in-repo via the `development`
+      condition.
 - [ ] Add `files` allowlists and remove `private: true` from
       `packages/{docx,pdf,diagram,pdf-compiler-browser}/package.json`;
       add `"sideEffects": false` where true (verify per package — the docx
@@ -302,34 +602,140 @@ model); note it as the designated fallback.
 - [ ] Verify `apps/extension` and `apps/browser-export-harness` (Vite) resolve
       the new conditions correctly (Vite prefers `browser`); run
       `bun run check:browser` and the harness build
-      (`bun run build:browser-export-harness`) as regression gates.
+      (`bun run build:browser-export-harness`) as regression gates. Both
+      apps still depend on `@atlcli/{confluence,docx,pdf,pdf-compiler-browser}`
+      via `workspace:*` (`apps/extension/package.json`,
+      `apps/browser-export-harness/package.json`), so this only proves the
+      privileged in-repo resolution path — it does **not** prove Vite
+      resolves the packed tarball's `exports`/`?url` conditions the way an
+      external consumer's bundler would. See Consumer smoke below for the
+      tarball-based Vite check that closes this gap.
 - [ ] Tests: a `bun test` suite (`scripts/pack-check.test.ts`) that runs
       `bun pm pack` per package into the scratch dir and asserts tarball
       contents — `dist/*.js`, `dist/*.d.ts` present; no `src/**/*.ts` leaked;
       asset files present (see Special cases); `exports` targets all exist
       inside the tarball (catches the classic broken-subpath publish).
+- [ ] Declare and test a Node/Bun/package-manager support matrix: add
+      `engines` to each publishable `package.json` reflecting the real
+      constraint (Bun-only vs. Node-LTS-compatible per package, after the
+      `bun:sqlite` fix above), and extend `pack-check.test.ts` (or a sibling
+      `install-matrix.test.ts`) to install the same tarballs with npm and
+      pnpm, not only `bun add` — the Consumer smoke design below only
+      proves the Bun path.
 
 ### Versioning & release
 
-- [ ] Extend `scripts/release.ts` with a package-publish stage: set all
-      publishable packages to the release version (reuse the
-      `npm version --no-git-tag-version -w` pattern from root `version:core`),
-      build, pack, publish in dependency order; make it resumable (skip
-      versions already present on the registry) and wire it into the existing
-      `ReleaseState`/rollback model (registry publishes are non-rollbackable —
-      treat like `mainPushed`: warn, never rewrite).
+- [ ] Retire or convert `.github/workflows/release-core.yml` and
+      `.github/workflows/release-cli.yml` into non-publishing wrappers
+      (build+test only) so the new tag-gated `publish-packages` job (below)
+      is the sole publish authority (see Architecture: Versioning —
+      precondition). CI-DoD: exactly one workflow job in the repo may run
+      `npm publish`, `npm stage publish`, or `bun publish`.
+- [ ] **Decide `@atlcli/cli`'s fate explicitly — it is a live, promoted
+      install path today, not dead weight.** `release-cli.yml:77-105`
+      publishes `@atlcli/cli` and its GitHub Release body advertises `npm
+      install -g @atlcli/cli` and `bunx @atlcli/cli`; `apps/cli/package.json`
+      has no `private` field and `bin.atlcli` points at raw `src/index.ts`
+      (would not run without a TS-aware runtime if installed today — see
+      Reference). Retiring `release-cli.yml`'s publish step without a
+      decision silently orphans that install path. Pick one, as its own
+      commit-sized task:
+      (a) **Integrate**: set `apps/cli` up with a real `build`/`dist` bin
+      (it already has `apps/cli/build.ts`), add it to the canonical publish
+      set with its own npm/bunx tarball-install smoke, keep
+      `npm install -g @atlcli/cli` working; or
+      (b) **Deprecate**: ship one final `@atlcli/cli` release whose
+      README/postinstall notice points at the successor (Homebrew tap /
+      standalone binaries from `release.yml`), document a support window in
+      `CHANGELOG.md` and the consumer install docs, then set `apps/cli` to
+      explicit `private: true` and stop publishing it.
+      Either way, `apps/cli/package.json` ends this task with an explicit
+      `private: true` or an explicit, tested publish contract — never the
+      current unset/accidentally-publishable state.
+- [ ] **Add a tag-gated `publish-packages` job to `.github/workflows/release.yml`**
+      (see Architecture: Registry — OIDC must run in Actions, not locally):
+      triggered by the same `v*` tag push as the existing `build`/`release`
+      jobs, `permissions: { id-token: write }`, a required GitHub
+      `environment` (same mechanism already used in `docs.yml:59`),
+      `actions/checkout` pinned to the exact tagged commit SHA (never a
+      branch). Steps, all blocking: rebuild every publishable package,
+      re-run `pack-check.test.ts`/`api-report.test.ts`/consumer-smoke as
+      real `bun test` invocations (not `release.ts`'s free-text heuristic —
+      see Architecture: Registry), verify the sign-off artifact (next
+      bullet) matches `GITHUB_SHA`, then `npm publish` each package via
+      OIDC in dependency order. Any gate failure fails the job and leaves
+      nothing published for that package.
+- [ ] **Define the machine-checked release sign-off artifact.** Add a
+      committed schema (`specs/export-expansion/009-package-publishing/
+      release-signoff.schema.json` or a `scripts/release-signoff.ts` type)
+      for the record the `publish-packages` job (and `release.ts`'s
+      pre-flight) validate before a **first-ever** public-registry publish
+      runs without `--dry-run`: commit SHA it's bound to, M1 acceptance
+      reference (the M1 conformance run — see Dependencies — has no
+      artifact today; this task defines the shape it must produce, not
+      just what 009 consumes), reviewed tarball SHA-512/SRI digests, the
+      T4.7 security-review scope and result, and the reviewer. The
+      validator hard-fails (not warns) on a missing file, a SHA mismatch
+      against `GITHUB_SHA`, or a schema violation. **Cross-plan note**:
+      producing this artifact is out of scope for this folder — see
+      `crossPlanImpacts`. **Reconcile with 011's `security-attestation.json`
+      rather than shipping two sign-off files**: `011-quality-gates/PLAN.md`
+      (`scripts/security/attest.ts`) already emits a HEAD-bound
+      `security-attestation.json` with `{commit, date, veraPdfDigestOk,
+      veraPdfBaselineDelta, securityReviewNote, m1AcceptanceOk}` on every
+      `main` push and release tag — narrower than this schema (no tarball
+      digests, no reviewer field, boolean flags instead of structured
+      scope/result). Whichever folder's artifact lands first should be the
+      one this validator checks (extended with the missing fields, i.e.
+      tarball digests + reviewer, rather than a second parallel file); this
+      is an open point for whoever implements 009/011's overlapping tasks
+      to settle, not decided here.
+- [ ] Extend `scripts/release.ts` with a package-publish stage that
+      **triggers and polls** the `publish-packages` workflow run for the
+      pushed tag (mirroring the existing `waitForRelease()` polling
+      pattern — `gh api repos/.../actions/runs?...`), rather than calling
+      `npm publish` itself: set all publishable packages to the release
+      version locally first (reuse the `npm version --no-git-tag-version
+      -w` pattern from root `version:core`), commit that alongside
+      `package.json`/`CHANGELOG.md` (extend `commitRelease()`'s `git add`
+      to include every publishable `packages/*/package.json` and
+      `bun.lock`, and extend `rollback()`'s `git restore --source` list to
+      match — today both only cover the root `package.json`/`CHANGELOG.md`,
+      so a failed run before the tag is pushed would leave package-level
+      version bumps stranded outside the rollback path), push the tag, then
+      wait for `publish-packages` to finish. Registry publishes inside that
+      job are non-rollbackable — treat like `mainPushed`: warn, never
+      rewrite.
+- [ ] **Post-publish full-graph registry smoke.** After `publish-packages`
+      succeeds, add a final step (same job or a `needs:`-chained follow-up)
+      that installs the just-published versions of every package from the
+      registry (not the local tarballs) into a scratch project and repeats
+      the DOCX/PDF consumer smoke against them. A sequential per-package
+      publish on the public registry has no atomic "promote the whole
+      lockstep set" step (unlike npm's opt-in staged-publishing beta, which
+      this plan does not adopt — see Risks), so a failure partway through
+      can leave some packages at the new `latest` and others at the old
+      one; this step is the loud, automated check that the *complete*
+      graph is installable and mutually compatible at the tagged version
+      before the release is considered done, and its failure is the signal
+      to hand-fix or fast-follow the stragglers rather than discovering
+      drift from an external bug report.
 - [ ] Update `showDryRunPlan()` in `scripts/release.ts` so `--dry-run` prints
-      the publish steps, per the workflow rule "always dry-run first".
+      the publish steps (including the `publish-packages` trigger and the
+      sign-off check), per the workflow rule "always dry-run first".
 - [ ] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
       tarballs; add a regression test in `scripts/release.test.ts` (inspect a
       packed manifest, assert no `workspace:` protocol survives).
 - [ ] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
-      Conventional-Commit scopes as the per-package changelog) in
-      `docs/` (reference page under the docs standards) and link it from
-      `CHANGELOG.md` generation notes.
+      Conventional-Commit scopes as the per-package changelog) as a new page
+      under `src/content/docs/reference/` (sibling to the existing
+      `docx-engine.md`/`pdf-engine.md`), registered in the `sidebar` array
+      in `astro.config.mjs`, gated by `bun run docs:check`/`docs:build`
+      (the repo's actual docs gates — there is no generic `docs/` folder)
+      and link it from `CHANGELOG.md` generation notes.
 - [ ] Decide and implement the changesets question as **rejected** in code:
-      no `.changeset/`; add a short "why lockstep" note to the docs page so
-      future contributors don't re-litigate it blindly.
+      no `.changeset/`; add a short "why lockstep" note to the same
+      reference page so future contributors don't re-litigate it blindly.
 
 ### Registry & auth
 
@@ -337,19 +743,67 @@ model); note it as the designated fallback.
       (manual step, tracked here); set
       `"publishConfig": { "access": "public" }` in every publishable
       `packages/*/package.json`.
-- [ ] Add `NPM_TOKEN`-based publish auth to the release path: local
-      (`~/.npmrc` guidance) and CI (`.github/workflows/` release workflow env,
-      repo secret). Never commit tokens; document token scope = automation,
-      2FA-safe.
-- [ ] Document the GitHub Packages fallback in `docs/`: scoped-registry
-      `.npmrc`/`bunfig.toml` (`@atlcli:registry=…` + `//…/:_authToken`),
-      the owner-scope constraint (requires an `atlcli` GitHub org), and
-      consumer-side read auth — labeled clearly as the non-default path.
-- [ ] Consumer install documentation page in `docs/` (per docs standards:
-      intro → prerequisites → steps → examples → troubleshooting): install
+- [ ] Set up npm Trusted Publishing (OIDC) for the canonical release
+      workflow: `id-token: write` permission, GitHub Actions OIDC linked as
+      a Trusted Publisher per package on npmjs.org, automatic provenance
+      (see Architecture: Registry). Document the one-time manual bootstrap
+      publish (2FA, short-lived scoped token, revoked immediately after)
+      required for each brand-new package name before OIDC can be linked.
+      No long-lived `NPM_TOKEN` in the canonical path once bootstrapped;
+      keep a documented, revoked-by-default `NPM_TOKEN` procedure only as
+      an emergency/local fallback (`~/.npmrc` guidance).
+- [ ] Document the GitHub Packages fallback as a new page under
+      `src/content/docs/reference/`: scoped-registry `.npmrc`/`bunfig.toml`
+      (`@atlcli:registry=…` + `//…/:_authToken`), the owner-scope constraint
+      (requires an `atlcli` GitHub org), and consumer-side read auth —
+      labeled clearly as the non-default path.
+- [ ] Consumer install documentation page under `src/content/docs/reference/`
+      (per docs standards: intro → prerequisites → steps → examples →
+      troubleshooting, registered in `astro.config.mjs`'s `sidebar`): install
       with bun/npm/pnpm, minimal `runExport` example (DOCX) and advanced
       `runPdfExport` example (PDF incl. wasm/fonts wiring for both Node-ish
-      and Vite hosts).
+      and Vite hosts), plus the `@atlcli/export-node` batteries-included
+      snippet (Architecture: Batteries-included Node consumer) as the
+      recommended Node starting point.
+- [ ] Add a short `README.md` to each of the eight publishable package
+      roots (package role, stable entry points, runtime support — see
+      support-matrix task above — minimal import example, link to the
+      canonical reference page); include it in every package's `files`
+      allowlist. None of the eight packages has one today.
+
+### Batteries-included Node package (post folders 002/008 — additive, not a blocker)
+
+- [ ] Scaffold `packages/export-node/` (own `package.json`,
+      `tsconfig.build.json`, `exports`, `files` allowlist, `README.md`)
+      following the same build/pack/publish contract as the other eight
+      packages (Build artifacts, above); add it to the publish-set
+      classification (Architecture: Package graph) so `pack-check`/
+      `api-report`/consumer-smoke pick it up without a hardcoded list edit.
+- [ ] Extract `fileOutputSink`/`fileTemplateSource`
+      (`packages/docx/src/node-adapters.ts:21-38`, already isomorphic per
+      `packages/docx/src/node-consumer.test.ts`) and the CLI's token
+      `AssetFetcher` (`apps/cli/src/commands/export-internals.ts:118-159`)
+      into `packages/export-node/src/{docx-env,pdf-env,tree-source}.ts`;
+      the CLI switches to importing from the new package instead of
+      duplicating the logic (regression: CLI DOCX/PDF export behavior
+      unchanged, `bun test apps/cli`).
+- [ ] Implement `nodePdfEnv(profile, opts)` / `confluenceTreeSource(profile)`
+      matching the BASELINE-DESIGN A5 target snippet (§A5, lines 163-184)
+      so it becomes a real, tested example rather than aspirational prose;
+      wire folder 002's `fetchExportTree`/`composeChapters` (T1.1–T1.3) and
+      folder 008's Bun/Node PDF compile port (T3.1) once both land.
+- [ ] Implement the default DOCX template per Architecture (Batteries-
+      included Node consumer): `bundledDefaultTemplate()` and wire it into
+      `fileTemplateSource`'s default id resolution; `pack-check` asserts it
+      produces a valid DOCX via a real `runExport` call, not just presence.
+- [ ] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
+      suites (Consumer smoke, below): the BASELINE-DESIGN A5 six-line
+      snippet, run verbatim against the installed tarballs, must produce a
+      real PDF.
+- [ ] Update Build artifacts / Definition of Done package counts from
+      eight to nine once this lands (kept separate here because it is
+      gated on 002/008, per Architecture: Batteries-included Node
+      consumer).
 
 ### Special cases (wasm/patch/fonts)
 
@@ -410,6 +864,21 @@ model); note it as the designated fallback.
       `storageToBlocks` (`packages/confluence/src/export-blocks.ts`).
       Mark everything else (e.g. `@atlcli/docx/scan`, `./fixtures`,
       template internals) explicitly **unstable/internal**.
+- [ ] **Classify the full reachable declaration closure, not just the named
+      seams** (see Architecture: API freeze & guard architecture — the v1
+      list is necessary but not sufficient). For each frozen entrypoint,
+      generate its transitive `.d.ts` closure from `dist/` and mark every
+      reachable type `stable`/`experimental`/`private`; confirmed gaps to
+      resolve in this pass: `PdfSourceBundle`/`PdfCompilerDiagnostic`
+      (`packages/pdf/src/compiler.ts`), `PdfExportMetadata`/`PdfProfile`/
+      `PdfThemeOptions` (`packages/pdf/src/types.ts`),
+      `ConfluencePageDetails`/`TemplateMeta`/`ResolveDeps`
+      (`packages/docx/src/export.ts`). Explicitly decide and record
+      `@atlcli/core` and `@atlcli/diagram`'s freeze status — their barrels
+      are broad and largely CLI/Bun-internal (`packages/core/src/index.ts`)
+      or renderer-internal (`packages/diagram/src/index.ts`) today; a
+      package with no recorded decision stays 0.x rather than defaulting to
+      1.0 with the rest.
 - [ ] Write the breaking-change policy into the same docs section: what
       counts as breaking (removed/renamed exports, narrowed input types,
       widened output types, changed `exports` subpaths, changed asset
@@ -422,6 +891,22 @@ model); note it as the designated fallback.
       `scripts/api-report.test.ts` (plain `bun test`, runs in CI) fails on
       any diff with a message telling the author to regenerate via
       `bun scripts/api-report.ts --update` and get the diff reviewed.
+      **Preserve, don't strip, `@deprecated`/`@since` JSDoc** in the
+      normalized report (the flattener otherwise strips all comments) so a
+      symbol silently losing its deprecation tag between releases shows up
+      as a report diff — the breaking-change policy's "one minor with
+      `@deprecated` before removal" promise is otherwise enforced only by
+      reviewer memory, not by the guard.
+- [ ] **Stabilize `ExportNote.code`.** It is typed as plain `string`
+      (`packages/confluence/src/export-blocks.ts:119`, despite the doc
+      comment "Stable machine code") — renaming or removing a code today
+      produces no type error and no api-report diff. Introduce a central
+      `ExportNoteCode` string-literal union (or const registry) in
+      `packages/confluence`, exported as part of the v1 `ExportBlock`
+      surface, and change `ExportNote.code` to that type. Add a test that
+      walks every real emission site (`grep`-driven or a lint rule) and
+      asserts each emitted code is a member of the registry — catches a
+      code renamed at the call site without updating the union.
 - [ ] Add regression coverage for the guard itself: a test fixture package
       surface where a removed export / changed signature produces a failing
       diff (guards the guard; no mocks — run the real generator on a tiny
@@ -459,6 +944,28 @@ model); note it as the designated fallback.
       consumer `main.ts` importing from `@atlcli/{docx,pdf,confluence,pdf-compiler-browser}`
       with `"skipLibCheck": false` — proves shipped `.d.ts` are self-contained
       (catches leaked `src/` type imports and missing declaration deps).
+- [ ] **Node-LTS tarball smoke** (`scripts/consumer-smoke-node.ts`), separate
+      from the Bun-based suite above: a fresh `npm init` project on the
+      oldest supported Node LTS (per the `engines` support-matrix task in
+      Build artifacts), `"moduleResolution": "NodeNext"`,
+      `"skipLibCheck": false`, installs the same local tarballs with `npm
+      install`, imports every stable entrypoint the support matrix marks
+      Node-compatible, and runs a real `runExport` — this is the check that
+      actually proves the `bun:sqlite` fix (Build artifacts) holds for a
+      plain-Node consumer, not just that `pack-check` didn't find the
+      string `bun:sqlite` in the tarball.
+- [ ] **Vite tarball smoke** (`scripts/consumer-smoke-vite/`, a throwaway
+      Vite project scaffolded in the scratch dir, not `apps/extension` or
+      `apps/browser-export-harness` — those still resolve `workspace:*`,
+      see Build artifacts): install the packed tarballs, configure Vite
+      with the same `browser` condition preference the harness uses, import
+      `@atlcli/pdf-compiler-browser/wasm?url` and `@atlcli/pdf/fonts/*.ttf?url`
+      exactly as `apps/browser-export-harness/src/pdf-worker.ts` does today,
+      run `vite build` (production, not dev-server) to prove the assets
+      survive bundling, and — reusing
+      `packages/pdf-compiler-browser/src/compiler.test.ts`'s pattern —
+      compile a fixture inside a Worker to real PDF bytes. Fails if any
+      resolution falls through to a `src/` path or a `workspace:` symlink.
 - [ ] CI job (`.github/workflows/`): run the consumer smoke on every PR that
       touches `packages/**` or the publish tooling (path filter), Linux
       runner, no registry credentials needed.
@@ -483,18 +990,41 @@ model); note it as the designated fallback.
 - Consumer smoke suite passes in CI: fresh `bun init` project installs the
   local tarballs and produces real DOCX bytes via `runExport` and real PDF
   bytes via `runPdfExport` + `BrowserPdfCompiler`, plus a clean
-  `tsc --noEmit` type-consumption check.
+  `tsc --noEmit` type-consumption check, plus the Node-LTS (`NodeNext`) and
+  Vite production-build tarball smokes pass — proving the external target
+  environments, not only the privileged in-repo workspace resolution.
+- Exactly one path in the repo can publish to the registry: `release-core.yml`
+  and `release-cli.yml` are non-publishing wrappers (or retired), and the
+  tag-gated `publish-packages` job in `.github/workflows/release.yml` — with
+  `id-token: write`, a required environment, and OIDC — is the sole
+  `npm publish` caller; `scripts/release.ts` only triggers and polls it.
+  `apps/cli`/`@atlcli/cli` has an explicit, deliberate outcome (integrated
+  into the publish set with a working bin, or deprecated with a documented
+  migration path) — never the unset/accidentally-publishable state it is in
+  today.
 - `bun scripts/release.ts minor --dry-run` prints the extended plan including
-  the publish stage; a real release publishes all packages to the chosen
-  registry in dependency order and is resumable after partial failure.
+  the publish stage; a real release publishes all packages via the CI publish
+  job in dependency order, is resumable after partial failure (verified
+  against `dist.integrity`, not a mismatched hash algorithm), and a
+  post-publish full-graph registry smoke confirms every package is
+  installable at the tagged version before the release is considered done.
+  The first-ever public-registry publish is blocked by the release
+  sign-off artifact (commit-bound M1 acceptance + T4.7 security-review
+  record) failing to validate.
 - Docs (first-class, same PR as behavior changes): consumer install guide,
   registry/auth reference (npm primary, GitHub Packages fallback), `?url`
   asset-contract reference, public API reference with breaking-change policy —
   all following the `docs/` standards (TOC, related topics, minimal +
   advanced examples).
-- API reports committed for every package; `api-report.test.ts` fails CI on
-  any unreviewed public-surface diff; frozen packages released as `1.0.0`
-  (this last bullet only after folders 001–008 land).
+- API reports committed for every package, including preserved
+  `@deprecated`/`@since` tags and a classified declaration closure (not just
+  the top-level seams) per entrypoint; `api-report.test.ts` fails CI on any
+  unreviewed public-surface diff; frozen packages released as `1.0.0` (this
+  last bullet only after folders 001–008 land).
+- `@atlcli/export-node` ships with a working `bundledDefaultTemplate()` and
+  passes its own tarball smoke, once folders 002 and 008 land (additive —
+  not a blocker for the rest of this DoD, per Architecture: Batteries-
+  included Node consumer).
 - E2E gate executed against DOCSY/mayflower with the packed CLI; test
   resources cleaned up.
 
@@ -535,5 +1065,33 @@ model); note it as the designated fallback.
   today (not `private:true`) but their API stability was never reviewed;
   decide during T4.2 whether they join the v1 freeze or stay explicitly 0.x.
 - **`export-macros` package (T1.7)** — does not exist yet; the publish
-  pipeline must pick it up automatically (derive the publish set from
-  `packages/*` manifests without `private: true`, not from a hardcoded list).
+  pipeline must still pick it up automatically once it lands, via its
+  positive `"atlcli": { "publish": … }` classification (see Architecture:
+  Package graph & what gets published) — **not** via "absence of `private:
+  true`", which that same section explicitly rejects as unsafe
+  (`apps/cli/package.json` already demonstrates why: no `private` field,
+  not meant to publish under this scope). Concretely: `export-macros`'
+  first commit must add the classification field in the same PR that adds
+  the package, or the fail-closed publish-set derivation refuses to
+  include it and CI catches the omission — never a hardcoded list, but
+  also never implicit inclusion by default.
+- **Lockstep publish is not atomic on the public registry.** This plan
+  deliberately does not adopt npm's staged-publishing beta (Architecture:
+  Registry documents it but does not require it — its availability and fit
+  with the "no changesets, minimal tooling" decision are unverified).
+  Publishing the lockstep set is therefore a sequence of independent
+  `npm publish` calls; a mid-sequence failure can leave some packages at
+  the new `latest` and others at the previous version until the release is
+  retried. Mitigation: the post-publish full-graph registry smoke
+  (Versioning & release tasks) makes this loud immediately instead of via
+  an external bug report, and resumability (verified via `dist.integrity`)
+  means retrying only publishes the missing packages. If staged publishing
+  later proves available and worthwhile, adopting it is a follow-up, not a
+  blocker for this folder.
+- **No folder in this spec series currently owns producing a formal "M1
+  acceptance record."** `UMSETZUNGSPLAN.md:111-131` defines M1's acceptance
+  criteria narratively (byte-stable goldens across CLI and harness for a
+  50-page tree) but not as a committed artifact, and M1 spans multiple
+  lanes/folders with no single owner file. This folder defines the sign-off
+  schema it *validates* (Versioning & release tasks) but cannot itself
+  produce the M1 half of that record — see `crossPlanImpacts`.
