@@ -81,7 +81,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.template).toContain('linebreaks: "optimized"');
     expect(bundle.main).toContain('region: "US"');
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
-    expect(bundle.template).toContain('let indigo = rgb("#4B57A3")');
+    expect(bundle.template).toContain('let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
     expect(bundle.template).toContain('text(font: "Source Serif 4", size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
@@ -761,5 +761,72 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     expect(bundle.main).toContain("<wide-section>");
     expect(bundle.main).toContain("#link(<wide-section>)");
     expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+});
+
+describe("PDF settings threading into main.typ", () => {
+  const emptyDoc = { blocks: [], assets: [], notes: [] };
+
+  it("emits a defaulted settings dictionary when no settings are supplied", () => {
+    const bundle = serializePdfDocument(emptyDoc, { metadata });
+    expect(bundle.main).toContain("), settings: (");
+    expect(bundle.main).toContain('page: "a4"');
+    expect(bundle.main).toContain('orientation: "portrait"');
+    expect(bundle.main).toContain("cover: true");
+    expect(bundle.main).toContain("outline: true");
+    expect(bundle.main).toContain('accent-color: "#4B57A3"');
+    expect(bundle.main).not.toContain("header-text");
+    expect(bundle.main).not.toContain("watermark:");
+  });
+
+  it("emits Letter + landscape and organization name", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { page: "letter", orientation: "landscape", organizationName: "Acme" },
+    });
+    expect(bundle.main).toContain('page: "letter"');
+    expect(bundle.main).toContain('orientation: "landscape"');
+    expect(bundle.main).toContain('organization-name: "Acme"');
+  });
+
+  it("typstString-escapes every free-text setting so injection stays literal", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: {
+        headerText: 'H" #{x}',
+        footerText: "line\\end",
+        organizationName: 'Acme" #{sys.exit()}',
+        logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'alt" #{evil}' },
+      },
+    });
+    expect(bundle.main).toContain('header-text: "H\\" #{x}"');
+    expect(bundle.main).toContain('footer-text: "line\\\\end"');
+    expect(bundle.main).toContain('organization-name: "Acme\\" #{sys.exit()}"');
+    expect(bundle.main).toContain('logo-alt: "alt\\" #{evil}"');
+  });
+
+  it("threads a validated logo as a virtual asset and emits its escaped path", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'Acme "Corp"' } },
+    });
+    expect(bundle.main).toContain('logo: "assets/atlcli-logo.png"');
+    expect(bundle.main).toContain('logo-alt: "Acme \\"Corp\\""');
+    const asset = bundle.assets.find((entry) => entry.path === "assets/atlcli-logo.png");
+    expect(asset?.mediaType).toBe("image/png");
+    expect(asset?.bytes).toEqual(pngBytes());
+  });
+
+  it("serializes a watermark with defaults filled", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { watermark: { text: "DRAFT" } },
+    });
+    expect(bundle.main).toContain("watermark: (");
+    expect(bundle.main).toContain('text: "DRAFT"');
+    expect(bundle.main).toContain('color: "#DE350B"');
+    expect(bundle.main).toContain("opacity: 0.08");
+    expect(bundle.main).toContain("angle: -54");
+    expect(bundle.main).toContain("size: 96");
   });
 });

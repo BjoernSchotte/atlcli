@@ -1,10 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { deflateSync, inflateSync } from "node:zlib";
 import {
   ATLCLI_TYPST_TEMPLATE,
   PDF_RUNTIME_ASSETS,
+  serializePdfDocument,
   validatePdfOutput,
   type PdfSourceBundle,
+  type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
@@ -28,6 +31,86 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
 
 function bundle(main: string, sourceMap: PdfSourceBundle["sourceMap"] = []): PdfSourceBundle {
   return { main, template: ATLCLI_TYPST_TEMPLATE, assets: [], sourceMap, notes: [] };
+}
+
+const settingsMetadata = {
+  title: "Settings Zoo",
+  space: "DOCSY",
+  version: 3,
+  author: "Ada",
+  exportedAt: new Date("2026-07-19T00:00:00Z"),
+};
+
+function settingsBundle(settings?: PdfTemplateSettings): PdfSourceBundle {
+  return serializePdfDocument(
+    {
+      blocks: [
+        { type: "heading", level: 1, content: [{ type: "text", text: "Section" }] },
+        { type: "paragraph", content: [{ type: "text", text: "Hello settings." }] },
+      ],
+      assets: [],
+      notes: [],
+    },
+    { metadata: settingsMetadata, settings }
+  );
+}
+
+/** Raw latin1 view plus every inflatable FlateDecode stream, for byte asserts. */
+function inflatedPdfText(bytes: Uint8Array): string {
+  const raw = new TextDecoder("latin1").decode(bytes);
+  const parts = [raw];
+  const streamRegex = /stream\r?\n/g;
+  let match: RegExpExecArray | null;
+  while ((match = streamRegex.exec(raw)) !== null) {
+    const start = match.index + match[0].length;
+    const end = raw.indexOf("endstream", start);
+    if (end < 0) continue;
+    let stop = end;
+    while (stop > start && (bytes[stop - 1] === 0x0a || bytes[stop - 1] === 0x0d)) stop -= 1;
+    try {
+      parts.push(inflateSync(bytes.subarray(start, stop)).toString("latin1"));
+    } catch {
+      // Not a FlateDecode stream (image, font program, …) — skip.
+    }
+  }
+  return parts.join("\n");
+}
+
+// Real minimal 1x1 RGBA PNG built from scratch (no fixtures, no mocks).
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const chunk = new Uint8Array(12 + data.length);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, data.length);
+  chunk.set(new TextEncoder().encode(type), 4);
+  chunk.set(data, 8);
+  view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
+  return chunk;
+}
+
+function tinyPng(): Uint8Array {
+  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
+  // One scanline: filter byte 0 followed by a single opaque red RGBA pixel.
+  const idat = new Uint8Array(deflateSync(new Uint8Array([0, 255, 0, 0, 255])));
+  const chunks = [signature, pngChunk("IHDR", ihdr), pngChunk("IDAT", idat), pngChunk("IEND", new Uint8Array(0))];
+  const png = new Uint8Array(chunks.reduce((total, part) => total + part.length, 0));
+  let offset = 0;
+  for (const part of chunks) {
+    png.set(part, offset);
+    offset += part.length;
+  }
+  return png;
 }
 
 describe("BrowserPdfCompiler package", () => {
@@ -76,4 +159,67 @@ describe("BrowserPdfCompiler package", () => {
     const source = await Bun.file(new URL("./compiler.ts", import.meta.url)).text();
     expect(source).not.toMatch(/\?url|chrome|indexedDB|wxt|apps\/extension/);
   });
+});
+
+describe("template settings compiled output", () => {
+  it("compiles Letter with a DRAFT watermark: clean, tagged, page count unchanged vs A4", async () => {
+    const compiler = await createCompiler();
+    const a4 = await compiler.compile(settingsBundle());
+    const letter = await compiler.compile(
+      settingsBundle({ page: "letter", orientation: "portrait", watermark: { text: "DRAFT" } })
+    );
+    expect(a4.diagnostics).toEqual([]);
+    expect(letter.diagnostics).toEqual([]);
+    const a4Info = validatePdfOutput(a4.pdf!);
+    const letterInfo = validatePdfOutput(letter.pdf!);
+    expect(letterInfo.tagged).toBe(true);
+    // Background layers must not add pages.
+    expect(letterInfo.pageCount).toBe(a4Info.pageCount);
+    // Page size via MediaBox bytes (inflating FlateDecode streams if needed):
+    // Letter = 612x792 pt, A4 = 595.x pt wide.
+    expect(inflatedPdfText(letter.pdf!)).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+612(?:\.\d+)?\s+792/);
+    expect(inflatedPdfText(a4.pdf!)).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+595(?:\.\d+)?\s/);
+  }, 120_000);
+
+  it("produces the exact page count for every cover/outline combination", async () => {
+    const compiler = await createCompiler();
+    // Baseline: cover + outline + one body page + colophon = 4 pages. Each
+    // disabled section removes exactly one page — a stray unconditional
+    // pagebreak() outside its guard would leave a blank page behind instead.
+    const matrix: Array<{ cover: boolean; outline: boolean; pages: number }> = [
+      { cover: true, outline: true, pages: 4 },
+      { cover: false, outline: true, pages: 3 },
+      { cover: true, outline: false, pages: 3 },
+      { cover: false, outline: false, pages: 2 },
+    ];
+    for (const { cover, outline, pages } of matrix) {
+      const result = await compiler.compile(settingsBundle({ cover, outline }));
+      expect(result.diagnostics).toEqual([]);
+      expect(validatePdfOutput(result.pdf!).pageCount).toBe(pages);
+    }
+  }, 240_000);
+
+  it("compiles landscape orientation with the A4-tuned cover measurements intact", async () => {
+    const compiler = await createCompiler();
+    const result = await compiler.compile(settingsBundle({ orientation: "landscape" }));
+    expect(result.diagnostics).toEqual([]);
+    // Cover and colophon still fit their landscape pages: same page count as portrait.
+    expect(validatePdfOutput(result.pdf!).pageCount).toBe(4);
+    expect(inflatedPdfText(result.pdf!)).toMatch(/\/MediaBox\s*\[\s*0\s+0\s+841(?:\.\d+)?\s/);
+  }, 120_000);
+
+  it("compiles accent color, organization name, header/footer text, and a real PNG logo", async () => {
+    const compiler = await createCompiler();
+    const result = await compiler.compile(
+      settingsBundle({
+        accentColor: "#0052CC",
+        organizationName: "Acme Corp",
+        headerText: "Acme Handbook",
+        footerText: "Acme Confidential",
+        logo: { bytes: tinyPng(), mediaType: "image/png", alt: "Acme Corp" },
+      })
+    );
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true, pageCount: 4 });
+  }, 120_000);
 });

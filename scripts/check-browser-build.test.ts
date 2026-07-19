@@ -39,6 +39,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/diagram/src/index.ts",
       "packages/pdf/src/index.browser.ts",
       "packages/pdf-compiler-browser/src/index.ts",
+      "packages/template-pack/src/index.browser.ts",
     ]);
   });
 

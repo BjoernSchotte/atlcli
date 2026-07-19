@@ -1,5 +1,6 @@
 import { renderDiagram } from "@atlcli/diagram";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
+import { findSvgSafetyViolation } from "./svg-safety.js";
 import type {
   PdfAssetResolver,
   PdfResolvedAsset,
@@ -55,13 +56,10 @@ function validateResolvedAsset(asset: PdfResolvedAsset): PdfResolvedAsset {
     throw new Error(`image content does not match its declared media type (${declared})`);
   }
   if (sniffed === "image/svg+xml") {
-    const source = new TextDecoder().decode(asset.bytes);
-    if (
-      /<\s*(?:script|foreignObject)\b/i.test(source) ||
-      /\son[a-z]+\s*=/i.test(source) ||
-      /(?:href|xlink:href)\s*=\s*["']\s*(?:https?:|data:)/i.test(source)
-    ) {
-      throw new Error("SVG contains active or externally loaded content");
+    // Shared blocklist with logo-settings validation — see svg-safety.ts.
+    const violation = findSvgSafetyViolation(new TextDecoder().decode(asset.bytes));
+    if (violation) {
+      throw new Error(`SVG contains active or externally loaded content (${violation.rule})`);
     }
   }
   return { ...asset, mediaType: sniffed };

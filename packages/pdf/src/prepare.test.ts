@@ -45,6 +45,27 @@ describe("PDF asset preparation", () => {
     expect(prepared.notes[0]?.message).toContain("active");
   });
 
+  it("rejects hostile SVG assets through the shared svg-safety rules", async () => {
+    // Bypass classes the old inline sanitizer accepted: namespace-prefixed
+    // script elements and javascript:/relative href targets.
+    const hostiles = [
+      `<svg xmlns:svg="http://www.w3.org/2000/svg"><svg:script>alert(1)</svg:script></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><rect/></a></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg"><image href="../../etc/passwd"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg"><!ENTITY x "y"><rect/></svg>`,
+    ];
+    for (const hostile of hostiles) {
+      const prepared = await preparePdfDocument(images(1), {
+        resolve: async () => ({
+          bytes: new TextEncoder().encode(hostile),
+          mediaType: "image/svg+xml",
+        }),
+      });
+      expect(prepared.assets).toEqual([]);
+      expect(prepared.notes[0]?.message).toContain("active");
+    }
+  });
+
   it("rejects a declared MIME type that disagrees with magic bytes", async () => {
     const prepared = await preparePdfDocument(images(1), {
       resolve: async () => ({ bytes: pngBytes(), mediaType: "image/jpeg" }),

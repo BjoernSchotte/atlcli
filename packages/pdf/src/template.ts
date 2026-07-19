@@ -1,6 +1,35 @@
 /**
  * Pinned atlcli Typst standard template. It uses semantic Typst elements and
  * show rules so PDF tagging/outline information survives visual styling.
+ *
+ * ## `wiki.pdf-template/v1` contract
+ *
+ * `atlcli-doc(meta, settings, body)` is the built-in implementation of the
+ * versioned template surface `render(meta, body, settings)` (TEMPLATE-UX §7).
+ * Renaming the symbol is not required — the contract names the *shape*, not the
+ * symbol.
+ *
+ * Required `meta` keys a conforming template may rely on: `title`, `space`,
+ * `version`, `author`, `language`, `exported-at` (plus the derived
+ * `exporter`, `region`, `exported-label` this engine also supplies).
+ *
+ * `settings` is a Typst dictionary read *defensively* — every access uses
+ * `settings.at("<key>", default: ...)` so sparse dictionaries and older callers
+ * that pass no `settings` keep compiling. `settings: (:)` is itself the
+ * backward-compatible default. Adding a settings key is non-breaking; removing
+ * or renaming one bumps the `engine.api` string.
+ *
+ * ### Stable v1 import surface (the hook set)
+ *
+ * `serialize.ts` imports eight symbols from this generated `atlcli.typ`:
+ * `atlcli-doc`, `callout`, `status-badge`, `table-par`, `dense-token`,
+ * `dense-link`, `dense-status-badge`, `task-item`. All eight are the frozen v1
+ * hook set a conforming template must export; generated content may depend on
+ * these and no other, undocumented, template-local functions (TEMPLATE-UX §7).
+ * Shrinking this set — relocating the five dense-table/table helpers into
+ * engine-owned code so an external template overrides fewer hooks — is a
+ * deliberate follow-up once a real Level-B template needs it, not part of this
+ * contract's first cut.
  */
 import { resolvePdfTheme } from "./theme.js";
 import type { PdfThemeOptions } from "./types.js";
@@ -27,7 +56,27 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
   )
 }
 
-#let atlcli-doc(meta: (:), body) = {
+// Rotated text layer drawn under the content via set page(background: ...),
+// which makes it a page Artifact in the tagged PDF by Typst's own
+// page-background semantics.
+#let watermark-layer(wm) = if wm == none { none } else {
+  place(center + horizon, rotate(
+    wm.at("angle", default: -54) * 1deg,
+    text(
+      font: "Source Sans 3",
+      weight: "bold",
+      size: wm.at("size", default: 96) * 1pt,
+      fill: rgb(wm.at("color", default: "#DE350B"))
+        .transparentize(100% - wm.at("opacity", default: 0.08) * 100%),
+      wm.text,
+    ),
+  ))
+}
+
+// wiki.pdf-template/v1 render surface: render(meta, body, settings).
+// settings: (:) keeps callers that pass no settings compiling; every settings
+// read below must use settings.at("key", default: ...).
+#let atlcli-doc(meta: (:), settings: (:), body) = {
   let is-german = meta.at("language", default: "en") == "de"
   let version-label = [Version]
   let exported-label = if is-german { [Exportiert] } else { [Exported] }
@@ -35,7 +84,18 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
   let contents-label = if is-german { [Inhalt] } else { [Contents] }
   let end-label = if is-german { [DOKUMENTENDE] } else { [END OF DOCUMENT] }
   let pages-label = if is-german { [Seiten] } else { [Pages] }
-  let indigo = rgb("#4B57A3")
+  let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))
+  let org-name = settings.at("organization-name", default: none)
+  let logo-path = settings.at("logo", default: none)
+  let logo-alt = settings.at("logo-alt", default: "")
+  let space-label = if org-name == none {
+    [CONFLUENCE SPACE / #meta.space]
+  } else {
+    [#upper(org-name) / CONFLUENCE SPACE / #meta.space]
+  }
+  // Public settings say "letter"; Typst's paper catalog names it "us-letter".
+  let page-size = settings.at("page", default: "a4")
+  let paper-name = if page-size == "letter" { "us-letter" } else { page-size }
   let ink = rgb("#202A44")
   let warm-slate = rgb("#74727A")
   let cover-paper = rgb("${theme.colors.paper}")
@@ -68,22 +128,39 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
     spacing: 8pt,
   )
   set page(
-    paper: "a4",
+    paper: paper-name,
+    flipped: settings.at("orientation", default: "portrait") == "landscape",
     fill: cover-paper,
     margin: (top: 23mm, bottom: 20mm, left: 22mm, right: 22mm),
+    background: watermark-layer(settings.at("watermark", default: none)),
     header: context {
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
         set text(font: "Source Sans 3", size: 8pt, fill: rgb("#6B778C"))
-        grid(columns: (1fr, auto), meta.title, meta.space)
+        let header-text = settings.at("header-text", default: none)
+        if header-text == none {
+          grid(columns: (1fr, auto), meta.title, meta.space)
+        } else {
+          header-text
+        }
         line(length: 100%, stroke: rgb("#DFE1E6"))
       }
     },
     footer: context {
       if counter(page).get().first() > 1 {
         set text(font: "Source Sans 3", size: 8pt, fill: rgb("#6B778C"))
-        align(center)[#counter(page).display("1")]
+        let footer-text = settings.at("footer-text", default: none)
+        if footer-text == none and org-name == none {
+          align(center)[#counter(page).display("1")]
+        } else {
+          grid(
+            columns: (1fr, auto, 1fr),
+            align(left, if footer-text == none [] else { footer-text }),
+            align(center)[#counter(page).display("1")],
+            align(right, if org-name == none [] else { org-name }),
+          )
+        }
       }
     },
   )
@@ -113,34 +190,41 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
     it
   }
 
-  v(37mm)
-  block(width: 90%)[
-    #set text(font: "Source Sans 3")
-    #text(size: 8pt, weight: "semibold", tracking: 0.12em, fill: indigo)[CONFLUENCE SPACE / #meta.space]
-    #v(17pt)
-    #block(width: 100%)[
-      #set par(leading: 0.98em)
-      #text(font: "Source Serif 4", size: 31pt, weight: "semibold", fill: ink)[#meta.title]
+  if settings.at("cover", default: true) {
+    v(37mm)
+    block(width: 90%)[
+      #set text(font: "Source Sans 3")
+      #if logo-path != none [
+        #block(below: 18pt)[#image(logo-path, height: 12mm, width: 45mm, fit: "contain", alt: logo-alt)]
+      ]
+      #text(size: 8pt, weight: "semibold", tracking: 0.12em, fill: indigo, space-label)
+      #v(17pt)
+      #block(width: 100%)[
+        #set par(leading: 0.98em)
+        #text(font: "Source Serif 4", size: 31pt, weight: "semibold", fill: ink)[#meta.title]
+      ]
+      #v(25pt)
+      #line(length: 52mm, stroke: 0.9pt + indigo)
+      #v(23pt)
+      #grid(
+        columns: (30mm, 1fr),
+        column-gutter: 12pt,
+        row-gutter: 8pt,
+        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(version-label)),
+        text(size: 9.5pt, fill: ink, meta.version),
+        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exported-label)),
+        text(size: 9.5pt, fill: ink, meta.exported-label),
+        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exporter-label)),
+        text(size: 9.5pt, fill: ink, meta.exporter),
+      )
     ]
-    #v(25pt)
-    #line(length: 52mm, stroke: 0.9pt + indigo)
-    #v(23pt)
-    #grid(
-      columns: (30mm, 1fr),
-      column-gutter: 12pt,
-      row-gutter: 8pt,
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(version-label)),
-      text(size: 9.5pt, fill: ink, meta.version),
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exported-label)),
-      text(size: 9.5pt, fill: ink, meta.exported-label),
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exporter-label)),
-      text(size: 9.5pt, fill: ink, meta.exporter),
-    )
-  ]
-  pagebreak()
+    pagebreak()
+  }
   set page(fill: white)
-  outline(title: contents-label, depth: 3)
-  pagebreak()
+  if settings.at("outline", default: true) {
+    outline(title: contents-label, depth: 3)
+    pagebreak()
+  }
   body
   pagebreak()
   set page(fill: cover-paper)

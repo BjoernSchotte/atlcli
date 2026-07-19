@@ -149,6 +149,15 @@
       "name": "@atlcli/plugin-api",
       "version": "0.6.0",
     },
+    "packages/template-pack": {
+      "name": "@atlcli/template-pack",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/docx": "workspace:*",
+        "pizzip": "^3.2.0",
+      },
+    },
   },
   "patchedDependencies": {
     "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
@@ -225,6 +234,8 @@
     "@atlcli/pdf-compiler-browser": ["@atlcli/pdf-compiler-browser@workspace:packages/pdf-compiler-browser"],
 
     "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
+
+    "@atlcli/template-pack": ["@atlcli/template-pack@workspace:packages/template-pack"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

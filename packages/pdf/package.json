@@ -4,6 +4,9 @@
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
+  },
   "exports": {
     ".": {
       "browser": "./src/index.browser.ts",
