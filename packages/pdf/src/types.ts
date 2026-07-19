@@ -22,6 +22,13 @@ export interface PdfAssetRef {
    * page-author path.
    */
   trust?: "page" | "export-view";
+  /**
+   * The id of the page the attachment lives on (spec 008 T3.3). Threaded so a
+   * host resolver can disambiguate identically named attachments on different
+   * pages in a tree/space export, instead of colliding on filename alone.
+   * Undefined for external refs and single-page exports without page context.
+   */
+  pageId?: string;
 }
 
 export interface PdfResolvedAsset {
@@ -31,7 +38,12 @@ export interface PdfResolvedAsset {
 }
 
 export interface PdfAssetResolver {
-  resolve(ref: PdfAssetRef): Promise<PdfResolvedAsset>;
+  /**
+   * Resolve an asset. `context.signal` (spec 008 T3.2) lets a Ctrl-C abort an
+   * in-flight image fetch instead of it running to completion and being
+   * downgraded to a soft skip note.
+   */
+  resolve(ref: PdfAssetRef, context?: { signal?: AbortSignal }): Promise<PdfResolvedAsset>;
 }
 
 export interface PreparedPdfAsset {

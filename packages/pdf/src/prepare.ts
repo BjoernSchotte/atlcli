@@ -107,6 +107,20 @@ function assetKey(bytes: Uint8Array, mediaType: string): string {
 export interface PreparePdfOptions {
   /** Granular progress callback (spec 002 — one event per embedded asset). */
   onProgress?: ExportProgressCallback;
+  /**
+   * Cancellation signal (spec 008 T3.2). Threaded into each asset resolve so an
+   * in-flight fetch is actually aborted on Ctrl-C, and an `AbortError` aborts
+   * the export rather than being swallowed as a per-image skip note.
+   */
+  signal?: AbortSignal;
+}
+
+/** True for a cancellation error, from either the DOM or Node abort surface. */
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }
 
 export async function preparePdfDocument(
@@ -192,7 +206,11 @@ export async function preparePdfDocument(
               const resolved = await limit(() =>
                 resolver.resolve(
                   block.source.kind === "attachment"
-                    ? { kind: "attachment", filename: block.source.filename }
+                    ? {
+                        kind: "attachment",
+                        filename: block.source.filename,
+                        ...(owningPage ? { pageId: owningPage } : {}),
+                      }
                     : {
                         kind: "external",
                         url: block.source.url,
@@ -200,7 +218,8 @@ export async function preparePdfDocument(
                         // are untrusted; the host resolver routes them through
                         // its policy-checked external fetcher.
                         ...(block.source.trust ? { trust: block.source.trust } : {}),
-                      }
+                      },
+                  options.signal ? { signal: options.signal } : {}
                 )
               );
               const assetPath = addAsset(resolved, "image", {
@@ -221,6 +240,9 @@ export async function preparePdfDocument(
               // A shared-budget breach is a FATAL scope-level error (same as
               // DOCX) — never a per-image warning. Let it abort the export.
               if (error instanceof AssetBudgetExceededError) throw error;
+              // A cancellation must abort the whole export, not be downgraded to
+              // a soft per-image skip note (spec 008 T3.2).
+              if (isAbortError(error)) throw error;
               reportAsset(filename);
               notes.push({
                 level: "warning",

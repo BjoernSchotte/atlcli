@@ -203,6 +203,7 @@ export async function runPdfExport(
     input.onPhase?.("fetching");
     prepared = await preparePdfDocument(blocks, env.assets, {
       ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {

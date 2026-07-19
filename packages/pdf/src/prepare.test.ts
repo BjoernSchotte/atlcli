@@ -150,6 +150,46 @@ describe("PDF asset preparation", () => {
     expect(events.every((e) => e.total === 2)).toBe(true);
   });
 
+  it("threads the owning pageId through to the resolver (spec 008 T3.3)", async () => {
+    // Two pages in one composed document with identically named but
+    // byte-different attachments must resolve to DISTINCT bytes, not collide on
+    // filename alone.
+    const blocks: ExportBlock[] = [
+      { type: "image", source: { kind: "attachment", filename: "logo.png", pageId: "111" }, alt: "A" },
+      { type: "image", source: { kind: "attachment", filename: "logo.png", pageId: "222" }, alt: "B" },
+    ];
+    const seen: Array<{ filename?: string; pageId?: string }> = [];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async (ref) => {
+        seen.push({ filename: ref.filename, pageId: ref.pageId });
+        // Distinct bytes per page so the two must NOT dedup together.
+        return { bytes: pngBytes(ref.pageId === "111" ? 1 : 2), mediaType: "image/png" };
+      },
+    });
+    expect(seen).toEqual([
+      { filename: "logo.png", pageId: "111" },
+      { filename: "logo.png", pageId: "222" },
+    ]);
+    expect(prepared.assets).toHaveLength(2);
+  });
+
+  it("aborts the export on a cancellation error instead of skipping the image (spec 008 T3.2)", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      preparePdfDocument(
+        images(1),
+        {
+          resolve: async (_ref, context) => {
+            context?.signal?.throwIfAborted();
+            return { bytes: pngBytes(), mediaType: "image/png" };
+          },
+        },
+        { signal: controller.signal }
+      )
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("bounds parallel attachment resolution and preserves deterministic order", async () => {
     let active = 0;
     let peak = 0;
