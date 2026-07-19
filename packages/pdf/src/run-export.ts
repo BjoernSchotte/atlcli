@@ -4,6 +4,7 @@ import {
   type ExportNote,
   type ExportProgressCallback,
 } from "@atlcli/confluence";
+import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
 import { resolvePdfSettings } from "./settings.js";
@@ -49,6 +50,13 @@ export interface RunPdfExportInput {
    * surfaced at the top of the report. Defaults to `true`.
    */
   complete?: boolean;
+  /**
+   * The root/source page context for dynamic-macro resolution (spec 004). Used
+   * as the fallback `MacroExportContext.page` for single-page exports (tree/space
+   * exports carry per-instance `unknown.sourcePage`). Absent → derived from
+   * `metadata` (space/version only, no page id).
+   */
+  page?: { id: string; version?: number; spaceKey?: string };
 }
 
 export interface PdfExportEnv {
@@ -56,6 +64,11 @@ export interface PdfExportEnv {
   compiler: PdfCompilePort;
   output: PdfOutputSink;
   now?: () => number;
+  /**
+   * Dynamic-macro resolution options (spec 004). Applied during the `preparing`
+   * phase before `preparePdfDocument`. Omitting it reproduces today's output.
+   */
+  macros?: MacroResolutionOptions;
 }
 
 export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
@@ -162,9 +175,33 @@ export async function runPdfExport(
   const prepareStarted = now();
   let prepared;
   let bundle;
+  let resolvedNotes: ExportNote[] = input.sourceNotes ?? [];
   try {
+    // Dynamic-macro resolution (spec 004): staged fallback chain before layout.
+    let blocks = input.blocks;
+    if (env.macros) {
+      const rootPage =
+        input.page ??
+        {
+          id: "",
+          ...(input.metadata.version !== undefined ? { version: input.metadata.version } : {}),
+          ...(input.metadata.space !== undefined ? { spaceKey: input.metadata.space } : {}),
+        };
+      const resolved = await resolveMacroBlocks(
+        { blocks, notes: resolvedNotes },
+        env.macros.registry,
+        env.macros.contextFor(rootPage),
+        {
+          ...(env.macros.live !== undefined ? { live: env.macros.live } : {}),
+          contextFor: (p) => env.macros!.contextFor(p ?? rootPage),
+          targetEngine: "pdf",
+        }
+      );
+      blocks = resolved.blocks;
+      resolvedNotes = resolved.notes;
+    }
     input.onPhase?.("fetching");
-    prepared = await preparePdfDocument(input.blocks, env.assets, {
+    prepared = await preparePdfDocument(blocks, env.assets, {
       ...(input.onProgress ? { onProgress: input.onProgress } : {}),
     });
     throwIfAborted(input.signal);
@@ -230,7 +267,7 @@ export async function runPdfExport(
     embeddedImages: counts.images,
     renderedDiagrams: counts.diagrams,
     skippedAssets: counts.skipped,
-    notes: [...(input.sourceNotes ?? []), ...bundle.notes],
+    notes: [...resolvedNotes, ...bundle.notes],
     complete: input.complete ?? true,
     timings: { prepareMs, compileMs, emitMs, totalMs: now() - startedAt },
   };

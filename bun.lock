@@ -116,6 +116,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
@@ -142,6 +143,7 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
       },
       "devDependencies": {
         "@atlcli/docx": "workspace:*",

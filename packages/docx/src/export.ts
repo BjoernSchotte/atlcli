@@ -44,6 +44,7 @@ import {
   type ExportNote,
   type ExportProgressCallback,
 } from "@atlcli/confluence";
+import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
 import {
   resolvePlaceholders,
@@ -200,6 +201,14 @@ export interface ExportInput {
    * carry their own walk options).
    */
   exportControls?: "apply" | "passthrough";
+  /**
+   * Dynamic-macro resolution (spec 004). When set, an async resolver pass runs
+   * directly after `storageToBlocks` (mirroring the two-hop `assets`/`rasterizer`
+   * pattern: a host can pass this on {@link ExportInput} directly, or set it on
+   * {@link import("./env.js").ExportEnv} for `runExport` to thread through).
+   * Absent → today's behavior byte-for-byte.
+   */
+  macros?: MacroResolutionOptions;
 }
 
 /**
@@ -303,8 +312,30 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
         exporter: "word",
         ...(input.exportControls ? { exportControls: input.exportControls } : {}),
       });
-  const blocks = walked.blocks;
-  const walkNotes = walked.notes;
+  // Dynamic-macro resolution (spec 004): staged fallback chain between the
+  // walker and the serializer. Runs once on the (possibly composed) block tree.
+  let blocks = walked.blocks;
+  let walkNotes = walked.notes;
+  if (input.macros) {
+    const rootPage = {
+      id: input.details.id,
+      ...(input.details.version !== undefined ? { version: input.details.version } : {}),
+      ...(input.details.spaceKey !== undefined ? { spaceKey: input.details.spaceKey } : {}),
+    };
+    const resolved = await resolveMacroBlocks(
+      { blocks, notes: walkNotes },
+      input.macros.registry,
+      input.macros.contextFor(rootPage),
+      {
+        ...(input.macros.live !== undefined ? { live: input.macros.live } : {}),
+        contextFor: (p) => input.macros!.contextFor(p ?? rootPage),
+        targetEngine: "docx",
+      }
+    );
+    blocks = resolved.blocks;
+    walkNotes = resolved.notes;
+  }
+>>>>>>> 34ff1f1 (feat(export): wire macro resolver into DOCX and PDF engines (spec 004 T1.7))
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions

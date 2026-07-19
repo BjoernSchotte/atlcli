@@ -60,9 +60,16 @@ export async function resolveMacroBlocks(
   input: StorageToBlocksResult,
   registry: MacroRendererRegistry,
   ctx: MacroExportContext,
-  opts?: { live?: boolean; contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext }
+  opts?: {
+    live?: boolean;
+    contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
+    /** Stamped onto every per-instance context so the diagram renderer picks
+     *  the SVG (pdf) vs. PNG (docx) preview correctly. */
+    targetEngine?: "docx" | "pdf";
+  }
 ): Promise<StorageToBlocksResult> {
   const live = opts?.live !== false;
+  const targetEngine = opts?.targetEngine;
 
   // 1. Collect unknown blocks in pre-order (identity-based, so splicing is
   //    order-preserving regardless of settle order).
@@ -97,7 +104,7 @@ export async function resolveMacroBlocks(
   const resolutions = new Map<UnknownBlock, Resolution>();
   await runPool(instances, limit, async (block) => {
     if (ctx.signal?.aborted) throw new DOMException("Macro resolution aborted.", "AbortError");
-    const instanceCtx = buildInstanceCtx(block, baseCtx, opts?.contextFor, shared);
+    const instanceCtx = buildInstanceCtx(block, baseCtx, opts?.contextFor, shared, targetEngine);
     resolutions.set(block, await resolveInstance(block, registry, instanceCtx, live, shared));
   });
 
@@ -279,13 +286,16 @@ function buildInstanceCtx(
   block: UnknownBlock,
   base: MacroExportContext,
   contextFor: ((page: UnknownBlock["sourcePage"]) => MacroExportContext) | undefined,
-  shared: SharedState
+  shared: SharedState,
+  targetEngine: "docx" | "pdf" | undefined
 ): MacroExportContext {
   // Cross-plan sync point with 002: resolve each macro against its own source
   // page. `contextFor` (when supplied) yields a fresh ports/context bundle for
   // that page; otherwise fall back to the shared context (single-page export).
   const raw = block.sourcePage && contextFor ? contextFor(block.sourcePage) : base;
-  return wrapPorts(raw, shared, base.documentBlocks);
+  const wrapped = wrapPorts(raw, shared, base.documentBlocks);
+  if (targetEngine) wrapped.flags = { ...wrapped.flags, targetEngine };
+  return wrapped;
 }
 
 function wrapPorts(
