@@ -89,7 +89,14 @@ export interface ListItem {
 
 /** Where an image's bytes come from. */
 export type ImageSource =
-  | { kind: "attachment"; filename: string }
+  /**
+   * A page attachment. `pageId` is the id of the page the attachment lives on;
+   * it lets a multi-page (tree/space) export resolve an attachment against the
+   * right page instead of a `filename@pageId` multiplexing hack (spec 002,
+   * A1(c)). Optional and backwards compatible: single-page export leaves it
+   * unset (set by `fetchExportTree` via {@link StorageToBlocksOptions.pageContext}).
+   */
+  | { kind: "attachment"; filename: string; pageId?: string }
   | { kind: "external"; url: string };
 
 /** Confluence callout kinds plus the generic titled panel. */
@@ -206,7 +213,16 @@ export type ExportBlock =
        * top-level report — preserved on the block for a later consumer (Lane E,
        * T1.7) to promote rather than silently discarded.
        */
-      bodyNotes?: ExportNote[] };
+      bodyNotes?: ExportNote[];
+      /**
+       * The page this macro was found on, in a multi-page (tree/space) export.
+       * Cross-plan sync point for specs 004 (macro renderer) and 010 (extension
+       * `export_view` page-context resolution): a macro resolved against the
+       * wrong source page is a silent correctness bug. Set by `fetchExportTree`
+       * via {@link StorageToBlocksOptions.pageContext}; unset for single-page
+       * export. Backwards compatible (optional).
+       */
+      sourcePage?: { id: string; version?: number; spaceKey?: string } };
 
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
@@ -230,6 +246,14 @@ export interface StorageToBlocksOptions {
    * from T1.4 on — no behavioral effect yet.
    */
   exporter?: "pdf" | "word";
+  /**
+   * The page whose storage is being walked, in a multi-page (tree/space)
+   * export. When set, attachment {@link ImageSource}s get `pageId` and every
+   * `unknown` block gets `sourcePage`, so a downstream asset resolver / macro
+   * renderer can bind to the correct page (spec 002). Unset for single-page
+   * export (fields stay absent — output is byte-identical to before).
+   */
+  pageContext?: { id: string; version?: number; spaceKey?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +414,11 @@ interface WalkCtx {
   notes: ExportNote[];
   /** Exporter identity (from options); undefined for hosts that don't set it. */
   exporter?: "pdf" | "word";
+  /**
+   * Source-page context (from options); undefined for single-page export.
+   * Threaded into attachment {@link ImageSource}s and `unknown` blocks.
+   */
+  pageContext?: { id: string; version?: number; spaceKey?: string };
 }
 
 /**
@@ -456,7 +485,11 @@ export function storageToBlocks(
   storage: string,
   options?: StorageToBlocksOptions
 ): StorageToBlocksResult {
-  const ctx: WalkCtx = { notes: [], exporter: options?.exporter };
+  const ctx: WalkCtx = {
+    notes: [],
+    exporter: options?.exporter,
+    pageContext: options?.pageContext,
+  };
   const nodes = parseXml(storage);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
@@ -777,7 +810,12 @@ function walkImage(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
   let source: ImageSource | undefined;
   if (attachment && attachment.attrs["ri:filename"]) {
-    source = { kind: "attachment", filename: attachment.attrs["ri:filename"] };
+    // In a multi-page export, bind the attachment to its source page so a
+    // multiplexing asset resolver fetches from the right page. Only set the
+    // field when a page context is present, so single-page output is unchanged.
+    source = ctx.pageContext
+      ? { kind: "attachment", filename: attachment.attrs["ri:filename"], pageId: ctx.pageContext.id }
+      : { kind: "attachment", filename: attachment.attrs["ri:filename"] };
   } else if (url && url.attrs["ri:value"]) {
     source = { kind: "external", url: url.attrs["ri:value"] };
   }
@@ -866,6 +904,17 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
   const macroId = el.attrs["ac:macro-id"];
   if (macroId !== undefined) block.macroId = macroId;
+
+  // Cross-plan sync point (specs 004/010): bind the macro to its source page in
+  // a multi-page export so page-context resolution targets the right page. Only
+  // set when a page context is present, keeping single-page output unchanged.
+  if (ctx.pageContext) {
+    block.sourcePage = {
+      id: ctx.pageContext.id,
+      ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+      ...(ctx.pageContext.spaceKey !== undefined ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+    };
+  }
 
   return [block];
 }

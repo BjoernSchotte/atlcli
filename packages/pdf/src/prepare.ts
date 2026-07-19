@@ -1,4 +1,5 @@
 import { renderDiagram } from "@atlcli/diagram";
+import { createInOrderLimiter } from "@atlcli/confluence";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
 import { findSvgSafetyViolation } from "./svg-safety.js";
 import type {
@@ -73,66 +74,6 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return true;
 }
 
-function createLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
-  let active = 0;
-  let issued = 0;
-  let nextToDeliver = 0;
-  const queue: Array<{
-    index: number;
-    task: () => Promise<unknown>;
-    resolve: (value: unknown) => void;
-    reject: (reason: unknown) => void;
-  }> = [];
-  const finished = new Map<
-    number,
-    { ok: true; value: unknown } | { ok: false; reason: unknown }
-  >();
-
-  const flush = (): void => {
-    while (finished.has(nextToDeliver)) {
-      const result = finished.get(nextToDeliver)!;
-      finished.delete(nextToDeliver);
-      const item = delivered.get(nextToDeliver)!;
-      delivered.delete(nextToDeliver);
-      if (result.ok) item.resolve(result.value);
-      else item.reject(result.reason);
-      nextToDeliver += 1;
-    }
-  };
-  const delivered = new Map<
-    number,
-    { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
-  >();
-  const next = (): void => {
-    while (active < limit) {
-      const item = queue.shift();
-      if (!item) return;
-      active += 1;
-      void item.task()
-        .then(
-          (value) => finished.set(item.index, { ok: true, value }),
-          (reason) => finished.set(item.index, { ok: false, reason })
-        )
-        .finally(() => {
-          active -= 1;
-          flush();
-          next();
-        });
-    }
-  };
-  return <T>(task: () => Promise<T>): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
-      const index = issued;
-      issued += 1;
-      delivered.set(index, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
-      });
-      queue.push({ index, task, resolve: resolve as (value: unknown) => void, reject });
-      next();
-    });
-}
-
 function extensionFor(asset: PdfResolvedAsset): string {
   const fromMime = EXTENSIONS[asset.mediaType.toLowerCase()];
   if (fromMime) return fromMime;
@@ -164,7 +105,7 @@ export async function preparePdfDocument(
     string,
     Array<{ bytes: Uint8Array; mediaType: string; path: string }>
   >();
-  const limit = createLimiter(PDF_ASSET_CONCURRENCY);
+  const limit = createInOrderLimiter(PDF_ASSET_CONCURRENCY);
   let totalAssetBytes = 0;
 
   const addAsset = (rawAsset: PdfResolvedAsset, prefix: string): string => {

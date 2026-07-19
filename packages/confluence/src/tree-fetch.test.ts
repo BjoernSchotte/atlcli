@@ -1,0 +1,846 @@
+import { describe, test, expect } from "bun:test";
+import {
+  fetchExportTree,
+  applyLabelFilter,
+  nodeId,
+  ExportCompletenessError,
+  TreeLimitExceededError,
+  LabelFilterError,
+  SpaceHomepageError,
+  type TreeSource,
+  type TreeChild,
+  type TreeFetchContext,
+  type ExportNode,
+  type ExportPageNode,
+  type TreeFetchProgress,
+} from "./tree-fetch.js";
+import type { ExportScope } from "./export-scope.js";
+
+// ---------------------------------------------------------------------------
+// In-memory TreeSource (a legitimate port implementation, NOT an API mock)
+// ---------------------------------------------------------------------------
+
+interface FixtureNode {
+  id: string;
+  kind: "page" | "folder" | "unsupported";
+  unsupportedKind?: string;
+  title: string;
+  parent: string | null;
+  position?: number | null;
+  labels?: string[];
+  storage?: string;
+  /** Version reported at discovery (page-under-page) and by getPageVersion. */
+  observedVersion?: number;
+  // --- test knobs ---
+  /** getPage throws `Confluence API error (status)`. */
+  bodyStatus?: number;
+  /** getChildren for THIS node (as a parent) throws with this status. */
+  childrenStatus?: number;
+  /** Version returned by the getPage body (to trigger page-version-changed). */
+  bodyVersion?: number;
+  /** Artificial getPage latency (ms) for pool-ordering tests. */
+  latencyMs?: number;
+}
+
+interface InMemoryOptions {
+  spaceHomepage?: Record<string, string | null>;
+  /** Called with the current call counters after each port call. */
+  onCall?: (kind: string, id: string) => void;
+}
+
+interface InMemorySource extends TreeSource {
+  calls: { getPage: number; getPageVersion: number; getChildren: number; searchPages: number };
+  getPageIds: string[];
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? new Error("Aborted"));
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("Aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function statusError(status: number): Error {
+  return new Error(`Confluence API error (${status}): simulated`);
+}
+
+function inMemoryTreeSource(
+  fixture: FixtureNode[],
+  options: InMemoryOptions = {}
+): InMemorySource {
+  const byId = new Map(fixture.map((n) => [n.id, n]));
+  const calls = { getPage: 0, getPageVersion: 0, getChildren: 0, searchPages: 0 };
+  const getPageIds: string[] = [];
+
+  const childrenOf = (parentId: string): FixtureNode[] =>
+    fixture.filter((n) => n.parent === parentId);
+
+  return {
+    calls,
+    getPageIds,
+
+    async getPage(id, context: TreeFetchContext) {
+      calls.getPage += 1;
+      getPageIds.push(id);
+      options.onCall?.("getPage", id);
+      const node = byId.get(id);
+      if (!node) throw statusError(404);
+      if (node.latencyMs) await abortableSleep(node.latencyMs, context.signal);
+      context.signal?.throwIfAborted();
+      if (node.bodyStatus) throw statusError(node.bodyStatus);
+      return {
+        id: node.id,
+        title: node.title,
+        storage: node.storage ?? `<p>${node.title}</p>`,
+        version: node.bodyVersion ?? node.observedVersion,
+        labels: node.labels ?? [],
+        spaceKey: "DOCSY",
+      };
+    },
+
+    async getPageVersion(id, context: TreeFetchContext) {
+      calls.getPageVersion += 1;
+      options.onCall?.("getPageVersion", id);
+      context.signal?.throwIfAborted();
+      const node = byId.get(id);
+      if (!node) throw statusError(404);
+      return { version: node.observedVersion, title: node.title } as {
+        version: number;
+        title: string;
+      };
+    },
+
+    async getChildren(nodeRef, context: TreeFetchContext) {
+      calls.getChildren += 1;
+      options.onCall?.("getChildren", nodeRef.id);
+      context.signal?.throwIfAborted();
+      const parent = byId.get(nodeRef.id);
+      if (parent?.childrenStatus) throw statusError(parent.childrenStatus);
+      return childrenOf(nodeRef.id).map((child): TreeChild => {
+        const base = {
+          id: child.id,
+          title: child.title,
+          position: child.position ?? null,
+        };
+        if (child.kind === "unsupported") {
+          return { ...base, kind: "unsupported", unsupportedKind: child.unsupportedKind };
+        }
+        if (child.kind === "folder") {
+          return { ...base, kind: "folder", position: null };
+        }
+        // page: page-under-page carries observedVersion; page-under-folder doesn't.
+        return {
+          ...base,
+          kind: "page",
+          observedVersion: nodeRef.kind === "page" ? child.observedVersion : undefined,
+        };
+      });
+    },
+
+    async getSpaceHomepageId(spaceKey, context: TreeFetchContext) {
+      context.signal?.throwIfAborted();
+      return options.spaceHomepage?.[spaceKey] ?? null;
+    },
+
+    async searchPages(cql, context: TreeFetchContext) {
+      calls.searchPages += 1;
+      context.signal?.throwIfAborted();
+      const idMatch = cql.match(/id in \(([^)]*)\)/i);
+      const labelMatch = cql.match(/label in \(([^)]*)\)/i);
+      const ids = idMatch ? [...idMatch[1]!.matchAll(/"([^"]*)"/g)].map((m) => m[1]!) : [];
+      const labels = labelMatch
+        ? [...labelMatch[1]!.matchAll(/"([^"]*)"/g)].map((m) => m[1]!)
+        : [];
+      return ids
+        .filter((id) => {
+          const n = byId.get(id);
+          return n ? (n.labels ?? []).some((l) => labels.includes(l)) : false;
+        })
+        .map((id) => ({ id }));
+    },
+  };
+}
+
+/** Extract just the ordered titles of the returned nodes. */
+function titles(result: { nodes: readonly ExportNode[] }): string[] {
+  return result.nodes.map((n) => n.title);
+}
+
+const tree = (rootPageId: string, extra?: Partial<Extract<ExportScope, { kind: "tree" }>>): ExportScope => ({
+  kind: "tree",
+  rootPageId,
+  ...extra,
+});
+
+// ---------------------------------------------------------------------------
+// Ordering + guards
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — ordering & structure", () => {
+  const basic: FixtureNode[] = [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1 },
+    { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1 },
+    { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1 },
+    { id: "c", kind: "page", title: "C", parent: "root", position: 2, observedVersion: 1 },
+  ];
+
+  test("pre-order DFS follows UI positions", async () => {
+    const source = inMemoryTreeSource(basic);
+    const result = await fetchExportTree(source, tree("root"));
+    expect(titles(result)).toEqual(["Root", "A", "A1", "B", "C"]);
+    expect(result.complete).toBe(true);
+    // Every page body fetched exactly once.
+    expect(source.calls.getPage).toBe(5);
+  });
+
+  test("out-of-order positions are sorted (position, then title)", async () => {
+    const shuffled: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 2, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 1, observedVersion: 1 },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(shuffled), tree("root"));
+    expect(titles(result)).toEqual(["Root", "A", "B"]);
+  });
+
+  test("includeRoot:false makes the root's children the top-level chapters", async () => {
+    const result = await fetchExportTree(
+      inMemoryTreeSource(basic),
+      tree("root", { includeRoot: false })
+    );
+    expect(titles(result)).toEqual(["A", "A1", "B", "C"]);
+    // A, B, C become depth-0 top-level chapters.
+    const topLevel = result.nodes.filter((n) => n.depth === 0).map((n) => n.title);
+    expect(topLevel).toEqual(["A", "B", "C"]);
+  });
+
+  test("a page scope exports exactly one page (no descent)", async () => {
+    const source = inMemoryTreeSource(basic);
+    const result = await fetchExportTree(source, { kind: "page", pageId: "root" });
+    expect(titles(result)).toEqual(["Root"]);
+    expect(source.calls.getPage).toBe(1);
+  });
+
+  test("maxDepth cuts the traversal", async () => {
+    const result = await fetchExportTree(inMemoryTreeSource(basic), tree("root", { maxDepth: 1 }));
+    // Root (0) + its direct children (1); A1 (depth 2) excluded.
+    expect(titles(result)).toEqual(["Root", "A", "B", "C"]);
+  });
+
+  test("maxPages is a hard early error", async () => {
+    const source = inMemoryTreeSource(basic);
+    await expect(fetchExportTree(source, tree("root"), { maxPages: 3 })).rejects.toBeInstanceOf(
+      TreeLimitExceededError
+    );
+  });
+
+  test("onProgress reports one event per fetched page reaching the total", async () => {
+    const events: TreeFetchProgress[] = [];
+    const result = await fetchExportTree(inMemoryTreeSource(basic), tree("root"), {
+      onProgress: (e) => events.push(e),
+    });
+    expect(events.length).toBe(5);
+    expect(events.map((e) => e.fetched)).toEqual([1, 2, 3, 4, 5]);
+    expect(events.every((e) => e.total === 5)).toBe(true);
+    expect(result.complete).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cycles, folders, unsupported children
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — cycles, folders, unsupported", () => {
+  test("a cycle emits tree-cycle and terminates", async () => {
+    const cyclic: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1 },
+    ];
+    // Make A's child be Root again (via a hand-forged getChildren).
+    const source = inMemoryTreeSource(cyclic);
+    const original = source.getChildren.bind(source);
+    source.getChildren = async (ref, ctx) => {
+      if (ref.id === "a") {
+        return [{ id: "root", title: "Root", kind: "page", position: 0, observedVersion: 1 }];
+      }
+      return original(ref, ctx);
+    };
+    const result = await fetchExportTree(source, tree("root"));
+    expect(result.notes.some((n) => n.code === "tree-cycle")).toBe(true);
+    // Root visited once; the cycle back-edge is skipped.
+    expect(result.nodes.filter((n) => nodeId(n) === "root").length).toBe(1);
+  });
+
+  test("includeRoot:false seeds the excluded root into the cycle guard (no duplicate nodes)", async () => {
+    // Regression (review MINOR 1): with the root excluded by explicit request,
+    // a cycle root → a → root must hit the guard immediately — the root's
+    // children must not be re-listed and no duplicate node may be emitted.
+    const cyclic: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1 },
+    ];
+    const source = inMemoryTreeSource(cyclic);
+    const original = source.getChildren.bind(source);
+    let rootListings = 0;
+    source.getChildren = async (ref, ctx) => {
+      if (ref.id === "root") rootListings += 1;
+      if (ref.id === "a") {
+        // Adversarial back-edge to the (excluded) root.
+        return [{ id: "root", title: "Root", kind: "page", position: 0, observedVersion: 1 }];
+      }
+      return original(ref, ctx);
+    };
+    const result = await fetchExportTree(source, tree("root", { includeRoot: false }));
+    // Only A is emitted — the root never reappears as a duplicate node.
+    expect(titles(result)).toEqual(["A"]);
+    expect(result.nodes.filter((n) => nodeId(n) === "root").length).toBe(0);
+    expect(result.notes.filter((n) => n.code === "tree-cycle").length).toBe(1);
+    // The root's children were listed exactly once (the initial listing).
+    expect(rootListings).toBe(1);
+  });
+
+  test("folder node becomes an empty-body chapter with a folder-position-unknown note", async () => {
+    const withFolder: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "f", kind: "folder", title: "Folder", parent: "root", position: null },
+      { id: "p", kind: "page", title: "In Folder", parent: "f", observedVersion: 3 },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(withFolder), tree("root"));
+    expect(titles(result)).toEqual(["Root", "Folder", "In Folder"]);
+    const folder = result.nodes.find((n) => n.kind === "folder");
+    expect(folder).toBeDefined();
+    expect(folder && "blocks" in folder).toBe(false);
+    expect(result.notes.some((n) => n.code === "folder-position-unknown")).toBe(true);
+  });
+
+  test("page-under-folder version is backfilled via getPageVersion", async () => {
+    const withFolder: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "f", kind: "folder", title: "Folder", parent: "root" },
+      { id: "p", kind: "page", title: "In Folder", parent: "f", observedVersion: 7 },
+    ];
+    const source = inMemoryTreeSource(withFolder);
+    await fetchExportTree(source, tree("root"));
+    // getPageVersion called for the root (no discovery snapshot) AND the
+    // page-under-folder child (folder listing carries no version).
+    expect(source.calls.getPageVersion).toBe(2);
+  });
+
+  test("a folder cycle is guarded", async () => {
+    const source = inMemoryTreeSource([
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "f", kind: "folder", title: "F", parent: "root" },
+    ]);
+    const original = source.getChildren.bind(source);
+    source.getChildren = async (ref, ctx) => {
+      if (ref.id === "f") return [{ id: "f", title: "F", kind: "folder", position: null }];
+      return original(ref, ctx);
+    };
+    const result = await fetchExportTree(source, tree("root"));
+    expect(result.notes.some((n) => n.code === "tree-cycle")).toBe(true);
+  });
+
+  test("maxFolders is a hard early error even under the page cap", async () => {
+    const wide: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    ];
+    for (let i = 0; i < 10; i += 1) {
+      wide.push({ id: `f${i}`, kind: "folder", title: `F${i}`, parent: "root" });
+    }
+    await expect(
+      fetchExportTree(inMemoryTreeSource(wide), tree("root"), { maxFolders: 3, maxPages: 500 })
+    ).rejects.toBeInstanceOf(TreeLimitExceededError);
+  });
+
+  test("unsupported children under page and folder parents are reported and skipped", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "wb", kind: "unsupported", unsupportedKind: "whiteboard", title: "WB", parent: "root" },
+      { id: "f", kind: "folder", title: "Folder", parent: "root" },
+      { id: "db", kind: "unsupported", unsupportedKind: "database", title: "DB", parent: "f" },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"));
+    expect(titles(result)).toEqual(["Root", "Folder"]);
+    const unsupported = result.notes.filter((n) => n.code === "unsupported-child-type");
+    expect(unsupported.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Abort
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — abort", () => {
+  test("an already-aborted signal stops before any fetch", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const source = inMemoryTreeSource([
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    ]);
+    await expect(
+      fetchExportTree(source, tree("root"), { signal: controller.signal })
+    ).rejects.toThrow();
+    expect(source.calls.getPage).toBe(0);
+  });
+
+  test("aborting mid-walk stops the traversal", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1 },
+    ];
+    const controller = new AbortController();
+    const source = inMemoryTreeSource(fixture, {
+      onCall: (kind) => {
+        // Abort as soon as discovery starts.
+        if (kind === "getChildren") controller.abort();
+      },
+    });
+    await expect(
+      fetchExportTree(source, tree("root"), { signal: controller.signal })
+    ).rejects.toThrow();
+  });
+
+  test("aborting mid-pool lets started jobs settle without starting new ones", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1, latencyMs: 5 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, latencyMs: 40 },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, latencyMs: 40 },
+      { id: "c", kind: "page", title: "C", parent: "root", position: 2, observedVersion: 1, latencyMs: 40 },
+    ];
+    const controller = new AbortController();
+    const source = inMemoryTreeSource(fixture);
+    const promise = fetchExportTree(source, tree("root"), {
+      signal: controller.signal,
+      concurrency: 1,
+    });
+    setTimeout(() => controller.abort(), 15);
+    await expect(promise).rejects.toThrow();
+    // Not all four pages were fetched — abort prevented later jobs from starting.
+    expect(source.calls.getPage).toBeLessThan(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Completeness contract
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — completeness", () => {
+  const withBadPage = (knob: Partial<FixtureNode>): FixtureNode[] => [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "bad", kind: "page", title: "Bad", parent: "root", position: 0, observedVersion: 1, ...knob },
+  ];
+
+  const cases: Array<{ name: string; knob: Partial<FixtureNode>; code: string }> = [
+    { name: "page-unreadable (403 body)", knob: { bodyStatus: 403 }, code: "page-unreadable" },
+    { name: "page-ambiguous-404 (404 body)", knob: { bodyStatus: 404 }, code: "page-ambiguous-404" },
+    { name: "page-version-changed (version bump)", knob: { observedVersion: 1, bodyVersion: 2 }, code: "page-version-changed" },
+  ];
+
+  for (const c of cases) {
+    test(`strict aborts on ${c.name}`, async () => {
+      const source = inMemoryTreeSource(withBadPage(c.knob));
+      const error = await fetchExportTree(source, tree("root")).catch((e) => e);
+      expect(error).toBeInstanceOf(ExportCompletenessError);
+      expect((error as ExportCompletenessError).code).toBe(c.code as any);
+    });
+
+    test(`partial downgrades ${c.name} to a note + placeholder`, async () => {
+      const source = inMemoryTreeSource(withBadPage(c.knob));
+      const result = await fetchExportTree(source, tree("root"), { completenessMode: "partial" });
+      expect(result.complete).toBe(false);
+      expect(result.notes.some((n) => n.code === c.code)).toBe(true);
+      const bad = result.nodes.find((n) => nodeId(n) === "bad") as ExportPageNode;
+      expect(bad.placeholder).toBe(true);
+      expect(bad.blocks.length).toBeGreaterThan(0);
+      // The rest of the tree still comes through.
+      expect(result.nodes.find((n) => nodeId(n) === "root")).toBeDefined();
+    });
+  }
+
+  test("strict aborts on subtree-unreadable during discovery, collecting the affected node", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1, childrenStatus: 403 },
+    ];
+    const error = await fetchExportTree(inMemoryTreeSource(fixture), tree("root")).catch((e) => e);
+    expect(error).toBeInstanceOf(ExportCompletenessError);
+    expect((error as ExportCompletenessError).code).toBe("subtree-unreadable");
+    expect((error as ExportCompletenessError).affected[0]?.id).toBe("root");
+  });
+
+  test("partial downgrades subtree-unreadable and omits the subtree", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, childrenStatus: 403 },
+      { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1 },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"), {
+      completenessMode: "partial",
+    });
+    expect(result.complete).toBe(false);
+    expect(result.notes.some((n) => n.code === "subtree-unreadable")).toBe(true);
+    // A stays (it was discovered), but A1 (behind the unreadable listing) is gone.
+    expect(titles(result)).toEqual(["Root", "A"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pool ordering & deterministic error
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — pool ordering & drain", () => {
+  test("inverted latency still yields pre-order nodes", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1, latencyMs: 40 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, latencyMs: 30 },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, latencyMs: 20 },
+      { id: "c", kind: "page", title: "C", parent: "root", position: 2, observedVersion: 1, latencyMs: 5 },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"), {
+      concurrency: 4,
+    });
+    // C resolves first, Root last, but output is pre-order regardless.
+    expect(titles(result)).toEqual(["Root", "A", "B", "C"]);
+  });
+
+  test("primary error is the earliest pre-order slot, not whichever settled first", async () => {
+    // Slot 0 (earliest) is a slow version-changed; slot 1 is a fast 403 that
+    // settles first. The reported code must be the earliest slot's.
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, bodyVersion: 9, latencyMs: 40 },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, bodyStatus: 403, latencyMs: 5 },
+    ];
+    const error = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"), {
+      concurrency: 4,
+    }).catch((e) => e);
+    expect(error).toBeInstanceOf(ExportCompletenessError);
+    // Slot order: root(ok), A(version-changed), B(unreadable). Earliest failing
+    // slot is A.
+    expect((error as ExportCompletenessError).code).toBe("page-version-changed");
+    expect((error as ExportCompletenessError).affected[0]?.id).toBe("a");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Space scope
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — space scope", () => {
+  test("resolves the homepage as the included root", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "home", kind: "page", title: "Home", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "home", position: 0, observedVersion: 1 },
+    ];
+    const source = inMemoryTreeSource(fixture, { spaceHomepage: { DOCSY: "home" } });
+    const result = await fetchExportTree(source, { kind: "space", spaceKey: "DOCSY" });
+    expect(titles(result)).toEqual(["Home", "A"]);
+  });
+
+  test("errors with guidance when a space has no homepage", async () => {
+    const source = inMemoryTreeSource([], { spaceHomepage: { EMPTY: null } });
+    await expect(
+      fetchExportTree(source, { kind: "space", spaceKey: "EMPTY" })
+    ).rejects.toBeInstanceOf(SpaceHomepageError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Label filter
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — label filter", () => {
+  const labelled: FixtureNode[] = [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, labels: ["public"] },
+    { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1, labels: ["public"] },
+    { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, labels: ["internal"] },
+    { id: "b1", kind: "page", title: "B1", parent: "b", position: 0, observedVersion: 1, labels: ["public"] },
+    { id: "c", kind: "page", title: "C", parent: "root", position: 2, observedVersion: 1, labels: ["public"] },
+  ];
+
+  test("exclude prune-subtree removes descendants and never fetches their bodies", async () => {
+    const source = inMemoryTreeSource(labelled);
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { exclude: ["internal"] },
+    });
+    // B and its child B1 are gone.
+    expect(titles(result)).toEqual(["Root", "A", "A1", "C"]);
+    expect(result.notes.some((n) => n.code === "label-filtered")).toBe(true);
+    // Behavioral proof: B and B1 bodies were never fetched.
+    expect(source.getPageIds).not.toContain("b");
+    expect(source.getPageIds).not.toContain("b1");
+  });
+
+  test("exclude page-only keeps children (reparented)", async () => {
+    const source = inMemoryTreeSource(labelled);
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { exclude: ["internal"], excludeMode: "page-only" },
+    });
+    // B removed, B1 kept and reparented under Root.
+    expect(titles(result)).toEqual(["Root", "A", "A1", "B1", "C"]);
+    const b1 = result.nodes.find((n) => nodeId(n) === "b1")!;
+    expect(b1.parentId).toBe("root");
+    expect(b1.effectiveDepth).toBe(1);
+  });
+
+  test("include OR semantics keep any page carrying an include label", async () => {
+    const source = inMemoryTreeSource(labelled);
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { include: ["public"] },
+    });
+    // B (internal only) removed; B1 (public) reparented; root kept as structure.
+    expect(titles(result)).toEqual(["Root", "A", "A1", "B1", "C"]);
+    expect(result.notes.some((n) => n.code === "root-filter-bypassed")).toBe(true);
+  });
+
+  test("include + exclude combine (exclude wins the subtree)", async () => {
+    const source = inMemoryTreeSource(labelled);
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { include: ["public"], exclude: ["internal"] },
+    });
+    // internal subtree (B, B1) pruned; public pages kept.
+    expect(titles(result)).toEqual(["Root", "A", "A1", "C"]);
+  });
+
+  test("an include filter matching nothing is a hard error", async () => {
+    const source = inMemoryTreeSource(labelled);
+    await expect(
+      fetchExportTree(source, tree("root"), { labels: { include: ["nonexistent"] } })
+    ).rejects.toBeInstanceOf(LabelFilterError);
+  });
+
+  test("id chunking at >100 nodes exercises multiple searchPages queries", async () => {
+    const many: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    ];
+    for (let i = 0; i < 150; i += 1) {
+      many.push({
+        id: `p${i}`,
+        kind: "page",
+        title: `P${i}`,
+        parent: "root",
+        position: i,
+        observedVersion: 1,
+        labels: i === 130 ? ["internal"] : ["public"],
+      });
+    }
+    const source = inMemoryTreeSource(many);
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { exclude: ["internal"] },
+    });
+    // 151 ids → 2 chunks of 100 → 2 searchPages calls for the single exclude list.
+    expect(source.calls.searchPages).toBe(2);
+    // The one internal page (in the 2nd chunk) was filtered out.
+    expect(result.nodes.find((n) => nodeId(n) === "p130")).toBeUndefined();
+  });
+
+  test("includeRoot:false + exclude on the first top-level child: NO bypass immunity (prune-subtree)", async () => {
+    // Regression (review CRITICAL): with the true root removed by explicit
+    // request, the first-sorted sibling must NOT inherit the root's filter
+    // immunity — an explicit exclude must remove it and its subtree, and its
+    // body must never be fetched.
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, labels: ["internal"] },
+      { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1, labels: ["public"] },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, labels: ["public"] },
+    ];
+    const source = inMemoryTreeSource(fixture);
+    const result = await fetchExportTree(source, tree("root", { includeRoot: false }), {
+      labels: { exclude: ["internal"] },
+    });
+    // A (first-positioned, internal) and its subtree are gone; only B remains.
+    expect(titles(result)).toEqual(["B"]);
+    expect(result.notes.some((n) => n.code === "root-filter-bypassed")).toBe(false);
+    expect(result.notes.some((n) => n.code === "label-filtered")).toBe(true);
+    // Privacy proof: neither A nor its child ever had a body fetched.
+    expect(source.getPageIds).not.toContain("a");
+    expect(source.getPageIds).not.toContain("a1");
+  });
+
+  test("includeRoot:false + exclude on the first top-level child: NO bypass immunity (page-only)", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, labels: ["internal"] },
+      { id: "a1", kind: "page", title: "A1", parent: "a", position: 0, observedVersion: 1, labels: ["public"] },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1, labels: ["public"] },
+    ];
+    const source = inMemoryTreeSource(fixture);
+    const result = await fetchExportTree(source, tree("root", { includeRoot: false }), {
+      labels: { exclude: ["internal"], excludeMode: "page-only" },
+    });
+    // A removed (no immunity), its child A1 kept and reparented to top level.
+    expect(titles(result)).toEqual(["A1", "B"]);
+    expect(result.notes.some((n) => n.code === "root-filter-bypassed")).toBe(false);
+    const a1 = result.nodes.find((n) => nodeId(n) === "a1")!;
+    expect(a1.parentId).toBeNull();
+    expect(a1.effectiveDepth).toBe(0);
+    // A's own body was never fetched.
+    expect(source.getPageIds).not.toContain("a");
+  });
+
+  test("root excluded by label is kept as structure (root-filter-bypassed), not an error", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1, labels: ["internal"] },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1, labels: ["public"] },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"), {
+      labels: { exclude: ["internal"] },
+    });
+    expect(titles(result)).toEqual(["Root", "A"]);
+    expect(result.notes.some((n) => n.code === "root-filter-bypassed")).toBe(true);
+  });
+
+  test("fallback without searchPages: labels honored via getPage, at the documented cost of loading bodies", async () => {
+    // Review MINOR 2(a): the getPage-based fallback trades the "filtered pages
+    // are never loaded" invariant for working without a search port — the
+    // filter decision is still correct, but bodies ARE fetched during label
+    // resolution (including the eventually-excluded page's).
+    const source = inMemoryTreeSource(labelled);
+    (source as { searchPages?: unknown }).searchPages = undefined;
+    const result = await fetchExportTree(source, tree("root"), {
+      labels: { exclude: ["internal"] },
+    });
+    // Filter semantics identical to the searchPages path: B + subtree pruned.
+    expect(titles(result)).toEqual(["Root", "A", "A1", "C"]);
+    expect(result.notes.some((n) => n.code === "label-filtered")).toBe(true);
+    expect(source.calls.searchPages).toBe(0);
+    // Documented tradeoff: the excluded page's body WAS loaded on this path.
+    expect(source.getPageIds).toContain("b");
+  });
+
+  test("fails closed when filtering is requested but neither searchPages nor getPage exist", async () => {
+    // Review MINOR 2(b): never silently skip a requested filter.
+    const source = inMemoryTreeSource(labelled);
+    (source as { searchPages?: unknown }).searchPages = undefined;
+    (source as { getPage?: unknown }).getPage = undefined;
+    const error = await fetchExportTree(source, tree("root"), {
+      labels: { exclude: ["internal"] },
+    }).catch((e) => e);
+    expect(error).toBeInstanceOf(LabelFilterError);
+    expect((error as LabelFilterError).code).toBe("labels-unavailable");
+  });
+
+  test("intermediate folder removed by a non-matching include reparents its page children", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1, labels: ["public"] },
+      { id: "f", kind: "folder", title: "Folder", parent: "root" },
+      { id: "p", kind: "page", title: "In Folder", parent: "f", observedVersion: 1, labels: ["public"] },
+    ];
+    const result = await fetchExportTree(inMemoryTreeSource(fixture), tree("root"), {
+      labels: { include: ["public"] },
+    });
+    // Folder (no labels) doesn't match include → removed; its page reparents.
+    expect(titles(result)).toEqual(["Root", "In Folder"]);
+    const p = result.nodes.find((n) => nodeId(n) === "p")!;
+    expect(p.parentId).toBe("root");
+    expect(p.effectiveDepth).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyLabelFilter — pure unit tests (reparenting matrix)
+// ---------------------------------------------------------------------------
+
+describe("applyLabelFilter — pure", () => {
+  const mkPage = (
+    id: string,
+    depth: number,
+    parentId: string | null
+  ): ExportPageNode => ({
+    kind: "page",
+    pageId: id,
+    title: id.toUpperCase(),
+    depth,
+    effectiveDepth: depth,
+    parentId,
+    position: 0,
+    blocks: [],
+    notes: [],
+    meta: { labels: [] },
+  });
+
+  test("reparents survivors to the nearest surviving ancestor with effectiveDepth", () => {
+    // root -> mid -> leaf ; remove mid (page-only) → leaf reparents to root.
+    const nodes: ExportNode[] = [
+      mkPage("root", 0, null),
+      mkPage("mid", 1, "root"),
+      mkPage("leaf", 2, "mid"),
+    ];
+    const labels = new Map<string, string[]>([
+      ["root", ["keep"]],
+      ["mid", []],
+      ["leaf", ["keep"]],
+    ]);
+    const { nodes: out } = applyLabelFilter(nodes, labels, {
+      include: ["keep"],
+    });
+    const leaf = out.find((n) => nodeId(n) === "leaf")!;
+    expect(out.map(nodeId)).toEqual(["root", "leaf"]);
+    expect(leaf.parentId).toBe("root");
+    expect(leaf.effectiveDepth).toBe(1);
+  });
+
+  test("multiple survivors at effectiveDepth 0 each become top-level", () => {
+    const nodes: ExportNode[] = [mkPage("a", 0, null), mkPage("b", 0, null)];
+    const labels = new Map<string, string[]>();
+    const { nodes: out } = applyLabelFilter(nodes, labels, {});
+    // No filter → unchanged, both depth 0.
+    expect(out.every((n) => n.effectiveDepth === 0)).toBe(true);
+  });
+
+  test("root that matches exclude is bypassed, not removed", () => {
+    const nodes: ExportNode[] = [mkPage("root", 0, null), mkPage("a", 1, "root")];
+    const labels = new Map<string, string[]>([
+      ["root", ["internal"]],
+      ["a", ["public"]],
+    ]);
+    const { nodes: out, notes } = applyLabelFilter(nodes, labels, { exclude: ["internal"] });
+    expect(out.map(nodeId)).toEqual(["root", "a"]);
+    expect(notes.some((n) => n.code === "root-filter-bypassed")).toBe(true);
+  });
+
+  test("rootId: null disables the bypass — no node is immune", () => {
+    // Two top-level siblings after the caller removed the true root
+    // (includeRoot: false). The first-sorted sibling must be excludable.
+    const nodes: ExportNode[] = [mkPage("a", 0, null), mkPage("b", 0, null)];
+    const labels = new Map<string, string[]>([
+      ["a", ["internal"]],
+      ["b", ["public"]],
+    ]);
+    const { nodes: out, notes } = applyLabelFilter(
+      nodes,
+      labels,
+      { exclude: ["internal"] },
+      { rootId: null }
+    );
+    expect(out.map(nodeId)).toEqual(["b"]);
+    expect(notes.some((n) => n.code === "root-filter-bypassed")).toBe(false);
+    expect(notes.some((n) => n.code === "label-filtered")).toBe(true);
+  });
+
+  test("an explicit rootId string protects exactly that node", () => {
+    const nodes: ExportNode[] = [mkPage("a", 0, null), mkPage("b", 0, null)];
+    const labels = new Map<string, string[]>([
+      ["a", ["internal"]],
+      ["b", ["internal"]],
+    ]);
+    const { nodes: out, notes } = applyLabelFilter(
+      nodes,
+      labels,
+      { exclude: ["internal"] },
+      { rootId: "b" }
+    );
+    expect(out.map(nodeId)).toEqual(["b"]);
+    expect(notes.filter((n) => n.code === "root-filter-bypassed").length).toBe(1);
+  });
+});

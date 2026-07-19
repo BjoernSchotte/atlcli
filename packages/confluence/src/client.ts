@@ -8,6 +8,7 @@ import {
   getConfluenceBaseUrl,
   TlsOptions,
 } from "@atlcli/core";
+import { drainPaginated } from "./pagination.js";
 
 export type ConfluencePage = {
   id: string;
@@ -99,12 +100,19 @@ export type ConfluenceFolder = {
 };
 
 /**
- * Child content within a folder (can be page or folder).
+ * Child content within a container (page or folder).
+ *
+ * `type` is an **open** union on purpose: `direct-children` endpoints return
+ * more than pages and folders (whiteboards, databases, embeds, …). Narrowing it
+ * to `"page" | "folder"` forced an unsound cast that silently mislabeled a
+ * whiteboard as a page (it would then 404 or fetch the wrong content on a body
+ * fetch). Callers that only traverse pages/folders must switch on the literal
+ * members and treat any other string as an unsupported kind.
  */
 export type FolderChild = {
   id: string;
   title: string;
-  type: "page" | "folder";
+  type: "page" | "folder" | (string & {});
   spaceId?: string;
   parentId?: string | null;
   url?: string;
@@ -130,6 +138,41 @@ export interface AttachmentInfo {
   url?: string;
   /** Comment/description for this version */
   comment?: string;
+}
+
+/**
+ * Escape a value for safe inclusion inside a **double-quoted** CQL string
+ * literal, e.g. `label in ("${escapeCqlValue(label)}")` or
+ * `id in (${ids.map(escapeCqlValue)...})`.
+ *
+ * CQL string literals are double-quoted; the two characters that can break out
+ * of one are the double quote and the backslash, so both are backslash-escaped.
+ * Control characters (which CQL rejects and which can smuggle newlines into a
+ * query) are stripped. Returns the escaped inner text WITHOUT the surrounding
+ * quotes, so the caller controls quoting.
+ *
+ * Pure and exported (spec 002 owns this; spec 005 imports it — see PLAN.md
+ * label-filter task). Today's search command escapes `text`/`title`/`creator`
+ * but not `label`; this helper closes that gap for every CQL literal.
+ */
+export function escapeCqlValue(value: string): string {
+  return value
+    // Strip C0/C1 control characters (incl. NUL, newlines, DEL).
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+/**
+ * Extract the `cursor` query parameter from a v2 `_links.next` URL (which may be
+ * relative), or `undefined` when there is no next link. Used as the pagination
+ * token for cursor-based v2 endpoints.
+ */
+function extractCursor(nextLink: string | undefined, baseUrl: string): string | undefined {
+  if (!nextLink) return undefined;
+  const nextUrl = new URL(nextLink, baseUrl);
+  return nextUrl.searchParams.get("cursor") ?? undefined;
 }
 
 export class ConfluenceClient {
@@ -167,9 +210,30 @@ export class ConfluenceClient {
     return `${this.confluenceBaseUrl}${webuiPath}`;
   }
 
-  /** Sleep utility for rate limiting */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /**
+   * Sleep utility for rate limiting / retry backoff.
+   *
+   * Abortable: when `signal` is provided and already/becomes aborted, the sleep
+   * rejects immediately with the signal's reason instead of blocking for the
+   * full delay. This is what makes Ctrl-C during a multi-second 429/5xx backoff
+   * actually stop (the "Abort is real" requirement, spec 002).
+   */
+  private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason ?? new Error("Aborted"));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason ?? new Error("Aborted"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   /**
@@ -250,6 +314,7 @@ export class ConfluenceClient {
       method?: string;
       query?: Record<string, string | number | undefined>;
       body?: unknown;
+      signal?: AbortSignal;
     } = {}
   ): Promise<unknown> {
     const url = new URL(`${this.confluenceBaseUrl}/rest/api${path}`);
@@ -282,6 +347,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      options.signal?.throwIfAborted();
       const res = await fetch(url.toString(), this.applyFetchOptions({
         method,
         headers: {
@@ -290,6 +356,7 @@ export class ConfluenceClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: options.signal,
       }));
 
       // Session auth: a redirect means the session is missing — classify it
@@ -304,7 +371,7 @@ export class ConfluenceClient {
           : this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
+          await this.sleep(delayMs, options.signal);
           continue;
         }
         const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
@@ -336,7 +403,7 @@ export class ConfluenceClient {
 
         // Retry on server errors (5xx)
         if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
         logger.api("response", {
@@ -379,6 +446,7 @@ export class ConfluenceClient {
       method?: string;
       query?: Record<string, string | number | undefined>;
       body?: unknown;
+      signal?: AbortSignal;
     } = {}
   ): Promise<unknown> {
     const url = new URL(`${this.confluenceBaseUrl}/api/v2${path}`);
@@ -411,6 +479,7 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      options.signal?.throwIfAborted();
       const res = await fetch(url.toString(), this.applyFetchOptions({
         method,
         headers: {
@@ -419,6 +488,7 @@ export class ConfluenceClient {
           "Content-Type": "application/json",
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: options.signal,
       }));
 
       // Session auth: classify an auth-redirect rather than follow it.
@@ -431,7 +501,7 @@ export class ConfluenceClient {
           : this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
+          await this.sleep(delayMs, options.signal);
           continue;
         }
         const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
@@ -462,7 +532,7 @@ export class ConfluenceClient {
         lastError = new Error(`Confluence API v2 error (${res.status}): ${message}`);
 
         if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
         logger.api("response", {
@@ -536,7 +606,10 @@ export class ConfluenceClient {
    * Get a page with metadata (history, labels, tiny URL, editor version).
    * Used for export workflows that need author/created/labels.
    */
-  async getPageDetails(id: string): Promise<ConfluencePageDetails> {
+  async getPageDetails(
+    id: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<ConfluencePageDetails> {
     const data = (await this.request(`/content/${id}`, {
       query: {
         expand: [
@@ -551,6 +624,7 @@ export class ConfluenceClient {
           "metadata.properties.editor",
         ].join(","),
       },
+      signal: options.signal,
     })) as any;
 
     // Extract ancestors (array of {id, title} from root to parent)
@@ -641,6 +715,7 @@ export class ConfluenceClient {
       excerpt?: boolean;
       /** Optimization: "minimal" only fetches id/title/space, "standard" adds version/dates/labels, "full" adds excerpt */
       detail?: "minimal" | "standard" | "full";
+      signal?: AbortSignal;
     } = {}
   ): Promise<SearchResults> {
     const { limit = 25, start = 0, detail = "standard" } = options;
@@ -669,6 +744,7 @@ export class ConfluenceClient {
         expand: expandParts.join(","),
         excerpt: excerpt ? "indexed" : undefined,
       },
+      signal: options.signal,
     })) as any;
 
     const results = Array.isArray(data.results) ? data.results : [];
@@ -691,41 +767,33 @@ export class ConfluenceClient {
    * Paginates through all results using cursor-based pagination via _links.next.
    * Note: The start parameter is deprecated and ignored by Confluence Cloud.
    */
-  async searchPages(cql: string, limit = 25): Promise<ConfluenceSearchResult[]> {
-    const allResults: ConfluenceSearchResult[] = [];
-    let nextLink: string | undefined;
-    let isFirstRequest = true;
-
-    while (true) {
-      let result: SearchResults;
-
-      if (isFirstRequest) {
-        result = await this.search(cql, { limit });
-        isFirstRequest = false;
-      } else if (nextLink) {
-        result = await this.searchByUrl(nextLink);
-      } else {
-        break;
-      }
-
-      allResults.push(...result.results);
-
-      // Stop if no more results or no next link
-      if (result.results.length === 0 || !result.nextLink) break;
-      nextLink = result.nextLink;
-    }
-
-    return allResults;
+  async searchPages(
+    cql: string,
+    limit = 25,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<ConfluenceSearchResult[]> {
+    // Cursor pagination ends only on the ABSENCE of a next link — a short (or
+    // even empty) page carrying a live `_links.next` is not the last page (see
+    // drainPaginated). A silent early break here dropped later results, which
+    // for label-filter lookups means an exclude match on a dropped page could
+    // ship in the export uncaught (privacy/completeness bug).
+    return drainPaginated<ConfluenceSearchResult>(async (token) => {
+      const result =
+        token === undefined
+          ? await this.search(cql, { limit, signal: options.signal })
+          : await this.searchByUrl(token, options.signal);
+      return { items: result.results, next: result.nextLink };
+    });
   }
 
   /**
    * Follow a pagination URL to get the next page of search results.
    * Strips the /rest/api prefix from the URL since request() adds it.
    */
-  private async searchByUrl(url: string): Promise<SearchResults> {
+  private async searchByUrl(url: string, signal?: AbortSignal): Promise<SearchResults> {
     // Strip /rest/api prefix since request() adds it
     const path = url.replace(/^\/rest\/api/, "");
-    const data = (await this.request(path)) as any;
+    const data = (await this.request(path, { signal })) as any;
     const results = Array.isArray(data.results) ? data.results : [];
     const nextLink = data._links?.next;
 
@@ -910,51 +978,41 @@ export class ConfluenceClient {
    */
   async getChildrenWithPosition(
     parentId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; signal?: AbortSignal } = {}
   ): Promise<Array<ConfluencePage & { position: number | null }>> {
     const { limit = 100 } = options;
-    const results: Array<ConfluencePage & { position: number | null }> = [];
-    let nextLink: string | undefined;
-    let isFirstRequest = true;
 
-    while (true) {
-      let data: any;
+    // Pagination ends only on the absence of `_links.next`; a short page that
+    // still carries a next link is NOT the last page (see drainPaginated). The
+    // previous `results.length < limit` early break silently truncated trees.
+    const results = await drainPaginated<ConfluencePage & { position: number | null }>(
+      async (token) => {
+        const data: any =
+          token === undefined
+            ? await this.request(
+                `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`,
+                { signal: options.signal }
+              )
+            : await this.request(token.replace(/^\/rest\/api/, ""), { signal: options.signal });
 
-      if (isFirstRequest) {
-        data = await this.request(
-          `/content/${parentId}/child/page?expand=extensions.position,version,ancestors&limit=${limit}`
-        );
-        isFirstRequest = false;
-      } else if (nextLink) {
-        // Strip /rest/api prefix since request() adds it
-        const path = nextLink.replace(/^\/rest\/api/, "");
-        data = await this.request(path);
-      } else {
-        break;
-      }
-
-      if (!data.results || data.results.length === 0) break;
-
-      for (const item of data.results) {
-        const ancestors = Array.isArray(item.ancestors)
-          ? item.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
-          : [];
-
-        results.push({
-          id: item.id,
-          title: item.title,
-          url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
-          version: item.version?.number,
-          spaceKey: item.space?.key,
-          parentId,
-          ancestors,
-          position: item.extensions?.position ?? null,
+        const items = (Array.isArray(data.results) ? data.results : []).map((item: any) => {
+          const ancestors = Array.isArray(item.ancestors)
+            ? item.ancestors.map((a: any) => ({ id: a.id, title: a.title }))
+            : [];
+          return {
+            id: item.id,
+            title: item.title,
+            url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
+            version: item.version?.number,
+            spaceKey: item.space?.key,
+            parentId,
+            ancestors,
+            position: item.extensions?.position ?? null,
+          };
         });
+        return { items, next: data._links?.next };
       }
-
-      nextLink = data._links?.next;
-      if (!nextLink || data.results.length < limit) break;
-    }
+    );
 
     // Sort by position (nulls go to end, then alphabetical fallback)
     return results.sort((a, b) => {
@@ -1014,47 +1072,35 @@ export class ConfluenceClient {
    */
   async getPageDirectChildren(
     pageId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; signal?: AbortSignal } = {}
   ): Promise<FolderChild[]> {
     const { limit = 100 } = options;
-    const children: FolderChild[] = [];
-    let cursor: string | undefined;
 
-    while (true) {
+    // Cursor pagination ends only on the absence of a next cursor; a short page
+    // carrying a live next link is NOT the last page (see drainPaginated).
+    return drainPaginated<FolderChild>(async (cursor) => {
       const query: Record<string, string | number | undefined> = { limit };
-      if (cursor) {
-        query.cursor = cursor;
-      }
+      if (cursor) query.cursor = cursor;
 
       const data = (await this.requestV2(`/pages/${pageId}/direct-children`, {
         query,
+        signal: options.signal,
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
+      const items: FolderChild[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        // Preserve the raw type (open union): whiteboards/databases/embeds must
+        // NOT be widened into "page" — the caller maps them to "unsupported".
+        type: item.type,
+        spaceId: item.spaceId,
+        parentId: pageId,
+        url: this.buildWebUrl(item._links?.webui),
+      }));
 
-      for (const item of results) {
-        children.push({
-          id: item.id,
-          title: item.title,
-          type: item.type === "folder" ? "folder" : item.type === "page" ? "page" : item.type,
-          spaceId: item.spaceId,
-          parentId: pageId,
-          url: this.buildWebUrl(item._links?.webui),
-        });
-      }
-
-      // v2 API uses cursor-based pagination
-      if (data._links?.next) {
-        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
-        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
-      } else {
-        break;
-      }
-
-      if (results.length < limit) break;
-    }
-
-    return children;
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
   }
 
   /**
@@ -1252,9 +1298,13 @@ export class ConfluenceClient {
   /**
    * Get page version info only (lightweight check for polling).
    */
-  async getPageVersion(id: string): Promise<PageChangeInfo> {
+  async getPageVersion(
+    id: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<PageChangeInfo> {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "version,space,history.lastUpdated" },
+      signal: options.signal,
     })) as any;
     return {
       id: data.id,
@@ -1561,9 +1611,10 @@ export class ConfluenceClient {
    * GET {downloadUrl} (relative to wiki base)
    */
   async downloadAttachment(
-    attachment: AttachmentInfo | { downloadUrl: string }
+    attachment: AttachmentInfo | { downloadUrl: string },
+    options: { signal?: AbortSignal } = {}
   ): Promise<Uint8Array> {
-    return this.requestBinary(attachment.downloadUrl);
+    return this.requestBinary(attachment.downloadUrl, { signal: options.signal });
   }
 
   /**
@@ -1675,7 +1726,10 @@ export class ConfluenceClient {
   /**
    * Request helper for binary downloads.
    */
-  private async requestBinary(downloadPath: string): Promise<Uint8Array> {
+  private async requestBinary(
+    downloadPath: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Uint8Array> {
     const url = new URL(`${this.confluenceBaseUrl}${downloadPath}`);
 
     const logger = getLogger();
@@ -1696,11 +1750,13 @@ export class ConfluenceClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      options.signal?.throwIfAborted();
       const res = await fetch(url.toString(), this.applyFetchOptions({
         method: "GET",
         headers: {
           Authorization: this.authHeader,
         },
+        signal: options.signal,
       }));
 
       if (res.status === 429) {
@@ -1710,7 +1766,7 @@ export class ConfluenceClient {
           : this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
+          await this.sleep(delayMs, options.signal);
           continue;
         }
         const error = new Error(`Rate limited after ${this.maxRetries} retries`);
@@ -1728,7 +1784,7 @@ export class ConfluenceClient {
         lastError = new Error(`Download error (${res.status})`);
 
         if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
+          await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
           continue;
         }
         logger.api("response", {
@@ -2520,48 +2576,34 @@ export class ConfluenceClient {
    */
   async getFolderChildren(
     folderId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; signal?: AbortSignal } = {}
   ): Promise<FolderChild[]> {
     const { limit = 100 } = options;
-    const children: FolderChild[] = [];
-    let cursor: string | undefined;
 
-    while (true) {
+    // Cursor pagination ends only on the absence of a next cursor (see
+    // drainPaginated). The raw `item.type` is preserved (open union) so a
+    // whiteboard/database child is never mislabeled as a "page".
+    return drainPaginated<FolderChild>(async (cursor) => {
       const query: Record<string, string | number | undefined> = { limit };
-      if (cursor) {
-        query.cursor = cursor;
-      }
+      if (cursor) query.cursor = cursor;
 
       const data = (await this.requestV2(`/folders/${folderId}/direct-children`, {
         query,
+        signal: options.signal,
       })) as any;
 
       const results = Array.isArray(data.results) ? data.results : [];
+      const items: FolderChild[] = results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        spaceId: item.spaceId,
+        parentId: folderId,
+        url: this.buildWebUrl(item._links?.webui),
+      }));
 
-      for (const item of results) {
-        children.push({
-          id: item.id,
-          title: item.title,
-          type: item.type === "folder" ? "folder" : "page",
-          spaceId: item.spaceId,
-          parentId: folderId,
-          url: this.buildWebUrl(item._links?.webui),
-        });
-      }
-
-      // v2 API uses cursor-based pagination
-      if (data._links?.next) {
-        // Extract cursor from next link
-        const nextUrl = new URL(data._links.next, this.confluenceBaseUrl);
-        cursor = nextUrl.searchParams.get("cursor") ?? undefined;
-      } else {
-        break;
-      }
-
-      if (results.length < limit) break;
-    }
-
-    return children;
+      return { items, next: extractCursor(data._links?.next, this.confluenceBaseUrl) };
+    });
   }
 
   /**
@@ -2797,6 +2839,29 @@ export class ConfluenceClient {
       query: { expand: "homepage.body.storage" },
     })) as { homepage?: { body?: { storage?: { value?: string } } } };
     return data?.homepage?.body?.storage?.value ?? null;
+  }
+
+  /**
+   * Resolve a space's homepage page id in a **single** round-trip.
+   *
+   * Uses `GET /space/{spaceKey}?expand=homepage.id` (mirrors
+   * {@link getSpaceHomepageStorage}'s `expand=homepage.body.storage`) rather
+   * than `getSpaceFolders`' CQL-search-then-N-sequential-`getPage()` homepage
+   * detection, which costs up to 51 requests for a one-call lookup. Backs the
+   * `space` export scope (spec 002): the homepage is the tree root.
+   *
+   * @returns The homepage id, or `null` when the space has no classic homepage
+   *   (e.g. a folder-only space root) — the caller reports actionable guidance.
+   */
+  async getSpaceHomepageId(
+    spaceKey: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<string | null> {
+    const data = (await this.request(`/space/${spaceKey}`, {
+      query: { expand: "homepage.id" },
+      signal: options.signal,
+    })) as { homepage?: { id?: string } };
+    return data?.homepage?.id ?? null;
   }
 
   /**
