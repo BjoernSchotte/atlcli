@@ -270,6 +270,9 @@ export async function runPdfExport(
     skippedAssets: counts.skipped,
     notes: [...resolvedNotes, ...bundle.notes],
     complete: input.complete ?? true,
+    // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
+    // can fail `--strict` on real Typst warnings.
+    compilerDiagnostics: compiled.diagnostics,
     timings: { prepareMs, compileMs, emitMs, totalMs: now() - startedAt },
   };
 }

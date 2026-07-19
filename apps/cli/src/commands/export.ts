@@ -25,6 +25,7 @@ import {
   composeChapters,
   confluenceTreeSource,
   fetchExportTree,
+  resolveExportMentions,
   storageToBlocks,
   storageToMarkdown,
   type ComposeOptions,
@@ -41,6 +42,11 @@ import {
   type ParsedExportRequest,
 } from "./export-request.js";
 import { mapTreeExportError } from "./export-errors.js";
+import {
+  buildReport,
+  emitReportOutcome,
+  type ExportOutcome,
+} from "./export-report.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -73,6 +79,18 @@ export async function handleExport(
         output(exportHelp(), opts);
         return;
     }
+  }
+
+  // Determine the output FORMAT first (spec 008 T3.2). `--format` defaults to
+  // `docx` (backwards compatible); PDF takes an entirely separate, format-aware
+  // validation + report path and never requires `--template`/`--engine`.
+  const format = getFlag(flags, "format") ?? "docx";
+  if (format !== "docx" && format !== "pdf") {
+    fail(opts, 1, ERROR_CODES.USAGE, `Unknown --format "${format}". Use "docx" or "pdf".`);
+  }
+  if (format === "pdf") {
+    await handlePdfExport(args, flags, opts);
+    return;
   }
 
   // Parse scope/label/completeness flags into a serializable request BEFORE any
@@ -414,6 +432,98 @@ export async function handleExport(
   }
 
   output(response, opts);
+}
+
+/**
+ * `--format pdf` command path (spec 008 T3.2/T3.3). Format-aware validation:
+ * PDF forbids `--template` (PDF templates arrive via a later Lane P release) and
+ * `--engine` (PDF is its own isomorphic engine). Output goes to `--output` OR
+ * `--out-dir` (never both). All output — success or failure — is the single
+ * `atlcli.export-report/1` schema via `emitReportOutcome`.
+ */
+async function handlePdfExport(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  rawOpts: OutputOptions
+): Promise<void> {
+  // `--report json` is a synonym for `--json` for the export command: both emit
+  // exactly the `atlcli.export-report/1` schema as the sole stdout document
+  // (T3.4). A malformed `--report <other>` is a usage error.
+  const reportFlag = getFlag(flags, "report");
+  if (reportFlag !== undefined && reportFlag !== "json") {
+    fail(rawOpts, 1, ERROR_CODES.USAGE, `Unknown --report "${reportFlag}". Only "json" is supported.`);
+  }
+  const opts: OutputOptions = { json: rawOpts.json || reportFlag === "json" };
+
+  // Usage errors are reported through the SAME report shape, so `--json` always
+  // emits exactly the versioned report — never a second ad hoc error shape.
+  const usage = (message: string): ExportOutcome => ({
+    ok: false,
+    report: buildReport({
+      format: "pdf",
+      sourcePages: [],
+      outputDetails: [],
+      issues: [{ code: "usage-error", severity: "error", phase: "usage", retryable: false, message }],
+      failureExitCode: 1,
+    }),
+  });
+
+  if (hasFlag(flags, "template")) {
+    return emitReportOutcome(
+      usage("--template is DOCX-only; PDF templates arrive via a later release. Drop --template with --format pdf."),
+      opts
+    );
+  }
+  if (hasFlag(flags, "engine")) {
+    return emitReportOutcome(usage("--engine is not used with --format pdf (PDF has a single built-in engine)."), opts);
+  }
+
+  const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
+  const outDir = getFlag(flags, "out-dir");
+  if (outputPath && outDir) {
+    return emitReportOutcome(usage("Pass either --output or --out-dir, not both."), opts);
+  }
+  if (!outputPath && !outDir) {
+    return emitReportOutcome(usage("--output (or --out-dir) is required for --format pdf."), opts);
+  }
+
+  // Parse scope/label flags with the engine forced to `ts`: PDF is an
+  // isomorphic (ts-family) engine, so spec 002's scope/label validation applies
+  // uniformly. The user never passes --engine for PDF (forbidden above).
+  let request: ParsedExportRequest;
+  try {
+    request = parseExportRequest(args[0], { ...flags, engine: "ts" });
+  } catch (error) {
+    if (error instanceof ExportRequestError) return emitReportOutcome(usage(error.message), opts);
+    throw error;
+  }
+
+  const { resolveExportedAt } = await import("./export-pdf.js");
+  let exportedAt: Date | undefined;
+  try {
+    exportedAt = resolveExportedAt(getFlag(flags, "exported-at"));
+  } catch (error) {
+    return emitReportOutcome(usage(error instanceof Error ? error.message : String(error)), opts);
+  }
+
+  const { client, profile } = await getClient(flags, opts);
+  const baseUrl = getConfluenceBaseUrl(profile);
+
+  const { exportPdf } = await import("./export-pdf.js");
+  const outcome = await exportPdf({
+    client,
+    profile,
+    request,
+    baseUrl,
+    ...(outputPath ? { outputPath } : {}),
+    ...(outDir ? { outDir } : {}),
+    force: hasFlag(flags, "force"),
+    strict: hasFlag(flags, "strict"),
+    noCache: hasFlag(flags, "no-cache"),
+    ...(exportedAt ? { exportedAt } : {}),
+    opts,
+  });
+  emitReportOutcome(outcome, opts);
 }
 
 async function getClient(
@@ -863,7 +973,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const { readFile, stat } = await import("node:fs/promises");
   const [
     { runExport, fileOutputSink },
-    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher },
+    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
   ] = await Promise.all([
@@ -946,11 +1056,28 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
   }
 
+  // Resolve @mentions to display names before serialization, matching the
+  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
+  // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
+  // only happens when an account-id-only mention is actually present.
+  const walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+  const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+  const tsSourceNotes = [...walked.notes];
+  if (mention.unresolved > 0) {
+    tsSourceNotes.push({
+      level: "warning",
+      code: "mention-unresolved",
+      message: `${mention.unresolved} mention(s) could not be resolved to a display name.`,
+    });
+  }
+
   const resolvedOutputPath = resolve(outputPath);
   const macroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
   const report = await runExport(
     {
       details: page,
+      blocks: mention.blocks,
+      sourceNotes: tsSourceNotes,
       template: {
         name: basename(resolvedTemplatePath),
         modificationDate: templateStat.mtime,
@@ -1174,7 +1301,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
 
     // Load engine + template + optional rasterizer.
     const { readFile, stat } = await import("node:fs/promises");
-    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher }, templateBytesRaw, templateStat] =
+    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, templateBytesRaw, templateStat] =
       await Promise.all([
         import("@atlcli/docx"),
         import("./export-internals.js"),
@@ -1183,6 +1310,18 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       ]);
     const templateBytes = new Uint8Array(templateBytesRaw);
     const assetCache = createAssetByteCache(baseUrl);
+
+    // Resolve @mentions across the WHOLE composed document with one deduped bulk
+    // lookup (spec 008 T3.2 parity). Account ids are deduped inside
+    // resolveExportMentions, so a name repeated across chapters costs one call.
+    const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+    if (mention.unresolved > 0) {
+      sourceNotes.push({
+        level: "warning",
+        code: "mention-unresolved",
+        message: `${mention.unresolved} mention(s) could not be resolved to a display name.`,
+      });
+    }
 
     let rasterizer: import("@atlcli/docx").SvgRasterizer | undefined;
     const cliNotes: string[] = [];
@@ -1203,7 +1342,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     const docxReport = await runExport(
       {
         details: rootDetails,
-        blocks: composed.blocks,
+        blocks: mention.blocks,
         sourceNotes,
         complete: treeResult.complete,
         signal: controller.signal,
@@ -1395,8 +1534,9 @@ Arguments:
   <page>              Page reference (ID, SPACE:Title, or URL)
 
 Options:
-  --template, -t      Template name or path (required)
-  --output, -o        Output file path (required)
+  --format <fmt>      Output format: "docx" (default) or "pdf"
+  --template, -t      Template name or path (DOCX only; required for DOCX)
+  --output, -o        Output file path (required, or use --out-dir for PDF)
   --no-images         Do not embed images from page attachments (default embeds)
   --no-merge          Keep children as separate array (for loops in templates)
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
@@ -1412,6 +1552,16 @@ Options:
                       mermaid diagram rendering, no Python needed; required for
                       tree/space/label export)
   --profile <name>    Use a specific auth profile
+
+PDF Options (--format pdf):
+  --out-dir <dir>           Write to a directory with a derived <pageId>-<slug>.pdf
+                            name (alternative to --output; not both)
+  --force                   Overwrite an existing regular output file
+  --strict                  Exit code 2 if the export completed with warnings
+  --no-cache                Do not persist downloaded assets across invocations
+  --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
+                            honors the SOURCE_DATE_EPOCH env var)
+  (--template and --engine are not valid with --format pdf.)
 
 Scope Options (--engine ts):
   --scope <kind>            page (default) | tree | space
@@ -1435,13 +1585,17 @@ Page Reference Formats:
 
 Exit Codes:
   0    Success
-  1    Usage / validation / API error (see the error JSON with --json)
+  1    Usage / config / local IO error
+  2    Completed with warnings (only under --strict)
+  3    Authentication error (401/403)
+  4    Remote/API error (page not found, fetch failed)
+  5    Compile / validation failure (PDF)
   130  Cancelled (Ctrl-C / SIGINT)
+  (The DOCX tree/space path uses schema "atlcli.export-report/v1"; the PDF and
+  single-page report use "atlcli.export-report/1".)
 
-JSON Output (--json):
-  stdout carries EXACTLY one report document (schema "atlcli.export-report/v1"):
-  requested + resolved scope, complete, page/asset counts, structured notes with
-  per-code counts, and timings. Progress events go to stderr as JSONL.
+JSON Output (--json / --report json for PDF):
+  stdout carries EXACTLY one report document. Progress events go to stderr.
 
 Template Resolution:
   Templates are resolved in order (first match wins):
@@ -1462,6 +1616,9 @@ Examples:
   # Advanced: whole space, drop internal pages, machine-readable report for CI
   atlcli wiki export --template corporate --output space.docx --engine ts --scope space \\
     --space DOCSY --label-exclude internal --completeness partial --json
+
+  # PDF: single page to a tagged, font-embedded PDF with a JSON report for CI
+  atlcli wiki export 12345 --format pdf --output ./report.pdf --json
 
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx

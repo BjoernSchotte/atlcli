@@ -217,6 +217,13 @@ export interface PdfExportReport {
    * pages, spec 002). Single-page/normal exports are `true`.
    */
   complete: boolean;
+  /**
+   * Compiler diagnostics from a SUCCESSFUL compile (spec 008 T3.4). Previously
+   * dropped unless the compile failed, which made `--strict` a no-op for real
+   * Typst warnings on an otherwise-valid document; surfaced here so a host can
+   * fold them into its report's issues. Empty for a clean compile.
+   */
+  compilerDiagnostics: PdfCompilerDiagnostic[];
   timings: PdfExportTimings;
 }
 

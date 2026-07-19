@@ -326,7 +326,7 @@ process, with the port shape committed. Timebox: 2 days.
 
 ### CLI command --format pdf (T3.2)
 
-- [ ] **Report/error-boundary kernel** (must land before the rest of T3.2;
+- [x] **Report/error-boundary kernel** (must land before the rest of T3.2;
       T3.4 only extends it — see Dependencies): today `fail()`
       (`packages/core/src/utils.ts:121-143`) emits an incompatible
       `{ error: {...} }` shape under `--json` and calls `process.exit()`
@@ -344,7 +344,7 @@ process, with the port shape committed. Timebox: 2 days.
       process exit code. T3.4 adds `--strict`, the auth modes,
       `--out-dir`, and the classified-error → exit-code table on top of
       this boundary; it does not introduce a second one.
-- [ ] Restructure `handleExport`'s validation order to be format-aware
+- [x] Restructure `handleExport`'s validation order to be format-aware
       *before* adding `--format` parsing: today `--template`
       (`export.ts:86-88`) and `--output` (`export.ts:90-92`) are required
       unconditionally, and the template path is resolved
@@ -365,7 +365,7 @@ process, with the port shape committed. Timebox: 2 days.
       preserved; `--format docx --engine ts|python` → explicit engine
       honored; `--format pdf` with `--template` or `--engine` present →
       usage error (regression guard for the legacy cases).
-- [ ] New `apps/cli/src/commands/export-pdf.ts`: `exportPdf()` host wiring —
+- [x] New `apps/cli/src/commands/export-pdf.ts`: `exportPdf()` host wiring —
       page resolution reuses the existing `resolvePageId`, then
       `getPageDetails` → `storageToBlocks` → `runPdfExport` with the CLI
       `PdfExportEnv`. Metadata mapping: `title`, `space` (spaceKey), `version`,
@@ -376,7 +376,7 @@ process, with the port shape committed. Timebox: 2 days.
       timestamp is baked into the Typst source and PDF metadata
       (`packages/pdf/src/serialize.ts:813-824,844-859`, verified) and byte-stable
       CI artifacts / goldens need a fixed value across runs.
-- [ ] Resolve mentions before compiling, matching the extension's pipeline
+- [x] Resolve mentions before compiling, matching the extension's pipeline
       (parity gap, verified): the pipeline above goes `storageToBlocks` →
       `resolveExportMentions` → `runPdfExport`, but nothing in the CLI does
       this today. The extension already runs `resolveExportMentions`
@@ -397,7 +397,7 @@ process, with the port shape committed. Timebox: 2 days.
       account-id-only mention produces the identical display name (or
       identical degraded warning) from the CLI and from the extension
       harness.
-- [ ] Implement the CLI `PdfAssetResolver` in
+- [x] Implement the CLI `PdfAssetResolver` in
       `apps/cli/src/commands/export-internals.ts` (extend, don't fork): reuse
       `createAssetByteCache` + the attachment-listing `downloadUrl` resolution
       from `tokenAssetFetcher`; adapt its return shape to
@@ -445,7 +445,7 @@ process, with the port shape committed. Timebox: 2 days.
       with >100 attachments on one page resolves an attachment near the
       end of the list; a 25 MiB boundary fixture is rejected by streamed
       size, not post-buffer size.
-- [ ] Thread cancellation from the CLI process down to actual I/O, not
+- [x] Thread cancellation from the CLI process down to actual I/O, not
       just between `runPdfExport` phases: `PdfAssetResolver.resolve(ref)`
       (`packages/pdf/src/types.ts:26-28`, verified) takes no signal, and
       `preparePdfDocument` is called from `runPdfExport` without one
@@ -480,7 +480,7 @@ process, with the port shape committed. Timebox: 2 days.
       secret — profile name or account id) into the cache key namespace, and
       add a `--no-cache` escape hatch for CI runs that should never persist
       assets across invocations.
-- [ ] Implement `filePdfOutputSink(path)` (either in `export-pdf.ts` or shared
+- [x] Implement `filePdfOutputSink(path)` (either in `export-pdf.ts` or shared
       in `apps/cli/src/commands/export-internals.ts`): write to a temp file
       in the same target directory, then rename atomically into `path`
       (mirrors nothing in `packages/docx/src/node-adapters.ts:fileOutputSink`,
@@ -509,22 +509,22 @@ process, with the port shape committed. Timebox: 2 days.
       concurrency, symlink races, Unicode/empty filenames, and mid-rename
       signals on Linux, macOS, and Windows (all three ship release
       binaries, `.github/workflows/release.yml:17-22`).
-- [ ] Add `@atlcli/pdf` and `@atlcli/pdf-compiler-browser` to
+- [x] Add `@atlcli/pdf` and `@atlcli/pdf-compiler-browser` to
       `apps/cli/package.json` dependencies (workspace:*). Keep both imports
       lazy inside the `--format pdf` branch so `atlcli wiki page list` never
       loads wasm.
-- [ ] Success output via `output(data, opts)` **is** the `atlcli.export-report/1`
+- [x] Success output via `output(data, opts)` **is** the `atlcli.export-report/1`
       report object built by the report kernel above (`sourcePages[0]` for
       the exported page, `outputs[0]`/`outputDetails[0]` for the file path
       and its metrics — see T3.4's schema correction) — not a second ad hoc
       shape; see the `--json` vs `--report json` bullet under T3.4.
       Human-readable summary line in text mode, full report object in
       `--json`/`--report json`.
-- [ ] Error mapping: `PdfExportError.phase` → message prefix; compile
+- [x] Error mapping: `PdfExportError.phase` → message prefix; compile
       diagnostics printed via `formatPdfCompilerDiagnostics`
       (`packages/pdf/src/compiler.ts`); exit codes per T3.4 table (uses
       T3.4's error-classification task for Confluence-side failures).
-- [ ] Update help text: `exportHelp()` in `apps/cli/src/commands/export.ts`
+- [x] Update help text: `exportHelp()` in `apps/cli/src/commands/export.ts`
       and the `export` line in `wikiHelp()` (`apps/cli/src/commands/wiki.ts`,
       currently "Export page to DOCX with Word templates" → "Export page to
       DOCX or PDF").
@@ -762,7 +762,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       assumption (wasm `with { type: "file" }` survives every build mode)
       into a permanent regression test instead of a spike note that can
       silently bit-rot after T3.1 closes.
-- [ ] Unit — report schema and exit codes:
+- [x] Unit — report schema and exit codes:
       `apps/cli/src/commands/export-report.test.ts` — build reports from real
       `runPdfExport` runs against the fixture bundle (memory sink, pattern:
       `apps/browser-export-harness/src/pdf-case.ts`) and assert the v1 schema
@@ -815,7 +815,7 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       with `errors` populated when `--report json` is set; bad token
       (`ATLCLI_API_TOKEN=wrong`) → exit 3; assert nothing is written to
       `--out-dir` on failure.
-- [ ] Unit — `filePdfOutputSink` commit protocol:
+- [x] Unit — `filePdfOutputSink` commit protocol:
       `apps/cli/src/commands/export-internals.test.ts` — concurrent writers
       targeting the same path never corrupt or partially overwrite each
       other (no-clobber holds under a race); writing through a pre-existing
@@ -825,12 +825,12 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
       picked up as a valid output on the next run. Run on Linux, macOS, and
       Windows (matches the platforms `.github/workflows/release.yml`
       ships binaries for).
-- [ ] Regression guard: extend
+- [x] Regression guard: extend
       `packages/pdf-compiler-browser/src/compiler.test.ts`'s "no
       host-specific imports" idea with a CLI-side test asserting
       `export-pdf.ts`/`export-pdf-assets.ts` import the compiler only lazily
       (a static-import scan, same technique as `compiler.test.ts:75`).
-- [ ] `bun run typecheck` covers the new files (root `typecheck` already
+- [x] `bun run typecheck` covers the new files (root `typecheck` already
       includes the pdf-compiler-browser project reference).
 
 ## Definition of Done

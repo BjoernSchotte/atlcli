@@ -61,4 +61,18 @@ describe("export-pdf-assets (T3.1 compile port under Bun)", () => {
     const second = await getPdfCompiler();
     expect(first).toBe(second);
   });
+
+  it("imports the wasm compiler ONLY lazily (regression: no static import)", async () => {
+    // Static-import scan (same technique as compiler.test.ts): the multi-MB
+    // wasm compiler must never load for non-export commands. Both files may only
+    // reach it through a dynamic `await import(...)`.
+    const assetsSrc = await Bun.file(new URL("./export-pdf-assets.ts", import.meta.url)).text();
+    expect(assetsSrc).toMatch(/await import\(\s*["']@atlcli\/pdf-compiler-browser["']\s*\)/);
+    expect(assetsSrc).not.toMatch(/^\s*import\s+\{[^}]*BrowserPdfCompiler[^}]*\}\s+from\s+["']@atlcli\/pdf-compiler-browser["']/m);
+
+    const cmdSrc = await Bun.file(new URL("./export-pdf.ts", import.meta.url)).text();
+    // export-pdf.ts reaches the compiler only via getPdfCompiler(), never a
+    // direct static compiler import.
+    expect(cmdSrc).not.toMatch(/from\s+["']@atlcli\/pdf-compiler-browser["']/);
+  });
 });
