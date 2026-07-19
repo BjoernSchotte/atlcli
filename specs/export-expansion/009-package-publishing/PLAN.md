@@ -808,7 +808,7 @@ model); note it as the designated fallback.
       widened output types, changed `exports` subpaths, changed asset
       filenames), deprecation window (one minor with `@deprecated` JSDoc
       before removal), and the pre-1.0 vs post-1.0 rules from Architecture.
-- [ ] Implement the api-report guard: `scripts/api-report.ts` generates a
+- [x] Implement the api-report guard: `scripts/api-report.ts` generates a
       normalized public-surface report per package from the built `dist/*.d.ts`
       (public exports of each `exports` entrypoint, sorted, comments
       stripped); committed reports live in `packages/<p>/etc/<p>.api.md`;
@@ -821,7 +821,7 @@ model); note it as the designated fallback.
       as a report diff — the breaking-change policy's "one minor with
       `@deprecated` before removal" promise is otherwise enforced only by
       reviewer memory, not by the guard.
-- [ ] **Stabilize `ExportNote.code`.** It is typed as plain `string`
+- [x] **Stabilize `ExportNote.code`.** It is typed as plain `string`
       (`packages/confluence/src/export-blocks.ts:119`, despite the doc
       comment "Stable machine code") — renaming or removing a code today
       produces no type error and no api-report diff. Introduce a central
@@ -831,7 +831,7 @@ model); note it as the designated fallback.
       walks every real emission site (`grep`-driven or a lint rule) and
       asserts each emitted code is a member of the registry — catches a
       code renamed at the call site without updating the union.
-- [ ] Add regression coverage for the guard itself: a test fixture package
+- [x] Add regression coverage for the guard itself: a test fixture package
       surface where a removed export / changed signature produces a failing
       diff (guards the guard; no mocks — run the real generator on a tiny
       fixture entrypoint under the scratch of the test).
