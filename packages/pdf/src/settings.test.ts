@@ -186,6 +186,74 @@ describe("resolvePdfSettings logo validation", () => {
       );
     }
   });
+
+  it("rejects namespace-prefixed and URI-scheme SVG bypass attempts", () => {
+    const cases: Array<[string, string]> = [
+      ["<svg:script xmlns:svg=\"http://www.w3.org/2000/svg\">alert(1)</svg:script>", "blocked-element"],
+      ["<svg:foreignObject><body/></svg:foreignObject>", "blocked-element"],
+      ["<rect svg:onload=\"steal()\"/>", "event-handler-attribute"],
+      ["<a href=\"javascript:alert(1)\"><rect/></a>", "non-fragment-reference"],
+      ["<image href=\"../../etc/passwd\"/>", "non-fragment-reference"],
+      ["<image href=\"logo-helper.svg\"/>", "non-fragment-reference"],
+      ["<use xlink:href=\"https://evil.example/defs.svg#icon\"/>", "non-fragment-reference"],
+      ["<image href=\"data:image/png;base64,iVBORw0KGgo=\"/>", "non-fragment-reference"],
+    ];
+    for (const [inner, rule] of cases) {
+      const error = expectSettingsError(
+        () => resolvePdfSettings({ logo: { bytes: svgBytes(inner), mediaType: "image/svg+xml", alt: "Acme" } }),
+        "logo.bytes"
+      );
+      expect(error.constraint).toContain(rule);
+    }
+  });
+
+  it("rejects SVG logos containing DOCTYPE or ENTITY declarations", () => {
+    const doctype = new TextEncoder().encode(
+      '<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg">&xxe;</svg>'
+    );
+    const error = expectSettingsError(
+      () => resolvePdfSettings({ logo: { bytes: doctype, mediaType: "image/svg+xml", alt: "Acme" } }),
+      "logo.bytes"
+    );
+    expect(error.constraint).toContain("doctype-or-entity");
+  });
+
+  it("still accepts a clean self-contained SVG with fragment references", () => {
+    const clean = svgBytes(
+      '<defs><linearGradient id="g"><stop offset="0"/></linearGradient><rect id="r" fill="url(#g)"/></defs><use href="#r"/><use xlink:href="#r"/>'
+    );
+    const resolved = resolvePdfSettings({
+      logo: { bytes: clean, mediaType: "image/svg+xml", alt: "Acme" },
+    });
+    expect(resolved.logo?.mediaType).toBe("image/svg+xml");
+  });
+});
+
+describe("resolvePdfSettings text caps and re-resolution", () => {
+  it("counts the 200 cap in Unicode code points, not UTF-16 code units", () => {
+    // 150 astral code points = 300 UTF-16 units: must be accepted.
+    const emoji = "🚀".repeat(150);
+    expect(resolvePdfSettings({ headerText: emoji }).headerText).toBe(emoji);
+    const error = expectSettingsError(
+      () => resolvePdfSettings({ headerText: "🚀".repeat(201) }),
+      "headerText"
+    );
+    expect(error.constraint).toContain("Unicode code points");
+  });
+
+  it("returns an already-resolved settings object unchanged without re-validating", () => {
+    let pageReads = 0;
+    const raw = {
+      get page(): "letter" {
+        pageReads += 1;
+        return "letter";
+      },
+    };
+    const resolved = resolvePdfSettings(raw);
+    expect(pageReads).toBe(1);
+    expect(resolvePdfSettings(resolved)).toBe(resolved);
+    expect(pageReads).toBe(1);
+  });
 });
 
 describe("typstSettingsDict", () => {

@@ -61,6 +61,25 @@ describe("neutral runPdfExport", () => {
     expect(emitted).toBe(0);
   });
 
+  it("resolves settings exactly once across validation and serialization", async () => {
+    let pageReads = 0;
+    const settings = {
+      get page(): "letter" {
+        pageReads += 1;
+        return "letter";
+      },
+    };
+    await runPdfExport(
+      { blocks, metadata, filename: "Test.pdf", settings },
+      {
+        assets,
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      }
+    );
+    expect(pageReads).toBe(1);
+  });
+
   it("does not fail a committed export when the signal fires after emit", async () => {
     const controller = new AbortController();
     let emitted = 0;

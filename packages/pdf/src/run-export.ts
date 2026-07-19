@@ -127,10 +127,12 @@ export async function runPdfExport(
   throwIfAborted(input.signal);
 
   // Validate settings before any asset fetch so a settings typo never pays for
-  // (or is masked by) network requests it would discard.
+  // (or is masked by) network requests it would discard. The resolved object is
+  // forwarded to serialize, whose own resolve call short-circuits on it.
   input.onPhase?.("configuration");
+  let settings;
   try {
-    resolvePdfSettings(input.settings);
+    settings = resolvePdfSettings(input.settings);
   } catch (error) {
     wrapFailure(error, "configuration");
   }
@@ -147,7 +149,7 @@ export async function runPdfExport(
       metadata: input.metadata,
       profile: input.profile,
       theme: input.theme,
-      settings: input.settings,
+      settings,
     });
   } catch (error) {
     wrapFailure(error, "prepare");

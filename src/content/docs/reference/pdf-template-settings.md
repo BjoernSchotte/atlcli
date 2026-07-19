@@ -63,10 +63,10 @@ All fields are optional. Omitting a field applies its default.
 | `orientation` | `"portrait" \| "landscape"` | `"portrait"` | Optional | Must be exactly `portrait` or `landscape`. |
 | `cover` | `boolean` | `true` | Optional | — |
 | `outline` | `boolean` | `true` | Optional | — |
-| `headerText` | `string` | *(none)* | Optional | At most 200 characters. |
-| `footerText` | `string` | *(none)* | Optional | At most 200 characters. |
+| `headerText` | `string` | *(none)* | Optional | At most 200 Unicode code points. |
+| `footerText` | `string` | *(none)* | Optional | At most 200 Unicode code points. |
 | `accentColor` | `string` | `"#4B57A3"` | Optional | Any color the exporter can normalize to `#RRGGBB` (`#RGB`, `#RRGGBB`, `rgb(...)`, or a named CSS color). |
-| `organizationName` | `string` | *(none)* | Optional | At most 200 characters. |
+| `organizationName` | `string` | *(none)* | Optional | At most 200 Unicode code points. |
 | `logo` | `PdfLogoAsset` | *(none)* | Optional | See [Logo settings](#logo-settings). |
 | `watermark` | `PdfWatermarkSettings` | *(none)* | Optional | See [Watermark settings](#watermark-settings). |
 
@@ -130,8 +130,12 @@ A `logo` is a `PdfLogoAsset` with three fields:
 Security rules (restated from the template security model):
 
 - **PNG or sanitized SVG only.** SVG bytes must contain an `<svg>` root and are
-  rejected if they contain `<script>` or `<foreignObject>`, any `on*` event
-  handler attribute, or an external (`http(s):`/`data:`) reference.
+  rejected (namespace prefixes such as `svg:script` do not bypass the checks)
+  if they contain any of: a `DOCTYPE` or `ENTITY` declaration, a `script` or
+  `foreignObject` element, an `on*` event handler attribute, or any
+  `href`/`xlink:href` value that is not empty or a pure `#fragment` reference —
+  external URLs, `data:`/`javascript:` URIs, and relative paths are all
+  rejected.
 - **Bundled bytes only.** The engine never fetches a logo; supply the bytes.
 - **A present logo always requires a non-empty `alt`.** A meaning-bearing logo
   without alternative text is rejected.

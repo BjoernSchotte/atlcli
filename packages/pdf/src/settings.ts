@@ -16,6 +16,7 @@
  */
 import { normalizeExportColor } from "@atlcli/confluence";
 import { typstString } from "./escape.js";
+import { findSvgSafetyViolation } from "./svg-safety.js";
 import type { PdfLogoAsset, PdfTemplateSettings, PdfWatermarkSettings } from "./types.js";
 
 /** Structured validation failure naming the exact offending settings field. */
@@ -97,8 +98,10 @@ function resolveBoolean(value: boolean | undefined, fallback: boolean, path: str
 function resolveText(value: string | undefined, path: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") reject(path, value, "must be a string");
-  if (value.length > TEXT_MAX_LENGTH) {
-    reject(path, value, `must be at most ${TEXT_MAX_LENGTH} characters`);
+  // Count Unicode code points, not UTF-16 code units, so astral characters
+  // (emoji, rare CJK) are not double-counted against the cap.
+  if ([...value].length > TEXT_MAX_LENGTH) {
+    reject(path, value, `must be at most ${TEXT_MAX_LENGTH} Unicode code points`);
   }
   return value;
 }
@@ -166,14 +169,9 @@ function assertSafeSvg(bytes: Uint8Array): void {
   if (!/<svg(?:\s|>)/i.test(source.replace(/^﻿/, "").trimStart())) {
     reject("logo.bytes", undefined, "SVG bytes do not contain an <svg> root element");
   }
-  // Mirrors the export asset sanitizer in prepare.ts: reject scripts, embedded
-  // HTML, event handlers, and externally loaded (http/data) references.
-  if (
-    /<\s*(?:script|foreignObject)\b/i.test(source) ||
-    /\son[a-z]+\s*=/i.test(source) ||
-    /(?:href|xlink:href)\s*=\s*["']\s*(?:https?:|data:)/i.test(source)
-  ) {
-    reject("logo.bytes", undefined, "SVG contains active or externally loaded content");
+  const violation = findSvgSafetyViolation(source);
+  if (violation) {
+    reject("logo.bytes", undefined, `unsafe SVG (${violation.rule}): ${violation.detail}`);
   }
 }
 
@@ -201,12 +199,21 @@ function resolveLogo(logo: PdfLogoAsset): ResolvedPdfLogo {
   return { bytes: logo.bytes, mediaType: logo.mediaType, alt: logo.alt };
 }
 
+// Objects produced by resolvePdfSettings, so a second resolve pass (e.g.
+// runPdfExport validates first, serializePdfDocument receives the result) is
+// an identity no-op instead of re-running validation and the logo byte scan.
+const resolvedSettings = new WeakSet<ResolvedPdfSettings>();
+
 /**
  * Validate and default a partial public settings object into the complete
  * internal render settings. Throws {@link PdfSettingsError} on any invalid
- * value — this function never clamps.
+ * value — this function never clamps. Passing an object this function already
+ * returned short-circuits and returns it unchanged.
  */
 export function resolvePdfSettings(options: PdfTemplateSettings = {}): ResolvedPdfSettings {
+  if (resolvedSettings.has(options as ResolvedPdfSettings)) {
+    return options as ResolvedPdfSettings;
+  }
   const resolved: ResolvedPdfSettings = {
     page: resolveEnum(options.page, ["a4", "letter"] as const, "a4", "page"),
     orientation: resolveEnum(
@@ -229,6 +236,7 @@ export function resolvePdfSettings(options: PdfTemplateSettings = {}): ResolvedP
   if (options.logo !== undefined) resolved.logo = resolveLogo(options.logo);
   if (options.watermark !== undefined) resolved.watermark = resolveWatermark(options.watermark);
 
+  resolvedSettings.add(resolved);
   return resolved;
 }
 

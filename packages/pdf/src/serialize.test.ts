@@ -789,13 +789,20 @@ describe("PDF settings threading into main.typ", () => {
     expect(bundle.main).toContain('organization-name: "Acme"');
   });
 
-  it("typstString-escapes header/footer text so injection stays literal", () => {
+  it("typstString-escapes every free-text setting so injection stays literal", () => {
     const bundle = serializePdfDocument(emptyDoc, {
       metadata,
-      settings: { headerText: 'H" #{x}', footerText: "line\\end" },
+      settings: {
+        headerText: 'H" #{x}',
+        footerText: "line\\end",
+        organizationName: 'Acme" #{sys.exit()}',
+        logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'alt" #{evil}' },
+      },
     });
     expect(bundle.main).toContain('header-text: "H\\" #{x}"');
     expect(bundle.main).toContain('footer-text: "line\\\\end"');
+    expect(bundle.main).toContain('organization-name: "Acme\\" #{sys.exit()}"');
+    expect(bundle.main).toContain('logo-alt: "alt\\" #{evil}"');
   });
 
   it("threads a validated logo as a virtual asset and emits its escaped path", () => {
