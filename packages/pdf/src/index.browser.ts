@@ -4,6 +4,7 @@ export * from "./prepare.js";
 export * from "./run-export.js";
 export * from "./runtime-assets.js";
 export * from "./serialize.js";
+export * from "./settings.js";
 export * from "./template.js";
 export * from "./theme.js";
 export * from "./validate.js";

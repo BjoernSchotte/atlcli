@@ -1,0 +1,183 @@
+---
+title: "PDF Template Settings"
+description: "Level-A settings that configure the built-in PDF template: page size, orientation, cover/outline toggles, header/footer text, accent color, organization name, logo, and watermark"
+---
+
+# PDF Template Settings
+
+The PDF exporter renders through a single versioned template contract,
+`wiki.pdf-template/v1`. Level-A **settings** let you configure that template
+without editing Typst source: page size, orientation, section toggles,
+header/footer text, brand accent color, organization name, a logo, and a
+watermark. Settings are plain, serializable values, so every host — CLI flags,
+the extension form, or a further host — supplies the same shape.
+
+Settings are **data, never code**. The engine validates every value in
+TypeScript and rejects anything malformed with a structured error; it never
+silently clamps an out-of-range value. Host-supplied strings are escaped before
+they reach the generated document, so a header or watermark string can never
+inject template source.
+
+## On this page
+
+- [Prerequisites](#prerequisites)
+- [How settings flow](#how-settings-flow)
+- [Settings reference](#settings-reference)
+- [Watermark settings](#watermark-settings)
+- [Logo settings](#logo-settings)
+- [Minimal example](#minimal-example)
+- [Advanced example](#advanced-example)
+- [Validation and error handling](#validation-and-error-handling)
+- [Troubleshooting](#troubleshooting)
+- [Related topics](#related-topics)
+
+## Prerequisites
+
+- A working PDF export pipeline (see [PDF Export Engine](pdf-engine.md)).
+- A host that forwards a `settings` object into the export call. Omitting
+  settings entirely reproduces the default document exactly.
+
+## How settings flow
+
+```text
+host settings (plain object)
+   -> RunPdfExportInput.settings
+   -> PdfSerializeOptions.settings
+   -> resolvePdfSettings()  (validate + default; throws on invalid)
+   -> main.typ: #show: atlcli-doc.with(meta: (...), settings: (...))
+   -> atlcli-doc(meta, settings, body)   // wiki.pdf-template/v1
+```
+
+Validation runs as the first step of an export, before any attachment is
+fetched, so a settings typo fails fast and never pays for network work it would
+discard.
+
+## Settings reference
+
+All fields are optional. Omitting a field applies its default.
+
+| Field | Type | Default | Required | Constraints |
+|-------|------|---------|----------|-------------|
+| `page` | `"a4" \| "letter"` | `"a4"` | Optional | Must be exactly `a4` or `letter`. |
+| `orientation` | `"portrait" \| "landscape"` | `"portrait"` | Optional | Must be exactly `portrait` or `landscape`. |
+| `cover` | `boolean` | `true` | Optional | — |
+| `outline` | `boolean` | `true` | Optional | — |
+| `headerText` | `string` | *(none)* | Optional | At most 200 characters. |
+| `footerText` | `string` | *(none)* | Optional | At most 200 characters. |
+| `accentColor` | `string` | `"#4B57A3"` | Optional | Any color the exporter can normalize to `#RRGGBB` (`#RGB`, `#RRGGBB`, `rgb(...)`, or a named CSS color). |
+| `organizationName` | `string` | *(none)* | Optional | At most 200 characters. |
+| `logo` | `PdfLogoAsset` | *(none)* | Optional | See [Logo settings](#logo-settings). |
+| `watermark` | `PdfWatermarkSettings` | *(none)* | Optional | See [Watermark settings](#watermark-settings). |
+
+The default accent color is the built-in Editorial Indigo. The default page is
+A4 portrait with the cover and outline sections both enabled — identical to the
+document produced when no settings are supplied.
+
+## Watermark settings
+
+A watermark is a rotated text layer drawn under the content, so it becomes a
+page Artifact and does not interfere with text selection. Set `watermark` to a
+`PdfWatermarkSettings` object; `text` is required and every other field
+defaults.
+
+| Field | Type | Default | Required | Constraints |
+|-------|------|---------|----------|-------------|
+| `text` | `string` | — | **Required** | Must be non-empty (whitespace-only is rejected). |
+| `color` | `string` | `"#DE350B"` | Optional | Normalizable to `#RRGGBB`. |
+| `opacity` | `number` | `0.08` | Optional | In the half-open range `(0, 1]`. `0`, negative values, `NaN`, and `Infinity` are rejected. |
+| `angle` | `number` | `-54` | Optional | Degrees, `-180..180` inclusive. |
+| `size` | `number` | `96` | Optional | Points, `8..400` inclusive. |
+
+Image watermarks and foreground (over-content) watermarks are **not** supported
+in v1: a foreground layer would cover text and break copy/select.
+
+## Logo settings
+
+A `logo` is a `PdfLogoAsset` with three fields:
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `bytes` | `Uint8Array` | **Required** | Non-empty; at most 5 MiB (rejected, never downscaled). |
+| `mediaType` | `"image/png" \| "image/svg+xml"` | **Required** | For PNG, the bytes must begin with the PNG signature. |
+| `alt` | `string` | **Required when a logo is present** | Non-empty alternative text. |
+
+Security rules (restated from the template security model):
+
+- **PNG or sanitized SVG only.** SVG bytes must contain an `<svg>` root and are
+  rejected if they contain `<script>` or `<foreignObject>`, any `on*` event
+  handler attribute, or an external (`http(s):`/`data:`) reference.
+- **Bundled bytes only.** The engine never fetches a logo; supply the bytes.
+- **A present logo always requires a non-empty `alt`.** A meaning-bearing logo
+  without alternative text is rejected.
+
+## Minimal example
+
+Export to US Letter with no cover page:
+
+```ts
+await runPdfExport(
+  {
+    blocks,
+    metadata,
+    filename: "guide.pdf",
+    settings: { page: "letter", cover: false },
+  },
+  env,
+);
+```
+
+## Advanced example
+
+A confidential, branded export: Letter landscape, a legal footer line, a brand
+accent, an organization name, and a draft watermark.
+
+```ts
+await runPdfExport(
+  {
+    blocks,
+    metadata,
+    filename: "acme-confidential.pdf",
+    settings: {
+      page: "letter",
+      orientation: "landscape",
+      outline: false,
+      footerText: "Acme Confidential — do not distribute",
+      accentColor: "#0052CC",
+      organizationName: "Acme Corp",
+      logo: { bytes: acmeLogoPng, mediaType: "image/png", alt: "Acme Corp" },
+      watermark: { text: "DRAFT", opacity: 0.1, angle: -45 },
+    },
+  },
+  env,
+);
+```
+
+## Validation and error handling
+
+Invalid settings throw before any asset is fetched. Each failure names the exact
+offending field through a `PdfSettingsError` with:
+
+- `path` — the field, e.g. `watermark.opacity` or `logo.alt`.
+- `value` — the offending value.
+- `constraint` — a human-readable description of the rule.
+
+When run through the export orchestrator, the failure surfaces at the
+`configuration` phase (distinct from `prepare`, so a settings typo is never
+mistaken for an asset-fetch failure), carrying the `PdfSettingsError` as its
+cause.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Export fails at the `configuration` phase | A settings value is out of range or malformed | Read the `PdfSettingsError` `path`/`constraint`; correct that field. |
+| `watermark.opacity` rejected for `0` | Fully transparent is not a valid watermark | Use a small positive value such as `0.08`. |
+| `logo.bytes` rejected as "do not match the declared PNG media type" | `mediaType` says PNG but the bytes are not PNG | Supply real PNG bytes or set `mediaType` to `image/svg+xml`. |
+| `logo.alt` rejected | A logo was supplied without alternative text | Provide a non-empty `alt`. |
+| SVG logo rejected as "active or externally loaded content" | The SVG has a script, event handler, `<foreignObject>`, or external reference | Export a static, self-contained SVG, or use PNG. |
+
+## Related topics
+
+- [PDF Export Engine](pdf-engine.md)
+- [DOCX and PDF Export](../confluence/export.md)
+- [DOCX Export Engine](docx-engine.md)

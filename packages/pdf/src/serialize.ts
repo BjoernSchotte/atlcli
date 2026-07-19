@@ -1,5 +1,6 @@
 import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
+import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import {
   pdfColorContrast,
@@ -860,6 +861,7 @@ export function serializePdfDocument(
     contrastWarnings: new Set(),
   };
   const body = serializeBlocks(document.blocks, writer);
+  const settings = resolvePdfSettings(options.settings);
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
@@ -875,7 +877,7 @@ export function serializePdfDocument(
   region: ${meta.region ? typstString(meta.region) : "none"},
   exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
-))
+), settings: ${typstSettingsDict(settings)})
 
 ${body}
 `;

@@ -1,6 +1,35 @@
 /**
  * Pinned atlcli Typst standard template. It uses semantic Typst elements and
  * show rules so PDF tagging/outline information survives visual styling.
+ *
+ * ## `wiki.pdf-template/v1` contract
+ *
+ * `atlcli-doc(meta, settings, body)` is the built-in implementation of the
+ * versioned template surface `render(meta, body, settings)` (TEMPLATE-UX §7).
+ * Renaming the symbol is not required — the contract names the *shape*, not the
+ * symbol.
+ *
+ * Required `meta` keys a conforming template may rely on: `title`, `space`,
+ * `version`, `author`, `language`, `exported-at` (plus the derived
+ * `exporter`, `region`, `exported-label` this engine also supplies).
+ *
+ * `settings` is a Typst dictionary read *defensively* — every access uses
+ * `settings.at("<key>", default: ...)` so sparse dictionaries and older callers
+ * that pass no `settings` keep compiling. `settings: (:)` is itself the
+ * backward-compatible default. Adding a settings key is non-breaking; removing
+ * or renaming one bumps the `engine.api` string.
+ *
+ * ### Stable v1 import surface (the hook set)
+ *
+ * `serialize.ts` imports eight symbols from this generated `atlcli.typ`:
+ * `atlcli-doc`, `callout`, `status-badge`, `table-par`, `dense-token`,
+ * `dense-link`, `dense-status-badge`, `task-item`. All eight are the frozen v1
+ * hook set a conforming template must export; generated content may depend on
+ * these and no other, undocumented, template-local functions (TEMPLATE-UX §7).
+ * Shrinking this set — relocating the five dense-table/table helpers into
+ * engine-owned code so an external template overrides fewer hooks — is a
+ * deliberate follow-up once a real Level-B template needs it, not part of this
+ * contract's first cut.
  */
 import { resolvePdfTheme } from "./theme.js";
 import type { PdfThemeOptions } from "./types.js";
@@ -27,7 +56,11 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
   )
 }
 
-#let atlcli-doc(meta: (:), body) = {
+// wiki.pdf-template/v1 render surface: render(meta, body, settings).
+// settings: (:) keeps callers that pass no settings compiling; every settings
+// read below must use settings.at("key", default: ...). Geometry/toggle/
+// watermark rendering from settings lands in a later task (T2.2/T2.3).
+#let atlcli-doc(meta: (:), settings: (:), body) = {
   let is-german = meta.at("language", default: "en") == "de"
   let version-label = [Version]
   let exported-label = if is-german { [Exportiert] } else { [Exported] }

@@ -763,3 +763,51 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
   });
 });
+
+describe("PDF settings threading into main.typ", () => {
+  const emptyDoc = { blocks: [], assets: [], notes: [] };
+
+  it("emits a defaulted settings dictionary when no settings are supplied", () => {
+    const bundle = serializePdfDocument(emptyDoc, { metadata });
+    expect(bundle.main).toContain("), settings: (");
+    expect(bundle.main).toContain('page: "a4"');
+    expect(bundle.main).toContain('orientation: "portrait"');
+    expect(bundle.main).toContain("cover: true");
+    expect(bundle.main).toContain("outline: true");
+    expect(bundle.main).toContain('accent-color: "#4B57A3"');
+    expect(bundle.main).not.toContain("header-text");
+    expect(bundle.main).not.toContain("watermark:");
+  });
+
+  it("emits Letter + landscape and organization name", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { page: "letter", orientation: "landscape", organizationName: "Acme" },
+    });
+    expect(bundle.main).toContain('page: "letter"');
+    expect(bundle.main).toContain('orientation: "landscape"');
+    expect(bundle.main).toContain('organization-name: "Acme"');
+  });
+
+  it("typstString-escapes header/footer text so injection stays literal", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { headerText: 'H" #{x}', footerText: "line\\end" },
+    });
+    expect(bundle.main).toContain('header-text: "H\\" #{x}"');
+    expect(bundle.main).toContain('footer-text: "line\\\\end"');
+  });
+
+  it("serializes a watermark with defaults filled", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { watermark: { text: "DRAFT" } },
+    });
+    expect(bundle.main).toContain("watermark: (");
+    expect(bundle.main).toContain('text: "DRAFT"');
+    expect(bundle.main).toContain('color: "#DE350B"');
+    expect(bundle.main).toContain("opacity: 0.08");
+    expect(bundle.main).toContain("angle: -54");
+    expect(bundle.main).toContain("size: 96");
+  });
+});

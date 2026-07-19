@@ -1,6 +1,7 @@
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
+import { resolvePdfSettings } from "./settings.js";
 import { serializePdfDocument } from "./serialize.js";
 import type {
   PdfAssetResolver,
@@ -8,6 +9,7 @@ import type {
   PdfExportMetadata,
   PdfExportReport,
   PdfProfile,
+  PdfTemplateSettings,
   PdfThemeOptions,
   PreparedPdfBlock,
 } from "./types.js";
@@ -17,7 +19,13 @@ export interface PdfOutputSink {
   emit(name: string, bytes: Uint8Array, context?: { signal?: AbortSignal }): Promise<void>;
 }
 
-export type PdfExportPhase = "preparing" | "fetching" | "compiling" | "validating" | "emitting";
+export type PdfExportPhase =
+  | "configuration"
+  | "preparing"
+  | "fetching"
+  | "compiling"
+  | "validating"
+  | "emitting";
 
 export interface RunPdfExportInput {
   blocks: ExportBlock[];
@@ -25,6 +33,7 @@ export interface RunPdfExportInput {
   metadata: PdfExportMetadata;
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
+  settings?: PdfTemplateSettings;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
@@ -37,7 +46,7 @@ export interface PdfExportEnv {
   now?: () => number;
 }
 
-export type PdfExportErrorPhase = "prepare" | "compile" | "validate" | "emit";
+export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
 
 export class PdfExportError extends Error {
   readonly phase: PdfExportErrorPhase;
@@ -117,6 +126,15 @@ export async function runPdfExport(
   const startedAt = now();
   throwIfAborted(input.signal);
 
+  // Validate settings before any asset fetch so a settings typo never pays for
+  // (or is masked by) network requests it would discard.
+  input.onPhase?.("configuration");
+  try {
+    resolvePdfSettings(input.settings);
+  } catch (error) {
+    wrapFailure(error, "configuration");
+  }
+
   input.onPhase?.("preparing");
   const prepareStarted = now();
   let prepared;
@@ -129,6 +147,7 @@ export async function runPdfExport(
       metadata: input.metadata,
       profile: input.profile,
       theme: input.theme,
+      settings: input.settings,
     });
   } catch (error) {
     wrapFailure(error, "prepare");
@@ -166,9 +185,11 @@ export async function runPdfExport(
   input.onPhase?.("emitting");
   const emitStarted = now();
   try {
+    // Abort is honored *before* emit; once the sink has committed the bytes we
+    // must not turn an already-written file into a reported failure, so there
+    // is deliberately no post-emit abort re-check here.
     throwIfAborted(input.signal);
     await env.output.emit(input.filename, compiled.pdf, { signal: input.signal });
-    throwIfAborted(input.signal);
   } catch (error) {
     wrapFailure(error, "emit");
   }

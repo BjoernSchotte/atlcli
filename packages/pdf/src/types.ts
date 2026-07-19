@@ -114,10 +114,61 @@ export interface PdfTheme {
   };
 }
 
+/**
+ * Level-A PDF template settings — the fixed, built-in settings surface.
+ *
+ * IMPORTANT boundary: `PdfTemplateSettings` is a *closed* set of named fields
+ * consumed directly by the built-in `atlcli-doc` template. It is **not** the
+ * same shape as a template-pack manifest's `settings` map, which is an *open*,
+ * arbitrarily-named, typed dictionary (`accent`, `logo`, font choices, …) used
+ * by Level-B templates. This folder deliberately does not thread
+ * manifest-declared custom settings into the render call — that requires the
+ * host-side Level-B template-loading glue that lives outside `packages/pdf`.
+ * A later folder must keep the two shapes distinct rather than conflating them
+ * (see 007 PLAN "Built-in vs. manifest settings" risk).
+ *
+ * All fields are optional and plain JSON-able so every host (CLI flags,
+ * extension form, further hosts) can supply them without importing engine code.
+ */
+export interface PdfWatermarkSettings {
+  /** Watermark text. Required when a watermark is requested; must be non-empty. */
+  text: string;
+  /** `#RRGGBB`; default `#DE350B`. */
+  color?: string;
+  /** In `(0, 1]`; default `0.08`. `0`, `NaN`, and `Infinity` are rejected. */
+  opacity?: number;
+  /** Rotation in degrees, `-180..180`; default `-54`. */
+  angle?: number;
+  /** Glyph size in pt, `8..400`; default `96`. */
+  size?: number;
+}
+
+export interface PdfLogoAsset {
+  bytes: Uint8Array;
+  mediaType: "image/png" | "image/svg+xml";
+  /** Required when the logo is present (meaning-bearing); must be non-empty. */
+  alt?: string;
+}
+
+export interface PdfTemplateSettings {
+  page?: "a4" | "letter";
+  orientation?: "portrait" | "landscape";
+  cover?: boolean;
+  outline?: boolean;
+  headerText?: string;
+  footerText?: string;
+  /** `#RRGGBB`; default the built-in indigo `#4B57A3`. */
+  accentColor?: string;
+  organizationName?: string;
+  logo?: PdfLogoAsset;
+  watermark?: PdfWatermarkSettings;
+}
+
 export interface PdfSerializeOptions {
   metadata: PdfExportMetadata;
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
+  settings?: PdfTemplateSettings;
 }
 
 export interface PdfExportTimings {

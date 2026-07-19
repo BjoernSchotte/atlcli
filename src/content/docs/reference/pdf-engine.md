@@ -153,5 +153,6 @@ evidence.
 
 ## Related topics
 
+- [PDF Template Settings](pdf-template-settings.md)
 - [DOCX and PDF Export](../confluence/export.md)
 - [DOCX Export Engine](docx-engine.md)
