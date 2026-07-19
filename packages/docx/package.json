@@ -2,7 +2,18 @@
   "name": "@atlcli/docx",
   "version": "0.6.0",
   "license": "Apache-2.0",
-  "private": true,
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": [
+    "./src/browser-runtime.ts",
+    "./dist/browser-runtime.js"
+  ],
+  "files": [
+    "dist",
+    "fonts",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": {

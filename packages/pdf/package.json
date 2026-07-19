@@ -2,7 +2,16 @@
   "name": "@atlcli/pdf",
   "version": "0.6.0",
   "license": "Apache-2.0",
-  "private": true,
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    ".fonts",
+    "licenses",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": {
