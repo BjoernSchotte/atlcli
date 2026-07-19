@@ -49,6 +49,35 @@
       "type": "integer",
       "description": "0 success; 1 usage/config/IO; 2 strict warnings; 3 auth; 4 remote/API; 5 compile/validate; 130 cancelled.",
       "enum": [0, 1, 2, 3, 4, 5, 130]
+    },
+    "requestedScope": {
+      "type": "object",
+      "description": "The scope as requested by flags (spec 002 traceability).",
+      "additionalProperties": true
+    },
+    "resolvedScope": {
+      "type": "object",
+      "description": "The resolved scope (e.g. a space request resolved to a tree rooted at the homepage id).",
+      "additionalProperties": true
+    },
+    "complete": {
+      "type": "boolean",
+      "description": "False when the composed document omitted content (partial mode)."
+    },
+    "notesByCode": {
+      "type": "object",
+      "description": "Per-code tally over issues[].",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "placeholders": {
+      "type": "object",
+      "description": "DOCX ts-engine placeholder metrics.",
+      "required": ["resolved", "unsupported"],
+      "additionalProperties": false,
+      "properties": {
+        "resolved": { "type": "integer", "minimum": 0 },
+        "unsupported": { "type": "array", "items": { "type": "string" } }
+      }
     }
   },
   "definitions": {
@@ -65,7 +94,12 @@
         "status": { "type": "integer" },
         "sourcePageId": { "type": "string" },
         "path": { "type": "string" },
-        "startLine": { "type": "integer" }
+        "startLine": { "type": "integer" },
+        "details": {
+          "type": "object",
+          "description": "Structured payload for typed errors (affected pages, budget offenders, ...).",
+          "additionalProperties": true
+        }
       }
     }
   }

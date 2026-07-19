@@ -15,7 +15,7 @@
  */
 import { lstat, open, rename, link, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { buildConfluenceUrl, type OutputOptions } from "@atlcli/core";
 import {
   SpaceHomepageError,
@@ -212,14 +212,44 @@ async function resolvePageIdThrowing(
   throw new PdfUsageError(`Invalid page reference: ${ref}. Use ID, SPACE:Title, or URL.`);
 }
 
-/** Derive a deterministic slugified filename for `--out-dir`. */
-function slugFilename(pageId: string, title: string): string {
-  const slug = title
+/**
+ * Reduce ONE filename component to a safe charset (spec 008 review, path-escape
+ * hardening). Every derived-name input — pageId, spaceKey, title — goes through
+ * this: anything outside `[a-z0-9_-]` (incl. `/`, `\\`, `..`, NUL, drive
+ * colons) collapses to `-`, leading/trailing dashes are stripped, and an empty
+ * or fully-hostile input degrades to `"export"` rather than an empty segment.
+ */
+export function sanitizePathComponent(input: string, maxLength = 60): string {
+  const cleaned = input
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  return `${pageId}${slug ? `-${slug}` : ""}.pdf`;
+    .slice(0, maxLength)
+    .replace(/^-+|-+$/g, "");
+  if (!cleaned) return "export";
+  // Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9) are
+  // invalid filenames even with an extension — prefix rather than reject.
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(cleaned)) return `x-${cleaned}`;
+  return cleaned;
+}
+
+/**
+ * Derive the `--out-dir` output path with a containment guarantee: every name
+ * component is sanitized (no separators, no dot-dot, no drive/UNC forms
+ * survive), and the resolved result is asserted to live strictly inside the
+ * resolved `outDir` before any file creation. Throws {@link PdfUsageError} on
+ * violation — defense in depth; sanitization alone should already prevent it.
+ */
+export function derivePdfOutputPath(outDir: string, key: string, title: string): string {
+  const safeKey = sanitizePathComponent(key, 40);
+  const safeSlug = sanitizePathComponent(title, 60);
+  const filename = `${safeKey}${safeSlug !== "export" ? `-${safeSlug}` : ""}.pdf`;
+  const root = resolve(outDir);
+  const candidate = resolve(root, filename);
+  if (candidate !== join(root, filename) || !candidate.startsWith(root + sep)) {
+    throw new PdfUsageError(`Derived output name escapes --out-dir: ${filename}`);
+  }
+  return candidate;
 }
 
 /**
@@ -399,9 +429,10 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     };
 
     // Choose the output path: --output names the single file; --out-dir chooses
-    // a directory and derives a deterministic filename.
+    // a directory and derives a deterministic, sanitized, containment-checked
+    // filename (path-escape hardening — hostile titles/keys cannot escape it).
     const outputPath = args.outDir
-      ? join(resolve(args.outDir), slugFilename(scope.outNameKey, scope.metaPage.title))
+      ? derivePdfOutputPath(args.outDir, scope.outNameKey, scope.metaPage.title)
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
@@ -423,7 +454,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     );
     progress.clear();
 
-    const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics);
+    const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics ?? []);
     const allIssues: Issue[] = [
       ...issues,
       ...(scope.mentionUnresolved > 0

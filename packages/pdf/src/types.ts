@@ -221,9 +221,10 @@ export interface PdfExportReport {
    * Compiler diagnostics from a SUCCESSFUL compile (spec 008 T3.4). Previously
    * dropped unless the compile failed, which made `--strict` a no-op for real
    * Typst warnings on an otherwise-valid document; surfaced here so a host can
-   * fold them into its report's issues. Empty for a clean compile.
+   * fold them into its report's issues. Always set by `runPdfExport` (empty for
+   * a clean compile); optional so hand-built report literals stay additive.
    */
-  compilerDiagnostics: PdfCompilerDiagnostic[];
+  compilerDiagnostics?: PdfCompilerDiagnostic[];
   timings: PdfExportTimings;
 }
 

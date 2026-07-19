@@ -42,10 +42,11 @@ import {
   parseExportRequest,
   type ParsedExportRequest,
 } from "./export-request.js";
-import { mapTreeExportError } from "./export-errors.js";
 import {
   buildReport,
+  classifyError,
   emitReportOutcome,
+  noteToIssue,
   type ExportOutcome,
 } from "./export-report.js";
 
@@ -110,25 +111,16 @@ export async function handleExport(
   }
   const engine = request.engine;
 
-  // T3.5 deprecation notice: when `--engine` is omitted the python engine is
-  // still the default, but a future minor release flips the default to the ts
-  // engine. Announce it once on stderr (never stdout, so `--json` stays clean)
-  // and only when attached to a terminal, so CI logs/pipes are untouched.
-  // Suppressed by ATLCLI_SUPPRESS_ENGINE_NOTICE. The flip itself is a later,
-  // gated PR (see T3.5 flip criteria).
-  if (
-    engine === "python" &&
-    !hasFlag(flags, "engine") &&
-    !opts.json &&
-    process.stderr.isTTY &&
-    !process.env.ATLCLI_SUPPRESS_ENGINE_NOTICE
-  ) {
-    process.stderr.write(
-      "note: a future release will default DOCX export to the in-process 'ts' engine. " +
-        "Pass --engine python to keep today's behavior, or --engine ts to adopt it now. " +
-        "(set ATLCLI_SUPPRESS_ENGINE_NOTICE=1 to silence)\n"
-    );
-  }
+  // T3.5 deprecation notice (see engineDeprecationNotice for the conditions).
+  // The flip itself is a later, gated PR (see T3.5 flip criteria).
+  const notice = engineDeprecationNotice({
+    engine,
+    engineFlagPresent: hasFlag(flags, "engine"),
+    json: opts.json,
+    stderrIsTTY: Boolean(process.stderr.isTTY),
+    suppressed: Boolean(process.env.ATLCLI_SUPPRESS_ENGINE_NOTICE),
+  });
+  if (notice) process.stderr.write(`${notice}\n`);
 
   const templatePath = getFlag(flags, "template");
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
@@ -195,6 +187,7 @@ export async function handleExport(
       outputPath,
       embedImages,
       liveMacros: !noLiveMacros,
+      strict: hasFlag(flags, "strict"),
       opts,
     });
     return;
@@ -214,19 +207,42 @@ export async function handleExport(
     // reports the real error.
     const pagePromise = client.getPageDetails(pageId);
     pagePromise.catch(() => {});
-    await exportWithTsEngine({
-      client,
-      profile,
-      pagePromise,
-      pageId,
-      baseUrl,
-      resolvedTemplatePath,
-      outputPath,
-      embedImages,
-      keepIgnored,
-      liveMacros: !noLiveMacros,
-      opts,
-    });
+    // Kernel boundary (spec 008 review): any error in the ts single-page path
+    // becomes a classified atlcli.export-report/1 failure with the documented
+    // exit code (3 auth / 4 remote / 5 validation / 130 abort) — never a plain
+    // exit-1 crash through main()'s catch.
+    try {
+      await exportWithTsEngine({
+        client,
+        profile,
+        pagePromise,
+        pageId,
+        baseUrl,
+        resolvedTemplatePath,
+        outputPath,
+        embedImages,
+        keepIgnored,
+        liveMacros: !noLiveMacros,
+        strict: hasFlag(flags, "strict"),
+        opts,
+      });
+    } catch (error) {
+      const classified = classifyError(error);
+      emitReportOutcome(
+        {
+          ok: false,
+          report: buildReport({
+            format: "docx",
+            engine: "ts",
+            sourcePages: [],
+            outputDetails: [],
+            issues: [classified.issue],
+            failureExitCode: classified.exitCode,
+          }),
+        },
+        opts
+      );
+    }
     return;
   }
 
@@ -545,6 +561,33 @@ async function handlePdfExport(
     opts,
   });
   emitReportOutcome(outcome, opts);
+}
+
+/**
+ * T3.5 deprecation notice, pure and testable: when `--engine` is omitted the
+ * python engine is still the default, but a future minor release flips the
+ * default to the ts engine. The notice goes to stderr only (never stdout, so
+ * `--json` stays clean), only when attached to a terminal (CI logs/pipes are
+ * untouched), and is suppressed by `ATLCLI_SUPPRESS_ENGINE_NOTICE`. Returns the
+ * notice line, or `null` when nothing should be printed.
+ */
+export function engineDeprecationNotice(input: {
+  engine: string;
+  engineFlagPresent: boolean;
+  json: boolean;
+  stderrIsTTY: boolean;
+  suppressed: boolean;
+}): string | null {
+  if (input.engine !== "python") return null;
+  if (input.engineFlagPresent) return null;
+  if (input.json) return null;
+  if (!input.stderrIsTTY) return null;
+  if (input.suppressed) return null;
+  return (
+    "note: a future release will default DOCX export to the in-process 'ts' engine. " +
+    "Pass --engine python to keep today's behavior, or --engine ts to adopt it now. " +
+    "(set ATLCLI_SUPPRESS_ENGINE_NOTICE=1 to silence)"
+  );
 }
 
 /**
@@ -996,6 +1039,7 @@ interface TsEngineArgs {
   keepIgnored?: boolean;
   /** spec 004: `false` under `--no-live-macros` suppresses port-backed macros. */
   liveMacros: boolean;
+  strict: boolean;
   opts: OutputOptions;
 }
 
@@ -1064,6 +1108,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     embedImages,
     keepIgnored,
     liveMacros,
+    strict,
     opts,
   } = args;
   // Everything local (engine import + template bytes) loads WHILE the page
@@ -1216,21 +1261,37 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     }
   );
 
-  output(
+  // Unified report (spec 008 review): the SAME atlcli.export-report/1 schema
+  // and exit-code kernel the PDF path uses — one JSON shape per invocation.
+  emitReportOutcome(
     {
-      success: true,
-      engine: "ts",
-      output: resolvedOutputPath,
-      page: { id: page.id, title: page.title, space: page.spaceKey ?? "UNKNOWN" },
-      report: {
-        resolvedCount: report.resolvedCount,
-        unsupportedNames: report.unsupportedNames,
-        embeddedImages: report.embeddedImages,
-        renderedDiagrams: report.renderedDiagrams,
-        skippedImages: report.skippedImages,
-        durationMs: report.durationMs,
-        notes: [...cliNotes, ...report.notes.map((n) => `${n.level}: ${n.message}`)],
-      },
+      ok: true,
+      report: buildReport({
+        format: "docx",
+        engine: "ts",
+        sourcePages: [{ id: page.id, title: page.title, notes: [] }],
+        outputDetails: [
+          {
+            output: resolvedOutputPath,
+            embeddedImages: report.embeddedImages,
+            renderedDiagrams: report.renderedDiagrams,
+            skippedAssets: report.skippedImages,
+          },
+        ],
+        issues: [
+          ...report.notes.map((n) => noteToIssue(n, "prepare")),
+          ...cliNotes.map((message) => ({
+            code: "cli-note",
+            severity: "warning" as const,
+            phase: "prepare",
+            retryable: false,
+            message,
+          })),
+        ],
+        timings: { totalMs: report.durationMs },
+        placeholders: { resolved: report.resolvedCount, unsupported: report.unsupportedNames },
+        strict,
+      }),
     },
     opts
   );
@@ -1246,6 +1307,7 @@ interface TreeEngineArgs {
   embedImages: boolean;
   /** spec 004: `false` under `--no-live-macros`. */
   liveMacros: boolean;
+  strict: boolean;
   opts: OutputOptions;
 }
 
@@ -1311,17 +1373,6 @@ function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
 }
 
 /**
- * Map any fetch/compose/serialize error to a structured CLI failure via the
- * pure {@link mapTreeExportError}. TOTAL — never rethrows — so under `--json`
- * stdout always carries exactly one JSON document, no matter which error class
- * (typed, abort, or entirely unexpected) surfaced.
- */
-function failTreeExport(opts: OutputOptions, error: unknown): never {
-  const mapped = mapTreeExportError(error);
-  fail(opts, mapped.exitCode, mapped.errCode, mapped.message, mapped.details);
-}
-
-/**
  * Tree/space DOCX export (spec 002 CLI task). Drives the shared orchestration
  * layer — `fetchExportTree` → `composeChapters` → `runExport` — the same
  * isomorphic pipeline the extension host will consume. A `space` request is
@@ -1330,8 +1381,18 @@ function failTreeExport(opts: OutputOptions, error: unknown): never {
  * scope still recorded for the `--json` report.
  */
 async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
-  const { client, profile, request, baseUrl, resolvedTemplatePath, outputPath, embedImages, liveMacros, opts } =
-    args;
+  const {
+    client,
+    profile,
+    request,
+    baseUrl,
+    resolvedTemplatePath,
+    outputPath,
+    embedImages,
+    liveMacros,
+    strict,
+    opts,
+  } = args;
 
   // Ctrl-C → AbortController, installed BEFORE any network work so root
   // resolution, discovery, body fetch, asset fetch and the final write all stop
@@ -1367,8 +1428,6 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       onProgress: (p) =>
         onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
     });
-
-    const pageNodeCount = treeResult.nodes.filter((n) => n.kind === "page").length;
 
     // Compose one chapterized document. Out-of-scope links become absolute URLs
     // built via buildConfluenceUrl (NEVER hand-concatenated with "/wiki/", which
@@ -1480,52 +1539,83 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
 
     clearProgress();
 
-    // Structured, versioned report (spec 002 A5). Requested scope + resolved
-    // scope + completeness + counts + per-code note counts + timings.
-    const notesByCode: Record<string, number> = {};
-    for (const note of docxReport.notes) {
-      notesByCode[note.code] = (notesByCode[note.code] ?? 0) + 1;
-    }
+    // Unified report (spec 008 review): the SAME atlcli.export-report/1 schema
+    // and exit-code kernel the PDF path uses. Spec 002's report content
+    // (requestedScope/resolvedScope/complete/notesByCode) rides WITHIN the
+    // unified schema as first-class optional fields.
+    const sourcePages = treeResult.nodes
+      .filter((node): node is Extract<typeof node, { kind: "page" }> => node.kind === "page")
+      .map((node) => ({
+        id: node.pageId,
+        title: node.title,
+        notes: node.notes.map((note) => noteToIssue(note, "compose", node.pageId)),
+      }));
 
-    output(
+    emitReportOutcome(
       {
-        schema: "atlcli.export-report/v1",
-        engine: "ts",
-        output: resolvedOutputPath,
-        requestedScope: {
-          kind: request.scopeKind,
-          ...(request.pageRef ? { pageRef: request.pageRef } : {}),
-          ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
-          ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
-          ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
-          ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
-          ...(request.labels ? { labels: request.labels } : {}),
-          completeness: request.completenessMode,
-        },
-        resolvedScope: scope,
-        complete: docxReport.complete,
-        counts: {
-          pages: pageNodeCount,
-          embeddedImages: docxReport.embeddedImages,
-          skippedImages: docxReport.skippedImages,
-          renderedDiagrams: docxReport.renderedDiagrams,
-          resolvedPlaceholders: docxReport.resolvedCount,
-        },
-        notes: docxReport.notes,
-        notesByCode,
-        timings: { durationMs: docxReport.durationMs, ...docxReport.timings },
-        page: {
-          id: rootDetails.id,
-          title: rootDetails.title,
-          space: rootDetails.spaceKey ?? "UNKNOWN",
-        },
-        ...(cliNotes.length > 0 ? { cliNotes } : {}),
+        ok: true,
+        report: buildReport({
+          format: "docx",
+          engine: "ts",
+          sourcePages,
+          outputDetails: [
+            {
+              output: resolvedOutputPath,
+              embeddedImages: docxReport.embeddedImages,
+              renderedDiagrams: docxReport.renderedDiagrams,
+              skippedAssets: docxReport.skippedImages,
+            },
+          ],
+          issues: [
+            ...docxReport.notes.map((n) => noteToIssue(n, "prepare")),
+            ...cliNotes.map((message) => ({
+              code: "cli-note",
+              severity: "warning" as const,
+              phase: "prepare",
+              retryable: false,
+              message,
+            })),
+          ],
+          timings: { durationMs: docxReport.durationMs, ...docxReport.timings },
+          requestedScope: {
+            kind: request.scopeKind,
+            ...(request.pageRef ? { pageRef: request.pageRef } : {}),
+            ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
+            ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+            ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+            ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+            ...(request.labels ? { labels: request.labels } : {}),
+            completeness: request.completenessMode,
+          },
+          resolvedScope: scope as unknown as Record<string, unknown>,
+          complete: docxReport.complete,
+          placeholders: {
+            resolved: docxReport.resolvedCount,
+            unsupported: docxReport.unsupportedNames,
+          },
+          strict,
+        }),
       },
       opts
     );
   } catch (error) {
     clearProgress();
-    failTreeExport(opts, error);
+    // Same classified failure path as PDF: one JSON document, documented codes.
+    const classified = classifyError(error);
+    emitReportOutcome(
+      {
+        ok: false,
+        report: buildReport({
+          format: "docx",
+          engine: "ts",
+          sourcePages: [],
+          outputDetails: [],
+          issues: [classified.issue],
+          failureExitCode: classified.exitCode,
+        }),
+      },
+      opts
+    );
   } finally {
     process.removeListener("SIGINT", onSigint);
   }
@@ -1693,19 +1783,19 @@ Page Reference Formats:
   SPACE:Page Title    Space key and page title
   https://...         Full Confluence URL
 
-Exit Codes:
+Exit Codes (--format pdf and --engine ts; the legacy python engine exits 0/1):
   0    Success
   1    Usage / config / local IO error
   2    Completed with warnings (only under --strict)
   3    Authentication error (401/403)
   4    Remote/API error (page not found, fetch failed)
-  5    Compile / validation failure (PDF)
+  5    Compile / validation failure (incl. tree limits, label filters, budget)
   130  Cancelled (Ctrl-C / SIGINT)
-  (The DOCX tree/space path uses schema "atlcli.export-report/v1"; the PDF and
-  single-page report use "atlcli.export-report/1".)
 
-JSON Output (--json / --report json for PDF):
-  stdout carries EXACTLY one report document. Progress events go to stderr.
+JSON Output (--json / --report json):
+  PDF and ts-engine exports emit EXACTLY one "atlcli.export-report/1" document
+  on stdout (sourcePages, outputDetails, issues, scope traceability, exitCode).
+  Progress events go to stderr.
 
 Template Resolution:
   Templates are resolved in order (first match wins):

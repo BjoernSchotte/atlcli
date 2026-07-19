@@ -341,20 +341,34 @@ The completeness contract makes "looks complete but silently isn't" impossible:
 ### JSON report and exit codes
 
 With `--json`, **stdout carries exactly one JSON document** (schema
-`atlcli.export-report/v1`) and nothing else; progress events go to **stderr** as
-JSONL (one event per line), and the human page-count line is suppressed. This is
-what makes the command safe to pipe in a headless job:
+`atlcli.export-report/1` — the same unified schema the PDF path emits) and
+nothing else; progress events go to **stderr** as JSONL (one event per line), and
+the human page-count line is suppressed. This is what makes the command safe to
+pipe in a headless job:
 
 | Field | Meaning |
 |-------|---------|
+| `sourcePages` | One entry per exported page: `id`, `title`, compose/fetch notes |
+| `outputDetails` / `outputs` | Per-artifact metrics: `embeddedImages`, `renderedDiagrams`, `skippedAssets` (and `pageCount` for PDF) |
+| `issues` / `warnings` / `errors` | Structured problems; `notesByCode` is the per-code tally |
 | `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) |
 | `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) |
 | `complete` | `false` when partial mode omitted content |
-| `counts` | `pages`, `embeddedImages`, `skippedImages`, `renderedDiagrams` |
-| `notes` / `notesByCode` | Structured notes plus a per-code tally |
+| `placeholders` | ts-engine placeholder metrics (`resolved`, `unsupported`) |
 | `timings` | Per-phase wall clocks |
+| `exitCode` | The process exit code, embedded for artifact archiving |
 
-Exit codes: `0` success · `1` usage/validation/API error · `130` cancelled (Ctrl-C).
+Exit codes follow the [unified table](#exit-codes): `0` success · `1` usage/config ·
+`2` warnings under `--strict` · `3` auth · `4` remote/API · `5` compile/validation ·
+`130` cancelled.
+
+> **Migration note (schema `atlcli.export-report/v1` → `/1`):** earlier releases
+> emitted a DOCX tree/space report with schema string `atlcli.export-report/v1`
+> and top-level `counts`/`notes`/`page` fields, and exited `1` on every failure.
+> Those fields moved: per-artifact metrics now live in `outputDetails[]`, notes
+> in `issues[]` (with `notesByCode` kept), the root page in `sourcePages[]`.
+> `requestedScope`/`resolvedScope`/`complete` are unchanged. Exit codes are now
+> classified per the table above.
 
 ### CI / headless recipe
 
@@ -378,7 +392,7 @@ if [ "$complete" != "true" ]; then
   exit 1
 fi
 
-pages=$(echo "$report" | jq -r '.counts.pages')
+pages=$(echo "$report" | jq -r '.sourcePages | length')
 echo "Exported $pages pages to ./docsy.docx"
 ```
 

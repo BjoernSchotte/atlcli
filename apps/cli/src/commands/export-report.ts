@@ -12,6 +12,14 @@
  * unit-testable against real `PdfExportError`s and real Confluence errors.
  */
 import { output, type OutputOptions } from "@atlcli/core";
+import {
+  AssetBudgetExceededError,
+  ExportCompletenessError,
+  LabelFilterError,
+  PaginationLoopError,
+  SpaceHomepageError,
+  TreeLimitExceededError,
+} from "@atlcli/confluence";
 import type { ExportNote, PdfExportReport } from "@atlcli/pdf";
 import { PdfExportError, type PdfExportErrorPhase } from "@atlcli/pdf";
 import type { PdfCompilerDiagnostic } from "@atlcli/pdf";
@@ -60,6 +68,8 @@ export interface Issue {
   sourcePageId?: string;
   path?: string;
   startLine?: number;
+  /** Structured payload for typed errors (affected pages, budget offenders, …). */
+  details?: Record<string, unknown>;
 }
 
 /** Provenance/fetch-and-compose status for one source page (no per-page metrics). */
@@ -90,6 +100,19 @@ export interface ExportReport {
   errors: Issue[];
   timings: Record<string, number>;
   exitCode: number;
+  /**
+   * Scope traceability (spec 002 report content, carried WITHIN the unified
+   * schema): the scope as requested by flags, and as resolved (e.g. a `space`
+   * request resolved to a tree rooted at the homepage id).
+   */
+  requestedScope?: Record<string, unknown>;
+  resolvedScope?: Record<string, unknown>;
+  /** False when the composed document omitted content (partial mode). */
+  complete?: boolean;
+  /** Convenience per-code counts over `issues` (spec 002). */
+  notesByCode?: Record<string, number>;
+  /** DOCX ts-engine placeholder metrics (spec 006). */
+  placeholders?: { resolved: number; unsupported: string[] };
 }
 
 /** The typed result of an export attempt — success or failure, always with a report. */
@@ -160,15 +183,81 @@ const PDF_PHASE_EXIT: Record<PdfExportErrorPhase, number> = {
 
 /**
  * Classify any thrown error into an exit code + {@link Issue}, TOTAL over every
- * class. Auth (401/403) → 3; other 4xx/5xx and generic remote failures → 4;
- * PDF compile/validate → 5; abort → 130; anything unexpected → 4 so a JSON
- * report is still emitted rather than a plain crash.
+ * class — the ONE mapping shared by the PDF and DOCX(ts) paths. Auth (401/403)
+ * → 3; typed validation errors (tree limits, label filters, asset budget) and
+ * PDF compile/validate → 5; remote/API-state errors (completeness, homepage
+ * missing, pagination loop, 4xx/5xx) → 4; abort → 130; anything unexpected → 4
+ * so a JSON report is still emitted rather than a plain crash.
  */
 export function classifyError(error: unknown): { exitCode: number; issue: Issue } {
   if (isAbortError(error)) {
     return {
       exitCode: EXPORT_EXIT.CANCELLED,
       issue: { code: "cancelled", severity: "error", phase: "cancel", retryable: true, message: "Export cancelled." },
+    };
+  }
+
+  // Typed errors from @atlcli/confluence (spec 002) — structured payloads ride
+  // in `details` so the report keeps the affected/offender lists.
+  if (error instanceof TreeLimitExceededError) {
+    return {
+      exitCode: EXPORT_EXIT.COMPILE,
+      issue: { code: error.code, severity: "error", phase: "fetch", retryable: false, message: error.message, details: { limit: error.limit } },
+    };
+  }
+  if (error instanceof LabelFilterError) {
+    return {
+      exitCode: EXPORT_EXIT.COMPILE,
+      issue: { code: error.code, severity: "error", phase: "fetch", retryable: false, message: error.message },
+    };
+  }
+  if (error instanceof AssetBudgetExceededError) {
+    return {
+      exitCode: EXPORT_EXIT.COMPILE,
+      issue: {
+        code: "asset-budget-exceeded",
+        severity: "error",
+        phase: "prepare",
+        retryable: false,
+        message: error.message,
+        details: {
+          totalBytes: error.totalBytes,
+          limitBytes: error.limitBytes,
+          offenders: error.offenders.map((o) => ({ ...o })),
+        },
+      },
+    };
+  }
+  if (error instanceof ExportCompletenessError) {
+    return {
+      exitCode: EXPORT_EXIT.REMOTE,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: "fetch",
+        retryable: false,
+        message: error.message,
+        details: { affected: error.affected.map((a) => ({ id: a.id, title: a.title })) },
+      },
+    };
+  }
+  if (error instanceof SpaceHomepageError) {
+    return {
+      exitCode: EXPORT_EXIT.REMOTE,
+      issue: { code: "space-homepage-missing", severity: "error", phase: "fetch", retryable: false, message: error.message, details: { spaceKey: error.spaceKey } },
+    };
+  }
+  if (error instanceof PaginationLoopError) {
+    return {
+      exitCode: EXPORT_EXIT.REMOTE,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: "fetch",
+        retryable: true,
+        message: `${error.message} This usually indicates a Confluence server pagination bug; re-run, and report the issue if it persists.`,
+        details: { token: error.token },
+      },
     };
   }
 
@@ -241,6 +330,12 @@ export interface BuildReportInput {
   strict?: boolean;
   /** Set on the failure path; overrides the success/strict exit computation. */
   failureExitCode?: number;
+  /** Scope traceability (spec 002 content carried within the unified schema). */
+  requestedScope?: Record<string, unknown>;
+  resolvedScope?: Record<string, unknown>;
+  complete?: boolean;
+  /** DOCX ts-engine placeholder metrics. */
+  placeholders?: { resolved: number; unsupported: string[] };
 }
 
 /**
@@ -262,6 +357,11 @@ export function buildReport(input: BuildReportInput): ExportReport {
     exitCode = EXPORT_EXIT.SUCCESS;
   }
 
+  const notesByCode: Record<string, number> = {};
+  for (const issue of issues) {
+    notesByCode[issue.code] = (notesByCode[issue.code] ?? 0) + 1;
+  }
+
   return {
     schema: EXPORT_REPORT_SCHEMA,
     format: input.format,
@@ -274,6 +374,11 @@ export function buildReport(input: BuildReportInput): ExportReport {
     errors,
     timings: input.timings ?? {},
     exitCode,
+    ...(input.requestedScope ? { requestedScope: input.requestedScope } : {}),
+    ...(input.resolvedScope ? { resolvedScope: input.resolvedScope } : {}),
+    ...(input.complete !== undefined ? { complete: input.complete } : {}),
+    ...(issues.length > 0 ? { notesByCode } : {}),
+    ...(input.placeholders ? { placeholders: input.placeholders } : {}),
   };
 }
 

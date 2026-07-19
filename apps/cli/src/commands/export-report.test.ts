@@ -1,4 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import Ajv from "ajv";
+import {
+  AssetBudgetExceededError,
+  ExportCompletenessError,
+  LabelFilterError,
+  PaginationLoopError,
+  SpaceHomepageError,
+  TreeLimitExceededError,
+} from "@atlcli/confluence";
 import {
   runPdfExport,
   type ExportBlock,
@@ -121,28 +130,86 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
   });
 
-  it("conforms to the checked-in JSON Schema (required keys, enums, issue shape)", async () => {
+  it("validates against the checked-in JSON Schema with ajv (strict, additionalProperties)", async () => {
     const schema = JSON.parse(await Bun.file(new URL("./export-report.schema.json", import.meta.url)).text());
-    const report = buildReport({
+    const ajv = new Ajv({ allErrors: true });
+    const validate = ajv.compile(schema);
+
+    // PDF-shaped success report.
+    const pdfReport = buildReport({
       format: "pdf",
-      engine: undefined,
       sourcePages: [{ id: "1", title: "P", notes: [] }],
       outputDetails: [{ output: "/tmp/x.pdf", pageCount: 2, embeddedImages: 1, renderedDiagrams: 0, skippedAssets: 0 }],
       issues: [{ code: "c", severity: "warning", phase: "prepare", retryable: false }],
       strict: false,
     });
-    // Top-level required keys present.
-    for (const key of schema.required) expect(report).toHaveProperty(key);
-    // Schema string + exitCode enum.
-    expect(report.schema).toBe(schema.properties.schema.const);
-    expect(schema.properties.exitCode.enum).toContain(report.exitCode);
-    // Every issue carries the required issue keys and a valid severity.
-    for (const issue of report.issues) {
-      for (const key of schema.definitions.issue.required) expect(issue).toHaveProperty(key);
-      expect(["error", "warning"]).toContain(issue.severity);
+    expect(validate(pdfReport) ? [] : validate.errors).toEqual([]);
+
+    // DOCX-shaped tree report carrying the 002 fields WITHIN the unified schema.
+    const docxReport = buildReport({
+      format: "docx",
+      engine: "ts",
+      sourcePages: [
+        { id: "1", title: "Root", notes: [] },
+        { id: "2", title: "Child", notes: [{ code: "label-filtered", severity: "warning", phase: "compose", retryable: false }] },
+      ],
+      outputDetails: [{ output: "/tmp/tree.docx", embeddedImages: 3, renderedDiagrams: 1, skippedAssets: 0 }],
+      issues: [{ code: "label-filtered", severity: "warning", phase: "compose", retryable: false }],
+      requestedScope: { kind: "space", spaceKey: "DOCSY", completeness: "strict" },
+      resolvedScope: { kind: "tree", rootPageId: "1", includeRoot: true },
+      complete: true,
+      placeholders: { resolved: 12, unsupported: ["$scroll.unknown"] },
+      strict: false,
+    });
+    expect(validate(docxReport) ? [] : validate.errors).toEqual([]);
+    expect(docxReport.schema).toBe(EXPORT_REPORT_SCHEMA);
+    expect(docxReport.notesByCode).toEqual({ "label-filtered": 1 });
+    expect(docxReport.outputs).toEqual(["/tmp/tree.docx"]);
+
+    // ajv actually REJECTS malformed documents (proves this is a real check).
+    expect(validate({ ...pdfReport, extraneous: true })).toBe(false);
+    expect(validate({ ...pdfReport, exitCode: 42 })).toBe(false);
+  });
+
+  it("classifies the typed @atlcli/confluence errors per the unified exit-code table", () => {
+    const cases: Array<{ error: unknown; exitCode: number; code: string }> = [
+      // Validation-class → 5 (compile/validation failure).
+      { error: new TreeLimitExceededError("max-pages", 500), exitCode: EXPORT_EXIT.COMPILE, code: "max-pages" },
+      { error: new TreeLimitExceededError("max-folders", 200), exitCode: EXPORT_EXIT.COMPILE, code: "max-folders" },
+      { error: new LabelFilterError("empty-include-result", "nothing matched"), exitCode: EXPORT_EXIT.COMPILE, code: "empty-include-result" },
+      {
+        error: new AssetBudgetExceededError([{ filename: "huge.png", pageId: "9", sizeBytes: 60_000_000 }], 60_000_000, 50_000_000),
+        exitCode: EXPORT_EXIT.COMPILE,
+        code: "asset-budget-exceeded",
+      },
+      // Remote/API-state → 4.
+      { error: new SpaceHomepageError("DOCSY"), exitCode: EXPORT_EXIT.REMOTE, code: "space-homepage-missing" },
+      { error: new ExportCompletenessError("page-unreadable", [{ id: "1", title: "Secret" }]), exitCode: EXPORT_EXIT.REMOTE, code: "page-unreadable" },
+      { error: new PaginationLoopError("cursor-abc"), exitCode: EXPORT_EXIT.REMOTE, code: "pagination-loop" },
+    ];
+    for (const c of cases) {
+      const { exitCode, issue } = classifyError(c.error);
+      expect(exitCode).toBe(c.exitCode);
+      expect(issue.code).toBe(c.code);
+      expect(issue.severity).toBe("error");
     }
-    // outputs mirrors outputDetails paths.
-    expect(report.outputs).toEqual(report.outputDetails.map((d) => d.output));
+    // Structured payloads survive into issue.details.
+    const budget = classifyError(new AssetBudgetExceededError([{ filename: "a.png", sizeBytes: 10 }], 10, 5));
+    expect(budget.issue.details).toMatchObject({ totalBytes: 10, limitBytes: 5 });
+    const completeness = classifyError(new ExportCompletenessError("subtree-unreadable", [{ id: "1", title: "A" }]));
+    expect(completeness.issue.details).toEqual({ affected: [{ id: "1", title: "A" }] });
+  });
+
+  it("keeps exit codes 3/4/5/130 reachable from the DOCX failure boundary", () => {
+    // The exact classes the DOCX ts paths route through classifyError.
+    expect(classifyError(new Error("Confluence API error (401): no")).exitCode).toBe(EXPORT_EXIT.AUTH);
+    expect(classifyError(new Error("Confluence API error (500): down")).exitCode).toBe(EXPORT_EXIT.REMOTE);
+    expect(classifyError(new LabelFilterError("empty-include-result", "x")).exitCode).toBe(EXPORT_EXIT.COMPILE);
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
+    // Non-Error throw still classifies (TOTAL mapping, single-document contract).
+    expect(classifyError("catastrophe").exitCode).toBe(EXPORT_EXIT.REMOTE);
   });
 
   it("folds a compiler warning into issues and trips exit 2 under --strict", () => {
