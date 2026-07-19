@@ -1,0 +1,48 @@
+name: Consumer Smoke
+
+# Spec 009 consumer-smoke gate: proves the packed tarballs and file:-linked
+# package dirs are consumable by external projects (bun, npm, pnpm, plain
+# Node LTS) with real DOCX/PDF exports and a skipLibCheck:false type check.
+# No registry credentials — @atlcli/* only ever installs from local
+# tarballs/dirs; the public registry serves third-party deps read-only.
+
+on:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "patches/**"
+      - "scripts/**"
+      - "package.json"
+      - "bun.lock"
+      - "turbo.json"
+      - "tsconfig.json"
+      - ".github/workflows/consumer-smoke.yml"
+
+jobs:
+  consumer-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Node 20 = the engines floor ("node": ">=20") — the Node-LTS smoke and
+      # npm leg must pass on the OLDEST supported line, not just current.
+      - name: Setup Node.js (LTS floor)
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Install pnpm (for the install-matrix leg)
+        run: npm install -g pnpm@9
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Consumer smoke + install matrix
+        run: bun test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"

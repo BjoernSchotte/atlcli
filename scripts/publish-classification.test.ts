@@ -12,6 +12,15 @@ const RECOGNIZED_PUBLISH = new Set(["public-stable", "public-0.x", "private"]);
 // Publish invocations that must never appear in a workflow.
 const FORBIDDEN_PUBLISH_PATTERNS = ["npm publish", "npm stage publish", "bun publish"];
 
+/**
+ * `uses:`-based publishing (e.g. `some-org/npm-publish-action@v1`) would slip
+ * past the run-command scan above, so any action whose name contains
+ * "publish" is flagged conservatively. Genuine false positives (an action
+ * that merely has "publish" in its name but provably cannot publish) must be
+ * added here explicitly, with a review.
+ */
+const PUBLISH_ACTION_ALLOWLIST: ReadonlySet<string> = new Set([]);
+
 interface WorkspaceManifest {
   path: string;
   json: Record<string, unknown>;
@@ -131,6 +140,34 @@ describe("workflows never publish to a registry", () => {
       offenders,
       offenders.length
         ? `Registry publishing is deferred — no workflow may run npm/bun publish:\n  ${offenders.join("\n  ")}`
+        : undefined,
+    ).toEqual([]);
+  });
+
+  it("uses no GitHub Action whose name contains 'publish'", () => {
+    const offenders: string[] = [];
+
+    for (const file of listWorkflowFiles()) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, idx) => {
+        if (line.trimStart().startsWith("#")) return;
+        const match = line.match(/^\s*(?:-\s+)?uses:\s*["']?([^\s"'#]+)/);
+        if (!match) return;
+        const ref = match[1]!;
+        const action = ref.split("@")[0]!;
+        if (!action.toLowerCase().includes("publish")) return;
+        if (PUBLISH_ACTION_ALLOWLIST.has(action)) return;
+        offenders.push(
+          `${file.replace(`${repoRoot}/`, "")}:${idx + 1}: publish-named action "${ref}" ` +
+            `(add "${action}" to PUBLISH_ACTION_ALLOWLIST only after review proves it cannot publish)`,
+        );
+      });
+    }
+
+    expect(
+      offenders,
+      offenders.length
+        ? `Registry publishing is deferred — no workflow may use a publish-capable action:\n  ${offenders.join("\n  ")}`
         : undefined,
     ).toEqual([]);
   });
