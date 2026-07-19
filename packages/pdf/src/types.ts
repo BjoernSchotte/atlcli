@@ -187,6 +187,11 @@ export interface PdfExportReport {
   renderedDiagrams: number;
   skippedAssets: number;
   notes: ExportNote[];
+  /**
+   * False when the composed document omitted content (partial-mode unreadable
+   * pages, spec 002). Single-page/normal exports are `true`.
+   */
+  complete: boolean;
   timings: PdfExportTimings;
 }
 

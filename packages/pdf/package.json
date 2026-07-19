@@ -20,5 +20,8 @@
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/diagram": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlcli/docx": "workspace:*"
   }
 }

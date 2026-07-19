@@ -174,6 +174,36 @@ export function hyperlinkField(url: string, innerRuns: string): string {
   );
 }
 
+/**
+ * A `<w:bookmarkStart>` element (spec 002 anchors). `name` MUST be a legal
+ * OOXML bookmark name (≤40 chars, no spaces) — the caller sanitizes via
+ * `sanitizeAnchorId` before passing it here. `id` is the serializer's per-export
+ * counter value; `bookmarkEnd` must reuse the same id.
+ */
+export function bookmarkStart(id: number, name: string): string {
+  return `<w:bookmarkStart w:id="${id}" w:name="${esc(name)}"/>`;
+}
+
+/** The `<w:bookmarkEnd>` matching a {@link bookmarkStart} with the same `id`. */
+export function bookmarkEnd(id: number): string {
+  return `<w:bookmarkEnd w:id="${id}"/>`;
+}
+
+/**
+ * A real in-document jump: `<w:hyperlink w:anchor="…" w:history="1">…</w:hyperlink>`
+ * carrying the given inner runs. `anchor` names a bookmark in this document
+ * (spec 002 anchor rewrite). Previously internal links were only styled blue —
+ * they now navigate.
+ */
+export function internalHyperlink(anchor: string, innerRuns: string): string {
+  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1">${innerRuns}</w:hyperlink>`;
+}
+
+/** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */
+export function pageBreakParagraph(): string {
+  return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+}
+
 // ---------------------------------------------------------------------------
 // Blocks
 // ---------------------------------------------------------------------------

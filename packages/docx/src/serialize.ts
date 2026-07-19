@@ -19,15 +19,24 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
-import { computeHeadingOffset, readableTextColor } from "@atlcli/confluence";
+import {
+  computeHeadingOffset,
+  readableTextColor,
+  sanitizeAnchorId,
+  uniqueAnchorId,
+} from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
 import {
+  bookmarkEnd,
+  bookmarkStart,
   calloutTable,
   codeLineParagraph,
   dataTable,
   dividerParagraph,
   hyperlinkField,
+  internalHyperlink,
   lineBreakRun,
+  pageBreakParagraph,
   paragraph,
   resolveHeadingStyleId,
   run,
@@ -107,6 +116,14 @@ interface InternalContext extends SerializeContext {
   headingOffset: number;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
+  /**
+   * Per-export bookmark state (spec 002 anchors): the numeric id counter and
+   * the set of bookmark NAMES already emitted. A mutable object so the state
+   * stays shared when a derived context is spread (`{ ...ctx }`). `used` is
+   * what keeps single-page exports (no compose-time registry) free of duplicate
+   * bookmark names when two raw anchor names sanitize to the same id.
+   */
+  bookmarks: { next: number; used: Set<string> };
 }
 
 export interface SerializeResult {
@@ -159,11 +176,18 @@ export function serializeInline(nodes: InlineNode[], defaultTextColor?: string):
         const innerRuns = serializeInline(
           node.content.length ? node.content : [{ type: "text", text: "" }]
         );
+        const styled = linkStyledRuns(node.content) || innerRuns;
         if (node.target.kind === "external" && node.target.href) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
           out += hyperlinkField(node.target.href, linkStyledRuns(node.content));
+        } else if (node.target.kind === "anchor") {
+          // Internal anchor link → a real in-document jump (spec 002). The
+          // anchor is the sanitized destination id compose-document assigned;
+          // re-sanitize defensively so a raw single-page anchor still matches
+          // the bookmark name the anchor/heading emits.
+          out += internalHyperlink(sanitizeAnchorId(node.target.anchor), styled);
         } else {
-          out += linkStyledRuns(node.content) || innerRuns;
+          out += styled;
         }
         break;
       }
@@ -289,7 +313,11 @@ export async function serializeBlocks(
 ): Promise<SerializeResult> {
   const notes: ExportNote[] = [];
   const parts: string[] = [];
-  const internal: InternalContext = { ...ctx, headingOffset: computeHeadingOffset(blocks) };
+  const internal: InternalContext = {
+    ...ctx,
+    headingOffset: computeHeadingOffset(blocks),
+    bookmarks: { next: 1, used: new Set() },
+  };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
@@ -319,10 +347,22 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
         styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
+      // An explicit anchor (chapter start / in-page heading anchor, spec 002)
+      // wraps the heading paragraph in a real bookmark so `w:hyperlink w:anchor`
+      // jumps land here. `uniqueAnchorId` sanitizes (composed ids pass through
+      // unchanged) AND dedupes per document, so two single-page anchors whose
+      // raw names sanitize identically never emit duplicate bookmark names.
+      if (block.explicitAnchor) {
+        const id = ctx.bookmarks.next++;
+        const name = uniqueAnchorId(block.explicitAnchor, ctx.bookmarks.used);
+        ctx.bookmarks.used.add(name);
+        return `${bookmarkStart(id, name)}${headingPara}${bookmarkEnd(id)}`;
+      }
+      return headingPara;
     }
 
     case "paragraph":
@@ -393,13 +433,19 @@ async function serializeBlock(
     case "unknown":
       return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));
 
-    // No-op renderings (T0.2): today's walker never emits these; real rendering
-    // lands in T1.3/T1.5. Silent no-ops keep output and report byte-identical.
+    // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      return "";
+      return pageBreakParagraph();
 
-    case "anchor":
-      return "";
+    case "anchor": {
+      // A standalone named anchor → a zero-width bookmark at this position, so
+      // `page-<id>` chapter-start links and in-page anchor links resolve here.
+      // Sanitized + per-document deduped like heading anchors (see above).
+      const id = ctx.bookmarks.next++;
+      const name = uniqueAnchorId(block.name, ctx.bookmarks.used);
+      ctx.bookmarks.used.add(name);
+      return `${bookmarkStart(id, name)}${bookmarkEnd(id)}`;
+    }
 
     case "orientation":
       // Transparent passthrough — children render exactly as if the region

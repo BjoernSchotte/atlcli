@@ -549,17 +549,8 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
   });
 });
 
-describe("serializeBlocks — new ExportBlock variants (T0 no-op renderings)", () => {
-  it("renders pageBreak/anchor as zero XML and orientation as its children bare", async () => {
-    const body: ExportBlock[] = [
-      { type: "paragraph", content: [{ type: "text", text: "before" }] },
-      { type: "paragraph", content: [{ type: "text", text: "inside region" }] },
-      { type: "paragraph", content: [{ type: "text", text: "after" }] },
-    ];
-    // The reference document without any new blocks.
-    const plain = await serializeBlocks(body, { styleNames: noStyles });
-
-    // The same content wrapped/surrounded with the new no-op blocks.
+describe("serializeBlocks — new ExportBlock variants (spec 002 real renderings)", () => {
+  it("renders pageBreak as a page break, anchor as a zero-width bookmark, orientation bare", async () => {
     const withNew: ExportBlock[] = [
       { type: "paragraph", content: [{ type: "text", text: "before" }] },
       { type: "pageBreak" },
@@ -571,12 +562,15 @@ describe("serializeBlocks — new ExportBlock variants (T0 no-op renderings)", (
       },
       { type: "paragraph", content: [{ type: "text", text: "after" }] },
     ];
-    const withNo = await serializeBlocks(withNew, { styleNames: noStyles });
+    const { xml, notes } = await serializeBlocks(withNew, { styleNames: noStyles });
 
-    // pageBreak + anchor contribute nothing, orientation renders its child
-    // transparently → output is byte-identical to the plain document.
-    expect(withNo.xml).toBe(plain.xml);
-    expect(withNo.notes).toEqual([]);
+    // pageBreak → a real page break paragraph.
+    expect(xml).toContain('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+    // anchor → a zero-width bookmark (start immediately followed by end).
+    expect(xml).toContain('<w:bookmarkStart w:id="1" w:name="sec"/><w:bookmarkEnd w:id="1"/>');
+    // orientation still renders its child transparently.
+    expect(xml).toContain('<w:p><w:r><w:t xml:space="preserve">inside region</w:t></w:r></w:p>');
+    expect(notes).toEqual([]);
   });
 
   it("promotes headings nested inside an orientation region (computeHeadingOffset)", async () => {
@@ -624,5 +618,94 @@ describe("serializeBlocks — new ExportBlock variants (T0 no-op renderings)", (
     // into the orientation region.
     expect(imagePrefetched).toEqual(["nested.png"]);
     expect(diagramPrefetched).toEqual(["graph TD\n A-->B"]);
+  });
+});
+
+describe("serializeBlocks — multi-page composed document (T1.3 engine golden)", () => {
+  // A real composeChapters output (fixture tree) through the DOCX serializer:
+  // chapter bookmarks + a working cross-page w:hyperlink jump + a chapter page
+  // break. This is the DOCX half of the T1.3 engine golden (the PDF half lives
+  // in packages/pdf/src/serialize.test.ts; both render into the SAME sanitized
+  // destination ids composeChapters assigns).
+  const nodes: ExportNode[] = [
+    {
+      kind: "page",
+      pageId: "100",
+      title: "Alpha",
+      depth: 0,
+      effectiveDepth: 0,
+      parentId: null,
+      position: 0,
+      blocks: [
+        { type: "heading", level: 2, content: [{ type: "text", text: "Overview" }] },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "link",
+              target: { kind: "page", contentId: "300", contentTitle: "Gamma" },
+              content: [{ type: "text", text: "see Gamma" }],
+            },
+          ],
+        },
+      ],
+      notes: [],
+      meta: { labels: [], spaceKey: "DOC" },
+    },
+    {
+      kind: "page",
+      pageId: "300",
+      title: "Gamma",
+      depth: 1,
+      effectiveDepth: 1,
+      parentId: "100",
+      position: 0,
+      blocks: [{ type: "heading", level: 2, content: [{ type: "text", text: "Gamma detail" }] }],
+      notes: [],
+      meta: { labels: [], spaceKey: "DOC" },
+    },
+  ];
+
+  it("emits chapter bookmarks, a cross-page w:hyperlink jump, and a chapter page break", async () => {
+    const { blocks } = composeChapters(nodes);
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    // Chapter-start bookmarks for both pages (sanitized `page-<id>` ids).
+    expect(xml).toContain('<w:bookmarkStart w:id="1" w:name="page-100"/>');
+    expect(xml).toContain('w:name="page-300"');
+    // Each bookmarkStart is matched by a bookmarkEnd with the same id.
+    expect(xml).toContain('<w:bookmarkEnd w:id="1"/>');
+    // The cross-page link from Alpha resolves to a REAL in-document jump to
+    // Gamma's chapter bookmark (previously internal links were only styled).
+    expect(xml).toContain('<w:hyperlink w:anchor="page-300" w:history="1">');
+    expect(xml).toContain("see Gamma");
+    // A hard page break separates the two chapters.
+    expect(xml).toContain('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+  });
+
+  it("is deterministic across two composeChapters runs", async () => {
+    const first = await serializeBlocks(composeChapters(nodes).blocks, { styleNames: noStyles });
+    const second = await serializeBlocks(composeChapters(nodes).blocks, { styleNames: noStyles });
+    expect(first.xml).toBe(second.xml);
+  });
+
+  it("dedupes single-page anchor names that sanitize identically (no duplicate bookmark names)", async () => {
+    // Single-page export: no compose-time registry, so the serializer itself
+    // must keep bookmark names unique. "A B" and "A_B" both sanitize to "a-b".
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "A B" },
+      { type: "paragraph", content: [{ type: "text", text: "between" }] },
+      { type: "anchor", name: "A_B" },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    const names = [...xml.matchAll(/<w:bookmarkStart w:id="\d+" w:name="([^"]+)"\/>/g)].map(
+      (m) => m[1]
+    );
+    expect(names).toHaveLength(2);
+    // First occurrence keeps the plain sanitized name (links resolve to it);
+    // the second gets the shared short-hash-suffix scheme.
+    expect(names[0]).toBe("a-b");
+    expect(names[1]).toMatch(/^a-b-[0-9a-z]+$/);
+    expect(new Set(names).size).toBe(2);
   });
 });

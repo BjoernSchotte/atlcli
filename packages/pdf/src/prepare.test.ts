@@ -120,6 +120,36 @@ describe("PDF asset preparation", () => {
     });
   });
 
+  it("deduplicates identical large images so the shared budget counts them once", async () => {
+    // Three references to the SAME 20 MiB image. Without content dedup that is
+    // 60 MiB (over the 50 MiB cap); deduped it is 20 MiB and succeeds — proving
+    // the AssetBudget dedups BEFORE counting against the cap.
+    const twentyMiB = new Uint8Array(20 * 1024 * 1024);
+    twentyMiB.set([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+      0, 0, 0, 1, 0, 0, 0, 1,
+    ]);
+    const prepared = await preparePdfDocument(images(3), {
+      resolve: async () => ({ bytes: twentyMiB, mediaType: "image/png" }),
+    });
+    expect(prepared.assets).toHaveLength(1);
+    expect(prepared.notes).toEqual([]);
+  });
+
+  it("reports one progress event per embedded asset", async () => {
+    const events: Array<{ phase: string; done: number; total: number | null }> = [];
+    let n = 0;
+    await preparePdfDocument(
+      images(2),
+      { resolve: async () => ({ bytes: pngBytes(n++), mediaType: "image/png" }) },
+      { onProgress: (e) => events.push({ phase: e.phase, done: e.done, total: e.total }) }
+    );
+    expect(events.every((e) => e.phase === "assets")).toBe(true);
+    expect(events.map((e) => e.done)).toEqual([1, 2]);
+    expect(events.every((e) => e.total === 2)).toBe(true);
+  });
+
   it("bounds parallel attachment resolution and preserves deterministic order", async () => {
     let active = 0;
     let peak = 0;

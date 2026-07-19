@@ -12,6 +12,16 @@
  */
 import { exportDocx, type ExportInput, type ExportReport } from "./export.js";
 
+/**
+ * Optional per-call context threaded into the host seams (spec 002 cancellation).
+ * Mirrors the `TreeSource` port context and PDF's sink context so a `Ctrl-C`
+ * abort stops in-flight asset downloads and the final file write, not just new
+ * orchestration.
+ */
+export interface HostCallContext {
+  signal?: AbortSignal;
+}
+
 /** Where template bytes come from (extension: IndexedDB blob · CLI: readFile). */
 export interface TemplateSource {
   getBytes(id: string): Promise<Uint8Array>;
@@ -34,12 +44,12 @@ export interface AssetRef {
 
 /** How asset bytes are fetched (extension: session fetch · CLI: token client). */
 export interface AssetFetcher {
-  fetch(ref: AssetRef): Promise<Uint8Array>;
+  fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 /** Where the finished document goes (extension: download · CLI: writeFile). */
 export interface OutputSink {
-  emit(name: string, bytes: Uint8Array): Promise<void>;
+  emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
 }
 
 /**
@@ -86,9 +96,15 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
  * emit the bytes through the env, return the report. Hosts that need the raw
  * bytes (or manage template bytes themselves) can keep calling
  * {@link exportDocx} directly — this wrapper is the cross-host convention.
+ *
+ * `input.signal` is threaded into the pure export (asset fetches) and honored
+ * before the final emit, so a mid-export abort stops in-flight downloads and
+ * never writes a partial file (the atomic sink then leaves any pre-existing
+ * target untouched).
  */
 export async function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport> {
   const { templateId, ...rest } = input;
+  input.signal?.throwIfAborted();
   const templateBytes = await env.templates.getBytes(templateId ?? "current");
   // The env's asset fetcher drives image embedding (spec 005) and its
   // rasterizer drives diagram embedding (spec 005a) unless the input
@@ -99,6 +115,11 @@ export async function runExport(input: RunExportInput, env: ExportEnv): Promise<
     assets: rest.assets ?? env.assets,
     rasterizer: rest.rasterizer ?? env.rasterizer,
   });
-  await env.output.emit(report.filename, bytes);
+  // Real cancellation: stop before committing output so an abort during the
+  // asset-heavy phase leaves the destination untouched.
+  input.signal?.throwIfAborted();
+  input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: report.filename });
+  await env.output.emit(report.filename, bytes, { signal: input.signal });
+  input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: report.filename });
   return report;
 }

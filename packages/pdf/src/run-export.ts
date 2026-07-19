@@ -1,4 +1,9 @@
-import type { ExportBlock, ExportNote } from "@atlcli/confluence";
+import {
+  AssetBudgetExceededError,
+  type ExportBlock,
+  type ExportNote,
+  type ExportProgressCallback,
+} from "@atlcli/confluence";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
 import { resolvePdfSettings } from "./settings.js";
@@ -37,6 +42,13 @@ export interface RunPdfExportInput {
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
+  /** Granular progress callback (spec 002 — asset embedding + emit phases). */
+  onProgress?: ExportProgressCallback;
+  /**
+   * Whether the composed document is complete (spec 002 completeness contract);
+   * surfaced at the top of the report. Defaults to `true`.
+   */
+  complete?: boolean;
 }
 
 export interface PdfExportEnv {
@@ -75,7 +87,16 @@ function isAbortError(error: unknown): boolean {
 }
 
 function wrapFailure(error: unknown, phase: PdfExportErrorPhase): never {
-  if (isAbortError(error) || error instanceof PdfExportError) throw error;
+  // A shared asset-budget breach propagates UNWRAPPED (like an abort) so both
+  // engines surface the identical AssetBudgetExceededError — the parity contract
+  // (spec 002): same error type, same offender list.
+  if (
+    isAbortError(error) ||
+    error instanceof PdfExportError ||
+    error instanceof AssetBudgetExceededError
+  ) {
+    throw error;
+  }
   const message = error instanceof Error ? error.message : String(error);
   throw new PdfExportError(message, { phase, cause: error });
 }
@@ -143,7 +164,9 @@ export async function runPdfExport(
   let bundle;
   try {
     input.onPhase?.("fetching");
-    prepared = await preparePdfDocument(input.blocks, env.assets);
+    prepared = await preparePdfDocument(input.blocks, env.assets, {
+      ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+    });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {
       metadata: input.metadata,
@@ -191,7 +214,9 @@ export async function runPdfExport(
     // must not turn an already-written file into a reported failure, so there
     // is deliberately no post-emit abort re-check here.
     throwIfAborted(input.signal);
+    input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: input.filename });
     await env.output.emit(input.filename, compiled.pdf, { signal: input.signal });
+    input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: input.filename });
   } catch (error) {
     wrapFailure(error, "emit");
   }
@@ -206,6 +231,7 @@ export async function runPdfExport(
     renderedDiagrams: counts.diagrams,
     skippedAssets: counts.skipped,
     notes: [...(input.sourceNotes ?? []), ...bundle.notes],
+    complete: input.complete ?? true,
     timings: { prepareMs, compileMs, emitMs, totalMs: now() - startedAt },
   };
 }

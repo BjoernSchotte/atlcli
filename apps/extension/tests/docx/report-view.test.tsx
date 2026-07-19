@@ -28,6 +28,7 @@ function makeReport(notes: ExportReport["notes"]): ExportReport {
     durationMs: 42,
     filename: "page.docx",
     notes,
+    complete: true,
     scan: emptyScan,
     timings: {
       resolveMs: 0,

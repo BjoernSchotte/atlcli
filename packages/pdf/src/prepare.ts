@@ -1,5 +1,12 @@
 import { renderDiagram } from "@atlcli/diagram";
-import { createInOrderLimiter } from "@atlcli/confluence";
+import {
+  ASSET_MAX_BYTES,
+  ASSET_MAX_TOTAL_BYTES,
+  AssetBudget,
+  AssetBudgetExceededError,
+  createInOrderLimiter,
+  type ExportProgressCallback,
+} from "@atlcli/confluence";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
 import { findSvgSafetyViolation } from "./svg-safety.js";
 import type {
@@ -18,8 +25,10 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
-export const PDF_MAX_ASSET_BYTES = 25 * 1024 * 1024;
-export const PDF_MAX_TOTAL_ASSET_BYTES = 50 * 1024 * 1024;
+// The per-file and total caps are the SHARED contract with the DOCX engine
+// (spec 002): both engines import the same constants so the caps never drift.
+export const PDF_MAX_ASSET_BYTES = ASSET_MAX_BYTES;
+export const PDF_MAX_TOTAL_ASSET_BYTES = ASSET_MAX_TOTAL_BYTES;
 export const PDF_ASSET_CONCURRENCY = 4;
 
 function ascii(bytes: Uint8Array, start: number, length: number): string {
@@ -95,9 +104,15 @@ function assetKey(bytes: Uint8Array, mediaType: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+export interface PreparePdfOptions {
+  /** Granular progress callback (spec 002 — one event per embedded asset). */
+  onProgress?: ExportProgressCallback;
+}
+
 export async function preparePdfDocument(
   blocks: ExportBlock[],
-  resolver: PdfAssetResolver
+  resolver: PdfAssetResolver,
+  options: PreparePdfOptions = {}
 ): Promise<PreparedPdfDocument> {
   const assets: PreparedPdfAsset[] = [];
   const notes: ExportNote[] = [];
@@ -106,9 +121,22 @@ export async function preparePdfDocument(
     Array<{ bytes: Uint8Array; mediaType: string; path: string }>
   >();
   const limit = createInOrderLimiter(PDF_ASSET_CONCURRENCY);
-  let totalAssetBytes = 0;
+  // Shared total-byte cap + content dedup (spec 002); a breach throws
+  // AssetBudgetExceededError, which propagates out of prepare and aborts the
+  // export identically to the DOCX engine.
+  const budget = new AssetBudget();
+  const assetTotal = countAssetBlocks(blocks);
+  let assetsDone = 0;
+  const reportAsset = (detail?: string): void => {
+    assetsDone += 1;
+    options.onProgress?.({ phase: "assets", done: assetsDone, total: assetTotal, ...(detail ? { detail } : {}) });
+  };
 
-  const addAsset = (rawAsset: PdfResolvedAsset, prefix: string): string => {
+  const addAsset = (
+    rawAsset: PdfResolvedAsset,
+    prefix: string,
+    meta: { filename: string; pageId?: string }
+  ): string => {
     const asset = validateResolvedAsset(rawAsset);
     const key = assetKey(asset.bytes, asset.mediaType);
     const bucket = paths.get(key) ?? [];
@@ -117,12 +145,11 @@ export async function preparePdfDocument(
         candidate.mediaType === asset.mediaType && sameBytes(candidate.bytes, asset.bytes)
     );
     if (existing) return existing.path;
-    if (totalAssetBytes + asset.bytes.byteLength > PDF_MAX_TOTAL_ASSET_BYTES) {
-      throw new Error("the PDF exceeds the 50 MB total image limit");
-    }
+    // Account NEW bytes only (dedup handled above + inside the budget). Throws
+    // AssetBudgetExceededError with the offender list on a total-cap breach.
+    budget.account(asset.bytes, meta);
     const path = `assets/${prefix}-${assets.length + 1}-${key}.${extensionFor(asset)}`;
     assets.push({ path, bytes: asset.bytes, mediaType: asset.mediaType });
-    totalAssetBytes += asset.bytes.byteLength;
     bucket.push({ bytes: asset.bytes, mediaType: asset.mediaType, path });
     paths.set(key, bucket);
     return path;
@@ -159,6 +186,8 @@ export async function preparePdfDocument(
           case "image": {
             const fallbackLabel =
               block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image");
+            const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
+            const owningPage = block.source.kind === "attachment" ? block.source.pageId : undefined;
             try {
               const resolved = await limit(() =>
                 resolver.resolve(
@@ -167,9 +196,14 @@ export async function preparePdfDocument(
                     : { kind: "external", url: block.source.url }
                 )
               );
+              const assetPath = addAsset(resolved, "image", {
+                filename,
+                ...(owningPage ? { pageId: owningPage } : {}),
+              });
+              reportAsset(filename);
               return {
                 type: "image",
-                assetPath: addAsset(resolved, "image"),
+                assetPath,
                 alt: block.alt,
                 width: block.width,
                 height: block.height,
@@ -177,6 +211,10 @@ export async function preparePdfDocument(
                 caption: block.caption,
               };
             } catch (error) {
+              // A shared-budget breach is a FATAL scope-level error (same as
+              // DOCX) — never a per-image warning. Let it abort the export.
+              if (error instanceof AssetBudgetExceededError) throw error;
+              reportAsset(filename);
               notes.push({
                 level: "warning",
                 code: "pdf-image-skipped",
@@ -192,8 +230,10 @@ export async function preparePdfDocument(
               const bytes = new TextEncoder().encode(rendered.svg);
               const assetPath = addAsset(
                 { bytes, mediaType: "image/svg+xml", filename: "diagram.svg" },
-                "diagram"
+                "diagram",
+                { filename: "diagram.svg" }
               );
+              reportAsset("diagram.svg");
               return { type: "diagram", assetPath, source: block.code, caption: block.caption };
             }
             notes.push({
@@ -225,4 +265,34 @@ export async function preparePdfDocument(
     );
 
   return { blocks: await walk(blocks), assets, notes };
+}
+
+/** Count asset-bearing blocks (images + mermaid code) for progress totals. */
+function countAssetBlocks(blocks: ExportBlock[]): number {
+  let count = 0;
+  const walk = (list: ExportBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "image":
+          count += 1;
+          break;
+        case "codeBlock":
+          if ((block.language ?? "").trim().toLowerCase() === "mermaid") count += 1;
+          break;
+        case "callout":
+        case "blockquote":
+        case "orientation":
+          walk(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walk(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+      }
+    }
+  };
+  walk(blocks);
+  return count;
 }

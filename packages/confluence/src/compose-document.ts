@@ -156,6 +156,28 @@ export function sanitizeAnchorId(rawKey: string): string {
   return s;
 }
 
+/**
+ * Sanitize `rawName` into an anchor id that does not collide with any id in
+ * `used` (the caller adds the returned id to its set). Collisions get the same
+ * short-content-hash suffix scheme {@link AnchorRegistry} uses, so the engines'
+ * per-document dedupe (single-page exports have no compose-time registry)
+ * produces ids in the exact same shape as composed documents. Distinct raw
+ * names that sanitize identically (e.g. `"A B"` and `"A_B"`) therefore never
+ * yield duplicate DOCX bookmark names or duplicate Typst labels (the latter is
+ * a Typst compile error).
+ */
+export function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string {
+  const base = sanitizeAnchorId(rawName);
+  if (!used.has(base)) return base;
+  let id = withHashSuffix(base, rawName);
+  let salt = 1;
+  while (used.has(id)) {
+    id = withHashSuffix(base, `${rawName}#${salt}`);
+    salt += 1;
+  }
+  return id;
+}
+
 // ---------------------------------------------------------------------------
 // Anchor registry
 // ---------------------------------------------------------------------------

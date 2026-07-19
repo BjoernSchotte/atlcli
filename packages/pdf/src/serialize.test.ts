@@ -689,13 +689,7 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
       .filter((line) => line.trim() !== "")
       .join("\n");
 
-  it("renders pageBreak/anchor/orientation with no semantic change to main.typ", async () => {
-    const reference: ExportBlock[] = [
-      { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
-      { type: "paragraph", content: [{ type: "text", text: "before" }] },
-      { type: "paragraph", content: [{ type: "text", text: "inside" }] },
-      { type: "paragraph", content: [{ type: "text", text: "after" }] },
-    ];
+  it("renders pageBreak as a weak pagebreak, anchor as a label, orientation bare", async () => {
     const withNew: ExportBlock[] = [
       { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
       { type: "paragraph", content: [{ type: "text", text: "before" }] },
@@ -709,16 +703,19 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
       { type: "paragraph", content: [{ type: "text", text: "after" }] },
     ];
     const resolver = { resolve: async () => { throw new Error("unused"); } };
-    const refBundle = serializePdfDocument(await preparePdfDocument(reference, resolver), { metadata });
     const newBundle = serializePdfDocument(await preparePdfDocument(withNew, resolver), { metadata });
 
-    // Semantic identity: content lines match once the comment markers are gone.
-    expect(contentLines(newBundle.main)).toBe(contentLines(refBundle.main));
-    // No new notes (no pdf-unknown-block, nothing) from the no-op blocks.
+    // Real renderings (spec 002).
+    expect(newBundle.main).toContain("#pagebreak(weak: true)");
+    expect(newBundle.main).toContain("#box[]<bm>");
+    // orientation still serializes its child transparently.
+    expect(newBundle.main).toContain('#text("inside")');
+    // No spurious notes from the new blocks.
     expect(newBundle.notes).toEqual([]);
+    void contentLines; // retained helper for other cases
   });
 
-  it("gives pageBreak and anchor their own zero-width sourceMap entries", async () => {
+  it("gives pageBreak and anchor their own sourceMap entries", async () => {
     const blocks: ExportBlock[] = [
       { type: "paragraph", content: [{ type: "text", text: "x" }] },
       { type: "pageBreak" },
@@ -731,10 +728,62 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     for (const blockType of ["pageBreak", "anchor"] as const) {
       const entry = bundle.sourceMap.find((e) => e.blockType === blockType);
       expect(entry).toBeDefined();
-      // Zero-width: the wrapped value is empty, so start position == end position.
-      expect(entry!.startLine).toBe(entry!.endLine);
-      expect(entry!.startColumn).toBe(entry!.endColumn);
     }
+  });
+
+  it("sanitizes raw anchor names into legal Typst labels and resolves links to them", async () => {
+    // Regression: a Confluence anchor macro named "Table of Contents" must not
+    // reach the Typst source as `<Table of Contents>` — the real compiler
+    // rejects that as an unclosed label, failing the whole export.
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "Table of Contents" },
+      { type: "paragraph", content: [{ type: "text", text: "body" }] },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "link",
+            target: { kind: "anchor", anchor: "Table of Contents" },
+            content: [{ type: "text", text: "jump" }],
+          },
+        ],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    // Sanitized label emitted; the raw (illegal) form never appears.
+    expect(bundle.main).toContain("#box[]<table-of-contents>");
+    expect(bundle.main).not.toContain("<Table of Contents>");
+    // The link resolves to the SAME sanitized label — not degraded to text.
+    expect(bundle.main).toContain("#link(<table-of-contents>)");
+    expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+
+  it("dedupes distinct anchor names that sanitize identically (duplicate labels are a compile error)", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "A B" },
+      { type: "anchor", name: "A_B" },
+      // A heading whose text slug ALSO collides with the anchors' sanitized
+      // form — its slug label must stay untouched and the anchors must dodge it.
+      { type: "heading", level: 2, content: [{ type: "text", text: "A b" }] },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    const labels = [...bundle.main.matchAll(/<([a-z0-9-]+)>/g)].map((m) => m[1]);
+    // Every emitted label is unique — Typst rejects duplicate labels.
+    expect(new Set(labels).size).toBe(labels.length);
+    // The heading keeps its plain slug; both anchors got suffixed variants.
+    expect(labels).toContain("a-b");
+    const anchorLabels = [...bundle.main.matchAll(/#box\[\]<([a-z0-9-]+)>/g)].map((m) => m[1]);
+    expect(anchorLabels).toHaveLength(2);
+    for (const label of anchorLabels) {
+      expect(label).toMatch(/^a-b-[0-9a-z]+$/);
+    }
+    expect(anchorLabels[0]).not.toBe(anchorLabels[1]);
   });
 
   it("sees a heading nested inside an orientation region (promotion + label link)", async () => {
@@ -806,6 +855,66 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     // stays level 2 (a nonzero offset would collapse them).
     expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#text("Root")]');
     expect(bundle.main).toContain('#heading(level: 2, outlined: true)[#text("Child")]');
+  });
+
+  it("emits chapter labels, a resolved cross-page #link, and a chapter #pagebreak (T1.3 engine golden)", async () => {
+    // The PDF half of the T1.3 engine golden — the same fixture shape the DOCX
+    // engine golden uses, rendering into the SAME sanitized `page-<id>` ids.
+    const nodes: ExportNode[] = [
+      {
+        kind: "page",
+        pageId: "100",
+        title: "Alpha",
+        depth: 0,
+        effectiveDepth: 0,
+        parentId: null,
+        position: 0,
+        blocks: [
+          { type: "heading", level: 2, content: [{ type: "text", text: "Overview" }] },
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "link",
+                target: { kind: "page", contentId: "300", contentTitle: "Gamma" },
+                content: [{ type: "text", text: "see Gamma" }],
+              },
+            ],
+          },
+        ],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+      {
+        kind: "page",
+        pageId: "300",
+        title: "Gamma",
+        depth: 1,
+        effectiveDepth: 1,
+        parentId: "100",
+        position: 0,
+        blocks: [{ type: "heading", level: 2, content: [{ type: "text", text: "Gamma detail" }] }],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+    ];
+    const { blocks } = composeChapters(nodes);
+    const resolver = { resolve: async () => { throw new Error("unused"); } };
+    const bundle = serializePdfDocument(await preparePdfDocument(blocks, resolver), { metadata });
+
+    // Chapter-start labels for both pages.
+    expect(bundle.main).toContain("<page-100>");
+    expect(bundle.main).toContain("<page-300>");
+    // The cross-page link resolves to Gamma's chapter label (#link(<page-300>)),
+    // NOT degraded to plain text.
+    expect(bundle.main).toContain("#link(<page-300>)");
+    expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+    // A weak page break separates the two chapters.
+    expect(bundle.main).toContain("#pagebreak(weak: true)");
+
+    // Determinism: a second run is byte-equal.
+    const again = serializePdfDocument(await preparePdfDocument(composeChapters(nodes).blocks, resolver), { metadata });
+    expect(again.main).toBe(bundle.main);
   });
 });
 

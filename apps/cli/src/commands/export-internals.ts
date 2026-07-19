@@ -112,20 +112,26 @@ interface AssetByteCache {
 
 interface AssetClient {
   listAttachments(pageId: string): Promise<AttachmentInfo[]>;
-  downloadAttachment(attachment: AttachmentInfo | { downloadUrl: string }): Promise<Uint8Array>;
+  downloadAttachment(
+    attachment: AttachmentInfo | { downloadUrl: string },
+    options?: { signal?: AbortSignal }
+  ): Promise<Uint8Array>;
 }
 
 /** Token-auth asset adapter, kept here so its two immutable cache-key paths are regression-testable. */
 export function tokenAssetFetcher(client: AssetClient, cache: AssetByteCache): {
-  fetch(ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array>;
+  fetch(ref: { url: string; pageId?: string; filename?: string }, context?: { signal?: AbortSignal }): Promise<Uint8Array>;
 } {
   const listings = new Map<string, Promise<AttachmentInfo[]>>();
   const download = async (
     ref: { url: string; pageId?: string; filename?: string },
-    cacheAttachment = true
+    cacheAttachment = true,
+    signal?: AbortSignal
   ): Promise<Uint8Array> => {
     if (/^https?:\/\//i.test(ref.url)) {
-      const res = await fetch(ref.url);
+      // Thread the abort signal so a mid-export Ctrl-C stops external image
+      // downloads, not just orchestration (spec 002 cancellation).
+      const res = await fetch(ref.url, signal ? { signal } : {});
       if (!res.ok) throw new Error(`image download failed (${res.status}) for ${ref.url}`);
       return new Uint8Array(await res.arrayBuffer());
     }
@@ -137,23 +143,24 @@ export function tokenAssetFetcher(client: AssetClient, cache: AssetByteCache): {
       }
       const attachment = (await listing).find((a) => a.filename === ref.filename);
       if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);
-      if (!cacheAttachment) return client.downloadAttachment(attachment);
+      if (!cacheAttachment) return client.downloadAttachment(attachment, { signal });
       return cache.getOrLoad(`attachment:${attachment.id}:v${attachment.version}`, () =>
-        client.downloadAttachment(attachment)
+        client.downloadAttachment(attachment, { signal })
       );
     }
-    return client.downloadAttachment({ downloadUrl: ref.url });
+    return client.downloadAttachment({ downloadUrl: ref.url }, { signal });
   };
 
   return {
-    async fetch(ref) {
+    async fetch(ref, context) {
+      const signal = context?.signal;
       if (ref.url.startsWith("/download/") && /[?&](version|modificationDate)=/.test(ref.url)) {
         // The immutable URL entry provides the repeat-export no-listing win.
         // Bypass the inner id+version cache on a miss to avoid storing the same
         // custom-logo bytes under two hashes.
-        return cache.getOrLoad(`url:${ref.url}`, () => download(ref, false));
+        return cache.getOrLoad(`url:${ref.url}`, () => download(ref, false, signal));
       }
-      return download(ref);
+      return download(ref, true, signal);
     },
   };
 }
