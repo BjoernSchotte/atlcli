@@ -390,3 +390,52 @@ function pushBlock(out: ExportBlock[], block: ExportBlock, budget: Budget): void
 function trimInline(nodes: InlineNode[]): InlineNode[] {
   return nodes.filter((n) => !(n.type === "text" && n.text.trim() === ""));
 }
+
+// ---------------------------------------------------------------------------
+// export_view batch fragment extraction (spec 004, T1.10)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a whole-page `export_view` HTML document into a `data-macro-id` →
+ * inner-HTML map, so a page's N macros can be resolved from ONE request. Uses
+ * the same {@link parseXml} tokenizer as everything else (never a regex);
+ * captures the first occurrence per macro id. The returned HTML fragments feed
+ * straight back into {@link htmlToExportBlocks}.
+ */
+export function extractExportViewMacros(html: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const visit = (nodes: XmlNode[]): void => {
+    for (const node of nodes) {
+      if (!isEl(node)) continue;
+      const id = node.attrs["data-macro-id"];
+      if (id && !out.has(id)) {
+        out.set(id, serializeChildrenToHtml(node.children));
+      }
+      visit(node.children);
+    }
+  };
+  visit(parseXml(html));
+  return out;
+}
+
+const VOID_HTML = new Set(["br", "hr", "img", "col", "wbr", "input"]);
+
+function serializeChildrenToHtml(nodes: XmlNode[]): string {
+  return nodes.map(serializeNodeToHtml).join("");
+}
+
+function serializeNodeToHtml(node: XmlNode): string {
+  if (node.type === "text") return escapeHtmlText(node.text);
+  const attrs = Object.entries(node.attrs)
+    .map(([k, v]) => ` ${k}="${escapeHtmlAttr(v)}"`)
+    .join("");
+  if (VOID_HTML.has(node.name)) return `<${node.name}${attrs}>`;
+  return `<${node.name}${attrs}>${serializeChildrenToHtml(node.children)}</${node.name}>`;
+}
+
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeHtmlAttr(s: string): string {
+  return escapeHtmlText(s).replace(/"/g, "&quot;");
+}
