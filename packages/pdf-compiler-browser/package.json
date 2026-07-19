@@ -5,10 +5,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
     "@atlcli/pdf": "workspace:*",

@@ -5,7 +5,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
     "beautiful-mermaid": "1.1.3"

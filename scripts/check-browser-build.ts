@@ -87,7 +87,14 @@ function collectDiagnostics(source: unknown): string[] {
 export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckResult> {
   let result: Awaited<ReturnType<typeof Bun.build>>;
   try {
-    result = await Bun.build({ entrypoints: [entrypoint], target: "browser" });
+    // `development` keeps this gate source-based: `@atlcli/*` exports resolve
+    // to `src/*.ts` (workspace DX condition, spec 009) instead of `dist/`,
+    // so the gate needs no prior package build.
+    result = await Bun.build({
+      entrypoints: [entrypoint],
+      target: "browser",
+      conditions: ["development"],
+    });
   } catch (err) {
     const logs = collectDiagnostics(err);
     return {

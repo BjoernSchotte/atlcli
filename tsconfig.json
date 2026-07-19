@@ -5,7 +5,8 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "customConditions": ["development"]
   },
   "include": ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"],
   "exclude": ["src", "astro.config.mjs", "apps/browser-export-harness"]

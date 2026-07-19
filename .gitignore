@@ -17,6 +17,9 @@ opensrc/
 # Reproducible PDF font cache (downloaded from pinned Adobe releases).
 packages/pdf/.fonts/
 
+# Transient prepack backup written by scripts/strip-dev-condition.ts
+.package.json.prepack-backup
+
 # SonarQube coverage artifact
 coverage/
 .scannerwork/

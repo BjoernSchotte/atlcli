@@ -11,7 +11,7 @@
       "cache": true,
       "dependsOn": ["^build"],
       "outputs": ["../../dist/**", "dist/**"],
-      "inputs": ["src/**/*.ts", "tsconfig.json", "package.json"]
+      "inputs": ["src/**/*.ts", "tsconfig.json", "tsconfig.build.json", "package.json"]
     },
     "//#check:browser": {
       "cache": true,
