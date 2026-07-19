@@ -79,6 +79,31 @@ describe("excerptRenderer", () => {
   });
 });
 
+describe("ac:link-wrapped page ref end-to-end (e2e-observed storage shape)", () => {
+  test("excerpt-include whose ref sits inside <ac:link> resolves through the walker + renderer", async () => {
+    // Walk the REAL Cloud storage shape (page ref wrapped in ac:link under the
+    // unnamed parameter) so the renderer sees exactly what production sees.
+    const pageStorage = `<ac:structured-macro ac:name="excerpt-include" ac:macro-id="x1">
+      <ac:parameter ac:name=""><ac:link><ri:page ri:content-title="Source" ri:space-key="DOCSY"/></ac:link></ac:parameter>
+    </ac:structured-macro>`;
+    const walked = storageToBlocks(pageStorage);
+    const unknown = walked.blocks.find((b) => b.type === "unknown");
+    if (unknown?.type !== "unknown") throw new Error("expected unknown block");
+
+    const sourceStorage = `<ac:structured-macro ac:name="excerpt"><ac:rich-text-body><p>Shared excerpt text</p></ac:rich-text-body></ac:structured-macro>`;
+    const c = port({ Source: { id: "s1", storage: sourceStorage } });
+
+    const res = await excerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
+      { name: "excerpt-include", params: unknown.params ?? [] },
+      ctx(c)
+    );
+    expect(res.kind).toBe("blocks");
+    if (res.kind === "blocks") {
+      expect(JSON.stringify(res.blocks)).toContain("Shared excerpt text");
+    }
+  });
+});
+
 describe("cross-renderer cycle guard", () => {
   test("include → multiexcerpt-include → back is bounded by shared visited/depth", async () => {
     // Page A `include`s page B; page B contains a multiexcerpt-include back to A.

@@ -10,7 +10,9 @@ import { exportDocx, type AssetRef } from "@atlcli/docx";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { preparePdfDocument } from "@atlcli/pdf";
 import type { PdfAssetRef } from "@atlcli/pdf";
+import type { ConfluenceClient } from "@atlcli/confluence";
 import {
+  confluenceContentPortFromClient,
   defaultExternalAssetPolicy,
   defaultExternalAssetFetcher,
   jiraIssuePortFromClient,
@@ -156,6 +158,51 @@ describe("trust routing — SSRF enforcement through the real engine seams", () 
     const assets = trustRoutingAssetFetcher(tokenFetcher, external);
     await assets.fetch({ url: "https://any-origin.example.com/x.png", pageId: "1" });
     expect(seen.length).toBe(1);
+  });
+});
+
+describe("confluenceContentPortFromClient — children port method pinning", () => {
+  test("getChildren uses the child-page endpoint (getChildrenWithPosition), never the CQL lookup", async () => {
+    // Pin the client method: the CQL-based client.getChildren lags behind
+    // fresh page creation (e2e-observed: a new child page was missing on the
+    // first export, present on retry) and has no position guarantee. The port
+    // MUST use getChildrenWithPosition (v2 child-page endpoint, real UI order,
+    // no indexing lag).
+    const calls: string[] = [];
+    const fake = {
+      async getChildrenWithPosition(parentId: string, opts?: { limit?: number }) {
+        calls.push(`getChildrenWithPosition:${parentId}:${opts?.limit}`);
+        return [
+          { id: "2", title: "Beta", position: 1 },
+          { id: "1", title: "Alpha", position: 0 },
+        ];
+      },
+      async getChildren() {
+        calls.push("getChildren");
+        return [];
+      },
+    } as unknown as ConfluenceClient;
+
+    const port = confluenceContentPortFromClient(fake);
+    const children = await port.getChildren("42", { limit: 51 });
+
+    expect(calls).toEqual(["getChildrenWithPosition:42:51"]);
+    expect(children).toEqual([
+      { id: "2", title: "Beta" },
+      { id: "1", title: "Alpha" },
+    ]);
+  });
+
+  test("port cap slices a fully-drained listing to the requested limit", async () => {
+    const many = Array.from({ length: 10 }, (_v, i) => ({ id: `${i}`, title: `P${i}`, position: i }));
+    const fake = {
+      async getChildrenWithPosition() {
+        return many;
+      },
+    } as unknown as ConfluenceClient;
+    const port = confluenceContentPortFromClient(fake);
+    const children = await port.getChildren("42", { limit: 3 });
+    expect(children.length).toBe(3);
   });
 });
 

@@ -125,8 +125,19 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
     },
     async getChildren(pageId, opts) {
       try {
-        const children = await client.getChildren(pageId, { limit: opts?.limit ?? 100 });
-        return children.map((c) => ({ id: c.id, title: c.title }));
+        // getChildrenWithPosition (the child-page endpoint), NOT the CQL-based
+        // client.getChildren: CQL indexing lags (e2e-observed: a freshly
+        // created child page was missing on first export, present on retry)
+        // and has no position guarantee. This endpoint returns real UI order
+        // with no indexing lag (pagination fixed by 002).
+        const children = await client.getChildrenWithPosition(pageId, {
+          limit: opts?.limit ?? 100,
+        });
+        // getChildrenWithPosition drains EVERY page (its `limit` is only the
+        // per-request page size); slice to the port contract's cap so the
+        // renderer's limit+1 truncation probe keeps working.
+        const cap = opts?.limit ?? 100;
+        return children.slice(0, cap).map((c) => ({ id: c.id, title: c.title }));
       } catch (err) {
         classify(err, "confluence");
       }

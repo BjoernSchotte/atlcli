@@ -26,6 +26,58 @@ describe("walker: multiexcerpt definition renders transparently (spec 004 E4)", 
   });
 });
 
+describe("walker: ac:link-wrapped page refs in macro parameters (e2e-observed)", () => {
+  // This is the REAL Cloud storage shape for include/excerpt-include: the page
+  // ref sits inside an <ac:link> wrapper under the unnamed parameter
+  // (e2e-observed on DOCSY — a direct-children-only scan degraded the macro to
+  // a "no resolvable page reference" placeholder).
+  const E2E_SHAPE = `<ac:structured-macro ac:name="excerpt-include" ac:macro-id="x1">
+    <ac:parameter ac:name=""><ac:link><ri:page ri:content-title="Source Page" ri:space-key="DOCSY"/></ac:link></ac:parameter>
+  </ac:structured-macro>`;
+
+  test("captures the ri:page ref through the ac:link wrapper", () => {
+    const { blocks } = storageToBlocks(E2E_SHAPE);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    expect(unknown?.type).toBe("unknown");
+    const unnamed = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "") : undefined;
+    expect(unnamed?.refs).toEqual([
+      { kind: "page", contentTitle: "Source Page", spaceKey: "DOCSY" },
+    ]);
+  });
+
+  test("captures an ri:attachment ref through an ac:image wrapper", () => {
+    const storage = `<ac:structured-macro ac:name="some-macro">
+      <ac:parameter ac:name="image"><ac:image><ri:attachment ri:filename="pic.png"/></ac:image></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const param = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "image") : undefined;
+    expect(param?.refs).toEqual([{ kind: "attachment", filename: "pic.png" }]);
+  });
+
+  test("an ri:page nested in a NON-wrapper element is still not captured", () => {
+    // Guard against a general deep scan: unrelated rich content inside a
+    // parameter must not be misread as a parameter ref.
+    const storage = `<ac:structured-macro ac:name="some-macro">
+      <ac:parameter ac:name="body"><div><ri:page ri:content-title="Not A Ref"/></div></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const param = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "body") : undefined;
+    expect(param?.refs).toBeUndefined();
+  });
+
+  test("direct ri:page children keep working unchanged", () => {
+    const storage = `<ac:structured-macro ac:name="include">
+      <ac:parameter ac:name=""><ri:page ri:content-id="123"/></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const unnamed = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "") : undefined;
+    expect(unnamed?.refs).toEqual([{ kind: "page", contentId: "123" }]);
+  });
+});
+
 describe("extractMacroBody (storage-based)", () => {
   test("finds a named multiexcerpt and returns a walkable fragment", () => {
     const fragment = extractMacroBody(DEFINITION, ["multiexcerpt-macro", "multiexcerpt"], "intro");
