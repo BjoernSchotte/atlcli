@@ -2,6 +2,7 @@
   "name": "@atlcli/jira",
   "version": "0.6.0",
   "license": "Apache-2.0",
+  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

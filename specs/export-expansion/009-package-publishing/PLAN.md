@@ -518,7 +518,7 @@ model); note it as the designated fallback.
 
 ### Publish prevention (do first — see Goal and Versioning precondition)
 
-- [ ] **Make every publishable package fail closed today, including
+- [x] **Make every publishable package fail closed today, including
       `apps/cli`.** Add explicit `private: true` to every `package.json`
       under `packages/*` and `apps/*` that has neither `private: true` nor
       an `"atlcli": { "publish": … }` classification yet — concretely
@@ -530,7 +530,7 @@ model); note it as the designated fallback.
       Architecture: Package graph specifies for the (currently inert)
       classification, enforced as a standing regression test starting now,
       not only once a publish pipeline exists.
-- [ ] Retire or convert `.github/workflows/release-core.yml` and
+- [x] Retire or convert `.github/workflows/release-core.yml` and
       `.github/workflows/release-cli.yml` into non-publishing wrappers
       (build+test only); remove or invalidate the `NPM_TOKEN` repo secret
       path they use. This is the acute risk while registry publishing is

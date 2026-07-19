@@ -1,23 +1,17 @@
-name: Release CLI
+name: CLI Build & Test
+
+# NOTE: npm registry publishing is deferred (spec 009 — package publishing).
+# This workflow used to `npm publish` @atlcli/cli using a long-lived NPM_TOKEN,
+# bypassing every packaging quality gate (and shipping a bin that pointed at raw
+# TypeScript source). That publish path has been removed. What remains is a manual
+# build+test sanity check for the CLI. No job here publishes to any registry.
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.2.1, 0.3.0, 1.0.0)'
-        required: true
-        type: string
-      dry_run:
-        description: 'Dry run (skip npm publish)'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
-  release:
+  build-and-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -28,80 +22,11 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup Node.js (for npm publish)
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Validate version format
-        run: |
-          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: Version must be in semver format (e.g., 0.2.1)"
-            exit 1
-          fi
-
       - name: Install dependencies
         run: bun install
 
       - name: Run tests
         run: bun test
 
-      - name: Update CLI version
-        run: |
-          cd apps/cli
-          npm version ${{ inputs.version }} --no-git-tag-version
-
       - name: Build CLI
         run: bun run build
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit version bump
-        run: |
-          git add apps/cli/package.json
-          git commit -m "chore: release CLI v${{ inputs.version }}"
-
-      - name: Create git tag
-        run: |
-          git tag -a "cli-v${{ inputs.version }}" -m "CLI v${{ inputs.version }}"
-
-      - name: Push changes
-        run: |
-          git push origin main
-          git push origin "cli-v${{ inputs.version }}"
-
-      - name: Publish @atlcli/cli to npm
-        if: ${{ !inputs.dry_run }}
-        run: |
-          cd apps/cli
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: cli-v${{ inputs.version }}
-          name: CLI v${{ inputs.version }}
-          body: |
-            ## atlcli CLI v${{ inputs.version }}
-
-            ### Installation
-
-            ```bash
-            # Install globally
-            npm install -g @atlcli/cli@${{ inputs.version }}
-
-            # Or run directly with bunx/npx
-            bunx @atlcli/cli@${{ inputs.version }} --help
-            ```
-
-            ### What's New
-
-            See the [commit history](https://github.com/${{ github.repository }}/commits/cli-v${{ inputs.version }}) for changes.
-          draft: false
-          prerelease: false
