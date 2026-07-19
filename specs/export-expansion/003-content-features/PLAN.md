@@ -744,7 +744,7 @@ real instance.
          wrapping steps 3–4, so a failing assertion still deletes the page
          (workflow rule, tightened so a failed run never leaves residue in
          `DOCSY`).
-- [ ] Run `bun run typecheck` and the full `bun test` before commit; both
+- [x] Run `bun run typecheck` and the full `bun test` before commit; both
       engines' exhaustive switches must compile with no remaining `never`
       gaps for the new block variants.
 
