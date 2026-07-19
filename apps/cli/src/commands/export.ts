@@ -100,6 +100,18 @@ export async function handleExport(
   }
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
   const noTocPrompt = hasFlag(flags, "no-toc-prompt");
+  // Spec 003 C4 progressive disclosure: keep scroll-only/scroll-ignore bodies
+  // for debugging ("why is section X missing?"). Engine option:
+  // exportControls "passthrough". ts single-page only for now — the tree/space
+  // composition walks pages in @atlcli/confluence's tree fetch, which does not
+  // thread export controls yet.
+  const keepIgnored = hasFlag(flags, "keep-ignored");
+  if (keepIgnored && engine !== "ts") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored requires --engine ts.");
+  }
+  if (keepIgnored && request.scopeKind !== "page") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored is not supported with --scope tree/space yet.");
+  }
 
   if (!templatePath) {
     fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
@@ -160,6 +172,7 @@ export async function handleExport(
       resolvedTemplatePath,
       outputPath,
       embedImages,
+      keepIgnored,
       opts,
     });
     return;
@@ -741,6 +754,8 @@ interface TsEngineArgs {
   resolvedTemplatePath: string;
   outputPath: string;
   embedImages: boolean;
+  /** `--keep-ignored`: run export-control macros in passthrough mode (spec 003). */
+  keepIgnored?: boolean;
   opts: OutputOptions;
 }
 
@@ -771,6 +786,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     resolvedTemplatePath,
     outputPath,
     embedImages,
+    keepIgnored,
     opts,
   } = args;
   // Everything local (engine import + template bytes) loads WHILE the page
@@ -871,6 +887,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         modificationDate: templateStat.mtime,
       },
       embedImages,
+      ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
       deps: {
         getSpace: async (key: string) => (await spaceInfo(key)).space,
         getCurrentUser: currentUser,
@@ -1309,6 +1326,8 @@ Options:
   --no-images         Do not embed images from page attachments (default embeds)
   --no-merge          Keep children as separate array (for loops in templates)
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
+  --keep-ignored      Keep scroll-only/scroll-ignore content for debugging
+                      (--engine ts, single page; export is marked in the report)
   --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
                       (isomorphic @atlcli/docx engine — same as the browser
                       extension; $scroll.* placeholders + image embedding +
