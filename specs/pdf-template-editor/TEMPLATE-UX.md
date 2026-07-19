@@ -4,6 +4,8 @@ Status: **Product direction — proposed follow-up to the built-in PDF export**
 
 Related spec: `007-pdf-export`
 
+Implementation plan: [`PLAN.md`](./PLAN.md)
+
 This document captures the product decision for customizable PDF output after the
 built-in `atlcli` Typst template has shipped and passed its quality gates. It is not part
 of the implementation scope of Spec 007 itself.
@@ -351,7 +353,7 @@ The engine should own safe default implementations for semantic components such 
 callouts and statuses. A template may override documented hooks, but generated content
 must not depend on undocumented template-local functions. The current direct imports of
 `atlcli-doc`, `callout` and `status-badge` need to become a stable
-`atlcli.pdf-template/v1` boundary first.
+`wiki.pdf-template/v1` boundary first.
 
 Example manifest:
 
@@ -363,7 +365,7 @@ Example manifest:
   "version": "1.0.0",
   "engine": {
     "kind": "typst",
-    "api": "atlcli.pdf-template/v1",
+    "api": "wiki.pdf-template/v1",
     "entry": "template.typ"
   },
   "settings": {
@@ -449,7 +451,7 @@ documentation only and cannot stand in for compilation.
 ## 10. Delivery order
 
 1. Finish and prove the built-in Spec 007 template and export pipeline.
-2. Stabilize `atlcli.pdf-template/v1` around `render(meta, body, settings)`.
+2. Stabilize `wiki.pdf-template/v1` around `render(meta, body, settings)`.
 3. Ship two or three curated templates with manifest-generated brand settings.
 4. Add Git folder validation and deterministic `.atlcli-template` packaging.
 5. Add package import, compiler-backed preview and diagnostics to the PDF tab.
