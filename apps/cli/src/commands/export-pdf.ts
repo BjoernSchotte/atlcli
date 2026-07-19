@@ -16,13 +16,20 @@
 import { lstat, open, rename, link, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import type { OutputOptions } from "@atlcli/core";
+import { buildConfluenceUrl, type OutputOptions } from "@atlcli/core";
 import {
+  SpaceHomepageError,
+  composeChapters,
+  confluenceTreeSource,
+  fetchExportTree,
   storageToBlocks,
   resolveExportMentions,
+  type ComposeOptions,
   type ConfluenceClient,
+  type ConfluencePageDetails,
   type ExportBlock,
   type ExportNote,
+  type ExportProgressCallback,
 } from "@atlcli/confluence";
 import {
   normalizePdfLocale,
@@ -42,7 +49,7 @@ import {
   type Issue,
   type SourcePageEntry,
 } from "./export-report.js";
-import type { ParsedExportRequest } from "./export-request.js";
+import { buildExportScope, type ParsedExportRequest } from "./export-request.js";
 import { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup } from "./export-internals.js";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 
@@ -215,6 +222,35 @@ function slugFilename(pageId: string, title: string): string {
   return `${pageId}${slug ? `-${slug}` : ""}.pdf`;
 }
 
+/**
+ * Progress → stderr only (stdout stays clean for `--report json`). In `--json`
+ * mode each event is one JSONL line; otherwise a single rewriting status line.
+ */
+function makePdfProgress(opts: OutputOptions): { report: ExportProgressCallback; clear: () => void } {
+  let dirty = false;
+  const report: ExportProgressCallback = (event) => {
+    if (opts.json) {
+      process.stderr.write(`${JSON.stringify(event)}\n`);
+      return;
+    }
+    const total = event.total === null ? "?" : String(event.total);
+    const detail = event.detail ? ` ${event.detail}` : "";
+    process.stderr.write(`\r${`[${event.phase}] ${event.done}/${total}${detail}`.slice(0, 120).padEnd(120)}`);
+    dirty = true;
+  };
+  return { report, clear: () => { if (!opts.json && dirty) process.stderr.write(`\r${" ".repeat(120)}\r`); } };
+}
+
+interface ResolvedScope {
+  metaPage: ConfluencePageDetails;
+  blocks: ExportBlock[];
+  sourceNotes: ExportNote[];
+  complete: boolean;
+  sourcePages: SourcePageEntry[];
+  outNameKey: string;
+  mentionUnresolved: number;
+}
+
 export interface ExportPdfArgs {
   client: ConfluenceClient;
   profile: { name?: string; email?: string };
@@ -230,6 +266,104 @@ export interface ExportPdfArgs {
 }
 
 /**
+ * Resolve the export scope into ONE composed block list. Page scope walks a
+ * single page (with page context so attachment ImageSources carry pageId);
+ * tree/space scope drives folder 002's shared `fetchExportTree` →
+ * `composeChapters` orchestration and feeds the composed blocks straight into
+ * the same `runPdfExport` call (artifact-cardinality contract: always one file).
+ */
+async function resolveScope(
+  args: ExportPdfArgs,
+  signal: AbortSignal,
+  onProgress: ExportProgressCallback
+): Promise<ResolvedScope> {
+  const { client, request, profile } = args;
+
+  if (request.scopeKind === "page") {
+    const pageId = await resolvePageIdThrowing(client, request.pageRef!, signal);
+    const page = await client.getPageDetails(pageId, { signal });
+    const spaceKey = page.spaceKey ?? "UNKNOWN";
+    const walked = storageToBlocks(page.storage, {
+      exporter: "pdf",
+      pageContext: { id: pageId, ...(page.version ? { version: page.version } : {}), spaceKey },
+    });
+    const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+    const sourceNotes: ExportNote[] = [...walked.notes];
+    if (mention.unresolved > 0) {
+      sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
+    }
+    return {
+      metaPage: page,
+      blocks: mention.blocks,
+      sourceNotes,
+      complete: true,
+      sourcePages: [{ id: pageId, title: page.title, notes: walked.notes.map((n) => noteToIssue(n, "compose", pageId)) }],
+      outNameKey: pageId,
+      mentionUnresolved: mention.unresolved,
+    };
+  }
+
+  // --- tree / space scope (spec 008 T3.3, reusing folder 002's orchestration) ---
+  let rootId: string;
+  if (request.scopeKind === "space") {
+    const homepageId = await client.getSpaceHomepageId(request.spaceKey!, { signal });
+    if (!homepageId) throw new SpaceHomepageError(request.spaceKey!);
+    rootId = homepageId;
+  } else {
+    rootId = await resolvePageIdThrowing(client, request.pageRef!, signal);
+  }
+  const scope = buildExportScope(request, rootId);
+  const treeResult = await fetchExportTree(confluenceTreeSource(client), scope, {
+    ...(request.labels ? { labels: request.labels } : {}),
+    completenessMode: request.completenessMode,
+    ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+    ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+    signal,
+    onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
+  });
+
+  const resolveExternalUrl: NonNullable<ComposeOptions["resolveExternalUrl"]> = (target, anchor) => {
+    let path: string;
+    if (target.contentId) {
+      path = target.spaceKey ? `spaces/${target.spaceKey}/pages/${target.contentId}` : `pages/viewpage.action?pageId=${target.contentId}`;
+    } else if (target.spaceKey) {
+      path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
+    } else {
+      path = `search?text=${encodeURIComponent(target.contentTitle)}`;
+    }
+    const url = buildConfluenceUrl(profile as Parameters<typeof buildConfluenceUrl>[0], path);
+    return anchor ? `${url}#${anchor}` : url;
+  };
+  const composed = composeChapters(treeResult.nodes, { resolveExternalUrl });
+  const rootDetails = await client.getPageDetails(rootId, { signal });
+
+  const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+  const sourceNotes: ExportNote[] = [...treeResult.notes, ...composed.notes];
+  if (mention.unresolved > 0) {
+    sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
+  }
+
+  const pageNodes = treeResult.nodes.filter(
+    (node): node is Extract<typeof node, { kind: "page" }> => node.kind === "page"
+  );
+  const sourcePages: SourcePageEntry[] = pageNodes.map((node) => ({
+    id: node.pageId,
+    title: node.title,
+    notes: node.notes.map((note) => noteToIssue(note, "compose", node.pageId)),
+  }));
+
+  return {
+    metaPage: rootDetails,
+    blocks: mention.blocks,
+    sourceNotes,
+    complete: treeResult.complete,
+    sourcePages,
+    outNameKey: request.scopeKind === "space" ? request.spaceKey! : rootId,
+    mentionUnresolved: mention.unresolved,
+  };
+}
+
+/**
  * The PDF export host wiring. Returns a typed {@link ExportOutcome} — never
  * throws past this boundary, never calls `fail()`.
  */
@@ -241,61 +375,45 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
   const onSignal = (): void => controller.abort();
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
+  const progress = makePdfProgress(opts);
 
   const format = "pdf" as const;
 
   try {
-    // --- resolve the single page (T3.2). Tree/space scope is wired in T3.3. ---
-    const pageId = await resolvePageIdThrowing(client, request.pageRef!, controller.signal);
-    const page = await client.getPageDetails(pageId, { signal: controller.signal });
-    const spaceKey = page.spaceKey ?? "UNKNOWN";
-
-    // Walk storage WITH page context so attachment ImageSources carry pageId
-    // (needed by the token asset resolver's (pageId, filename) lookup).
-    const { blocks: rawBlocks, notes: walkNotes } = storageToBlocks(page.storage, {
-      exporter: "pdf",
-      pageContext: { id: pageId, ...(page.version ? { version: page.version } : {}), spaceKey },
-    });
-
-    // Resolve @mentions to display names, matching the extension pipeline
-    // (parity gap the CLI had until now).
-    const mention = await resolveExportMentions(rawBlocks, tokenMentionLookup(client));
-    const blocks: ExportBlock[] = mention.blocks;
-    const sourceNotes: ExportNote[] = [...walkNotes];
-    if (mention.unresolved > 0) {
-      sourceNotes.push({
-        level: "warning",
-        code: "mention-unresolved",
-        message: `${mention.unresolved} mention(s) could not be resolved to a display name.`,
-      });
-    }
+    // Resolve the scope into a single composed block list (T3.3:
+    // `--scope tree|space` always yields exactly ONE artifact, never one file
+    // per page). Mentions are resolved across the whole document with one
+    // deduped bulk lookup.
+    const scope = await resolveScope(args, controller.signal, progress.report);
 
     const locale = normalizePdfLocale(undefined);
     const metadata: PdfExportMetadata = {
-      title: page.title,
-      space: spaceKey,
-      ...(page.version !== undefined ? { version: page.version } : {}),
-      ...(page.createdBy?.displayName ? { author: page.createdBy.displayName } : {}),
+      title: scope.metaPage.title,
+      space: scope.metaPage.spaceKey ?? "UNKNOWN",
+      ...(scope.metaPage.version !== undefined ? { version: scope.metaPage.version } : {}),
+      ...(scope.metaPage.createdBy?.displayName ? { author: scope.metaPage.createdBy.displayName } : {}),
       exporter: "atlcli",
       language: locale.language,
       ...(locale.region ? { region: locale.region } : {}),
       exportedAt: args.exportedAt ?? new Date(),
     };
 
-    // Choose the output path: --output names the file; --out-dir chooses a
-    // directory and derives a deterministic filename.
+    // Choose the output path: --output names the single file; --out-dir chooses
+    // a directory and derives a deterministic filename.
     const outputPath = args.outDir
-      ? join(resolve(args.outDir), slugFilename(pageId, page.title))
+      ? join(resolve(args.outDir), slugFilename(scope.outNameKey, scope.metaPage.title))
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
     const report = await runPdfExport(
       {
-        blocks,
-        sourceNotes,
+        blocks: scope.blocks,
+        sourceNotes: scope.sourceNotes,
         metadata,
         filename: basename(outputPath),
         signal: controller.signal,
+        complete: scope.complete,
+        onProgress: progress.report,
       },
       {
         assets: cliPdfAssetResolver(client, baseUrl, { noCache: args.noCache }),
@@ -303,14 +421,12 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         output: filePdfOutputSink(outputPath, { force: args.force }),
       }
     );
+    progress.clear();
 
-    const sourcePages: SourcePageEntry[] = [
-      { id: pageId, title: page.title, notes: walkNotes.map((n) => noteToIssue(n, "compose", pageId)) },
-    ];
     const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics);
     const allIssues: Issue[] = [
       ...issues,
-      ...(mention.unresolved > 0
+      ...(scope.mentionUnresolved > 0
         ? [{ code: "mention-unresolved", severity: "warning" as const, phase: "prepare", retryable: false }]
         : []),
     ];
@@ -319,7 +435,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       ok: true,
       report: buildReport({
         format,
-        sourcePages,
+        sourcePages: scope.sourcePages,
         outputDetails: [outputDetail],
         issues: allIssues,
         timings: { ...report.timings, totalMs: Date.now() - startedAt },
@@ -327,6 +443,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       }),
     };
   } catch (error) {
+    progress.clear();
     const classified =
       error instanceof PdfUsageError
         ? { exitCode: 1, issue: { code: "usage-error", severity: "error" as const, phase: "usage", retryable: false, message: error.message } }

@@ -536,14 +536,14 @@ process, with the port shape committed. Timebox: 2 days.
 Blocked on folder 002 (Lane A, T1.1–T1.3), which owns the flag syntax (see
 Dependencies above). Wire after its merge.
 
-- [ ] Do **not** re-implement scope/label flag parsing here: folder 002 owns
+- [x] Do **not** re-implement scope/label flag parsing here: folder 002 owns
       `--scope page|tree|space`, `--space`, `--max-depth`, `--max-pages`,
       `--label-include`/`--label-exclude` (comma-separated),
       `--label-exclude-mode` in `apps/cli/src/commands/export.ts` and
       produces the serializable `ExportScope`/`LabelFilter`. If 002 lands a
       different shape than described here, only this bullet and the next
       one change — see "Folder 002 API drift" in Risks.
-- [ ] Wire `--scope tree|space` for `--format pdf`: folder 002's tree fetch +
+- [x] Wire `--scope tree|space` for `--format pdf`: folder 002's tree fetch +
       chapter composition (`packages/confluence/src/export-scope.ts`,
       `tree-fetch.ts`, `compose-document.ts` — names per UMSETZUNGSPLAN T1.1)
       feed the composed block list into the same `runPdfExport` call.
@@ -554,7 +554,7 @@ Dependencies above). Wire after its merge.
       resolves an internal ambiguity between this bullet and the earlier
       draft of `--out-dir`/the report schema, which read as "one file per
       page ID" (see T3.4 below, now corrected to match).
-- [ ] Thread page context through PDF asset resolution for multi-page scope:
+- [x] Thread page context through PDF asset resolution for multi-page scope:
       `PdfAssetRef` (`packages/pdf/src/types.ts:14`) has no `pageId` field
       today, and `preparePdfDocument`'s image case
       (`packages/pdf/src/prepare.ts:218-227`) resolves attachments by
@@ -571,15 +571,15 @@ Dependencies above). Wire after its merge.
       after folder 007's T2.1 has merged (per the file-ownership conflict
       noted in Dependencies) as a small additive `types.ts`/`prepare.ts`
       change, not a rework of either file.
-- [ ] Wire the same flags for `--format docx --engine ts` through the composed
+- [x] Wire the same flags for `--format docx --engine ts` through the composed
       blocks path in `apps/cli/src/commands/export.ts:exportWithTsEngine`;
       `--scope tree|space` with `--engine python` is a usage error pointing at
       `--engine ts` (the python engine is frozen; see T3.5).
-- [ ] Replace the ts-engine `--include-children` limitation note ("not
+- [x] Replace the ts-engine `--include-children` limitation note ("not
       supported by the ts engine yet", `export.ts:760`) with `--scope tree`;
       keep `--include-children` as a deprecated alias for the python engine
       only.
-- [ ] Progress reporting for multi-page scopes: surface `onPhase` +
+- [x] Progress reporting for multi-page scopes: surface `onPhase` +
       per-page progress on stderr (stdout stays clean for `--report json`).
 - [ ] Docs: scope/label section in `src/content/docs/confluence/export.md`
       cross-linking the tree-export feature guide owned by folder 002.
