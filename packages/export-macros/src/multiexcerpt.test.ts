@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { storageToBlocks } from "@atlcli/confluence";
+import { storageToBlocks, extractMacroBody } from "@atlcli/confluence";
 import type { MacroParameter } from "@atlcli/confluence";
 import { multiexcerptIncludeRenderer } from "./multiexcerpt.js";
 import { scrollTableLayoutRenderer } from "./table-layout.js";
@@ -44,7 +44,7 @@ const excerptStorage = `<ac:structured-macro ac:name="multiexcerpt-macro">
 describe("multiexcerptIncludeRenderer", () => {
   test("happy path (PageWithExcerpt / MultiExcerptName spelling)", async () => {
     const c = port({ Glossary: { id: "g1", storage: excerptStorage } });
-    const res = await multiexcerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "multiexcerpt-include", params: [param("PageWithExcerpt", "Glossary"), param("MultiExcerptName", "intro")] },
       ctx(c)
     );
@@ -56,7 +56,7 @@ describe("multiexcerptIncludeRenderer", () => {
 
   test("accepts the legacy page / name spelling too", async () => {
     const c = port({ Glossary: { id: "g1", storage: excerptStorage } });
-    const res = await multiexcerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "multiexcerpt-include", params: [param("page", "Glossary"), param("name", "intro")] },
       ctx(c)
     );
@@ -65,7 +65,7 @@ describe("multiexcerptIncludeRenderer", () => {
 
   test("missing page → skip + note", async () => {
     const c = port({});
-    const res = await multiexcerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "multiexcerpt-include", params: [param("page", "Nope"), param("name", "intro")] },
       ctx(c)
     );
@@ -76,7 +76,7 @@ describe("multiexcerptIncludeRenderer", () => {
   test("cycle guard fires with a note and terminates", async () => {
     const c = port({ Glossary: { id: "g1", storage: excerptStorage } });
     const visited = new Set<string>(["Glossary#intro"]);
-    const res = await multiexcerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "multiexcerpt-include", params: [param("page", "Glossary"), param("name", "intro")] },
       ctx(c, { visited })
     );
@@ -95,7 +95,7 @@ describe("multiexcerptIncludeRenderer", () => {
         return [];
       },
     };
-    const res = await multiexcerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await multiexcerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "multiexcerpt-include", params: [param("page", "Glossary"), param("name", "intro")] },
       ctx(c)
     );

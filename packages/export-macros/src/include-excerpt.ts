@@ -16,8 +16,7 @@ import type {
   MacroRenderResult,
 } from "./types.js";
 import { isAbortError, isPortError } from "./types.js";
-import { extractMacroBody } from "./extract.js";
-import type { StorageToBlocksDep } from "./deps.js";
+import type { ExtractMacroBodyDep, StorageToBlocksDep } from "./deps.js";
 
 const EXCERPT_DEFINITION_MACROS = ["excerpt"];
 const MAX_DEPTH = 5;
@@ -124,6 +123,7 @@ export function includeRenderer(deps: { storageToBlocks: StorageToBlocksDep }): 
 
 export function excerptIncludeRenderer(deps: {
   storageToBlocks: StorageToBlocksDep;
+  extractMacroBody: ExtractMacroBodyDep;
 }): MacroRenderer {
   return {
     id: "excerpt-include",
@@ -142,11 +142,15 @@ export function excerptIncludeRenderer(deps: {
       try {
         const page = await fetchByRef(ctx.confluence, ref, ctx.page.spaceKey);
         if (!page) return { kind: "skip", notes: [notFound(m.name)] };
-        const walked = deps.storageToBlocks(page.storage, {
-          pageContext: { id: page.id, version: page.version, spaceKey: ctx.page.spaceKey },
-        });
-        const body = extractMacroBody(walked.blocks, EXCERPT_DEFINITION_MACROS, excerptName);
-        if (!body || body.length === 0) {
+        // Extract the excerpt fragment from the source STORAGE, then walk it
+        // (storage-based — see ExtractMacroBodyDep).
+        const fragment = deps.extractMacroBody(page.storage, EXCERPT_DEFINITION_MACROS, excerptName);
+        const walked = fragment
+          ? deps.storageToBlocks(fragment, {
+              pageContext: { id: page.id, version: page.version, spaceKey: ctx.page.spaceKey },
+            })
+          : undefined;
+        if (!walked || walked.blocks.length === 0) {
           return {
             kind: "skip",
             notes: [
@@ -159,7 +163,7 @@ export function excerptIncludeRenderer(deps: {
             ],
           };
         }
-        return { kind: "blocks", blocks: body, notes: [rendered(m.name, "included excerpt")] };
+        return { kind: "blocks", blocks: walked.blocks, notes: [rendered(m.name, "included excerpt")] };
       } catch (err) {
         if (isAbortError(err)) throw err;
         if (isPortError(err)) return portFail(err, m.name);

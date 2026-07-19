@@ -193,7 +193,14 @@ export async function preparePdfDocument(
                 resolver.resolve(
                   block.source.kind === "attachment"
                     ? { kind: "attachment", filename: block.source.filename }
-                    : { kind: "external", url: block.source.url }
+                    : {
+                        kind: "external",
+                        url: block.source.url,
+                        // Provenance marker (spec 004): export_view-derived URLs
+                        // are untrusted; the host resolver routes them through
+                        // its policy-checked external fetcher.
+                        ...(block.source.trust ? { trust: block.source.trust } : {}),
+                      }
                 )
               );
               const assetPath = addAsset(resolved, "image", {

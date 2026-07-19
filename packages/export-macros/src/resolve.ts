@@ -304,6 +304,10 @@ function wrapPorts(
   documentBlocks: readonly ExportBlock[] | undefined
 ): MacroExportContext {
   const siteId = ctx.siteId ?? "";
+  // Circuit-breaker key is service + site (consistent with the dedup key's
+  // siteId): a rate-limited Jira on site A must not short-circuit a healthy
+  // Jira on site B in a multi-profile/multi-site export.
+  const breakerKey = (service: string): string => `${service}|${siteId}`;
   const guard = (service: string, key: string, fn: () => Promise<unknown>): Promise<unknown> => {
     if (ctx.signal?.aborted) {
       return Promise.reject(new DOMException("Macro resolution aborted.", "AbortError"));
@@ -311,7 +315,7 @@ function wrapPorts(
     if (shared.deadlineAt !== undefined && shared.now() > shared.deadlineAt) {
       return Promise.reject(new DeadlineError());
     }
-    if (shared.openServices.has(service)) {
+    if (shared.openServices.has(breakerKey(service))) {
       return Promise.reject(
         portError("rate-limited", `${service} is rate-limited; skipping further calls.`, { service })
       );
@@ -323,7 +327,7 @@ function wrapPorts(
         return await fn();
       } catch (err) {
         if (isPortError(err) && err.kind === "rate-limited") {
-          const svc = err.service ?? service;
+          const svc = breakerKey(err.service ?? service);
           if (!shared.openServices.has(svc)) shared.openServices.set(svc, shared.now());
         }
         throw err;

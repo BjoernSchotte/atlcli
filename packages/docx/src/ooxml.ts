@@ -186,11 +186,36 @@ export function escapeFieldArgument(value: string): string {
 }
 
 /**
+ * Defense-in-depth scheme allowlist for {@link hyperlinkField} (spec 004).
+ * Mirrors `isSafeLinkScheme` in `@atlcli/confluence`'s html-to-blocks: control
+ * characters ANYWHERE in the URL are stripped before scheme detection (a URL
+ * parser strips C0 controls and space, so `java\tscript:` IS `javascript:`);
+ * scheme-less (relative) URLs and `http(s):`/`mailto:` pass, everything else
+ * fails. The converters upstream already enforce this — the re-check here means
+ * a future caller (or a bypassed converter) can never turn `javascript:`/`file:`
+ * into a live Word HYPERLINK field.
+ */
+export function isSafeHyperlinkUrl(url: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  const normalized = url.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
+  if (normalized === "") return false;
+  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true; // relative
+  return (
+    normalized.startsWith("http:") ||
+    normalized.startsWith("https:") ||
+    normalized.startsWith("mailto:")
+  );
+}
+
+/**
  * A hyperlink built as a Word `HYPERLINK` field (no relationship needed), with
  * the given inner runs. The URL is neutralized against field-code injection
  * (see {@link escapeFieldArgument}) then XML-escaped for the instruction body.
+ * URLs failing {@link isSafeHyperlinkUrl} degrade to the plain inner runs —
+ * the link text survives, the live field target does not.
  */
 export function hyperlinkField(url: string, innerRuns: string): string {
+  if (!isSafeHyperlinkUrl(url)) return innerRuns;
   const instr = esc(escapeFieldArgument(url));
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +

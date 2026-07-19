@@ -1048,7 +1048,14 @@ function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
       filename: block.source.filename,
     };
   }
-  return { url: block.source.url, pageId };
+  // External image: carry the provenance marker (spec 004) so the host's asset
+  // fetcher can route untrusted export_view-derived URLs through its stricter
+  // policy-checked fetcher instead of an unrestricted fetch.
+  return {
+    url: block.source.url,
+    pageId,
+    ...(block.source.trust ? { trust: block.source.trust } : {}),
+  };
 }
 
 /** Replace the paragraph containing `$scroll.content` with the rawxml tag. */

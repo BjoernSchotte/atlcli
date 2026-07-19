@@ -48,6 +48,7 @@
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/jira": "workspace:*",
+        "@atlcli/pdf": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
       },

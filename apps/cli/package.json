@@ -10,6 +10,7 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/jira": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",

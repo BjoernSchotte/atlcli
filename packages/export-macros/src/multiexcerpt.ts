@@ -15,8 +15,7 @@ import type {
   MacroRenderResult,
 } from "./types.js";
 import { isAbortError, isPortError } from "./types.js";
-import { extractMacroBody } from "./extract.js";
-import type { StorageToBlocksDep } from "./deps.js";
+import type { ExtractMacroBodyDep, StorageToBlocksDep } from "./deps.js";
 
 const INCLUDE_MACROS = ["multiexcerpt-include-macro", "multiexcerpt-include"];
 const DEFINITION_MACROS = ["multiexcerpt-macro", "multiexcerpt"];
@@ -24,6 +23,7 @@ const MAX_DEPTH = 5;
 
 export function multiexcerptIncludeRenderer(deps: {
   storageToBlocks: StorageToBlocksDep;
+  extractMacroBody: ExtractMacroBodyDep;
 }): MacroRenderer {
   return {
     id: "multiexcerpt-include",
@@ -52,16 +52,22 @@ export function multiexcerptIncludeRenderer(deps: {
         if (!page) {
           return { kind: "skip", notes: [notFoundNote(m.name, pageTitle)] };
         }
-        const walked = deps.storageToBlocks(page.storage, {
+        // Extract the named excerpt from the SOURCE STORAGE (the walker renders
+        // definition macros transparently, so a walked tree can no longer
+        // locate them), then walk just that fragment.
+        const fragment = deps.extractMacroBody(page.storage, DEFINITION_MACROS, name);
+        if (!fragment) {
+          return { kind: "skip", notes: [noFragmentNote(m.name, name, pageTitle)] };
+        }
+        const walked = deps.storageToBlocks(fragment, {
           pageContext: { id: page.id, version: page.version, spaceKey: ctx.page.spaceKey },
         });
-        const body = extractMacroBody(walked.blocks, DEFINITION_MACROS, name);
-        if (!body || body.length === 0) {
+        if (walked.blocks.length === 0) {
           return { kind: "skip", notes: [noFragmentNote(m.name, name, pageTitle)] };
         }
         return {
           kind: "blocks",
-          blocks: body,
+          blocks: walked.blocks,
           notes: [
             {
               level: "info",

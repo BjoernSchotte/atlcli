@@ -273,6 +273,49 @@ describe("resolveMacroBlocks — circuit breaker", () => {
     // Only the first instance actually hits the port; the rest short-circuit.
     expect(calls).toBe(1);
   });
+
+  test("breaker is keyed by service+siteId — a rate-limited site A never short-circuits site B", async () => {
+    const calls: string[] = [];
+    const jiraFor = (site: string): JiraIssuePort => ({
+      async getIssue(): Promise<JiraIssueRef> {
+        calls.push(site);
+        if (site === "site-a") throw portError("rate-limited", "429", { service: "jira" });
+        return { key: "B-1", summary: "s", status: "Done", statusColor: "green", url: "/browse/B-1" };
+      },
+      async searchJql(): Promise<JiraIssueRef[]> {
+        return [];
+      },
+    });
+    const caller: MacroRenderer = {
+      id: "j",
+      macros: ["j"],
+      requiresLivePort: true,
+      async render(_m, c) {
+        try {
+          await c.jira!.getIssue("X");
+          return { kind: "blocks", blocks: [] };
+        } catch {
+          return { kind: "skip" };
+        }
+      },
+    };
+    const registry = createRegistry([caller]);
+    const input: StorageToBlocksResult = {
+      blocks: [
+        unknownBlock("j", { sourcePage: { id: "a1" } }),
+        unknownBlock("j", { sourcePage: { id: "b1" } }),
+      ],
+      notes: [walkerNote("j"), walkerNote("j")],
+    };
+    await resolveMacroBlocks(input, registry, ctx({ budget: { concurrency: 1 } }), {
+      contextFor: (page) =>
+        page?.id === "a1"
+          ? { ...ctx({ jira: jiraFor("site-a") }), siteId: "site-a" }
+          : { ...ctx({ jira: jiraFor("site-b") }), siteId: "site-b" },
+    });
+    // Site B's port is still called even though site A's breaker is open.
+    expect(calls).toEqual(["site-a", "site-b"]);
+  });
 });
 
 describe("resolveMacroBlocks — abort & guards", () => {

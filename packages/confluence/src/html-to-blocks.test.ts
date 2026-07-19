@@ -51,6 +51,27 @@ describe("htmlToExportBlocks — link scheme allowlist", () => {
     expect(p.content.some((n) => n.type === "link")).toBe(false);
     expect(p.content.some((n) => n.type === "text" && n.text === "click")).toBe(true);
   });
+
+  test("control characters EMBEDDED in the scheme cannot bypass the allowlist", () => {
+    // A URL parser strips C0 controls + space, so these ARE javascript:/file:.
+    expect(isSafeLinkScheme("java\tscript:alert(1)")).toBe(false);
+    expect(isSafeLinkScheme("java\nscript:alert(1)")).toBe(false);
+    expect(isSafeLinkScheme("java\rscript:alert(1)")).toBe(false);
+    expect(isSafeLinkScheme("\u0000javascript:alert(1)")).toBe(false);
+    expect(isSafeLinkScheme(" javascript:alert(1)")).toBe(false);
+    expect(isSafeLinkScheme("fi\tle:///etc/passwd")).toBe(false);
+    // Legit relative URLs (even with an inner space) still pass.
+    expect(isSafeLinkScheme("/wiki/My Page")).toBe(true);
+  });
+
+  test("entity-encoded control chars in href are decoded then still rejected", () => {
+    // &#9; = TAB, &#10; = LF — entity-decoded by the tokenizer before the check.
+    const { blocks } = htmlToExportBlocks(`<p><a href="java&#9;script:alert(1)">a</a><a href="java&#10;script:alert(2)">b</a></p>`);
+    const p = blocks[0] as Extract<ExportBlock, { type: "paragraph" }>;
+    expect(p.content.some((n) => n.type === "link")).toBe(false);
+    expect(p.content.some((n) => n.type === "text" && n.text === "a")).toBe(true);
+    expect(p.content.some((n) => n.type === "text" && n.text === "b")).toBe(true);
+  });
 });
 
 describe("htmlToExportBlocks — active content stripping", () => {
@@ -93,5 +114,19 @@ describe("htmlToExportBlocks — limits (adversarial)", () => {
   test("unknown tag is unwrapped, children kept", () => {
     const { blocks } = htmlToExportBlocks(`<custom-widget><p>inside</p></custom-widget>`);
     expect(blocks[0]).toMatchObject({ type: "paragraph" });
+  });
+
+  test("attribute flood past maxAttrsPerNode drops the node's attributes with a note", () => {
+    const flood = Array.from({ length: 60 }, (_v, i) => `data-x${i}="v"`).join(" ");
+    const { blocks, notes } = htmlToExportBlocks(
+      `<img src="https://cdn.example.com/a.png" ${flood}>`,
+      { maxAttrsPerNode: 40 }
+    );
+    // src was dropped along with the flood → no image block, truncation note.
+    expect(blocks.some((b) => b.type === "image")).toBe(false);
+    expect(notes.some((n) => n.code === "macro-degraded")).toBe(true);
+    // A normal img under the limit still works.
+    const ok = htmlToExportBlocks(`<img src="https://cdn.example.com/a.png">`, { maxAttrsPerNode: 40 });
+    expect(ok.blocks[0]).toMatchObject({ type: "image" });
   });
 });

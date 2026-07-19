@@ -8,11 +8,16 @@
  */
 import type { Profile } from "@atlcli/core";
 import {
+  ASSET_MAX_BYTES,
   ConfluenceClient,
+  escapeCqlValue,
+  extractMacroBody,
   storageToBlocks,
   htmlToExportBlocks,
   parsePageProperties,
 } from "@atlcli/confluence";
+import type { AssetFetcher, AssetRef, HostCallContext } from "@atlcli/docx";
+import type { PdfAssetResolver, PdfResolvedAsset } from "@atlcli/pdf";
 import { JiraClient, type JiraIssue } from "@atlcli/jira";
 import {
   defaultRegistry,
@@ -102,9 +107,12 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
   return {
     async getPageStorage(title, spaceKey) {
       try {
+        // `title`/`spaceKey` come from MACRO PARAMETERS (page-editor-controlled,
+        // a different trust boundary than CLI flags) — escape through the same
+        // escapeCqlValue every other CQL builder uses, never raw interpolation.
         const cql = spaceKey
-          ? `type=page AND space="${spaceKey}" AND title="${title.replace(/"/g, '\\"')}"`
-          : `type=page AND title="${title.replace(/"/g, '\\"')}"`;
+          ? `type=page AND space="${escapeCqlValue(spaceKey)}" AND title="${escapeCqlValue(title)}"`
+          : `type=page AND title="${escapeCqlValue(title)}"`;
         const results = await client.searchPages(cql, 1);
         if (results.length === 0) return undefined;
         return fetchStorage(results[0].id);
@@ -241,8 +249,20 @@ export function defaultExternalAssetFetcher(policy: ExternalAssetPolicy): Extern
 }
 
 async function readCapped(res: Response, maxBytes: number): Promise<Uint8Array> {
+  // Fail fast on a declared oversize body before reading ANY bytes — this also
+  // covers the (theoretical) no-stream fallback below without buffering first.
+  const declared = Number(res.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`external asset exceeded ${maxBytes} bytes`);
+  }
   const reader = res.body?.getReader();
   if (!reader) {
+    // Unreachable under Bun for any non-empty 2xx response (fetch always
+    // exposes a ReadableStream body); kept as a defensive fallback for other
+    // runtimes. The content-length pre-check above rejects declared oversize
+    // without buffering; the post-check below catches an undeclared one —
+    // by then the bytes are already in memory, which is why the streaming
+    // path (not this branch) is the primary enforcement.
     const buf = new Uint8Array(await res.arrayBuffer());
     if (buf.byteLength > maxBytes) throw new Error(`external asset exceeded ${maxBytes} bytes`);
     return buf;
@@ -270,6 +290,54 @@ async function readCapped(res: Response, maxBytes: number): Promise<Uint8Array> 
   return out;
 }
 
+/**
+ * Trust-routing DOCX asset fetcher (spec 004 — SSRF enforcement, sink side).
+ * `trust: "export-view"` refs (URLs from third-party-rendered macro HTML, NOT
+ * page-author content) go through the policy-checked, redirect-re-checked,
+ * byte-capped {@link ExternalAssetFetcher}; everything else (page-trust
+ * attachments and page-author external images) stays on the token fetcher's
+ * existing path unchanged.
+ */
+export function trustRoutingAssetFetcher(
+  inner: AssetFetcher,
+  external: ExternalAssetFetcher
+): AssetFetcher {
+  return {
+    async fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array> {
+      if (ref.trust === "export-view") {
+        const { bytes } = await external.fetch(ref.url, {
+          maxBytes: ASSET_MAX_BYTES,
+          ...(context?.signal ? { signal: context.signal } : {}),
+        });
+        return bytes;
+      }
+      return inner.fetch(ref, context);
+    },
+  };
+}
+
+/**
+ * Trust-routing PDF asset resolver (spec 004 — same enforcement for the PDF
+ * engine's seam). The CLI has no PDF export path yet (the extension owns PDF,
+ * T5.4), but the seam contract is identical, so the router lives here next to
+ * its DOCX sibling and is tested through the real `preparePdfDocument` seam.
+ */
+export function trustRoutingPdfAssetResolver(
+  inner: PdfAssetResolver,
+  external: ExternalAssetFetcher
+): PdfAssetResolver {
+  return {
+    async resolve(ref): Promise<PdfResolvedAsset> {
+      if (ref.kind === "external" && ref.trust === "export-view") {
+        if (!ref.url) throw new Error("external asset ref without url");
+        const { bytes, mediaType } = await external.fetch(ref.url, { maxBytes: ASSET_MAX_BYTES });
+        return { bytes, mediaType: mediaType ?? "application/octet-stream" };
+      }
+      return inner.resolve(ref);
+    },
+  };
+}
+
 export interface BuildMacroOptionsArgs {
   profile: Profile;
   confluence: ConfluenceClient;
@@ -288,7 +356,12 @@ export interface BuildMacroOptionsArgs {
  * a per-source-page context sharing the ports/policy across pages.
  */
 export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroResolutionOptions {
-  const registry = defaultRegistry({ storageToBlocks, htmlToExportBlocks, parsePageProperties });
+  const registry = defaultRegistry({
+    storageToBlocks,
+    htmlToExportBlocks,
+    parsePageProperties,
+    extractMacroBody,
+  });
   const confluencePort = confluenceContentPortFromClient(args.confluence);
   const exportViewPort = exportViewPortFromClient(args.confluence);
   const attachmentsPort = attachmentLookupFromClient(args.confluence);

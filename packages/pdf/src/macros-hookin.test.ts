@@ -60,4 +60,37 @@ describe("PDF macro hook-in", () => {
     expect(report.notes.some((n) => n.code === "unknown-macro")).toBe(true);
     expect(report.notes.some((n) => n.code === "macro-rendered-via")).toBe(false);
   });
+
+  it("additivity golden: absent vs. explicitly-undefined env.macros → byte-identical compiled input", async () => {
+    // The Typst source bundle is fully deterministic given fixed metadata, so
+    // this IS the byte-identical proof for the PDF engine (DoD: omitting the
+    // field reproduces today's output).
+    const capture = async (env: Parameters<typeof runPdfExport>[1]) => {
+      let main = "";
+      let template = "";
+      await runPdfExport(
+        { blocks, metadata, filename: "T.pdf", sourceNotes },
+        {
+          ...env,
+          compiler: {
+            compile: async (bundle) => {
+              main = bundle.main;
+              template = bundle.template;
+              return { pdf: validPdf, diagnostics: [], compilerVersion: "test" };
+            },
+          },
+        }
+      );
+      return { main, template };
+    };
+    const without = await capture({ assets, compiler, output: { emit: async () => {} } });
+    const withUndefined = await capture({
+      assets,
+      compiler,
+      output: { emit: async () => {} },
+      macros: undefined,
+    });
+    expect(withUndefined.main).toBe(without.main);
+    expect(withUndefined.template).toBe(without.template);
+  });
 });

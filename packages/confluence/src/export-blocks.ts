@@ -1158,6 +1158,15 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     return body ? walkBlocks(body.children, ctx) : [];
   }
 
+  // Multiexcerpt DEFINITION (`multiexcerpt-macro`/`multiexcerpt`, spec 004 E4):
+  // the macro that defines a named excerpt on its page renders its body
+  // transparently, same one-line treatment as `expand`. The *include*-side
+  // macros are resolved by the spec-004 renderer registry, not here.
+  if (macroName === "multiexcerpt-macro" || macroName === "multiexcerpt") {
+    const body = childByName(el, "ac:rich-text-body");
+    return body ? walkBlocks(body.children, ctx) : [];
+  }
+
   // Anchor macro (`<ac:structured-macro ac:name="anchor">`): the anchor name is
   // the macro's first (unnamed) parameter. Map it to the typed `anchor` block so
   // the composition anchor rewrite (spec 002) can register it as a jump target,

@@ -29,3 +29,15 @@ export type HtmlToExportBlocksDep = (html: string) => {
 export type ParsePagePropertiesDep = (
   storage: string
 ) => { id?: string; macroId?: string; rows: Map<string, string> }[];
+
+/**
+ * The `extractMacroBody` helper, injected (lives in `@atlcli/confluence` next
+ * to the tokenizer): finds the named definition macro in a page's storage and
+ * returns its rich-text body as a storage fragment for `storageToBlocks`.
+ * Storage-based because the walker renders definition macros transparently.
+ */
+export type ExtractMacroBodyDep = (
+  storage: string,
+  macroNames: readonly string[],
+  name: string
+) => string | undefined;

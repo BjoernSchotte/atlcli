@@ -6,6 +6,7 @@ export * from "./diff.js";
 export * from "./compose-document.js";
 export * from "./export-blocks.js";
 export * from "./html-to-blocks.js";
+export * from "./macro-extract.js";
 export * from "./export-progress.js";
 export * from "./export-scope.js";
 export * from "./in-order-limiter.js";

@@ -23,3 +23,20 @@ export function macroParamText(
   }
   return undefined;
 }
+
+/**
+ * Escape a value for use inside a double-quoted CQL string literal. Mirrors
+ * `@atlcli/confluence`'s `escapeCqlValue` (local re-implementation for the same
+ * package-boundary reason as {@link macroParamText}). Macro parameters are
+ * PAGE-EDITOR-controlled — a different trust boundary than CLI flags — so any
+ * CQL a renderer builds from them MUST pass through this, never raw
+ * interpolation (a `"` in a label would otherwise break out of the literal).
+ */
+export function escapeCqlValue(value: string): string {
+  return value
+    // Strip C0/C1 control characters (incl. NUL, newlines, DEL).
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}

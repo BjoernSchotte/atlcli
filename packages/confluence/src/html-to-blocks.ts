@@ -226,7 +226,7 @@ function walkBlocks(nodes: XmlNode[], budget: Budget, depth: number): ExportBloc
     }
     if (name === "img") {
       flush();
-      const img = imageOf(node);
+      const img = imageOf(node, budget);
       if (img) pushBlock(out, img, budget);
       continue;
     }
@@ -286,11 +286,26 @@ function walkTable(table: XmlElement, budget: Budget, depth: number): ExportBloc
   return rows.length > 0 ? { type: "table", rows } : undefined;
 }
 
-function imageOf(el: XmlElement): ExportBlock | undefined {
-  const src = el.attrs.src;
+/**
+ * Read an element's attributes under the `maxAttrsPerNode` budget: a node
+ * carrying more attributes than the limit has them all dropped (truncation
+ * note fires) — attribute floods can't grow the output or smuggle data past
+ * the caps.
+ */
+function attrsOf(el: XmlElement, budget: Budget): Record<string, string> {
+  if (Object.keys(el.attrs).length > budget.limits.maxAttrsPerNode) {
+    budget.truncated = true;
+    return {};
+  }
+  return el.attrs;
+}
+
+function imageOf(el: XmlElement, budget: Budget): ExportBlock | undefined {
+  const attrs = attrsOf(el, budget);
+  const src = attrs.src;
   if (!src) return undefined;
   const source: ImageSource = { kind: "external", url: src, trust: "export-view" };
-  const alt = el.attrs.alt || undefined;
+  const alt = attrs.alt || undefined;
   return { type: "image", source, ...(alt ? { alt } : {}) };
 }
 
@@ -324,7 +339,7 @@ function walkInlineElement(el: XmlElement, budget: Budget, marks: InlineMark[]):
   if (name === "br") return [{ type: "lineBreak" }];
 
   if (name === "a") {
-    const href = el.attrs.href ?? "";
+    const href = attrsOf(el, budget).href ?? "";
     const content = walkInlineNodes(el.children, budget, marks);
     if (isSafeLinkScheme(href)) {
       return [
@@ -345,13 +360,27 @@ function walkInlineElement(el: XmlElement, budget: Budget, marks: InlineMark[]):
   return walkInlineNodes(el.children, budget, nextMarks);
 }
 
-/** Allowlist matching the PDF serializer's `resolveLink` (spec 004 note). */
+/**
+ * Allowlist matching the PDF serializer's `resolveLink` (spec 004 note).
+ *
+ * Control characters ANYWHERE in the href are stripped before scheme
+ * detection, not just trimmed at the edges: browsers strip C0 controls and
+ * space when parsing URLs, so `"java\tscript:alert(1)"` (trivially produced by
+ * entity-decoded third-party HTML) IS `javascript:` to a URL parser — an
+ * edge-trim-only check would misclassify it as relative and let it through to
+ * a live DOCX HYPERLINK field.
+ */
 export function isSafeLinkScheme(href: string): boolean {
-  const trimmed = href.trim().toLowerCase();
-  if (trimmed === "") return false;
+  // eslint-disable-next-line no-control-regex
+  const normalized = href.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
+  if (normalized === "") return false;
   // Relative URLs (no scheme) are same-origin by construction → allowed.
-  if (!/^[a-z][a-z0-9+.-]*:/.test(trimmed)) return true;
-  return trimmed.startsWith("http:") || trimmed.startsWith("https:") || trimmed.startsWith("mailto:");
+  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true;
+  return (
+    normalized.startsWith("http:") ||
+    normalized.startsWith("https:") ||
+    normalized.startsWith("mailto:")
+  );
 }
 
 // ---- Helpers --------------------------------------------------------------

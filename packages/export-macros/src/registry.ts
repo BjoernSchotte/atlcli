@@ -7,6 +7,7 @@
  */
 import type { MacroRenderer, MacroRendererRegistry } from "./types.js";
 import type {
+  ExtractMacroBodyDep,
   HtmlToExportBlocksDep,
   ParsePagePropertiesDep,
   StorageToBlocksDep,
@@ -31,6 +32,7 @@ export interface DefaultRegistryDeps {
   storageToBlocks: StorageToBlocksDep;
   htmlToExportBlocks: HtmlToExportBlocksDep;
   parsePageProperties: ParsePagePropertiesDep;
+  extractMacroBody: ExtractMacroBodyDep;
 }
 
 /**
@@ -127,11 +129,17 @@ export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistr
     tocRenderer(),
     jiraMacroRenderer(),
     diagramMacroRenderer(),
-    multiexcerptIncludeRenderer({ storageToBlocks: deps.storageToBlocks }),
+    multiexcerptIncludeRenderer({
+      storageToBlocks: deps.storageToBlocks,
+      extractMacroBody: deps.extractMacroBody,
+    }),
     scrollTableLayoutRenderer(),
     childrenRenderer(),
     includeRenderer({ storageToBlocks: deps.storageToBlocks }),
-    excerptIncludeRenderer({ storageToBlocks: deps.storageToBlocks }),
+    excerptIncludeRenderer({
+      storageToBlocks: deps.storageToBlocks,
+      extractMacroBody: deps.extractMacroBody,
+    }),
     excerptRenderer(),
     pagePropertiesReportRenderer({
       storageToBlocks: deps.storageToBlocks,

@@ -25,6 +25,7 @@ import {
   composeChapters,
   confluenceTreeSource,
   fetchExportTree,
+  storageToBlocks,
   storageToMarkdown,
   type ComposeOptions,
   type ExportBlock,
@@ -204,6 +205,21 @@ export async function handleExport(
   // Detect dynamic macros that need data expansion
   const needsChildrenMacro = /:::children\b/.test(markdown);
   const contentByLabelQueries = extractContentByLabelQueries(markdown);
+
+  // spec 004: the dynamic-macro chain (Jira tables, draw.io previews, includes,
+  // export_view fallback) only exists on the ts engine. When this page carries
+  // macros that chain would resolve live — same signal the walker emits for its
+  // report — say so instead of silently exporting placeholders.
+  try {
+    const { notes: walkerNotes } = storageToBlocks(page.storage ?? "");
+    if (walkerNotes.some((n) => n.code === "unknown-macro" || n.code === "macro-not-rendered")) {
+      console.error(
+        "hint: this page has dynamic macros; re-run with `--engine ts` for live rendering."
+      );
+    }
+  } catch {
+    // The hint is best-effort; a walker hiccup must never fail the export.
+  }
 
   // Get space info (if we have the space key)
   let spaceName = spaceKey;
@@ -805,17 +821,26 @@ async function buildTsEngineMacroOptions(
   targetEngine: "docx" | "pdf",
   live: boolean
 ) {
-  const [{ buildMacroResolutionOptions }, { JiraClient }] = await Promise.all([
+  const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
     import("@atlcli/jira"),
   ]);
-  return buildMacroResolutionOptions({
+  const macros = wiring.buildMacroResolutionOptions({
     profile,
     confluence: client,
     jira: new JiraClient(profile),
     targetEngine,
     live,
   });
+  // SSRF enforcement (spec 004): export_view-derived external image refs carry
+  // trust:"export-view"; route them through the policy-checked external fetcher
+  // instead of the unrestricted token fetcher. Page-trust refs are unchanged.
+  const externalAssets = wiring.defaultExternalAssetFetcher(
+    wiring.defaultExternalAssetPolicy(profile.baseUrl)
+  );
+  const wrapAssets = (inner: import("@atlcli/docx").AssetFetcher) =>
+    wiring.trustRoutingAssetFetcher(inner, externalAssets);
+  return { macros, wrapAssets };
 }
 
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
@@ -922,6 +947,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   }
 
   const resolvedOutputPath = resolve(outputPath);
+  const macroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
   const report = await runExport(
     {
       details: page,
@@ -957,9 +983,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     },
     {
       templates: { getBytes: async () => templateBytes },
-      assets: tokenAssetFetcher(client, assetCache),
+      assets: macroSetup.wrapAssets(tokenAssetFetcher(client, assetCache)),
       rasterizer: rasterizer ?? undefined,
-      macros: await buildTsEngineMacroOptions(profile, client, "docx", liveMacros),
+      macros: macroSetup.macros,
       output: fileOutputSink(resolvedOutputPath),
     }
   );
@@ -1173,6 +1199,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     }
 
     const resolvedOutputPath = resolve(outputPath);
+    const treeMacroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
     const docxReport = await runExport(
       {
         details: rootDetails,
@@ -1206,9 +1233,9 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       },
       {
         templates: { getBytes: async () => templateBytes },
-        assets: tokenAssetFetcher(client, assetCache),
+        assets: treeMacroSetup.wrapAssets(tokenAssetFetcher(client, assetCache)),
         ...(rasterizer ? { rasterizer } : {}),
-        macros: await buildTsEngineMacroOptions(profile, client, "docx", liveMacros),
+        macros: treeMacroSetup.macros,
         output: fileOutputSink(resolvedOutputPath),
       }
     );

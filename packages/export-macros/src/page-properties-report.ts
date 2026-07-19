@@ -6,7 +6,7 @@
  * columns are the union of property keys across matched pages.
  */
 import type { ExportBlock, ExportNote, InlineNode, TableCell, TableRow } from "@atlcli/confluence";
-import { macroParamText } from "./params.js";
+import { escapeCqlValue, macroParamText } from "./params.js";
 import type {
   MacroExportContext,
   MacroInstance,
@@ -19,7 +19,15 @@ import type { ParsePagePropertiesDep, StorageToBlocksDep } from "./deps.js";
 const DEFAULT_CAP = 50;
 const HARD_CAP = 200;
 
-/** Build the CQL from the macro's label/cql parameters. */
+/**
+ * Build the CQL from the macro's label/cql parameters.
+ *
+ * Label/space values are MACRO PARAMETERS — page-editor-controlled, a different
+ * trust boundary than CLI flags — so they are escaped through
+ * {@link escapeCqlValue} before interpolation into the CQL string literal
+ * (never raw). The `cql` parameter is passed through as-is: it IS a CQL query
+ * by contract, and the search API enforces the caller's permissions.
+ */
 export function cqlFromParams(m: MacroInstance): string | undefined {
   const cql = macroParamText(m.params, "cql");
   if (cql) return cql;
@@ -29,10 +37,12 @@ export function cqlFromParams(m: MacroInstance): string | undefined {
       .split(/[,\s]+/)
       .map((l) => l.trim())
       .filter(Boolean);
-    if (labels.length > 0) return labels.map((l) => `label = "${l}"`).join(" and ");
+    if (labels.length > 0) {
+      return labels.map((l) => `label = "${escapeCqlValue(l)}"`).join(" and ");
+    }
   }
   const spaceKey = macroParamText(m.params, "spaces");
-  if (spaceKey) return `space = "${spaceKey}"`;
+  if (spaceKey) return `space = "${escapeCqlValue(spaceKey)}"`;
   return undefined;
 }
 

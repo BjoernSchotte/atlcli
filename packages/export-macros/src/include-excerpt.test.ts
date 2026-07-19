@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { storageToBlocks } from "@atlcli/confluence";
+import { storageToBlocks, extractMacroBody } from "@atlcli/confluence";
 import type { MacroParameter, MacroParamRef } from "@atlcli/confluence";
 import { includeRenderer, excerptIncludeRenderer, excerptRenderer } from "./include-excerpt.js";
 import { multiexcerptIncludeRenderer } from "./multiexcerpt.js";
@@ -51,7 +51,7 @@ describe("excerptIncludeRenderer", () => {
   test("extracts a named excerpt fragment", async () => {
     const storage = `<ac:structured-macro ac:name="excerpt"><ac:parameter ac:name="name">bit</ac:parameter><ac:rich-text-body><p>Excerpt bit</p></ac:rich-text-body></ac:structured-macro>`;
     const c = port({ Target: { id: "t1", storage } });
-    const res = await excerptIncludeRenderer({ storageToBlocks }).render(
+    const res = await excerptIncludeRenderer({ storageToBlocks, extractMacroBody }).render(
       { name: "excerpt-include", params: [pageRefParam("Target"), { name: "name", text: "bit" }] },
       ctx(c)
     );

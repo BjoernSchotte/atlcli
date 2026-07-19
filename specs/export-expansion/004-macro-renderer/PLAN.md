@@ -1437,6 +1437,18 @@ real instance.
   first (documented as a known limitation for tree/space scope) and follow up
   once 002's walk-context field exists — do not block the whole plan on 002,
   but do not claim the cross-page DoD criterion met until it lands either.
+- **SSRF policy is hostname-based, not resolved-IP-based (DNS rebinding)**: the
+  default `ExternalAssetPolicy` rejects loopback/private/link-local targets by
+  matching the URL's *hostname* (literal IPs and `localhost`), and the default
+  fetcher re-checks the policy on every redirect hop. It does NOT resolve the
+  hostname and check the resulting IP, so a public DNS name that resolves (or
+  rebinds mid-request) to a private address can still reach it — resolved-IP
+  pinning is explicitly out of scope for v1 (it needs a resolver hook the
+  isomorphic contract doesn't have and per-connection pinning `fetch()` can't
+  express). The same-origin default confines the practical exposure to the
+  exporting profile's own Confluence origin; hosts that widen the policy to
+  arbitrary origins take on the rebinding risk and should front the fetcher
+  with their own egress controls.
 - **Jira retry-sleep is not truly abortable**: even after 002 threads a real
   `AbortSignal` into `ConfluenceClient`'s fetch/retry-sleep, `JiraClient`
   (`packages/jira/src/client.ts:97–107`) still accepts none — a `deadlineMs`

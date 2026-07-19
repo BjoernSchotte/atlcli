@@ -30,7 +30,6 @@ export * from "./deps.js";
 export * from "./params.js";
 export * from "./resolve.js";
 export * from "./registry.js";
-export * from "./extract.js";
 export * from "./toc.js";
 export * from "./jira.js";
 export * from "./diagram.js";
