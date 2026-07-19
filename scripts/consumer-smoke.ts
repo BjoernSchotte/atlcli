@@ -259,6 +259,12 @@ import {
   BrowserPdfCompiler,
   type BrowserPdfCompilerAssets,
 } from "@atlcli/pdf-compiler-browser";
+// The remaining Node-compatible packages: type-check their barrels too, so
+// the skipLibCheck:false proof covers every package the engines matrix
+// marks Node-compatible (jira is deliberately absent — Bun-only).
+import { getActiveProfile } from "@atlcli/core";
+import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
+import type { AtlcliPlugin } from "@atlcli/plugin-api";
 
 const converted: { blocks: ExportBlock[]; notes: ExportNote[] } = storageToBlocks("<p>t</p>");
 const surfaces: unknown[] = [
@@ -267,7 +273,11 @@ const surfaces: unknown[] = [
   BrowserPdfCompiler,
   PDF_RUNTIME_ASSETS.fonts.length,
   converted.blocks.length,
+  getActiveProfile,
+  renderDiagram,
 ];
+const _extraTypes: [DiagramRenderResult, AtlcliPlugin] | null = null;
+void _extraTypes;
 const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfCompileResult, RunPdfExportInput, BrowserPdfCompilerAssets] | null = null;
 void surfaces;
 void _envParts;

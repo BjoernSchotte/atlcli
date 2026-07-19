@@ -66,6 +66,10 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+// Collect one URL per font you import (repeat the static import pattern above
+// for every entry in PDF_RUNTIME_ASSETS.fonts).
+const fontUrls = [sansRegularUrl /* , serifRegularUrl, monoRegularUrl, … */];
+
 const compiler = new BrowserPdfCompiler({
   wasm: await fetch(wasmUrl), // Response is accepted directly
   fonts: await Promise.all(fontUrls.map(fetchBytes)),

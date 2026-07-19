@@ -65,11 +65,13 @@ describe.skipIf(!enabled)("tarball install matrix (spec 009)", () => {
       () => {
         const version = managerAvailable(manager);
         if (!version) {
-          // Loud, unmissable skip — a missing manager must not silently pass.
-          console.error(
+          // In CI a missing manager is a broken runner image — fail hard so
+          // the leg cannot silently stop running. Locally, skip loudly.
+          const message =
             `install-matrix: ${manager} IS NOT INSTALLED on this machine — the ${manager} ` +
-              `leg of the install matrix DID NOT RUN. Install ${manager} to cover it.`,
-          );
+            `leg of the install matrix DID NOT RUN. Install ${manager} to cover it.`;
+          if (process.env.CI) throw new Error(message);
+          console.error(message);
           return;
         }
         console.log(`install-matrix: ${manager} ${version}`);
