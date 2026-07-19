@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 bun install              # Install dependencies
 bun run build            # Build all packages (via Turbo)
-bun test                 # Run all tests
+bun run test             # Run all tests (adds --conditions=development; see below)
 bun run typecheck        # TypeScript type checking
 ```
 
@@ -21,15 +21,22 @@ uv run pytest tests/ -v
 ### Running Single Tests
 
 ```bash
-bun test packages/core/src/logger.test.ts           # Run specific test file
-bun test --test-name-pattern "should parse"         # Run tests matching pattern
+bun run test packages/core/src/logger.test.ts       # Run specific test file
+bun run test --test-name-pattern "should parse"     # Run tests matching pattern
 ```
+
+Always run tests through `bun run test` (never bare `bun test`): the workspace
+packages export `dist/` by default and live `src/` only under the
+`development` condition, which the root script enables via
+`--conditions=development`. A bare `bun test` silently runs against stale (or
+missing) `dist/` builds — `scripts/dev-resolution.test.ts` fails loudly if
+that happens.
 
 ### Testing Local Changes
 
 ```bash
-bun ./dist/index.js <command>                       # Run built CLI
-bun run --cwd apps/cli src/index.ts <command>       # Run from source
+bun ./dist/index.js <command>                                 # Run built CLI
+bun --conditions=development run --cwd apps/cli src/index.ts <command>  # Run from source
 ```
 
 ## Architecture

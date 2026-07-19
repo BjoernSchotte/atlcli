@@ -1,5 +1,10 @@
 import { defineConfig } from "wxt";
-import { DOCX_BROWSER_VITE_DEFINES } from "@atlcli/docx/vite";
+// Relative src import (not "@atlcli/docx/vite"): this config is loaded by
+// wxt's own config loader (jiti, Node-style resolution) which does not request
+// the "development" export condition — the package specifier would resolve to
+// dist/ and break `bun install` (postinstall: wxt prepare) on a fresh clone
+// before any build exists.
+import { DOCX_BROWSER_VITE_DEFINES } from "../../packages/docx/src/vite";
 
 // WXT config for the atlcli Chrome extension (spec 002).
 //

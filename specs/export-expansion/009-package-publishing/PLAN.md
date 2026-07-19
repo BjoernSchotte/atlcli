@@ -886,7 +886,7 @@ model); note it as the designated fallback.
       actually proves the `bun:sqlite` fix (Build artifacts) holds for a
       plain-Node consumer, not just that `pack-check` didn't find the
       string `bun:sqlite` in the tarball.
-- [ ] **Vite tarball smoke** (`scripts/consumer-smoke-vite/`, a throwaway
+- [x] **Vite tarball smoke** (`scripts/consumer-smoke-vite/`, a throwaway
       Vite project scaffolded in the scratch dir, not `apps/extension` or
       `apps/browser-export-harness` — those still resolve `workspace:*`,
       see Build artifacts): install the packed tarballs, configure Vite

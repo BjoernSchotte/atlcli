@@ -2,6 +2,7 @@ import { describe, it } from "bun:test";
 import { runTarballSmoke } from "./consumer-smoke.js";
 import { runFilelinkSmoke } from "./consumer-smoke-filelink.js";
 import { runNodeSmoke } from "./consumer-smoke-node.js";
+import { runViteSmoke } from "./consumer-smoke-vite.js";
 
 /**
  * Consumer smoke wiring (spec 009): the heavy suites run behind
@@ -46,6 +47,15 @@ describe.skipIf(!enabled)("consumer smoke (spec 009)", () => {
     async () => {
       const { nodeVersion, npmVersion, smokes } = await runNodeSmoke();
       console.log(`node ${nodeVersion} / npm ${npmVersion}: ${smokes.docx} | ${smokes.pdf}`);
+    },
+    300000,
+  );
+
+  it(
+    "Vite tarball build: ?url wasm/font imports resolve to hashed assets and the production chunk compiles a real PDF",
+    async () => {
+      const { viteVersion, smokes } = await runViteSmoke();
+      console.log(`vite ${viteVersion}: ${smokes.pdf}`);
     },
     300000,
   );
