@@ -81,7 +81,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.template).toContain('linebreaks: "optimized"');
     expect(bundle.main).toContain('region: "US"');
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
-    expect(bundle.template).toContain('let indigo = rgb("#4B57A3")');
+    expect(bundle.template).toContain('let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
     expect(bundle.template).toContain('text(font: "Source Serif 4", size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
@@ -796,6 +796,18 @@ describe("PDF settings threading into main.typ", () => {
     });
     expect(bundle.main).toContain('header-text: "H\\" #{x}"');
     expect(bundle.main).toContain('footer-text: "line\\\\end"');
+  });
+
+  it("threads a validated logo as a virtual asset and emits its escaped path", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'Acme "Corp"' } },
+    });
+    expect(bundle.main).toContain('logo: "assets/atlcli-logo.png"');
+    expect(bundle.main).toContain('logo-alt: "Acme \\"Corp\\""');
+    const asset = bundle.assets.find((entry) => entry.path === "assets/atlcli-logo.png");
+    expect(asset?.mediaType).toBe("image/png");
+    expect(asset?.bytes).toEqual(pngBytes());
   });
 
   it("serializes a watermark with defaults filled", () => {

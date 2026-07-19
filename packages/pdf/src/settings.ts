@@ -241,8 +241,16 @@ function numberLiteral(value: number): string {
  * Emit the resolved settings as a Typst dictionary literal. Every host-supplied
  * string is escaped through `typstString`; kebab-case keys match the template's
  * defensive `settings.at("...")` reads (e.g. `headerText` → `header-text`).
+ *
+ * The logo is emitted as a virtual-filesystem *path* (plus its alt text), not
+ * as bytes: `serializePdfDocument` adds the validated bytes to the bundle's
+ * assets under that path and passes the path in via `options.logoPath`. Without
+ * a `logoPath` the logo entry is omitted entirely.
  */
-export function typstSettingsDict(resolved: ResolvedPdfSettings): string {
+export function typstSettingsDict(
+  resolved: ResolvedPdfSettings,
+  options: { logoPath?: string } = {}
+): string {
   const lines: string[] = [
     `  page: ${typstString(resolved.page)},`,
     `  orientation: ${typstString(resolved.orientation)},`,
@@ -258,6 +266,12 @@ export function typstSettingsDict(resolved: ResolvedPdfSettings): string {
   }
   if (resolved.organizationName !== undefined) {
     lines.push(`  organization-name: ${typstString(resolved.organizationName)},`);
+  }
+  if (resolved.logo && options.logoPath !== undefined) {
+    lines.push(
+      `  logo: ${typstString(options.logoPath)},`,
+      `  logo-alt: ${typstString(resolved.logo.alt)},`
+    );
   }
   if (resolved.watermark) {
     const watermark = resolved.watermark;

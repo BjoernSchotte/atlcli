@@ -13,6 +13,7 @@ import type {
   PdfSourceBundle,
   PdfSourceMapEntry,
   PdfTheme,
+  PreparedPdfAsset,
   PreparedPdfBlock,
   PreparedPdfDocument,
 } from "./types.js";
@@ -862,6 +863,17 @@ export function serializePdfDocument(
   };
   const body = serializeBlocks(document.blocks, writer);
   const settings = resolvePdfSettings(options.settings);
+  // The validated logo travels as a virtual asset file the compiler maps into
+  // its filesystem — the same path-emission pattern prepared image assets use.
+  // The "atlcli-logo" name cannot collide with prepared assets, whose paths
+  // always carry a numeric index and content hash.
+  const logoAsset: PreparedPdfAsset | undefined = settings.logo
+    ? {
+        path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
+        bytes: settings.logo.bytes,
+        mediaType: settings.logo.mediaType,
+      }
+    : undefined;
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
@@ -877,7 +889,7 @@ export function serializePdfDocument(
   region: ${meta.region ? typstString(meta.region) : "none"},
   exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
-), settings: ${typstSettingsDict(settings)})
+), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
 ${body}
 `;
@@ -885,7 +897,7 @@ ${body}
   return {
     main,
     template: createAtlcliTypstTemplate(options.theme),
-    assets: document.assets,
+    assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
   };

@@ -25,6 +25,7 @@ inject template source.
 - [Settings reference](#settings-reference)
 - [Watermark settings](#watermark-settings)
 - [Logo settings](#logo-settings)
+- [Custom fonts (engine seam)](#custom-fonts-engine-seam)
 - [Minimal example](#minimal-example)
 - [Advanced example](#advanced-example)
 - [Validation and error handling](#validation-and-error-handling)
@@ -73,6 +74,23 @@ The default accent color is the built-in Editorial Indigo. The default page is
 A4 portrait with the cover and outline sections both enabled — identical to the
 document produced when no settings are supplied.
 
+Rendered behavior:
+
+- `page` / `orientation` set the page geometry for the whole document
+  (`letter` maps to the US Letter paper size, 612 × 792 pt).
+- `cover: false` and `outline: false` each remove exactly one page — the
+  section *and* its trailing page break — never leaving a blank page behind.
+  The closing document-integrity page always renders.
+- `headerText` replaces the default running header (page title and space key)
+  on body pages. `footerText` renders left of the centered page number.
+- `accentColor` recolors every accent the template draws: the cover eyebrow
+  and rule, and the closing-page accents.
+- `organizationName` renders in uppercase before the space label on the cover
+  and right-aligned in the footer.
+- `logo` renders on the cover above the title inside a fixed 45 × 12 mm box
+  (scaled to fit, never widening the cover layout); its `alt` text becomes the
+  image's alternative text in the tagged PDF.
+
 ## Watermark settings
 
 A watermark is a rotated text layer drawn under the content, so it becomes a
@@ -88,8 +106,16 @@ defaults.
 | `angle` | `number` | `-54` | Optional | Degrees, `-180..180` inclusive. |
 | `size` | `number` | `96` | Optional | Points, `8..400` inclusive. |
 
-Image watermarks and foreground (over-content) watermarks are **not** supported
-in v1: a foreground layer would cover text and break copy/select.
+The watermark is wired into the page background, so it repeats on the cover,
+every body page, and the closing page, and it never changes the page count.
+Because it sits under the content as a page Artifact, text selection, search,
+and assistive-technology reading order are unaffected.
+
+Two variants are **explicitly rejected** for v1, not merely unimplemented:
+
+- **Foreground (over-content) watermarks** — a layer above the text would
+  cover content and break copy/select.
+- **Image watermarks** — out of scope for v1; the watermark is text-only.
 
 ## Logo settings
 
@@ -109,6 +135,72 @@ Security rules (restated from the template security model):
 - **Bundled bytes only.** The engine never fetches a logo; supply the bytes.
 - **A present logo always requires a non-empty `alt`.** A meaning-bearing logo
   without alternative text is rejected.
+
+## Custom fonts (engine seam)
+
+Corporate fonts are **not** a `PdfTemplateSettings` field. They enter through a
+separate engine seam: a host resolves approved font bytes and constructs the
+browser compiler with `bundledFonts ∪ customFonts`. The PDF engine never fetches
+a font — the host supplies the bytes, exactly like the logo.
+
+Two types describe the seam:
+
+| Type | Shape | Purpose |
+|------|-------|---------|
+| `FontAsset` | `{ family, style: "normal" \| "italic", weight, sha256, license? }` | One approved face. `sha256` is the lowercase hex digest of the exact bytes; `license` is an optional attestation (`OFL` / `Apache-2.0` / `proprietary`). |
+| `FontSource` | `{ list(): Promise<FontAsset[]>; getBytes(sha256): Promise<Uint8Array> }` | Host-provided port (mirrors `PdfAssetResolver`). The host owns storage and the upload/attestation flow. |
+
+### Accepted and rejected formats
+
+`parseFontMeta(bytes)` inspects sfnt bytes and returns one record per face:
+
+- **Accepted:** TrueType (`00 01 00 00`), CFF/OpenType (`OTTO`), and TrueType
+  Collections (`ttcf`). A collection returns **one record per bundled face**, so
+  a multi-face `.ttc` never silently drops faces.
+- **Rejected — WOFF/WOFF2** (`wOFF` / `wOF2`) with the actionable message
+  *"web-packaged font detected — the PDF compiler consumes TTF/OTF; export the
+  desktop font from your font source."* The pinned Typst compiler consumes sfnt
+  only.
+- **Rejected — malformed input** (empty buffer, over the 10 MB per-font cap,
+  truncated headers, out-of-range table offsets, hostile table counts, unknown
+  magic) with a typed `FontParseError` carrying a machine-readable `reason`. It
+  never throws an anonymous `RangeError`.
+
+### Mandatory verification before use
+
+`verifyFontBytes(asset, bytes)` re-hashes delivered bytes against
+`asset.sha256` and throws a typed `FontVerificationError` on any mismatch. This
+step is **mandatory host wiring** between `FontSource.getBytes` and the
+compiler's `fonts` array: without it, a corrupted or swapped delivery would be
+embedded under the approved font's license claim with no error.
+
+```ts
+new BrowserPdfCompiler({
+  wasm,
+  fonts: [
+    ...bundledFonts,
+    ...(await Promise.all(
+      customFonts.map(async (f) => {
+        const bytes = await fontSource.getBytes(f.sha256);
+        await verifyFontBytes(f, bytes); // gates every custom font
+        return bytes;
+      }),
+    )),
+  ],
+});
+```
+
+`BrowserPdfCompilerAssets.fonts` is already `Uint8Array[]` and the compiler's
+`add_raw_font` accepts arbitrary extra fonts, so **no change is needed in the
+compiler package** to add custom fonts.
+
+### How templates reference fonts
+
+Template-pack manifests reference approved fonts as a `choice` setting whose
+options a host generates from `FontSource.list()` — Level A keeps the "font
+choice from an approved set" model with **no free-form font input**. The upload
+UI, the license-attestation flow, and font storage are host follow-ups, not part
+of this engine seam.
 
 ## Minimal example
 

@@ -224,6 +224,16 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain("size: 96");
   });
 
+  it("emits the logo path and alt only when serialize supplies the asset path", () => {
+    const resolved = resolvePdfSettings({
+      logo: { bytes: pngBytes(), mediaType: "image/png", alt: "Acme" },
+    });
+    expect(typstSettingsDict(resolved)).not.toContain("logo");
+    const dict = typstSettingsDict(resolved, { logoPath: "assets/atlcli-logo.png" });
+    expect(dict).toContain('logo: "assets/atlcli-logo.png"');
+    expect(dict).toContain('logo-alt: "Acme"');
+  });
+
   it("keeps quote/backslash/#{ injection attempts literal in free-text fields", () => {
     const attack = 'a" #{sys.exit()} \\ end';
     const dict = typstSettingsDict(
