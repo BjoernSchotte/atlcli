@@ -2,6 +2,9 @@
   "name": "@atlcli/pdf-compiler-browser",
   "version": "0.1.0",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
   "atlcli": {
     "publish": "public-0.x"
   },
