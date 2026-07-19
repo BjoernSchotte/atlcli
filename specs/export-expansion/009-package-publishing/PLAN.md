@@ -546,7 +546,7 @@ model); note it as the designated fallback.
 
 ### Build artifacts
 
-- [ ] Add `tsconfig.build.json` + `"build": "tsc -p tsconfig.build.json"` +
+- [x] Add `tsconfig.build.json` + `"build": "tsc -p tsconfig.build.json"` +
       `"clean"` to each of `packages/{plugin-api,core,diagram,jira,confluence,docx,pdf,pdf-compiler-browser}/`;
       exclude `**/*.test.ts` (and `packages/docx/src/fixtures.ts` from the
       published `.` surface only if tests don't need it packaged — verify:
@@ -567,7 +567,7 @@ model); note it as the designated fallback.
       test: after build, grep each package's `dist/**/*.{js,d.ts,map}` for
       any `../` path segment escaping the package root or another
       package's `src/`.
-- [ ] Rewrite `exports` in all eight `packages/*/package.json` to `dist/`
+- [x] Rewrite `exports` in all eight `packages/*/package.json` to `dist/`
       targets, nesting `types` **inside** each of `browser`/`default`
       (never a shared top-level `types` — see Architecture: Build output
       model) so a browser consumer's type-checker cannot pick up Node-only
@@ -581,7 +581,7 @@ model); note it as the designated fallback.
       Architecture: Build output model — so the published `exports` never
       contains a target (`./src/index.ts`) that the `files` allowlist
       excludes from the tarball.
-- [ ] Fix `@atlcli/confluence`'s default (Node) entrypoint so it doesn't
+- [x] Fix `@atlcli/confluence`'s default (Node) entrypoint so it doesn't
       statically pull in `bun:sqlite` (see Architecture: Build output
       model): move `sync-db`/`webhook-server`/`atlcli-dir`
       (`packages/confluence/src/index.ts:1-24`) out of the barrel that
@@ -590,22 +590,22 @@ model); note it as the designated fallback.
       touches `bun:sqlite`. Regression test: importing the packed tarball's
       entrypoint under plain Node must not throw
       `Cannot find module 'bun:sqlite'`.
-- [ ] Trim each package's root `exports["."]` to the documented v1 seams
+- [x] Trim each package's root `exports["."]` to the documented v1 seams
       (see Architecture: API freeze & guard architecture) — move
       implementation-detail modules (`scan.js`, `resolver.js`, `ooxml.js`
       helpers in `@atlcli/docx`; `escape.js`, `compiler.js`, `prepare.js`,
       `theme.js`, `validate.js` in `@atlcli/pdf`) behind `./internal/*` or
       out of the barrel, still reachable in-repo via the `development`
       condition.
-- [ ] Add `files` allowlists and remove `private: true` from
+- [x] Add `files` allowlists and remove `private: true` from
       `packages/{docx,pdf,diagram,pdf-compiler-browser}/package.json`;
       add `"sideEffects": false` where true (verify per package — the docx
       browser runtime mutates `globalThis.__atlDocxByteHelpers`, see
       `packages/docx/src/vite.ts`, so audit before claiming it).
-- [ ] Confirm `turbo.json` `build` inputs/outputs still describe reality
+- [x] Confirm `turbo.json` `build` inputs/outputs still describe reality
       (add `tsconfig.build.json` to `inputs`; keep `dist/**` outputs) and that
       `bun run build` builds packages in dependency order via `^build`.
-- [ ] Verify `apps/extension` and `apps/browser-export-harness` (Vite) resolve
+- [x] Verify `apps/extension` and `apps/browser-export-harness` (Vite) resolve
       the new conditions correctly (Vite prefers `browser`); run
       `bun run check:browser` and the harness build
       (`bun run build:browser-export-harness`) as regression gates. Both
