@@ -122,6 +122,13 @@
         "shiki": "^4.3.1",
       },
     },
+    "packages/export-macros": {
+      "name": "@atlcli/export-macros",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
+      },
+    },
     "packages/jira": {
       "name": "@atlcli/jira",
       "version": "0.6.0",
@@ -227,6 +234,8 @@
     "@atlcli/diagram": ["@atlcli/diagram@workspace:packages/diagram"],
 
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
+
+    "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
 
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
 
