@@ -169,7 +169,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
 
 ### Settings threading & contract (T2.1)
 
-- [ ] `packages/pdf/src/types.ts`: add `PdfTemplateSettings` (all fields
+- [x] `packages/pdf/src/types.ts`: add `PdfTemplateSettings` (all fields
       optional, plain JSON-able) and `PdfWatermarkSettings`; extend
       `PdfSerializeOptions` with `settings?: PdfTemplateSettings`.
       ```ts
@@ -214,12 +214,12 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       section); record the boundary explicitly in the file header so a
       later folder doesn't silently conflate the two shapes — see the
       "Built-in vs. manifest settings" risk below.
-- [ ] `packages/pdf/src/types.ts`: add `PdfSettingsError` next to the
+- [x] `packages/pdf/src/types.ts`: add `PdfSettingsError` next to the
       existing `PdfExportError` in `run-export.ts` — fields
       `{ path: string; value: unknown; constraint: string }` — so a
       thrown validation failure names the exact offending field instead
       of a free-text message a host would have to parse.
-- [ ] `packages/pdf/src/settings.ts` (new): `resolvePdfSettings(options?)`
+- [x] `packages/pdf/src/settings.ts` (new): `resolvePdfSettings(options?)`
       → fully-defaulted internal settings, **rejecting** (never silently
       clamping) invalid values by throwing `PdfSettingsError` in the
       `resolvePdfTheme` style: unknown page size, opacity outside
@@ -229,7 +229,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       header/footer text over the 200-char cap, empty watermark text;
       plus `typstSettingsDict(resolved)` emitting the Typst dictionary
       literal via `typstString`.
-- [ ] `packages/pdf/src/run-export.ts`: call `resolvePdfSettings(input.settings)`
+- [x] `packages/pdf/src/run-export.ts`: call `resolvePdfSettings(input.settings)`
       as the **first** step of `runPdfExport`, before `env.assets` is
       touched — settings validation must not pay for asset fetches
       (network requests for attachments) it will end up discarding. Add
@@ -243,12 +243,12 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       PdfTemplateSettings`, the resolved value forwarded to
       `serializePdfDocument`; `PdfExportReport` gains no new fields
       (settings are inputs, not outcomes).
-- [ ] `packages/pdf/src/serialize.ts`: `serializePdfDocument` accepts the
+- [x] `packages/pdf/src/serialize.ts`: `serializePdfDocument` accepts the
       already-resolved settings and emits the settings dict next to
       `meta` — `#show: atlcli-doc.with(meta: (...), settings: (...))`.
       Omitted settings must produce byte-identical `main.typ` semantics
       to today (defaults = current behavior).
-- [ ] `packages/pdf/src/template.ts`: change the signature to
+- [x] `packages/pdf/src/template.ts`: change the signature to
       `#let atlcli-doc(meta: (:), settings: (:), body)` — `settings: (:)`
       is itself the backward-compatible default, so old callers that
       never pass `settings` keep compiling; every settings read uses
@@ -271,9 +271,9 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       note in the same section that shrinking this set is a deliberate
       follow-up once a real external template needs to override fewer
       hooks.
-- [ ] Export the new types from `packages/pdf/src/index.ts` and
+- [x] Export the new types from `packages/pdf/src/index.ts` and
       `index.browser.ts`.
-- [ ] Docs: extend `docs/` PDF export reference with the settings table
+- [x] Docs: extend `docs/` PDF export reference with the settings table
       (type, default, constraints) per the docs standards in `CLAUDE.md`.
 
 ### Level-A settings (T2.2)
@@ -387,7 +387,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
 
 ### Template library & container (T2.4)
 
-- [ ] `packages/core/src/template-library.ts` (new, browser-safe, exported
+- [x] `packages/core/src/template-library.ts` (new, browser-safe, exported
       from `packages/core/src/index.ts` **and** `index.browser.ts`; this
       folder owns this file and the new `packages/template-pack/`
       package — see the file-ownership note below for the sync point
@@ -432,7 +432,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       implementers, `resolveAndLoadTemplate` is what removes the
       footgun for the common path. Scan verdicts for DOCX templates are
       **never** persisted in entries — always re-derived from bytes.
-- [ ] `packages/template-pack/` (new isomorphic package, pure functions,
+- [x] `packages/template-pack/` (new isomorphic package, pure functions,
       PizZip dependency mirroring `packages/docx`):
       `src/manifest.ts` — manifest schema + `validateManifest(json)`:
       ```json
@@ -476,7 +476,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       string/semver comparison in this folder — the "compile against the
       canonical feature zoo" gate from TEMPLATE-UX §9 remains the
       already-deferred Level-B host follow-up.
-- [ ] `packages/template-pack/src/pack.ts`: `packTemplate(files) →
+- [x] `packages/template-pack/src/pack.ts`: `packTemplate(files) →
       Uint8Array` — **deterministic zip**: entries sorted by path
       (manifest `wiki-pdf-template.json` first), fixed DOS epoch timestamps,
       no platform extra fields; packing the same inputs twice yields
@@ -494,7 +494,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       archive bytes as stored" used for the integrity check on download —
       the two fields answer different questions and both must be
       documented as such.
-- [ ] `packages/template-pack/src/unpack.ts`: `unpackTemplate(bytes) →
+- [x] `packages/template-pack/src/unpack.ts`: `unpackTemplate(bytes) →
       { manifest, files }` with hard rejections: total size cap **30 MiB**
       for the outer `.wiki-pdf-template` archive and **64 MiB** cumulative
       uncompressed payload (zip-bomb guard via declared-size accounting
@@ -520,7 +520,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       `kind: "docx"` container, and is itself smaller than the outer
       caps above so a compliant container can never smuggle an
       over-cap DOCX payload through size checks alone.
-- [ ] `packages/template-pack/src/validate.ts`: `validatePack(bytes)` =
+- [x] `packages/template-pack/src/validate.ts`: `validatePack(bytes)` =
       unpack + manifest check + engine-specific hook: for `kind: "docx"`,
       `scanTemplate` (`packages/docx/src/scan.ts`) returns classification
       buckets (`supported/unsupported/never`) and `hasContentPlaceholder`
@@ -540,9 +540,9 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       throwing on anything but package corruption. For `kind: "typst"`,
       structural checks only in this folder (compile-against-feature-zoo
       import gate stays the deferred Level-B follow-up noted above).
-- [ ] `packages/template-pack/src/index.ts` + `index.browser.ts` exports;
+- [x] `packages/template-pack/src/index.ts` + `index.browser.ts` exports;
       wire the package into the workspace + Turbo build.
-- [ ] CLI surface: commit to `atlcli template-pack pack|validate` (matching
+- [x] CLI surface: commit to `atlcli template-pack pack|validate` (matching
       the package name) rather than either candidate already floating
       across the docs — plain `atlcli template pack|validate`
       (BASELINE-DESIGN §B3's generalization) collides in spirit with the
@@ -700,7 +700,7 @@ input/output tests; anything touching the compiler compiles for real
 actual WASM with the real bundled fonts under `bun test`); anything
 touching zips uses real archives built by the code under test.
 
-- [ ] **Settings → Typst source goldens** —
+- [x] **Settings → Typst source goldens** —
       `packages/pdf/src/serialize.test.ts` (extend, existing
       `toContain`-assertion style): no settings ⇒ `main.typ` contains
       `settings: (` with defaults only and semantics identical to today;
@@ -714,7 +714,7 @@ touching zips uses real archives built by the code under test.
       `Infinity` for `opacity`; fills defaults; is stable (deterministic
       output for equal input); error objects carry `path`/`value`/
       `constraint`.
-- [ ] **Fail-fast ordering** — `packages/pdf/src/run-export.test.ts`
+- [x] **Fail-fast ordering** — `packages/pdf/src/run-export.test.ts`
       (extend): `runPdfExport` with an invalid `settings` object throws
       `PdfSettingsError` with `phase: "configuration"` **and**
       `PdfAssetResolver.resolve` is never called (assert call count `0`
@@ -775,7 +775,7 @@ touching zips uses real archives built by the code under test.
       returns one entry per face for a real multi-face `ttcf` fixture;
       negative tests (truncated header, out-of-range table offsets, empty
       buffer) reject cleanly without throwing an unrelated `RangeError`.
-- [ ] **`resolveTemplate` pure-function tests** —
+- [x] **`resolveTemplate` pure-function tests** —
       `packages/core/src/template-library.test.ts` (new): space entry
       beats global; global fallback when the space has no override;
       `undefined` on unknown id; a same-id entry of the *other* engine in
@@ -789,7 +789,7 @@ touching zips uses real archives built by the code under test.
       returns verified bytes on a match and rejects on a byte/hash
       mismatch without ever exposing the un-verified bytes to the
       caller.
-- [ ] **Container round-trip with real zips** —
+- [x] **Container round-trip with real zips** —
       `packages/template-pack/src/pack.test.ts` / `unpack.test.ts` (new):
       pack → `sha256Hex` → unpack yields identical file bytes and parsed
       manifest; packing twice is byte-identical (determinism);
