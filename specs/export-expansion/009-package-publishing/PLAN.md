@@ -803,11 +803,15 @@ model); note it as the designated fallback.
       or renderer-internal (`packages/diagram/src/index.ts`) today; a
       package with no recorded decision stays 0.x rather than defaulting to
       1.0 with the rest.
-- [ ] Write the breaking-change policy into the same docs section: what
+- [x] Write the breaking-change policy into the same docs section: what
       counts as breaking (removed/renamed exports, narrowed input types,
       widened output types, changed `exports` subpaths, changed asset
       filenames), deprecation window (one minor with `@deprecated` JSDoc
       before removal), and the pre-1.0 vs post-1.0 rules from Architecture.
+      → DONE (2026-07-19) in `src/content/docs/reference/versioning.md`
+      ("What counts as breaking", deprecation window, pre/post-1.0 rules);
+      when the gated API-reference pages land they should link there rather
+      than duplicating the policy.
 - [x] Implement the api-report guard: `scripts/api-report.ts` generates a
       normalized public-surface report per package from the built `dist/*.d.ts`
       (public exports of each `exports` entrypoint, sorted, comments
@@ -907,13 +911,21 @@ model); note it as the designated fallback.
 - [x] CI job (`.github/workflows/`): run the consumer smoke on every PR that
       touches `packages/**` or the publish tooling (path filter), Linux
       runner, no registry credentials needed.
-- [ ] **E2E final gate** (before the freeze release, per CLAUDE.md workflow
+- [x] **E2E final gate** (before the freeze release, per CLAUDE.md workflow
       rules): build the CLI from the packed packages (temp checkout of
       `apps/cli` with `@atlcli/*` deps pointing at the packed tarballs
       instead of `workspace:*`), then export a real page from space `DOCSY`
       with profile `mayflower` to DOCX (and PDF once T3.2 exists) into
       `~/wikisynctest/docs`; assert non-empty valid output; **clean up** any
       test pages/files created, per the cleanup rule.
+      → DONE (2026-07-19): all 8 tarballs packed (prepack font/vendor guards
+      ran), scratch `apps/cli` copy installed them via `file:` + overrides
+      (no `workspace:` leakage), `wiki export 1117356071 --engine ts`
+      against DOCSY/mayflower produced a valid DOCX (zip magic, 40 kB
+      `word/document.xml` containing the page title); PDF-via-CLI deferred
+      until spec 008/T3.2 exists (PDF path proven by the consumer smokes
+      instead). Local artifacts cleaned up; the DOCSY fixture page stays
+      (deliberate, reused across E2E runs).
 
 ## Definition of Done
 
