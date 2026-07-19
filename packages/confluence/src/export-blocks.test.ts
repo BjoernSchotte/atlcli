@@ -1096,3 +1096,170 @@ describe("ExportNote.source provenance (spec 003)", () => {
     expect(notes[0]!.source).toBeUndefined();
   });
 });
+
+describe("storageToBlocks — C6 marker-shaped orientation (paired open/close)", () => {
+  // The K15t-documented alternative shape: the macros carry NO body and act as
+  // stateful markers orienting everything up to the matching counter-marker.
+  const landscapeMarker = '<ac:structured-macro ac:name="scroll-landscape"/>';
+  const portraitMarker = '<ac:structured-macro ac:name="scroll-portrait"/>';
+
+  test("open → close folds the in-between siblings into one landscape region", () => {
+    const { blocks: b, notes } = storageToBlocks(
+      `<p>before</p>${landscapeMarker}<p>one</p><p>two</p>${portraitMarker}<p>after</p>`
+    );
+    expect(b).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "before" }] },
+      {
+        type: "orientation",
+        landscape: true,
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "one" }] },
+          { type: "paragraph", content: [{ type: "text", text: "two" }] },
+        ],
+      },
+      { type: "paragraph", content: [{ type: "text", text: "after" }] },
+    ]);
+    expect(notes).toEqual([]);
+  });
+
+  test("open → EOF closes the region at end of content + info note (base restored)", () => {
+    const { blocks: b, notes } = storageToBlocks(`${landscapeMarker}<p>tail</p>`);
+    expect(b).toEqual([
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "tail" }] }],
+      },
+    ]);
+    expect(notes.map((n) => n.code)).toEqual(["orientation-marker-unterminated"]);
+  });
+
+  test("a portrait marker with no open region is dropped with an info note", () => {
+    const { blocks: b, notes } = storageToBlocks(`<p>x</p>${portraitMarker}<p>y</p>`);
+    expect(b).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "x" }] },
+      { type: "paragraph", content: [{ type: "text", text: "y" }] },
+    ]);
+    expect(notes.map((n) => n.code)).toEqual(["orientation-marker-unmatched"]);
+  });
+
+  test("two sequential landscape markers become two sequential regions (no nesting)", () => {
+    const { blocks: b, notes } = storageToBlocks(
+      `${landscapeMarker}<p>one</p>${landscapeMarker}<p>two</p>${portraitMarker}`
+    );
+    expect(b).toEqual([
+      { type: "orientation", landscape: true, content: [{ type: "paragraph", content: [{ type: "text", text: "one" }] }] },
+      { type: "orientation", landscape: true, content: [{ type: "paragraph", content: [{ type: "text", text: "two" }] }] },
+    ]);
+    expect(notes).toEqual([]);
+  });
+
+  test("markers inside a callout body normalize within that body", () => {
+    const { blocks: b } = storageToBlocks(
+      `<ac:structured-macro ac:name="info"><ac:rich-text-body>${landscapeMarker}<p>inner</p>${portraitMarker}</ac:rich-text-body></ac:structured-macro>`
+    );
+    expect(b).toEqual([
+      {
+        type: "callout",
+        kind: "info",
+        title: undefined,
+        content: [
+          { type: "orientation", landscape: true, content: [{ type: "paragraph", content: [{ type: "text", text: "inner" }] }] },
+        ],
+      },
+    ]);
+  });
+});
+
+describe("storageToBlocks — C6 deep nested-orientation collapse", () => {
+  test("an orientation region nested inside a LIST inside a region is unwrapped (outer wins)", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-portrait"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<ul><li>${inner}</li></ul>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b, notes } = storageToBlocks(xml);
+    expect(b).toEqual([
+      {
+        type: "orientation",
+        landscape: true,
+        content: [
+          {
+            type: "list",
+            ordered: false,
+            items: [{ content: [{ type: "paragraph", content: [{ type: "text", text: "deep" }] }] }],
+          },
+        ],
+      },
+    ]);
+    expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
+  });
+
+  test("an orientation region nested inside a BLOCKQUOTE inside a region is unwrapped", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<blockquote>${inner}</blockquote>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b, notes } = storageToBlocks(xml);
+    const region = b[0] as Extract<ExportBlock, { type: "orientation" }>;
+    expect(region.landscape).toBe(true);
+    expect(JSON.stringify(region.content)).not.toContain('"orientation"');
+    expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
+  });
+});
+
+describe("storageToBlocks — inline export-control safety", () => {
+  test("a body-less scroll-only-inline never leaks parameter text into the document", () => {
+    // No ac:rich-text-body: the fallback must be EMPTY, not a transparent walk
+    // of the macro children (which would surface `<ac:parameter>` text).
+    const xml =
+      '<p>a <ac:structured-macro ac:name="scroll-only-inline">' +
+      '<ac:parameter ac:name="exporter">word</ac:parameter>' +
+      "</ac:structured-macro> b</p>";
+    const { blocks: b } = storageToBlocks(xml, { exporter: "word" });
+    const content = (b[0] as { content: InlineNode[] }).content;
+    expect(JSON.stringify(content)).not.toContain("word");
+    expect(content).toEqual([
+      { type: "text", text: "a " },
+      { type: "text", text: " b" },
+    ]);
+  });
+});
+
+describe("ExportNote.source — full provenance (pageTitle/pageUrl/blockPath)", () => {
+  test("populates pageTitle, pageUrl and blockPath when the host threads them", () => {
+    const xml =
+      "<p>first</p>" +
+      '<ac:structured-macro ac:name="scroll-ignore"><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>';
+    const { notes } = storageToBlocks(xml, {
+      exporter: "word",
+      pageContext: {
+        id: "12345",
+        title: "My Page",
+        url: "https://x.atlassian.net/wiki/spaces/D/pages/12345",
+      },
+    });
+    expect(notes[0]).toMatchObject({
+      code: "scroll-ignore-applied",
+      source: {
+        pageId: "12345",
+        pageTitle: "My Page",
+        pageUrl: "https://x.atlassian.net/wiki/spaces/D/pages/12345",
+        blockPath: "blocks[1]",
+      },
+    });
+  });
+
+  test("blockPath reflects nesting (a control inside a callout body)", () => {
+    const xml =
+      '<ac:structured-macro ac:name="info"><ac:rich-text-body>' +
+      "<p>lead</p>" +
+      '<ac:structured-macro ac:name="scroll-ignore"><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>' +
+      "</ac:rich-text-body></ac:structured-macro>";
+    const { notes } = storageToBlocks(xml, { exporter: "pdf", pageContext: { id: "1" } });
+    expect(notes[0]!.source?.blockPath).toBe("blocks[0].content[1]");
+  });
+});
