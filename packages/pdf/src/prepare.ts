@@ -197,6 +197,8 @@ export async function preparePdfDocument(
             return { ...block, content: await walk(block.content) };
           case "blockquote":
             return { ...block, content: await walk(block.content) };
+          case "orientation":
+            return { ...block, content: await walk(block.content) };
           case "list":
             return {
               ...block,
@@ -233,6 +235,7 @@ export async function preparePdfDocument(
                 width: block.width,
                 height: block.height,
                 fallbackLabel,
+                caption: block.caption,
               };
             } catch (error) {
               notes.push({
@@ -240,7 +243,7 @@ export async function preparePdfDocument(
                 code: "pdf-image-skipped",
                 message: `${fallbackLabel} was not embedded: ${error instanceof Error ? error.message : String(error)}`,
               });
-              return { type: "image", alt: block.alt, fallbackLabel };
+              return { type: "image", alt: block.alt, fallbackLabel, caption: block.caption };
             }
           }
           case "codeBlock": {
@@ -252,7 +255,7 @@ export async function preparePdfDocument(
                 { bytes, mediaType: "image/svg+xml", filename: "diagram.svg" },
                 "diagram"
               );
-              return { type: "diagram", assetPath, source: block.code };
+              return { type: "diagram", assetPath, source: block.code, caption: block.caption };
             }
             notes.push({
               level: rendered.kind === "unsupported" ? "info" : "warning",
@@ -271,6 +274,8 @@ export async function preparePdfDocument(
           case "paragraph":
           case "divider":
           case "unknown":
+          case "pageBreak":
+          case "anchor":
             return block;
           default: {
             const exhaustive: never = block;

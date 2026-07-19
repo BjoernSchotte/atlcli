@@ -232,7 +232,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    (and images aren't disabled), the serializer's image seam embeds each
   //    image into THIS zip (media + rel + content type) before render — the
   //    rendered rawxml body then references relationships that already exist.
-  const { blocks, notes: walkNotes } = storageToBlocks(input.details.storage ?? "");
+  const { blocks, notes: walkNotes } = storageToBlocks(input.details.storage ?? "", { exporter: "word" });
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions

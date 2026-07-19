@@ -1,4 +1,4 @@
-import type { ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
 
 export interface PdfExportMetadata {
   title: string;
@@ -34,18 +34,20 @@ export interface PreparedPdfAsset {
 }
 
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" }>
+  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" }>
   | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
   | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
   | {
       type: "table";
       rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;
       columnWidths?: number[];
+      caption?: Caption;
     }
-  | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string }
+  | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string; caption?: Caption }
   | { type: "blockquote"; content: PreparedPdfBlock[] }
-  | { type: "codeBlock"; language?: string; code: string }
-  | { type: "diagram"; assetPath: string; alt?: string; source: string };
+  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
+  | { type: "diagram"; assetPath: string; alt?: string; source: string; caption?: Caption }
+  | { type: "orientation"; landscape: boolean; content: PreparedPdfBlock[] };
 
 export interface PreparedPdfDocument {
   blocks: PreparedPdfBlock[];

@@ -130,6 +130,7 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return block.code;
         case "callout":
         case "blockquote":
+        case "orientation":
           return blocksPlainText(block.content);
         case "list":
           return block.items.map((item) => blocksPlainText(item.content)).join(" ");
@@ -145,6 +146,9 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return "";
         case "unknown":
           return block.macroName;
+        case "pageBreak":
+        case "anchor":
+          return "";
         default: {
           const exhaustive: never = block;
           return exhaustive;
@@ -470,6 +474,7 @@ function minHeadingLevel(blocks: PreparedPdfBlock[]): number {
         break;
       case "callout":
       case "blockquote":
+      case "orientation":
         min = Math.min(min, minHeadingLevel(block.content));
         break;
       case "list":
@@ -502,6 +507,7 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): Map<string, string> {
         }
         case "callout":
         case "blockquote":
+        case "orientation":
           walk(block.content);
           break;
         case "list":
@@ -801,6 +807,19 @@ function serializeBlock(
         macroName: block.macroName,
       });
       value = "";
+      break;
+    // No-op renderings (T0.2): the walker never emits these yet; real rendering
+    // lands in T1.5. `writeMapped` still wraps them (source-map precedent).
+    case "pageBreak":
+      value = "";
+      break;
+    case "anchor":
+      value = "";
+      break;
+    case "orientation":
+      // Transparent — no `#set page(flipped:)` yet (T1.5); children serialize
+      // exactly as if the region wrapper were absent, so nothing is lost.
+      value = serializeBlocks(block.content, writer, `${path}.content`, context);
       break;
     default: {
       const exhaustive: never = block;

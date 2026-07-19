@@ -506,3 +506,81 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("1."); // ordered nested marker
   });
 });
+
+describe("serializeBlocks — new ExportBlock variants (T0 no-op renderings)", () => {
+  it("renders pageBreak/anchor as zero XML and orientation as its children bare", async () => {
+    const body: ExportBlock[] = [
+      { type: "paragraph", content: [{ type: "text", text: "before" }] },
+      { type: "paragraph", content: [{ type: "text", text: "inside region" }] },
+      { type: "paragraph", content: [{ type: "text", text: "after" }] },
+    ];
+    // The reference document without any new blocks.
+    const plain = await serializeBlocks(body, { styleNames: noStyles });
+
+    // The same content wrapped/surrounded with the new no-op blocks.
+    const withNew: ExportBlock[] = [
+      { type: "paragraph", content: [{ type: "text", text: "before" }] },
+      { type: "pageBreak" },
+      { type: "anchor", name: "sec" },
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "inside region" }] }],
+      },
+      { type: "paragraph", content: [{ type: "text", text: "after" }] },
+    ];
+    const withNo = await serializeBlocks(withNew, { styleNames: noStyles });
+
+    // pageBreak + anchor contribute nothing, orientation renders its child
+    // transparently → output is byte-identical to the plain document.
+    expect(withNo.xml).toBe(plain.xml);
+    expect(withNo.notes).toEqual([]);
+  });
+
+  it("promotes headings nested inside an orientation region (computeHeadingOffset)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "heading", level: 2, content: [{ type: "text", text: "Wide section" }] }],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    // The lone H2 (inside the region) is the shallowest heading → promoted to
+    // Heading 1. Without the orientation recursion in minHeadingLevel it would
+    // stay Heading2.
+    expect(xml).toContain('<w:pStyle w:val="Heading1"/>');
+    expect(xml).toContain("Wide section");
+  });
+
+  it("prefetches an image and a mermaid diagram nested inside an orientation region", async () => {
+    const imagePrefetched: string[] = [];
+    const diagramPrefetched: string[] = [];
+    const blocks: ExportBlock[] = [
+      {
+        type: "orientation",
+        landscape: false,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "nested.png" }, alt: "n" },
+          { type: "codeBlock", language: "mermaid", code: "graph TD\n A-->B" },
+        ],
+      },
+    ];
+    await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "unused" }),
+        prefetch: (block) =>
+          imagePrefetched.push(block.source.kind === "attachment" ? block.source.filename : block.source.url),
+      },
+      diagrams: {
+        embed: async () => ({ ok: false, route: "failed", reason: "unused" }),
+        prefetch: (block) => diagramPrefetched.push(block.code),
+      },
+    });
+    // Both nested-block prefetch hooks fired — the prefetchBlocks walk descended
+    // into the orientation region.
+    expect(imagePrefetched).toEqual(["nested.png"]);
+    expect(diagramPrefetched).toEqual(["graph TD\n A-->B"]);
+  });
+});
