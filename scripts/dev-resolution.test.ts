@@ -16,7 +16,12 @@ import { describe, expect, it } from "bun:test";
  */
 describe("development-condition resolution (spec 009)", () => {
   it("resolves @atlcli/* workspace imports to live src/, not dist/", () => {
-    const resolved = import.meta.resolve("@atlcli/pdf/browser");
+    // Resolve from a workspace package's context (scripts/ sits under the
+    // root package, whose own resolution context is not what in-repo package
+    // code experiences).
+    const parent = new URL("../packages/pdf-compiler-browser/", import.meta.url)
+      .pathname;
+    const resolved = Bun.resolveSync("@atlcli/pdf/browser", parent);
     expect(
       resolved.endsWith("/packages/pdf/src/index.browser.ts"),
       `@atlcli/pdf/browser resolved to\n  ${resolved}\nexpected live src/. ` +
