@@ -1353,3 +1353,131 @@ describe("exportDocx — spec 003 exporter-sensitive scroll macros", () => {
     expect(codes).toContain("scroll-ignore-applied");
   });
 });
+
+describe("exportDocx — spec 003 review fixes", () => {
+  it("a document ENDING in an orientation region leaves no empty final section (no blank page)", async () => {
+    const endsInRegion: ConfluencePageDetails = {
+      ...details,
+      storage:
+        "<p>lead</p>" +
+        '<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body><p>final wide</p></ac:rich-text-body></ac:structured-macro>',
+    };
+    // A content-only template: nothing between $scroll.content and the body sectPr.
+    const templateBytes = buildDocx({ body: para("$scroll.content"), styles: stylesXml("") });
+    const { bytes } = await exportDocx({ templateBytes, details: endsInRegion, template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    // The region's closing sectPr paragraph merged INTO the body-level sectPr:
+    // no sectPr paragraph directly precedes the final body sectPr.
+    expect(doc).not.toMatch(
+      /<w:p><w:pPr><w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr><\/w:pPr><\/w:p><w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr><\/w:body>/
+    );
+    // The final body-level section IS the landscape region.
+    const bodySect = doc.match(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>(?=<\/w:body>)/)?.[0] ?? "";
+    expect(bodySect).toContain('w:orient="landscape"');
+    expect(doc).toContain("final wide");
+  });
+
+  it("exportControls: passthrough keeps scroll-ignore content (--keep-ignored)", async () => {
+    const scrollDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="scroll-ignore"><ac:rich-text-body><p>KEEP_FOR_DEBUG</p></ac:rich-text-body></ac:structured-macro>',
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: scrollDetails,
+      template,
+      deps,
+      exportControls: "passthrough",
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("KEEP_FOR_DEBUG");
+    expect(report.notes.some((n) => n.code === "export-controls-passthrough")).toBe(true);
+  });
+
+  it("an unsupported captionLang falls back to English with a warning note", async () => {
+    const capDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="scroll-title"><ac:parameter ac:name="title">T</ac:parameter>' +
+        "<ac:rich-text-body><table><tbody><tr><td>c</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: capDetails,
+      template,
+      deps,
+      captionLang: "fr-FR",
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("Table ");
+    expect(report.notes.some((n) => n.code === "caption-lang-fallback")).toBe(true);
+  });
+
+  it("a BCP-47 regional German tag resolves to German labels", async () => {
+    const capDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="scroll-title"><ac:parameter ac:name="title">T</ac:parameter>' +
+        "<ac:rich-text-body><table><tbody><tr><td>c</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: capDetails,
+      template,
+      deps,
+      captionLang: "de-AT",
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("Tabelle ");
+    expect(report.notes.some((n) => n.code === "caption-lang-fallback")).toBe(false);
+  });
+
+  it("ensureCaptionStyle injects the Caption style into a template that lacks it", async () => {
+    const capDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="scroll-title"><ac:parameter ac:name="title">Styled</ac:parameter>' +
+        "<ac:rich-text-body><table><tbody><tr><td>c</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>",
+    };
+    // fullTemplate's styles.xml has no Caption style.
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: capDetails,
+      template,
+      deps,
+    });
+    const styles = readPart(bytes, "word/styles.xml");
+    expect(styles).toContain('w:styleId="Caption"');
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:pStyle w:val="Caption"/>');
+  });
+
+  it("scroll-macro fixture output is byte-stable (deterministic golden)", async () => {
+    const zooStorage =
+      "<h1>Doc</h1>" +
+      '<ac:structured-macro ac:name="scroll-only"><ac:parameter ac:name="exporter">word</ac:parameter><ac:rich-text-body><p>WORD_ONLY_KEEP</p></ac:rich-text-body></ac:structured-macro>' +
+      '<ac:structured-macro ac:name="scroll-ignore"><ac:rich-text-body><p>IGNORED_DROP</p></ac:rich-text-body></ac:structured-macro>' +
+      '<p>a</p><ac:structured-macro ac:name="scroll-pagebreak"/><p>b</p>' +
+      '<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body><table><tbody><tr><td>wide</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>' +
+      '<ac:structured-macro ac:name="scroll-title"><ac:parameter ac:name="title">Zoo table</ac:parameter><ac:rich-text-body><table><tbody><tr><td>c</td></tr></tbody></table></ac:rich-text-body></ac:structured-macro>';
+    const zooDetails: ConfluencePageDetails = {
+      ...details,
+      storage: zooStorage,
+    };
+    const input = {
+      templateBytes: fullTemplate(false),
+      details: zooDetails,
+      template,
+      exportDate: new Date(2026, 6, 20, 9, 0),
+      deps,
+    };
+    const first = await exportDocx(input);
+    const second = await exportDocx(input);
+    const firstDoc = readPart(first.bytes, "word/document.xml");
+    expect(firstDoc).toBe(readPart(second.bytes, "word/document.xml"));
+    expect(readPart(first.bytes, "word/styles.xml")).toBe(readPart(second.bytes, "word/styles.xml"));
+    // Pin the full serialized body across refactors (snapshot golden).
+    expect(firstDoc).toMatchSnapshot("scroll-macro-feature-zoo-document-xml");
+  });
+});

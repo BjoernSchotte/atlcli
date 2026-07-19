@@ -146,11 +146,12 @@ interface InternalContext extends SerializeContext {
   bookmarks: { next: number; used: Set<string> };
   /**
    * The layout container the current block renders inside (spec 003 C6/C5).
-   * `pageBreak`/`orientation` render in `"body"`/`"list"` but are suppressed
-   * (children kept, layout side-effect skipped, note emitted) in `"tableCell"`/
-   * `"calloutCell"`, where a section break / page break would split the row.
+   * `pageBreak`/`orientation` render at `"body"` scope (list items inherit it —
+   * lists don't constrain layout controls) but are suppressed (children kept,
+   * layout side-effect skipped, note emitted) in `"tableCell"`/`"calloutCell"`,
+   * where a section break / page break would split the row.
    */
-  container: "body" | "list" | "tableCell" | "calloutCell";
+  container: "body" | "tableCell" | "calloutCell";
 }
 
 export interface SerializeResult {
@@ -350,7 +351,28 @@ export async function serializeBlocks(
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
-  return { xml: parts.join(""), notes };
+  return { xml: coalesceSectPrParagraphs(parts.join("")), notes };
+}
+
+/**
+ * One section-closing paragraph immediately followed by another creates an
+ * EMPTY section — a spurious blank page (the first closer forces `nextPage`).
+ * Two adjacent orientation regions produce exactly that shape: region 1's
+ * closing `sectPr` paragraph directly precedes region 2's base-restoring one.
+ * Keep the FIRST closer (the region's own) and drop the redundant second: the
+ * following content then belongs to the next real section, which carries the
+ * correct properties (spec 003 C6 review fix).
+ */
+const SECTPR_PARA_SRC = String.raw`<w:p><w:pPr>(?:<w:sectPr\b[^>]*\/>|<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>`;
+
+export function coalesceSectPrParagraphs(xml: string): string {
+  const pair = new RegExp(`(${SECTPR_PARA_SRC})(?:${SECTPR_PARA_SRC})`);
+  let previous: string;
+  do {
+    previous = xml;
+    xml = xml.replace(pair, "$1");
+  } while (xml !== previous);
+  return xml;
 }
 
 async function serializeBlock(

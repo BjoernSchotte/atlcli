@@ -8,7 +8,7 @@ import {
   type DiagramEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
-import { parseStyleNames } from "./ooxml.js";
+import { parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 
 const noStyles = new Map<string, string>();
@@ -924,5 +924,85 @@ describe("serializeBlocks — C3 captions", () => {
     ).blocks;
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles, bodySectPr: LETTER_SECTPR });
     expect(xml).not.toContain("macro not rendered");
+  });
+});
+
+describe("serializeBlocks — C6 adjacent orientation regions (empty-section fix)", () => {
+  const regionWith = (landscape: boolean, text: string): ExportBlock => ({
+    type: "orientation",
+    landscape,
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  });
+
+  /** Every sectPr-carrying (empty) paragraph in order. */
+  function sectPrParas(xml: string): string[] {
+    return [...xml.matchAll(/<w:p><w:pPr><w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr><\/w:pPr><\/w:p>/g)].map(
+      (m) => m[0]
+    );
+  }
+
+  /** True if two section-closing paragraphs are directly adjacent (an EMPTY section). */
+  function hasEmptySection(xml: string): boolean {
+    return /(<w:p><w:pPr><w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr><\/w:pPr><\/w:p>){2}/.test(xml);
+  }
+
+  it("two adjacent landscape regions produce no empty section (no blank page)", async () => {
+    const { xml } = await serializeBlocks(
+      [regionWith(true, "one"), regionWith(true, "two")],
+      { styleNames: noStyles, bodySectPr: LETTER_SECTPR }
+    );
+    expect(hasEmptySection(xml)).toBe(false);
+    // Both regions' content still renders, each closed by a landscape sectPr.
+    expect(xml).toContain("one");
+    expect(xml).toContain("two");
+    const paras = sectPrParas(xml);
+    // base-closer, region-1 closer, region-2 closer — the redundant second
+    // base-restore between the regions was coalesced away.
+    expect(paras).toHaveLength(3);
+    expect(paras[1]).toContain('w:orient="landscape"');
+    expect(paras[2]).toContain('w:orient="landscape"');
+  });
+
+  it("a landscape region followed by a portrait region keeps both orientations, no empty section", async () => {
+    const { xml } = await serializeBlocks(
+      [regionWith(true, "wide"), regionWith(false, "tall")],
+      { styleNames: noStyles, bodySectPr: LETTER_SECTPR }
+    );
+    expect(hasEmptySection(xml)).toBe(false);
+    const paras = sectPrParas(xml);
+    expect(paras).toHaveLength(3);
+    // "wide" closes landscape; "tall" closes portrait.
+    expect(paras[1]).toContain('w:orient="landscape"');
+    expect(paras[2]).not.toContain("landscape");
+    expect(xml.indexOf("wide")).toBeLessThan(xml.indexOf(paras[1]!));
+    expect(xml.indexOf("tall")).toBeGreaterThan(xml.indexOf(paras[1]!));
+  });
+
+  it("three back-to-back regions coalesce every redundant base closer", async () => {
+    const { xml } = await serializeBlocks(
+      [regionWith(true, "a"), regionWith(false, "b"), regionWith(true, "c")],
+      { styleNames: noStyles, bodySectPr: LETTER_SECTPR }
+    );
+    expect(hasEmptySection(xml)).toBe(false);
+  });
+});
+
+describe("resolveCaptionLang", () => {
+  it("resolves BCP-47 primary subtags case-insensitively", () => {
+    expect(resolveCaptionLang("de")).toEqual({ lang: "de" });
+    expect(resolveCaptionLang("de-DE").lang).toBe("de");
+    expect(resolveCaptionLang("DE_AT").lang).toBe("de");
+    expect(resolveCaptionLang("en-US")).toEqual({ lang: "en" });
+  });
+
+  it("absent/empty input defaults to English without a note", () => {
+    expect(resolveCaptionLang(undefined)).toEqual({ lang: "en" });
+    expect(resolveCaptionLang("  ")).toEqual({ lang: "en" });
+  });
+
+  it("unsupported languages fall back to English with a warning note", () => {
+    const result = resolveCaptionLang("fr-FR");
+    expect(result.lang).toBe("en");
+    expect(result.note).toMatchObject({ level: "warning", code: "caption-lang-fallback" });
   });
 });

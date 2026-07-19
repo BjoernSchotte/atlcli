@@ -11,12 +11,35 @@
  * id ({@link resolveHeadingStyleId}). Code blocks reference a synthesized
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
-import type { CaptionKind } from "@atlcli/confluence";
+import type { CaptionKind, ExportNote } from "@atlcli/confluence";
 import { normalizeExportColor } from "@atlcli/confluence";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
 export type CaptionLang = "en" | "de";
+
+/**
+ * Resolve a host-supplied locale (a BCP-47 language tag, e.g. `de`, `de-DE`,
+ * `en_US`) to a shipped {@link CaptionLang}. Case-insensitive on the primary
+ * subtag; anything that is not English or German falls back to `"en"` with a
+ * warning note (spec 003 C3 locale precedence: explicit option > host locale >
+ * `"en"`). Absent/empty input → `"en"`, no note.
+ */
+export function resolveCaptionLang(raw: string | undefined): { lang: CaptionLang; note?: ExportNote } {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { lang: "en" };
+  const primary = trimmed.toLowerCase().split(/[-_]/, 1)[0];
+  if (primary === "de") return { lang: "de" };
+  if (primary === "en") return { lang: "en" };
+  return {
+    lang: "en",
+    note: {
+      level: "warning",
+      code: "caption-lang-fallback",
+      message: `Caption language "${trimmed}" has no label set (supported: en, de); captions use English labels.`,
+    },
+  };
+}
 
 /** Escape text for a `<w:t>` / attribute value. */
 export function esc(s: string): string {
