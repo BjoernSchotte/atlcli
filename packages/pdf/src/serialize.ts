@@ -251,7 +251,7 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
 type TableDensity = "normal" | "dense";
 
 /** The layout container the current block renders inside (spec 003 C5/C6). */
-type RenderContainer = "body" | "list" | "tableCell" | "calloutCell";
+type RenderContainer = "body" | "tableCell" | "calloutCell";
 
 interface RenderContext {
   tableDensity: TableDensity;
@@ -861,13 +861,16 @@ function serializeBlock(
       value = serializeParagraphInline(block.content, writer, context, true);
       break;
     case "codeBlock": {
-      const raw = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+      // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a
+      // leading `#` is a syntax error ("the character `#` is not valid in
+      // code") — the figure body must be the bare `raw(...)` expression.
+      const rawExpr = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
       // Only CAPTIONED code becomes a figure — caption-less code keeps today's
       // rendering so C2's `figure.where(kind: raw)` outline never lists every
       // code block (spec 003 C3).
       value = block.caption
-        ? `#figure(${raw}, ${captionFigureArgs(block.caption, writer)})`
-        : raw;
+        ? `#figure(${rawExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${rawExpr}`;
       break;
     }
     case "diagram": {
@@ -885,10 +888,12 @@ function serializeBlock(
         // A captioned image that failed to embed still emits a NUMBERED figure
         // fallback so a broken attachment does not shift figure numbering or
         // leave a caption-less entry in C2's list of figures (spec 003 C3).
-        const fallback = `#emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]`;
+        // Figure arguments are CODE context: the body must be the bare
+        // `emph[...]` expression — `#emph` there is a Typst syntax error.
+        const fallbackExpr = `emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]`;
         value = block.caption
-          ? `#figure(${fallback}, ${captionFigureArgs(block.caption, writer)})`
-          : `#par[${fallback}]`;
+          ? `#figure(${fallbackExpr}, ${captionFigureArgs(block.caption, writer)})`
+          : `#par[#${fallbackExpr}]`;
       } else {
         if (!block.alt) {
           writer.notes.push({
@@ -957,12 +962,14 @@ function serializeBlock(
           level: "info",
           code: "table-text-scaled",
           message: `A wide table's text was scaled down to ${MIN_TABLE_FONT_SIZE_PT}pt to fit the page width.`,
+          source: { blockPath: path },
         });
       } else if (layout === "overflow-warned") {
         writer.notes.push({
           level: "warning",
           code: "table-overflow-warned",
           message: "A wide table may overflow the page even at minimum text size; consider a landscape orientation region for it.",
+          source: { blockPath: path },
         });
       }
       const cellContext: RenderContext = {
@@ -1032,10 +1039,13 @@ function serializeBlock(
       const tableBody = scaled
         ? `#[\n#set text(size: ${MIN_TABLE_FONT_SIZE_PT}pt)\n${tableMarkup}\n]`
         : tableMarkup;
-      const tableBlock = `#block(width: 100%)[\n${tableBody}\n]`;
+      // Figure arguments are CODE context: the body must be the bare
+      // `block(...)` call — a leading `#` there is a Typst syntax error. The
+      // `[...]` content argument re-enters markup, so the inner `#table` stays valid.
+      const tableBlockExpr = `block(width: 100%)[\n${tableBody}\n]`;
       value = block.caption
-        ? `#figure(${tableBlock}, ${captionFigureArgs(block.caption, writer)})`
-        : tableBlock;
+        ? `#figure(${tableBlockExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${tableBlockExpr}`;
       break;
     }
     case "divider":
@@ -1059,6 +1069,7 @@ function serializeBlock(
           level: "info",
           code: "pagebreak-suppressed-in-container",
           message: `A page break inside a ${context.container === "tableCell" ? "table cell" : "callout"} was suppressed (it has no effect inside that box).`,
+          source: { blockPath: path },
         });
         value = "";
       } else {
@@ -1081,6 +1092,7 @@ function serializeBlock(
           level: "info",
           code: "orientation-suppressed-in-container",
           message: `An orientation region inside a ${context.container === "tableCell" ? "table cell" : "callout"} was rendered without an orientation change.`,
+          source: { blockPath: path },
         });
         value = serializeBlocks(block.content, writer, `${path}.content`, context);
         break;

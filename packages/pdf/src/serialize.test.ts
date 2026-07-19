@@ -1088,7 +1088,8 @@ describe("serialize — C3 captions", () => {
         caption: { kind: "figure", content: [{ type: "text", text: "Broken" }] },
       },
     ]);
-    expect(main).toContain("#figure(#emph[");
+    expect(main).toContain("#figure(emph[");
+    expect(main).not.toContain("#figure(#");
     expect(main).toContain("Image unavailable");
     expect(main).toContain("caption: [");
     expect(notes.map((n) => n.code)).toContain("pdf-image-skipped");
@@ -1102,7 +1103,8 @@ describe("serialize — C3 captions", () => {
         caption: { kind: "table", content: [{ type: "text", text: "Matrix" }] },
       },
     ]);
-    expect(main).toContain("#figure(#block(width: 100%)[");
+    expect(main).toContain("#figure(block(width: 100%)[");
+    expect(main).not.toContain("#figure(#");
     expect(main).toContain("kind: table");
     expect(main).toContain("Matrix");
   });
@@ -1111,11 +1113,12 @@ describe("serialize — C3 captions", () => {
     const withCaption = await toMain([
       { type: "codeBlock", language: "ts", code: "const x = 1", caption: { kind: "code", content: [{ type: "text", text: "L1" }] } },
     ]);
-    expect(withCaption.main).toContain("#figure(#raw(");
+    expect(withCaption.main).toContain("#figure(raw(");
+    expect(withCaption.main).not.toContain("#figure(#");
     expect(withCaption.main).toContain("kind: raw");
 
     const plain = await toMain([{ type: "codeBlock", language: "ts", code: "const x = 1" }]);
-    expect(plain.main).not.toContain("#figure(#raw(");
+    expect(plain.main).not.toContain("#figure(raw(");
   });
 });
 
