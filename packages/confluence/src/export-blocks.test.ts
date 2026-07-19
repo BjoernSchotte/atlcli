@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  macroParamText,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
+  type MacroParameter,
 } from "./export-blocks.js";
 
 /** Convenience: parse and return only the blocks. */
@@ -382,7 +384,11 @@ describe("storageToBlocks — unknown macros", () => {
     const { blocks: b, notes } = storageToBlocks(
       '<ac:structured-macro ac:name="drawio"><ac:parameter ac:name="diagramName">x</ac:parameter></ac:structured-macro>'
     );
-    expect(b).toEqual([{ type: "unknown", macroName: "drawio" }]);
+    // Lossless capture: the block keeps its (lowercased-name) parameter, and the
+    // note/no-raw-XML invariant is unchanged.
+    expect(b).toEqual([
+      { type: "unknown", macroName: "drawio", params: [{ name: "diagramname", text: "x" }] },
+    ]);
     expect(notes).toEqual([
       { level: "warning", code: "unknown-macro", message: expect.any(String), macroName: "drawio" },
     ]);
@@ -394,6 +400,261 @@ describe("storageToBlocks — unknown macros", () => {
     const { blocks: b, notes } = storageToBlocks('<ac:structured-macro ac:name="jira"/>');
     expect(b).toEqual([{ type: "unknown", macroName: "jira" }]);
     expect(notes[0]).toMatchObject({ level: "info", code: "macro-not-rendered", macroName: "jira" });
+  });
+});
+
+describe("storageToBlocks — lossless unknown macros", () => {
+  /** Convenience: parse and return the first block as an enriched unknown block. */
+  function unknownBlock(storage: string): Extract<ExportBlock, { type: "unknown" }> {
+    return blocks(storage)[0] as Extract<ExportBlock, { type: "unknown" }>;
+  }
+
+  test("captures macroId + plain-text parameters; no body fields when there is no body", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="drawio" ac:macro-id="mid-42">' +
+        '<ac:parameter ac:name="diagramName">Architecture</ac:parameter>' +
+        '<ac:parameter ac:name="width">640</ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block).toEqual({
+      type: "unknown",
+      macroName: "drawio",
+      macroId: "mid-42",
+      params: [
+        { name: "diagramname", text: "Architecture" },
+        { name: "width", text: "640" },
+      ],
+    });
+    // No rich-text/plain-text body → those fields are absent entirely.
+    expect(block.body).toBeUndefined();
+    expect(block.plainBody).toBeUndefined();
+    expect(block.bodyNotes).toBeUndefined();
+  });
+
+  test("captures an ri:page reference as a page MacroParamRef", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="include">' +
+        '<ac:parameter ac:name="page"><ri:page ri:content-id="12345" ri:content-title="Spec" ri:space-key="DOCSY"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      {
+        name: "page",
+        refs: [{ kind: "page", contentId: "12345", contentTitle: "Spec", spaceKey: "DOCSY" }],
+      },
+    ]);
+  });
+
+  test("captures an ri:attachment reference", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="multimedia">' +
+        '<ac:parameter ac:name="name"><ri:attachment ri:filename="demo.mp4"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      { name: "name", refs: [{ kind: "attachment", filename: "demo.mp4" }] },
+    ]);
+  });
+
+  test("captures an ri:url reference", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="widget">' +
+        '<ac:parameter ac:name="url"><ri:url ri:value="https://x.test/w"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      { name: "url", refs: [{ kind: "url", value: "https://x.test/w" }] },
+    ]);
+  });
+
+  test("captures an ri:user reference", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="blog-posts">' +
+        '<ac:parameter ac:name="author"><ri:user ri:account-id="acc-9"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      { name: "author", refs: [{ kind: "user", accountId: "acc-9" }] },
+    ]);
+  });
+
+  test("captures MULTIPLE sibling ri:space refs under one parameter (blog-posts spaces)", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="blog-posts">' +
+        '<ac:parameter ac:name="spaces"><ri:space ri:space-key="DOCSY"/><ri:space ri:space-key="ENG"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      {
+        name: "spaces",
+        refs: [
+          { kind: "space", spaceKey: "DOCSY" },
+          { kind: "space", spaceKey: "ENG" },
+        ],
+      },
+    ]);
+  });
+
+  test("captures an unnamed parameter with name: \"\" (include/excerpt-include shape)", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="excerpt-include">' +
+        '<ac:parameter ac:name=""><ri:page ri:content-id="999"/></ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      { name: "", refs: [{ kind: "page", contentId: "999" }] },
+    ]);
+  });
+
+  test("keeps case-colliding duplicate parameter names as ordered array entries", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="drawio">' +
+        '<ac:parameter ac:name="Foo">first</ac:parameter>' +
+        '<ac:parameter ac:name="foo">second</ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([
+      { name: "foo", text: "first" },
+      { name: "foo", text: "second" },
+    ]);
+  });
+
+  test("trims leading/trailing whitespace in parameter text (mirrors macroParam)", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="drawio">' +
+        '<ac:parameter ac:name="title">   spaced value   </ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    expect(block.params).toEqual([{ name: "title", text: "spaced value" }]);
+  });
+
+  test("walks a rich-text-body; nested-macro note stays OUT of the top-level report", () => {
+    const { blocks: b, notes } = storageToBlocks(
+      '<ac:structured-macro ac:name="drawio"><ac:rich-text-body>' +
+        "<p>intro</p>" +
+        '<ac:structured-macro ac:name="jira"/>' +
+        "</ac:rich-text-body></ac:structured-macro>"
+    );
+    const block = b[0] as Extract<ExportBlock, { type: "unknown" }>;
+    expect(block.body).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "intro" }] },
+      { type: "unknown", macroName: "jira" },
+    ]);
+    // The top-level report has ONLY the outer macro's note — the nested
+    // jira note was collected by the scratch ctx, not merged upward.
+    expect(notes).toEqual([
+      { level: "warning", code: "unknown-macro", message: expect.any(String), macroName: "drawio" },
+    ]);
+    // ...and it survives on the block as bodyNotes.
+    expect(block.bodyNotes).toEqual([
+      { level: "info", code: "macro-not-rendered", message: expect.any(String), macroName: "jira" },
+    ]);
+  });
+
+  test("preserves a scratch-walk note that walkImage would otherwise drop (bodyNotes)", () => {
+    const { blocks: b, notes } = storageToBlocks(
+      '<ac:structured-macro ac:name="drawio"><ac:rich-text-body>' +
+        "<p>text</p>" +
+        "<ac:image></ac:image>" +
+        "</ac:rich-text-body></ac:structured-macro>"
+    );
+    const block = b[0] as Extract<ExportBlock, { type: "unknown" }>;
+    // The unresolvable image is dropped from body (as walkImage always does)...
+    expect(block.body).toEqual([{ type: "paragraph", content: [{ type: "text", text: "text" }] }]);
+    // ...but the observation is preserved on the block, not discarded.
+    expect(block.bodyNotes).toEqual([
+      { level: "warning", code: "image-unresolved", message: expect.any(String) },
+    ]);
+    // The top-level report never sees it.
+    expect(notes.some((n) => n.code === "image-unresolved")).toBe(false);
+    expect(notes).toEqual([
+      { level: "warning", code: "unknown-macro", message: expect.any(String), macroName: "drawio" },
+    ]);
+  });
+
+  test("captures a plain-text-body verbatim (CDATA)", () => {
+    const block = unknownBlock(
+      '<ac:structured-macro ac:name="drawio"><ac:plain-text-body><![CDATA[a < b && c > d]]></ac:plain-text-body></ac:structured-macro>'
+    );
+    expect(block.plainBody).toBe("a < b && c > d");
+    expect(block.body).toBeUndefined();
+  });
+
+  test("backward-compat pin: a bare macro is just { type, macroName }", () => {
+    const block = unknownBlock('<ac:structured-macro ac:name="x"/>');
+    expect(block).toEqual({ type: "unknown", macroName: "x" });
+  });
+});
+
+describe("macroParamText", () => {
+  const params: MacroParameter[] = [
+    { name: "jqlquery", text: "project = ATL" },
+    { name: "page", refs: [{ kind: "page", contentId: "1" }] },
+    { name: "dup", text: "first" },
+    { name: "dup", text: "second" },
+  ];
+
+  test("returns a matching parameter's text case-insensitively", () => {
+    expect(macroParamText(params, "jqlQuery")).toBe("project = ATL");
+  });
+
+  test("returns undefined for a ref-only parameter", () => {
+    expect(macroParamText(params, "page")).toBeUndefined();
+  });
+
+  test("returns undefined for an absent parameter or absent params", () => {
+    expect(macroParamText(params, "missing")).toBeUndefined();
+    expect(macroParamText(undefined, "jqlQuery")).toBeUndefined();
+  });
+
+  test("returns the FIRST match when duplicate names exist", () => {
+    expect(macroParamText(params, "dup")).toBe("first");
+  });
+});
+
+describe("storageToBlocks — options", () => {
+  test("exporter option has no semantic effect yet (deep-equal to no-options)", () => {
+    const xml =
+      '<h2>Mixed</h2><p>text with a <a href="https://x.test">link</a></p>' +
+      '<ac:structured-macro ac:name="drawio" ac:macro-id="m1"><ac:parameter ac:name="k">v</ac:parameter>' +
+      "<ac:rich-text-body><p>body</p></ac:rich-text-body></ac:structured-macro>";
+    expect(storageToBlocks(xml, { exporter: "pdf" })).toEqual(storageToBlocks(xml));
+    expect(storageToBlocks(xml, { exporter: "word" })).toEqual(storageToBlocks(xml));
+  });
+});
+
+describe("ExportBlock — compile-shape", () => {
+  test("the new/extended variants type-check as an ExportBlock[] literal", () => {
+    const doc: ExportBlock[] = [
+      { type: "pageBreak" },
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "wide" }] }],
+      },
+      { type: "anchor", name: "sec-1" },
+      { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },
+      {
+        type: "table",
+        rows: [],
+        caption: { kind: "table", content: [{ type: "text", text: "Table 1" }] },
+      },
+      {
+        type: "image",
+        source: { kind: "external", url: "https://x.test/i.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Figure 1" }] },
+      },
+      { type: "heading", level: 2, content: [{ type: "text", text: "H" }], explicitAnchor: "h-anchor" },
+    ];
+    expect(doc.map((b) => b.type)).toEqual([
+      "pageBreak",
+      "orientation",
+      "anchor",
+      "codeBlock",
+      "table",
+      "image",
+      "heading",
+    ]);
   });
 });
 
