@@ -1,5 +1,6 @@
 export * from "./escape.js";
 export * from "./compiler.js";
+export * from "./fonts.js";
 export * from "./prepare.js";
 export * from "./run-export.js";
 export * from "./runtime-assets.js";

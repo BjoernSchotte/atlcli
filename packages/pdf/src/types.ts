@@ -202,3 +202,32 @@ export interface PdfCompilerDiagnostic {
 }
 
 export type { ExportBlock, ExportNote, InlineNode, LinkTarget };
+
+/**
+ * Font-intake seam (spec 007 B5). An approved corporate font face a host may
+ * feed into the PDF compiler. The engine never fetches font bytes: a host
+ * resolves them through a {@link FontSource} and hands them to the compiler as
+ * `Uint8Array[]`, after gating each one through `verifyFontBytes` (see
+ * `fonts.ts`).
+ */
+export interface FontAsset {
+  family: string;
+  style: "normal" | "italic";
+  weight: number;
+  /** Lowercase hex SHA-256 of the exact font bytes; re-verified before use. */
+  sha256: string;
+  /** Optional license attestation carried alongside the approved face. */
+  license?: { kind: "OFL" | "Apache-2.0" | "proprietary"; evidence: string };
+}
+
+/**
+ * Host-provided port for approved fonts, mirroring {@link PdfAssetResolver}.
+ * Implementers own storage and the upload/attestation flow (host follow-ups);
+ * the engine only consumes `list()` (e.g. to build a `choice` setting's options)
+ * and `getBytes(sha256)`, whose result MUST be passed through `verifyFontBytes`
+ * before it reaches the compiler.
+ */
+export interface FontSource {
+  list(): Promise<FontAsset[]>;
+  getBytes(sha256: string): Promise<Uint8Array>;
+}
