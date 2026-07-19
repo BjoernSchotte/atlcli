@@ -75,29 +75,58 @@
 
 ## Goal & user value
 
+**Maintainer decision (2026-07-19): npm registry publishing is out of active
+scope for this folder.** `atlcli` as a product name is likely to be renamed;
+publishing real packages under the `@atlcli/*` scope today would burn that
+scope on npm for no benefit. The most likely external consumer identified so
+far — a Forge app — will probably consume these packages via filesystem
+linking (`file:`/`bun link`/workspace) rather than a registry install, though
+that is not yet finally decided either. This folder therefore prepares
+*everything* (build artifacts, packaging quality, consumability) but does
+**not** implement a live publish. The full registry-publish design is
+preserved, unimplemented, in the "Deferred: npm registry publishing" section
+at the end of this document, for reuse once the product name is settled.
+
 Make the `@atlcli/*` packages consumable by **external consumers** — any repo
 outside this monorepo that wants to build export functionality on top of our
-engines — by:
+engines — **without requiring a package registry** — by:
 
-1. Publishing real build artifacts (compiled JS + `.d.ts`, not `src/*.ts`
+1. Producing real build artifacts (compiled JS + `.d.ts`, not `src/*.ts`
    exports) for the eight packages: `core`, `confluence`, `jira`,
    `plugin-api`, `diagram`, `docx`, `pdf`, `pdf-compiler-browser` (and later
-   `export-macros` once T1.7 lands).
-2. A semver discipline and publish pipeline aligned with the existing
-   `scripts/release.ts` release train.
-3. Solving the three consumability blockers no ordinary publish handles:
+   `export-macros` once T1.7 lands) — installable via two supported paths:
+   **filesystem/workspace linking** (`file:` protocol, `bun link`) for a
+   consumer developed alongside this repo or a sibling checkout, and
+   **packed-tarball install** (`bun pm pack` output installed with `bun add
+   ./pkg.tgz` / `npm install ./pkg.tgz`) for a consumer that wants an
+   isolated, versioned artifact without a registry round-trip.
+2. A semver discipline for the packages themselves (version numbers, tarball
+   naming, breaking-change policy) — decoupled from any publish pipeline,
+   since there is currently nowhere to publish *to*.
+3. Solving the three consumability blockers no ordinary packaging handles:
    the **patched** typst.ts wasm glue, the **gitignored, build-time
    downloaded** PDF fonts, and the **wasm/font `?url` asset contracts** for
-   consumer bundlers.
+   consumer bundlers — all of which matter identically for filesystem-linked,
+   tarball-installed, or (later) registry-installed consumers.
 4. Freezing and guarding the public API (T4.2) so external consumers can
-   depend on versioned packages without being broken silently.
+   depend on versioned packages without being broken silently, regardless of
+   how they installed them.
+5. **Making it structurally hard to publish by accident.** Today three
+   independent paths could already run `npm publish` for overlapping package
+   sets (see Reference) using a long-lived `NPM_TOKEN`, with none of this
+   folder's quality gates in the way. Neutralizing those paths — not
+   building a new one — is this folder's most urgent task (see Tasks:
+   Publish prevention).
 
-Value: unblocks Track 2 of the Umsetzungsplan (an externally developed host
-consuming the published packages) whose only coupling to this repo is
-T4.1/T4.2. Also improves our own hygiene: today `@atlcli/core`,
+Value: unblocks Track 2 of the Umsetzungsplan (an externally developed host —
+most likely the Forge app — consuming these packages via workspace/filesystem
+linking or packed tarballs; registry publish deferred) whose only coupling to
+this repo is T4.1/T4.2. Also improves our own hygiene: today `@atlcli/core`,
 `@atlcli/confluence`, `@atlcli/jira`, `@atlcli/plugin-api` are *not*
 `private: true` and would publish broken src-exports if anyone ran
-`npm publish` — closing that hole is part of this work.
+`npm publish` today — closing that hole is part of this work, and is now the
+primary reason the classification exists (a protective default, not a
+publish pipeline — see Architecture: Package graph).
 
 ## Dependencies
 
@@ -107,19 +136,20 @@ T4.1/T4.2. Also improves our own hygiene: today `@atlcli/core`,
   parallel to the feature lanes (disjoint file ownership: `packages/*/package.json`
   build/exports fields, new `tsconfig.build.json` files, `scripts/`,
   `.github/workflows/`).
-- **Split T4.1 into infra (build/pack/local smoke) and the first live
-  registry publish — they are not the same gate.** Everything described
+- **Split T4.1 into infra (build/pack/local smoke) — the active scope of
+  this folder — and the first live registry publish, which is deferred
+  entirely (see Goal and the Deferred appendix).** Everything described
   above (build, pack-check, patch vendoring, font shipping, local `bun pm
-  pack`/tarball-install smoke, dry-runs) is packaging-only and can run
-  before M1. The **first publish to the public registry** is a different,
-  effectively irreversible event: `UMSETZUNGSPLAN.md` places T4.1 at "Sync-
-  Punkt 1", explicitly *after* Meilenstein M1 (`UMSETZUNGSPLAN.md:111-150`),
-  and T4.7 requires a `/security-review` "vor jedem Release"
-  (`UMSETZUNGSPLAN.md:174-179`). The Tasks below must encode this: the
-  release path refuses the first public `npm publish` for any package
-  unless both an M1 acceptance record and a T4.7 security review exist.
-  Everything else in this folder — including 0.x dry-runs and pack-checks —
-  may proceed earlier.
+  pack`/tarball-install smoke, filesystem-link smoke, dry-runs) is
+  packaging-only, has no dependency on a registry, and can run immediately —
+  none of it is gated on M1. The **first publish to a public registry**
+  would have been a different, effectively irreversible event gated on both
+  an M1 acceptance record and a T4.7 security review (`UMSETZUNGSPLAN.md`
+  places T4.1 at "Sync-Punkt 1", after M1, `UMSETZUNGSPLAN.md:111-150`;
+  T4.7 requires a `/security-review` "vor jedem Release",
+  `UMSETZUNGSPLAN.md:174-179`) — that gating design is preserved in the
+  Deferred appendix for reuse if/when registry publishing resumes, but does
+  not block anything in this folder's active Tasks or Definition of Done.
 - **The API freeze (T4.2) comes last**: it must wait until the sibling
   folders 001–008 of this spec series have landed, because they add or reshape
   the very surfaces being frozen (`TreeSource` from 002, macro registry from
@@ -222,6 +252,17 @@ Decision: **`tsc` (emit + declarations), not `bun build`.**
 
 ### Package graph & what gets published
 
+**What "published"/"publish set" means in this section today: fail-closed
+distribution classification, not an active registry push.** No package in
+this folder's active scope is pushed to a registry (see Goal). The
+classification below still does real, immediate work: it is the source list
+`pack-check`, the filesystem-link smoke, and the tarball-install smoke
+iterate over, and — just as importantly — it is the mechanism that keeps
+every package without an explicit decision from being publishable at all if
+someone runs `npm publish` by hand tomorrow. Read every "publish"/
+"publishable" below as "classified for external distribution (file-link/
+tarball today, registry only if the Deferred appendix is revived)".
+
 Publish set (dependency order): `plugin-api`, `core`, `diagram`, `jira`,
 `confluence`, `docx`, `pdf`, `pdf-compiler-browser` (+ `export-macros` when it
 exists, + `template-pack` once folder 007 lands — the new isomorphic
@@ -254,121 +295,58 @@ forgotten `template-pack`-style addition before it becomes a silent leak or
 a silent omission.
 
 Each published package carries a `files` allowlist (e.g. `["dist", "fonts",
-"licenses", "README.md"]`) so tarballs are deterministic, and
-`publishConfig.access` set per the registry decision below. `README.md`
-does not exist yet for any of the eight packages — creating it is a task
-below, not an assumption.
+"licenses", "README.md"]`) so tarballs are deterministic. (`publishConfig.access`
+is part of the registry setup and stays in the Deferred appendix — it has no
+effect on filesystem-link or tarball consumption.) `README.md` does not exist
+yet for any of the eight packages — creating it is a task below, not an
+assumption.
 
 ### Versioning: lockstep train on the existing release script, no changesets
 
-Decision: **fixed/lockstep versioning for all `@atlcli/*` packages, driven by
-an extended `scripts/release.ts`** — not changesets.
+Decision: **fixed/lockstep versioning for all `@atlcli/*` packages** — not
+changesets. (The extended-`scripts/release.ts` **publish** step described in
+earlier drafts of this section is deferred along with the registry — see the
+Deferred appendix. What remains active here is the version-numbering policy
+itself, which every packed tarball and filesystem-linked consumer still
+needs regardless of whether anything is ever pushed to a registry.)
 
-- **Precondition: exactly one publish authority.** Today three independent
-  paths can `npm publish` overlapping package sets: `scripts/release.ts`
-  (currently no publish step; this folder adds one),
-  `.github/workflows/release-core.yml` (`core-v*`, publishes
-  core/confluence/plugin-api), and `.github/workflows/release-cli.yml`
-  (`cli-v*`, publishes `apps/cli`) — see Reference. Retiring or converting
-  both `.yml` workflows into non-publishing wrappers (build+test only) is a
-  Versioning & release task below, not cleanup-later: every pack-check,
-  API-report, and consumer-smoke gate this folder builds is optional, not
-  enforced, while a maintainer can still trigger a raw `npm publish` from
-  the old workflows without touching any of it.
+- **Precondition: no path in the repo may be able to `npm publish` today.**
+  Three independent paths currently *could* `npm publish` overlapping
+  package sets: `scripts/release.ts` (no publish step today — and this
+  folder does not add one), `.github/workflows/release-core.yml` (`core-v*`,
+  publishes core/confluence/plugin-api), and
+  `.github/workflows/release-cli.yml` (`cli-v*`, publishes `apps/cli`) — see
+  Reference. Retiring or converting both `.yml` workflows into non-publishing
+  wrappers (build+test only), and making every package's classification fail
+  closed, is this folder's **highest-priority** task (see Tasks: Publish
+  prevention) — not cleanup-later: every pack-check, API-report, and
+  consumer-smoke gate this folder builds is meaningless as a *safeguard*
+  while a maintainer can still trigger a raw `npm publish` from the old
+  workflows without touching any of it.
 - The repo already runs a single-version release train (root `version`,
   git-cliff changelog from Conventional Commits, one tag). Changesets would
   introduce a second changelog system, per-package version drift, and a bot
   workflow sized for many independent maintainers — none of which this repo
   has. Conventional Commit scopes (`feat(confluence):`) already give us the
-  per-package story inside one changelog.
-- Concretely: `release.ts` gains a step that sets every publishable package to
-  the release version (reusing the existing `npm version --no-git-tag-version -w …`
-  pattern from root `version:core`), packs, and publishes after the GitHub
-  Release artifacts are confirmed. Publishing is **idempotent and resumable**
-  (skip versions already on the registry) so a half-failed release can be
-  re-run, matching the script's existing rollback philosophy.
+  per-package story inside one changelog. This reasoning holds independent of
+  publish target, so the decision stands even with registry publish deferred.
 - Semver policy pre-1.0: breaking changes to the public API bump **minor** and
   must be listed under a "Breaking" changelog heading; patch releases are
-  strictly non-breaking. At API freeze (T4.2 complete) the packages jump to
-  `1.0.0` and standard semver applies: breaking = major.
+  strictly non-breaking. At API freeze (T4.2 complete) the packages' own
+  `package.json` versions jump to `1.0.0` and standard semver applies:
+  breaking = major — this is a version-number and changelog commitment only;
+  publishing `1.0.0` to a registry is deferred (see Goal and the Deferred
+  appendix).
 
-### Registry: npmjs.org under `@atlcli`, GitHub Packages as documented fallback
+### Registry: deferred
 
-Decision: **public npm registry (registry.npmjs.org), scope `@atlcli`,
-`publishConfig.access: "public"`.**
-
-- The code is Apache-2.0 in a public repo; there is no secrecy to protect,
-  and the external consumer track should not need registry auth just to
-  *install*.
-- GitHub Packages has a hard constraint: npm packages must be scoped to the
-  **repo owner's** user/org namespace. The repo owner is `BjoernSchotte`, so
-  `@atlcli/*` cannot be published to GitHub Packages unless a GitHub org named
-  `atlcli` is created and the repo (or a publishing mirror) lives there.
-  That makes GitHub Packages the fallback, not the default — see open
-  questions.
-- Auth is still documented for both directions (see Registry & auth tasks):
-  publishing needs an npm automation token in CI / `NPM_TOKEN`; the GitHub
-  Packages fallback needs the classic `.npmrc` /
-  `bunfig.toml` scoped-registry + token setup, which we document even if
-  unused, because some external consumers may proxy through it.
-- **Publish auth: prefer npm Trusted Publishing (OIDC) over a long-lived
-  `NPM_TOKEN`.** npm's GitHub Actions OIDC integration issues short-lived,
-  per-run credentials and can auto-attach provenance
-  ([npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/));
-  npm's staged publishing additionally holds a package invisible until an
-  explicit promote step
-  ([npm Staged Publishing](https://docs.npmjs.com/staged-publishing/)). A
-  static `NPM_TOKEN` repo secret is exactly the pattern the two legacy
-  workflows above already use — do not repeat it for the canonical path.
-  Bootstrap exception: the very first publish of a brand-new package name
-  cannot use OIDC (npm requires the package to already exist to link a
-  Trusted Publisher), so document a one-time manual bootstrap publish (2FA,
-  scoped token, revoked immediately after) per new package name, then
-  switch that package to OIDC for every subsequent release.
-- **OIDC forces the actual `npm publish` call into a GitHub Actions job —
-  it cannot happen from `scripts/release.ts` itself.** npm's Trusted
-  Publishing verifies the *GitHub Actions* OIDC token
-  (`permissions: id-token: write` on the job), which only exists inside a
-  workflow run; a short-lived credential is never available to a script
-  invoked from a developer's terminal (`bun scripts/release.ts <type>`,
-  per the CLAUDE.md release workflow — "always dry-run first" implies a
-  human runs it locally). The two retired-or-converted legacy workflows
-  (`release-core.yml`, `release-cli.yml`) sidestep this by using a static
-  `NPM_TOKEN`; the canonical path cannot repeat that and also claim OIDC.
-  Resolution, mirroring the pattern `waitForRelease()` already uses for
-  GitHub release artifacts: `release.ts` pushes the `v*` tag as today, then
-  a new `publish-packages` job in `.github/workflows/release.yml` — gated
-  on that exact tag, `permissions: { id-token: write }`, an explicit
-  required GitHub `environment` (same mechanism `docs.yml:59` already uses
-  in this repo) — checks out the tagged commit, re-runs pack-check/
-  api-report/consumer-smoke as blocking steps, and OIDC-publishes in
-  dependency order; `release.ts` triggers/polls that job (`gh api
-  repos/.../actions/runs`, same idiom as `waitForRelease`) instead of
-  calling `npm publish` in-process. This makes the CI job — not the local
-  script — the sole technically-enforceable publish authority; see
-  Versioning & release tasks below.
-- **The publish gates must not depend on `release.ts`'s existing
-  free-text test check.** `runTests()` in `scripts/release.ts` treats `bun
-  test` as passed by string-matching stdout/stderr for `"fail"` /
-  `"0 fail"` rather than checking the process exit code, and is skippable
-  entirely via `--skip-tests`. Neither property may leak into the new
-  publish gate: the `publish-packages` job's pack-check/api-report/
-  consumer-smoke steps run as ordinary `bun test` invocations under `$`
-  (which throws on non-zero exit) inside CI, independently of whatever
-  flags were passed to the local `release.ts` invocation that triggered
-  the tag push — `--skip-tests` skips only `release.ts`'s own local
-  pre-flight, never the CI publish gate.
-- **Resumable publish must verify, not just skip.** The "skip versions
-  already on the registry" resumability (Versioning & release, below) is
-  only safe if a skipped version is guaranteed identical to what would have
-  been published. Store each package's packed-tarball **SRI sha512** (not
-  sha256 — `npm view <pkg>@<version> dist.shasum` is a legacy **sha1** of
-  the tarball, so a sha256 comparison against it would always mismatch;
-  `dist.integrity` is the modern SRI field and is what `npm pack`/`bun pm
-  pack` can both produce) in `ReleaseState` at pack time; on resume, before
-  skipping an already-present registry version, compare it against `npm
-  view <pkg>@<version> dist.integrity` and hard-abort the release on
-  mismatch instead of silently treating "present" as "correct".
+The full registry design (npmjs.org vs. GitHub Packages, OIDC/Trusted
+Publishing, the `publish-packages` CI job, resumable-publish verification via
+`dist.integrity`) is preserved verbatim in the **Deferred: npm registry
+publishing** section at the end of this document. It is not part of this
+folder's active architecture — no package is published to any registry
+today, and none of the build/pack/consumer-smoke architecture above depends
+on it.
 
 ### Batteries-included Node consumer: `@atlcli/export-node` (new package)
 
@@ -399,7 +377,7 @@ T3.1) — additive to this folder's DoD, not a blocker for it.
   tree-source}.ts`; add it to the publish set with its own
   `tsconfig.build.json`/exports/`files`; document the BASELINE-DESIGN A5
   target snippet as the package's minimal example in the consumer install
-  docs (Registry & auth tasks).
+  docs (Tasks: Packaging documentation).
 - **Default DOCX template.** `TemplateSource.getBytes(id)`
   (`packages/docx/src/env.ts:15-17`) has no built-in default — every host
   today supplies its own template bytes — yet a "batteries-included"
@@ -538,6 +516,34 @@ model); note it as the designated fallback.
 
 ## Tasks
 
+### Publish prevention (do first — see Goal and Versioning precondition)
+
+- [ ] **Make every publishable package fail closed today, including
+      `apps/cli`.** Add explicit `private: true` to every `package.json`
+      under `packages/*` and `apps/*` that has neither `private: true` nor
+      an `"atlcli": { "publish": … }` classification yet — concretely
+      `apps/cli/package.json` today (see Reference: it has no `private`
+      field and its `bin.atlcli` points at raw `src/index.ts`). Add a test
+      (`scripts/publish-classification.test.ts`) that walks every workspace
+      `package.json` and fails if any has neither `private: true` nor a
+      recognized `atlcli.publish` value — the same fail-closed rule
+      Architecture: Package graph specifies for the (currently inert)
+      classification, enforced as a standing regression test starting now,
+      not only once a publish pipeline exists.
+- [ ] Retire or convert `.github/workflows/release-core.yml` and
+      `.github/workflows/release-cli.yml` into non-publishing wrappers
+      (build+test only); remove or invalidate the `NPM_TOKEN` repo secret
+      path they use. This is the acute risk while registry publishing is
+      deferred: these two workflows can `npm publish` today, right now,
+      bypassing every gate this folder builds (no pack-check, no dist
+      build, no API report, no consumer smoke) — see Reference and
+      Versioning precondition. CI-DoD: exactly **zero** workflow jobs in the
+      repo may run `npm publish`, `npm stage publish`, or `bun publish`
+      (earlier drafts of this section said "exactly one" for a canonical
+      publish job; with registry publish deferred, the correct number today
+      is zero — the canonical-publish-job design is preserved in the
+      Deferred appendix for reuse later).
+
 ### Build artifacts
 
 - [ ] Add `tsconfig.build.json` + `"build": "tsc -p tsconfig.build.json"` +
@@ -625,108 +631,20 @@ model); note it as the designated fallback.
 
 ### Versioning & release
 
-- [ ] Retire or convert `.github/workflows/release-core.yml` and
-      `.github/workflows/release-cli.yml` into non-publishing wrappers
-      (build+test only) so the new tag-gated `publish-packages` job (below)
-      is the sole publish authority (see Architecture: Versioning —
-      precondition). CI-DoD: exactly one workflow job in the repo may run
-      `npm publish`, `npm stage publish`, or `bun publish`.
-- [ ] **Decide `@atlcli/cli`'s fate explicitly — it is a live, promoted
-      install path today, not dead weight.** `release-cli.yml:77-105`
-      publishes `@atlcli/cli` and its GitHub Release body advertises `npm
-      install -g @atlcli/cli` and `bunx @atlcli/cli`; `apps/cli/package.json`
-      has no `private` field and `bin.atlcli` points at raw `src/index.ts`
-      (would not run without a TS-aware runtime if installed today — see
-      Reference). Retiring `release-cli.yml`'s publish step without a
-      decision silently orphans that install path. Pick one, as its own
-      commit-sized task:
-      (a) **Integrate**: set `apps/cli` up with a real `build`/`dist` bin
-      (it already has `apps/cli/build.ts`), add it to the canonical publish
-      set with its own npm/bunx tarball-install smoke, keep
-      `npm install -g @atlcli/cli` working; or
-      (b) **Deprecate**: ship one final `@atlcli/cli` release whose
-      README/postinstall notice points at the successor (Homebrew tap /
-      standalone binaries from `release.yml`), document a support window in
-      `CHANGELOG.md` and the consumer install docs, then set `apps/cli` to
-      explicit `private: true` and stop publishing it.
-      Either way, `apps/cli/package.json` ends this task with an explicit
-      `private: true` or an explicit, tested publish contract — never the
-      current unset/accidentally-publishable state.
-- [ ] **Add a tag-gated `publish-packages` job to `.github/workflows/release.yml`**
-      (see Architecture: Registry — OIDC must run in Actions, not locally):
-      triggered by the same `v*` tag push as the existing `build`/`release`
-      jobs, `permissions: { id-token: write }`, a required GitHub
-      `environment` (same mechanism already used in `docs.yml:59`),
-      `actions/checkout` pinned to the exact tagged commit SHA (never a
-      branch). Steps, all blocking: rebuild every publishable package,
-      re-run `pack-check.test.ts`/`api-report.test.ts`/consumer-smoke as
-      real `bun test` invocations (not `release.ts`'s free-text heuristic —
-      see Architecture: Registry), verify the sign-off artifact (next
-      bullet) matches `GITHUB_SHA`, then `npm publish` each package via
-      OIDC in dependency order. Any gate failure fails the job and leaves
-      nothing published for that package.
-- [ ] **Define the machine-checked release sign-off artifact — the
-      canonical schema (decided: one schema, not two).** Add a committed
-      schema (`specs/export-expansion/009-package-publishing/
-      release-signoff.schema.json` or a `scripts/release-signoff.ts` type)
-      for the record the `publish-packages` job (and `release.ts`'s
-      pre-flight) validate before a **first-ever** public-registry publish
-      runs without `--dry-run`: commit SHA it's bound to, M1 acceptance
-      reference (the M1 conformance run — see Dependencies — has no
-      artifact today; this task defines the shape it must produce, not
-      just what 009 consumes), reviewed tarball SHA-512/SRI digests, a
-      named reviewer, structured T4.7 scope/result, and an embedded
-      `security` sub-object carrying exactly 011-quality-gates'
-      `security-attestation.json` fields (`{commit, date, veraPdfDigestOk,
-      veraPdfBaselineDelta, securityReviewNote, m1AcceptanceOk}` —
-      `011-quality-gates/PLAN.md`, PDF/UA — "HEAD-bound security attestation
-      artifact"), unchanged shape. This is the canonical release sign-off
-      artifact: 011's `scripts/security/attest.ts` job keeps emitting that
-      sub-object on every push to `main` and on release tags (same cadence
-      and shape as today, still independently useful outside a release);
-      009's validator (local pre-flight **and** the `publish-packages` CI
-      job) validates the whole assembled artifact — top-level fields plus
-      the embedded `security` sub-object — as one record. The validator
-      hard-fails (not warns) on a missing file, a SHA mismatch against
-      `GITHUB_SHA`, a stale/mismatched `security.commit`, or a schema
-      violation. **Cross-plan note**: assembling the artifact still needs a
-      release-time step that folds 011's `security-attestation.json` output
-      into this schema's `security` key — see `crossPlanImpacts` for who
-      wires that step; the schema itself, and the fact that it is the one
-      canonical sign-off file, are decided here.
-- [ ] Extend `scripts/release.ts` with a package-publish stage that
-      **triggers and polls** the `publish-packages` workflow run for the
-      pushed tag (mirroring the existing `waitForRelease()` polling
-      pattern — `gh api repos/.../actions/runs?...`), rather than calling
-      `npm publish` itself: set all publishable packages to the release
-      version locally first (reuse the `npm version --no-git-tag-version
-      -w` pattern from root `version:core`), commit that alongside
-      `package.json`/`CHANGELOG.md` (extend `commitRelease()`'s `git add`
-      to include every publishable `packages/*/package.json` and
-      `bun.lock`, and extend `rollback()`'s `git restore --source` list to
-      match — today both only cover the root `package.json`/`CHANGELOG.md`,
-      so a failed run before the tag is pushed would leave package-level
-      version bumps stranded outside the rollback path), push the tag, then
-      wait for `publish-packages` to finish. Registry publishes inside that
-      job are non-rollbackable — treat like `mainPushed`: warn, never
-      rewrite.
-- [ ] **Post-publish full-graph registry smoke.** After `publish-packages`
-      succeeds, add a final step (same job or a `needs:`-chained follow-up)
-      that installs the just-published versions of every package from the
-      registry (not the local tarballs) into a scratch project and repeats
-      the DOCX/PDF consumer smoke against them. A sequential per-package
-      publish on the public registry has no atomic "promote the whole
-      lockstep set" step (unlike npm's opt-in staged-publishing beta, which
-      this plan does not adopt — see Risks), so a failure partway through
-      can leave some packages at the new `latest` and others at the old
-      one; this step is the loud, automated check that the *complete*
-      graph is installable and mutually compatible at the tagged version
-      before the release is considered done, and its failure is the signal
-      to hand-fix or fast-follow the stragglers rather than discovering
-      drift from an external bug report.
-- [ ] Update `showDryRunPlan()` in `scripts/release.ts` so `--dry-run` prints
-      the publish steps (including the `publish-packages` trigger and the
-      sign-off check), per the workflow rule "always dry-run first".
+- [ ] **Decide `@atlcli/cli`'s fate as a *local* concern, not a publish
+      decision — publishing it is deferred regardless of which way this
+      goes.** `apps/cli/package.json` has no `private` field today (see
+      Reference); the Publish prevention task above already makes this safe
+      by adding an explicit `private: true`. What's left here: decide
+      whether `apps/cli` still gets a real `build`/`dist` bin (it already has
+      `apps/cli/build.ts`) as groundwork for a future filesystem-linked/
+      tarball-installed Track 2 consumer story, or stays purely this repo's
+      own CLI entry point with no external-consumption story at all. Either
+      way, no npm registry publish of `@atlcli/cli` happens under this
+      folder's active scope — the original "integrate vs. deprecate the `npm
+      install -g @atlcli/cli` path" framing assumed a live publish and is
+      preserved, unimplemented, in the Deferred appendix for whichever way
+      the product rename lands.
 - [ ] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
       tarballs; add a regression test in `scripts/release.test.ts` (inspect a
       packed manifest, assert no `workspace:` protocol survives).
@@ -736,44 +654,36 @@ model); note it as the designated fallback.
       `docx-engine.md`/`pdf-engine.md`), registered in the `sidebar` array
       in `astro.config.mjs`, gated by `bun run docs:check`/`docs:build`
       (the repo's actual docs gates — there is no generic `docs/` folder)
-      and link it from `CHANGELOG.md` generation notes.
+      and link it from `CHANGELOG.md` generation notes; state explicitly
+      that this is a version-numbering policy for packed/filesystem-linked
+      artifacts today, and that registry publish is deferred (link to Goal
+      and the Deferred appendix).
 - [ ] Decide and implement the changesets question as **rejected** in code:
       no `.changeset/`; add a short "why lockstep" note to the same
       reference page so future contributors don't re-litigate it blindly.
 
-### Registry & auth
+### Packaging documentation
 
-- [ ] Register/verify ownership of the `@atlcli` scope on registry.npmjs.org
-      (manual step, tracked here); set
-      `"publishConfig": { "access": "public" }` in every publishable
-      `packages/*/package.json`.
-- [ ] Set up npm Trusted Publishing (OIDC) for the canonical release
-      workflow: `id-token: write` permission, GitHub Actions OIDC linked as
-      a Trusted Publisher per package on npmjs.org, automatic provenance
-      (see Architecture: Registry). Document the one-time manual bootstrap
-      publish (2FA, short-lived scoped token, revoked immediately after)
-      required for each brand-new package name before OIDC can be linked.
-      No long-lived `NPM_TOKEN` in the canonical path once bootstrapped;
-      keep a documented, revoked-by-default `NPM_TOKEN` procedure only as
-      an emergency/local fallback (`~/.npmrc` guidance).
-- [ ] Document the GitHub Packages fallback as a new page under
-      `src/content/docs/reference/`: scoped-registry `.npmrc`/`bunfig.toml`
-      (`@atlcli:registry=…` + `//…/:_authToken`), the owner-scope constraint
-      (requires an `atlcli` GitHub org), and consumer-side read auth —
-      labeled clearly as the non-default path.
 - [ ] Consumer install documentation page under `src/content/docs/reference/`
       (per docs standards: intro → prerequisites → steps → examples →
-      troubleshooting, registered in `astro.config.mjs`'s `sidebar`): install
-      with bun/npm/pnpm, minimal `runExport` example (DOCX) and advanced
+      troubleshooting, registered in `astro.config.mjs`'s `sidebar`):
+      document the two supported install paths — **workspace/filesystem
+      linking** (`file:` protocol or `bun link`, for a consumer checked out
+      alongside this repo) and **packed-tarball install** (`bun pm pack`
+      output installed with `bun add ./pkg.tgz` / `npm install ./pkg.tgz`) —
+      with a minimal `runExport` example (DOCX) and an advanced
       `runPdfExport` example (PDF incl. wasm/fonts wiring for both Node-ish
       and Vite hosts), plus the `@atlcli/export-node` batteries-included
       snippet (Architecture: Batteries-included Node consumer) as the
-      recommended Node starting point.
+      recommended Node starting point. Explicitly state that a package
+      registry install (`npm install @atlcli/pdf` from a public registry) is
+      **not** available today and link to the Deferred appendix for why.
 - [ ] Add a short `README.md` to each of the eight publishable package
       roots (package role, stable entry points, runtime support — see
-      support-matrix task above — minimal import example, link to the
-      canonical reference page); include it in every package's `files`
-      allowlist. None of the eight packages has one today.
+      support-matrix task above — minimal import example via filesystem
+      linking or tarball install, link to the canonical reference page);
+      include it in every package's `files` allowlist. None of the eight
+      packages has one today.
 
 ### Batteries-included Node package (post folders 002/008 — additive, not a blocker)
 
@@ -915,8 +825,11 @@ model); note it as the designated fallback.
       surface where a removed export / changed signature produces a failing
       diff (guards the guard; no mocks — run the real generator on a tiny
       fixture entrypoint under the scratch of the test).
-- [ ] Bump all published packages to `1.0.0` in the freeze release; changelog
-      entry documents the frozen surface and links the docs pages.
+- [ ] Bump all frozen packages' `package.json` version to `1.0.0`; changelog
+      entry documents the frozen surface and links the docs pages. This is a
+      version-number and changelog commitment, verified via the tarball and
+      filesystem-link consumer smoke — publishing `1.0.0` to a registry is
+      deferred (see Goal and the Deferred appendix).
 
 ### Consumer smoke
 
@@ -928,6 +841,17 @@ model); note it as the designated fallback.
       resolving to the sibling tarballs), and asserts installation succeeds
       with no `workspace:` leakage. Real packages, real wasm, no registry —
       and no mocks anywhere in this suite.
+- [ ] **Filesystem-link smoke** (`scripts/consumer-smoke-filelink.ts`, wired
+      into `bun test` next to the tarball suite): scaffold a throwaway
+      consumer project that declares `@atlcli/docx`/`@atlcli/pdf` (and their
+      transitive `@atlcli/*` deps) as `file:`-protocol dependencies pointing
+      directly at the package directories (built `dist/`, not `src/`),
+      installs via `bun install`, and repeats the DOCX/PDF smoke assertions
+      from the two bullets below against the linked packages. This is
+      currently the most likely Track 2 consumption path (a Forge app
+      linking against this repo or a sibling checkout, see Goal) and is not
+      exercised by the tarball-install suite, which only proves `bun pm
+      pack` output.
 - [ ] DOCX smoke inside the temp project: a script that imports `runExport`
       from the installed `@atlcli/docx`, provides a minimal real `ExportEnv`
       (template bytes from the installed package's shipped default template
@@ -995,53 +919,66 @@ model); note it as the designated fallback.
   local tarballs and produces real DOCX bytes via `runExport` and real PDF
   bytes via `runPdfExport` + `BrowserPdfCompiler`, plus a clean
   `tsc --noEmit` type-consumption check, plus the Node-LTS (`NodeNext`) and
-  Vite production-build tarball smokes pass — proving the external target
-  environments, not only the privileged in-repo workspace resolution.
-- Exactly one path in the repo can publish to the registry: `release-core.yml`
-  and `release-cli.yml` are non-publishing wrappers (or retired), and the
-  tag-gated `publish-packages` job in `.github/workflows/release.yml` — with
-  `id-token: write`, a required environment, and OIDC — is the sole
-  `npm publish` caller; `scripts/release.ts` only triggers and polls it.
-  `apps/cli`/`@atlcli/cli` has an explicit, deliberate outcome (integrated
-  into the publish set with a working bin, or deprecated with a documented
-  migration path) — never the unset/accidentally-publishable state it is in
-  today.
-- `bun scripts/release.ts minor --dry-run` prints the extended plan including
-  the publish stage; a real release publishes all packages via the CI publish
-  job in dependency order, is resumable after partial failure (verified
-  against `dist.integrity`, not a mismatched hash algorithm), and a
-  post-publish full-graph registry smoke confirms every package is
-  installable at the tagged version before the release is considered done.
-  The first-ever public-registry publish is blocked by the release
-  sign-off artifact (commit-bound M1 acceptance + T4.7 security-review
-  record) failing to validate.
-- Docs (first-class, same PR as behavior changes): consumer install guide,
-  registry/auth reference (npm primary, GitHub Packages fallback), `?url`
-  asset-contract reference, public API reference with breaking-change policy —
-  all following the `docs/` standards (TOC, related topics, minimal +
-  advanced examples).
+  Vite production-build tarball smokes pass, **plus the filesystem-link
+  smoke** (a consumer project depending on `@atlcli/docx`/`@atlcli/pdf` via
+  `file:` protocol produces the same real DOCX/PDF output) — proving both
+  supported external-consumption paths (tarball install and filesystem/
+  workspace linking), not only the privileged in-repo workspace resolution.
+- **No live publish path exists in the repo.** `release-core.yml` and
+  `release-cli.yml` are non-publishing wrappers (or retired); no CI job or
+  script in the repo calls `npm publish`, `npm stage publish`, or
+  `bun publish`; the `publish-classification.test.ts` regression test
+  (Tasks: Publish prevention) confirms every workspace `package.json` has
+  either explicit `private: true` or a recognized `atlcli.publish`
+  classification, and that classification resolves to "not published" for
+  every package today — verified by asserting no workflow YAML invokes a
+  publish command and that a manual `npm publish` from any package
+  directory fails without first reconfiguring registry credentials that
+  don't exist in this repo. Reviving publishing requires deliberately
+  implementing the Deferred appendix, not flipping a flag.
+- `bun scripts/release.ts minor --dry-run` prints the packaging-readiness
+  plan (version bump across publishable packages, pack-check, consumer
+  smoke including the filesystem-link smoke) with **no publish step** —
+  consistent with the deferred status. (The extended dry-run output that
+  included a `publish-packages` trigger and sign-off check is preserved in
+  the Deferred appendix.)
+- Docs (first-class, same PR as behavior changes): consumer install guide
+  covering filesystem/workspace linking and tarball install (no registry
+  install documented — see the Deferred appendix for that), `?url`
+  asset-contract reference, public API reference with breaking-change
+  policy — all following the `docs/` standards (TOC, related topics,
+  minimal + advanced examples).
 - API reports committed for every package, including preserved
   `@deprecated`/`@since` tags and a classified declaration closure (not just
   the top-level seams) per entrypoint; `api-report.test.ts` fails CI on any
-  unreviewed public-surface diff; frozen packages released as `1.0.0` (this
-  last bullet only after folders 001–008 land).
+  unreviewed public-surface diff; frozen packages bump their `package.json`
+  version to `1.0.0` (this last bullet only after folders 001–008 land) —
+  registry publish of that `1.0.0` remains deferred.
 - `@atlcli/export-node` ships with a working `bundledDefaultTemplate()` and
-  passes its own tarball smoke, once folders 002 and 008 land (additive —
-  not a blocker for the rest of this DoD, per Architecture: Batteries-
-  included Node consumer).
+  passes its own tarball and filesystem-link smoke, once folders 002 and 008
+  land (additive — not a blocker for the rest of this DoD, per Architecture:
+  Batteries-included Node consumer).
 - E2E gate executed against DOCSY/mayflower with the packed CLI; test
   resources cleaned up.
 
 ## Risks & open questions
 
-- **`@atlcli` npm scope ownership** — is the scope free/owned by us on
-  registry.npmjs.org? If squatted, options are: GitHub org `atlcli` +
-  GitHub Packages (fallback already designed above) or a scope rename
-  (`@atlcli-dev/*`), which would ripple through every import. Resolve before
-  any publish; everything else in this plan is scope-agnostic.
-- **GitHub Packages owner-scope constraint** — confirmed blocker for
-  `@atlcli/*` under owner `BjoernSchotte`; only relevant if npm falls
-  through.
+- **Product name / npm scope not final; registry publish deliberately
+  deferred.** `atlcli` is likely to be renamed, which would make any
+  `@atlcli/*` npm publish today a wasted, unrecoverable scope claim (see
+  Goal). The most likely Track 2 consumer (a Forge app) will probably
+  install these packages via filesystem/workspace linking rather than a
+  registry, but that consumption path is not yet finally decided either.
+  Practical implication: everything in this folder's active scope (build,
+  packaging, classification, consumer smoke, API freeze) must work without
+  assuming a registry exists, and nothing here may create a live publish
+  path (see Tasks: Publish prevention). When the product name and the
+  Forge-app consumption path are both decided, resuming this work means
+  reviewing the **Deferred: npm registry publishing** section below against
+  whatever the new name/scope is — the OIDC/workflow/sign-off-artifact
+  design there was written against `@atlcli/*` and the current CI topology
+  and should be re-verified, not blindly re-enabled, before any first
+  publish.
 - **`bun pm pack` semantics** — two behaviors this plan *tests instead of
   trusts*: `workspace:*` rewriting in packed manifests, and `files`
   overriding `.gitignore` for `packages/pdf/.fonts/`. If either fails, the
@@ -1079,23 +1016,262 @@ model); note it as the designated fallback.
   the package, or the fail-closed publish-set derivation refuses to
   include it and CI catches the omission — never a hardcoded list, but
   also never implicit inclusion by default.
-- **Lockstep publish is not atomic on the public registry.** This plan
-  deliberately does not adopt npm's staged-publishing beta (Architecture:
-  Registry documents it but does not require it — its availability and fit
-  with the "no changesets, minimal tooling" decision are unverified).
-  Publishing the lockstep set is therefore a sequence of independent
-  `npm publish` calls; a mid-sequence failure can leave some packages at
-  the new `latest` and others at the previous version until the release is
-  retried. Mitigation: the post-publish full-graph registry smoke
-  (Versioning & release tasks) makes this loud immediately instead of via
-  an external bug report, and resumability (verified via `dist.integrity`)
-  means retrying only publishes the missing packages. If staged publishing
-  later proves available and worthwhile, adopting it is a follow-up, not a
-  blocker for this folder.
+
+Two further risks (lockstep-publish atomicity on a public registry, and the
+missing owner for a formal "M1 acceptance record") apply only once registry
+publishing is implemented; they are preserved in the Deferred appendix below
+rather than listed here as live concerns.
+
+---
+
+## Deferred: npm registry publishing (DO NOT IMPLEMENT — blocked on product rename decision)
+
+**This section is preserved design work, not an active task list.
+Implementation agents must NOT build anything in this section.** It exists so
+the design effort already spent on registry publishing is not lost, and can
+be picked up again once the `atlcli` product-name/rename decision and the
+Forge app's consumption path (filesystem linking vs. registry) are both
+settled (see Goal and Risks). Every checkbox below is intentionally written
+as a plain bullet, not `- [ ]`, so it cannot be mistaken for an open task in
+this folder's Definition of Done or counted by any task tracker.
+
+Before reviving any of this: re-verify it against the then-current product
+name/npm scope and CI topology — this design was written against `@atlcli/*`
+and the workflow files as they exist as of 2026-07-19; it should not be
+re-enabled blindly.
+
+### Architecture (deferred)
+
+**Registry: npmjs.org under `@atlcli`, GitHub Packages as documented
+fallback.**
+
+Decision (as originally designed): public npm registry (registry.npmjs.org),
+scope `@atlcli`, `publishConfig.access: "public"`.
+
+- [DEFERRED] The code is Apache-2.0 in a public repo; there is no secrecy to
+  protect, and the external consumer track should not need registry auth
+  just to *install*.
+- [DEFERRED] GitHub Packages has a hard constraint: npm packages must be
+  scoped to the **repo owner's** user/org namespace. The repo owner is
+  `BjoernSchotte`, so `@atlcli/*` cannot be published to GitHub Packages
+  unless a GitHub org named `atlcli` is created and the repo (or a
+  publishing mirror) lives there. That makes GitHub Packages the fallback,
+  not the default.
+- [DEFERRED] Auth is documented for both directions: publishing needs an
+  npm automation token in CI / `NPM_TOKEN`; the GitHub Packages fallback
+  needs the classic `.npmrc`/`bunfig.toml` scoped-registry + token setup,
+  documented even if unused, because some external consumers may proxy
+  through it.
+- [DEFERRED] **Publish auth: prefer npm Trusted Publishing (OIDC) over a
+  long-lived `NPM_TOKEN`.** npm's GitHub Actions OIDC integration issues
+  short-lived, per-run credentials and can auto-attach provenance
+  ([npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/));
+  npm's staged publishing additionally holds a package invisible until an
+  explicit promote step
+  ([npm Staged Publishing](https://docs.npmjs.com/staged-publishing/)). A
+  static `NPM_TOKEN` repo secret is exactly the pattern the two legacy
+  workflows (`release-core.yml`/`release-cli.yml`) already use — do not
+  repeat it for the canonical path. Bootstrap exception: the very first
+  publish of a brand-new package name cannot use OIDC (npm requires the
+  package to already exist to link a Trusted Publisher), so document a
+  one-time manual bootstrap publish (2FA, scoped token, revoked immediately
+  after) per new package name, then switch that package to OIDC for every
+  subsequent release.
+- [DEFERRED] **OIDC forces the actual `npm publish` call into a GitHub
+  Actions job — it cannot happen from `scripts/release.ts` itself.** npm's
+  Trusted Publishing verifies the *GitHub Actions* OIDC token
+  (`permissions: id-token: write` on the job), which only exists inside a
+  workflow run; a short-lived credential is never available to a script
+  invoked from a developer's terminal (`bun scripts/release.ts <type>`, per
+  the CLAUDE.md release workflow — "always dry-run first" implies a human
+  runs it locally). The two retired-or-converted legacy workflows
+  (`release-core.yml`, `release-cli.yml`) sidestep this by using a static
+  `NPM_TOKEN`; the canonical path cannot repeat that and also claim OIDC.
+  Resolution, mirroring the pattern `waitForRelease()` already uses for
+  GitHub release artifacts: `release.ts` pushes the `v*` tag as today, then
+  a new `publish-packages` job in `.github/workflows/release.yml` — gated
+  on that exact tag, `permissions: { id-token: write }`, an explicit
+  required GitHub `environment` (same mechanism `docs.yml:59` already uses
+  in this repo) — checks out the tagged commit, re-runs pack-check/
+  api-report/consumer-smoke as blocking steps, and OIDC-publishes in
+  dependency order; `release.ts` triggers/polls that job (`gh api
+  repos/.../actions/runs`, same idiom as `waitForRelease`) instead of
+  calling `npm publish` in-process. This makes the CI job — not the local
+  script — the sole technically-enforceable publish authority.
+- [DEFERRED] **The publish gates must not depend on `release.ts`'s existing
+  free-text test check.** `runTests()` in `scripts/release.ts` treats `bun
+  test` as passed by string-matching stdout/stderr for `"fail"` /
+  `"0 fail"` rather than checking the process exit code, and is skippable
+  entirely via `--skip-tests`. Neither property may leak into the publish
+  gate: the `publish-packages` job's pack-check/api-report/consumer-smoke
+  steps must run as ordinary `bun test` invocations under `$` (which throws
+  on non-zero exit) inside CI, independently of whatever flags were passed
+  to the local `release.ts` invocation that triggered the tag push —
+  `--skip-tests` skips only `release.ts`'s own local pre-flight, never the
+  CI publish gate.
+- [DEFERRED] **Resumable publish must verify, not just skip.** The "skip
+  versions already on the registry" resumability described below is only
+  safe if a skipped version is guaranteed identical to what would have been
+  published. Store each package's packed-tarball **SRI sha512** (not
+  sha256 — `npm view <pkg>@<version> dist.shasum` is a legacy **sha1** of
+  the tarball, so a sha256 comparison against it would always mismatch;
+  `dist.integrity` is the modern SRI field and is what `npm pack`/`bun pm
+  pack` can both produce) in `ReleaseState` at pack time; on resume, before
+  skipping an already-present registry version, compare it against `npm
+  view <pkg>@<version> dist.integrity` and hard-abort the release on
+  mismatch instead of silently treating "present" as "correct".
+- [DEFERRED] `release.ts` gains a step that sets every publishable package
+  to the release version (reusing the existing `npm version
+  --no-git-tag-version -w …` pattern from root `version:core`), packs, and
+  publishes after the GitHub Release artifacts are confirmed. Publishing is
+  **idempotent and resumable** (skip versions already on the registry) so a
+  half-failed release can be re-run, matching the script's existing
+  rollback philosophy.
+
+### Tasks (deferred — do not implement)
+
+- [DEFERRED] **Decide `@atlcli/cli`'s fate as a live, promoted npm install
+  path.** `release-cli.yml:77-105` publishes `@atlcli/cli` and its GitHub
+  Release body advertises `npm install -g @atlcli/cli` and
+  `bunx @atlcli/cli`. Original framing, preserved for reuse: (a)
+  **Integrate** — set `apps/cli` up with a real `build`/`dist` bin, add it
+  to the canonical publish set with its own npm/bunx tarball-install smoke,
+  keep `npm install -g @atlcli/cli` working; or (b) **Deprecate** — ship one
+  final `@atlcli/cli` release whose README/postinstall notice points at the
+  successor (Homebrew tap / standalone binaries from `release.yml`),
+  document a support window in `CHANGELOG.md` and the consumer install
+  docs, then set `apps/cli` to explicit `private: true` and stop publishing
+  it. (The active-scope version of this task — making `apps/cli` fail
+  closed today regardless of which way this eventually goes — lives in
+  Tasks: Publish prevention and Versioning & release.)
+- [DEFERRED] **Add a tag-gated `publish-packages` job to
+  `.github/workflows/release.yml`**: triggered by the same `v*` tag push as
+  the existing `build`/`release` jobs, `permissions: { id-token: write }`, a
+  required GitHub `environment` (same mechanism already used in
+  `docs.yml:59`), `actions/checkout` pinned to the exact tagged commit SHA
+  (never a branch). Steps, all blocking: rebuild every publishable package,
+  re-run `pack-check.test.ts`/`api-report.test.ts`/consumer-smoke as real
+  `bun test` invocations, verify the sign-off artifact (next item) matches
+  `GITHUB_SHA`, then `npm publish` each package via OIDC in dependency
+  order. Any gate failure fails the job and leaves nothing published for
+  that package.
+- [DEFERRED] **Define the machine-checked release sign-off artifact — the
+  canonical schema.** Add a committed schema
+  (`specs/export-expansion/009-package-publishing/release-signoff.schema.json`
+  or a `scripts/release-signoff.ts` type) for the record the
+  `publish-packages` job (and `release.ts`'s pre-flight) validate before a
+  **first-ever** public-registry publish runs without `--dry-run`: commit
+  SHA it's bound to, M1 acceptance reference (the M1 conformance run has no
+  artifact today; this task would define the shape it must produce, not
+  just what 009 consumes), reviewed tarball SHA-512/SRI digests, a named
+  reviewer, structured T4.7 scope/result, and an embedded `security`
+  sub-object carrying exactly 011-quality-gates' `security-attestation.json`
+  fields (`{commit, date, veraPdfDigestOk, veraPdfBaselineDelta,
+  securityReviewNote, m1AcceptanceOk}` — `011-quality-gates/PLAN.md`,
+  PDF/UA — "HEAD-bound security attestation artifact"), unchanged shape.
+  This would be the canonical release sign-off artifact: 011's
+  `scripts/security/attest.ts` job keeps emitting that sub-object on every
+  push to `main` and on release tags regardless of this section's status
+  (independently useful outside a release — see 011-quality-gates'
+  cross-plan note); this validator — assembling and checking the whole
+  record, top-level fields plus the embedded `security` sub-object — is
+  what's deferred. The validator would hard-fail (not warn) on a missing
+  file, a SHA mismatch against `GITHUB_SHA`, a stale/mismatched
+  `security.commit`, or a schema violation.
+- [DEFERRED] Extend `scripts/release.ts` with a package-publish stage that
+  **triggers and polls** the `publish-packages` workflow run for the pushed
+  tag (mirroring the existing `waitForRelease()` polling pattern — `gh api
+  repos/.../actions/runs?...`), rather than calling `npm publish` itself:
+  set all publishable packages to the release version locally first (reuse
+  the `npm version --no-git-tag-version -w` pattern from root
+  `version:core`), commit that alongside `package.json`/`CHANGELOG.md`
+  (extend `commitRelease()`'s `git add` to include every publishable
+  `packages/*/package.json` and `bun.lock`, and extend `rollback()`'s `git
+  restore --source` list to match), push the tag, then wait for
+  `publish-packages` to finish. Registry publishes inside that job are
+  non-rollbackable — treat like `mainPushed`: warn, never rewrite.
+- [DEFERRED] **Post-publish full-graph registry smoke.** After
+  `publish-packages` succeeds, add a final step that installs the
+  just-published versions of every package from the registry (not the local
+  tarballs) into a scratch project and repeats the DOCX/PDF consumer smoke
+  against them. A sequential per-package publish on the public registry has
+  no atomic "promote the whole lockstep set" step (unlike npm's opt-in
+  staged-publishing beta, which this plan does not adopt), so a failure
+  partway through can leave some packages at the new `latest` and others at
+  the old one; this step would be the loud, automated check that the
+  *complete* graph is installable and mutually compatible at the tagged
+  version before the release is considered done.
+- [DEFERRED] Update `showDryRunPlan()` in `scripts/release.ts` so
+  `--dry-run` prints the publish steps (including the `publish-packages`
+  trigger and the sign-off check).
+- [DEFERRED] Register/verify ownership of the `@atlcli` scope on
+  registry.npmjs.org; set `"publishConfig": { "access": "public" }` in
+  every publishable `packages/*/package.json`.
+- [DEFERRED] Set up npm Trusted Publishing (OIDC) for the canonical release
+  workflow: `id-token: write` permission, GitHub Actions OIDC linked as a
+  Trusted Publisher per package on npmjs.org, automatic provenance.
+  Document the one-time manual bootstrap publish (2FA, short-lived scoped
+  token, revoked immediately after) required for each brand-new package
+  name before OIDC can be linked. No long-lived `NPM_TOKEN` in the
+  canonical path once bootstrapped; keep a documented, revoked-by-default
+  `NPM_TOKEN` procedure only as an emergency/local fallback (`~/.npmrc`
+  guidance).
+- [DEFERRED] Document the GitHub Packages fallback as a new page under
+  `src/content/docs/reference/`: scoped-registry `.npmrc`/`bunfig.toml`
+  (`@atlcli:registry=…` + `//…/:_authToken`), the owner-scope constraint
+  (requires an `atlcli` GitHub org), and consumer-side read auth — labeled
+  clearly as the non-default path.
+- [DEFERRED] Extend the consumer install documentation with an npm-install
+  guide (`npm install`/`bun add`/`pnpm add` against the public registry,
+  `bunx @atlcli/cli`) once registry publish exists, alongside the
+  filesystem-link/tarball guidance that ships in this folder's active scope.
+
+### Definition of Done (deferred — for when registry publishing resumes)
+
+- Exactly one path in the repo can publish to the registry: the tag-gated
+  `publish-packages` job in `.github/workflows/release.yml` — with
+  `id-token: write`, a required environment, and OIDC — is the sole
+  `npm publish` caller; `scripts/release.ts` only triggers and polls it.
+  `apps/cli`/`@atlcli/cli` has an explicit, deliberate publish outcome
+  (integrated with a working bin, or deprecated with a documented migration
+  path).
+- A real release publishes all packages via the CI publish job in
+  dependency order, is resumable after partial failure (verified against
+  `dist.integrity`), and a post-publish full-graph registry smoke confirms
+  every package is installable at the tagged version before the release is
+  considered done.
+- The first-ever public-registry publish is blocked by the release
+  sign-off artifact (commit-bound M1 acceptance + T4.7 security-review
+  record) failing to validate.
+- Registry/auth reference docs (npm primary, GitHub Packages fallback) are
+  published alongside the filesystem-link/tarball guide.
+
+### Risks (deferred)
+
+- **`@atlcli` npm scope ownership** — is the scope free/owned by us on
+  registry.npmjs.org? If squatted, options are: GitHub org `atlcli` + GitHub
+  Packages (fallback design above) or a scope rename (`@atlcli-dev/*`),
+  which would ripple through every import. Would need resolving before any
+  publish; the rest of this plan is scope-agnostic.
+- **GitHub Packages owner-scope constraint** — confirmed blocker for
+  `@atlcli/*` under owner `BjoernSchotte`; only relevant if npm falls
+  through.
+- **Lockstep publish is not atomic on the public registry.** This design
+  deliberately does not adopt npm's staged-publishing beta (its
+  availability and fit with the "no changesets, minimal tooling" decision
+  are unverified). Publishing the lockstep set would be a sequence of
+  independent `npm publish` calls; a mid-sequence failure could leave some
+  packages at the new `latest` and others at the previous version until the
+  release is retried. Mitigation: the post-publish full-graph registry
+  smoke makes this loud immediately instead of via an external bug report,
+  and resumability (verified via `dist.integrity`) means retrying only
+  publishes the missing packages. If staged publishing later proves
+  available and worthwhile, adopting it would be a follow-up.
 - **No folder in this spec series currently owns producing a formal "M1
   acceptance record."** `UMSETZUNGSPLAN.md:111-131` defines M1's acceptance
   criteria narratively (byte-stable goldens across CLI and harness for a
   50-page tree) but not as a committed artifact, and M1 spans multiple
-  lanes/folders with no single owner file. This folder defines the sign-off
-  schema it *validates* (Versioning & release tasks) but cannot itself
-  produce the M1 half of that record — see `crossPlanImpacts`.
+  lanes/folders with no single owner file. This folder's deferred sign-off
+  schema validates that record but does not itself produce the M1 half of
+  it — whoever revives this section still needs to resolve that ownership
+  gap first.

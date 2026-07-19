@@ -430,17 +430,22 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       sign-off schema; this artifact is that schema's embedded `security`
       sub-object, not a second parallel file.** 009's "machine-checked
       release sign-off artifact" task (`009-package-publishing/PLAN.md`,
-      Versioning & release) defines a superset schema (reviewed tarball
+      "Deferred: npm registry publishing" appendix — registry publish, and
+      with it this schema, is deferred pending the product-rename decision;
+      see that folder's Goal) defines a superset schema (reviewed tarball
       SHA-512/SRI digests, a named reviewer, structured T4.7 scope/result)
-      that embeds exactly this artifact's fields under a `security` key;
-      this task's output file name/path follows whatever 009's schema
+      that would embed exactly this artifact's fields under a `security`
+      key; this task's output file name/path follows whatever 009's schema
       specifies for that embedding, still produced on the same cadence
-      (every `main` push and release tag) described above. **Wiring this
-      artifact as a hard `needs:` gate on every publish job is 009's
-      responsibility** (it owns the consolidated release pipeline and
-      already commits to refusing the first public `npm publish` without a
-      T4.7 security review); recorded as a cross-plan dependency, not built
-      here (see Risks and crossPlanImpacts).
+      (every `main` push and release tag) described above regardless of the
+      deferred status. **Wiring this artifact as a hard `needs:` gate on
+      every publish job would be 009's responsibility** once it owns a live
+      consolidated release pipeline again; until then, 009's fail-closed
+      publish classification (not this attestation gate) is what prevents
+      any npm publish today, and this artifact becomes an enforced
+      pre-publish gate only if/when that deferred work resumes; recorded as
+      a cross-plan dependency, not built here (see Risks and
+      crossPlanImpacts).
 
 ### Security hardening
 

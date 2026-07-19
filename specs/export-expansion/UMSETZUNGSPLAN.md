@@ -21,7 +21,7 @@ gegen den Confluence-Space `DOCSY`, Profil `mayflower` — nie mocken):
 | [`006-word-quality/`](006-word-quality/PLAN.md) | G1–G4 numPr, Spaltenbreiten, SVG, StyleRef | nach 001/003 |
 | [`007-pdf-template-settings/`](007-pdf-template-settings/PLAN.md) | T2.1–T2.4 + B-Cluster Settings/Watermark/Library | sofort |
 | [`008-pdf-cli/`](008-pdf-cli/PLAN.md) | T3.1–T3.5 Bun-WASM, `--format pdf`, CI/CD-DX | T3.1 sofort |
-| [`009-package-publishing/`](009-package-publishing/PLAN.md) | T4.1/T4.2 Publishing + API-Freeze | Infra sofort |
+| [`009-package-publishing/`](009-package-publishing/PLAN.md) | T4.1 Packaging-Readiness (Filesystem-Linking + Tarball; registry publish deferred, product rename pending) + T4.2 API-Freeze | Infra sofort |
 | [`010-extension-integration/`](010-extension-integration/PLAN.md) | T5.1–T5.5 Scope-UI, Library-UI, Vorschau, Docs | nach M1 |
 | [`011-quality-gates/`](011-quality-gates/PLAN.md) | T4.3–T4.9 Harness, Benchmarks, PDF/UA, Security | wächst mit |
 
@@ -169,7 +169,7 @@ Freeze.
 
 | ID | Task | Inhalt |
 |---|---|---|
-| T4.1 | **Publishing-Pipeline für `@atlcli/*`**: Pakete sind heute `private:true`-Workspace-Interna. Nötig: Build-Artefakte (dist statt src-Exports), semver-Disziplin, Publish nach GitHub Packages/privater npm-Registry, inkl. `@atlcli/pdf-compiler-browser` (wasm + Patch!), `.fonts`-Handling (`ensure-fonts` beim Consumer vs. Paket mit Fonts) |
+| T4.1 | **Packaging-Readiness für `@atlcli/*`** (vormals "Publishing-Pipeline"; registry publish deferred, product rename pending — siehe `009-package-publishing/PLAN.md`, Goal & Deferred-Anhang): Pakete sind heute `private:true`-Workspace-Interna. Nötig: Build-Artefakte (dist statt src-Exports), semver-Disziplin, Konsumierbarkeit via Filesystem-/Workspace-Linking (`file:`/`bun link`) und gepackte Tarballs (`bun pm pack`), inkl. `@atlcli/pdf-compiler-browser` (wasm + Patch!), `.fonts`-Handling (`ensure-fonts` beim Consumer vs. Paket mit Fonts). Ein Publish nach npm/GitHub Packages ist bewusst nicht Teil des aktiven Scopes. |
 | T4.2 | API-Stabilisierung: `ExportEnv`/`PdfExportEnv`/`TreeSource`/`MacroRendererRegistry` als dokumentierte öffentliche Schnittstelle (Breaking-Change-Policy) |
 
 ### Track 1 — CLI + Browser-Extension (heutiges Produkt)
