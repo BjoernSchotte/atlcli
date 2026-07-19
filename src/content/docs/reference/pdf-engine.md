@@ -154,5 +154,9 @@ evidence.
 ## Related topics
 
 - [PDF Template Settings](pdf-template-settings.md)
+- [PDF Template Contract](pdf-template-contract.md) — the `wiki.pdf-template/v1`
+  render contract.
+- [Template Pack Format](template-pack-format.md) — the `.wiki-pdf-template`
+  sharing container.
 - [DOCX and PDF Export](../confluence/export.md)
 - [DOCX Export Engine](docx-engine.md)

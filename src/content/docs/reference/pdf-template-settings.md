@@ -270,6 +270,10 @@ cause.
 
 ## Related topics
 
+- [PDF Template Contract](pdf-template-contract.md) — the `wiki.pdf-template/v1`
+  render surface these settings flow into.
+- [Template Pack Format](template-pack-format.md) — the `.wiki-pdf-template`
+  container for shareable templates.
 - [PDF Export Engine](pdf-engine.md)
 - [DOCX and PDF Export](../confluence/export.md)
 - [DOCX Export Engine](docx-engine.md)

@@ -99,6 +99,10 @@ export default defineConfig({
           items: [
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
             { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
+            { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
+            { label: 'PDF Template Settings', link: '/reference/pdf-template-settings/' },
+            { label: 'PDF Template Contract', link: '/reference/pdf-template-contract/' },
+            { label: 'Template Pack Format', link: '/reference/template-pack-format/' },
             { label: 'Authentication', link: '/authentication/' },
             { label: 'Configuration', link: '/configuration/' },
             { label: 'Doctor', link: '/reference/doctor/' },

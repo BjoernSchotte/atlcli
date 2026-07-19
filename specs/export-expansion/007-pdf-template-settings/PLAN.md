@@ -581,7 +581,7 @@ hardcoded on purpose (that full migration is `012`'s scope, not this
 folder's). Without a record of what's deliberately left behind, 012 would
 have to rediscover it by re-reading `template.ts` line by line.
 
-- [ ] A small, dated ledger — either a Markdown table in this folder
+- [x] A small, dated ledger — either a Markdown table in this folder
       (`specs/export-expansion/007-pdf-template-settings/HARDCODING-LEDGER.md`)
       or an equivalent comment block directly above the relevant constants
       in `packages/pdf/src/template.ts` (pick one, don't duplicate) —
@@ -595,7 +595,7 @@ have to rediscover it by re-reading `template.ts` line by line.
       lands — not new scope, not a migration — so it can be produced
       mechanically from a read-through of `template.ts` once T2.1–T2.4
       merge.
-- [ ] A lint stub (heuristic, not a full parser):
+- [x] A lint stub (heuristic, not a full parser):
       `packages/pdf/scripts/check-hardcoding-ledger.ts`, wired into
       `bun run typecheck` or a dedicated `bun run lint:pdf-ledger` script
       — greps `template.ts` for new bare hex-color literals
@@ -608,7 +608,7 @@ have to rediscover it by re-reading `template.ts` line by line.
       (heuristic, not authoritative); the point is to make a new
       unledgered hardcoded value visible in review, not to block on every
       edge case.
-- [ ] Reference `012-pdf-template-migration/PLAN.md` from both the ledger
+- [x] Reference `012-pdf-template-migration/PLAN.md` from both the ledger
       file/comment and the lint stub's own header comment: 012 starts from
       this ledger as its migration inventory rather than re-deriving it.
 
