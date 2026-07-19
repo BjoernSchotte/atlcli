@@ -115,11 +115,21 @@ Two different hashes answer two different questions; do not conflate them.
 
 `provenance.payloadSha256` is deliberately **not self-referential**: it cannot
 be the hash of the very archive it lives in (that value is unknowable before the
-manifest is written). It is defined precisely as the digest of a canonicalized
-payload description: for every payload member in ascending path order, emit its
-`path`, its byte length (decimal), and its lowercase-hex SHA-256 as three lines,
-newline-join all lines, and SHA-256 the UTF-8 bytes of that string. The manifest
-is excluded because it is the carrier of the value.
+manifest is written). It is defined precisely as the digest of a canonicalized,
+**delimiter-safe** payload description: for every payload member in ascending
+path order, emit one self-delimiting record
+
+```text
+<P>:<path>,<byteLength>,<sha256hex>;
+```
+
+where `<P>` is the decimal UTF-8 byte length of `<path>`, `<byteLength>` is the
+member's decimal byte count, and `<sha256hex>` is its lowercase-hex SHA-256
+(always exactly 64 characters). Concatenate all records (no join separator) and
+SHA-256 the UTF-8 bytes of the result. The netstring length prefix frames the
+path, so the encoding is injective by construction — no member path can forge
+record boundaries, independent of path validation. The manifest is excluded
+because it is the carrier of the value.
 
 `TemplateLibraryEntry.sha256` is the separate, unambiguous integrity check used
 when a template is downloaded — it hashes the archive bytes exactly as
@@ -154,6 +164,10 @@ is unsafe or malformed:
 
 - **Path traversal** — `..` segments, absolute paths, backslashes, or
   drive-letter paths (`too-large-archive`, `path-traversal`).
+- **Control characters in member paths** — any ASCII control character
+  (0x00–0x1F, 0x7F), including newline/CR/NUL, is rejected (`invalid-path`).
+  `packTemplate` enforces the same rule at pack time, so a compliant packer can
+  never produce an archive the reader rejects.
 - **Symlink entries** — detected via unix permission bits (`symlink`).
 - **Missing manifest** or a manifest that is not valid JSON
   (`missing-manifest`, `bad-manifest`).

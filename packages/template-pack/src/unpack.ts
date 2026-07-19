@@ -15,7 +15,8 @@
  *     guard), never by counting compressed bytes;
  *   - any single member over {@link MAX_TEMPLATE_PACK_FILE_BYTES};
  *   - more than {@link MAX_TEMPLATE_PACK_ENTRIES} entries;
- *   - path traversal (`..` segments, absolute paths, backslashes, drive letters);
+ *   - path traversal (`..` segments, absolute paths, backslashes, drive letters)
+ *     and ASCII control characters in member paths (see {@link assertSafePath});
  *   - symlink entries;
  *   - a missing/unreadable manifest, or a missing `engine.entry` member.
  *
@@ -54,6 +55,7 @@ export type TemplatePackErrorKind =
   | "not-zip"
   | "too-many-entries"
   | "path-traversal"
+  | "invalid-path"
   | "symlink"
   | "file-too-large"
   | "uncompressed-too-large"
@@ -90,8 +92,28 @@ interface ReadEntry {
   _data?: { uncompressedSize?: number; compressedSize?: number };
 }
 
-/** Reject any path that could escape the archive root. */
-function assertSafePath(name: string): void {
+/**
+ * Reject any member path that could escape the archive root or smuggle
+ * structure into derived values. Shared by BOTH ends of the format:
+ * `packTemplate` refuses to produce an archive `unpackTemplate` would reject.
+ *
+ * Beyond traversal (`..` segments, absolute paths, backslashes, drive
+ * letters), every ASCII control character (0x00–0x1F, 0x7F) is rejected with
+ * the typed kind `"invalid-path"`: newlines/CR/NUL in a member path have no
+ * legitimate use and were provably usable to forge `payloadSha256` collisions
+ * under a delimiter-based canonicalization (the canonicalization is now
+ * delimiter-safe on its own — see `pack.ts` — but hostile paths stay banned at
+ * the source as defense in depth).
+ */
+export function assertSafePath(name: string): void {
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(name)) {
+    throw new TemplatePackError(
+      "invalid-path",
+      `Control character in path ${JSON.stringify(name)}`,
+      name
+    );
+  }
   if (name.includes("\\")) {
     throw new TemplatePackError("path-traversal", `Backslash in path "${name}"`, name);
   }

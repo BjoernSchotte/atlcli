@@ -88,6 +88,18 @@ describe("path traversal rejection", () => {
     const bytes = buildRaw((z) => z.file("a/../../evil.typ", "x", { date: DATE }));
     expectKind(() => unpackTemplate(bytes), "path-traversal");
   });
+
+  it("rejects a newline-containing path (payloadSha256 delimiter-injection guard)", () => {
+    const bytes = buildRaw((z) => z.file("bar\n4\nabc\nfoo", "xyz", { date: DATE }));
+    expectKind(() => unpackTemplate(bytes), "invalid-path");
+  });
+
+  it("rejects CR and NUL control characters in paths", () => {
+    const cr = buildRaw((z) => z.file("evil\r.typ", "x", { date: DATE }));
+    expectKind(() => unpackTemplate(cr), "invalid-path");
+    const nul = buildRaw((z) => z.file("evil\u0000.typ", "x", { date: DATE }));
+    expectKind(() => unpackTemplate(nul), "invalid-path");
+  });
 });
 
 describe("symlink rejection", () => {

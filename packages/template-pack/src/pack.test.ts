@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import { sha256Hex } from "@atlcli/core";
 import { packTemplate, computePayloadSha256, type TemplatePackContents } from "./pack.js";
-import { unpackTemplate } from "./unpack.js";
+import { unpackTemplate, TemplatePackError } from "./unpack.js";
 import { TEMPLATE_PACK_MANIFEST_NAME, type TemplateManifest } from "./manifest.js";
 
 function typstManifest(): TemplateManifest {
@@ -107,18 +107,19 @@ describe("provenance.payloadSha256", () => {
   });
 
   it("matches a vector recomputed from the documented canonicalization", async () => {
+    const enc = new TextEncoder();
     const files: Record<string, Uint8Array> = {
-      "b.txt": new TextEncoder().encode("bbb"),
-      "a.txt": new TextEncoder().encode("aaaa"),
+      "b.txt": enc.encode("bbb"),
+      "a.txt": enc.encode("aaaa"),
     };
-    // Documented canonicalization: for each member in ascending path order,
-    // three lines — path, byteLength, lowercase-hex sha256 — newline-joined,
-    // then sha256 of the UTF-8 bytes.
-    const lines: string[] = [];
+    // Documented canonicalization: for each member in ascending path order, one
+    // self-delimiting record `<utf8len(path)>:<path>,<byteLength>,<sha256hex>;`,
+    // records concatenated, then sha256 of the UTF-8 bytes.
+    let canonical = "";
     for (const path of Object.keys(files).sort()) {
-      lines.push(path, String(files[path].byteLength), await sha256Hex(files[path]));
+      canonical += `${enc.encode(path).byteLength}:${path},${files[path].byteLength},${await sha256Hex(files[path])};`;
     }
-    const expected = await sha256Hex(new TextEncoder().encode(lines.join("\n")));
+    const expected = await sha256Hex(enc.encode(canonical));
 
     expect(await computePayloadSha256(files)).toBe(expected);
 
@@ -127,6 +128,35 @@ describe("provenance.payloadSha256", () => {
     const manifest = { ...typstManifest(), engine: { ...typstManifest().engine, entry: "a.txt" } };
     const packed = await packTemplate({ manifest, files });
     expect(unpackTemplate(packed).manifest.provenance!.payloadSha256).toBe(expected);
+  });
+
+  it("does not collide on newline-crafted paths (regression: delimiter injection)", async () => {
+    // Adversarial pair proven to collide under the old newline-joined
+    // canonicalization: payload A = {bar: "wxyz", foo: "xyz"} vs. payload B = a
+    // single file whose PATH embeds A's first record ("bar\n4\n<sha256(wxyz)>\nfoo")
+    // and whose CONTENT is "xyz". The netstring-framed records make the two
+    // descriptions distinct regardless of path validation.
+    const enc = new TextEncoder();
+    const wxyzHash = await sha256Hex(enc.encode("wxyz"));
+    const setA: Record<string, Uint8Array> = {
+      bar: enc.encode("wxyz"),
+      foo: enc.encode("xyz"),
+    };
+    const hostilePath = `bar\n4\n${wxyzHash}\nfoo`;
+    const setB: Record<string, Uint8Array> = { [hostilePath]: enc.encode("xyz") };
+
+    expect(await computePayloadSha256(setA)).not.toBe(await computePayloadSha256(setB));
+
+    // And the hostile path never even reaches an archive: packTemplate rejects
+    // control characters in member paths outright with a typed error.
+    let rejected: unknown;
+    try {
+      await packTemplate({ manifest: typstManifest(), files: { ...setB, "template.typ": enc.encode("x") } });
+    } catch (err) {
+      rejected = err;
+    }
+    expect(rejected).toBeInstanceOf(TemplatePackError);
+    expect((rejected as TemplatePackError).kind).toBe("invalid-path");
   });
 
   it("excludes the manifest from the payload digest (not self-referential)", async () => {

@@ -26,6 +26,7 @@ import {
   TEMPLATE_PACK_MANIFEST_NAME,
   type TemplateManifest,
 } from "./manifest.js";
+import { assertSafePath } from "./unpack.js";
 
 /**
  * PizZip's shipped ambient typing (declared in `@atlcli/docx`) omits the
@@ -86,28 +87,49 @@ function sortKeys(value: unknown): unknown {
 /**
  * Compute `provenance.payloadSha256` from the payload members.
  *
- * Canonicalization (documented, stable): for every payload member in ascending
- * path order, emit three lines — its `path`, its byte length (decimal), and its
- * lowercase-hex SHA-256 — then newline-join all lines and SHA-256 the UTF-8
- * bytes of that string. The manifest itself is deliberately excluded (it is the
- * carrier of this value), so the result is well-defined before the manifest is
- * written.
+ * Canonicalization (documented, stable, **delimiter-safe**): for every payload
+ * member in ascending path order (UTF-16 code-unit sort of the path strings),
+ * emit one self-delimiting record
+ *
+ * ```text
+ * <P>:<path>,<byteLength>,<sha256hex>;
+ * ```
+ *
+ * where `<P>` is the decimal UTF-8 byte length of `<path>`, `<byteLength>` is
+ * the member's decimal byte count, and `<sha256hex>` is its lowercase-hex
+ * SHA-256 (always exactly 64 chars). Concatenate all records (no join
+ * separator) and SHA-256 the UTF-8 bytes of the result.
+ *
+ * The encoding is injective by construction — the netstring length prefix
+ * frames the path, `,` terminates the decimal size, and the fixed-width hash
+ * plus `;` close the record — so no member path can forge record boundaries.
+ * Injectivity does NOT depend on path validation (a path containing `\n`, `,`
+ * or `;` still cannot collide), though {@link packTemplate} additionally
+ * rejects control characters in paths outright via `assertSafePath`.
+ *
+ * The manifest itself is deliberately excluded (it is the carrier of this
+ * value), so the result is well-defined before the manifest is written.
  */
 export async function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string> {
+  const encoder = new TextEncoder();
   const paths = Object.keys(files).sort();
-  const lines: string[] = [];
+  let canonical = "";
   for (const path of paths) {
     const bytes = files[path];
-    lines.push(path, String(bytes.byteLength), await sha256Hex(bytes));
+    const pathByteLength = encoder.encode(path).byteLength;
+    canonical += `${pathByteLength}:${path},${bytes.byteLength},${await sha256Hex(bytes)};`;
   }
-  return sha256Hex(new TextEncoder().encode(lines.join("\n")));
+  return sha256Hex(encoder.encode(canonical));
 }
 
 /**
  * Pack a manifest + payload files into a deterministic `.wiki-pdf-template`
- * archive.
+ * archive. Every payload path runs through the same `assertSafePath` gate the
+ * reader enforces (traversal + control characters), so `packTemplate` can
+ * never produce an archive `unpackTemplate` would reject.
  *
  * @throws {Error} if `files` includes the reserved manifest path.
+ * @throws {import("./unpack.js").TemplatePackError} on an unsafe payload path.
  */
 export async function packTemplate(contents: TemplatePackContents): Promise<Uint8Array> {
   const { manifest, files } = contents;
@@ -116,6 +138,7 @@ export async function packTemplate(contents: TemplatePackContents): Promise<Uint
       `files must not contain the reserved manifest path "${TEMPLATE_PACK_MANIFEST_NAME}"`
     );
   }
+  for (const path of Object.keys(files)) assertSafePath(path);
 
   const payloadSha256 = await computePayloadSha256(files);
   const finalManifest: TemplateManifest = {
