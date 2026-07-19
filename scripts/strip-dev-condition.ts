@@ -44,36 +44,61 @@ export function stripManifest(manifest: Record<string, unknown>): Record<string,
   return out;
 }
 
-function run(mode: string, pkgDir: string): void {
+export interface StripDevConditionResult {
+  /** What actually happened — restore is tolerant when there is no backup. */
+  action: "stripped" | "restored" | "no-backup";
+  /** True when `strip` found (and overwrote) a stale backup from an earlier failed pack. */
+  staleBackupReplaced?: boolean;
+}
+
+/**
+ * The real file-IO entrypoint (also used by tests). `strip` backs up and
+ * strips; `restore` puts the backup back and is **idempotent** — if a pack
+ * failed between prepack and postpack (so postpack never ran) a later manual
+ * `restore` recovers, and a `restore` without any backup is a warning-only
+ * no-op instead of an error, so recovery can never make things worse.
+ */
+export function runStripDevCondition(
+  mode: "strip" | "restore",
+  pkgDir: string,
+  log: (message: string) => void = console.log,
+): StripDevConditionResult {
   const manifestPath = join(pkgDir, "package.json");
   const backupPath = join(pkgDir, BACKUP_BASENAME);
 
   if (mode === "strip") {
+    const staleBackupReplaced = existsSync(backupPath);
+    if (staleBackupReplaced) {
+      log(
+        `strip-dev-condition: WARNING — stale backup at ${backupPath} (an earlier pack likely ` +
+          `failed before postpack); overwriting it with a fresh backup of the current manifest.`,
+      );
+    }
     const original = readFileSync(manifestPath, "utf8");
     writeFileSync(backupPath, original);
     const stripped = stripManifest(JSON.parse(original) as Record<string, unknown>);
     writeFileSync(manifestPath, `${JSON.stringify(stripped, null, 2)}\n`);
-    console.log(`strip-dev-condition: stripped development conditions from ${manifestPath}`);
-    return;
+    log(`strip-dev-condition: stripped development conditions from ${manifestPath}`);
+    return { action: "stripped", staleBackupReplaced };
   }
 
-  if (mode === "restore") {
-    if (!existsSync(backupPath)) {
-      console.error(
-        `strip-dev-condition: no backup at ${backupPath} — was 'strip' run first? Nothing restored.`,
-      );
-      process.exit(1);
-    }
-    writeFileSync(manifestPath, readFileSync(backupPath, "utf8"));
-    rmSync(backupPath);
-    console.log(`strip-dev-condition: restored ${manifestPath}`);
-    return;
+  if (!existsSync(backupPath)) {
+    log(
+      `strip-dev-condition: no backup at ${backupPath} — nothing to restore (already restored?). No-op.`,
+    );
+    return { action: "no-backup" };
   }
-
-  console.error(`strip-dev-condition: unknown mode "${mode}" (expected "strip" or "restore")`);
-  process.exit(1);
+  writeFileSync(manifestPath, readFileSync(backupPath, "utf8"));
+  rmSync(backupPath);
+  log(`strip-dev-condition: restored ${manifestPath}`);
+  return { action: "restored" };
 }
 
 if (import.meta.main) {
-  run(process.argv[2] ?? "", process.cwd());
+  const mode = process.argv[2] ?? "";
+  if (mode !== "strip" && mode !== "restore") {
+    console.error(`strip-dev-condition: unknown mode "${mode}" (expected "strip" or "restore")`);
+    process.exit(1);
+  }
+  runStripDevCondition(mode, process.cwd());
 }

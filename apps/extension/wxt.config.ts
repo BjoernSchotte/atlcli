@@ -44,7 +44,10 @@ export default defineConfig({
     // `browser` export condition of @atlcli/core so the Node barrel (with
     // node: imports) is never pulled into the extension bundle.
     resolve: {
-      conditions: ["browser"],
+      // `development` FIRST (spec 009): resolves the @atlcli/* workspace
+      // packages to live src/ (their exports list the development condition
+      // first), so `wxt dev` never serves stale dist/ output.
+      conditions: ["development", "browser"],
     },
     // Spec 004: PizZip / docxtemplater reference the Node `Buffer.*` globals,
     // which are undefined in the MV3 panel and rejected by the output-scan gate.

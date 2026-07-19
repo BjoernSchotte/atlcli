@@ -616,7 +616,7 @@ model); note it as the designated fallback.
       resolves the packed tarball's `exports`/`?url` conditions the way an
       external consumer's bundler would. See Consumer smoke below for the
       tarball-based Vite check that closes this gap.
-- [ ] Tests: a `bun test` suite (`scripts/pack-check.test.ts`) that runs
+- [x] Tests: a `bun test` suite (`scripts/pack-check.test.ts`) that runs
       `bun pm pack` per package into the scratch dir and asserts tarball
       contents — `dist/*.js`, `dist/*.d.ts` present; no `src/**/*.ts` leaked;
       asset files present (see Special cases); `exports` targets all exist
@@ -721,7 +721,7 @@ model); note it as the designated fallback.
 
 ### Special cases (wasm/patch/fonts)
 
-- [ ] `@atlcli/pdf-compiler-browser`: add `scripts/vendor-typst.ts` (in
+- [x] `@atlcli/pdf-compiler-browser`: add `scripts/vendor-typst.ts` (in
       `packages/pdf-compiler-browser/scripts/`) that copies the **patched**
       `pkg/` from this repo's installed
       `@myriaddreamin/typst-ts-web-compiler` into
@@ -729,7 +729,7 @@ model); note it as the designated fallback.
       the patch markers (`Blocked unexpected dynamic function`) and a pinned
       sha256 of the `.mjs` + `.wasm`, and copies upstream's Apache-2.0
       LICENSE + NOTICE attribution.
-- [ ] Switch `packages/pdf-compiler-browser/src/compiler.ts` (and
+- [x] Switch `packages/pdf-compiler-browser/src/compiler.ts` (and
       `vendor.d.ts`) from the `@myriaddreamin/...` import to the vendored
       path; remove the dependency from
       `packages/pdf-compiler-browser/package.json`; add exports `./wasm` →
@@ -740,14 +740,14 @@ model); note it as the designated fallback.
       vendored subpath — prefer migrating so the patch exists in exactly one
       delivery channel; then retire `patches/` (follow-up, only after both
       apps are migrated and green).
-- [ ] Regression test (`packages/pdf-compiler-browser/src/vendor.test.ts`,
+- [x] Regression test (`packages/pdf-compiler-browser/src/vendor.test.ts`,
       no mocks): load the vendored `.mjs` under Bun, initialize with the
       vendored wasm bytes, compile a minimal bundle (reuse the pattern from
       `packages/pdf-compiler-browser/src/compiler.test.ts`), and assert the
       patch behavior directly — the glue must **throw** on an unexpected
       dynamic function body (unit-test the exported wrapper contract, not by
       grep alone).
-- [ ] `@atlcli/pdf` fonts: add `prepack` script that runs
+- [x] `@atlcli/pdf` fonts: add `prepack` script that runs
       `packages/pdf/scripts/ensure-fonts.ts` and then verifies every
       `PDF_RUNTIME_ASSETS.fonts` file exists in `packages/pdf/.fonts/` with
       matching sha256, failing the pack otherwise; add `.fonts` and
@@ -761,7 +761,7 @@ model); note it as the designated fallback.
       `BrowserPdfCompilerAssets` input shape, a Vite `?url` example matching
       `apps/browser-export-harness/src/pdf-worker.ts`, and the ambient-types
       snippet from `apps/browser-export-harness/src/worker-assets.d.ts`.
-- [ ] Keep `runtime-assets.ts` as the single source of truth: `pack-check`
+- [x] Keep `runtime-assets.ts` as the single source of truth: `pack-check`
       asserts tarball font list == `PDF_RUNTIME_ASSETS.fonts` (no drift
       between code, downloads, and shipped files).
 

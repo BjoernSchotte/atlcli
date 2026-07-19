@@ -4,7 +4,11 @@ import { DOCX_BROWSER_VITE_DEFINES } from "@atlcli/docx/vite";
 export default defineConfig({
   base: "./",
   resolve: {
-    conditions: ["browser"],
+    // `development` FIRST (spec 009): resolves the @atlcli/* workspace
+    // packages to live src/ (their exports list the development condition
+    // first), so the dev server never serves stale dist/ output. `browser`
+    // keeps the browser barrels (never the Node ones) in the bundle.
+    conditions: ["development", "browser"],
   },
   define: {
     ...DOCX_BROWSER_VITE_DEFINES,
