@@ -4,11 +4,13 @@
  *
  * A throwaway consumer that depends on the package DIRECTORIES via the
  * `file:` protocol — the most likely Track 2 consumption path (a Forge app
- * linking against this repo or a sibling checkout). The smoke runs with
- * NODE_ENV=production so Bun does NOT apply the workspace-only `development`
- * condition: resolution must land in the built `dist/` output (asserted
- * inside the smoke fixtures), proving the linked packages work from their
- * build artifacts, not their sources.
+ * linking against this repo or a sibling checkout). Bun only applies the
+ * workspace-only `development` condition when explicitly requested
+ * (--conditions=development — see fb021b6), so a plain consumer run already
+ * resolves the built `dist/` output; NODE_ENV=production is set as a
+ * defensive belt, and the smoke fixtures assert the /dist/ resolution,
+ * proving the linked packages work from their build artifacts, not their
+ * sources.
  */
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,8 +69,8 @@ export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeR
   // `workspace:`-rewrite contract applies to packed tarballs and is asserted
   // by pack-check and the tarball/Node smokes.
 
-  // NODE_ENV=production: Bun must resolve the default (dist) targets, not the
-  // workspace-only development condition — the fixtures assert /dist/.
+  // Defensive NODE_ENV=production (Bun skips `development` by default anyway
+  // unless --conditions=development is passed) — the fixtures assert /dist/.
   const smokes = runSmokes(projectDir, ["bun"], { NODE_ENV: "production" });
   return { projectDir, smokes };
 }

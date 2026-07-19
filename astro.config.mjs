@@ -99,6 +99,10 @@ export default defineConfig({
           items: [
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
             { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
+            { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
+            { label: 'Consuming the Packages', link: '/reference/package-consumption/' },
+            { label: 'Export Asset Contract', link: '/reference/asset-contract/' },
+            { label: 'Package Versioning', link: '/reference/versioning/' },
             { label: 'Authentication', link: '/authentication/' },
             { label: 'Configuration', link: '/configuration/' },
             { label: 'Doctor', link: '/reference/doctor/' },

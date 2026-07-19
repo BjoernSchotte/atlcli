@@ -77,10 +77,13 @@ range with `overrides` so nothing ever resolves against a registry:
 }
 ```
 
-Then `bun install`. Under Bun, run production workloads with `NODE_ENV=production` so the
-workspace-only `development` export condition (which resolves to TypeScript sources for
-in-repo DX) is skipped and the built `dist/` output is used — exactly what
-`scripts/consumer-smoke-filelink.ts` verifies.
+Then `bun install`. The linked manifests carry a workspace-only `development` export
+condition (resolving to TypeScript sources for in-repo DX), but resolvers only apply it when
+explicitly requested (`bun --conditions=development`, or a bundler dev server such as `vite
+dev`) — plain `bun run` / `node` / production bundler builds resolve the built `dist/` output.
+`scripts/consumer-smoke-filelink.ts` verifies exactly that (and additionally sets
+`NODE_ENV=production` as a defensive belt). Avoid `--conditions=development` and dev-server
+mode against linked packages unless you want to consume their live sources.
 
 ## Path 2: Packed tarballs
 
@@ -181,7 +184,7 @@ import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `Cannot find module '@atlcli/core'` during install | An internal range hit the registry (where `@atlcli/*` does not exist) | Add the package to `overrides` (and `pnpm.overrides`) pointing at your local dir/tarball |
-| Imports resolve to `src/*.ts` under Bun | The workspace `development` condition is active | Run with `NODE_ENV=production`, or consume tarballs (their manifests are stripped) |
+| Imports resolve to `src/*.ts` under Bun | You ran with `--conditions=development` (or a bundler dev server applied the `development` condition) | Drop the flag / use a production build, or consume tarballs (their manifests are stripped) |
 | `Cannot find module 'bun:sqlite'` under Node | You imported `@atlcli/confluence/internal` | Only the default barrel is Node-clean; the internal sync machinery is Bun-only |
 | PDF compile throws `Blocked unexpected dynamic function` | Working as designed — the CSP-hardened compiler refuses non-allowlisted dynamic code | Report it; do not swap in the unpatched upstream glue |
 | Missing fonts at pack time | `packages/pdf/.fonts/` not populated | Run `bun run fonts:ensure` at the repo root (prepack does this automatically) |
