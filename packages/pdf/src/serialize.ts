@@ -1051,15 +1051,34 @@ function serializeBlock(
     case "divider":
       value = `#line(length: 100%, stroke: rgb(\"#DFE1E6\"))`;
       break;
-    case "unknown":
-      writer.notes.push({
-        level: "warning",
-        code: "pdf-unknown-block",
-        message: `Unsupported ${block.macroName} macro was omitted from the PDF.`,
-        macroName: block.macroName,
-      });
-      value = "";
+    case "unknown": {
+      // Placeholder floor (spec 004): render a visible placeholder line, then
+      // the preserved body/plainBody, instead of silently omitting content.
+      const placeholder = `#text(style: "italic", fill: rgb("#97A0AF"))[${escapeTypstContent(
+        `[${block.macroName} macro not rendered]`
+      )}]`;
+      const parts = [`#par[${placeholder}]`];
+      if (block.body && block.body.length > 0) {
+        parts.push(serializeBlocks(block.body, writer, `${path}.body`, context));
+      } else if (block.plainBody) {
+        const MAX_PLAIN = 20000;
+        let text = block.plainBody;
+        if (text.length > MAX_PLAIN) {
+          text = text.slice(0, MAX_PLAIN);
+          writer.notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was truncated at ${MAX_PLAIN} characters.`,
+            macroName: block.macroName,
+          });
+        }
+        parts.push(
+          serializeBlocks([{ type: "codeBlock", code: text }], writer, `${path}.plainBody`, context)
+        );
+      }
+      value = parts.join("\n");
       break;
+    }
     // Real renderings (spec 002 / T1.3).
     case "pageBreak":
       if (context.container === "tableCell" || context.container === "calloutCell") {

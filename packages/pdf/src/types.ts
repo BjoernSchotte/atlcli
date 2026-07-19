@@ -34,7 +34,13 @@ export interface PreparedPdfAsset {
 }
 
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" }>
+  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  /**
+   * An unresolved macro (spec 004 placeholder floor). `body` is prepared
+   * recursively so images/tables inside an unresolved third-party macro still
+   * render; `plainBody` is the verbatim plain-text body.
+   */
+  | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
   | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
   | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
   | {

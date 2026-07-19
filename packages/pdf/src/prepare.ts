@@ -249,10 +249,17 @@ export async function preparePdfDocument(
             });
             return block;
           }
+          case "unknown": {
+            // Placeholder floor (spec 004): prepare the preserved body so images
+            // /tables inside an unresolved macro still render; keep plainBody.
+            const prepared: PreparedPdfBlock = { type: "unknown", macroName: block.macroName };
+            if (block.body && block.body.length > 0) prepared.body = await walk(block.body);
+            if (block.plainBody !== undefined) prepared.plainBody = block.plainBody;
+            return prepared;
+          }
           case "heading":
           case "paragraph":
           case "divider":
-          case "unknown":
           case "pageBreak":
           case "anchor":
             return block;

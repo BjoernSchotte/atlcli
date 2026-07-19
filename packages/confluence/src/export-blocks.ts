@@ -104,7 +104,15 @@ export type ImageSource =
    * unset (set by `fetchExportTree` via {@link StorageToBlocksOptions.pageContext}).
    */
   | { kind: "attachment"; filename: string; pageId?: string }
-  | { kind: "external"; url: string };
+  /**
+   * An external image URL. `trust` marks provenance (spec 004): `"page"`
+   * (default/absent) is a page-author `<ac:image>` external ref on today's asset
+   * path; `"export-view"` is a URL rendered by a third-party app's macro HTML
+   * (untrusted) — the asset seam routes it through the stricter
+   * `ExternalAssetFetcher`/`ExternalAssetPolicy`. Set to `"export-view"` only by
+   * {@link htmlToExportBlocks}.
+   */
+  | { kind: "external"; url: string; trust?: "page" | "export-view" };
 
 /** Confluence callout kinds plus the generic titled panel. */
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";

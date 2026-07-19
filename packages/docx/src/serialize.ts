@@ -496,8 +496,44 @@ async function serializeBlock(
       return fallback();
     }
 
-    case "unknown":
-      return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));
+    case "unknown": {
+      // Stage-4 placeholder floor (spec 004): the placeholder line, followed by
+      // the preserved body/plainBody so an unresolved third-party macro never
+      // silently drops content ("never silently drop" is spec 004's invariant).
+      const placeholder = paragraph(
+        run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" })
+      );
+      const MAX_BODY_DEPTH = 20;
+      if (block.body && block.body.length > 0) {
+        if (depth >= MAX_BODY_DEPTH) {
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was too deeply nested and was truncated.`,
+            macroName: block.macroName,
+          });
+          return placeholder;
+        }
+        const body = await serializeChildren(block.body, ctx, notes, depth + 1);
+        return placeholder + body;
+      }
+      if (block.plainBody) {
+        const MAX_PLAIN = 20000;
+        let text = block.plainBody;
+        if (text.length > MAX_PLAIN) {
+          text = text.slice(0, MAX_PLAIN);
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was truncated at ${MAX_PLAIN} characters.`,
+            macroName: block.macroName,
+          });
+        }
+        const code = await serializeBlock({ type: "codeBlock", code: text }, ctx, notes, depth + 1);
+        return placeholder + code;
+      }
+      return placeholder;
+    }
 
     // Real renderings (spec 002 / T1.3).
     case "pageBreak":

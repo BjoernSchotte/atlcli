@@ -122,7 +122,7 @@ describe("resolveExportMentions", () => {
     expect(json).toContain('"displayName":"Cy"');
   });
 
-  it("does NOT traverse unknown.body — deferred to Lane E (T1.7)", async () => {
+  it("traverses unknown.body — spec 004 renders it, so mentions must resolve", async () => {
     const blocks: ExportBlock[] = [{
       type: "unknown",
       macroName: "drawio",
@@ -133,11 +133,11 @@ describe("resolveExportMentions", () => {
       calls += 1;
       return new Map([["a", "Ada"]]);
     });
-    // The mention buried in unknown.body is neither collected nor resolved.
-    expect(calls).toBe(0);
+    // The mention buried in unknown.body IS collected and resolved now that the
+    // placeholder floor makes the body visible.
+    expect(calls).toBe(1);
     expect(result.unresolved).toBe(0);
-    expect(result.blocks).toEqual(blocks);
-    expect(JSON.stringify(result.blocks)).not.toContain("Ada");
+    expect(JSON.stringify(result.blocks)).toContain('"displayName":"Ada"');
   });
 
   it("leaves a bare unknown block (no body) untouched", async () => {
