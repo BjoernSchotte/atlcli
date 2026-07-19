@@ -1,6 +1,6 @@
 # 002 — Scope orchestration: tree, space and label export
 
-Status: Plan, 2026-07-19. Branch: `export-expansion`.
+Status: **Implemented**, 2026-07-19 (PR #51). DOCX(ts) scope/label/completeness delivered end-to-end incl. E2E against DOCSY; the PDF **CLI** wiring + PDF E2E variants are deferred → folder 008 (see `008-pdf-cli/PLAN.md`, Dependencies, "Deferred hand-off from folder 002" — the PDF *engine* side landed here and is golden-tested).
 
 ## Reference
 
@@ -122,7 +122,7 @@ Rule: **no mocks, ever.** Unit tests exercise pure functions and use an in-memor
 - [x] `packages/confluence/src/compose-document.test.ts`: golden/snapshot tests (pattern: `packages/docx/src/golden.test.ts`, snapshots under `packages/confluence/src/__snapshots__/`) for a fixture tree (depth 3, duplicate page titles, same-named in-page headings, links between pages, link to out-of-scope page, a folder node interleaved between pages): chapter levels using `effectiveDepth`, per-page promotion then shift, clamp note at depth > 6, folder node → heading-only chapter with no body blocks, `page-<id>`/`p<id>-<anchor>` rewrites, an explicit `ac:name="anchor"` macro resolving through the anchor registry to the same destination a heading-derived anchor would use, `link-anchor-missing` note when a link's `anchor` isn't in the registry, `link-outside-scope` URL fallback via `resolveExternalUrl` (proving it is never hand-concatenated), `chapterBreak: "none"` variant, determinism (double run byte-equal). Anchor-registry goldens: Unicode heading text, embedded control characters, a heading title over 40 characters (OOXML bookmark limit), and two same-page headings that sanitize to the same destination id (collision → hash-suffixed, still unique) — each proves the *same* sanitized id is what both the DOCX and PDF golden tests below render into.
 - [x] Heading-offset lift regression: existing `packages/docx/src/serialize.test.ts` and `packages/pdf/src/serialize.test.ts` promotion cases keep passing against the shared helper (import moved, behavior identical); add one case proving composed documents yield offset 0 in both engines.
 - [x] Engine golden tests (T1.3): multi-page composed document through DOCX serializer (bookmarks + `w:hyperlink w:anchor` in golden XML) and PDF serializer (Typst source golden with `#pagebreak(weak: true)`, `<page-…>` labels, resolved `#link(<page-…>)`), extending `packages/docx/src/serialize.test.ts` / `packages/pdf/src/serialize.test.ts`.
-- [ ] E2E — create test tree in DOCSY (profile `mayflower`, per CLAUDE.md; record ids for cleanup):
+- [x] E2E — create test tree in DOCSY (profile `mayflower`, per CLAUDE.md; record ids for cleanup):
   ```bash
   atlcli wiki page create --profile mayflower --space DOCSY --title "E2E 002 Root" --body root.md
   atlcli wiki page create --profile mayflower --space DOCSY --title "E2E 002 Child A" --parent <rootId> --body a.md
@@ -133,34 +133,34 @@ Rule: **no mocks, ever.** Unit tests exercise pure functions and use an in-memor
   atlcli wiki page label add public --id <childAId> && atlcli wiki page label add public --id <childCId>
   ```
   Bodies include headings (one page starting at H3 for promotion), a cross-page link A→C, and an image attachment on the grandchild.
-- [ ] E2E — tree export (DOCX/ts):
+- [x] E2E — tree export (DOCX/ts):
   ```bash
   atlcli wiki export <rootId> --profile mayflower --engine ts --scope tree \
     --template <tpl> -o /tmp/e2e-002-tree.docx --json
   ```
   Assert: exit 0; exactly **one** document; unzip + grep `word/document.xml` for chapter headings in pre-order (Root → A → A1 → B → C), bookmark `page-<childCId>` and a `w:hyperlink w:anchor="page-<childCId>"` from Child A; JSON report has 0 error notes.
-- [ ] E2E — label filtering:
+- [x] E2E — label filtering:
   ```bash
   atlcli wiki export <rootId> --profile mayflower --engine ts --scope tree \
     --label-exclude internal --template <tpl> -o /tmp/e2e-002-filtered.docx --json
   ```
   Assert: Child B absent from `document.xml`, report note `label-filtered` count 1; second run with `--label-include public` contains A and C but not B, root chapter still present (unlabeled root is kept as structure per the root-filter-bypass policy, not excluded) with a `root-filter-bypassed` note; stdout parses as exactly one JSON document (`schema: "atlcli.export-report/v1"`) with no leading info-line text mixed in.
-- [ ] E2E — space export smoke: `atlcli wiki export --profile mayflower --engine ts --scope space --space DOCSY --max-pages 500 --template <tpl> -o /tmp/e2e-002-space.docx --json` — asserts homepage as root chapter, `complete: true`, exit 0, and that the human-readable pre-flight page-count line appears on stderr, never on stdout (stdout is the single JSON document only). PDF variants of the tree/label runs via folder **008**'s `--format pdf` command once merged (assert single PDF, outline entries per chapter) — **deferred → folder 008** (tracked in `008-pdf-cli/PLAN.md` Dependencies).
-- [ ] E2E — cancellation smoke: start a `--scope tree` export against the same fixture tree with a small artificial delay hook (or simply Ctrl-C timing against the real network call) and send `SIGINT`/abort during the asset-fetch phase; assert no partial/corrupt file is left at the output path (either absent, or the pre-existing file from a previous run is byte-unchanged) and the process exits non-zero promptly rather than continuing to download remaining images.
-- [ ] E2E — cleanup (workflow rule): `atlcli wiki page delete --profile mayflower --id <grandchildId> --confirm` (`--confirm` is required by `page.ts`'s delete handler — omitting it fails with a usage error before anything is deleted, per `001-exportblock-model/PLAN.md`'s E2E cleanup task) for all five created pages (children before parents), verify with `atlcli wiki page children --id <rootId>` gone / search empty; remove `/tmp/e2e-002-*` artifacts.
-- [ ] Run `bun test` + `bun run typecheck` green before commit (workflow rules).
+- [x] E2E — space export smoke (DOCX): `atlcli wiki export --profile mayflower --engine ts --scope space --space DOCSY --max-pages 500 --template <tpl> -o /tmp/e2e-002-space.docx --json` — asserts homepage as root chapter, `complete: true`, exit 0, and that the human-readable pre-flight page-count line appears on stderr, never on stdout (stdout is the single JSON document only). PDF variants of the tree/label runs via folder **008**'s `--format pdf` command once merged (assert single PDF, outline entries per chapter) — **deferred → folder 008** (tracked in `008-pdf-cli/PLAN.md` Dependencies).
+- [x] E2E — cancellation smoke: start a `--scope tree` export against the same fixture tree with a small artificial delay hook (or simply Ctrl-C timing against the real network call) and send `SIGINT`/abort during the asset-fetch phase; assert no partial/corrupt file is left at the output path (either absent, or the pre-existing file from a previous run is byte-unchanged) and the process exits non-zero promptly rather than continuing to download remaining images.
+- [x] E2E — cleanup (workflow rule): `atlcli wiki page delete --profile mayflower --id <grandchildId> --confirm` (`--confirm` is required by `page.ts`'s delete handler — omitting it fails with a usage error before anything is deleted, per `001-exportblock-model/PLAN.md`'s E2E cleanup task) for all five created pages (children before parents), verify with `atlcli wiki page children --id <rootId>` gone / search empty; remove `/tmp/e2e-002-*` artifacts.
+- [x] Run `bun test` + `bun run typecheck` green before commit (workflow rules).
 
 ## Definition of Done
 
-- [ ] `fetchExportTree` + `composeChapters` exported from `@atlcli/confluence` via both barrels; extension/host consumption possible with nothing but a `TreeSource` + asset resolver implementation (port note for folder 010 written into that folder's spec, no `apps/extension` code touched here).
-- [ ] `atlcli wiki export --engine ts --scope tree|space` with `--label-include/--label-exclude` produces one DOCX with correct chapter hierarchy, working TOC and cross-page jumps; PDF path integrated on 008's seam.
-- [ ] The `--include-children` cliNote rejection (`apps/cli/src/commands/export.ts:759-761`) is gone; flag aliases documented.
-- [ ] Heading promotion logic exists exactly once (in `@atlcli/confluence`), consumed by both engines; all pre-existing serializer tests green.
-- [ ] Notes/report codes (`tree-cycle`, `label-filtered`, `heading-depth-clamped`, `link-outside-scope`, `link-anchor-missing`, `unsupported-child-type`, `root-filter-bypassed`, `folder-position-unknown`, `page-unreadable`, `subtree-unreadable`, `page-ambiguous-404`, `page-version-changed`, `pagination-loop`) stable and visible in `--json`, alongside a top-level `complete: boolean` and `schema: "atlcli.export-report/v1"`.
-- [ ] `atlcli wiki export --scope space --space DOCSY ...` (no positional page reference) succeeds through `parseExportRequest`'s pre-network validation — the pre-existing `args[0]` requirement no longer blocks the space codepath.
-- [ ] DOCX and PDF asset budgets are the same contract (same caps, same dedupe, same offender-list shape, both fatal on breach) and DOCX's output write is atomic (temp file + rename), matching PDF/008's pattern.
-- [ ] `Ctrl-C`/`AbortSignal` during discovery, backoff, body fetch, asset fetch, or output emit stops network/disk I/O promptly and never leaves a corrupt or partial file at the output path (see cancellation tasks in Architecture and Engine integration).
-- [ ] Unit + golden + E2E tasks above all checked; E2E resources in DOCSY deleted; `bun test` and `bun run typecheck` green; docs guide updated in the same PR.
+- [x] `fetchExportTree` + `composeChapters` exported from `@atlcli/confluence` via both barrels; extension/host consumption possible with nothing but a `TreeSource` + asset resolver implementation (port note for folder 010 written into that folder's spec, no `apps/extension` code touched here).
+- [x] `atlcli wiki export --engine ts --scope tree|space` with `--label-include/--label-exclude` produces one DOCX with correct chapter hierarchy, working TOC and cross-page jumps. *(PDF path integrated on 008's seam: deferred → folder 008, engine side done here.)*
+- [x] The `--include-children` cliNote rejection (`apps/cli/src/commands/export.ts:759-761`) is gone; flag aliases documented.
+- [x] Heading promotion logic exists exactly once (in `@atlcli/confluence`), consumed by both engines; all pre-existing serializer tests green.
+- [x] Notes/report codes (`tree-cycle`, `label-filtered`, `heading-depth-clamped`, `link-outside-scope`, `link-anchor-missing`, `unsupported-child-type`, `root-filter-bypassed`, `folder-position-unknown`, `page-unreadable`, `subtree-unreadable`, `page-ambiguous-404`, `page-version-changed`, `pagination-loop`) stable and visible in `--json`, alongside a top-level `complete: boolean` and `schema: "atlcli.export-report/v1"`.
+- [x] `atlcli wiki export --scope space --space DOCSY ...` (no positional page reference) succeeds through `parseExportRequest`'s pre-network validation — the pre-existing `args[0]` requirement no longer blocks the space codepath.
+- [x] DOCX and PDF asset budgets are the same contract (same caps, same dedupe, same offender-list shape, both fatal on breach) and DOCX's output write is atomic (temp file + rename), matching PDF/008's pattern.
+- [x] `Ctrl-C`/`AbortSignal` during discovery, backoff, body fetch, asset fetch, or output emit stops network/disk I/O promptly and never leaves a corrupt or partial file at the output path (see cancellation tasks in Architecture and Engine integration).
+- [x] Unit + golden + E2E tasks above all checked (PDF-CLI items deferred → 008); E2E resources in DOCSY deleted; `bun test` and `bun run typecheck` green; docs guide updated in the same PR.
 
 ## Risks & open questions
 
