@@ -62,7 +62,14 @@ import { ImageEmbedder, ImageEmbedError } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseLogoArgs } from "./placeholder-map.js";
 import type { AssetFetcher, AssetRef, HostCallContext, SvgRasterizer } from "./env.js";
-import { CODE_STYLE_ID, codeStyleXml, parseStyleNames } from "./ooxml.js";
+import {
+  CAPTION_STYLE_ID,
+  captionStyleXml,
+  CODE_STYLE_ID,
+  codeStyleXml,
+  parseStyleNames,
+  type CaptionLang,
+} from "./ooxml.js";
 import {
   encodeXmlText,
   paragraphText,
@@ -177,6 +184,12 @@ export interface ExportInput {
    * zinc-light theme matching the export's code blocks and body text.
    */
   diagramTheme?: DiagramTheme;
+  /**
+   * Caption locale for SEQ labels (spec 003 C3): `Figure`/`Table`/`Listing`
+   * vs. `Abbildung`/`Tabelle`/`Listing`. Explicit host option, highest in the
+   * precedence chain (explicit > host locale > `"en"`). Defaults to `"en"`.
+   */
+  captionLang?: CaptionLang;
 }
 
 /**
@@ -319,8 +332,17 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     return s;
   });
 
+  // The template's body-level sectPr (portrait) is cloned into orientation
+  // regions' section sandwiches (spec 003 C6); read before any zip surgery.
+  const bodySectPr = readBodySectPr(zip);
   const bodyStart = Date.now();
-  const body = await serializeBlocks(blocks, { styleNames, images, diagrams });
+  const body = await serializeBlocks(blocks, {
+    styleNames,
+    images,
+    diagrams,
+    ...(bodySectPr ? { bodySectPr } : {}),
+    captionLang: input.captionLang ?? "en",
+  });
   timings.bodyMs = Date.now() - bodyStart;
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
@@ -365,6 +387,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 
   // 6. Synthesize the code style if the body referenced it; force TOC refresh.
   if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
+  if (body.xml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
@@ -1043,6 +1066,39 @@ export function ensureCodeStyle(zip: PizZip): void {
   if (!xml) return;
   if (xml.includes(`w:styleId="${CODE_STYLE_ID}"`)) return;
   zip.file(path, xml.replace("</w:styles>", `${codeStyleXml()}</w:styles>`));
+}
+
+/** Add the synthesized caption paragraph style to styles.xml if absent. */
+export function ensureCaptionStyle(zip: PizZip): void {
+  const path = "word/styles.xml";
+  const xml = zip.file(path)?.asText();
+  if (!xml) return;
+  if (xml.includes(`w:styleId="${CAPTION_STYLE_ID}"`)) return;
+  zip.file(path, xml.replace("</w:styles>", `${captionStyleXml()}</w:styles>`));
+}
+
+/**
+ * Read the template's body-level `<w:sectPr>` (the last one before `</w:body>`).
+ * Extracted from the same location logic as {@link injectContentTagAtEnd} and
+ * threaded into the serializer so orientation regions clone the template's
+ * ACTUAL page dimensions (spec 003 C6). Returns `undefined` when the template
+ * has no body section (the serializer then synthesizes an A4 fallback).
+ */
+export function readBodySectPr(zip: PizZip): string | undefined {
+  const xml = zip.file("word/document.xml")?.asText();
+  if (!xml) return undefined;
+  const bodyClose = xml.lastIndexOf("</w:body>");
+  const start = xml.lastIndexOf("<w:sectPr", bodyClose === -1 ? undefined : bodyClose);
+  if (start === -1) return undefined;
+  const close = xml.indexOf("</w:sectPr>", start);
+  if (close !== -1) return xml.slice(start, close + "</w:sectPr>".length);
+  // Self-closing body sectPr (rare): `<w:sectPr .../>`.
+  const selfClose = xml.indexOf("/>", start);
+  const openEnd = xml.indexOf(">", start);
+  if (selfClose !== -1 && (openEnd === -1 || selfClose <= openEnd)) {
+    return xml.slice(start, selfClose + 2);
+  }
+  return undefined;
 }
 
 /**

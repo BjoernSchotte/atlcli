@@ -709,3 +709,220 @@ describe("serializeBlocks — multi-page composed document (T1.3 engine golden)"
     expect(new Set(names).size).toBe(2);
   });
 });
+
+// ===========================================================================
+// spec 003 — page breaks, orientation regions, captions (C5/C6/C3)
+// ===========================================================================
+
+// The repo's own template body sectPr is Letter (12240 x 15840). Orientation
+// tests assert against these SOURCE values, never a hard-coded A4 constant.
+const LETTER_SECTPR =
+  '<w:sectPr><w:headerReference w:type="default" r:id="rIdH1"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>';
+
+describe("serializeBlocks — C5 pageBreak", () => {
+  it("emits a page-break paragraph at body level", async () => {
+    const { xml } = await serializeBlocks([{ type: "pageBreak" }], { styleNames: noStyles });
+    expect(xml).toContain('<w:br w:type="page"/>');
+  });
+
+  it("suppresses a page break inside a table cell with a note (children kept)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [
+          {
+            cells: [
+              {
+                header: false,
+                colspan: 1,
+                rowspan: 1,
+                content: [
+                  { type: "paragraph", content: [{ type: "text", text: "keep" }] },
+                  { type: "pageBreak" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).not.toContain('<w:br w:type="page"/>');
+    expect(xml).toContain("keep");
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+
+  it("suppresses a page break inside a callout with a note", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "callout", kind: "info", content: [{ type: "pageBreak" }] },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).not.toContain('<w:br w:type="page"/>');
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+});
+
+describe("serializeBlocks — C6 orientation region", () => {
+  const region = (landscape: boolean): ExportBlock => ({
+    type: "orientation",
+    landscape,
+    content: [{ type: "paragraph", content: [{ type: "text", text: "wide" }] }],
+  });
+
+  it("emits a section sandwich swapping the SOURCE template's pgSz (Letter, not A4)", async () => {
+    const { xml } = await serializeBlocks([region(true)], {
+      styleNames: noStyles,
+      bodySectPr: LETTER_SECTPR,
+    });
+    // Two sectPr-carrying paragraphs (before + after the region content).
+    const sectPrs = [...xml.matchAll(/<w:pgSz\b[^>]*\/>/g)].map((m) => m[0]);
+    expect(sectPrs).toHaveLength(2);
+    // First (portrait closer) keeps the source Letter dimensions.
+    expect(sectPrs[0]).toContain('w:w="12240"');
+    expect(sectPrs[0]).toContain('w:h="15840"');
+    // Second (landscape) swaps the SOURCE values — 15840 x 12240, not A4.
+    expect(sectPrs[1]).toContain('w:w="15840"');
+    expect(sectPrs[1]).toContain('w:h="12240"');
+    expect(sectPrs[1]).toContain('w:orient="landscape"');
+    expect(xml).not.toContain("11906"); // no A4 constant leaked
+    // Region children present.
+    expect(xml).toContain("wide");
+    // Header reference preserved through both clones.
+    expect((xml.match(/<w:headerReference\b/g) ?? []).length).toBe(2);
+    // Landscape closer carries a nextPage section type.
+    expect(sectPrs[1]).not.toBe(sectPrs[0]);
+    expect(xml).toContain('<w:type w:val="nextPage"/>');
+  });
+
+  it("a portrait region normalizes back to portrait dimensions", async () => {
+    const { xml } = await serializeBlocks([region(false)], {
+      styleNames: noStyles,
+      bodySectPr: LETTER_SECTPR,
+    });
+    const sectPrs = [...xml.matchAll(/<w:pgSz\b[^>]*\/>/g)].map((m) => m[0]);
+    // Region closer is portrait: width < height, no landscape orient.
+    expect(sectPrs[1]).toContain('w:w="12240"');
+    expect(sectPrs[1]).toContain('w:h="15840"');
+    expect(sectPrs[1]).not.toContain("landscape");
+  });
+
+  it("synthesizes an A4 fallback when the template has no body sectPr", async () => {
+    const { xml } = await serializeBlocks([region(true)], { styleNames: noStyles });
+    // Only here may A4 constants appear (no real template size to preserve).
+    expect(xml).toContain('w:w="16838"');
+    expect(xml).toContain('w:h="11906"');
+    expect(xml).toContain('w:orient="landscape"');
+  });
+
+  it("suppresses the section sandwich inside a table cell (children kept + note)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [
+          {
+            cells: [
+              { header: false, colspan: 1, rowspan: 1, content: [region(true)] },
+            ],
+          },
+        ],
+      },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles, bodySectPr: LETTER_SECTPR });
+    // No section break inside the cell.
+    expect(xml).not.toContain('w:orient="landscape"');
+    expect(xml).toContain("wide");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+
+  it("suppresses the section sandwich inside a callout (children kept + note)", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "callout", kind: "warning", content: [region(true)] },
+    ];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles, bodySectPr: LETTER_SECTPR });
+    expect(xml).not.toContain('w:orient="landscape"');
+    expect(xml).toContain("wide");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+});
+
+describe("serializeBlocks — C3 captions", () => {
+  const captionedImage = (): ExportBlock => ({
+    type: "image",
+    source: { kind: "attachment", filename: "arch.png" },
+    caption: { kind: "figure", content: [{ type: "text", text: "Architecture" }] },
+  });
+
+  it("emits a Caption-styled SEQ paragraph for a table (English, above the table)", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [] }] }],
+        caption: { kind: "table", content: [{ type: "text", text: "Results" }] },
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles, captionLang: "en" });
+    expect(xml).toContain('<w:pStyle w:val="Caption"/>');
+    expect(xml).toContain("SEQ Table");
+    expect(xml).toContain("Table ");
+    expect(xml).toContain("Results");
+    // Caption paragraph precedes the table (above-table convention).
+    expect(xml.indexOf("Caption")).toBeLessThan(xml.indexOf("<w:tbl>"));
+  });
+
+  it("localizes the SEQ label to German", async () => {
+    const blocks: ExportBlock[] = [captionedImage()];
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      captionLang: "de",
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    expect(xml).toContain("Abbildung ");
+    expect(xml).toContain("SEQ Figure"); // sequence identifier stays language-stable
+  });
+
+  it("defaults to English when no locale is supplied", async () => {
+    const { xml } = await serializeBlocks([captionedImage()], {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    expect(xml).toContain("Figure ");
+  });
+
+  it("uses a template's own Caption style id when present", async () => {
+    const styles = new Map<string, string>([["caption", "MyCaption"]]);
+    const { xml } = await serializeBlocks([captionedImage()], {
+      styleNames: styles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    expect(xml).toContain('<w:pStyle w:val="MyCaption"/>');
+  });
+
+  it("a captioned image with a failed embed still emits a numbered caption + placeholder", async () => {
+    const { xml, notes } = await serializeBlocks([captionedImage()], {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: false, reason: "404" }) },
+    });
+    // No dangling drawing, but a visible placeholder + the SAME caption so the
+    // SEQ number is not skipped.
+    expect(xml).toContain("[Image unavailable: arch.png]");
+    expect(xml).toContain("SEQ Figure");
+    expect(notes.map((n) => n.code)).toContain("image-embed-failed");
+  });
+
+  it("a captioned image with no embedder still emits a numbered caption", async () => {
+    const { xml, notes } = await serializeBlocks([captionedImage()], { styleNames: noStyles });
+    expect(xml).toContain("[Image unavailable: arch.png]");
+    expect(xml).toContain("SEQ Figure");
+    expect(notes.map((n) => n.code)).toContain("image-skipped");
+  });
+
+  it("regression: scroll macros no longer reach the unknown-placeholder path in DOCX", async () => {
+    const blocks = storageToBlocks(
+      '<ac:structured-macro ac:name="scroll-pagebreak"/>' +
+        '<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body><p>wide</p></ac:rich-text-body></ac:structured-macro>',
+      { exporter: "word" }
+    ).blocks;
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles, bodySectPr: LETTER_SECTPR });
+    expect(xml).not.toContain("macro not rendered");
+  });
+});

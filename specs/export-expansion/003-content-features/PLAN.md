@@ -357,7 +357,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
 
 ### DOCX rendering
 
-- [ ] C5: add `pageBreakParagraph()` to `packages/docx/src/ooxml.ts`
+- [x] C5: add `pageBreakParagraph()` to `packages/docx/src/ooxml.ts`
       (`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`) and a
       `case "pageBreak"` in `serializeBlock()`
       (`packages/docx/src/serialize.ts:338`), threading the
@@ -371,7 +371,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `pagebreak-suppressed-in-container` naming the container kind (breaks
       inside `<w:tc>` paragraphs would split the table row/callout, not the
       page).
-- [ ] C6: extract a `readBodySectPr(zip)` helper from the body-`sectPr`
+- [x] C6: extract a `readBodySectPr(zip)` helper from the body-`sectPr`
       location logic in `injectContentTagAtEnd()`
       (`packages/docx/src/export.ts:845-851`) and pass the clone through
       `SerializeContext`. Render `orientation` as a section sandwich: a
@@ -393,7 +393,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       no body `sectPr`: synthesize a standard A4 `sectPr` (the synthesized
       fallback, unlike the clone path, legitimately uses A4 constants since
       there is no real template size to preserve).
-- [ ] C3: add a caption-paragraph helper to `packages/docx/src/ooxml.ts` that
+- [x] C3: add a caption-paragraph helper to `packages/docx/src/ooxml.ts` that
       emits `<w:pPr><w:pStyle w:val="Caption"/></w:pPr>` plus a SEQ field
       (`fldChar begin` / `instrText " SEQ <label> \* ARABIC "` / `fldChar
       end`) and the caption text. Resolve the `Caption` style id via the
@@ -406,12 +406,12 @@ further hosts consume it purely through `storageToBlocks → engine`.
       (explicit option > host-supplied locale > `"en"`), threaded through
       `SerializeContext`; unrecognized values fall back to `"en"` + warning
       note.
-- [ ] C3: emit the caption paragraph from `serializeBlock()` next to
+- [x] C3: emit the caption paragraph from `serializeBlock()` next to
       `image`/`table`/`codeBlock` blocks that carry `caption` (position:
       above tables, below figures/code — the established convention). Numbers
       refresh on open because `ensureUpdateFields` already runs
       (`packages/docx/src/export.ts:309`).
-- [ ] C3 asset-failure fallback: when a captioned `image` block fails to
+- [x] C3 asset-failure fallback: when a captioned `image` block fails to
       embed (no `ctx.images`, or `outcome.ok === false` at
       `packages/docx/src/serialize.ts:410-428`), do not silently drop the
       image AND its caption — emit a visible numbered figure fallback (the
@@ -420,7 +420,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       number is not skipped and downstream captions/`TOC \c` stay correctly
       numbered) alongside the existing `image-skipped`/`image-embed-failed`
       note.
-- [ ] Replace the C4/C5/C6/C3 placeholder path: the affected `scroll-*`
+- [x] Replace the C4/C5/C6/C3 placeholder path: the affected `scroll-*`
       macros must no longer reach the `unknown` arm
       (`packages/docx/src/serialize.ts:431-432`).
 
@@ -680,7 +680,7 @@ real instance.
       and block-tree snapshots (existing snapshot style, line 452/511).
       These are regression tests: each asserts the exact behavior that the
       placeholder path used to produce is gone.
-- [ ] DOCX golden/serializer tests in `packages/docx/src/serialize.test.ts`
+- [x] DOCX golden/serializer tests in `packages/docx/src/serialize.test.ts`
       and `packages/docx/src/golden.test.ts`: `pageBreak` emits
       `<w:br w:type="page"/>`; orientation region emits two `sectPr`
       paragraphs with landscape `pgSz` whose `w:w`/`w:h` are the SOURCE
