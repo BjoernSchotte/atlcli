@@ -1,6 +1,10 @@
 # 007 — PDF template settings & template library
 
-Status: Plan, 2026-07-19. Folder `specs/export-expansion/007-pdf-template-settings`.
+Status: **Done**, implemented 2026-07-19 (PR #52). E2E verified against DOCSY
+via a Bun harness script driving the real engine + WASM compiler (folder 008's
+PDF CLI does not exist yet; flag-level E2E re-runs there once 008 lands).
+B6/B10 remain recorded follow-ups, unimplemented by design.
+Folder `specs/export-expansion/007-pdf-template-settings`.
 
 ## Reference
 
@@ -811,7 +815,13 @@ touching zips uses real archives built by the code under test.
       placeholders passes with a non-empty warning `issues` array (not a
       rejection), and a corrupted inner `.docx` fails with `ok: false`
       and the package-level error surfaced in `issues`.
-- [ ] **E2E (via folder 008's PDF CLI, profile `mayflower`, space
+- [x] *(performed 2026-07-19 via a Bun E2E harness script — real Confluence
+      page in DOCSY, real `storageToBlocks`, real WASM compile, pdftotext +
+      inflated-byte assertions, page deleted afterwards; 16/16 checks. The
+      pdftotext DRAFT grep below is superseded by an Artifact-segment
+      assertion: the watermark is correctly Artifact-marked and therefore
+      intentionally invisible to text extraction. Flag-level E2E moves to
+      folder 008 once its CLI exists.)* **E2E (via folder 008's PDF CLI, profile `mayflower`, space
       `DOCSY`, project `ATLCLI`):** create a small test page in DOCSY,
       run `atlcli wiki export --format pdf` with `--page-size letter
       --watermark "DRAFT" --footer-text "Acme Confidential"` (exact flag
