@@ -713,22 +713,22 @@ Dependencies above). Wire after its merge.
 Scope here is measurement + migration path; the flip itself is a later
 one-line change gated on parity.
 
-- [ ] Build the parity checklist python→ts as a runnable comparison:
+- [x] Build the parity checklist python→ts as a runnable comparison:
       `apps/cli/src/commands/engine-parity.test.ts` exporting the same
       fixture pages through both engines and diffing observable features
       (headings, tables, lists incl. numbering once T1.13 lands, images,
       links, placeholders, TOC behavior); document intentional differences.
-- [ ] Close the flag gap: every python-engine flag either works on ts
+- [x] Close the flag gap: every python-engine flag either works on ts
       (`--include-children` → `--scope tree`, T3.3) or has a documented
       migration; `--no-toc-prompt` and `--no-merge` decisions recorded.
-- [ ] Add a deprecation notice path: when `--engine` is omitted and the python
+- [x] Add a deprecation notice path: when `--engine` is omitted and the python
       engine is selected by default, print a one-line stderr note announcing
       the upcoming default change and the `--engine python` escape hatch
       (behind a version gate, coordinated with a minor release).
-- [ ] Migration note in `src/content/docs/confluence/export.md`: what changes
+- [x] Migration note in `src/content/docs/confluence/export.md`: what changes
       when ts becomes default, how to pin the old engine, Python no longer
       required once flipped.
-- [ ] Flip criteria written down (parity test green incl. T1.3/T1.13
+- [x] Flip criteria written down (parity test green incl. T1.3/T1.13
       features, one release with the deprecation notice shipped); the actual
       default change is its own follow-up PR.
 

@@ -110,6 +110,26 @@ export async function handleExport(
   }
   const engine = request.engine;
 
+  // T3.5 deprecation notice: when `--engine` is omitted the python engine is
+  // still the default, but a future minor release flips the default to the ts
+  // engine. Announce it once on stderr (never stdout, so `--json` stays clean)
+  // and only when attached to a terminal, so CI logs/pipes are untouched.
+  // Suppressed by ATLCLI_SUPPRESS_ENGINE_NOTICE. The flip itself is a later,
+  // gated PR (see T3.5 flip criteria).
+  if (
+    engine === "python" &&
+    !hasFlag(flags, "engine") &&
+    !opts.json &&
+    process.stderr.isTTY &&
+    !process.env.ATLCLI_SUPPRESS_ENGINE_NOTICE
+  ) {
+    process.stderr.write(
+      "note: a future release will default DOCX export to the in-process 'ts' engine. " +
+        "Pass --engine python to keep today's behavior, or --engine ts to adopt it now. " +
+        "(set ATLCLI_SUPPRESS_ENGINE_NOTICE=1 to silence)\n"
+    );
+  }
+
   const templatePath = getFlag(flags, "template");
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
   let embedImages = !hasFlag(flags, "no-images");

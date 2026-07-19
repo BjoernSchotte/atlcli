@@ -252,6 +252,27 @@ to source code blocks and the report says so in a note.
 Diagram theming follows the export's brand colors when configured; the default is a neutral
 light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
 
+### Migration: `ts` will become the default engine
+
+Today `--engine` defaults to `python`. A future minor release will flip the default to the
+in-process `ts` engine (no Python dependency). Nothing changes yet — this is advance notice:
+
+- **Keep today's behavior** by passing `--engine python` explicitly. The python engine is
+  not being removed; it stays available behind the flag.
+- **Adopt the new default now** with `--engine ts`. It covers single-page **and** tree/space
+  export, Scroll-style placeholders, image embedding, and Mermaid diagrams, and needs no
+  Python install. Templates use Scroll placeholders (`$scroll.title`) rather than Jinja2
+  variables (`{{ title }}`), so a python template must be adapted before switching.
+- When `--engine` is omitted and the terminal is interactive, the CLI prints a one-line
+  stderr notice about the upcoming change (never on stdout, so `--json` output is unaffected;
+  silence it with `ATLCLI_SUPPRESS_ENGINE_NOTICE=1`).
+- **Once flipped**, Python is no longer required for export unless you opt back in with
+  `--engine python`.
+
+**Flip criteria** (tracked; the flip is its own later PR): the python→ts parity checklist is
+green including tree/space and native list numbering, and at least one release has shipped
+carrying the deprecation notice above.
+
 ## Tree and space export
 
 "Export this handbook" almost never means one page — documentation lives as a page
