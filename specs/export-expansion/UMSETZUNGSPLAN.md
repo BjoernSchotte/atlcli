@@ -24,6 +24,7 @@ gegen den Confluence-Space `DOCSY`, Profil `mayflower` — nie mocken):
 | [`009-package-publishing/`](009-package-publishing/PLAN.md) | T4.1 Packaging-Readiness (Filesystem-Linking + Tarball; registry publish deferred, product rename pending) + T4.2 API-Freeze | Infra sofort |
 | [`010-extension-integration/`](010-extension-integration/PLAN.md) | T5.1–T5.5 Scope-UI, Library-UI, Vorschau, Docs | nach M1 |
 | [`011-quality-gates/`](011-quality-gates/PLAN.md) | T4.3–T4.9 Harness, Benchmarks, PDF/UA, Security | wächst mit |
+| [`012-pdf-template-migration/`](012-pdf-template-migration/PLAN.md) | T6.1–T6.5 Design-Token-Migration, Bindings, zweites Template | nach 007 (Parity-Gate T6.4 setzt 011s `check-parity.ts`-Harness voraus — 011 selbst läuft "wächst mit", nicht erst ab M1; 012 kann also vor M1 starten, sobald sowohl 007 als auch 011s PDF-Settings-Konformitätsfall gemergt sind) |
 
 Leitidee: **Parallelisierung durch Datei-Ownership.** Jede Lane besitzt eine
 disjunkte Menge von Paketen/Dateien; Lanes ohne gemeinsame Dateien laufen
@@ -41,7 +42,11 @@ additiver Konvention entschärft:
   `types.ts`, Threading in `prepare.ts`). → 007 beansprucht exklusiven
   Owner-Status für T2.1 auf allen vier Dateien; T3.3s Änderung ist die
   einzige additive Ausnahme, koordiniert per Rebase (siehe
-  `008-pdf-cli/PLAN.md`).
+  `008-pdf-cli/PLAN.md`). **Nachfolge-Owner von `template.ts`/
+  `serialize.ts` nach 007:** `012-pdf-template-migration/PLAN.md`
+  übernimmt beide Dateien für die Design-Token-Migration (T6.3), sobald
+  007 gemergt ist — kein weiterer Lane-Zugriff auf diese beiden Dateien
+  in 012s Umsetzungsfenster.
 - `packages/confluence/src/client.ts` — zwei getrennte Konflikte: (1)
   CQL-Escaping-Helfer `escapeCqlValue` wird sowohl von 002 (Label-Filter,
   T1.2) als auch von 005 (Title-Form-Include-Lookup, D1) neu gebraucht;
@@ -117,10 +122,10 @@ ADF-Fallback), Word-Qualität, PDF-Settings — plus CLI als erster Konsument
 **Lane P — PDF-Template-System** (Owner: `packages/pdf`)
 | ID | Task | Abhängig von | Aufwand |
 |---|---|---|---|
-| T2.1 | `settings`-Threading: `PdfSerializeOptions`→`main.typ`; Vertrag `atlcli.pdf-template/v1` `render(meta, body, settings)` stabilisieren | — | M |
+| T2.1 | `settings`-Threading: `PdfSerializeOptions`→`main.typ`; Vertrag `wiki.pdf-template/v1` `render(meta, body, settings)` stabilisieren | — | M |
 | T2.2 | Settings Level A: Seitenformat A4/Letter, Orientierung, Cover/Outline-Toggles, Header/Footer-Text | T2.1 | S |
 | T2.3 | **Watermark** (rotierter Text-Layer; Quick Win) | T2.1 | S |
-| T2.4 | TemplateLibrary-Abstraktion (`packages/core/src/template-library.ts`, pure `resolveTemplate` global/space) + `.atlcli-template`-Containerformat (beide Engines) | — | M |
+| T2.4 | TemplateLibrary-Abstraktion (`packages/core/src/template-library.ts`, pure `resolveTemplate` global/space) + `.wiki-pdf-template`-Containerformat (beide Engines) | — | M |
 
 **Lane K — CLI (CI/CD-JTBD, erster Konsument der Baseline)** (Owner: `apps/cli`)
 | ID | Task | Abhängig von | Aufwand |

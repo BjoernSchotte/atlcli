@@ -220,7 +220,7 @@ atlcli wiki export <page> --format docx --engine ts --template corporate -o out.
 ```
 
 `--format` defaults to `docx` (backwards compatible). `--template` stays
-DOCX-only for now (PDF templates arrive via Lane P / `atlcli.pdf-template/v1`);
+DOCX-only for now (PDF templates arrive via Lane P / `wiki.pdf-template/v1`);
 passing it with `--format pdf` is a usage error rather than a silent ignore.
 
 ## Tasks

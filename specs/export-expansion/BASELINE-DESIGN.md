@@ -200,7 +200,7 @@ CLI-Report-Schema versionieren (`ExportReport`/`PdfExportReport`, `types.ts:128`
 
 ## 2. Cluster B — Templates, Branding & Settings
 
-Gemeinsame Basis aller Arbeitspakete: der Vertrag `atlcli.pdf-template/v1` mit `render(meta, body, settings)` (TEMPLATE-UX §7) und ein abgestuftes Modell der Template-Quellen (gebündelt → Site-Library → extern). Heute ruft `serializePdfDocument` (`packages/pdf/src/serialize.ts:849`) nur `atlcli-doc.with(meta: (...))` auf — **der erste Schritt für fast alle Pakete unten ist, `settings` als drittes Argument durch `PdfSerializeOptions` → `main.typ` zu fädeln.** Shape-agnostisch: alles läuft über `PdfExportEnv`/`ExportEnv`-Ports, Hosts (CLI, Extension) liefern nur Storage-Adapter.
+Gemeinsame Basis aller Arbeitspakete: der Vertrag `wiki.pdf-template/v1` mit `render(meta, body, settings)` (TEMPLATE-UX §7) und ein abgestuftes Modell der Template-Quellen (gebündelt → Site-Library → extern). Heute ruft `serializePdfDocument` (`packages/pdf/src/serialize.ts:849`) nur `atlcli-doc.with(meta: (...))` auf — **der erste Schritt für fast alle Pakete unten ist, `settings` als drittes Argument durch `PdfSerializeOptions` → `main.typ` zu fädeln.** Shape-agnostisch: alles läuft über `PdfExportEnv`/`ExportEnv`-Ports, Hosts (CLI, Extension) liefern nur Storage-Adapter.
 
 ### B2 — Globale vs. Space-Templates
 **(a)** JTBD: „Als Doku-Verantwortliche will ich ein Firmen-Template einmal zentral pflegen, aber einzelnen Spaces (z. B. Legal) ein abweichendes erlauben" — heute gibt es pro Host genau einen Template-Slot (`idbTemplateSource` in `apps/extension/utils/docx/template-store.ts`, `TemplateSource.getBytes("current")` in `packages/docx/src/env.ts:17`).
@@ -225,21 +225,21 @@ Adapter: Extension = IndexedDB-Erweiterung des Single-Slot-Stores; CLI = `~/.atl
 **(d)** M. Abhängig von: verifiziertem binärtreuem Attachment-Roundtrip (für den Attachment-Adapter) und einer Admin-/Settings-Oberfläche im jeweiligen Host.
 **(e)** UX: Default = globales Template, Space-Override nur via Progressive Disclosure im Admin-Panel („Dieser Space verwendet: Global ▾"); Fehlerbild bei sha256-Mismatch: harter Abbruch mit „Template wurde verändert — neu hochladen", nie stiller Fallback. Offen: Berechtigungsmodell für „wer darf global setzen" (z. B. Site-Admin via Confluence-Permissions der Library-Page).
 
-### B3 — Template-Sharing-Format (`.atlcli-template` auch für DOCX)
+### B3 — Template-Sharing-Format (`.wiki-pdf-template` auch für DOCX)
 **(a)** JTBD: „Als Agentur will ich ein Template bei Kunde A bauen und bei Kunde B importieren" — verbreitete Exporter-Workflows kennen dafür proprietäre Austauschdateien. Bei uns ist das Archiv (Level B) PDF-only geplant und unimplementiert.
-**(b)** Entscheidung: **ja, ein Format für beide Engines** — `.atlcli-template` ist ein deterministisches Zip mit Manifest; `engine.kind` diskriminiert. Verworfen: separates `.atlcli-docx`-Format (zwei Import-Pfade, zwei Doku-Kapitel, kein Mehrwert); nackte `.docx`-Weitergabe (verliert Settings-Defaults, Herkunft, sha256). TEMPLATE-UX §11 („no coupling of Word template behavior to the Typst package API") bleibt gewahrt: nur das *Container*-Format ist geteilt, nicht der Render-Vertrag.
+**(b)** Entscheidung: **ja, ein Format für beide Engines** — `.wiki-pdf-template` ist ein deterministisches Zip mit Manifest; `engine.kind` diskriminiert. Verworfen: separates `.atlcli-docx`-Format (zwei Import-Pfade, zwei Doku-Kapitel, kein Mehrwert); nackte `.docx`-Weitergabe (verliert Settings-Defaults, Herkunft, sha256). TEMPLATE-UX §11 („no coupling of Word template behavior to the Typst package API") bleibt gewahrt: nur das *Container*-Format ist geteilt, nicht der Render-Vertrag.
 **(c)** Manifest-Schema (Erweiterung von TEMPLATE-UX §7):
 ```json
 {
   "schemaVersion": 1, "id": "com.acme.word-report", "name": "Acme Report",
   "version": "1.0.0",
-  "engine": { "kind": "docx", "api": "atlcli.docx-template/v1", "entry": "template.docx" },
+  "engine": { "kind": "docx", "api": "wiki.docx-template/v1", "entry": "template.docx" },
   "settings": { "dateFormat": { "type": "text", "default": "dd.MM.yyyy" },
                 "timeZone": { "type": "choice", "options": ["Europe/Berlin","UTC"], "default": "Europe/Berlin" } },
   "provenance": { "sha256": "…", "createdWith": "atlcli 0.x" }
 }
 ```
-Typst-Variante: `engine.kind: "typst"`, `api: "atlcli.pdf-template/v1"`, `entry: "template.typ"`, `assets/`, `LICENSES/`. Neues Paket `packages/template-pack/src/{pack,unpack,validate}.ts` (isomorph, pure): deterministische Zip-Reihenfolge, Pfad-Traversal-Rejection, Größen-Caps (`MAX_TEMPLATE_BYTES = 20 MiB` aus `scan.ts:30` wiederverwenden), beim DOCX-Import zwingend `scanTemplate()` + ✓/⚠/✗-Report vor Annahme. CLI: `atlcli template pack|validate` (verallgemeinert die in TEMPLATE-UX §5.2 vorgeschlagenen `pdf-template`-Kommandos).
+Typst-Variante: `engine.kind: "typst"`, `api: "wiki.pdf-template/v1"`, `entry: "template.typ"`, `assets/`, `LICENSES/`. Neues Paket `packages/template-pack/src/{pack,unpack,validate}.ts` (isomorph, pure): deterministische Zip-Reihenfolge, Pfad-Traversal-Rejection, Größen-Caps (`MAX_TEMPLATE_BYTES = 20 MiB` aus `scan.ts:30` wiederverwenden), beim DOCX-Import zwingend `scanTemplate()` + ✓/⚠/✗-Report vor Annahme. CLI: `atlcli template pack|validate` (verallgemeinert die in TEMPLATE-UX §5.2 vorgeschlagenen `pdf-template`-Kommandos).
 **(d)** M. Abhängigkeit: B2 (Library als Import-Ziel).
 **(e)** DX-Risiko: Versionierung des Settings-Schemas — `schemaVersion` + `api`-Range von Tag 1 pflegen. Offen: Signierung/Provenance für organisationsübergreifende Weitergabe (v2).
 

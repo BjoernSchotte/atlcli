@@ -42,7 +42,7 @@ quality infrastructure that every other folder (001–008) lands into.
   PDF and DOCX. `specs/export-expansion/007-pdf-template-settings/PLAN.md`
   (§T2.4 / Fonts intake) plans `packages/template-pack/src/{pack,unpack,
   validate}.ts` (path-traversal rejection, per-file/entry-count/total-size
-  caps for `.atlcli-template` — its own exported `MAX_TEMPLATE_PACK_BYTES`
+  caps for `.wiki-pdf-template` — its own exported `MAX_TEMPLATE_PACK_BYTES`
   (30 MiB) and `MAX_TEMPLATE_PACK_UNCOMPRESSED_BYTES` (64 MiB) constants,
   **not** `packages/docx/src/scan.ts`'s unrelated `MAX_TEMPLATE_BYTES`
   (20 MB, raw `.docx` uploads — a different archive on a different code
@@ -93,7 +93,7 @@ writing only `002-scope-orchestration/` and `003-content-features/` exist.
 | 004 (macro registry, Lane E, T1.7–T1.10) | `MacroRendererRegistry`, Jira/diagram/export_view renderers | Macro-fallback case with deterministic fetch-port fixtures |
 | 005 (placeholders, Lane D, T1.11–T1.12) | includepage + metadata resolvers | Placeholder case over a real template built with `@atlcli/docx/fixtures` |
 | 006 (Word quality, Lane G, T1.13–T1.16) | numbering.xml, tblGrid, SVG embedding | DOCX-quality case; SVG path is where the shared sanitizer (T4.7) plugs in |
-| 007 (PDF templates, Lane P, T2.1–T2.4) | `settings` threading, watermark, `.atlcli-template` | PDF-settings case; container format is a T4.7 hardening target |
+| 007 (PDF templates, Lane P, T2.1–T2.4) | `settings` threading, watermark, `.wiki-pdf-template` | PDF-settings case; container format is a T4.7 hardening target |
 | 008 (CLI, Lane K, T3.1–T3.5) | Bun compile port, `wiki export --format pdf`, scope flags | The other half of shape parity: CLI runs the same fixtures as the harness |
 
 Hard sequencing: each conformance case merges **in the same PR wave as its
@@ -109,7 +109,7 @@ T2.4/B5 (`packages/template-pack/src/{pack,unpack,validate}.ts`, font
 sha256/size caps) must land before this folder's cross-plan security gate
 tasks can close — 011 asserts both engines consume those exact modules and
 supplies the adversarial negative fixtures, it does not build a competing
-`packages/core/src/sanitize-svg.ts` or a second `.atlcli-template` cap. Where
+`packages/core/src/sanitize-svg.ts` or a second `.wiki-pdf-template` cap. Where
 011 finds a genuinely unclaimed surface (raw `.docx` upload archive budget,
 Confluence storage parse budget, link-scheme policy, compiler execution
 budget — none of these appear in 001/003/005/006/007's plans), it owns the
@@ -166,7 +166,7 @@ implement the type extension.
 
 **Security ownership stays with the feature lane that imports the untrusted
 input; 011 is the cross-plan gate.** 006 owns the SVG sanitizer consumed by
-both engines, 007 owns `.atlcli-template`/font archive validation. 011 does
+both engines, 007 owns `.wiki-pdf-template`/font archive validation. 011 does
 not re-implement either — it supplies the adversarial fixture corpus (in
 `packages/export-fixtures/`) both consume, and asserts the two engines never
 diverge on a security verdict for the same input. For the surfaces no lane
@@ -259,7 +259,7 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
         the same blocks twice with different `settings` (A4/portrait vs
         Letter/landscape, watermark on, cover/outline toggled); asserts the
         two outputs differ, each is deterministic, watermark text present,
-        and a `.atlcli-template` container round-trips through the template
+        and a `.wiki-pdf-template` container round-trips through the template
         library.
   - [ ] **Case 008** is not a browser case: it is the parity runner below.
 - [ ] Extend each case result with output digests: sha256 for PDF bytes,
@@ -450,7 +450,7 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
 ### Security hardening
 
 **This section is a cross-plan gate on 006/007's shared modules for the
-surfaces they own (SVG sanitizing, `.atlcli-template`/font archive
+surfaces they own (SVG sanitizing, `.wiki-pdf-template`/font archive
 validation — see Dependencies and Architecture), plus direct ownership of
 the surfaces no feature lane claims (raw `.docx` upload archive budget,
 Confluence storage parse budget, link-scheme policy, compiler execution
@@ -474,7 +474,7 @@ budget).**
       can't be closed safely).
 - [ ] **Cross-plan archive policy conformance gate** (does not implement
       the validator — 007 does): `packages/export-fixtures/src/
-      archive-corpus.ts`, hand-built malicious `.atlcli-template` zips
+      archive-corpus.ts`, hand-built malicious `.wiki-pdf-template` zips
       (path traversal, symlink entries, declared-vs-actual size mismatch
       "zip bomb", entry-count flood) exercised through
       `packages/template-pack/src/unpack.ts` in a new
@@ -488,7 +488,7 @@ budget).**
       `ArchiveBudget` (`maxEntryCount`, `maxUncompressedBytes`,
       `maxSingleEntryUncompressedBytes`) enforced during `unzipDocx` via
       declared-size accounting per entry **before** full decompression, and
-      the same entry-name rejection rule 007 applies to `.atlcli-template`
+      the same entry-name rejection rule 007 applies to `.wiki-pdf-template`
       (`..` segments, absolute paths, backslashes, drive prefixes) applied
       here too — a different code path, so not covered by 007's fix.
       Regression tests with hand-built PizZip archives (declared/actual
@@ -662,7 +662,7 @@ case:
   conformance status and matches the current baseline; a
   `security-attestation.json` artifact is produced on every `main` push
   and release tag.
-- 011 does not own a second SVG sanitizer or a second `.atlcli-template`
+- 011 does not own a second SVG sanitizer or a second `.wiki-pdf-template`
   cap: the cross-plan SVG and archive conformance corpora
   (`packages/export-fixtures/src/{svg,archive}-corpus.ts`) pass against
   006's `svg-safety.ts` and 007's `template-pack`. For the surfaces no

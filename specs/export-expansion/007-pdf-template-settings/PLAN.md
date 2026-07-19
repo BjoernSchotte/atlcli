@@ -6,17 +6,22 @@ Status: Plan, 2026-07-19. Folder `specs/export-expansion/007-pdf-template-settin
 
 - `specs/export-expansion/UMSETZUNGSPLAN.md` — Lane P (owner: `packages/pdf`),
   tasks T2.1 (settings threading + contract), T2.2 (Level-A settings),
-  T2.3 (watermark), T2.4 (TemplateLibrary + `.atlcli-template` container).
+  T2.3 (watermark), T2.4 (TemplateLibrary + `.wiki-pdf-template` container).
   T2.1 and T2.4 are listed under "immediately and independently startable".
 - `specs/export-expansion/BASELINE-DESIGN.md` §2 Cluster B — B2 (global vs.
-  space templates), B3 (`.atlcli-template` container for both engines),
+  space templates), B3 (`.wiki-pdf-template` container for both engines),
   B5 (font upload — engine seam only in this folder), B6 (stationery /
   backgrounds — follow-up), B7 (watermark), B8 (page size/orientation +
   section toggles), B9 (table style source, DOCX — smaller follow-up
   package), B10 (settings/timezone/presets — smaller follow-up package).
-- `specs/pdf-template-editor/TEMPLATE-UX.md` — product levels A/B/C, §7
-  minimal template contract `render(meta, body, settings)` as
-  `atlcli.pdf-template/v1`, §9 security and reproducibility rules.
+- `specs/export-expansion/007-pdf-template-settings/TEMPLATE-UX.md` — only
+  §7 (minimal template contract `render(meta, body, settings)` as
+  `wiki.pdf-template/v1`) and §9 (security and reproducibility rules) are
+  normative for this folder. The product-levels model (§5), the Level-B/C
+  wireframes (§6), and the market comparison (§2) are vision, not this
+  folder's scope — Level A + the `.wiki-pdf-template` container are this
+  folder's actual commitment; the full design-token migration and a second
+  curated template are `012-pdf-template-migration/PLAN.md`.
 - Explicitly **out of scope** for this folder: A6, A7, and B4, plus every
   host UI surface (settings forms, library admin screens, upload dialogs).
   This folder delivers engine and library capabilities consumed identically
@@ -60,7 +65,7 @@ Code baselines (verified on branch `export-expansion`):
 Make PDF output configurable without a template studio, and make templates
 shareable and centrally manageable:
 
-1. **A stable template contract.** `atlcli.pdf-template/v1` with
+1. **A stable template contract.** `wiki.pdf-template/v1` with
    `render(meta, body, settings)` so the built-in template today — and
    imported Level-B packages later — consume the same versioned seam.
 2. **Level-A settings.** "US customers need Letter, this document needs no
@@ -73,7 +78,7 @@ shareable and centrally manageable:
    and a cheap visible differentiator.
 4. **Template library + sharing container.** One host-neutral library
    abstraction with global/space two-level resolution and sha256-verified
-   bytes, plus a deterministic `.atlcli-template` zip so a template built
+   bytes, plus a deterministic `.wiki-pdf-template` zip so a template built
    in one place imports in another — for both the Typst and the DOCX
    engine.
 5. **Font intake seam.** Corporate fonts flow as `Uint8Array[]` into the
@@ -134,10 +139,10 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
                                        │
                                        ▼
                         atlcli.typ: #let atlcli-doc(meta: (:), settings: (:), body)
-                        = the atlcli.pdf-template/v1 render surface
+                        = the wiki.pdf-template/v1 render surface
 ```
 
-- **Contract:** `atlcli.pdf-template/v1` is the Typst-side function shape
+- **Contract:** `wiki.pdf-template/v1` is the Typst-side function shape
   `render(meta, body, settings)` (TEMPLATE-UX §7). The built-in template's
   `atlcli-doc` becomes its first conforming implementation; `settings` is a
   Typst dictionary read defensively with `.at(key, default: ...)` so old
@@ -175,6 +180,11 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
         angle?: number;    // degrees, default -54
         size?: number;     // pt, default 96
       }
+      export interface PdfLogoAsset {
+        bytes: Uint8Array;
+        mediaType: "image/png" | "image/svg+xml";
+        alt?: string;   // required when the logo is meaning-bearing, see T2.2
+      }
       export interface PdfTemplateSettings {
         page?: "a4" | "letter";
         orientation?: "portrait" | "landscape";
@@ -182,9 +192,18 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
         outline?: boolean;
         headerText?: string;
         footerText?: string;
+        accentColor?: string;        // "#RRGGBB", default the built-in indigo
+        organizationName?: string;
+        logo?: PdfLogoAsset;
         watermark?: PdfWatermarkSettings;
       }
       ```
+      `accentColor`, `organizationName`, and `logo` close the Level-A gap
+      TEMPLATE-UX §5.1 describes (accent color, organization name, logo are
+      part of the curated-template settings form) that earlier drafts of
+      this folder left unaddressed; they are plain Level-A fields on the
+      same fixed interface as the geometry/toggle settings above, not a
+      manifest-driven Level-B mechanism.
       `PdfTemplateSettings` covers only the fixed Level-A built-in fields
       above — it is **not** the same shape as a template-pack manifest's
       `settings` map (T2.4), which is an open, arbitrarily-named,
@@ -234,7 +253,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       is itself the backward-compatible default, so old callers that
       never pass `settings` keep compiling; every settings read uses
       `settings.at("...", default: ...)`. Document in the file header
-      that this function is the `atlcli.pdf-template/v1` surface:
+      that this function is the `wiki.pdf-template/v1` surface:
       `render(meta, body, settings)` with the required `meta` keys from
       TEMPLATE-UX §7 (`title`, `space`, `version`, `author`, `language`,
       `exported-at`) — renaming `atlcli-doc` is not required, the contract
@@ -295,9 +314,36 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       centered page number. Emission maps `headerText` → `header-text`
       (kebab-case keys on the Typst side, consistent with
       `exported-label`).
+- [ ] `packages/pdf/src/template.ts` — accent color, organization name,
+      logo: `settings.at("accent-color", default: "#4B57A3")` replaces
+      the hard-coded indigo accent wherever the template references it
+      (cover rule, heading accent, table header); `settings.at(
+      "organization-name", default: none)` renders next to the existing
+      `meta.space`/title branding on cover and footer when set; a
+      resolved `logo` settings entry places the raster/vector image on
+      the cover (and header, if already reserved space allows) via
+      `image(...)`, never widening the fixed layout grid — same
+      `typstString`/asset-path emission pattern as the watermark and
+      font seams elsewhere in this folder.
 - [ ] `packages/pdf/src/settings.ts`: validation for the Level-A fields
       (page enum, orientation enum, header/footer length cap of 200
-      chars to keep the header grid sane).
+      chars to keep the header grid sane), plus for the new fields:
+      `accentColor` normalized via the same `normalizeExportColor` path
+      the theme/watermark use; `organizationName` capped at 200 chars;
+      `logo` validated against TEMPLATE-UX §9.5's stationery security
+      rules, restated here as this folder's checkable Level-A criteria:
+      PNG or **sanitized** SVG only (SVG runs through the existing
+      svg-safety pipeline shared with 006's sanitizer — see
+      `011-quality-gates/PLAN.md`'s cross-plan SVG conformance gate — no
+      script/foreignObject/on*/external references survive), a hard
+      5 MiB cap (reject, don't downscale), no externally-referenced
+      assets (bundled bytes only, mirroring the font-intake seam's
+      byte-in model), and a required, non-empty `alt` whenever the logo
+      is not purely decorative (empty `alt` is only valid alongside an
+      explicit `decorative: true`-equivalent marker in a future Level-B
+      manifest; for this folder's fixed Level-A shape, a present `logo`
+      always requires a present `alt`, rejected otherwise with a
+      `PdfSettingsError`).
 - [ ] Verify relative cover measurements (`v(37mm)`, `block(width: 90%)`
       in `template.ts` lines 116–139) on Letter/landscape; adjust to
       relative units where a fixed A4 assumption breaks (B8 risk note).
@@ -395,19 +441,29 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
         "id": "com.acme.tech-doc",
         "name": "Acme Tech Doc",
         "version": "1.0.0",
-        "engine": { "kind": "typst", "api": "atlcli.pdf-template/v1", "entry": "template.typ", "compilerRange": ">=0.14 <0.15" },
+        "engine": { "kind": "typst", "api": "wiki.pdf-template/v1", "entry": "template.typ", "compilerRange": ">=0.14 <0.15" },
+        "requiredFonts": [{ "family": "Source Sans 3", "style": "normal", "weight": 400 }],
         "settings": { "cover": { "type": "boolean", "default": true } },
         "provenance": { "payloadSha256": "…", "createdWith": "atlcli 0.x" }
       }
       ```
-      `engine.kind: "docx"` variant uses `api: "atlcli.docx-template/v1"`
+      `requiredFonts` is a declarative array (shape mirrors this folder's
+      `FontAsset` sans `sha256`/`license` — just `family`/`style`/`weight`)
+      documenting which faces a template needs; `validateManifest` only
+      checks the field's shape in this folder, it does **not** cross-check
+      availability against a `FontSource` or the bundled runtime fonts —
+      that check needs the Level-B template-loading glue this folder
+      doesn't build (see the Goal section and the "Built-in vs. manifest
+      settings" risk). Declaring the field now, even unenforced, avoids a
+      manifest `schemaVersion` bump the first time a later folder needs it.
+      `engine.kind: "docx"` variant uses `api: "wiki.docx-template/v1"`
       and `entry: "template.docx"`. Setting types are the bounded Level-A
       set: `text | boolean | choice | color | number | asset`.
       `validateManifest` is the **import gate** (TEMPLATE-UX §9 "pinned
       template API and compiler compatibility range"), not just a shape
       check: it rejects an unknown `schemaVersion` (only `1` is
       recognized at ship time), an `engine.api` string that doesn't match
-      a known `atlcli.{pdf,docx}-template/v1` value, and — for the Typst
+      a known `wiki.{pdf,docx}-template/v1` value, and — for the Typst
       engine — a `compilerRange` that the pinned compiler version
       (`PDF_BROWSER_COMPILER_VERSION` in
       `packages/pdf-compiler-browser/src/compiler.ts:12`) does not
@@ -422,7 +478,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       already-deferred Level-B host follow-up.
 - [ ] `packages/template-pack/src/pack.ts`: `packTemplate(files) →
       Uint8Array` — **deterministic zip**: entries sorted by path
-      (manifest `atlcli-template.json` first), fixed DOS epoch timestamps,
+      (manifest `wiki-pdf-template.json` first), fixed DOS epoch timestamps,
       no platform extra fields; packing the same inputs twice yields
       byte-identical archives. **`provenance.payloadSha256` must not be
       self-referential**: the manifest that ships inside the archive
@@ -440,7 +496,7 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       documented as such.
 - [ ] `packages/template-pack/src/unpack.ts`: `unpackTemplate(bytes) →
       { manifest, files }` with hard rejections: total size cap **30 MiB**
-      for the outer `.atlcli-template` archive and **64 MiB** cumulative
+      for the outer `.wiki-pdf-template` archive and **64 MiB** cumulative
       uncompressed payload (zip-bomb guard via declared-size accounting
       during extraction, not just compressed-byte counting) — these are
       the values folder 011's security-hardening task proposes for this
@@ -513,6 +569,48 @@ serializePdfDocument ──► main.typ: #show: atlcli-doc.with(meta: (...), set
       (`specs/export-expansion/008-pdf-cli/PLAN.md:807`; tracked in
       `crossPlanImpacts`). The `packages/template-pack` API is the
       deliverable of this task regardless of where the CLI wrapper lands.
+
+### Hardcoding ledger, lite (T2.5)
+
+This folder migrates a handful of Level-A values (page geometry, section
+toggles, header/footer text, accent color, organization name, logo,
+watermark) out of `template.ts`'s hardcoded literals; everything else this
+folder touches — typography roles, color tokens, semantic palettes,
+component spacing, cover/header/footer/closing-page layout — stays
+hardcoded on purpose (that full migration is `012`'s scope, not this
+folder's). Without a record of what's deliberately left behind, 012 would
+have to rediscover it by re-reading `template.ts` line by line.
+
+- [ ] A small, dated ledger — either a Markdown table in this folder
+      (`specs/export-expansion/007-pdf-template-settings/HARDCODING-LEDGER.md`)
+      or an equivalent comment block directly above the relevant constants
+      in `packages/pdf/src/template.ts` (pick one, don't duplicate) —
+      listing every design-relevant hardcoded value this folder's tasks
+      leave in place: fonts/faces, page margins, typography sizes/weights,
+      color tokens (indigo accent, ink, muted, border, code/table-header
+      backgrounds, mention, task colors), semantic palettes (callouts,
+      statuses), component spacing (paragraph/heading/list/code/callout/
+      badge/table), and cover/header/footer/closing-page offsets. This is
+      a **restatement** of what's already hardcoded after this folder
+      lands — not new scope, not a migration — so it can be produced
+      mechanically from a read-through of `template.ts` once T2.1–T2.4
+      merge.
+- [ ] A lint stub (heuristic, not a full parser):
+      `packages/pdf/scripts/check-hardcoding-ledger.ts`, wired into
+      `bun run typecheck` or a dedicated `bun run lint:pdf-ledger` script
+      — greps `template.ts` for new bare hex-color literals
+      (`#[0-9a-fA-F]{6}`), new bare `pt`/`mm`/`em` length literals, and new
+      font-family string literals, and fails with a named line/column if
+      one appears outside the ledger's recorded set and outside a narrow,
+      commented allowlist (e.g. values that are structurally required by
+      the engine, not presentation — mirrors the "engine invariant
+      allowlist" idea `012` formalizes). False positives are acceptable
+      (heuristic, not authoritative); the point is to make a new
+      unledgered hardcoded value visible in review, not to block on every
+      edge case.
+- [ ] Reference `012-pdf-template-migration/PLAN.md` from both the ledger
+      file/comment and the lint stub's own header comment: 012 starts from
+      this ledger as its migration inventory rather than re-deriving it.
 
 ### Fonts intake (B5 — engine seam only)
 
@@ -731,16 +829,19 @@ touching zips uses real archives built by the code under test.
   reproduce today's output; invalid settings fail with `PdfSettingsError`
   at `phase: "configuration"` **before** any asset fetch runs;
   `bun run typecheck` and `bun test` green.
-- `atlcli.pdf-template/v1` documented in code (`template.ts` header) and
+- `wiki.pdf-template/v1` documented in code (`template.ts` header) and
   in `docs/` (contract page: required `meta` keys, `settings` dict,
   defensive-read rule, and the full set of symbols `serialize.ts` imports
   from `atlcli.typ` — not just `atlcli-doc`), marked stable for Level-B
   packages.
 - Level A works end to end: A4/Letter, orientation, cover/outline
-  toggles, header/footer text — each with a serialize golden and one real
-  compile smoke per page format; all four `cover`×`outline` toggle
-  combinations produce the exact expected page count with no stray blank
-  pages.
+  toggles, header/footer text, accent color, organization name, and logo
+  — each with a serialize golden and one real compile smoke per page
+  format; all four `cover`×`outline` toggle combinations produce the
+  exact expected page count with no stray blank pages; logo settings
+  reject non-PNG/unsanitized-SVG input, over-cap bytes, externally
+  referenced assets, and a missing `alt` on a non-decorative logo, each
+  with a negative test.
 - Watermark renders as a background text layer, is placed via `set
   page(background: ...)` so it is a page Artifact by Typst's own
   page-background semantics (TEMPLATE-UX §8) and the document stays
@@ -752,7 +853,7 @@ touching zips uses real archives built by the code under test.
   011's veraPDF/PDF-UA work rather than an unqualified DoD claim here.
 - `resolveTemplate` (engine-aware, conflict-checked) + `sha256Hex` +
   `verifyTemplateBytes` + `resolveAndLoadTemplate` live browser-safe in
-  `packages/core` (exported from both entry points); `.atlcli-template`
+  `packages/core` (exported from both entry points); `.wiki-pdf-template`
   pack/unpack/validate is deterministic, traversal-safe, size-capped
   (30 MiB archive / 64 MiB uncompressed, exported as named constants),
   schema/API/compiler-range-gated on import, and proven by round-trip
@@ -769,6 +870,23 @@ touching zips uses real archives built by the code under test.
 
 ## Risks & open questions
 
+- **Settings become code injection.** `PdfTemplateSettings` values
+  (`headerText`, `footerText`, `organizationName`, `watermark.text`,
+  and any future free-text Level-A field) are host-supplied strings that
+  reach generated Typst source. **STOP condition**: every settings value
+  that reaches `main.typ` must go through `typstString` or another typed
+  constructor in `packages/pdf/src/escape.ts` — a raw string
+  concatenation of a settings value into the Typst source (an f-string,
+  template literal, or `+`-join that isn't `typstString(...)`) is a
+  blocker finding in review, not a style nit, regardless of whether a
+  test happens to catch it. This mirrors the source contract's own
+  "settings become code injection" STOP condition (PR #48 §14): settings
+  are data, never code, and the boundary is enforced by construction
+  (typed emitters), not by hoping every call site remembers to escape.
+  The existing "Settings → Typst source goldens" test task already
+  covers escaping for `headerText`/`footerText`/watermark text; extend
+  the same goldens to `organizationName` and any other new free-text
+  Level-A field as they land.
 - **A4-tuned layout constants.** Cover spacing (`v(37mm)`,
   `block(width: 90%)`) and the header grid were designed on A4; Letter
   and landscape need visual verification — mitigated by one compile
@@ -812,16 +930,23 @@ touching zips uses real archives built by the code under test.
   folder — there is no host-side glue yet that loads a Level-B template
   and threads its manifest-declared settings into the render call. This
   is intentional (the Goal section frames Level-B loading as future
-  work) but means the two settings shapes will need an explicit merge
-  order (`template fallback < manifest default < preset < explicit host
-  value`, per the manifest's own default values) designed before Level-B
-  loading actually ships — flagged here so it isn't rediscovered as a
-  surprise.
+  work). **Design answer for the eventual merge order (documented now,
+  not built here):** once Level-B loading exists, resolution follows the
+  order manifest defaults → persisted host values → per-export
+  overrides → validation/normalization → application of declared
+  bindings to the design copy → locale/label resolution → asset-slot
+  resolution — the order this folder's contract predecessor settled on
+  for the general case. The **bindings layer** (step 5, explicit
+  setting→design-field mappings) stays out of scope for both this
+  folder and the merge order above; it is Level-B/`012` work
+  (`012-pdf-template-migration/PLAN.md`), not a T2.1/T2.4 deliverable —
+  this folder's fixed `PdfTemplateSettings` fields are consumed
+  directly by `template.ts`, with no binding indirection.
 - **Font glyph coverage.** A custom corporate font may lack glyphs (e.g.
   CJK) present in the document; a cmap preflight is expensive — open
   question whether a sampled warning ships with the seam or with the
   host upload UI.
-- **`.atlcli-template` reader ownership and caps must be synced with
+- **`.wiki-pdf-template` reader ownership and caps must be synced with
   folder 011.** This folder places the pack/unpack/validate reader in
   the new `packages/template-pack` package (not
   `packages/core/src/template-library.ts`, which stays resolution-only)
@@ -835,7 +960,7 @@ touching zips uses real archives built by the code under test.
   case.** `unzipDocx` (`packages/docx/src/scan.ts:100-113`) caps only the
   compressed `.docx` byte length before `scanZip` decompresses each part
   via `asText()` with no declared-size accounting. Once a `.docx` is
-  packed inside a `.atlcli-template` archive (T2.4's `kind: "docx"`
+  packed inside a `.wiki-pdf-template` archive (T2.4's `kind: "docx"`
   variant), the outer container's own cap does not protect against a
   small, highly-compressed inner `.docx` that decompresses to a large
   XML payload — a nested zip-bomb path this folder's `validatePack`

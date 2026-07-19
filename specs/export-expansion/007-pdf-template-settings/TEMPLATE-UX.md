@@ -8,6 +8,16 @@ This document captures the product decision for customizable PDF output after th
 built-in `atlcli` Typst template has shipped and passed its quality gates. It is not part
 of the implementation scope of Spec 007 itself.
 
+> **Normative scope note.** Only §7 (minimal template contract) and §9 (security and
+> reproducibility) are normative for the `export-expansion` series. Everything else in
+> this document is product vision, not a committed implementation plan — its actual
+> delivery status is tracked by
+> [`007-pdf-template-settings/PLAN.md`](./PLAN.md) (Level A settings + the
+> `.wiki-pdf-template` container) and
+> [`012-pdf-template-migration/PLAN.md`](../012-pdf-template-migration/PLAN.md)
+> (full design-token migration + a second curated template). Levels B/C wireframes and
+> the market comparison in §2/§6 are not scoped to any folder yet.
+
 ---
 
 ## 1. Product verdict
@@ -149,7 +159,7 @@ Advanced users work in their existing editor and Typst toolchain:
 
 ```text
 my-template/
-├── atlcli-template.json
+├── wiki-pdf-template.json
 ├── template.typ
 ├── assets/
 │   ├── logo.svg
@@ -159,7 +169,7 @@ my-template/
 ```
 
 The source folder remains reviewable and versionable in Git. Distribution to the
-extension uses a deterministic `.atlcli-template` archive so users import one file, not
+extension uses a deterministic `.wiki-pdf-template` archive so users import one file, not
 a loose folder tree.
 
 Suggested future commands:
@@ -351,7 +361,7 @@ The engine should own safe default implementations for semantic components such 
 callouts and statuses. A template may override documented hooks, but generated content
 must not depend on undocumented template-local functions. The current direct imports of
 `atlcli-doc`, `callout` and `status-badge` need to become a stable
-`atlcli.pdf-template/v1` boundary first.
+`wiki.pdf-template/v1` boundary first.
 
 Example manifest:
 
@@ -363,7 +373,7 @@ Example manifest:
   "version": "1.0.0",
   "engine": {
     "kind": "typst",
-    "api": "atlcli.pdf-template/v1",
+    "api": "wiki.pdf-template/v1",
     "entry": "template.typ"
   },
   "settings": {
@@ -449,9 +459,9 @@ documentation only and cannot stand in for compilation.
 ## 10. Delivery order
 
 1. Finish and prove the built-in Spec 007 template and export pipeline.
-2. Stabilize `atlcli.pdf-template/v1` around `render(meta, body, settings)`.
+2. Stabilize `wiki.pdf-template/v1` around `render(meta, body, settings)`.
 3. Ship two or three curated templates with manifest-generated brand settings.
-4. Add Git folder validation and deterministic `.atlcli-template` packaging.
+4. Add Git folder validation and deterministic `.wiki-pdf-template` packaging.
 5. Add package import, compiler-backed preview and diagnostics to the PDF tab.
 6. Run a separate PDF stationery-import spike.
 7. Add the four-step stationery wizard only after the spike proves PDF embedding,

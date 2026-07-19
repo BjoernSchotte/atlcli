@@ -963,11 +963,11 @@ site):
    it lands on its own review/test cycle rather than being smuggled into a
    host-integration folder that isn't supposed to own engine changes (see
    crossPlanImpacts). Until it lands, `SettingsForm.tsx` here stays PDF-only.
-7. `.atlcli-template` container adoption timing: 010's DOCX template upload
+7. `.wiki-pdf-template` container adoption timing: 010's DOCX template upload
    stays a raw `.docx` upload (today's format, just multi-slot) rather than
-   requiring the `.atlcli-template` container from folder 007 (T2.4). Should
+   requiring the `.wiki-pdf-template` container from folder 007 (T2.4). Should
    a later folder migrate DOCX template intake to the shared container format
-   (enabling cross-host `.atlcli-template` portability for DOCX too, per
+   (enabling cross-host `.wiki-pdf-template` portability for DOCX too, per
    BASELINE-DESIGN B3), or is raw `.docx` upload permanent for the extension?
    Proposal: raw upload stays for v1; container adoption is a follow-up once
    007's container package matures and is proven for the PDF side.
