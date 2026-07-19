@@ -1,4 +1,4 @@
-import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
 import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
@@ -250,6 +250,9 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
 
 type TableDensity = "normal" | "dense";
 
+/** The layout container the current block renders inside (spec 003 C5/C6). */
+type RenderContainer = "body" | "list" | "tableCell" | "calloutCell";
+
 interface RenderContext {
   tableDensity: TableDensity;
   inTable?: boolean;
@@ -259,10 +262,139 @@ interface RenderContext {
     foreground: string;
     theme: PdfTheme;
   };
+  /**
+   * The layout container (spec 003). `pageBreak`/`orientation` render in
+   * `"body"`/`"list"` but are suppressed (children kept, note emitted) inside
+   * `"tableCell"`/`"calloutCell"`, where a Typst `set page` / `pagebreak` has no
+   * effect inside a `table.cell`/`callout` box.
+   */
+  container?: RenderContainer;
+  /**
+   * Usable text width in pt for wide-table classification (spec 003 T1.6). A
+   * landscape orientation region widens this so `classifyTableLayout` escalates
+   * against the landscape text area, not the portrait one. Undefined → portrait.
+   */
+  layoutWidthPt?: number;
 }
 
 const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
+
+// ---- Wide-table layout classification (spec 003 T1.6) ---------------------
+
+/** Escalation tiers for a table that may not fit its available width. */
+export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
+
+/** Usable text width (pt) of the built-in A4 template, portrait / landscape. */
+const PORTRAIT_TEXT_WIDTH_PT = 470;
+const LANDSCAPE_TEXT_WIDTH_PT = 717;
+/** Table cell font size (pt) at normal and the practical readability floor. */
+const TABLE_FONT_SIZE_PT = 9;
+const MIN_TABLE_FONT_SIZE_PT = 7;
+/** Horizontal cell inset (pt) at normal vs. dense density. */
+const NORMAL_CELL_INSET_PT = 6;
+const DENSE_CELL_INSET_PT = 2;
+/** Approximate rendered width of one character as a fraction of the font size. */
+const CHAR_WIDTH_RATIO = 0.55;
+
+/** Estimated rendered width (pt) of an atomic token at a given font size. */
+function estimateTokenWidthPt(tokenLength: number, fontSizePt: number): number {
+  return tokenLength * fontSizePt * CHAR_WIDTH_RATIO;
+}
+
+/**
+ * Classify a table's fit deterministically into the dense → scaled →
+ * overflow-warned escalation (spec 003 T1.6). Pure over validated numeric
+ * inputs so it is unit-testable without the Typst compiler:
+ *
+ * - `"normal"` / `"dense"` — the longest atomic token fits the narrowest track
+ *   at the (dense) inset; `"dense"` iff the column count crosses the existing
+ *   {@link DENSE_TABLE_COLUMN_THRESHOLD} boundary.
+ * - `"scaled"` — the token overflows at normal size but fits once body text is
+ *   scaled down to {@link MIN_TABLE_FONT_SIZE_PT}.
+ * - `"overflow-warned"` — even minimum-size text cannot fit; render at the
+ *   minimum size anyway (accept wrap/clip over losing content) and warn.
+ */
+export function classifyTableLayout(input: {
+  columnCount: number;
+  sourceWidths?: number[];
+  longestAtomicToken: number;
+  availableWidth: number;
+}): TableLayoutClass {
+  const columnCount = Math.max(1, Math.floor(input.columnCount));
+  const available = Number.isFinite(input.availableWidth) && input.availableWidth > 0
+    ? input.availableWidth
+    : PORTRAIT_TEXT_WIDTH_PT;
+  const tokenLength = Math.max(0, Math.floor(input.longestAtomicToken));
+  const dense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
+
+  // Narrowest track width: the minimum column's share of the available width.
+  const widths = input.sourceWidths?.length === columnCount
+    && input.sourceWidths.every((w) => Number.isFinite(w) && w > 0)
+    ? input.sourceWidths
+    : Array.from({ length: columnCount }, () => 1);
+  const total = widths.reduce((sum, w) => sum + w, 0);
+  const narrowestRatio = Math.min(...widths) / total;
+  const trackWidth = (inset: number) => Math.max(0, available * narrowestRatio - 2 * inset);
+
+  const denseInset = dense ? DENSE_CELL_INSET_PT : NORMAL_CELL_INSET_PT;
+  if (estimateTokenWidthPt(tokenLength, TABLE_FONT_SIZE_PT) <= trackWidth(denseInset)) {
+    return dense ? "dense" : "normal";
+  }
+  if (estimateTokenWidthPt(tokenLength, MIN_TABLE_FONT_SIZE_PT) <= trackWidth(DENSE_CELL_INSET_PT)) {
+    return "scaled";
+  }
+  return "overflow-warned";
+}
+
+/**
+ * The longest genuinely-unbreakable token across a table's cell text (chars).
+ * Applies the SAME break opportunities the dense renderer inserts
+ * ({@link denseAtomicToken}: punctuation + every {@link DENSE_ATOMIC_RUN_LENGTH}
+ * alphanumerics) so the measured "atomic" token matches what Typst actually
+ * cannot break — a long URL is NOT atomic, it wraps at its slashes/dots. The
+ * escalation therefore fires only for genuinely unbreakable runs.
+ */
+function longestAtomicTokenLength(rows: PreparedTableRow[]): number {
+  let longest = 0;
+  const splitter = new RegExp(`[\\s${DENSE_BREAK_OPPORTUNITY}]`, "u");
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      const text = blocksPlainText(cell.content);
+      for (const token of denseAtomicToken(text).split(splitter)) {
+        if (token.length > longest) longest = token.length;
+      }
+    }
+  }
+  return longest;
+}
+
+// ---- Captions (spec 003 C3) -----------------------------------------------
+
+/** Map a {@link CaptionKind} to the Typst element function used as `figure(kind:)`. */
+function typstFigureKind(kind: CaptionKind): string {
+  switch (kind) {
+    case "figure":
+      return "image";
+    case "table":
+      return "table";
+    case "code":
+      return "raw";
+    case "equation":
+      return "math.equation";
+  }
+}
+
+/**
+ * The `caption: [...], kind: <fn>` arguments for a Typst `#figure`. The caption
+ * text is serialized at body scope (no dense-table wrapping) and the kind is the
+ * walker-normalized {@link CaptionKind}, so DOCX SEQ labels and PDF figure kinds
+ * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
+ */
+function captionFigureArgs(caption: Caption, writer: Writer): string {
+  const inline = serializeInline(caption.content, writer.labels, writer.notes);
+  return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
+}
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
 const DENSE_STATUS_RUN_LENGTH = 2;
@@ -728,18 +860,35 @@ function serializeBlock(
     case "paragraph":
       value = serializeParagraphInline(block.content, writer, context, true);
       break;
-    case "codeBlock":
-      value = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+    case "codeBlock": {
+      const raw = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+      // Only CAPTIONED code becomes a figure — caption-less code keeps today's
+      // rendering so C2's `figure.where(kind: raw)` outline never lists every
+      // code block (spec 003 C3).
+      value = block.caption
+        ? `#figure(${raw}, ${captionFigureArgs(block.caption, writer)})`
+        : raw;
       break;
-    case "diagram":
+    }
+    case "diagram": {
       // Keep exported content in source order. `placement: auto` turns figures
       // into top/bottom floats, which can move a diagram before its heading or
       // collect multiple headings away from their diagrams in real documents.
-      value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")}))`;
+      const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")})`;
+      value = block.caption
+        ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
+        : `#figure(${img})`;
       break;
+    }
     case "image":
       if (!block.assetPath) {
-        value = `#par[#emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]]`;
+        // A captioned image that failed to embed still emits a NUMBERED figure
+        // fallback so a broken attachment does not shift figure numbering or
+        // leave a caption-less entry in C2's list of figures (spec 003 C3).
+        const fallback = `#emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]`;
+        value = block.caption
+          ? `#figure(${fallback}, ${captionFigureArgs(block.caption, writer)})`
+          : `#par[${fallback}]`;
       } else {
         if (!block.alt) {
           writer.notes.push({
@@ -748,12 +897,16 @@ function serializeBlock(
             message: `${block.fallbackLabel} uses a technical filename fallback for alternative text.`,
           });
         }
-        value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}))`;
+        const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)})`;
+        value = block.caption
+          ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
+          : `#figure(${img})`;
       }
       break;
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
-      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, context)}\n]`;
+      const calloutContext: RenderContext = { ...context, container: "calloutCell" };
+      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
       break;
     }
     case "blockquote":
@@ -790,9 +943,32 @@ function serializeBlock(
       const grid = tableGrid(block.rows, block.columnWidths);
       const { columnCount } = grid;
       const isDense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
+      // Wide-table escalation (spec 003 T1.6). A landscape orientation region
+      // widens the available text area, so the same table classifies against
+      // the wider track rather than the portrait one.
+      const layout = classifyTableLayout({
+        columnCount,
+        sourceWidths: block.columnWidths,
+        longestAtomicToken: longestAtomicTokenLength(block.rows),
+        availableWidth: context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+      });
+      if (layout === "scaled") {
+        writer.notes.push({
+          level: "info",
+          code: "table-text-scaled",
+          message: `A wide table's text was scaled down to ${MIN_TABLE_FONT_SIZE_PT}pt to fit the page width.`,
+        });
+      } else if (layout === "overflow-warned") {
+        writer.notes.push({
+          level: "warning",
+          code: "table-overflow-warned",
+          message: "A wide table may overflow the page even at minimum text size; consider a landscape orientation region for it.",
+        });
+      }
       const cellContext: RenderContext = {
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
+        container: "tableCell",
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
@@ -843,11 +1019,23 @@ function serializeBlock(
         const headerCells = serializedRows
           .slice(0, leadingHeaderCount)
           .flatMap((row) => row.cells);
-        rows.push(`table.header(${headerCells.join(", ")})`);
+        // `repeat: true` is Typst's default, but pin it explicitly so the golden
+        // proves header rows repeat on every page across a break (spec 003 T1.6).
+        rows.push(`table.header(repeat: true, ${headerCells.join(", ")})`);
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
-      const horizontalInset = isDense ? 2 : 6;
-      value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
+      const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      // "scaled"/"overflow-warned" render body text at the readability floor
+      // (accept wrap/clip over losing content).
+      const scaled = layout === "scaled" || layout === "overflow-warned";
+      const tableBody = scaled
+        ? `#[\n#set text(size: ${MIN_TABLE_FONT_SIZE_PT}pt)\n${tableMarkup}\n]`
+        : tableMarkup;
+      const tableBlock = `#block(width: 100%)[\n${tableBody}\n]`;
+      value = block.caption
+        ? `#figure(${tableBlock}, ${captionFigureArgs(block.caption, writer)})`
+        : tableBlock;
       break;
     }
     case "divider":
@@ -864,7 +1052,18 @@ function serializeBlock(
       break;
     // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      value = "#pagebreak(weak: true)";
+      if (context.container === "tableCell" || context.container === "calloutCell") {
+        // A `#pagebreak` inside a `table.cell`/`callout` box has no effect —
+        // suppress it with a note (spec 003 C5 container matrix).
+        writer.notes.push({
+          level: "info",
+          code: "pagebreak-suppressed-in-container",
+          message: `A page break inside a ${context.container === "tableCell" ? "table cell" : "callout"} was suppressed (it has no effect inside that box).`,
+        });
+        value = "";
+      } else {
+        value = "#pagebreak(weak: true)";
+      }
       break;
     case "anchor":
       // A zero-width labelable target at this position (`#box[]<label>`), so
@@ -874,11 +1073,32 @@ function serializeBlock(
       // Typst labels and would fail the compile.
       value = `#box[]<${writer.anchorByBlock.get(block) ?? uniqueAnchorId(block.name, new Set())}>`;
       break;
-    case "orientation":
-      // Transparent — no `#set page(flipped:)` yet (T1.5); children serialize
-      // exactly as if the region wrapper were absent, so nothing is lost.
-      value = serializeBlocks(block.content, writer, `${path}.content`, context);
+    case "orientation": {
+      if (context.container === "tableCell" || context.container === "calloutCell") {
+        // A Typst `set page` has no effect inside a `table.cell`/`callout` box —
+        // render the children without the wrapper (spec 003 C6 container matrix).
+        writer.notes.push({
+          level: "info",
+          code: "orientation-suppressed-in-container",
+          message: `An orientation region inside a ${context.container === "tableCell" ? "table cell" : "callout"} was rendered without an orientation change.`,
+        });
+        value = serializeBlocks(block.content, writer, `${path}.content`, context);
+        break;
+      }
+      // A block-scoped `set page(flipped:)` — set to the region's ACTUAL boolean
+      // both ways (a scroll-portrait region inside a landscape document flips
+      // BACK to portrait). Typst set rules are block-scoped; page breaks at the
+      // region boundaries happen automatically. Widen the wide-table layout
+      // width for a landscape region so classifyTableLayout escalates against
+      // the landscape text area (spec 003 C6 / T1.6).
+      const regionContext: RenderContext = {
+        ...context,
+        layoutWidthPt: block.landscape ? LANDSCAPE_TEXT_WIDTH_PT : PORTRAIT_TEXT_WIDTH_PT,
+      };
+      const inner = serializeBlocks(block.content, writer, `${path}.content`, regionContext);
+      value = `#[\n#set page(flipped: ${block.landscape ? "true" : "false"})\n${inner}\n]`;
       break;
+    }
     default: {
       const exhaustive: never = block;
       return exhaustive;

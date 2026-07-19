@@ -984,3 +984,206 @@ describe("PDF settings threading into main.typ", () => {
     expect(bundle.main).toContain("size: 96");
   });
 });
+
+// ===========================================================================
+// spec 003 — page breaks, orientation, captions, table hardening
+// ===========================================================================
+import { classifyTableLayout } from "./serialize.js";
+
+/** Prepare + serialize a block list to Typst source (no assets fetched). */
+async function toMain(blocks: ExportBlock[]): Promise<{ main: string; notes: ExportNode[] }> {
+  const prepared = await preparePdfDocument(blocks, {
+    resolve: async () => {
+      throw new Error("no assets");
+    },
+  });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  return { main: bundle.main, notes: bundle.notes };
+}
+
+describe("serialize — C5 pageBreak", () => {
+  it("emits a weak pagebreak at body level", async () => {
+    const { main } = await toMain([{ type: "pageBreak" }]);
+    expect(main).toContain("#pagebreak(weak: true)");
+  });
+
+  it("suppresses a pagebreak inside a table cell with a note", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "pageBreak" }] }] }],
+      },
+    ]);
+    expect(main).not.toContain("#pagebreak");
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+
+  it("suppresses a pagebreak inside a callout with a note", async () => {
+    const { main, notes } = await toMain([
+      { type: "callout", kind: "info", content: [{ type: "pageBreak" }] },
+    ]);
+    expect(main).not.toContain("#pagebreak");
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+});
+
+describe("serialize — C6 orientation", () => {
+  const region = (landscape: boolean): ExportBlock => ({
+    type: "orientation",
+    landscape,
+    content: [{ type: "paragraph", content: [{ type: "text", text: "wide" }] }],
+  });
+
+  it("sets flipped: true for a landscape region", async () => {
+    const { main } = await toMain([region(true)]);
+    expect(main).toContain("#set page(flipped: true)");
+    expect(main).toContain("wide");
+  });
+
+  it("sets flipped: false for a portrait region (flips back, not only ever landscape)", async () => {
+    const { main } = await toMain([region(false)]);
+    expect(main).toContain("#set page(flipped: false)");
+  });
+
+  it("suppresses the set page inside a table cell with a note (children kept)", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [region(true)] }] }],
+      },
+    ]);
+    expect(main).not.toContain("#set page(flipped");
+    expect(main).toContain("wide");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+
+  it("suppresses the set page inside a callout with a note", async () => {
+    const { main, notes } = await toMain([{ type: "callout", kind: "note", content: [region(true)] }]);
+    expect(main).not.toContain("#set page(flipped");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+});
+
+describe("serialize — C3 captions", () => {
+  it("wraps a captioned image in a numbered figure with the normalized kind", async () => {
+    const { main } = await toMain([
+      {
+        type: "image",
+        source: { kind: "external", url: "https://x.test/a.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Arch" }] },
+      },
+    ]);
+    // External image is not fetched here → asset-failure fallback figure.
+    expect(main).toContain("#figure(");
+    expect(main).toContain("caption: [");
+    expect(main).toContain("kind: image");
+    expect(main).toContain("Arch");
+  });
+
+  it("a captioned image whose asset is missing still emits a numbered figure fallback", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "image",
+        source: { kind: "external", url: "https://x.test/broken.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Broken" }] },
+      },
+    ]);
+    expect(main).toContain("#figure(#emph[");
+    expect(main).toContain("Image unavailable");
+    expect(main).toContain("caption: [");
+    expect(notes.map((n) => n.code)).toContain("pdf-image-skipped");
+  });
+
+  it("wraps a captioned table in a figure with kind table (declared kind wins)", async () => {
+    const { main } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "c" }] }] }] }],
+        caption: { kind: "table", content: [{ type: "text", text: "Matrix" }] },
+      },
+    ]);
+    expect(main).toContain("#figure(#block(width: 100%)[");
+    expect(main).toContain("kind: table");
+    expect(main).toContain("Matrix");
+  });
+
+  it("only captioned code becomes a figure; caption-less code stays a raw block", async () => {
+    const withCaption = await toMain([
+      { type: "codeBlock", language: "ts", code: "const x = 1", caption: { kind: "code", content: [{ type: "text", text: "L1" }] } },
+    ]);
+    expect(withCaption.main).toContain("#figure(#raw(");
+    expect(withCaption.main).toContain("kind: raw");
+
+    const plain = await toMain([{ type: "codeBlock", language: "ts", code: "const x = 1" }]);
+    expect(plain.main).not.toContain("#figure(#raw(");
+  });
+});
+
+describe("serialize — T1.6 table header repeat", () => {
+  it("emits table.header(repeat: true, …)", async () => {
+    const { main } = await toMain([
+      {
+        type: "table",
+        rows: [
+          { cells: [{ header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "H" }] }] }] },
+          { cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }] }] },
+        ],
+      },
+    ]);
+    expect(main).toContain("table.header(repeat: true,");
+  });
+});
+
+describe("classifyTableLayout (standalone)", () => {
+  it("normal: short tokens fit comfortably", () => {
+    expect(classifyTableLayout({ columnCount: 3, longestAtomicToken: 5, availableWidth: 470 })).toBe("normal");
+  });
+
+  it("dense: >= 9 columns crosses the dense boundary", () => {
+    expect(classifyTableLayout({ columnCount: 9, longestAtomicToken: 4, availableWidth: 470 })).toBe("dense");
+  });
+
+  it("scaled: a token overflows at normal size but fits scaled down", () => {
+    // 12 narrow columns, a moderately long unbreakable token.
+    const result = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 470 });
+    expect(result).toBe("scaled");
+  });
+
+  it("overflow-warned: a token cannot fit even at the minimum size", () => {
+    const result = classifyTableLayout({ columnCount: 20, longestAtomicToken: 40, availableWidth: 470 });
+    expect(result).toBe("overflow-warned");
+  });
+
+  it("a landscape width de-escalates the same table", () => {
+    const portrait = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 470 });
+    const landscape = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 717 });
+    expect(portrait).toBe("scaled");
+    // The wider landscape area fits the same token without scaling.
+    expect(landscape === "normal" || landscape === "dense").toBe(true);
+  });
+
+  it("respects explicit unequal column widths (narrowest track drives escalation)", () => {
+    // One very narrow track amid wide ones forces escalation despite few columns.
+    const result = classifyTableLayout({
+      columnCount: 3,
+      sourceWidths: [10, 10, 1],
+      longestAtomicToken: 12,
+      availableWidth: 470,
+    });
+    expect(result === "scaled" || result === "overflow-warned").toBe(true);
+  });
+
+  it("scaled/overflow tiers emit their note codes end to end", async () => {
+    const wideRow = (n: number) =>
+      Array.from({ length: n }, () => ({
+        header: false,
+        colspan: 1,
+        rowspan: 1,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "SUPERCALIFRAGILISTIC" }] }] as ExportBlock[],
+      }));
+    const { notes } = await toMain([
+      { type: "table", rows: [{ cells: wideRow(20) }] },
+    ]);
+    expect(notes.some((n) => n.code === "table-overflow-warned" || n.code === "table-text-scaled")).toBe(true);
+  });
+});

@@ -426,7 +426,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
 
 ### PDF rendering
 
-- [ ] C5: `case "pageBreak"` in `serializeBlock()`
+- [x] C5: `case "pageBreak"` in `serializeBlock()`
       (`packages/pdf/src/serialize.ts:639`) → `#pagebreak(weak: true)`
       (`weak` avoids blank pages at natural boundaries). Add the block to the
       passthrough arm in `packages/pdf/src/prepare.ts` (the
@@ -436,7 +436,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       (`context` already distinguishes cell serialization via `inTable`;
       extend it with the same `container` context DOCX uses so callouts are
       covered too, not just table cells).
-- [ ] C6: `case "orientation"` → a scoped block
+- [x] C6: `case "orientation"` → a scoped block
       `#[ #set page(flipped: block.landscape) ...children... ]` — must set
       `flipped` to the block's actual boolean both ways (a `scroll-portrait`
       region inside a document whose base/T2.1 `settings.orientation` is
@@ -457,7 +457,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       a Typst `set page` has no effect inside a `table.cell`/`callout` box
       and must not be emitted there; render the children without the
       `set page` wrapper.
-- [ ] C3: extend the existing `#figure(image(...))` emissions
+- [x] C3: extend the existing `#figure(image(...))` emissions
       (`packages/pdf/src/serialize.ts:678,691`) with
       `caption: [...]` and `kind: <normalized caption kind>` (the kind
       resolved by the walker's `normalizeCaptionKind`, not a literal fixed
@@ -470,22 +470,22 @@ further hosts consume it purely through `storageToBlocks → engine`.
       caption-less ones keep today's rendering (prevents C2's `kind: raw`
       outline from listing every code block). Respect the source-order rule
       at `serialize.ts:675`: no `placement: auto`.
-- [ ] C3: propagate `caption` through `preparePdfDocument()`
+- [x] C3: propagate `caption` through `preparePdfDocument()`
       (`packages/pdf/src/prepare.ts:159`) onto `PreparedPdfBlock`
       (`packages/pdf/src/types.ts:36`), including the `diagram` variant.
-- [ ] C3 asset-failure fallback: when a captioned `image` block has no
+- [x] C3 asset-failure fallback: when a captioned `image` block has no
       `assetPath` (`packages/pdf/src/serialize.ts:680-681`), keep the
       existing `[Image unavailable: ...]` text fallback but wrap it as a
       numbered `#figure(..., caption: [...], kind: <normalized kind>)` too,
       matching the DOCX behavior above, so a broken attachment does not
       shift figure numbering or leave a caption-less entry in C2's list of
       figures.
-- [ ] T1.6 table hardening: verify that the emitted
+- [x] T1.6 table hardening: verify that the emitted
       `table.header(...)` (`packages/pdf/src/serialize.ts:786`) repeats on
       every page (Typst default is `repeat: true`; make it explicit —
       `table.header(repeat: true, ...)` — so the golden pins the behavior) and
       add a 200-row table golden that compiles and paginates.
-- [ ] T1.6 wide-table overflow strategy: define a deterministic
+- [x] T1.6 wide-table overflow strategy: define a deterministic
       `classifyTableLayout(columnCount, sourceWidths, longestAtomicToken,
       availableWidth)` in `packages/pdf/src/serialize.ts` (next to
       `tableColumns()`, `serialize.ts:200-224`) that returns one of
@@ -694,7 +694,7 @@ real instance.
       (falls back to `en` + note); a captioned image with a failed embed
       still emits a numbered caption; feature-zoo golden extended with the
       fixture macros so the full pipeline stays byte-stable.
-- [ ] PDF golden/serializer tests in `packages/pdf/src/serialize.test.ts`
+- [x] PDF golden/serializer tests in `packages/pdf/src/serialize.test.ts`
       (+ `prepare.test.ts` for the passthrough/caption propagation):
       `#pagebreak(weak: true)`, `#set page(flipped: block.landscape)` for
       both boolean values, `pageBreak`/`orientation` suppressed inside a
@@ -706,7 +706,7 @@ real instance.
       200-row table golden, `classifyTableLayout` golden per escalation
       tier (`"dense"`/`"scaled"`/`"overflow-warned"`) with matching note
       codes; source-map paths (`writeMapped`) stay consistent.
-- [ ] Compile-level verification: run the compiled Typst output of the new
+- [x] Compile-level verification: run the compiled Typst output of the new
       goldens through the real compiler path used by
       `packages/pdf/src/run-export.test.ts` to prove the emitted markup is
       valid — page count increases across a `pagebreak`; landscape page

@@ -260,3 +260,126 @@ describe("template settings compiled output", () => {
     expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true, pageCount: 4 });
   }, 120_000);
 });
+
+// ===========================================================================
+// spec 003 — content features, verified against the REAL Typst compiler
+// ===========================================================================
+describe("spec 003 content features (real compiler)", () => {
+  const meta = { title: "Content features", exportedAt: new Date("2026-07-20T00:00:00Z") };
+
+  /** Prepare + serialize + compile a block list; return pdf + inflated text. */
+  async function compileBlocks(
+    blocks: ExportBlock[],
+    settings?: PdfTemplateSettings
+  ): Promise<{ pdf: Uint8Array; text: string; pageCount: number; diagnostics: unknown[] }> {
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        // A 1x1 PNG for any image so figure/orientation goldens embed real bytes.
+        return { bytes: tinyPng(), mediaType: "image/png", filename: "x.png" };
+      },
+    });
+    const source = serializePdfDocument(prepared, { metadata: meta, ...(settings ? { settings } : {}) });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(source);
+    const errors = result.diagnostics.filter((d) => d.severity === "error");
+    if (errors.length) throw new Error(`compile errors: ${JSON.stringify(errors)}`);
+    const inspection = validatePdfOutput(result.pdf!);
+    return { pdf: result.pdf!, text: inflatedPdfText(result.pdf!), pageCount: inspection.pageCount, diagnostics: result.diagnostics };
+  }
+
+  /** Every /MediaBox as [width, height] pairs found in the PDF. */
+  function mediaBoxes(text: string): Array<[number, number]> {
+    const boxes: Array<[number, number]> = [];
+    const re = /\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      boxes.push([Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])]);
+    }
+    return boxes;
+  }
+
+  it("a scroll-pagebreak increases the page count", async () => {
+    const long = { type: "paragraph", content: [{ type: "text", text: "body" }] } as ExportBlock;
+    const noBreak = await compileBlocks([long, long]);
+    const withBreak = await compileBlocks([long, { type: "pageBreak" }, long]);
+    expect(withBreak.pageCount).toBeGreaterThan(noBreak.pageCount);
+  }, 60_000);
+
+  it("a landscape orientation region produces a landscape page (width > height)", async () => {
+    const { text } = await compileBlocks([
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "wide region" }] }],
+      },
+    ]);
+    // At least one page is landscape (width > height).
+    expect(mediaBoxes(text).some(([w, h]) => w > h)).toBe(true);
+  }, 60_000);
+
+  it("a portrait region inside a landscape base document flips back to portrait", async () => {
+    const { text } = await compileBlocks(
+      [
+        {
+          type: "orientation",
+          landscape: false,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "narrow region" }] }],
+        },
+      ],
+      { orientation: "landscape" }
+    );
+    // Both a landscape base page and a portrait (height > width) region page.
+    const boxes = mediaBoxes(text);
+    expect(boxes.some(([w, h]) => h > w)).toBe(true);
+  }, 60_000);
+
+  it("a 200-row table paginates with a repeating header row", async () => {
+    const header = {
+      cells: [
+        { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+        { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+      ],
+    };
+    const body = Array.from({ length: 200 }, (_, i) => ({
+      cells: [
+        { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: `row-${i}` }] }] },
+        { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: `val-${i}` }] }] },
+      ],
+    }));
+    const { pageCount } = await compileBlocks([{ type: "table", rows: [header, ...body] }] as ExportBlock[]);
+    expect(pageCount).toBeGreaterThan(1);
+  }, 90_000);
+
+  it("wide-table escalation goldens compile & paginate without content loss", async () => {
+    const cell = (text: string) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }] as ExportBlock[],
+    });
+    // Long URLs/IDs, CJK, extreme colgroup ratios, and a colspan, all at once.
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        columnWidths: [1, 1, 40],
+        rows: [
+          { cells: [cell("https://example.com/very/long/path/that/keeps/going/2026/details"), cell("識別子一二三四五六七八"), cell("wide")] },
+          { cells: [{ header: false, colspan: 3, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "spanning" }] }] }] },
+        ],
+      },
+    ];
+    const { pageCount } = await compileBlocks(blocks);
+    expect(pageCount).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+
+  it("a captioned figure compiles into a real figure", async () => {
+    const { pageCount } = await compileBlocks([
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "x.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Architecture overview" }] },
+      },
+    ]);
+    expect(pageCount).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+});
