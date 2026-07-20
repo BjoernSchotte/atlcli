@@ -323,6 +323,7 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
 }
 
 // export: PdfOutputSink
@@ -523,6 +524,11 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 export interface PreparePdfOptions {
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
 }
 
 // export: ResolvedPdfDesign
@@ -949,6 +955,7 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
 }
 
 // export: PdfOutputSink
@@ -1149,6 +1156,11 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 export interface PreparePdfOptions {
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
 }
 
 // export: ResolvedPdfDesign
@@ -1575,6 +1587,7 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
 }
 
 // export: PdfOutputSink
@@ -1775,6 +1788,11 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 export interface PreparePdfOptions {
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
 }
 
 // export: ResolvedPdfDesign
@@ -1926,6 +1944,9 @@ export declare function escapeTypstString(value: string): string;
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
 
+// export: isMissingAltText
+export declare function isMissingAltText(alt: string | undefined): boolean;
+
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
 
@@ -1970,6 +1991,7 @@ export interface PdfOutputInspection {
     tagged: boolean;
     hasOutline: boolean;
     embeddedFontFiles: number;
+    hasLang: boolean;
 }
 
 // export: pdfTableCellForeground
@@ -1982,6 +2004,11 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 export interface PreparePdfOptions {
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
+    pageContext?: {
+        pageId?: string;
+        pageTitle?: string;
+        pageUrl?: string;
+    };
 }
 
 // export: preservePdfSourceCellColor

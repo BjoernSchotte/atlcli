@@ -155,6 +155,63 @@ export function normalizePdfLocale(locale: string | undefined): { language: stri
   return rawRegion ? { language, region: rawRegion.toUpperCase() } : { language };
 }
 
+/**
+ * A usable ISO 639 language subtag (spec 011, PDF/UA language audit).
+ *
+ * This deliberately does NOT reuse {@link normalizePdfLocale}, which is a
+ * *coercion*: it silently rewrites anything unparseable to `"en"`, which is the
+ * right behavior for rendering (a document must have some language) and exactly
+ * the wrong one for auditing — the audit's whole job is to notice that the
+ * fallback was taken.
+ */
+function isUsableLanguage(language: string | undefined): boolean {
+  // A bare ISO 639 subtag is the documented shape of `PdfExportMetadata.language`
+  // (region travels in its own field), but a caller passing a full BCP-47 tag
+  // there still names the language correctly — that is a tidiness issue, not an
+  // accessibility defect, so it must not raise an audit warning.
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test((language ?? "").trim());
+}
+
+/**
+ * Language notes for one export (spec 011, PDF/UA 7.2). Pure over the two facts
+ * that decide it, so the branch table is unit-testable without a compiler.
+ *
+ * Two independent defects, one code:
+ *  - the CALLER supplied no usable language, so the template's `"en"` default
+ *    silently claims English for a document that may be in any language; and
+ *  - the COMPILED file carries no catalog `/Lang` at all, which a Level-B
+ *    template can cause even when the metadata was fine.
+ */
+export function auditPdfLanguage(input: {
+  language?: string;
+  hasLang: boolean;
+}): ExportNote[] {
+  const notes: ExportNote[] = [];
+  if (!isUsableLanguage(input.language)) {
+    const supplied = (input.language ?? "").trim();
+    notes.push({
+      level: "warning",
+      code: "pdf-language-missing",
+      message:
+        (supplied
+          ? `The export metadata's language "${supplied}" is not a usable language tag, so `
+          : "The export metadata carries no document language, so ") +
+        `the PDF declares "en". Assistive technology uses that declaration to pick pronunciation, ` +
+        `so an incorrect one is worse than a guess — set the export language explicitly.`,
+    });
+  }
+  if (!input.hasLang) {
+    notes.push({
+      level: "warning",
+      code: "pdf-language-missing",
+      message:
+        "The compiled PDF's document catalog declares no /Lang entry. A tagged PDF without a " +
+        "document language does not satisfy PDF/UA-1 7.2; check the active template.",
+    });
+  }
+  return notes;
+}
+
 export async function runPdfExport(
   input: RunPdfExportInput,
   env: PdfExportEnv
@@ -212,6 +269,9 @@ export async function runPdfExport(
     prepared = await preparePdfDocument(blocks, env.assets, {
       ...(input.onProgress ? { onProgress: input.onProgress } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
+      // Provenance fallback for the alt-text audit (spec 011): a single-page
+      // export's blocks carry no page id of their own, but the caller knows it.
+      ...(input.page?.id ? { pageContext: { pageId: input.page.id } } : {}),
     });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {
@@ -277,7 +337,17 @@ export async function runPdfExport(
     embeddedImages: counts.images,
     renderedDiagrams: counts.diagrams,
     skippedAssets: counts.skipped,
-    notes: [...resolvedNotes, ...bundle.notes],
+    notes: [
+      ...resolvedNotes,
+      ...bundle.notes,
+      // PDF/UA language audit (spec 011). Appended after the compile because
+      // one of its two inputs is a property of the produced FILE, not of the
+      // request — `hasLang` comes from inspecting the real output bytes.
+      ...auditPdfLanguage({
+        ...(input.metadata.language !== undefined ? { language: input.metadata.language } : {}),
+        hasLang: inspection.hasLang,
+      }),
+    ],
     complete: input.complete ?? true,
     // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
     // can fail `--strict` on real Typst warnings.

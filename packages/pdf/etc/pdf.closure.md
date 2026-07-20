@@ -37,7 +37,7 @@
 
 ### Entry point `./internal` — internal
 
-- exported symbols (31): ATLCLI_TYPST_TEMPLATE, BUILTIN_PDF_DESIGN, BUILTIN_PDF_FALLBACK_LABELS, BUILTIN_PDF_TEMPLATES, BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST, DEFAULT_PDF_THEME, MANUSCRIPT_PDF_TEMPLATE_ID, MANUSCRIPT_PDF_TEMPLATE_MANIFEST, PDF_ASSET_CONCURRENCY, PDF_MAX_ASSET_BYTES, PDF_MAX_TOTAL_ASSET_BYTES, PdfOutputInspection, PreparePdfOptions, TableLayoutClass, classifyTableLayout, createAtlcliTypstTemplate, escapeTypstContent, escapeTypstString, getBuiltinPdfTemplate, mapPdfDiagnostics, pdfColorContrast, pdfTableCellForeground, preparePdfDocument, preservePdfSourceCellColor, resolvePdfTheme, safeColor, serializePdfDocument, typstLabel, typstString, validatePdfOutput
+- exported symbols (32): ATLCLI_TYPST_TEMPLATE, BUILTIN_PDF_DESIGN, BUILTIN_PDF_FALLBACK_LABELS, BUILTIN_PDF_TEMPLATES, BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST, DEFAULT_PDF_THEME, MANUSCRIPT_PDF_TEMPLATE_ID, MANUSCRIPT_PDF_TEMPLATE_MANIFEST, PDF_ASSET_CONCURRENCY, PDF_MAX_ASSET_BYTES, PDF_MAX_TOTAL_ASSET_BYTES, PdfOutputInspection, PreparePdfOptions, TableLayoutClass, classifyTableLayout, createAtlcliTypstTemplate, escapeTypstContent, escapeTypstString, getBuiltinPdfTemplate, isMissingAltText, mapPdfDiagnostics, pdfColorContrast, pdfTableCellForeground, preparePdfDocument, preservePdfSourceCellColor, resolvePdfTheme, safeColor, serializePdfDocument, typstLabel, typstString, validatePdfOutput
 
 ### Entry point `./template` — internal
 
