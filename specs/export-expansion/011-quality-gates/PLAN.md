@@ -471,7 +471,7 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
 
 ### PDF/UA
 
-- [ ] veraPDF in CI over exported fixtures: new
+- [~] veraPDF in CI over exported fixtures: new
       `.github/workflows/verapdf.yml` (nightly + `workflow_dispatch` +
       release tags). Steps: build, compile the conformance corpus (the
       harness fixture set + the 50-page bench fixture, plus a fixed
@@ -486,7 +486,15 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       distinct "veraPDF tool broken" message if it doesn't match — this
       catches a bad pin/silent-upgrade before it's mistaken for a baseline
       regression.
-- [ ] Ratchet, not aspiration, and precise enough to catch a growing
+      *(Round 2: `scripts/verapdf/compile-corpus.ts` DONE and runnable offline
+      (compiles a canary + `blocks` + `pdf-settings-a` to real tagged PDFs,
+      deadline-wrapped); the self-skipping gate `verapdf.ratchet.test.ts` runs
+      veraPDF `--flavour ua1 --format json`, does the canary "tool broken"
+      self-check first, then ratchets — SKIPS when the binary is absent, same
+      pattern as the LibreOffice smoke. Pending (needs the binary / CI): the
+      sha256 `verapdf.lock.json` pin and the `verapdf.yml` workflow — authored
+      only when a runner has veraPDF, since neither is verifiable offline.)*
+- [~] Ratchet, not aspiration, and precise enough to catch a growing
       regression: store failing verdicts in `scripts/verapdf/baseline.json`
       keyed by `{fixture, ruleId, failureCount, locationsDigest}`, not by
       rule ID alone — a rule ID staying in the baseline while its failure
@@ -496,6 +504,12 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       baselined key whose count increases; warns when a baselined key
       starts passing (so the baseline shrinks monotonically). Baseline
       changes are reviewed diffs.
+      *(Round 2: the ratchet CORE (`scripts/verapdf/ratchet.ts`) is DONE and
+      unit-tested (`ratchet.test.ts`, no binary needed) with synthetic veraPDF
+      JSON — proves it catches a NEW rule, a RISING count on a baselined rule
+      (keyed by `{fixture, ruleId, failureCount, locationsDigest}`, not id
+      alone), and warns on a shrinking baseline. `baseline.json` starts empty;
+      it is populated from the first real veraPDF run (a reviewed diff).)*
 - [ ] Alt-text audit task: emit a dedicated note code (e.g.
       `pdf-image-missing-alt`) from `packages/pdf/src/prepare.ts` when an
       image block has no `alt`; surface it in `PdfExportReport` and the CLI
@@ -581,7 +595,7 @@ budget).**
       a regex can't reliably close (see Risks: recommend 006 move to a real
       XML parser + canonical reserialization instead of regex if the corpus
       can't be closed safely).
-- [ ] **Cross-plan archive policy conformance gate** (does not implement
+- [x] **Cross-plan archive policy conformance gate** (does not implement
       the validator — 007 does): `packages/export-fixtures/src/
       archive-corpus.ts`, hand-built malicious `.wiki-pdf-template` zips
       (path traversal, symlink entries, declared-vs-actual size mismatch
@@ -589,7 +603,14 @@ budget).**
       `packages/template-pack/src/unpack.ts` in a new
       `packages/export-fixtures/src/archive-corpus.test.ts`; fails on any
       case that unpacks successfully or exceeds the documented resource
-      budget.
+      budget. *(Done — 007's `template-pack` merged with all caps
+      (`too-large-archive`/`too-many-entries`/`path-traversal`/`symlink`/
+      `file-too-large`/`uncompressed-too-large`). The corpus supplies 8
+      adversarial archives (4 traversal shapes, a symlink, a per-file over-cap,
+      a cumulative 90 MiB zip bomb, a 2049-entry flood) + a positive control;
+      the gate asserts each is rejected with the EXACT typed kind — a case that
+      unpacks, or trips a different guard, fails. The corpus is kept OFF the
+      package barrel so its large buffers never load in the browser bundle.)*
 - [ ] Raw `.docx` template upload archive budget (unclaimed by any feature
       lane — `unzipDocx` in `packages/docx/src/scan.ts` today validates
       only the **compressed** input size against `MAX_TEMPLATE_BYTES`,
@@ -645,10 +666,11 @@ budget).**
       engines via the same negative-fixture case as the storage budget
       above.
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
-      *(Partial: `check-parity.ts` wraps every Bun-side compile in a wall-clock
+      *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
+      `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock
       deadline that throws a stable `compile-timeout` code. The harness
-      worker-terminate auto-deadline and the same wrapper on `compile-corpus.ts`/
-      `run-bench.ts`/`run-m1-acceptance.ts` are pending with those scripts.)*
+      worker-terminate auto-deadline and the same wrapper on `run-bench.ts` are
+      pending with that (unwritten) script.)*
       (`packages/pdf-compiler-browser/src/compiler.ts`) runs the WASM
       compile synchronously with no wall-clock or memory budget; folder
       008's own plan documents this as an "unchanged limitation... a true

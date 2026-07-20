@@ -29,3 +29,4 @@ packages/pdf-compiler-browser/vendor/
 coverage/
 .scannerwork/
 scripts/bench/out/
+scripts/verapdf/out/

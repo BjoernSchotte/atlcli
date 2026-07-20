@@ -12,6 +12,7 @@
     "@atlcli/docx": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/pdf": "workspace:*",
-    "@atlcli/template-pack": "workspace:*"
+    "@atlcli/template-pack": "workspace:*",
+    "pizzip": "^3.2.0"
   }
 }
