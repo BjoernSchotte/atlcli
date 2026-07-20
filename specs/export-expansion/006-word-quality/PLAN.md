@@ -253,7 +253,7 @@ All four packages respect the engine's existing patterns:
 
 ### G2 native numbering (T1.13)
 
-- [ ] Create `packages/docx/src/numbering.ts`: pure `NumberingAllocator`
+- [x] Create `packages/docx/src/numbering.ts`: pure `NumberingAllocator`
       constructed with a base `{ abstractNumId, numId }`. `acquire(ordered)`
       returns a shared `numId` for all bullet lists (bullets never need
       distinct restart instances) and a fresh `numId` **per ordered list
@@ -270,7 +270,7 @@ All four packages respect the engine's existing patterns:
       cap (~2046 usable above a fresh template) with a report-note
       degradation. The allocator's base is **not** self-determined —
       see the export.ts task below for where it comes from.
-- [ ] `packages/docx/src/export.ts`: add pure `inspectNumberingPart(zip):
+- [x] `packages/docx/src/export.ts`: add pure `inspectNumberingPart(zip):
       { abstractNumId: number; numId: number }` next to `parseStyleNames`
       (line 236) — same "run before body serialization" position, parsing
       any existing `word/numbering.xml`'s current `abstractNumId`/`numId`
@@ -280,7 +280,7 @@ All four packages respect the engine's existing patterns:
       happens *during* `serializeBlocks`, so basing it on a maxima scan
       that only happens in the post-render write step (below) would hand
       out ids the body was already serialized with.
-- [ ] `packages/docx/src/serialize.ts`: thread the allocator through
+- [x] `packages/docx/src/serialize.ts`: thread the allocator through
       `SerializeContext` (line 92). `serializeList` (line 504) calls
       `ctx.numbering.acquire(list.ordered)` **once per list node it
       serializes** — including nested list nodes reached through
@@ -304,7 +304,7 @@ All four packages respect the engine's existing patterns:
       paragraph before the block. Task-list items keep the ☑/☐ rendering
       (Word has no native checkbox numbering) but adopt the resolved list
       paragraph style for consistent indentation.
-- [ ] `packages/docx/src/ooxml.ts`: add `resolveListStyleId(styleNames,
+- [x] `packages/docx/src/ooxml.ts`: add `resolveListStyleId(styleNames,
       ordered, ilvl)` next to `resolveHeadingStyleId` (line 46). The real
       Scroll naming convention is asymmetric (Architecture, "Template
       style-name chains"): `ilvl 0` → `scroll list bullet` /
@@ -313,7 +313,7 @@ All four packages respect the engine's existing patterns:
       the builtin fallback `list bullet` / `list number` → `ListParagraph`
       (case-insensitive name lookup against `parseStyleNames` output, id
       returned).
-- [ ] `packages/docx/src/export.ts`: post-render `ensureNumberingPart(zip,
+- [x] `packages/docx/src/export.ts`: post-render `ensureNumberingPart(zip,
       allocator)` in the `ensureCodeStyle` mold (line 895), run only when
       the allocator was actually used: (1) create `word/numbering.xml` or
       merge into an existing one, emitting the ids the allocator already
@@ -322,11 +322,11 @@ All four packages respect the engine's existing patterns:
       (reuse/extend `ensureContentTypeDefault`, `image.ts`); (3) add the
       `numbering` relationship to `word/_rels/document.xml.rels`
       (`relsPathFor`, `image.ts:510`).
-- [ ] Recapture `packages/docx/src/golden-extension-export.json`
+- [x] Recapture `packages/docx/src/golden-extension-export.json`
       (`golden.test.ts` breaks intentionally); document in the PR that the
       diff is exactly: list markup change + new `word/numbering.xml` part +
       relationship/content-type entries.
-- [ ] `docs/`: update the DOCX export feature guide — list style mapping
+- [x] `docs/`: update the DOCX export feature guide — list style mapping
       table (template style names → behavior, including the suffixless
       level-1 name), the 9-level and ~2046-list limits, and the
       restart-per-list-node semantics.
@@ -342,7 +342,7 @@ per-cell `w:tcW` (which depends on the *final* `gridCols` and the width
 array derived from it) is therefore not a drop-in addition to the existing
 single pass — it requires deferring XML generation until widths are known.
 
-- [ ] `packages/docx/src/serialize.ts`: split `serializeTable` into a
+- [x] `packages/docx/src/serialize.ts`: split `serializeTable` into a
       **layout phase** producing per-cell descriptors (`{ colStart, colspan,
       rowspan, kind: "source" | "carry" | "padding", …content }`) without
       emitting XML — this phase computes `gridCols` exactly as today — and a
@@ -350,7 +350,7 @@ single pass — it requires deferring XML generation until widths are known.
       task below) are final, calls `tableCell(...)` per descriptor.
       `hasCarryFrom`/colspan/rowspan bookkeeping logic is unchanged, only
       moved out of the XML-emitting loop.
-- [ ] Add budget guards in the layout phase, mirroring the confluence-side
+- [x] Add budget guards in the layout phase, mirroring the confluence-side
       parse (`export-blocks.ts:610-612`, `parsePositiveInt` on `colspan`/
       `rowspan` currently accepts any positive integer with no upper
       bound): before allocating the `carry` array or looping
@@ -360,11 +360,11 @@ single pass — it requires deferring XML generation until widths are known.
       offending row/cell with a report note instead of driving
       `Array.from({length: gridCols})` (`ooxml.ts:231`) or a carry-array
       write with an attacker- or malformed-content-controlled size.
-- [ ] `packages/docx/src/serialize.ts:396`: pass `block.columnWidths`
+- [x] `packages/docx/src/serialize.ts:396`: pass `block.columnWidths`
       (captured by `tableColumnWidths`,
       `packages/confluence/src/export-blocks.ts:511`, block field at
       line 108) into `serializeTable`.
-- [ ] In the render phase, add `columnWidthsDxa(columnWidths, gridCols)` —
+- [x] In the render phase, add `columnWidthsDxa(columnWidths, gridCols)` —
       validate like the PDF side (length === gridCols, all finite and > 0,
       and apply the same 1.05 spread threshold as
       `packages/pdf/src/serialize.ts:213` so near-equal widths keep the
@@ -387,17 +387,17 @@ single pass — it requires deferring XML generation until widths are known.
       render differently across engines — call this out as a documented
       divergence, not a bug, and add the cross-engine fixture below to
       pin it down.
-- [ ] `packages/docx/src/ooxml.ts`: extend `dataTable(gridCols, rowsXml,
+- [x] `packages/docx/src/ooxml.ts`: extend `dataTable(gridCols, rowsXml,
       widthsDxa?)` (lines 230–231) — emit real `<w:gridCol w:w="…"/>`
       values in `w:tblGrid` and add `<w:tblLayout w:type="fixed"/>` to
       `tblPr` so Word does not re-autofit; extend `tableCell` (line 247)
       with `widthDxa?` emitting `<w:tcW w:w="…" w:type="dxa"/>` as the
       first `tcPr` child (schema order: `tcW` before `gridSpan`).
-- [ ] The render phase passes each cell descriptor the sum of its spanned
+- [x] The render phase passes each cell descriptor the sum of its spanned
       `gridCol` widths (`widthsDxa[col..col+colspan)`), including
       vMerge-continue and padding cells, so the fixed layout is not
       "repaired" by Word.
-- [ ] Recapture goldens together with G2 (the fixture zoo contains tables;
+- [x] Recapture goldens together with G2 (the fixture zoo contains tables;
       one recapture PR for both).
 
 #### G3b table style source (B9)
@@ -406,7 +406,7 @@ Bundled here per BASELINE-DESIGN §6 ("Synergie mit G3 … im selben PR
 lösen") and PLAN 007 lines 382–384 ("small package, lands with the
 column-width work; … out of Lane P").
 
-- [ ] `packages/docx/src/ooxml.ts`: extend `dataTable(gridCols, rowsXml,
+- [x] `packages/docx/src/ooxml.ts`: extend `dataTable(gridCols, rowsXml,
       opts)` (same call site as the widths change above) with
       `tableStyle?: { source: "template" | "confluence"; styleId?: string
       }`. `source: "confluence"` (default) keeps today's behavior
@@ -415,12 +415,12 @@ column-width work; … out of Lane P").
       `w:tblStyle w:val="${styleId}"` + `w:tblLook` (firstRow banding),
       omitting the inline borders and per-cell `w:shd` fills so a
       template's house table style actually controls appearance.
-- [ ] `ExportInput` (`export.ts`) gains `tableStyle?: { source; styleId? }`;
+- [x] `ExportInput` (`export.ts`) gains `tableStyle?: { source; styleId? }`;
       resolve `styleId` against `word/styles.xml` via `parseStyleNames`
       (name `Scroll Table Normal` per `spec/scroll-word-exporter-features.md`
       §3, fallback to `TableGrid`/`source: "confluence"` with a report note
       when the named style is not defined in the template).
-- [ ] `serializeTable`'s render phase suppresses per-cell `w:shd`
+- [x] `serializeTable`'s render phase suppresses per-cell `w:shd`
       background fills (header shading, Confluence cell colors) when
       `tableStyle.source === "template"` — inline shading would otherwise
       override the template style exactly as it does for borders today.
@@ -435,7 +435,7 @@ column-width work; … out of Lane P").
 
 ### G4 SVG embedding (T1.15)
 
-- [ ] Extract the SVG safety policy: new
+- [x] Extract the SVG safety policy: new
       `packages/confluence/src/svg-safety.ts` exporting
       `assertSafeSvg(source: string): void` with the regexes from
       `packages/pdf/src/prepare.ts:60-62` (`script`/`foreignObject`
@@ -450,11 +450,11 @@ column-width work; … out of Lane P").
       an explicit allowlist — omitting it here breaks the extension's
       browser build silently until `check:browser` catches it, which is
       exactly the check added to DoD below).
-- [ ] `packages/docx/src/image.ts`: add pure `parseSvgSize(source)` —
+- [x] `packages/docx/src/image.ts`: add pure `parseSvgSize(source)` —
       width/height attributes from the opening `<svg>` tag (px or
       unitless), viewBox fallback, `null` when undeterminable (per the
       BASELINE-DESIGN §6 G4 sketch).
-- [ ] `packages/docx/src/image.ts`: add a pure `boundRasterTarget(size:
+- [x] `packages/docx/src/image.ts`: add a pure `boundRasterTarget(size:
       TargetSize): TargetSize | null` guard used by both the mermaid and
       new SVG-attachment rasterizer calls — `resolveTargetSize` (line 159)
       caps only `widthPx`; this guard additionally rejects
@@ -466,7 +466,7 @@ column-width work; … out of Lane P").
       not SVG-only, since author-supplied `block.width/height`
       (`export-blocks.ts:109`, `ac:width`/`ac:height`, unbounded positive
       integers) already flow into mermaid's `resolveTargetSize` call too.
-- [ ] `packages/docx/src/export.ts`: pass the rasterizer into `imageSeam`
+- [x] `packages/docx/src/export.ts`: pass the rasterizer into `imageSeam`
       (line 644; today only `diagramSeam` gets it). In the seam, after the
       asset fetch and before `embedder.embed`: if `isSvg(bytes)` — without
       a rasterizer degrade with new note code `image-svg-no-rasterizer`
@@ -482,9 +482,11 @@ column-width work; … out of Lane P").
       see the typed-outcome task below). **Pass the validated `source`
       string, not the original pre-decode `bytes`** — `embedSvg` must embed
       exactly what `assertSafeSvg` checked (Architecture, "One SVG policy
-      for both engines"). Remove the deferral throw at `image.ts:380` for
-      this path.
-- [ ] Typed SVG outcome + accurate counters: `embedSvg` (`image.ts:412`)
+      for both engines"). The deferral throw at `image.ts:380` is BYPASSED
+      for this path (the seam routes SVG to `embedSvg` before the raster
+      `embed()` is reached) and RETAINED as a defense-in-depth guard for
+      other `embed()` callers (e.g. the logo pass), rather than deleted.
+- [x] Typed SVG outcome + accurate counters: `embedSvg` (`image.ts:412`)
       currently always increments `diagramsEmbedded` regardless of caller,
       so an attachment SVG embedded via this new path would silently count
       toward `renderedDiagrams` — contradicting the reporting task below,
@@ -497,13 +499,13 @@ column-width work; … out of Lane P").
       `IMAGE_SKIP_CODES` (`export.ts:423-430`) so they count toward
       `skippedImages` in the report — today only `image-embed-failed`
       (a generic code this new path was going to reuse) is covered.
-- [ ] Reporting: SVG-from-attachment embeds count as `embeddedImages` (it
+- [x] Reporting: SVG-from-attachment embeds count as `embeddedImages` (it
       is an image, not a rendered diagram); success is silent, only
       degradations produce notes. DoD-testable: a page with one mermaid
       diagram, one successfully-embedded SVG attachment, and one SVG
       attachment with no rasterizer available yields exactly
       `renderedDiagrams=1`, `embeddedImages=1`, `skippedImages=1`.
-- [ ] CLI host gap: `apps/cli/src/commands/export.ts` only builds a
+- [x] CLI host gap: `apps/cli/src/commands/export.ts` only builds a
       rasterizer when `mightContainMermaid(details.storage)` matches
       (lines 811-829; the gate itself, `export-internals.ts:162-166`, only
       pattern-matches the mermaid macro's `ac:parameter name="language"`).
@@ -518,13 +520,13 @@ column-width work; … out of Lane P").
       rasterizer when *either* detector matches. This is the one change in
       G4 outside `packages/docx`; see Dependencies for the Lane K
       ownership note.
-- [ ] `docs/`: note host constraints (browser canvas rasterizer does not
+- [x] `docs/`: note host constraints (browser canvas rasterizer does not
       load external fonts referenced by the SVG — same limitation as
       mermaid today; LibreOffice and older Word render the PNG fallback).
 
 ### G1 StyleRef verification (T1.16) — test-only package
 
-- [ ] Stage 1, unit invariants: new `packages/docx/src/styleref.test.ts`
+- [x] Stage 1, unit invariants: new `packages/docx/src/styleref.test.ts`
       using the fixture builders (`fixtures.ts`: `buildDocx`, `stylesXml`,
       `headingStyle`, `para`, `fldSimpleResult`, `complexFieldResult`).
       Build a template whose `word/header1.xml` contains
@@ -541,7 +543,7 @@ column-width work; … out of Lane P").
       (`computeHeadingOffset`, `serialize.ts:243`): a STYLEREF on
       "Scroll Heading 2" must be flagged when promotion can leave it
       dangling.
-- [ ] Name-vs-id trap, two distinct failure modes: extend
+- [x] Name-vs-id trap, two distinct failure modes: extend
       `packages/docx/src/scan.ts` with a field inventory that only
       *records* each STYLEREF field's referenced style name — it must not
       decide pass/fail itself, because `scanZip` (`export.ts:216`) runs
@@ -590,7 +592,7 @@ column-width work; … out of Lane P").
 Never mock — all tests exercise the real engine against real zips, real
 fixtures, real Confluence, or real LibreOffice.
 
-- [ ] Unit (OOXML assertions on generated zips via PizZip, following the
+- [x] Unit (OOXML assertions on generated zips via PizZip, following the
       existing patterns in `packages/docx/src/golden.test.ts` (structural
       zip comparison, `goldenTemplateBytes`), `packages/docx/src/serialize.test.ts`
       (per-block serializer describes), and `packages/docx/src/image.test.ts`
@@ -670,7 +672,7 @@ fixtures, real Confluence, or real LibreOffice.
       present in the report** (the CLI built a rasterizer despite no
       mermaid macro). Delete the test page and attachment afterwards
       (cleanup discipline).
-- [ ] Cross-engine width-parity fixture (3–8 columns, near-equal source
+- [x] Cross-engine width-parity fixture (3–8 columns, near-equal source
       widths, one column with dominant narrative-length text): assert PDF
       and DOCX intentionally diverge per the documented G3 parity scope
       (PDF may apply `inferredTableTracks`; DOCX always even-splits below

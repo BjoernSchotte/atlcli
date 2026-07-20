@@ -14,7 +14,7 @@
  * yet: threading its bytes through the asset pipeline and placing the image is
  * the template-rendering task (T2.2), a strictly additive follow-up.
  */
-import { normalizeExportColor } from "@atlcli/confluence";
+import { decodeSvgSource, normalizeExportColor } from "@atlcli/confluence";
 import { typstString } from "./escape.js";
 import { findSvgSafetyViolation } from "./svg-safety.js";
 import type { PdfLogoAsset, PdfTemplateSettings, PdfWatermarkSettings } from "./types.js";
@@ -165,7 +165,8 @@ function hasPngMagic(bytes: Uint8Array): boolean {
 }
 
 function assertSafeSvg(bytes: Uint8Array): void {
-  const source = new TextDecoder().decode(bytes);
+  // BOM-aware decode so a UTF-16 logo SVG cannot hide active content (spec 011).
+  const source = decodeSvgSource(bytes);
   if (!/<svg(?:\s|>)/i.test(source.replace(/^﻿/, "").trimStart())) {
     reject("logo.bytes", undefined, "SVG bytes do not contain an <svg> root element");
   }

@@ -1117,7 +1117,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const { readFile, stat } = await import("node:fs/promises");
   const [
     { runExport, fileOutputSink, buildGetIncludedPage },
-    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
+    { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
   ] = await Promise.all([
@@ -1179,25 +1179,42 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     getSpaceHomepageStorage: spaceHomepage,
   });
 
-  // Mermaid diagrams render via resvg-wasm (spec 005a). A missing rasterizer
-  // is not an error: the engine degrades those blocks to readable source
-  // code and reports each one — the note here names the reason once.
+  // Mermaid diagrams render via resvg-wasm (spec 005a), and SVG page
+  // attachments rasterize their PNG fallback through the same rasterizer
+  // (spec 006 G4). A missing rasterizer is not an error: the engine degrades
+  // those blocks to readable source / a report note. Build the rasterizer when
+  // EITHER a mermaid macro OR any image/attachment reference is present, so an
+  // SVG-only page (no mermaid macro) still gets a rasterizer instead of
+  // degrading with `image-svg-no-rasterizer`.
   const rasterizerPromise = pagePromise.then(async (details) => {
-    if (!mightContainMermaid(details.storage ?? "")) {
-      return { needed: false as const, rasterizer: null };
+    const storage = details.storage ?? "";
+    if (!mightContainMermaid(storage) && !mightReferenceImage(storage)) {
+      return { needed: false as const, rasterizer: null, error: undefined as string | undefined };
     }
     try {
       const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
-      return { needed: true as const, rasterizer: await buildDiagramRasterizer() };
-    } catch {
-      return { needed: true as const, rasterizer: null };
+      let error: string | undefined;
+      const rasterizer = await buildDiagramRasterizer((message) => {
+        error = message;
+      });
+      return { needed: true as const, rasterizer, error };
+    } catch (err) {
+      return {
+        needed: true as const,
+        rasterizer: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   });
   rasterizerPromise.catch(() => {});
   const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
   const rasterizer = rasterizerState.rasterizer;
   if (rasterizerState.needed && !rasterizer) {
-    cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
+    cliNotes.push(
+      "diagram rasterizer unavailable; mermaid diagrams export as code blocks and SVG attachments are skipped" +
+        (rasterizerState.error ? ` (${rasterizerState.error})` : "") +
+        "."
+    );
   }
 
   // Resolve @mentions to display names before serialization, matching the
@@ -1360,13 +1377,21 @@ function makeProgressReporter(opts: OutputOptions): {
   return { report, clear };
 }
 
-/** True when any composed block is a mermaid code block (needs a rasterizer). */
+/**
+ * True when any composed block needs a rasterizer: a mermaid code block
+ * (spec 005a) or an image block that could be an SVG attachment (spec 006 G4).
+ * The block model does not always know an attachment's bytes ahead of the
+ * fetch, so any attachment image conservatively triggers the build — matching
+ * the single-page CLI gate's over-triggering-by-design stance.
+ */
 function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
   for (const block of blocks) {
     switch (block.type) {
       case "codeBlock":
         if ((block.language ?? "").toLowerCase() === "mermaid") return true;
         break;
+      case "image":
+        return true;
       case "callout":
       case "blockquote":
       case "orientation":
@@ -1496,14 +1521,22 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     let rasterizer: import("@atlcli/docx").SvgRasterizer | undefined;
     const cliNotes: string[] = [];
     if (embedImages && blocksNeedRasterizer(composed.blocks)) {
+      let rasterizerError: string | undefined;
       try {
         const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
-        rasterizer = (await buildDiagramRasterizer()) ?? undefined;
-      } catch {
+        rasterizer = (await buildDiagramRasterizer((message) => {
+          rasterizerError = message;
+        })) ?? undefined;
+      } catch (err) {
+        rasterizerError = err instanceof Error ? err.message : String(err);
         rasterizer = undefined;
       }
       if (!rasterizer) {
-        cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
+        cliNotes.push(
+          "diagram rasterizer unavailable; mermaid diagrams export as code blocks and SVG attachments are skipped" +
+            (rasterizerError ? ` (${rasterizerError})` : "") +
+            "."
+        );
       }
     }
 

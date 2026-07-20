@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   createAssetByteCache,
   mightContainMermaid,
+  mightReferenceImage,
   prestartPageDependentDeps,
   tokenAssetFetcher,
 } from "./export-internals.js";
@@ -160,5 +161,16 @@ describe("Mermaid rasterizer gate", () => {
       )
     ).toBe(false);
     expect(mightContainMermaid("<p>Mermaid diagrams are useful.</p>")).toBe(false);
+  });
+});
+
+describe("Image rasterizer gate (spec 006 G4)", () => {
+  test("triggers on an ac:image / attachment reference (no mermaid needed)", () => {
+    expect(mightReferenceImage('<ac:image><ri:attachment ri:filename="a.svg"/></ac:image>')).toBe(true);
+    expect(mightReferenceImage('<p>x</p><ri:attachment ri:filename="b.png"/>')).toBe(true);
+  });
+
+  test("does not trigger on prose without any image reference", () => {
+    expect(mightReferenceImage("<p>An image is worth a thousand words.</p>")).toBe(false);
   });
 });

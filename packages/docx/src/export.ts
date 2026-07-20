@@ -38,6 +38,8 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
   AssetBudget,
+  assertSafeSvg,
+  decodeSvgSource,
   storageToBlocks,
   type ConfluencePageDetails,
   type ExportBlock,
@@ -57,9 +59,19 @@ import {
   type CodeBlock,
   type DiagramEmbedSeam,
   type ImageBlock,
+  type ImageEmbedOutcome,
   type ImageEmbedSeam,
 } from "./serialize.js";
-import { ImageEmbedder, ImageEmbedError } from "./image.js";
+import {
+  boundRasterTarget,
+  ImageEmbedder,
+  ImageEmbedError,
+  isSvg,
+  MAX_CONTENT_WIDTH_PX,
+  parseSvgSize,
+  relsPathFor,
+  resolveTargetSize,
+} from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
 import type { IncludeLookupOutcome } from "./resolver.js";
@@ -69,10 +81,14 @@ import {
   captionStyleXml,
   CODE_STYLE_ID,
   codeStyleXml,
+  LIST_PARAGRAPH_STYLE_ID,
+  listParagraphStyleXml,
   parseStyleNames,
   resolveCaptionLang,
   type CaptionLang,
+  type TableStyleSource,
 } from "./ooxml.js";
+import { NumberingAllocator } from "./numbering.js";
 import {
   encodeXmlText,
   paragraphText,
@@ -213,6 +229,15 @@ export interface ExportInput {
    * Absent → today's behavior byte-for-byte.
    */
   macros?: MacroResolutionOptions;
+  /**
+   * Table style source (spec 006 G3b / B9). `{ source: "template" }` defers
+   * table appearance to the template's own table style (default name
+   * `Scroll Table Normal`, or `styleId` to name another). When the named style
+   * is not defined in `word/styles.xml`, the export falls back to the built-in
+   * `"confluence"` grid with a report note. Absent / `{ source: "confluence" }`
+   * keeps today's behavior byte-identical.
+   */
+  tableStyle?: { source: "template" | "confluence"; styleId?: string };
 }
 
 /**
@@ -341,6 +366,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     walkNotes = resolved.notes;
   }
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
+  // Numbering inventory (spec 006 G2): parse the template's existing
+  // word/numbering.xml maxima BEFORE body serialization so the allocator hands
+  // out ids above them — acquisition happens DURING serializeBlocks, so a
+  // post-render scan would be too late (see PLAN "Numbering inventory happens
+  // before serialization"). A malformed part degrades to a safe zero base.
+  const numbering = new NumberingAllocator(inspectNumberingPart(zip));
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
   // with page images"). Attachment images additionally need an asset fetcher;
@@ -359,6 +390,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
         signal: input.signal,
         onProgress: input.onProgress,
         total: imageBlockCount,
+        ...(input.rasterizer ? { rasterizer: input.rasterizer } : {}),
       })
     : undefined;
   const diagrams =
@@ -387,13 +419,18 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // today (ExportInput has no host-locale field); unsupported tags fall back
   // to English with a warning note surfaced in the report.
   const captionLocale = resolveCaptionLang(input.captionLang);
+  // Table style source (spec 006 G3b): resolve the requested template style
+  // name to an id; a missing style falls back to the confluence grid + note.
+  const tableStyleResolution = resolveTableStyle(input.tableStyle, styleNames);
   const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, {
     styleNames,
+    numbering,
     images,
     diagrams,
     ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
+    tableStyle: tableStyleResolution.tableStyle,
   });
   timings.bodyMs = Date.now() - bodyStart;
 
@@ -402,6 +439,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const contentFound = injectContentTag(zip);
   const flowNotes: ExportNote[] = [];
   if (captionLocale.note) flowNotes.push(captionLocale.note);
+  if (tableStyleResolution.note) flowNotes.push(tableStyleResolution.note);
+  // STYLEREF verification (spec 006 G1): validate each template STYLEREF field's
+  // referenced style name against the styles this export actually emitted —
+  // distinguishing "style not in the template at all" from "defined but unused
+  // after promotion in this export". Diagnostics only; no behavior change.
+  flowNotes.push(...validateStylerefFields(scan.stylerefStyleNames, styleNames, body.headingStyleIds));
 
   // 3b. Logo pass, embed leg: replace each $scroll.spacelogo /
   //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
@@ -474,6 +517,22 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const styledXml = body.xml + includeXml;
   if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
   if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
+  // Native list numbering (spec 006 G2): write word/numbering.xml (+ content
+  // type + relationship) only when a list actually acquired an id, and
+  // synthesize the fallback ListParagraph style if the body OR an included
+  // page referenced it (an include can be the only content carrying a list).
+  if (numbering.isUsed) {
+    ensureNumberingPart(rendered, numbering);
+    if (styledXml.includes(`w:pStyle w:val="${LIST_PARAGRAPH_STYLE_ID}"`)) ensureListParagraphStyle(rendered);
+    if (numbering.capExceeded) {
+      flowNotes.push({
+        level: "warning",
+        code: "numbering-cap-reached",
+        message:
+          "This document has more ordered lists than Word's 2047-instance numbering limit; the excess lists reuse a numbering definition and may not all restart at 1.",
+      });
+    }
+  }
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
@@ -508,6 +567,70 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       timings,
     },
   };
+}
+
+/**
+ * Resolve the requested table style source (spec 006 G3b / B9) against the
+ * template's styles. `"template"` mode looks up the style name (default
+ * `Scroll Table Normal`) and, when defined, hands the id to the serializer;
+ * when the style is absent it falls back to the built-in `"confluence"` grid
+ * with a report note. `"confluence"`/absent is a byte-identical no-op.
+ */
+function resolveTableStyle(
+  input: { source: "template" | "confluence"; styleId?: string } | undefined,
+  styleNames: Map<string, string>
+): { tableStyle: TableStyleSource; note?: ExportNote } {
+  if (!input || input.source !== "template") return { tableStyle: { source: "confluence" } };
+  const name = input.styleId ?? "Scroll Table Normal";
+  const id = styleNames.get(name.toLowerCase());
+  if (!id) {
+    return {
+      tableStyle: { source: "confluence" },
+      note: {
+        level: "warning",
+        code: "table-style-missing",
+        message: `The template does not define a "${name}" table style; tables use the built-in grid instead.`,
+      },
+    };
+  }
+  return { tableStyle: { source: "template", styleId: id } };
+}
+
+/**
+ * Validate STYLEREF fields against the heading styles this export emitted
+ * (spec 006 G1). Two distinct diagnostics:
+ *  - `styleref-style-not-in-template` (info): the referenced style name is not
+ *    defined in `word/styles.xml` at all (builtin-fallback / localized-name /
+ *    typo case) — the field resolves via Word's own name lookup or blank.
+ *  - `styleref-style-unused-in-export` (warning): the style IS defined but no
+ *    heading in THIS export carries it (heading promotion shifted every
+ *    heading's effective level), so the field resolves to the previous
+ *    section's text or blank rather than the intended chapter.
+ */
+function validateStylerefFields(
+  referencedNames: string[],
+  styleNames: Map<string, string>,
+  emittedHeadingStyleIds: string[]
+): ExportNote[] {
+  const notes: ExportNote[] = [];
+  const emitted = new Set(emittedHeadingStyleIds);
+  for (const name of referencedNames) {
+    const id = styleNames.get(name.toLowerCase());
+    if (!id) {
+      notes.push({
+        level: "info",
+        code: "styleref-style-not-in-template",
+        message: `A STYLEREF field references the style "${name}", which is not defined in the template; the running header relies on Word's own name resolution.`,
+      });
+    } else if (!emitted.has(id)) {
+      notes.push({
+        level: "warning",
+        code: "styleref-style-unused-in-export",
+        message: `A STYLEREF field references the style "${name}", but no heading in this export uses it (heading promotion), so the running header may show a previous chapter or be blank.`,
+      });
+    }
+  }
+  return notes;
 }
 
 /** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
@@ -635,6 +758,9 @@ const IMAGE_SKIP_CODES = new Set([
   "inline-image-skipped",
   "logo-skipped",
   "logo-embed-failed",
+  // spec 006 G4: an SVG attachment that could not be rasterized/embedded.
+  "image-svg-no-rasterizer",
+  "image-svg-oversized",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -854,7 +980,16 @@ interface ImageSeamOptions {
   signal?: AbortSignal;
   onProgress?: ExportProgressCallback;
   total: number;
+  /**
+   * SVG → PNG rasterizer (spec 006 G4). When present, an SVG page attachment
+   * embeds through the dual-part svgBlip path (SVG + 2× PNG fallback); when
+   * absent, an SVG attachment degrades with `image-svg-no-rasterizer`.
+   */
+  rasterizer?: SvgRasterizer;
 }
+
+/** The default display size for an SVG whose intrinsic size is undeterminable. */
+const SVG_FALLBACK_SIZE = { widthPx: 600, heightPx: 400 };
 
 function imageSeam(
   embedder: ImageEmbedder,
@@ -870,7 +1005,7 @@ function imageSeam(
   // Omitted for the main body → defaults to `word/document.xml` (unchanged).
   partPath?: string
 ): ImageEmbedSeam {
-  const { budget, signal, onProgress, total } = seamOpts;
+  const { budget, signal, onProgress, total, rasterizer } = seamOpts;
   const context: HostCallContext = { signal };
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
   let done = 0;
@@ -931,6 +1066,14 @@ function imageSeam(
       // abort the whole export (never a per-image warning), so it is NOT caught
       // by the per-image failure branch below — it propagates out of the seam.
       budget.account(bytes, budgetMeta(block));
+      // SVG attachment path (spec 006 G4): embed vector-sharp via svgBlip with a
+      // 2× PNG fallback. Detected here before the raster embedder is reached, so
+      // the deferral throw in ImageEmbedder.embed is never hit for this path.
+      if (isSvg(bytes)) {
+        const outcome = await embedSvgAttachment(block, bytes, name);
+        reportDone(name);
+        return outcome;
+      }
       try {
         const xml = embedder.embed(bytes, {
           alt: block.alt,
@@ -947,6 +1090,93 @@ function imageSeam(
       }
     },
   };
+
+  /**
+   * Embed one SVG page attachment (spec 006 G4). Validates the SAME decoded
+   * UTF-8 string it embeds (`assertSafeSvg`), sizes it via `parseSvgSize` (with
+   * a default + info note), guards the rasterizer target
+   * (`resolveTargetSize` → `boundRasterTarget`), rasterizes the PNG fallback at
+   * 2×, and embeds both parts through `embedSvg({ origin: "image" })` so it
+   * tallies as an image, not a diagram. Missing rasterizer or an oversized
+   * target degrades with a precise note code instead of embedding.
+   */
+  async function embedSvgAttachment(
+    block: ImageBlock,
+    bytes: Uint8Array,
+    name: string | undefined
+  ): Promise<ImageEmbedOutcome> {
+    if (!rasterizer) {
+      return {
+        ok: false as const,
+        code: "image-svg-no-rasterizer",
+        level: "warning" as const,
+        reason: "no SVG rasterizer is available in this export; the SVG was skipped",
+      };
+    }
+    // Embed exactly the string that was validated (re-encode for embedSvg), not
+    // the pre-decode bytes — a BOM / non-UTF-8 declaration must not let a
+    // different byte sequence slip past the safety check. decodeSvgSource is
+    // BOM-aware, so a UTF-16LE/BE payload is decoded to its real characters and
+    // its `<script>` is caught by assertSafeSvg (spec 011 must-reject).
+    const source = decodeSvgSource(bytes);
+    try {
+      assertSafeSvg(source);
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    const sideNotes: ExportNote[] = [];
+    const parsed = parseSvgSize(source);
+    const intrinsic = parsed ?? SVG_FALLBACK_SIZE;
+    if (!parsed) {
+      sideNotes.push({
+        level: "info",
+        code: "image-svg-default-size",
+        message: `SVG ${describeImageBlock(block)} has no intrinsic size; using a ${SVG_FALLBACK_SIZE.widthPx}×${SVG_FALLBACK_SIZE.heightPx} default.`,
+      });
+    }
+    const display = resolveTargetSize(
+      { width: intrinsic.widthPx, height: intrinsic.heightPx },
+      { widthPx: block.width, heightPx: block.height },
+      MAX_CONTENT_WIDTH_PX
+    );
+    const raster = boundRasterTarget({ widthPx: display.widthPx * 2, heightPx: display.heightPx * 2 });
+    if (!raster) {
+      return {
+        ok: false as const,
+        code: "image-svg-oversized",
+        level: "warning" as const,
+        reason: "the SVG's resolved dimensions exceed the rasterization budget",
+      };
+    }
+    let png: Uint8Array;
+    try {
+      png = await rasterizer.rasterize(source, raster);
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    // Account the PNG against the shared budget (the SVG bytes were already
+    // accounted above). A breach is fatal — propagate out of the seam.
+    budget.account(png, { filename: (name ?? "image") + ".png" });
+    try {
+      const xml = embedder.embedSvg(source, png, {
+        origin: "image",
+        alt: block.alt ?? name,
+        name,
+        widthPx: display.widthPx,
+        heightPx: display.heightPx,
+      });
+      return { ok: true as const, xml, ...(sideNotes.length ? { notes: sideNotes } : {}) };
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+}
+
+/** Human label for an image block in a note (attachment filename or URL). */
+function describeImageBlock(block: ImageBlock): string {
+  return block.source.kind === "attachment"
+    ? `"${block.source.filename}"`
+    : `"${block.source.url}"`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,12 +1238,23 @@ function diagramSeam(
           return { kind: "unsupported", diagramType: rendered.diagramType };
         }
         if (rendered.kind === "failed") return { kind: "failed", reason: rendered.reason };
+        // Shared raster budget (spec 006 G4): guard the 2× target before it
+        // reaches the rasterizer's canvas allocation — the same guard the SVG-
+        // attachment path uses, applied here since author dimensions can widen
+        // a diagram too.
+        const target = boundRasterTarget({
+          widthPx: rendered.widthPx * 2,
+          heightPx: rendered.heightPx * 2,
+        });
+        if (!target) {
+          return {
+            kind: "failed",
+            reason: "the diagram's rasterization target exceeds the size budget",
+          };
+        }
         try {
           const rasterStart = Date.now();
-          const png = await rasterizer.rasterize(rendered.svg, {
-            widthPx: rendered.widthPx * 2,
-            heightPx: rendered.heightPx * 2,
-          });
+          const png = await rasterizer.rasterize(rendered.svg, target);
           timings.diagramRasterMs += Date.now() - rasterStart;
           return {
             kind: "ready",
@@ -1421,6 +1662,104 @@ export function preprocessScrollText(zip: PizZip, values: Map<string, string>): 
 function replaceTokens(text: string, values: Map<string, string>): string {
   PLACEHOLDER_RE.lastIndex = 0;
   return text.replace(PLACEHOLDER_RE, (m) => values.get(m) ?? "");
+}
+
+/**
+ * Parse the template's existing `word/numbering.xml` maxima (spec 006 G2), so
+ * the {@link NumberingAllocator} allocates above them (the `maxExistingDrawingId`
+ * pattern). Runs BEFORE body serialization. A missing or malformed part
+ * degrades to a safe `{ 0, 0 }` base rather than throwing — a broken template
+ * numbering part must never fail the whole export.
+ */
+export function inspectNumberingPart(zip: PizZip): { abstractNumId: number; numId: number } {
+  const xml = zip.file("word/numbering.xml")?.asText();
+  if (!xml) return { abstractNumId: 0, numId: 0 };
+  let maxAbstract = 0;
+  let maxNum = 0;
+  try {
+    for (const m of xml.matchAll(/<w:abstractNum\b[^>]*\bw:abstractNumId="(\d+)"/g)) {
+      const id = Number(m[1]);
+      if (Number.isFinite(id) && id > maxAbstract) maxAbstract = id;
+    }
+    for (const m of xml.matchAll(/<w:num\b[^>]*\bw:numId="(\d+)"/g)) {
+      const id = Number(m[1]);
+      if (Number.isFinite(id) && id > maxNum) maxNum = id;
+    }
+  } catch {
+    return { abstractNumId: 0, numId: 0 };
+  }
+  return { abstractNumId: maxAbstract, numId: maxNum };
+}
+
+/**
+ * Write the synthesized numbering (spec 006 G2): create `word/numbering.xml`
+ * (or merge into an existing one), register the content-type override, and add
+ * the `numbering` relationship to the document's rels — all with the ids the
+ * allocator already handed out during serialization (no re-basing).
+ */
+export function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void {
+  const { abstractNums, nums } = allocator.toXml();
+  const path = "word/numbering.xml";
+  const existing = zip.file(path)?.asText();
+  if (existing && /<w:numbering\b/.test(existing)) {
+    // Merge: abstractNums must precede the first <w:num> (schema order); nums go
+    // at the end. Splice each piece into the right place.
+    let merged = existing;
+    const firstNum = merged.search(/<w:num\b/);
+    if (firstNum !== -1) {
+      merged = merged.slice(0, firstNum) + abstractNums + merged.slice(firstNum);
+    } else {
+      merged = merged.replace("</w:numbering>", `${abstractNums}</w:numbering>`);
+    }
+    merged = merged.replace("</w:numbering>", `${nums}</w:numbering>`);
+    zip.file(path, merged);
+  } else {
+    zip.file(
+      path,
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+        abstractNums +
+        nums +
+        `</w:numbering>`
+    );
+  }
+  // Content-type override (a specific part, not a default-by-extension).
+  const ctPath = "[Content_Types].xml";
+  const ct = zip.file(ctPath)?.asText();
+  if (ct && !ct.includes("word/numbering.xml")) {
+    zip.file(
+      ctPath,
+      ct.replace(
+        "</Types>",
+        `<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`
+      )
+    );
+  }
+  // Relationship from the main document part (reuse the image module's helper).
+  const relsPath = relsPathFor("word/document.xml");
+  const rels =
+    zip.file(relsPath)?.asText() ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  if (!/relationships\/numbering/.test(rels)) {
+    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
+    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+    zip.file(
+      relsPath,
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`
+      )
+    );
+  }
+}
+
+/** Add the fallback ListParagraph style to styles.xml if absent (spec 006 G2). */
+export function ensureListParagraphStyle(zip: PizZip): void {
+  const path = "word/styles.xml";
+  const xml = zip.file(path)?.asText();
+  if (!xml) return;
+  if (xml.includes(`w:styleId="${LIST_PARAGRAPH_STYLE_ID}"`)) return;
+  zip.file(path, xml.replace("</w:styles>", `${listParagraphStyleXml()}</w:styles>`));
 }
 
 /** Add the synthesized code paragraph style to styles.xml if absent. */

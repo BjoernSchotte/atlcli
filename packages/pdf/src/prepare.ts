@@ -8,7 +8,8 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
-import { findSvgSafetyViolation } from "./svg-safety.js";
+import { assertSafeSvg } from "./svg-safety.js";
+import { decodeSvgSource } from "@atlcli/confluence";
 import type {
   PdfAssetResolver,
   PdfResolvedAsset,
@@ -49,7 +50,10 @@ function sniffMediaType(bytes: Uint8Array): string | null {
     ascii(bytes, 0, 4) === "RIFF" &&
     ascii(bytes, 8, 4) === "WEBP"
   ) return "image/webp";
-  const head = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 2048)));
+  // BOM/encoding-aware (spec 011 security corpus): a UTF-16LE/BE SVG must be
+  // recognized so its content is scanned by the shared policy rather than
+  // slipping through as "unrecognized bytes".
+  const head = decodeSvgSource(bytes.subarray(0, Math.min(bytes.length, 4096)));
   if (/<svg(?:\s|>)/i.test(head.replace(/^\uFEFF/, "").trimStart())) return "image/svg+xml";
   return null;
 }
@@ -66,11 +70,11 @@ function validateResolvedAsset(asset: PdfResolvedAsset): PdfResolvedAsset {
     throw new Error(`image content does not match its declared media type (${declared})`);
   }
   if (sniffed === "image/svg+xml") {
-    // Shared blocklist with logo-settings validation — see svg-safety.ts.
-    const violation = findSvgSafetyViolation(new TextDecoder().decode(asset.bytes));
-    if (violation) {
-      throw new Error(`SVG contains active or externally loaded content (${violation.rule})`);
-    }
+    // Shared blocklist with the DOCX engine and logo-settings validation —
+    // see @atlcli/confluence svg-safety.ts. Validate the SAME (BOM-aware
+    // decoded) string that gets embedded, so a UTF-16 payload cannot hide a
+    // <script> from the scanner.
+    assertSafeSvg(decodeSvgSource(asset.bytes));
   }
   return { ...asset, mediaType: sniffed };
 }

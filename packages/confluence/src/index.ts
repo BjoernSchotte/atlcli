@@ -26,6 +26,7 @@ export * from "./poller.js";
 export * from "./reorder.js";
 export * from "./resolve-mentions.js";
 export * from "./scope.js";
+export * from "./svg-safety.js";
 export * from "./sync-db/index.js";
 export * from "./sync-state-manager.js";
 export * from "./user-fetcher.js";
