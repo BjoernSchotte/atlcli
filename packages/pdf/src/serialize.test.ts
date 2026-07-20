@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock } from "@atlcli/confluence";
+import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
+import { composeChapters } from "@atlcli/confluence";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
 
@@ -81,7 +82,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.template).toContain('linebreaks: "optimized"');
     expect(bundle.main).toContain('region: "US"');
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
-    expect(bundle.template).toContain('let indigo = rgb("#4B57A3")');
+    expect(bundle.template).toContain('let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
     expect(bundle.template).toContain('text(font: "Source Serif 4", size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
@@ -688,13 +689,7 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
       .filter((line) => line.trim() !== "")
       .join("\n");
 
-  it("renders pageBreak/anchor/orientation with no semantic change to main.typ", async () => {
-    const reference: ExportBlock[] = [
-      { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
-      { type: "paragraph", content: [{ type: "text", text: "before" }] },
-      { type: "paragraph", content: [{ type: "text", text: "inside" }] },
-      { type: "paragraph", content: [{ type: "text", text: "after" }] },
-    ];
+  it("renders pageBreak as a weak pagebreak, anchor as a label, orientation bare", async () => {
     const withNew: ExportBlock[] = [
       { type: "heading", level: 2, content: [{ type: "text", text: "Section" }] },
       { type: "paragraph", content: [{ type: "text", text: "before" }] },
@@ -708,16 +703,19 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
       { type: "paragraph", content: [{ type: "text", text: "after" }] },
     ];
     const resolver = { resolve: async () => { throw new Error("unused"); } };
-    const refBundle = serializePdfDocument(await preparePdfDocument(reference, resolver), { metadata });
     const newBundle = serializePdfDocument(await preparePdfDocument(withNew, resolver), { metadata });
 
-    // Semantic identity: content lines match once the comment markers are gone.
-    expect(contentLines(newBundle.main)).toBe(contentLines(refBundle.main));
-    // No new notes (no pdf-unknown-block, nothing) from the no-op blocks.
+    // Real renderings (spec 002).
+    expect(newBundle.main).toContain("#pagebreak(weak: true)");
+    expect(newBundle.main).toContain("#box[]<bm>");
+    // orientation still serializes its child transparently.
+    expect(newBundle.main).toContain('#text("inside")');
+    // No spurious notes from the new blocks.
     expect(newBundle.notes).toEqual([]);
+    void contentLines; // retained helper for other cases
   });
 
-  it("gives pageBreak and anchor their own zero-width sourceMap entries", async () => {
+  it("gives pageBreak and anchor their own sourceMap entries", async () => {
     const blocks: ExportBlock[] = [
       { type: "paragraph", content: [{ type: "text", text: "x" }] },
       { type: "pageBreak" },
@@ -730,10 +728,62 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     for (const blockType of ["pageBreak", "anchor"] as const) {
       const entry = bundle.sourceMap.find((e) => e.blockType === blockType);
       expect(entry).toBeDefined();
-      // Zero-width: the wrapped value is empty, so start position == end position.
-      expect(entry!.startLine).toBe(entry!.endLine);
-      expect(entry!.startColumn).toBe(entry!.endColumn);
     }
+  });
+
+  it("sanitizes raw anchor names into legal Typst labels and resolves links to them", async () => {
+    // Regression: a Confluence anchor macro named "Table of Contents" must not
+    // reach the Typst source as `<Table of Contents>` — the real compiler
+    // rejects that as an unclosed label, failing the whole export.
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "Table of Contents" },
+      { type: "paragraph", content: [{ type: "text", text: "body" }] },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "link",
+            target: { kind: "anchor", anchor: "Table of Contents" },
+            content: [{ type: "text", text: "jump" }],
+          },
+        ],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    // Sanitized label emitted; the raw (illegal) form never appears.
+    expect(bundle.main).toContain("#box[]<table-of-contents>");
+    expect(bundle.main).not.toContain("<Table of Contents>");
+    // The link resolves to the SAME sanitized label — not degraded to text.
+    expect(bundle.main).toContain("#link(<table-of-contents>)");
+    expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+
+  it("dedupes distinct anchor names that sanitize identically (duplicate labels are a compile error)", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "A B" },
+      { type: "anchor", name: "A_B" },
+      // A heading whose text slug ALSO collides with the anchors' sanitized
+      // form — its slug label must stay untouched and the anchors must dodge it.
+      { type: "heading", level: 2, content: [{ type: "text", text: "A b" }] },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    const labels = [...bundle.main.matchAll(/<([a-z0-9-]+)>/g)].map((m) => m[1]);
+    // Every emitted label is unique — Typst rejects duplicate labels.
+    expect(new Set(labels).size).toBe(labels.length);
+    // The heading keeps its plain slug; both anchors got suffixed variants.
+    expect(labels).toContain("a-b");
+    const anchorLabels = [...bundle.main.matchAll(/#box\[\]<([a-z0-9-]+)>/g)].map((m) => m[1]);
+    expect(anchorLabels).toHaveLength(2);
+    for (const label of anchorLabels) {
+      expect(label).toMatch(/^a-b-[0-9a-z]+$/);
+    }
+    expect(anchorLabels[0]).not.toBe(anchorLabels[1]);
   });
 
   it("sees a heading nested inside an orientation region (promotion + label link)", async () => {
@@ -761,5 +811,382 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     expect(bundle.main).toContain("<wide-section>");
     expect(bundle.main).toContain("#link(<wide-section>)");
     expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+  });
+
+  it("a composed multi-page document serializes with promotion offset 0 (chapter levels preserved)", async () => {
+    // Root (effectiveDepth 0 → chapter level 1) + child (effectiveDepth 1 →
+    // chapter level 2). Since the composed document already starts at level 1,
+    // the shared computeHeadingOffset yields 0 and the level-2 chapter is NOT
+    // wrongly promoted back to level 1.
+    const nodes: ExportNode[] = [
+      {
+        kind: "page",
+        pageId: "1",
+        title: "Root",
+        depth: 0,
+        effectiveDepth: 0,
+        parentId: null,
+        position: 0,
+        blocks: [],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+      {
+        kind: "page",
+        pageId: "2",
+        title: "Child",
+        depth: 1,
+        effectiveDepth: 1,
+        parentId: "1",
+        position: 0,
+        // Body starts at H3 — per-page promotion happens during composition, not
+        // in the engine, so the engine sees a document already normalized to L1.
+        blocks: [{ type: "heading", level: 3, content: [{ type: "text", text: "Body" }] }],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+    ];
+    const { blocks } = composeChapters(nodes, { chapterBreak: "none" });
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } }),
+      { metadata }
+    );
+    // Offset 0: the level-1 Root chapter stays level 1, the level-2 Child chapter
+    // stays level 2 (a nonzero offset would collapse them).
+    expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#text("Root")]');
+    expect(bundle.main).toContain('#heading(level: 2, outlined: true)[#text("Child")]');
+  });
+
+  it("emits chapter labels, a resolved cross-page #link, and a chapter #pagebreak (T1.3 engine golden)", async () => {
+    // The PDF half of the T1.3 engine golden — the same fixture shape the DOCX
+    // engine golden uses, rendering into the SAME sanitized `page-<id>` ids.
+    const nodes: ExportNode[] = [
+      {
+        kind: "page",
+        pageId: "100",
+        title: "Alpha",
+        depth: 0,
+        effectiveDepth: 0,
+        parentId: null,
+        position: 0,
+        blocks: [
+          { type: "heading", level: 2, content: [{ type: "text", text: "Overview" }] },
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "link",
+                target: { kind: "page", contentId: "300", contentTitle: "Gamma" },
+                content: [{ type: "text", text: "see Gamma" }],
+              },
+            ],
+          },
+        ],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+      {
+        kind: "page",
+        pageId: "300",
+        title: "Gamma",
+        depth: 1,
+        effectiveDepth: 1,
+        parentId: "100",
+        position: 0,
+        blocks: [{ type: "heading", level: 2, content: [{ type: "text", text: "Gamma detail" }] }],
+        notes: [],
+        meta: { labels: [], spaceKey: "DOC" },
+      },
+    ];
+    const { blocks } = composeChapters(nodes);
+    const resolver = { resolve: async () => { throw new Error("unused"); } };
+    const bundle = serializePdfDocument(await preparePdfDocument(blocks, resolver), { metadata });
+
+    // Chapter-start labels for both pages.
+    expect(bundle.main).toContain("<page-100>");
+    expect(bundle.main).toContain("<page-300>");
+    // The cross-page link resolves to Gamma's chapter label (#link(<page-300>)),
+    // NOT degraded to plain text.
+    expect(bundle.main).toContain("#link(<page-300>)");
+    expect(bundle.notes.some((n) => n.code === "pdf-link-unresolved")).toBe(false);
+    // A weak page break separates the two chapters.
+    expect(bundle.main).toContain("#pagebreak(weak: true)");
+
+    // Determinism: a second run is byte-equal.
+    const again = serializePdfDocument(await preparePdfDocument(composeChapters(nodes).blocks, resolver), { metadata });
+    expect(again.main).toBe(bundle.main);
+  });
+});
+
+describe("PDF settings threading into main.typ", () => {
+  const emptyDoc = { blocks: [], assets: [], notes: [] };
+
+  it("emits a defaulted settings dictionary when no settings are supplied", () => {
+    const bundle = serializePdfDocument(emptyDoc, { metadata });
+    expect(bundle.main).toContain("), settings: (");
+    expect(bundle.main).toContain('page: "a4"');
+    expect(bundle.main).toContain('orientation: "portrait"');
+    expect(bundle.main).toContain("cover: true");
+    expect(bundle.main).toContain("outline: true");
+    expect(bundle.main).toContain('accent-color: "#4B57A3"');
+    expect(bundle.main).not.toContain("header-text");
+    expect(bundle.main).not.toContain("watermark:");
+  });
+
+  it("emits Letter + landscape and organization name", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { page: "letter", orientation: "landscape", organizationName: "Acme" },
+    });
+    expect(bundle.main).toContain('page: "letter"');
+    expect(bundle.main).toContain('orientation: "landscape"');
+    expect(bundle.main).toContain('organization-name: "Acme"');
+  });
+
+  it("typstString-escapes every free-text setting so injection stays literal", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: {
+        headerText: 'H" #{x}',
+        footerText: "line\\end",
+        organizationName: 'Acme" #{sys.exit()}',
+        logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'alt" #{evil}' },
+      },
+    });
+    expect(bundle.main).toContain('header-text: "H\\" #{x}"');
+    expect(bundle.main).toContain('footer-text: "line\\\\end"');
+    expect(bundle.main).toContain('organization-name: "Acme\\" #{sys.exit()}"');
+    expect(bundle.main).toContain('logo-alt: "alt\\" #{evil}"');
+  });
+
+  it("threads a validated logo as a virtual asset and emits its escaped path", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { logo: { bytes: pngBytes(), mediaType: "image/png", alt: 'Acme "Corp"' } },
+    });
+    expect(bundle.main).toContain('logo: "assets/atlcli-logo.png"');
+    expect(bundle.main).toContain('logo-alt: "Acme \\"Corp\\""');
+    const asset = bundle.assets.find((entry) => entry.path === "assets/atlcli-logo.png");
+    expect(asset?.mediaType).toBe("image/png");
+    expect(asset?.bytes).toEqual(pngBytes());
+  });
+
+  it("serializes a watermark with defaults filled", () => {
+    const bundle = serializePdfDocument(emptyDoc, {
+      metadata,
+      settings: { watermark: { text: "DRAFT" } },
+    });
+    expect(bundle.main).toContain("watermark: (");
+    expect(bundle.main).toContain('text: "DRAFT"');
+    expect(bundle.main).toContain('color: "#DE350B"');
+    expect(bundle.main).toContain("opacity: 0.08");
+    expect(bundle.main).toContain("angle: -54");
+    expect(bundle.main).toContain("size: 96");
+  });
+});
+
+// ===========================================================================
+// spec 003 — page breaks, orientation, captions, table hardening
+// ===========================================================================
+import { classifyTableLayout } from "./serialize.js";
+
+/** Prepare + serialize a block list to Typst source (no assets fetched). */
+async function toMain(blocks: ExportBlock[]): Promise<{ main: string; notes: ExportNote[] }> {
+  const prepared = await preparePdfDocument(blocks, {
+    resolve: async () => {
+      throw new Error("no assets");
+    },
+  });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  return { main: bundle.main, notes: bundle.notes };
+}
+
+describe("serialize — C5 pageBreak", () => {
+  it("emits a weak pagebreak at body level", async () => {
+    const { main } = await toMain([{ type: "pageBreak" }]);
+    expect(main).toContain("#pagebreak(weak: true)");
+  });
+
+  it("suppresses a pagebreak inside a table cell with a note", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "pageBreak" }] }] }],
+      },
+    ]);
+    expect(main).not.toContain("#pagebreak");
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+
+  it("suppresses a pagebreak inside a callout with a note", async () => {
+    const { main, notes } = await toMain([
+      { type: "callout", kind: "info", content: [{ type: "pageBreak" }] },
+    ]);
+    expect(main).not.toContain("#pagebreak");
+    expect(notes.map((n) => n.code)).toContain("pagebreak-suppressed-in-container");
+  });
+});
+
+describe("serialize — C6 orientation", () => {
+  const region = (landscape: boolean): ExportBlock => ({
+    type: "orientation",
+    landscape,
+    content: [{ type: "paragraph", content: [{ type: "text", text: "wide" }] }],
+  });
+
+  it("sets flipped: true for a landscape region", async () => {
+    const { main } = await toMain([region(true)]);
+    expect(main).toContain("#set page(flipped: true)");
+    expect(main).toContain("wide");
+  });
+
+  it("sets flipped: false for a portrait region (flips back, not only ever landscape)", async () => {
+    const { main } = await toMain([region(false)]);
+    expect(main).toContain("#set page(flipped: false)");
+  });
+
+  it("suppresses the set page inside a table cell with a note (children kept)", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [region(true)] }] }],
+      },
+    ]);
+    expect(main).not.toContain("#set page(flipped");
+    expect(main).toContain("wide");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+
+  it("suppresses the set page inside a callout with a note", async () => {
+    const { main, notes } = await toMain([{ type: "callout", kind: "note", content: [region(true)] }]);
+    expect(main).not.toContain("#set page(flipped");
+    expect(notes.map((n) => n.code)).toContain("orientation-suppressed-in-container");
+  });
+});
+
+describe("serialize — C3 captions", () => {
+  it("wraps a captioned image in a numbered figure with the normalized kind", async () => {
+    const { main } = await toMain([
+      {
+        type: "image",
+        source: { kind: "external", url: "https://x.test/a.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Arch" }] },
+      },
+    ]);
+    // External image is not fetched here → asset-failure fallback figure.
+    expect(main).toContain("#figure(");
+    expect(main).toContain("caption: [");
+    expect(main).toContain("kind: image");
+    expect(main).toContain("Arch");
+  });
+
+  it("a captioned image whose asset is missing still emits a numbered figure fallback", async () => {
+    const { main, notes } = await toMain([
+      {
+        type: "image",
+        source: { kind: "external", url: "https://x.test/broken.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Broken" }] },
+      },
+    ]);
+    expect(main).toContain("#figure(emph[");
+    expect(main).not.toContain("#figure(#");
+    expect(main).toContain("Image unavailable");
+    expect(main).toContain("caption: [");
+    expect(notes.map((n) => n.code)).toContain("pdf-image-skipped");
+  });
+
+  it("wraps a captioned table in a figure with kind table (declared kind wins)", async () => {
+    const { main } = await toMain([
+      {
+        type: "table",
+        rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "c" }] }] }] }],
+        caption: { kind: "table", content: [{ type: "text", text: "Matrix" }] },
+      },
+    ]);
+    expect(main).toContain("#figure(block(width: 100%)[");
+    expect(main).not.toContain("#figure(#");
+    expect(main).toContain("kind: table");
+    expect(main).toContain("Matrix");
+  });
+
+  it("only captioned code becomes a figure; caption-less code stays a raw block", async () => {
+    const withCaption = await toMain([
+      { type: "codeBlock", language: "ts", code: "const x = 1", caption: { kind: "code", content: [{ type: "text", text: "L1" }] } },
+    ]);
+    expect(withCaption.main).toContain("#figure(raw(");
+    expect(withCaption.main).not.toContain("#figure(#");
+    expect(withCaption.main).toContain("kind: raw");
+
+    const plain = await toMain([{ type: "codeBlock", language: "ts", code: "const x = 1" }]);
+    expect(plain.main).not.toContain("#figure(raw(");
+  });
+});
+
+describe("serialize — T1.6 table header repeat", () => {
+  it("emits table.header(repeat: true, …)", async () => {
+    const { main } = await toMain([
+      {
+        type: "table",
+        rows: [
+          { cells: [{ header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "H" }] }] }] },
+          { cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }] }] },
+        ],
+      },
+    ]);
+    expect(main).toContain("table.header(repeat: true,");
+  });
+});
+
+describe("classifyTableLayout (standalone)", () => {
+  it("normal: short tokens fit comfortably", () => {
+    expect(classifyTableLayout({ columnCount: 3, longestAtomicToken: 5, availableWidth: 470 })).toBe("normal");
+  });
+
+  it("dense: >= 9 columns crosses the dense boundary", () => {
+    expect(classifyTableLayout({ columnCount: 9, longestAtomicToken: 4, availableWidth: 470 })).toBe("dense");
+  });
+
+  it("scaled: a token overflows at normal size but fits scaled down", () => {
+    // 12 narrow columns, a moderately long unbreakable token.
+    const result = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 470 });
+    expect(result).toBe("scaled");
+  });
+
+  it("overflow-warned: a token cannot fit even at the minimum size", () => {
+    const result = classifyTableLayout({ columnCount: 20, longestAtomicToken: 40, availableWidth: 470 });
+    expect(result).toBe("overflow-warned");
+  });
+
+  it("a landscape width de-escalates the same table", () => {
+    const portrait = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 470 });
+    const landscape = classifyTableLayout({ columnCount: 12, longestAtomicToken: 9, availableWidth: 717 });
+    expect(portrait).toBe("scaled");
+    // The wider landscape area fits the same token without scaling.
+    expect(landscape === "normal" || landscape === "dense").toBe(true);
+  });
+
+  it("respects explicit unequal column widths (narrowest track drives escalation)", () => {
+    // One very narrow track amid wide ones forces escalation despite few columns.
+    const result = classifyTableLayout({
+      columnCount: 3,
+      sourceWidths: [10, 10, 1],
+      longestAtomicToken: 12,
+      availableWidth: 470,
+    });
+    expect(result === "scaled" || result === "overflow-warned").toBe(true);
+  });
+
+  it("scaled/overflow tiers emit their note codes end to end", async () => {
+    const wideRow = (n: number) =>
+      Array.from({ length: n }, () => ({
+        header: false,
+        colspan: 1,
+        rowspan: 1,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "SUPERCALIFRAGILISTIC" }] }] as ExportBlock[],
+      }));
+    const { notes } = await toMain([
+      { type: "table", rows: [{ cells: wideRow(20) }] },
+    ]);
+    expect(notes.some((n) => n.code === "table-overflow-warned" || n.code === "table-text-scaled")).toBe(true);
   });
 });

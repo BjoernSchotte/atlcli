@@ -262,7 +262,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       page's base orientation restored (info note). This keeps the
       body-wrapped `orientation` block the single downstream shape either
       way, so DOCX/PDF rendering tasks below do not fork on marker vs. body.
-- [ ] If 001 has not landed: extend `ExportBlock` in
+- [x] If 001 has not landed: extend `ExportBlock` in
       `packages/confluence/src/export-blocks.ts` with `caption?: Caption` on
       `codeBlock`/`table`/`image`, and new variants `pageBreak`,
       `orientation { landscape, content }`, `anchor { name }`; add
@@ -270,18 +270,22 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `exporter?: "pdf" | "word"` and `exportControls?: "apply" |
       "passthrough"` (default `"apply"`, see Architecture); re-export new
       types from `packages/confluence/src/index.ts` and `index.browser.ts`.
-- [ ] Thread options into the walk: `storageToBlocks(storage, options?)`
+- [x] Thread options into the walk: `storageToBlocks(storage, options?)`
       (`export-blocks.ts:330`) stores `exporter` AND `exportControls` on
       `WalkCtx` (`export-blocks.ts:278`) as two independent fields — do not
       collapse them into one flag (see Architecture's `exportControls` note
       on why `exporter` alone cannot implement `--keep-ignored`).
-- [ ] `normalizeCaptionKind(raw, targetBlockType)` in
+- [x] `normalizeCaptionKind(raw, targetBlockType)` in
       `packages/confluence/src/export-blocks.ts` (new, exported, unit-tested
       standalone): case-insensitive known-value/alias mapping to
       `CaptionKind`, unknown input → target block's natural kind + warning
       note, `equation` rejected until a real math block exists (see
       Architecture).
-- [ ] C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
+- [x] *(implemented on PROVISIONAL fixtures — macro names, the `exporter`
+      parameter key/value set, and body wrapping are modeled on the documented
+      Scroll storage shape, NOT yet reconciled against live-captured storage;
+      the fixture-capture task above stays open and any drift found there must
+      be corrected here)* C4 in `walkMacro()` (`export-blocks.ts:667`, before the KNOWN_MACROS
       fallback), implementing the full C4 truth table from Architecture:
       `scroll-ignore` → when `exportControls === "passthrough"` or the
       `exporter` param is absent/matches `ctx.exporter`: `[]` + info note
@@ -292,18 +296,24 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `scroll-only-skipped-other-exporter` on mismatch. Unknown `exporter`
       values fail safe (include + warning note) regardless of
       `exportControls`, never drop silently.
-- [ ] C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
+- [x] *(provisional fixtures — see C4 above; inline variant names unverified
+      against live capture)* C4 inline variants: extend `isInlineMacro()` (`export-blocks.ts:397`)
       to also return true for `scroll-only-inline`/`scroll-ignore-inline`, and
       handle them in `walkInlineElement` (ignore-inline → `[]` + note,
       only-inline → inline content of its body), same truth table and
       `exportControls` gate as the block form.
-- [ ] C5 in `walkMacro()`: `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
-- [ ] C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
+- [x] *(provisional fixtures — see C4 above)* C5 in `walkMacro()`:
+      `scroll-pagebreak` → `[{ type: "pageBreak" }]`.
+- [x] *(provisional fixtures — see C4 above. BOTH shapes are implemented
+      pending the C6 fixture gate: body-wrapped parsing AND the
+      `normalizeOrientationMarkers()` paired-marker fallback, so whichever
+      shape live capture confirms is already handled)* C6 in `walkMacro()`: `scroll-landscape`/`scroll-portrait` →
       `{ type: "orientation", landscape, content: walkBlocks(body) }` (body
       shape) or the output of `normalizeOrientationMarkers()` (marker
       shape) per the C6 fixture gate above; nested orientation regions in
       the body-wrapped case: outer wins + warning note.
-- [ ] C3 in `walkMacro()`: `scroll-title` → build
+- [x] *(provisional fixtures — see C4 above; the `type`/`title` parameter
+      names and body wrapping are unverified against live capture)* C3 in `walkMacro()`: `scroll-title` → build
       `Caption { kind: normalizeCaptionKind(param "type", targetBlockType),
       content }` and attach via new helper `attachCaption(inner, caption,
       ctx)` to the first caption-capable block (`image`/`table`/`codeBlock`)
@@ -311,7 +321,10 @@ further hosts consume it purely through `storageToBlocks → engine`.
       paragraph + info note. Verify against the fixture whether the
       captioned element is body-wrapped or adjacent, and support the
       verified shape.
-- [ ] Wire hosts, as a call-site matrix (not one shared assumption — the
+- [ ] *(partial: DOCX `{ exporter: "word" }` verified end-to-end in
+      `export.test.ts`; PDF extension wired at `run-export.ts` with
+      `{ exporter: "pdf" }`; CLI PDF still blocked on T3.2 — no call site
+      exists)* Wire hosts, as a call-site matrix (not one shared assumption — the
       real call sites differ per host and engine):
       - DOCX / `{ exporter: "word" }`: already planned in
         001-exportblock-model at `packages/docx/src/export.ts:235`, ahead of
@@ -329,11 +342,21 @@ further hosts consume it purely through `storageToBlocks → engine`.
         lands, not as a standalone edit to a non-existent call site.
       - Any further host picks `exporter` up through the same
         `StorageToBlocksOptions` object at its own `storageToBlocks` call.
-- [ ] Optional (progressive disclosure): CLI flag `--keep-ignored` in
+- [x] *(implemented: ts engine, single-page scope; tree/space + python engine
+      rejected with a USAGE error until tree-fetch threads export controls)*
+      Optional (progressive disclosure): CLI flag `--keep-ignored` in
       `apps/cli/src/commands/export.ts` that sets `exportControls:
       "passthrough"` (not "omits `exporter`" — see Architecture) for
       debugging, documented in the command help.
-- [ ] **`ExportNote.source` provenance contract (owner: this plan).** Add an
+- [x] *(populated: walker notes carry `pageId`/`pageTitle`/`pageUrl` — when
+      the host threads them via `pageContext` — plus a real `blockPath`
+      threaded through `walkBlocks`; the PDF serializer's new note codes carry
+      `source.blockPath` from its serializer path. NOT yet populated: the DOCX
+      serializer's container-suppression notes — that serializer tracks no
+      block path or page context today; `assetName` — no note this plan adds
+      is asset-scoped. Single-page walks without `pageContext` stay
+      source-less by design, keeping output byte-identical.)*
+      **`ExportNote.source` provenance contract (owner: this plan).** Add an
       additive optional `source?: { pageId?: string; pageTitle?: string;
       pageUrl?: string; blockPath?: string; assetName?: string }` field to
       `ExportNote` (`packages/confluence/src/export-blocks.ts:116`), the
@@ -357,7 +380,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
 
 ### DOCX rendering
 
-- [ ] C5: add `pageBreakParagraph()` to `packages/docx/src/ooxml.ts`
+- [x] C5: add `pageBreakParagraph()` to `packages/docx/src/ooxml.ts`
       (`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`) and a
       `case "pageBreak"` in `serializeBlock()`
       (`packages/docx/src/serialize.ts:338`), threading the
@@ -371,7 +394,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       `pagebreak-suppressed-in-container` naming the container kind (breaks
       inside `<w:tc>` paragraphs would split the table row/callout, not the
       page).
-- [ ] C6: extract a `readBodySectPr(zip)` helper from the body-`sectPr`
+- [x] C6: extract a `readBodySectPr(zip)` helper from the body-`sectPr`
       location logic in `injectContentTagAtEnd()`
       (`packages/docx/src/export.ts:845-851`) and pass the clone through
       `SerializeContext`. Render `orientation` as a section sandwich: a
@@ -393,7 +416,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       no body `sectPr`: synthesize a standard A4 `sectPr` (the synthesized
       fallback, unlike the clone path, legitimately uses A4 constants since
       there is no real template size to preserve).
-- [ ] C3: add a caption-paragraph helper to `packages/docx/src/ooxml.ts` that
+- [x] C3: add a caption-paragraph helper to `packages/docx/src/ooxml.ts` that
       emits `<w:pPr><w:pStyle w:val="Caption"/></w:pPr>` plus a SEQ field
       (`fldChar begin` / `instrText " SEQ <label> \* ARABIC "` / `fldChar
       end`) and the caption text. Resolve the `Caption` style id via the
@@ -406,12 +429,12 @@ further hosts consume it purely through `storageToBlocks → engine`.
       (explicit option > host-supplied locale > `"en"`), threaded through
       `SerializeContext`; unrecognized values fall back to `"en"` + warning
       note.
-- [ ] C3: emit the caption paragraph from `serializeBlock()` next to
+- [x] C3: emit the caption paragraph from `serializeBlock()` next to
       `image`/`table`/`codeBlock` blocks that carry `caption` (position:
       above tables, below figures/code — the established convention). Numbers
       refresh on open because `ensureUpdateFields` already runs
       (`packages/docx/src/export.ts:309`).
-- [ ] C3 asset-failure fallback: when a captioned `image` block fails to
+- [x] C3 asset-failure fallback: when a captioned `image` block fails to
       embed (no `ctx.images`, or `outcome.ok === false` at
       `packages/docx/src/serialize.ts:410-428`), do not silently drop the
       image AND its caption — emit a visible numbered figure fallback (the
@@ -420,13 +443,13 @@ further hosts consume it purely through `storageToBlocks → engine`.
       number is not skipped and downstream captions/`TOC \c` stay correctly
       numbered) alongside the existing `image-skipped`/`image-embed-failed`
       note.
-- [ ] Replace the C4/C5/C6/C3 placeholder path: the affected `scroll-*`
+- [x] Replace the C4/C5/C6/C3 placeholder path: the affected `scroll-*`
       macros must no longer reach the `unknown` arm
       (`packages/docx/src/serialize.ts:431-432`).
 
 ### PDF rendering
 
-- [ ] C5: `case "pageBreak"` in `serializeBlock()`
+- [x] C5: `case "pageBreak"` in `serializeBlock()`
       (`packages/pdf/src/serialize.ts:639`) → `#pagebreak(weak: true)`
       (`weak` avoids blank pages at natural boundaries). Add the block to the
       passthrough arm in `packages/pdf/src/prepare.ts` (the
@@ -436,7 +459,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       (`context` already distinguishes cell serialization via `inTable`;
       extend it with the same `container` context DOCX uses so callouts are
       covered too, not just table cells).
-- [ ] C6: `case "orientation"` → a scoped block
+- [x] C6: `case "orientation"` → a scoped block
       `#[ #set page(flipped: block.landscape) ...children... ]` — must set
       `flipped` to the block's actual boolean both ways (a `scroll-portrait`
       region inside a document whose base/T2.1 `settings.orientation` is
@@ -457,7 +480,7 @@ further hosts consume it purely through `storageToBlocks → engine`.
       a Typst `set page` has no effect inside a `table.cell`/`callout` box
       and must not be emitted there; render the children without the
       `set page` wrapper.
-- [ ] C3: extend the existing `#figure(image(...))` emissions
+- [x] C3: extend the existing `#figure(image(...))` emissions
       (`packages/pdf/src/serialize.ts:678,691`) with
       `caption: [...]` and `kind: <normalized caption kind>` (the kind
       resolved by the walker's `normalizeCaptionKind`, not a literal fixed
@@ -470,22 +493,22 @@ further hosts consume it purely through `storageToBlocks → engine`.
       caption-less ones keep today's rendering (prevents C2's `kind: raw`
       outline from listing every code block). Respect the source-order rule
       at `serialize.ts:675`: no `placement: auto`.
-- [ ] C3: propagate `caption` through `preparePdfDocument()`
+- [x] C3: propagate `caption` through `preparePdfDocument()`
       (`packages/pdf/src/prepare.ts:159`) onto `PreparedPdfBlock`
       (`packages/pdf/src/types.ts:36`), including the `diagram` variant.
-- [ ] C3 asset-failure fallback: when a captioned `image` block has no
+- [x] C3 asset-failure fallback: when a captioned `image` block has no
       `assetPath` (`packages/pdf/src/serialize.ts:680-681`), keep the
       existing `[Image unavailable: ...]` text fallback but wrap it as a
       numbered `#figure(..., caption: [...], kind: <normalized kind>)` too,
       matching the DOCX behavior above, so a broken attachment does not
       shift figure numbering or leave a caption-less entry in C2's list of
       figures.
-- [ ] T1.6 table hardening: verify that the emitted
+- [x] T1.6 table hardening: verify that the emitted
       `table.header(...)` (`packages/pdf/src/serialize.ts:786`) repeats on
       every page (Typst default is `repeat: true`; make it explicit —
       `table.header(repeat: true, ...)` — so the golden pins the behavior) and
       add a 200-row table golden that compiles and paginates.
-- [ ] T1.6 wide-table overflow strategy: define a deterministic
+- [x] T1.6 wide-table overflow strategy: define a deterministic
       `classifyTableLayout(columnCount, sourceWidths, longestAtomicToken,
       availableWidth)` in `packages/pdf/src/serialize.ts` (next to
       `tableColumns()`, `serialize.ts:200-224`) that returns one of
@@ -665,8 +688,12 @@ Hard rule: NEVER mock. Unit tests run real storage XML through the real
 walker; golden tests run the real serializers; E2E runs the real CLI against a
 real instance.
 
-- [ ] Walker unit tests in `packages/confluence/src/export-blocks.test.ts`
-      using the captured real storage fixtures: scroll-only kept /
+- [x] *(tests run against the PROVISIONAL fixture set, not live-captured
+      storage — reconcile when the capture task above lands; marker-shape
+      `normalizeOrientationMarkers()` sequencing IS covered: open→close,
+      open→EOF restores base, unmatched close)* Walker unit tests in
+      `packages/confluence/src/export-blocks.test.ts`
+      using the provisional storage fixtures: scroll-only kept /
       scroll-ignore dropped (+ note), full C4 truth table — exporter
       parameter match/mismatch/absent/unknown-value crossed with
       `exportControls: "apply" | "passthrough"` (mismatch must produce the
@@ -680,7 +707,7 @@ real instance.
       and block-tree snapshots (existing snapshot style, line 452/511).
       These are regression tests: each asserts the exact behavior that the
       placeholder path used to produce is gone.
-- [ ] DOCX golden/serializer tests in `packages/docx/src/serialize.test.ts`
+- [x] DOCX golden/serializer tests in `packages/docx/src/serialize.test.ts`
       and `packages/docx/src/golden.test.ts`: `pageBreak` emits
       `<w:br w:type="page"/>`; orientation region emits two `sectPr`
       paragraphs with landscape `pgSz` whose `w:w`/`w:h` are the SOURCE
@@ -694,7 +721,7 @@ real instance.
       (falls back to `en` + note); a captioned image with a failed embed
       still emits a numbered caption; feature-zoo golden extended with the
       fixture macros so the full pipeline stays byte-stable.
-- [ ] PDF golden/serializer tests in `packages/pdf/src/serialize.test.ts`
+- [x] PDF golden/serializer tests in `packages/pdf/src/serialize.test.ts`
       (+ `prepare.test.ts` for the passthrough/caption propagation):
       `#pagebreak(weak: true)`, `#set page(flipped: block.landscape)` for
       both boolean values, `pageBreak`/`orientation` suppressed inside a
@@ -706,7 +733,7 @@ real instance.
       200-row table golden, `classifyTableLayout` golden per escalation
       tier (`"dense"`/`"scaled"`/`"overflow-warned"`) with matching note
       codes; source-map paths (`writeMapped`) stay consistent.
-- [ ] Compile-level verification: run the compiled Typst output of the new
+- [x] Compile-level verification: run the compiled Typst output of the new
       goldens through the real compiler path used by
       `packages/pdf/src/run-export.test.ts` to prove the emitted markup is
       valid — page count increases across a `pagebreak`; landscape page
@@ -744,7 +771,7 @@ real instance.
          wrapping steps 3–4, so a failing assertion still deletes the page
          (workflow rule, tightened so a failed run never leaves residue in
          `DOCSY`).
-- [ ] Run `bun run typecheck` and the full `bun test` before commit; both
+- [x] Run `bun run typecheck` and the full `bun test` before commit; both
       engines' exhaustive switches must compile with no remaining `never`
       gaps for the new block variants.
 

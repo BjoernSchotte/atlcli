@@ -1,6 +1,25 @@
 import { describe, test, expect, mock, afterEach } from "bun:test";
 import type { Profile } from "@atlcli/core";
-import { ConfluenceClient } from "./client.js";
+import { ConfluenceClient, escapeCqlValue } from "./client.js";
+
+describe("escapeCqlValue", () => {
+  test("passes plain values through unchanged", () => {
+    expect(escapeCqlValue("handbook")).toBe("handbook");
+    expect(escapeCqlValue("123456")).toBe("123456");
+  });
+
+  test("escapes double quotes and backslashes (CQL string-literal break-out)", () => {
+    expect(escapeCqlValue('has "quotes"')).toBe('has \\"quotes\\"');
+    expect(escapeCqlValue("back\\slash")).toBe("back\\\\slash");
+    // Backslash escaped before quote so `\"` cannot be produced from `\` + `"`.
+    expect(escapeCqlValue('\\"')).toBe('\\\\\\"');
+  });
+
+  test("strips control characters that could smuggle newlines into a query", () => {
+    expect(escapeCqlValue("a\nb\tc")).toBe("abc");
+    expect(escapeCqlValue("x\u0000y\u007Fz")).toBe("xyz");
+  });
+});
 
 // Mock profile for testing
 const mockProfile = {

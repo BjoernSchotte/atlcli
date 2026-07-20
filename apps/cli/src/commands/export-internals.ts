@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AttachmentInfo } from "@atlcli/confluence";
+import type { AttachmentInfo, ExportMentionLookup } from "@atlcli/confluence";
 
 const ASSET_CACHE_MAGIC = "atlcli-asset-v1";
 const ASSET_CACHE_HEADER_RE = /^atlcli-asset-v1 ([0-9a-f]{64}) (\d+)$/;
@@ -112,20 +112,26 @@ interface AssetByteCache {
 
 interface AssetClient {
   listAttachments(pageId: string): Promise<AttachmentInfo[]>;
-  downloadAttachment(attachment: AttachmentInfo | { downloadUrl: string }): Promise<Uint8Array>;
+  downloadAttachment(
+    attachment: AttachmentInfo | { downloadUrl: string },
+    options?: { signal?: AbortSignal }
+  ): Promise<Uint8Array>;
 }
 
 /** Token-auth asset adapter, kept here so its two immutable cache-key paths are regression-testable. */
 export function tokenAssetFetcher(client: AssetClient, cache: AssetByteCache): {
-  fetch(ref: { url: string; pageId?: string; filename?: string }): Promise<Uint8Array>;
+  fetch(ref: { url: string; pageId?: string; filename?: string }, context?: { signal?: AbortSignal }): Promise<Uint8Array>;
 } {
   const listings = new Map<string, Promise<AttachmentInfo[]>>();
   const download = async (
     ref: { url: string; pageId?: string; filename?: string },
-    cacheAttachment = true
+    cacheAttachment = true,
+    signal?: AbortSignal
   ): Promise<Uint8Array> => {
     if (/^https?:\/\//i.test(ref.url)) {
-      const res = await fetch(ref.url);
+      // Thread the abort signal so a mid-export Ctrl-C stops external image
+      // downloads, not just orchestration (spec 002 cancellation).
+      const res = await fetch(ref.url, signal ? { signal } : {});
       if (!res.ok) throw new Error(`image download failed (${res.status}) for ${ref.url}`);
       return new Uint8Array(await res.arrayBuffer());
     }
@@ -137,24 +143,45 @@ export function tokenAssetFetcher(client: AssetClient, cache: AssetByteCache): {
       }
       const attachment = (await listing).find((a) => a.filename === ref.filename);
       if (!attachment) throw new Error(`attachment "${ref.filename}" not found on page ${ref.pageId}`);
-      if (!cacheAttachment) return client.downloadAttachment(attachment);
+      if (!cacheAttachment) return client.downloadAttachment(attachment, { signal });
       return cache.getOrLoad(`attachment:${attachment.id}:v${attachment.version}`, () =>
-        client.downloadAttachment(attachment)
+        client.downloadAttachment(attachment, { signal })
       );
     }
-    return client.downloadAttachment({ downloadUrl: ref.url });
+    return client.downloadAttachment({ downloadUrl: ref.url }, { signal });
   };
 
   return {
-    async fetch(ref) {
+    async fetch(ref, context) {
+      const signal = context?.signal;
       if (ref.url.startsWith("/download/") && /[?&](version|modificationDate)=/.test(ref.url)) {
         // The immutable URL entry provides the repeat-export no-listing win.
         // Bypass the inner id+version cache on a miss to avoid storing the same
         // custom-logo bytes under two hashes.
-        return cache.getOrLoad(`url:${ref.url}`, () => download(ref, false));
+        return cache.getOrLoad(`url:${ref.url}`, () => download(ref, false, signal));
       }
-      return download(ref);
+      return download(ref, true, signal);
     },
+  };
+}
+
+interface MentionClient {
+  getUsersBulk(accountIds: string[]): Promise<Map<string, { displayName: string | null } | null>>;
+}
+
+/**
+ * Token-auth {@link ExportMentionLookup} backed by the client's bulk user fetch
+ * (spec 008 T3.2). Shared by the PDF and both ts DOCX paths so `@mention`s
+ * resolve to display names identically to the extension pipeline. Dedup across a
+ * tree/space document happens upstream in `resolveExportMentions` (one bulk call
+ * per unique id set).
+ */
+export function tokenMentionLookup(client: MentionClient): ExportMentionLookup {
+  return async (accountIds) => {
+    const users = await client.getUsersBulk(accountIds);
+    const out = new Map<string, string | null>();
+    for (const id of accountIds) out.set(id, users.get(id)?.displayName ?? null);
+    return out;
   };
 }
 

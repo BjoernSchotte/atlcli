@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://atlcli.dev/schemas/export-report-1.json",
+  "title": "atlcli.export-report/1",
+  "description": "The stable machine-readable report emitted by `atlcli wiki export` under --json / --report json. Additive changes only; a breaking change bumps the schema string.",
+  "type": "object",
+  "required": ["schema", "format", "sourcePages", "outputDetails", "outputs", "issues", "warnings", "errors", "timings", "exitCode"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "atlcli.export-report/1" },
+    "format": { "enum": ["pdf", "docx"] },
+    "engine": { "enum": ["python", "ts"] },
+    "sourcePages": {
+      "type": "array",
+      "description": "One entry per source page — provenance/fetch-and-compose status only, NO per-page metrics.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "notes"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "notes": { "type": "array", "items": { "$ref": "#/definitions/issue" } }
+        }
+      }
+    },
+    "outputDetails": {
+      "type": "array",
+      "description": "One entry per compiled artifact (outputs[]). Per-artifact metrics live here, never invented per-sourcePages fields. Exactly one entry per scope today (artifact-cardinality contract).",
+      "items": {
+        "type": "object",
+        "required": ["output", "embeddedImages", "renderedDiagrams", "skippedAssets"],
+        "additionalProperties": false,
+        "properties": {
+          "output": { "type": "string" },
+          "pageCount": { "type": "integer", "minimum": 0 },
+          "embeddedImages": { "type": "integer", "minimum": 0 },
+          "renderedDiagrams": { "type": "integer", "minimum": 0 },
+          "skippedAssets": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "outputs": { "type": "array", "items": { "type": "string" } },
+    "issues": { "type": "array", "items": { "$ref": "#/definitions/issue" } },
+    "warnings": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==warning." },
+    "errors": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==error." },
+    "timings": { "type": "object", "additionalProperties": { "type": "number" } },
+    "exitCode": {
+      "type": "integer",
+      "description": "0 success; 1 usage/config/IO; 2 strict warnings; 3 auth; 4 remote/API; 5 compile/validate; 130 cancelled.",
+      "enum": [0, 1, 2, 3, 4, 5, 130]
+    },
+    "requestedScope": {
+      "type": "object",
+      "description": "The scope as requested by flags (spec 002 traceability).",
+      "additionalProperties": true
+    },
+    "resolvedScope": {
+      "type": "object",
+      "description": "The resolved scope (e.g. a space request resolved to a tree rooted at the homepage id).",
+      "additionalProperties": true
+    },
+    "complete": {
+      "type": "boolean",
+      "description": "False when the composed document omitted content (partial mode)."
+    },
+    "notesByCode": {
+      "type": "object",
+      "description": "Per-code tally over issues[].",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "placeholders": {
+      "type": "object",
+      "description": "DOCX ts-engine placeholder metrics.",
+      "required": ["resolved", "unsupported"],
+      "additionalProperties": false,
+      "properties": {
+        "resolved": { "type": "integer", "minimum": 0 },
+        "unsupported": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "issue": {
+      "type": "object",
+      "required": ["code", "severity", "phase", "retryable"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "enum": ["error", "warning"] },
+        "phase": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "message": { "type": "string" },
+        "status": { "type": "integer" },
+        "sourcePageId": { "type": "string" },
+        "path": { "type": "string" },
+        "startLine": { "type": "integer" },
+        "details": {
+          "type": "object",
+          "description": "Structured payload for typed errors (affected pages, budget offenders, ...).",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

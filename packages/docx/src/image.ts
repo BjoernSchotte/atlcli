@@ -20,6 +20,7 @@
  * {@link ImageEmbedError} leaves no dangling media part or relationship.
  */
 import type PizZip from "pizzip";
+import { ASSET_MAX_BYTES } from "@atlcli/confluence";
 
 /** 914400 EMU/inch ÷ 96 dpi (research §2.5; matches Scroll/Word defaults). */
 export const EMU_PER_PX = 9525;
@@ -30,8 +31,12 @@ export const EMU_PER_PX = 9525;
  */
 export const MAX_CONTENT_WIDTH_PX = 600;
 
-/** Refuse to embed assets above this size (spec 005 risk 2: docx bloat). */
-export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+/**
+ * Refuse to embed assets above this size (spec 005 risk 2: docx bloat).
+ * Aliases the SHARED per-file cap (spec 002) so the DOCX and PDF engines'
+ * limits can never drift — same pattern as `PDF_MAX_ASSET_BYTES`.
+ */
+export const MAX_IMAGE_BYTES = ASSET_MAX_BYTES;
 
 export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
 
@@ -374,7 +379,7 @@ export class ImageEmbedder {
     if (bytes.length === 0) throw new ImageEmbedError("the fetched image was empty");
     if (bytes.length > MAX_IMAGE_BYTES) {
       throw new ImageEmbedError(
-        `the image is too large to embed (${Math.round(bytes.length / (1024 * 1024))} MB > 25 MB)`
+        `the image is too large to embed (${Math.round(bytes.length / (1024 * 1024))} MB > ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MB)`
       );
     }
     if (isSvg(bytes)) throw new ImageEmbedError("SVG images are not embedded yet (spec 005 deferral)");

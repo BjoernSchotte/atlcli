@@ -33,6 +33,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Spec 008: the CLI bundle graph reaches export-pdf-assets.ts, whose
+      # `with { type: "file" }` imports of @atlcli/pdf/fonts/* resolve into the
+      # gitignored packages/pdf/.fonts/ tree. Without this step every target's
+      # `bun build --compile` fails at bundle time with "Could not resolve".
+      # The assets are embedded into each binary here on the build host, so the
+      # shipped binaries (incl. windows-x64) never resolve fonts at runtime.
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
       - name: Get version
         id: version
         run: |

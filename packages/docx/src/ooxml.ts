@@ -11,8 +11,35 @@
  * id ({@link resolveHeadingStyleId}). Code blocks reference a synthesized
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
+import type { CaptionKind, ExportNote } from "@atlcli/confluence";
 import { normalizeExportColor } from "@atlcli/confluence";
 import { encodeXmlText } from "./ooxml-text.js";
+
+/** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
+export type CaptionLang = "en" | "de";
+
+/**
+ * Resolve a host-supplied locale (a BCP-47 language tag, e.g. `de`, `de-DE`,
+ * `en_US`) to a shipped {@link CaptionLang}. Case-insensitive on the primary
+ * subtag; anything that is not English or German falls back to `"en"` with a
+ * warning note (spec 003 C3 locale precedence: explicit option > host locale >
+ * `"en"`). Absent/empty input → `"en"`, no note.
+ */
+export function resolveCaptionLang(raw: string | undefined): { lang: CaptionLang; note?: ExportNote } {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { lang: "en" };
+  const primary = trimmed.toLowerCase().split(/[-_]/, 1)[0];
+  if (primary === "de") return { lang: "de" };
+  if (primary === "en") return { lang: "en" };
+  return {
+    lang: "en",
+    note: {
+      level: "warning",
+      code: "caption-lang-fallback",
+      message: `Caption language "${trimmed}" has no label set (supported: en, de); captions use English labels.`,
+    },
+  };
+}
 
 /** Escape text for a `<w:t>` / attribute value. */
 export function esc(s: string): string {
@@ -159,11 +186,36 @@ export function escapeFieldArgument(value: string): string {
 }
 
 /**
+ * Defense-in-depth scheme allowlist for {@link hyperlinkField} (spec 004).
+ * Mirrors `isSafeLinkScheme` in `@atlcli/confluence`'s html-to-blocks: control
+ * characters ANYWHERE in the URL are stripped before scheme detection (a URL
+ * parser strips C0 controls and space, so `java\tscript:` IS `javascript:`);
+ * scheme-less (relative) URLs and `http(s):`/`mailto:` pass, everything else
+ * fails. The converters upstream already enforce this — the re-check here means
+ * a future caller (or a bypassed converter) can never turn `javascript:`/`file:`
+ * into a live Word HYPERLINK field.
+ */
+export function isSafeHyperlinkUrl(url: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  const normalized = url.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
+  if (normalized === "") return false;
+  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true; // relative
+  return (
+    normalized.startsWith("http:") ||
+    normalized.startsWith("https:") ||
+    normalized.startsWith("mailto:")
+  );
+}
+
+/**
  * A hyperlink built as a Word `HYPERLINK` field (no relationship needed), with
  * the given inner runs. The URL is neutralized against field-code injection
  * (see {@link escapeFieldArgument}) then XML-escaped for the instruction body.
+ * URLs failing {@link isSafeHyperlinkUrl} degrade to the plain inner runs —
+ * the link text survives, the live field target does not.
  */
 export function hyperlinkField(url: string, innerRuns: string): string {
+  if (!isSafeHyperlinkUrl(url)) return innerRuns;
   const instr = esc(escapeFieldArgument(url));
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
@@ -172,6 +224,179 @@ export function hyperlinkField(url: string, innerRuns: string): string {
     innerRuns +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`
   );
+}
+
+/**
+ * A `<w:bookmarkStart>` element (spec 002 anchors). `name` MUST be a legal
+ * OOXML bookmark name (≤40 chars, no spaces) — the caller sanitizes via
+ * `sanitizeAnchorId` before passing it here. `id` is the serializer's per-export
+ * counter value; `bookmarkEnd` must reuse the same id.
+ */
+export function bookmarkStart(id: number, name: string): string {
+  return `<w:bookmarkStart w:id="${id}" w:name="${esc(name)}"/>`;
+}
+
+/** The `<w:bookmarkEnd>` matching a {@link bookmarkStart} with the same `id`. */
+export function bookmarkEnd(id: number): string {
+  return `<w:bookmarkEnd w:id="${id}"/>`;
+}
+
+/**
+ * A real in-document jump: `<w:hyperlink w:anchor="…" w:history="1">…</w:hyperlink>`
+ * carrying the given inner runs. `anchor` names a bookmark in this document
+ * (spec 002 anchor rewrite). Previously internal links were only styled blue —
+ * they now navigate.
+ */
+export function internalHyperlink(anchor: string, innerRuns: string): string {
+  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1">${innerRuns}</w:hyperlink>`;
+}
+
+/** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */
+export function pageBreakParagraph(): string {
+  return `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+}
+
+// ---------------------------------------------------------------------------
+// Captions (spec 003 C3)
+// ---------------------------------------------------------------------------
+
+/** The synthesized caption paragraph style id (matches Word's builtin name). */
+export const CAPTION_STYLE_ID = "Caption";
+
+/**
+ * Resolve the caption paragraph style id against a template's style-name map,
+ * falling back to the builtin `Caption` id (synthesized when the template lacks
+ * it, see {@link captionStyleXml}). Mirrors {@link resolveHeadingStyleId}.
+ */
+export function resolveCaptionStyleId(styleNames: Map<string, string>): string {
+  return styleNames.get("caption") ?? CAPTION_STYLE_ID;
+}
+
+/** A `<w:style>` for the caption paragraph, injected when the template lacks it. */
+export function captionStyleXml(): string {
+  return (
+    `<w:style w:type="paragraph" w:styleId="${CAPTION_STYLE_ID}">` +
+    `<w:name w:val="Caption"/>` +
+    `<w:pPr><w:spacing w:before="60" w:after="120"/></w:pPr>` +
+    `<w:rPr><w:i/><w:iCs/><w:color w:val="44546A"/><w:sz w:val="18"/></w:rPr>` +
+    `</w:style>`
+  );
+}
+
+/** The stable SEQ sequence identifier per caption kind (language-independent). */
+export function captionSeqName(kind: CaptionKind): string {
+  switch (kind) {
+    case "figure":
+      return "Figure";
+    case "table":
+      return "Table";
+    case "code":
+    case "equation":
+      return "Listing";
+  }
+}
+
+/** The localized visible caption prefix (`Figure`/`Abbildung`, …). */
+export function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string {
+  const labels: Record<CaptionLang, Record<CaptionKind, string>> = {
+    en: { figure: "Figure", table: "Table", code: "Listing", equation: "Equation" },
+    de: { figure: "Abbildung", table: "Tabelle", code: "Listing", equation: "Gleichung" },
+  };
+  return labels[lang][kind];
+}
+
+/**
+ * A caption paragraph: `<pStyle Caption>` + `"<Label> "` + a live SEQ field
+ * (`SEQ <name> \* ARABIC`, so Word numbers it natively and it refreshes on
+ * open via `ensureUpdateFields`) + `": "` + the caption's inline runs.
+ */
+export function captionParagraph(
+  styleId: string,
+  kind: CaptionKind,
+  lang: CaptionLang,
+  contentRunsXml: string
+): string {
+  const label = captionSeqLabel(kind, lang);
+  const seqName = captionSeqName(kind);
+  const seqField =
+    `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> SEQ ${esc(seqName)} \\* ARABIC </w:instrText></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+    `<w:r><w:t>1</w:t></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+  return (
+    `<w:p><w:pPr><w:pStyle w:val="${esc(styleId)}"/></w:pPr>` +
+    run(`${label} `) +
+    seqField +
+    run(": ") +
+    contentRunsXml +
+    `</w:p>`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Orientation regions — section sandwich (spec 003 C6)
+// ---------------------------------------------------------------------------
+
+/** Wrap a `<w:sectPr>` in an (empty) paragraph so it closes the preceding section. */
+export function sectPrParagraph(sectPr: string): string {
+  return `<w:p><w:pPr>${sectPr}</w:pPr></w:p>`;
+}
+
+/** A synthesized standard A4 portrait `<w:sectPr>` (no-template fallback only). */
+export function synthesizeA4SectPr(): string {
+  return (
+    `<w:sectPr>` +
+    `<w:pgSz w:w="11906" w:h="16838"/>` +
+    `<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>` +
+    `</w:sectPr>`
+  );
+}
+
+/**
+ * Clone a portrait `<w:sectPr>` into its landscape counterpart: the `<w:pgSz>`
+ * `w:w`/`w:h` VALUES are read from the source and swapped (never a hard-coded
+ * A4 constant — the repo's own template is Letter), `w:orient="landscape"` is
+ * set, and a `nextPage` section type is ensured. Margins, header/footer
+ * references and every other property are preserved.
+ */
+export function toLandscapeSectPr(baseSectPr: string): string {
+  return orientSectPr(baseSectPr, "landscape");
+}
+
+/**
+ * Clone a `<w:sectPr>` into a portrait counterpart — the mirror of
+ * {@link toLandscapeSectPr}. A `scroll-portrait` region flips back to portrait
+ * even when the base section is landscape, so it is not merely a no-op.
+ */
+export function toPortraitSectPr(baseSectPr: string): string {
+  return orientSectPr(baseSectPr, "portrait");
+}
+
+/**
+ * Re-orient a `<w:sectPr>` to the target orientation: read the `<w:pgSz>`
+ * `w:w`/`w:h` values, order them so width < height for portrait and width >
+ * height for landscape, set/clear `w:orient`, and ensure a `nextPage` break.
+ */
+function orientSectPr(baseSectPr: string, target: "portrait" | "landscape"): string {
+  let out = baseSectPr.replace(/<w:pgSz\b[^>]*\/>/, (m) => {
+    const a = Number(m.match(/w:w="(\d+)"/)?.[1]);
+    const b = Number(m.match(/w:h="(\d+)"/)?.[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return m;
+    const short = Math.min(a, b);
+    const long = Math.max(a, b);
+    return target === "landscape"
+      ? `<w:pgSz w:w="${long}" w:h="${short}" w:orient="landscape"/>`
+      : `<w:pgSz w:w="${short}" w:h="${long}"/>`;
+  });
+  // Ensure a nextPage section break, placed right before <w:pgSz> so the child
+  // order stays schema-legal (headerReference/footerReference precede <w:type>).
+  if (/<w:type\b/.test(out)) {
+    out = out.replace(/<w:type\b[^>]*\/>/, '<w:type w:val="nextPage"/>');
+  } else {
+    out = out.replace(/(<w:pgSz\b)/, '<w:type w:val="nextPage"/>$1');
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

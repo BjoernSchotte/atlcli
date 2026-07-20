@@ -1,6 +1,13 @@
-import type { ExportBlock, ExportNote } from "@atlcli/confluence";
+import {
+  AssetBudgetExceededError,
+  type ExportBlock,
+  type ExportNote,
+  type ExportProgressCallback,
+} from "@atlcli/confluence";
+import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
+import { resolvePdfSettings } from "./settings.js";
 import { serializePdfDocument } from "./serialize.js";
 import type {
   PdfAssetResolver,
@@ -8,6 +15,7 @@ import type {
   PdfExportMetadata,
   PdfExportReport,
   PdfProfile,
+  PdfTemplateSettings,
   PdfThemeOptions,
   PreparedPdfBlock,
 } from "./types.js";
@@ -17,7 +25,13 @@ export interface PdfOutputSink {
   emit(name: string, bytes: Uint8Array, context?: { signal?: AbortSignal }): Promise<void>;
 }
 
-export type PdfExportPhase = "preparing" | "fetching" | "compiling" | "validating" | "emitting";
+export type PdfExportPhase =
+  | "configuration"
+  | "preparing"
+  | "fetching"
+  | "compiling"
+  | "validating"
+  | "emitting";
 
 export interface RunPdfExportInput {
   blocks: ExportBlock[];
@@ -25,9 +39,24 @@ export interface RunPdfExportInput {
   metadata: PdfExportMetadata;
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
+  settings?: PdfTemplateSettings;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
+  /** Granular progress callback (spec 002 — asset embedding + emit phases). */
+  onProgress?: ExportProgressCallback;
+  /**
+   * Whether the composed document is complete (spec 002 completeness contract);
+   * surfaced at the top of the report. Defaults to `true`.
+   */
+  complete?: boolean;
+  /**
+   * The root/source page context for dynamic-macro resolution (spec 004). Used
+   * as the fallback `MacroExportContext.page` for single-page exports (tree/space
+   * exports carry per-instance `unknown.sourcePage`). Absent → derived from
+   * `metadata` (space/version only, no page id).
+   */
+  page?: { id: string; version?: number; spaceKey?: string };
 }
 
 export interface PdfExportEnv {
@@ -35,9 +64,14 @@ export interface PdfExportEnv {
   compiler: PdfCompilePort;
   output: PdfOutputSink;
   now?: () => number;
+  /**
+   * Dynamic-macro resolution options (spec 004). Applied during the `preparing`
+   * phase before `preparePdfDocument`. Omitting it reproduces today's output.
+   */
+  macros?: MacroResolutionOptions;
 }
 
-export type PdfExportErrorPhase = "prepare" | "compile" | "validate" | "emit";
+export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
 
 export class PdfExportError extends Error {
   readonly phase: PdfExportErrorPhase;
@@ -66,7 +100,16 @@ function isAbortError(error: unknown): boolean {
 }
 
 function wrapFailure(error: unknown, phase: PdfExportErrorPhase): never {
-  if (isAbortError(error) || error instanceof PdfExportError) throw error;
+  // A shared asset-budget breach propagates UNWRAPPED (like an abort) so both
+  // engines surface the identical AssetBudgetExceededError — the parity contract
+  // (spec 002): same error type, same offender list.
+  if (
+    isAbortError(error) ||
+    error instanceof PdfExportError ||
+    error instanceof AssetBudgetExceededError
+  ) {
+    throw error;
+  }
   const message = error instanceof Error ? error.message : String(error);
   throw new PdfExportError(message, { phase, cause: error });
 }
@@ -117,18 +160,57 @@ export async function runPdfExport(
   const startedAt = now();
   throwIfAborted(input.signal);
 
+  // Validate settings before any asset fetch so a settings typo never pays for
+  // (or is masked by) network requests it would discard. The resolved object is
+  // forwarded to serialize, whose own resolve call short-circuits on it.
+  input.onPhase?.("configuration");
+  let settings;
+  try {
+    settings = resolvePdfSettings(input.settings);
+  } catch (error) {
+    wrapFailure(error, "configuration");
+  }
+
   input.onPhase?.("preparing");
   const prepareStarted = now();
   let prepared;
   let bundle;
+  let resolvedNotes: ExportNote[] = input.sourceNotes ?? [];
   try {
+    // Dynamic-macro resolution (spec 004): staged fallback chain before layout.
+    let blocks = input.blocks;
+    if (env.macros) {
+      const rootPage =
+        input.page ??
+        {
+          id: "",
+          ...(input.metadata.version !== undefined ? { version: input.metadata.version } : {}),
+          ...(input.metadata.space !== undefined ? { spaceKey: input.metadata.space } : {}),
+        };
+      const resolved = await resolveMacroBlocks(
+        { blocks, notes: resolvedNotes },
+        env.macros.registry,
+        env.macros.contextFor(rootPage),
+        {
+          ...(env.macros.live !== undefined ? { live: env.macros.live } : {}),
+          contextFor: (p) => env.macros!.contextFor(p ?? rootPage),
+          targetEngine: "pdf",
+        }
+      );
+      blocks = resolved.blocks;
+      resolvedNotes = resolved.notes;
+    }
     input.onPhase?.("fetching");
-    prepared = await preparePdfDocument(input.blocks, env.assets);
+    prepared = await preparePdfDocument(blocks, env.assets, {
+      ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+    });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {
       metadata: input.metadata,
       profile: input.profile,
       theme: input.theme,
+      settings,
     });
   } catch (error) {
     wrapFailure(error, "prepare");
@@ -166,9 +248,13 @@ export async function runPdfExport(
   input.onPhase?.("emitting");
   const emitStarted = now();
   try {
+    // Abort is honored *before* emit; once the sink has committed the bytes we
+    // must not turn an already-written file into a reported failure, so there
+    // is deliberately no post-emit abort re-check here.
     throwIfAborted(input.signal);
+    input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: input.filename });
     await env.output.emit(input.filename, compiled.pdf, { signal: input.signal });
-    throwIfAborted(input.signal);
+    input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: input.filename });
   } catch (error) {
     wrapFailure(error, "emit");
   }
@@ -182,7 +268,11 @@ export async function runPdfExport(
     embeddedImages: counts.images,
     renderedDiagrams: counts.diagrams,
     skippedAssets: counts.skipped,
-    notes: [...(input.sourceNotes ?? []), ...bundle.notes],
+    notes: [...resolvedNotes, ...bundle.notes],
+    complete: input.complete ?? true,
+    // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
+    // can fail `--strict` on real Typst warnings.
+    compilerDiagnostics: compiled.diagnostics,
     timings: { prepareMs, compileMs, emitMs, totalMs: now() - startedAt },
   };
 }

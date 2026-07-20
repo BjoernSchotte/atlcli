@@ -63,7 +63,7 @@ Commands:
   my        My pages (created or contributed)
   recent    Recently modified pages
   template  Page template management
-  export    Export page to DOCX with Word templates
+  export    Export page to DOCX or PDF
 
 Options:
   --profile <name>  Use a specific auth profile

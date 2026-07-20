@@ -1,0 +1,297 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`composeChapters — determinism golden snapshot of the reference fixture 1`] = `
+{
+  "blocks": [
+    {
+      "content": [
+        {
+          "text": "Handbook",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "page-1",
+      "level": 1,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Intro",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p1-intro",
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Start: ",
+          "type": "text",
+        },
+        {
+          "content": [
+            {
+              "text": "the guide",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "anchor": "page-2",
+            "kind": "anchor",
+          },
+          "type": "link",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "name": "p1-spec-anchor",
+      "type": "anchor",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "jump",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "anchor": "p1-spec-anchor",
+            "kind": "anchor",
+          },
+          "type": "link",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "type": "pageBreak",
+    },
+    {
+      "content": [
+        {
+          "text": "Guide",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "page-2",
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Setup",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p2-setup",
+      "level": 3,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Sub",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p2-sub",
+      "level": 4,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "text",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "type": "pageBreak",
+    },
+    {
+      "content": [
+        {
+          "text": "Guide",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "page-3",
+      "level": 3,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Notes",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p3-notes",
+      "level": 4,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "a",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "text": "Notes",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p3-notes-9tix3s",
+      "level": 4,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "Deep",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "p3-deep",
+      "level": 6,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "to notes",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "anchor": "p3-notes",
+            "kind": "anchor",
+          },
+          "type": "link",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "type": "pageBreak",
+    },
+    {
+      "content": [
+        {
+          "text": "Appendices",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "page-f1",
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "type": "pageBreak",
+    },
+    {
+      "content": [
+        {
+          "text": "Reference",
+          "type": "text",
+        },
+      ],
+      "explicitAnchor": "page-4",
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "text": "guide?",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "ext",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "href": "https://wiki.example/space/OTHER/External#sec",
+            "kind": "external",
+          },
+          "type": "link",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "intro",
+              "type": "text",
+            },
+          ],
+          "target": {
+            "anchor": "p1-intro",
+            "kind": "anchor",
+          },
+          "type": "link",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "content": [
+        {
+          "text": "nope",
+          "type": "text",
+        },
+      ],
+      "type": "paragraph",
+    },
+  ],
+  "notes": [
+    {
+      "code": "heading-depth-clamped",
+      "level": "warning",
+      "message": "Heading "Deep" on "Guide" exceeded level 6 after chapter shift and was clamped.",
+    },
+    {
+      "code": "link-target-ambiguous",
+      "level": "warning",
+      "message": "Link to page "Guide" is ambiguous (multiple in-scope pages share that title); rendered as plain text.",
+    },
+    {
+      "code": "link-outside-scope",
+      "level": "info",
+      "message": "Link to page "External" points outside the export scope; linked to its absolute URL.",
+    },
+    {
+      "code": "link-anchor-missing",
+      "level": "warning",
+      "message": "Cross-page link to anchor "Nope" on page "Handbook" has no matching target; rendered as plain text.",
+    },
+  ],
+}
+`;

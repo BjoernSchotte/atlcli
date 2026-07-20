@@ -1,0 +1,240 @@
+import { beforeAll, describe, expect, it } from "bun:test";
+import Ajv from "ajv";
+import {
+  AssetBudgetExceededError,
+  ExportCompletenessError,
+  LabelFilterError,
+  PaginationLoopError,
+  SpaceHomepageError,
+  TreeLimitExceededError,
+} from "@atlcli/confluence";
+import {
+  runPdfExport,
+  type ExportBlock,
+  type PdfCompilePort,
+  type PdfCompilerDiagnostic,
+  type PdfExportMetadata,
+  type PdfOutputSink,
+} from "@atlcli/pdf";
+import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
+import { getPdfCompiler } from "./export-pdf-assets.js";
+import {
+  EXPORT_EXIT,
+  EXPORT_REPORT_SCHEMA,
+  buildReport,
+  classifyError,
+  diagnosticToIssue,
+  extractStatus,
+  pdfReportContributions,
+} from "./export-report.js";
+
+beforeAll(async () => {
+  await ensurePdfFonts({ logger: () => {} });
+});
+
+const BLOCKS: ExportBlock[] = [
+  { type: "heading", level: 1, content: [{ type: "text", text: "Report smoke" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Body text." }] },
+];
+const METADATA: PdfExportMetadata = {
+  title: "Report smoke",
+  space: "DOCSY",
+  exportedAt: new Date("2026-07-19T00:00:00Z"),
+};
+
+class MemorySink implements PdfOutputSink {
+  bytes: Uint8Array | null = null;
+  async emit(_name: string, bytes: Uint8Array): Promise<void> {
+    this.bytes = bytes;
+  }
+}
+
+const noAssets = {
+  async resolve(): Promise<never> {
+    throw new Error("fixture has no assets");
+  },
+};
+
+/** Real compiler wrapper that prepends invalid Typst — real wasm, real diagnostics. */
+function brokenCompiler(inner: PdfCompilePort): PdfCompilePort {
+  return {
+    compile(bundle, context) {
+      return inner.compile({ ...bundle, main: `#this-does-not-exist()\n${bundle.main}` }, context);
+    },
+  };
+}
+
+describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
+  it("builds a v1 report from a real successful runPdfExport", async () => {
+    const compiler = await getPdfCompiler();
+    const report = await runPdfExport(
+      { blocks: BLOCKS, metadata: METADATA, filename: "out.pdf" },
+      { assets: noAssets, compiler, output: new MemorySink() }
+    );
+    // Regression: diagnostics are surfaced even on a clean compile (empty here).
+    expect(report.compilerDiagnostics).toEqual([]);
+
+    const { outputDetail, issues } = pdfReportContributions(report, "/tmp/out.pdf", report.compilerDiagnostics);
+    const built = buildReport({
+      format: "pdf",
+      sourcePages: [{ id: "1", title: "Report smoke", notes: [] }],
+      outputDetails: [outputDetail],
+      issues,
+    });
+    expect(built.schema).toBe(EXPORT_REPORT_SCHEMA);
+    expect(built.format).toBe("pdf");
+    expect(built.outputs).toEqual(["/tmp/out.pdf"]);
+    // Per-artifact metrics live in outputDetails, not per-sourcePages fields.
+    expect(built.outputDetails[0]).toMatchObject({
+      output: "/tmp/out.pdf",
+      embeddedImages: 0,
+      renderedDiagrams: 0,
+      skippedAssets: 0,
+    });
+    expect(built.outputDetails[0]!.pageCount).toBeGreaterThanOrEqual(1);
+    expect(built.exitCode).toBe(EXPORT_EXIT.SUCCESS);
+  }, 30_000);
+
+  it("maps a REAL compile-phase PdfExportError to exit code 5", async () => {
+    const compiler = brokenCompiler(await getPdfCompiler());
+    let thrown: unknown;
+    try {
+      await runPdfExport(
+        { blocks: BLOCKS, metadata: METADATA, filename: "out.pdf" },
+        { assets: noAssets, compiler, output: new MemorySink() }
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeDefined();
+    const { exitCode, issue } = classifyError(thrown);
+    expect(exitCode).toBe(EXPORT_EXIT.COMPILE);
+    expect(issue.phase).toBe("compile");
+    expect(issue.severity).toBe("error");
+  }, 30_000);
+
+  it("classifies live-shaped Confluence errors by HTTP status", () => {
+    // The exact message shape ConfluenceClient throws (client.ts:411).
+    expect(classifyError(new Error("Confluence API error (403): forbidden")).exitCode).toBe(EXPORT_EXIT.AUTH);
+    expect(classifyError(new Error("Confluence API error (401): unauthorized")).exitCode).toBe(EXPORT_EXIT.AUTH);
+    expect(classifyError(new Error("Confluence API error (404): not found")).exitCode).toBe(EXPORT_EXIT.REMOTE);
+    expect(classifyError(new Error("Confluence API error (503): down")).exitCode).toBe(EXPORT_EXIT.REMOTE);
+    // Prefer a real status property when present.
+    const withStatus = Object.assign(new Error("nope"), { status: 403 });
+    expect(classifyError(withStatus).exitCode).toBe(EXPORT_EXIT.AUTH);
+    expect(extractStatus(new Error("Confluence API error (429): slow down"))).toBe(429);
+  });
+
+  it("maps an AbortError to exit code 130", () => {
+    const abort = new DOMException("cancelled", "AbortError");
+    expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
+  });
+
+  it("validates against the checked-in JSON Schema with ajv (strict, additionalProperties)", async () => {
+    const schema = JSON.parse(await Bun.file(new URL("./export-report.schema.json", import.meta.url)).text());
+    const ajv = new Ajv({ allErrors: true });
+    const validate = ajv.compile(schema);
+
+    // PDF-shaped success report.
+    const pdfReport = buildReport({
+      format: "pdf",
+      sourcePages: [{ id: "1", title: "P", notes: [] }],
+      outputDetails: [{ output: "/tmp/x.pdf", pageCount: 2, embeddedImages: 1, renderedDiagrams: 0, skippedAssets: 0 }],
+      issues: [{ code: "c", severity: "warning", phase: "prepare", retryable: false }],
+      strict: false,
+    });
+    expect(validate(pdfReport) ? [] : validate.errors).toEqual([]);
+
+    // DOCX-shaped tree report carrying the 002 fields WITHIN the unified schema.
+    const docxReport = buildReport({
+      format: "docx",
+      engine: "ts",
+      sourcePages: [
+        { id: "1", title: "Root", notes: [] },
+        { id: "2", title: "Child", notes: [{ code: "label-filtered", severity: "warning", phase: "compose", retryable: false }] },
+      ],
+      outputDetails: [{ output: "/tmp/tree.docx", embeddedImages: 3, renderedDiagrams: 1, skippedAssets: 0 }],
+      issues: [{ code: "label-filtered", severity: "warning", phase: "compose", retryable: false }],
+      requestedScope: { kind: "space", spaceKey: "DOCSY", completeness: "strict" },
+      resolvedScope: { kind: "tree", rootPageId: "1", includeRoot: true },
+      complete: true,
+      placeholders: { resolved: 12, unsupported: ["$scroll.unknown"] },
+      strict: false,
+    });
+    expect(validate(docxReport) ? [] : validate.errors).toEqual([]);
+    expect(docxReport.schema).toBe(EXPORT_REPORT_SCHEMA);
+    expect(docxReport.notesByCode).toEqual({ "label-filtered": 1 });
+    expect(docxReport.outputs).toEqual(["/tmp/tree.docx"]);
+
+    // ajv actually REJECTS malformed documents (proves this is a real check).
+    expect(validate({ ...pdfReport, extraneous: true })).toBe(false);
+    expect(validate({ ...pdfReport, exitCode: 42 })).toBe(false);
+  });
+
+  it("classifies the typed @atlcli/confluence errors per the unified exit-code table", () => {
+    const cases: Array<{ error: unknown; exitCode: number; code: string }> = [
+      // Validation-class → 5 (compile/validation failure).
+      { error: new TreeLimitExceededError("max-pages", 500), exitCode: EXPORT_EXIT.COMPILE, code: "max-pages" },
+      { error: new TreeLimitExceededError("max-folders", 200), exitCode: EXPORT_EXIT.COMPILE, code: "max-folders" },
+      { error: new LabelFilterError("empty-include-result", "nothing matched"), exitCode: EXPORT_EXIT.COMPILE, code: "empty-include-result" },
+      {
+        error: new AssetBudgetExceededError([{ filename: "huge.png", pageId: "9", sizeBytes: 60_000_000 }], 60_000_000, 50_000_000),
+        exitCode: EXPORT_EXIT.COMPILE,
+        code: "asset-budget-exceeded",
+      },
+      // Remote/API-state → 4.
+      { error: new SpaceHomepageError("DOCSY"), exitCode: EXPORT_EXIT.REMOTE, code: "space-homepage-missing" },
+      { error: new ExportCompletenessError("page-unreadable", [{ id: "1", title: "Secret" }]), exitCode: EXPORT_EXIT.REMOTE, code: "page-unreadable" },
+      { error: new PaginationLoopError("cursor-abc"), exitCode: EXPORT_EXIT.REMOTE, code: "pagination-loop" },
+    ];
+    for (const c of cases) {
+      const { exitCode, issue } = classifyError(c.error);
+      expect(exitCode).toBe(c.exitCode);
+      expect(issue.code).toBe(c.code);
+      expect(issue.severity).toBe("error");
+    }
+    // Structured payloads survive into issue.details.
+    const budget = classifyError(new AssetBudgetExceededError([{ filename: "a.png", sizeBytes: 10 }], 10, 5));
+    expect(budget.issue.details).toMatchObject({ totalBytes: 10, limitBytes: 5 });
+    const completeness = classifyError(new ExportCompletenessError("subtree-unreadable", [{ id: "1", title: "A" }]));
+    expect(completeness.issue.details).toEqual({ affected: [{ id: "1", title: "A" }] });
+  });
+
+  it("keeps exit codes 3/4/5/130 reachable from the DOCX failure boundary", () => {
+    // The exact classes the DOCX ts paths route through classifyError.
+    expect(classifyError(new Error("Confluence API error (401): no")).exitCode).toBe(EXPORT_EXIT.AUTH);
+    expect(classifyError(new Error("Confluence API error (500): down")).exitCode).toBe(EXPORT_EXIT.REMOTE);
+    expect(classifyError(new LabelFilterError("empty-include-result", "x")).exitCode).toBe(EXPORT_EXIT.COMPILE);
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
+    // Non-Error throw still classifies (TOTAL mapping, single-document contract).
+    expect(classifyError("catastrophe").exitCode).toBe(EXPORT_EXIT.REMOTE);
+  });
+
+  it("folds a compiler warning into issues and trips exit 2 under --strict", () => {
+    const diagnostic: PdfCompilerDiagnostic = {
+      severity: "warning",
+      message: "layout did not converge",
+      path: "/main.typ",
+      startLine: 3,
+    };
+    const issue = diagnosticToIssue(diagnostic);
+    expect(issue.severity).toBe("warning");
+    expect(issue.phase).toBe("compile");
+
+    const strict = buildReport({
+      format: "pdf",
+      sourcePages: [],
+      outputDetails: [],
+      issues: [issue],
+      strict: true,
+    });
+    expect(strict.warnings).toHaveLength(1);
+    expect(strict.exitCode).toBe(EXPORT_EXIT.STRICT_WARNINGS);
+
+    // Without --strict, the same warning is exit 0.
+    const lenient = buildReport({ format: "pdf", sourcePages: [], outputDetails: [], issues: [issue] });
+    expect(lenient.exitCode).toBe(EXPORT_EXIT.SUCCESS);
+  });
+});

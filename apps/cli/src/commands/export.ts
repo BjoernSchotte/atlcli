@@ -7,21 +7,48 @@ import { fileURLToPath } from "node:url";
 import {
   ERROR_CODES,
   OutputOptions,
+  buildConfluenceUrl,
   fail,
   getConfluenceBaseUrl,
   getActiveProfile,
   getFlag,
   hasFlag,
   loadConfig,
+  normalizeBaseUrl,
   output,
+  type Profile,
 } from "@atlcli/core";
 import {
   AttachmentInfo,
   ConfluenceClient,
   ConfluencePageDetails,
+  SpaceHomepageError,
+  composeChapters,
+  confluenceTreeSource,
+  fetchExportTree,
+  resolveExportMentions,
+  storageToBlocks,
   storageToMarkdown,
+  type ComposeOptions,
+  type ExportBlock,
+  type ExportNote,
+  type ExportProgressCallback,
+  type ExportScope,
   ConversionOptions,
 } from "@atlcli/confluence";
+import {
+  ExportRequestError,
+  buildExportScope,
+  parseExportRequest,
+  type ParsedExportRequest,
+} from "./export-request.js";
+import {
+  buildReport,
+  classifyError,
+  emitReportOutcome,
+  noteToIssue,
+  type ExportOutcome,
+} from "./export-report.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,10 +83,44 @@ export async function handleExport(
     }
   }
 
-  const pageRef = args[0];
-  if (!pageRef) {
-    fail(opts, 1, ERROR_CODES.USAGE, "Page reference is required. Use page ID, SPACE:Title, or URL.");
+  // Determine the output FORMAT first (spec 008 T3.2). `--format` defaults to
+  // `docx` (backwards compatible); PDF takes an entirely separate, format-aware
+  // validation + report path and never requires `--template`/`--engine`.
+  const format = getFlag(flags, "format") ?? "docx";
+  if (format !== "docx" && format !== "pdf") {
+    fail(opts, 1, ERROR_CODES.USAGE, `Unknown --format "${format}". Use "docx" or "pdf".`);
   }
+  if (format === "pdf") {
+    await handlePdfExport(args, flags, opts);
+    return;
+  }
+
+  // Parse scope/label/completeness flags into a serializable request BEFORE any
+  // client/network work (spec 002). This replaces the unconditional args[0]
+  // requirement so `--scope space --space DOCSY` (no positional page ref) is a
+  // valid, pre-validated invocation. Every invalid flag combination fails here
+  // with a USAGE error naming the conflict.
+  let request: ParsedExportRequest;
+  try {
+    request = parseExportRequest(args[0], flags);
+  } catch (error) {
+    if (error instanceof ExportRequestError) {
+      fail(opts, 1, ERROR_CODES.USAGE, error.message);
+    }
+    throw error;
+  }
+  const engine = request.engine;
+
+  // T3.5 deprecation notice (see engineDeprecationNotice for the conditions).
+  // The flip itself is a later, gated PR (see T3.5 flip criteria).
+  const notice = engineDeprecationNotice({
+    engine,
+    engineFlagPresent: hasFlag(flags, "engine"),
+    json: opts.json,
+    stderrIsTTY: Boolean(process.stderr.isTTY),
+    suppressed: Boolean(process.env.ATLCLI_SUPPRESS_ENGINE_NOTICE),
+  });
+  if (notice) process.stderr.write(`${notice}\n`);
 
   const templatePath = getFlag(flags, "template");
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
@@ -70,17 +131,27 @@ export async function handleExport(
   if (hasFlag(flags, "no-images")) {
     embedImages = false;
   }
-  const includeChildren = hasFlag(flags, "include-children");
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
   const noTocPrompt = hasFlag(flags, "no-toc-prompt");
+  // Spec 003 C4 progressive disclosure: keep scroll-only/scroll-ignore bodies
+  // for debugging ("why is section X missing?"). Engine option:
+  // exportControls "passthrough". ts single-page only for now — the tree/space
+  // composition walks pages in @atlcli/confluence's tree fetch, which does not
+  // thread export controls yet.
+  const keepIgnored = hasFlag(flags, "keep-ignored");
+  if (keepIgnored && engine !== "ts") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored requires --engine ts.");
+  }
+  if (keepIgnored && request.scopeKind !== "page") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored is not supported with --scope tree/space yet.");
+  }
 
-  // Engine selection (spec 006): "python" (default) renders markdown through
-  // the packages/export docxtpl subprocess; "ts" drives the isomorphic
-  // @atlcli/docx engine in-process — the exact code the Chrome extension
-  // runs, wired to Node filesystem adapters. No Python required.
-  const engine = getFlag(flags, "engine") ?? "python";
-  if (engine !== "python" && engine !== "ts") {
-    fail(opts, 1, ERROR_CODES.USAGE, `Unknown --engine "${engine}". Use "ts" or "python".`);
+  // spec 004: `--no-live-macros` suppresses live (port-backed) macro renderers
+  // for deterministic/compliance exports. The macro chain only exists on the
+  // ts engine, so fail fast rather than silently no-op on the python path.
+  const noLiveMacros = hasFlag(flags, "no-live-macros");
+  if (noLiveMacros && engine !== "ts") {
+    fail(opts, 1, ERROR_CODES.USAGE, "--no-live-macros requires --engine ts.");
   }
 
   if (!templatePath) {
@@ -100,10 +171,32 @@ export async function handleExport(
     fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${resolvedTemplatePath}`);
   }
 
-  // Resolve page ID from reference
-  const pageId = await resolvePageId(client, pageRef, opts);
-
   const baseUrl = getConfluenceBaseUrl(profile);
+
+  // Tree/space export (ts engine only): fetch the ordered tree, compose one
+  // chapterized document, and serialize it through the same runExport path a
+  // single page uses. The python engine keeps its legacy --include-children
+  // merge; scope/label flags with --engine python are rejected in parse.
+  if (engine === "ts" && (request.scopeKind === "tree" || request.scopeKind === "space")) {
+    await exportTreeWithTsEngine({
+      client,
+      profile,
+      request,
+      baseUrl,
+      resolvedTemplatePath,
+      outputPath,
+      embedImages,
+      liveMacros: !noLiveMacros,
+      strict: hasFlag(flags, "strict"),
+      opts,
+    });
+    return;
+  }
+
+  // From here down the scope is a single page (ts single-page path, or the
+  // python engine incl. its legacy --include-children merge).
+  const includeChildren = request.usedIncludeChildrenAlias;
+  const pageId = await resolvePageId(client, request.pageRef!, opts);
 
   if (engine === "ts") {
     // The page fetch is NOT awaited here: exportWithTsEngine overlaps it
@@ -114,17 +207,42 @@ export async function handleExport(
     // reports the real error.
     const pagePromise = client.getPageDetails(pageId);
     pagePromise.catch(() => {});
-    await exportWithTsEngine({
-      client,
-      pagePromise,
-      pageId,
-      baseUrl,
-      resolvedTemplatePath,
-      outputPath,
-      includeChildren,
-      embedImages,
-      opts,
-    });
+    // Kernel boundary (spec 008 review): any error in the ts single-page path
+    // becomes a classified atlcli.export-report/1 failure with the documented
+    // exit code (3 auth / 4 remote / 5 validation / 130 abort) — never a plain
+    // exit-1 crash through main()'s catch.
+    try {
+      await exportWithTsEngine({
+        client,
+        profile,
+        pagePromise,
+        pageId,
+        baseUrl,
+        resolvedTemplatePath,
+        outputPath,
+        embedImages,
+        keepIgnored,
+        liveMacros: !noLiveMacros,
+        strict: hasFlag(flags, "strict"),
+        opts,
+      });
+    } catch (error) {
+      const classified = classifyError(error);
+      emitReportOutcome(
+        {
+          ok: false,
+          report: buildReport({
+            format: "docx",
+            engine: "ts",
+            sourcePages: [],
+            outputDetails: [],
+            issues: [classified.issue],
+            failureExitCode: classified.exitCode,
+          }),
+        },
+        opts
+      );
+    }
     return;
   }
 
@@ -142,6 +260,21 @@ export async function handleExport(
   // Detect dynamic macros that need data expansion
   const needsChildrenMacro = /:::children\b/.test(markdown);
   const contentByLabelQueries = extractContentByLabelQueries(markdown);
+
+  // spec 004: the dynamic-macro chain (Jira tables, draw.io previews, includes,
+  // export_view fallback) only exists on the ts engine. When this page carries
+  // macros that chain would resolve live — same signal the walker emits for its
+  // report — say so instead of silently exporting placeholders.
+  try {
+    const { notes: walkerNotes } = storageToBlocks(page.storage ?? "");
+    if (walkerNotes.some((n) => n.code === "unknown-macro" || n.code === "macro-not-rendered")) {
+      console.error(
+        "hint: this page has dynamic macros; re-run with `--engine ts` for live rendering."
+      );
+    }
+  } catch {
+    // The hint is best-effort; a walker hiccup must never fail the export.
+  }
 
   // Get space info (if we have the space key)
   let spaceName = spaceKey;
@@ -338,10 +471,207 @@ export async function handleExport(
   output(response, opts);
 }
 
+/**
+ * `--format pdf` command path (spec 008 T3.2/T3.3). Format-aware validation:
+ * PDF forbids `--template` (PDF templates arrive via a later Lane P release) and
+ * `--engine` (PDF is its own isomorphic engine). Output goes to `--output` OR
+ * `--out-dir` (never both). All output — success or failure — is the single
+ * `atlcli.export-report/1` schema via `emitReportOutcome`.
+ */
+async function handlePdfExport(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  rawOpts: OutputOptions
+): Promise<void> {
+  // `--report json` is a synonym for `--json` for the export command: both emit
+  // exactly the `atlcli.export-report/1` schema as the sole stdout document
+  // (T3.4). A malformed `--report <other>` is a usage error.
+  const reportFlag = getFlag(flags, "report");
+  if (reportFlag !== undefined && reportFlag !== "json") {
+    fail(rawOpts, 1, ERROR_CODES.USAGE, `Unknown --report "${reportFlag}". Only "json" is supported.`);
+  }
+  const opts: OutputOptions = { json: rawOpts.json || reportFlag === "json" };
+
+  // Usage errors are reported through the SAME report shape, so `--json` always
+  // emits exactly the versioned report — never a second ad hoc error shape.
+  const usage = (message: string): ExportOutcome => ({
+    ok: false,
+    report: buildReport({
+      format: "pdf",
+      sourcePages: [],
+      outputDetails: [],
+      issues: [{ code: "usage-error", severity: "error", phase: "usage", retryable: false, message }],
+      failureExitCode: 1,
+    }),
+  });
+
+  if (hasFlag(flags, "template")) {
+    return emitReportOutcome(
+      usage("--template is DOCX-only; PDF templates arrive via a later release. Drop --template with --format pdf."),
+      opts
+    );
+  }
+  if (hasFlag(flags, "engine")) {
+    return emitReportOutcome(usage("--engine is not used with --format pdf (PDF has a single built-in engine)."), opts);
+  }
+
+  const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
+  const outDir = getFlag(flags, "out-dir");
+  if (outputPath && outDir) {
+    return emitReportOutcome(usage("Pass either --output or --out-dir, not both."), opts);
+  }
+  if (!outputPath && !outDir) {
+    return emitReportOutcome(usage("--output (or --out-dir) is required for --format pdf."), opts);
+  }
+
+  // Parse scope/label flags with the engine forced to `ts`: PDF is an
+  // isomorphic (ts-family) engine, so spec 002's scope/label validation applies
+  // uniformly. The user never passes --engine for PDF (forbidden above).
+  let request: ParsedExportRequest;
+  try {
+    request = parseExportRequest(args[0], { ...flags, engine: "ts" });
+  } catch (error) {
+    if (error instanceof ExportRequestError) return emitReportOutcome(usage(error.message), opts);
+    throw error;
+  }
+
+  const { resolveExportedAt } = await import("./export-pdf.js");
+  let exportedAt: Date | undefined;
+  try {
+    exportedAt = resolveExportedAt(getFlag(flags, "exported-at"));
+  } catch (error) {
+    return emitReportOutcome(usage(error instanceof Error ? error.message : String(error)), opts);
+  }
+
+  const { client, profile } = await getClient(flags, opts);
+  const baseUrl = getConfluenceBaseUrl(profile);
+
+  const { exportPdf } = await import("./export-pdf.js");
+  const outcome = await exportPdf({
+    client,
+    profile,
+    request,
+    baseUrl,
+    ...(outputPath ? { outputPath } : {}),
+    ...(outDir ? { outDir } : {}),
+    force: hasFlag(flags, "force"),
+    strict: hasFlag(flags, "strict"),
+    noCache: hasFlag(flags, "no-cache"),
+    ...(exportedAt ? { exportedAt } : {}),
+    opts,
+  });
+  emitReportOutcome(outcome, opts);
+}
+
+/**
+ * T3.5 deprecation notice, pure and testable: when `--engine` is omitted the
+ * python engine is still the default, but a future minor release flips the
+ * default to the ts engine. The notice goes to stderr only (never stdout, so
+ * `--json` stays clean), only when attached to a terminal (CI logs/pipes are
+ * untouched), and is suppressed by `ATLCLI_SUPPRESS_ENGINE_NOTICE`. Returns the
+ * notice line, or `null` when nothing should be printed.
+ */
+export function engineDeprecationNotice(input: {
+  engine: string;
+  engineFlagPresent: boolean;
+  json: boolean;
+  stderrIsTTY: boolean;
+  suppressed: boolean;
+}): string | null {
+  if (input.engine !== "python") return null;
+  if (input.engineFlagPresent) return null;
+  if (input.json) return null;
+  if (!input.stderrIsTTY) return null;
+  if (input.suppressed) return null;
+  return (
+    "note: a future release will default DOCX export to the in-process 'ts' engine. " +
+    "Pass --engine python to keep today's behavior, or --engine ts to adopt it now. " +
+    "(set ATLCLI_SUPPRESS_ENGINE_NOTICE=1 to silence)"
+  );
+}
+
+/**
+ * Profile-free token mode for CI (spec 008 T3.4). Builds an ephemeral in-memory
+ * {@link Profile} from `--base-url`/`ATLCLI_BASE_URL` + `--auth-type` +
+ * (`--email`/`ATLCLI_EMAIL` for api-token) + the highest-priority
+ * `ATLCLI_API_TOKEN`, so an export runs with no `~/.atlcli/config.json`.
+ *
+ * FAIL-CLOSED: two disjoint modes only — named profile OR fully ephemeral, never
+ * a mix. A partial ephemeral set (or `--profile` alongside ephemeral fields) is a
+ * usage error raised BEFORE any config-file/keychain lookup, so a gap is never
+ * silently filled from a local profile. Returns `null` when no ephemeral field
+ * was supplied (fall back to the named-profile path).
+ */
+export function buildEphemeralProfile(
+  flags: Record<string, string | boolean | string[]>
+): Profile | null {
+  const baseUrlRaw = getFlag(flags, "base-url") ?? process.env.ATLCLI_BASE_URL;
+  const email = getFlag(flags, "email") ?? process.env.ATLCLI_EMAIL;
+  const authTypeRaw = getFlag(flags, "auth-type") ?? process.env.ATLCLI_AUTH_TYPE;
+  const requested = Boolean(baseUrlRaw || email || authTypeRaw);
+  if (!requested) return null;
+
+  if (hasFlag(flags, "profile")) {
+    throw new ExportRequestError(
+      "Ephemeral auth (--base-url/--email/--auth-type) cannot be combined with --profile. Use one or the other."
+    );
+  }
+  if (!baseUrlRaw) {
+    throw new ExportRequestError("Ephemeral auth requires --base-url (or ATLCLI_BASE_URL).");
+  }
+  const token = process.env.ATLCLI_API_TOKEN;
+  if (!token) {
+    throw new ExportRequestError("Ephemeral auth requires the ATLCLI_API_TOKEN environment variable.");
+  }
+  const authType = authTypeRaw ?? "api-token";
+  if (authType !== "api-token" && authType !== "bearer") {
+    throw new ExportRequestError(`Unknown --auth-type "${authType}". Use "api-token" or "bearer".`);
+  }
+  if (authType === "api-token" && !email) {
+    throw new ExportRequestError("--auth-type api-token requires --email (or ATLCLI_EMAIL).");
+  }
+  if (authType === "bearer" && email) {
+    throw new ExportRequestError("--auth-type bearer does not take --email.");
+  }
+
+  // HTTPS by default; plain HTTP only behind an explicit Data Center opt-in.
+  const normalized = normalizeBaseUrl(baseUrlRaw);
+  if (normalized.startsWith("http://") && !hasFlag(flags, "allow-http")) {
+    throw new ExportRequestError(
+      "Ephemeral --base-url must use HTTPS. Pass --allow-http for a Data Center deployment over plain HTTP."
+    );
+  }
+
+  return {
+    name: "ephemeral",
+    baseUrl: normalized,
+    ...(authType === "bearer" ? { deploymentType: "data-center" as const } : {}),
+    auth:
+      authType === "bearer"
+        ? { type: "bearer", pat: token, username: email }
+        : { type: "apiToken", email: email!, token },
+  };
+}
+
 async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<{ client: ConfluenceClient; profile: any }> {
+  // Fully ephemeral (CI) mode short-circuits before any config/keychain access.
+  let ephemeral: Profile | null;
+  try {
+    ephemeral = buildEphemeralProfile(flags);
+  } catch (error) {
+    if (error instanceof ExportRequestError) {
+      fail(opts, 1, ERROR_CODES.USAGE, error.message);
+    }
+    throw error;
+  }
+  if (ephemeral) {
+    assertCliAuthSupported(ephemeral, opts);
+    return { client: new ConfluenceClient(ephemeral), profile: ephemeral };
+  }
+
   const config = await loadConfig();
   const profileName = getFlag(flags, "profile");
   const profile = getActiveProfile(config, profileName);
@@ -356,7 +686,8 @@ async function getClient(
 async function resolvePageId(
   client: ConfluenceClient,
   ref: string,
-  opts: OutputOptions
+  opts: OutputOptions,
+  signal?: AbortSignal
 ): Promise<string> {
   // If it looks like a numeric ID, return as-is
   if (/^\d+$/.test(ref)) {
@@ -382,7 +713,7 @@ async function resolvePageId(
     const [spaceKey, ...titleParts] = ref.split(":");
     const title = titleParts.join(":"); // Handle titles with colons
     const cql = `type=page AND space="${spaceKey}" AND title="${title}"`;
-    const results = await client.searchPages(cql, 1);
+    const results = await client.searchPages(cql, 1, signal ? { signal } : {});
     if (results.length === 0) {
       fail(opts, 1, ERROR_CODES.API, `Page not found: ${ref}`);
     }
@@ -697,13 +1028,18 @@ async function resolveContentByLabel(
 
 interface TsEngineArgs {
   client: ConfluenceClient;
+  profile: Profile;
   pagePromise: Promise<ConfluencePageDetails>;
   pageId: string;
   baseUrl: string;
   resolvedTemplatePath: string;
   outputPath: string;
-  includeChildren: boolean;
   embedImages: boolean;
+  /** `--keep-ignored`: run export-control macros in passthrough mode (spec 003). */
+  keepIgnored?: boolean;
+  /** spec 004: `false` under `--no-live-macros` suppresses port-backed macros. */
+  liveMacros: boolean;
+  strict: boolean;
   opts: OutputOptions;
 }
 
@@ -725,16 +1061,54 @@ interface TsEngineArgs {
  * token auth. The listing is cached per page — one extra round-trip per page,
  * not per image. External image URLs are absolute and fetched without auth.
  */
+/**
+ * Build the spec-004 macro-resolution options for a ts-engine export. Lazily
+ * imports the wiring module + Jira client so the macro path adds no startup
+ * cost to exports that don't need it. A `JiraClient` is always constructed from
+ * the same profile (Cloud shares the site); if Jira isn't accessible the chain
+ * degrades gracefully (403/404 → note, never a hard failure).
+ */
+async function buildTsEngineMacroOptions(
+  profile: Profile,
+  client: ConfluenceClient,
+  targetEngine: "docx" | "pdf",
+  live: boolean
+) {
+  const [wiring, { JiraClient }] = await Promise.all([
+    import("./export-macros-wiring.js"),
+    import("@atlcli/jira"),
+  ]);
+  const macros = wiring.buildMacroResolutionOptions({
+    profile,
+    confluence: client,
+    jira: new JiraClient(profile),
+    targetEngine,
+    live,
+  });
+  // SSRF enforcement (spec 004): export_view-derived external image refs carry
+  // trust:"export-view"; route them through the policy-checked external fetcher
+  // instead of the unrestricted token fetcher. Page-trust refs are unchanged.
+  const externalAssets = wiring.defaultExternalAssetFetcher(
+    wiring.defaultExternalAssetPolicy(profile.baseUrl)
+  );
+  const wrapAssets = (inner: import("@atlcli/docx").AssetFetcher) =>
+    wiring.trustRoutingAssetFetcher(inner, externalAssets);
+  return { macros, wrapAssets };
+}
+
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const {
     client,
+    profile,
     pagePromise,
     pageId,
     baseUrl,
     resolvedTemplatePath,
     outputPath,
-    includeChildren,
     embedImages,
+    keepIgnored,
+    liveMacros,
+    strict,
     opts,
   } = args;
   // Everything local (engine import + template bytes) loads WHILE the page
@@ -743,7 +1117,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const { readFile, stat } = await import("node:fs/promises");
   const [
     { runExport, fileOutputSink },
-    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher },
+    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
   ] = await Promise.all([
@@ -756,9 +1130,6 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const assetCache = createAssetByteCache(baseUrl);
 
   const cliNotes: string[] = [];
-  if (includeChildren) {
-    cliNotes.push("--include-children is not supported by the ts engine yet; exported the single page.");
-  }
 
   // Memoized per-export round-trips, shared between the deps below. Space +
   // icon come from ONE `?expand=icon` call (previously two calls to the same
@@ -829,15 +1200,34 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
   }
 
+  // Resolve @mentions to display names before serialization, matching the
+  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
+  // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
+  // only happens when an account-id-only mention is actually present.
+  const walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+  const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+  const tsSourceNotes = [...walked.notes];
+  if (mention.unresolved > 0) {
+    tsSourceNotes.push({
+      level: "warning",
+      code: "mention-unresolved",
+      message: `${mention.unresolved} mention(s) could not be resolved to a display name.`,
+    });
+  }
+
   const resolvedOutputPath = resolve(outputPath);
+  const macroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
   const report = await runExport(
     {
       details: page,
+      blocks: mention.blocks,
+      sourceNotes: tsSourceNotes,
       template: {
         name: basename(resolvedTemplatePath),
         modificationDate: templateStat.mtime,
       },
       embedImages,
+      ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
       deps: {
         getSpace: async (key: string) => (await spaceInfo(key)).space,
         getCurrentUser: currentUser,
@@ -864,30 +1254,371 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     },
     {
       templates: { getBytes: async () => templateBytes },
-      assets: tokenAssetFetcher(client, assetCache),
+      assets: macroSetup.wrapAssets(tokenAssetFetcher(client, assetCache)),
       rasterizer: rasterizer ?? undefined,
+      macros: macroSetup.macros,
       output: fileOutputSink(resolvedOutputPath),
     }
   );
 
-  output(
+  // Unified report (spec 008 review): the SAME atlcli.export-report/1 schema
+  // and exit-code kernel the PDF path uses — one JSON shape per invocation.
+  emitReportOutcome(
     {
-      success: true,
-      engine: "ts",
-      output: resolvedOutputPath,
-      page: { id: page.id, title: page.title, space: page.spaceKey ?? "UNKNOWN" },
-      report: {
-        resolvedCount: report.resolvedCount,
-        unsupportedNames: report.unsupportedNames,
-        embeddedImages: report.embeddedImages,
-        renderedDiagrams: report.renderedDiagrams,
-        skippedImages: report.skippedImages,
-        durationMs: report.durationMs,
-        notes: [...cliNotes, ...report.notes.map((n) => `${n.level}: ${n.message}`)],
-      },
+      ok: true,
+      report: buildReport({
+        format: "docx",
+        engine: "ts",
+        sourcePages: [{ id: page.id, title: page.title, notes: [] }],
+        outputDetails: [
+          {
+            output: resolvedOutputPath,
+            embeddedImages: report.embeddedImages,
+            renderedDiagrams: report.renderedDiagrams,
+            skippedAssets: report.skippedImages,
+          },
+        ],
+        issues: [
+          ...report.notes.map((n) => noteToIssue(n, "prepare")),
+          ...cliNotes.map((message) => ({
+            code: "cli-note",
+            severity: "warning" as const,
+            phase: "prepare",
+            retryable: false,
+            message,
+          })),
+        ],
+        timings: { totalMs: report.durationMs },
+        placeholders: { resolved: report.resolvedCount, unsupported: report.unsupportedNames },
+        strict,
+      }),
     },
     opts
   );
+}
+
+interface TreeEngineArgs {
+  client: ConfluenceClient;
+  profile: Profile;
+  request: ParsedExportRequest;
+  baseUrl: string;
+  resolvedTemplatePath: string;
+  outputPath: string;
+  embedImages: boolean;
+  /** spec 004: `false` under `--no-live-macros`. */
+  liveMacros: boolean;
+  strict: boolean;
+  opts: OutputOptions;
+}
+
+/**
+ * Progress router (spec 002 A5). In `--json` mode stdout must carry EXACTLY one
+ * JSON document, so every progress event goes to stderr as JSONL (one
+ * `ExportProgressEvent` per line). Otherwise a single-line spinner is written to
+ * stderr, plus a one-time human page-count line once the tree size is known
+ * (the "pre-flight count" — printed from the walk's own `onProgress` total,
+ * since `fetchExportTree` discovers and body-fetches in one pass with no
+ * separate pre-count hook).
+ */
+function makeProgressReporter(opts: OutputOptions): {
+  report: ExportProgressCallback;
+  clear: () => void;
+} {
+  const json = opts.json;
+  let announcedTotal = false;
+  let dirty = false;
+  const report: ExportProgressCallback = (event) => {
+    if (json) {
+      process.stderr.write(`${JSON.stringify(event)}\n`);
+      return;
+    }
+    if (event.phase === "fetch" && event.total !== null && !announcedTotal) {
+      announcedTotal = true;
+      process.stderr.write(`Exporting ${event.total} page${event.total === 1 ? "" : "s"}...\n`);
+    }
+    const total = event.total === null ? "?" : String(event.total);
+    const detail = event.detail ? ` ${event.detail}` : "";
+    const line = `[${event.phase}] ${event.done}/${total}${detail}`;
+    process.stderr.write(`\r${line.slice(0, 120).padEnd(120)}`);
+    dirty = true;
+  };
+  const clear = () => {
+    if (!json && dirty) process.stderr.write(`\r${" ".repeat(120)}\r`);
+  };
+  return { report, clear };
+}
+
+/** True when any composed block is a mermaid code block (needs a rasterizer). */
+function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
+  for (const block of blocks) {
+    switch (block.type) {
+      case "codeBlock":
+        if ((block.language ?? "").toLowerCase() === "mermaid") return true;
+        break;
+      case "callout":
+      case "blockquote":
+      case "orientation":
+        if (blocksNeedRasterizer(block.content)) return true;
+        break;
+      case "list":
+        for (const item of block.items) if (blocksNeedRasterizer(item.content)) return true;
+        break;
+      case "table":
+        for (const row of block.rows)
+          for (const cell of row.cells) if (blocksNeedRasterizer(cell.content)) return true;
+        break;
+    }
+  }
+  return false;
+}
+
+/**
+ * Tree/space DOCX export (spec 002 CLI task). Drives the shared orchestration
+ * layer — `fetchExportTree` → `composeChapters` → `runExport` — the same
+ * isomorphic pipeline the extension host will consume. A `space` request is
+ * resolved to its homepage id here (one construction site, `buildExportScope`),
+ * so `--scope space` becomes a tree rooted at the homepage with the requested
+ * scope still recorded for the `--json` report.
+ */
+async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
+  const {
+    client,
+    profile,
+    request,
+    baseUrl,
+    resolvedTemplatePath,
+    outputPath,
+    embedImages,
+    liveMacros,
+    strict,
+    opts,
+  } = args;
+
+  // Ctrl-C → AbortController, installed BEFORE any network work so root
+  // resolution, discovery, body fetch, asset fetch and the final write all stop
+  // promptly (the underlying client + sinks honor the signal). Removed again in
+  // the finally so later CLI work is unaffected.
+  const controller = new AbortController();
+  const onSigint = (): void => controller.abort();
+  process.once("SIGINT", onSigint);
+
+  const { report: onProgress, clear: clearProgress } = makeProgressReporter(opts);
+
+  try {
+    // Resolve the root page id (the one construction site for ExportScope).
+    let rootId: string;
+    if (request.scopeKind === "space") {
+      const homepageId = await client.getSpaceHomepageId(request.spaceKey!, {
+        signal: controller.signal,
+      });
+      if (!homepageId) throw new SpaceHomepageError(request.spaceKey!);
+      rootId = homepageId;
+    } else {
+      rootId = await resolvePageId(client, request.pageRef!, opts, controller.signal);
+    }
+    const scope: ExportScope = buildExportScope(request, rootId);
+
+    // Fetch the ordered tree (label pruning + completeness contract inside).
+    const treeResult = await fetchExportTree(confluenceTreeSource(client), scope, {
+      ...(request.labels ? { labels: request.labels } : {}),
+      completenessMode: request.completenessMode,
+      ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+      ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+      signal: controller.signal,
+      onProgress: (p) =>
+        onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
+    });
+
+    // Compose one chapterized document. Out-of-scope links become absolute URLs
+    // built via buildConfluenceUrl (NEVER hand-concatenated with "/wiki/", which
+    // would double the Cloud wiki segment / add one DC never has).
+    const resolveExternalUrl: NonNullable<ComposeOptions["resolveExternalUrl"]> = (
+      target,
+      anchor
+    ) => {
+      let path: string;
+      if (target.contentId) {
+        path = target.spaceKey
+          ? `spaces/${target.spaceKey}/pages/${target.contentId}`
+          : `pages/viewpage.action?pageId=${target.contentId}`;
+      } else if (target.spaceKey) {
+        path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
+      } else {
+        path = `search?text=${encodeURIComponent(target.contentTitle)}`;
+      }
+      const url = buildConfluenceUrl(profile, path);
+      return anchor ? `${url}#${anchor}` : url;
+    };
+
+    const composed = composeChapters(treeResult.nodes, { resolveExternalUrl });
+    const sourceNotes: ExportNote[] = [...treeResult.notes, ...composed.notes];
+
+    // Root page details drive template placeholders (title/author/…) — the same
+    // convention single-page export uses.
+    const rootDetails = await client.getPageDetails(rootId, { signal: controller.signal });
+
+    // Load engine + template + optional rasterizer.
+    const { readFile, stat } = await import("node:fs/promises");
+    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, templateBytesRaw, templateStat] =
+      await Promise.all([
+        import("@atlcli/docx"),
+        import("./export-internals.js"),
+        readFile(resolvedTemplatePath),
+        stat(resolvedTemplatePath),
+      ]);
+    const templateBytes = new Uint8Array(templateBytesRaw);
+    const assetCache = createAssetByteCache(baseUrl);
+
+    // Resolve @mentions across the WHOLE composed document with one deduped bulk
+    // lookup (spec 008 T3.2 parity). Account ids are deduped inside
+    // resolveExportMentions, so a name repeated across chapters costs one call.
+    const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+    if (mention.unresolved > 0) {
+      sourceNotes.push({
+        level: "warning",
+        code: "mention-unresolved",
+        message: `${mention.unresolved} mention(s) could not be resolved to a display name.`,
+      });
+    }
+
+    let rasterizer: import("@atlcli/docx").SvgRasterizer | undefined;
+    const cliNotes: string[] = [];
+    if (embedImages && blocksNeedRasterizer(composed.blocks)) {
+      try {
+        const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
+        rasterizer = (await buildDiagramRasterizer()) ?? undefined;
+      } catch {
+        rasterizer = undefined;
+      }
+      if (!rasterizer) {
+        cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
+      }
+    }
+
+    const resolvedOutputPath = resolve(outputPath);
+    const treeMacroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
+    const docxReport = await runExport(
+      {
+        details: rootDetails,
+        blocks: mention.blocks,
+        sourceNotes,
+        complete: treeResult.complete,
+        signal: controller.signal,
+        onProgress,
+        template: {
+          name: basename(resolvedTemplatePath),
+          modificationDate: templateStat.mtime,
+        },
+        embedImages,
+        deps: {
+          getSpace: async (key: string) => (await client.getSpaceWithIcon(key)).space,
+          getCurrentUser: () => client.getCurrentUser(),
+          getPageOwner: (id: string) => client.getPageOwner(id),
+          getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+          getSpaceLogo: async (key: string) => {
+            const icon = (await client.getSpaceWithIcon(key)).icon;
+            if (!icon) return null;
+            const m = icon.path.match(/^\/download\/attachments\/(\d+)\/([^/?]+)/);
+            return {
+              url: icon.path,
+              pageId: m?.[1],
+              filename: m ? decodeURIComponent(m[2]) : undefined,
+            };
+          },
+        },
+        ...(rasterizer ? { rasterizer } : {}),
+      },
+      {
+        templates: { getBytes: async () => templateBytes },
+        assets: treeMacroSetup.wrapAssets(tokenAssetFetcher(client, assetCache)),
+        ...(rasterizer ? { rasterizer } : {}),
+        macros: treeMacroSetup.macros,
+        output: fileOutputSink(resolvedOutputPath),
+      }
+    );
+
+    clearProgress();
+
+    // Unified report (spec 008 review): the SAME atlcli.export-report/1 schema
+    // and exit-code kernel the PDF path uses. Spec 002's report content
+    // (requestedScope/resolvedScope/complete/notesByCode) rides WITHIN the
+    // unified schema as first-class optional fields.
+    const sourcePages = treeResult.nodes
+      .filter((node): node is Extract<typeof node, { kind: "page" }> => node.kind === "page")
+      .map((node) => ({
+        id: node.pageId,
+        title: node.title,
+        notes: node.notes.map((note) => noteToIssue(note, "compose", node.pageId)),
+      }));
+
+    emitReportOutcome(
+      {
+        ok: true,
+        report: buildReport({
+          format: "docx",
+          engine: "ts",
+          sourcePages,
+          outputDetails: [
+            {
+              output: resolvedOutputPath,
+              embeddedImages: docxReport.embeddedImages,
+              renderedDiagrams: docxReport.renderedDiagrams,
+              skippedAssets: docxReport.skippedImages,
+            },
+          ],
+          issues: [
+            ...docxReport.notes.map((n) => noteToIssue(n, "prepare")),
+            ...cliNotes.map((message) => ({
+              code: "cli-note",
+              severity: "warning" as const,
+              phase: "prepare",
+              retryable: false,
+              message,
+            })),
+          ],
+          timings: { durationMs: docxReport.durationMs, ...docxReport.timings },
+          requestedScope: {
+            kind: request.scopeKind,
+            ...(request.pageRef ? { pageRef: request.pageRef } : {}),
+            ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
+            ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+            ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+            ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+            ...(request.labels ? { labels: request.labels } : {}),
+            completeness: request.completenessMode,
+          },
+          resolvedScope: scope as unknown as Record<string, unknown>,
+          complete: docxReport.complete,
+          placeholders: {
+            resolved: docxReport.resolvedCount,
+            unsupported: docxReport.unsupportedNames,
+          },
+          strict,
+        }),
+      },
+      opts
+    );
+  } catch (error) {
+    clearProgress();
+    // Same classified failure path as PDF: one JSON document, documented codes.
+    const classified = classifyError(error);
+    emitReportOutcome(
+      {
+        ok: false,
+        report: buildReport({
+          format: "docx",
+          engine: "ts",
+          sourcePages: [],
+          outputDetails: [],
+          issues: [classified.issue],
+          failureExitCode: classified.exitCode,
+        }),
+      },
+      opts
+    );
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+  }
 }
 
 function findPythonExecutable(): string {
@@ -992,23 +1723,79 @@ Arguments:
   <page>              Page reference (ID, SPACE:Title, or URL)
 
 Options:
-  --template, -t      Template name or path (required)
-  --output, -o        Output file path (required)
+  --format <fmt>      Output format: "docx" (default) or "pdf"
+  --template, -t      Template name or path (DOCX only; required for DOCX)
+  --output, -o        Output file path (required, or use --out-dir for PDF)
   --no-images         Do not embed images from page attachments (default embeds)
-  --include-children  Include child pages in export
   --no-merge          Keep children as separate array (for loops in templates)
   --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
+  --keep-ignored      Keep scroll-only/scroll-ignore content for debugging
+                      (--engine ts, single page; export is marked in the report)
+  --no-live-macros    Deterministic export: skip live (Jira/export_view/attachment)
+                      macro rendering. Pure macros (TOC, includes) still render.
+                      Requires --engine ts. NOT network-free — the page body and
+                      its own attachments still fetch.
   --engine <name>     Rendering engine: "python" (default, docxtpl) or "ts"
                       (isomorphic @atlcli/docx engine — same as the browser
                       extension; $scroll.* placeholders + image embedding +
-                      mermaid diagram rendering, no Python needed; children
-                      not yet supported)
+                      mermaid diagram rendering, no Python needed; required for
+                      tree/space/label export)
   --profile <name>    Use a specific auth profile
+
+PDF Options (--format pdf):
+  --out-dir <dir>           Write to a directory with a derived <pageId>-<slug>.pdf
+                            name (alternative to --output; not both)
+  --force                   Overwrite an existing regular output file
+  --strict                  Exit code 2 if the export completed with warnings
+  --no-cache                Do not persist downloaded assets across invocations
+  --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
+                            honors the SOURCE_DATE_EPOCH env var)
+  --report json             Synonym for --json (emit the report to stdout)
+  (--template and --engine are not valid with --format pdf.)
+
+Profile-free auth (CI, any format):
+  --base-url <url>          Confluence base URL (or ATLCLI_BASE_URL); requires
+                            HTTPS unless --allow-http
+  --email <addr>            Account email (or ATLCLI_EMAIL); required for
+                            api-token auth, forbidden for bearer
+  --auth-type <kind>        api-token (default) | bearer (or ATLCLI_AUTH_TYPE)
+  --allow-http              Permit a plain-HTTP --base-url (Data Center opt-in)
+  (The token comes from ATLCLI_API_TOKEN. Ephemeral mode is fail-closed: use a
+   named --profile OR a full ephemeral set, never a mix.)
+
+Scope Options (--engine ts):
+  --scope <kind>            page (default) | tree | space
+  --include-children        Deprecated alias for --scope tree
+  --space <KEY>             Export a whole space (implies --scope space); the
+                            homepage is the root chapter. Takes no page reference.
+  --max-depth <n>           Cap traversal depth (tree/space; root = depth 0,
+                            so 0 exports the root page only)
+  --max-pages <n>           Hard page cap (tree/space; default 500)
+  --max-folders <n>         Hard folder cap (tree/space; default 200)
+  --label-include <a,b>     Keep only pages carrying any of these labels (OR)
+  --label-exclude <c,d>     Drop pages carrying any of these labels (OR)
+  --label-exclude-mode      prune-subtree (default) | page-only
+  --completeness <mode>     strict (default, abort on unreadable/changed pages)
+                            | partial (placeholder chapter + complete:false)
 
 Page Reference Formats:
   12345678            Page ID
   SPACE:Page Title    Space key and page title
   https://...         Full Confluence URL
+
+Exit Codes (--format pdf and --engine ts; the legacy python engine exits 0/1):
+  0    Success
+  1    Usage / config / local IO error
+  2    Completed with warnings (only under --strict)
+  3    Authentication error (401/403)
+  4    Remote/API error (page not found, fetch failed)
+  5    Compile / validation failure (incl. tree limits, label filters, budget)
+  130  Cancelled (Ctrl-C / SIGINT)
+
+JSON Output (--json / --report json):
+  PDF and ts-engine exports emit EXACTLY one "atlcli.export-report/1" document
+  on stdout (sourcePages, outputDetails, issues, scope traceability, exitCode).
+  Progress events go to stderr.
 
 Template Resolution:
   Templates are resolved in order (first match wins):
@@ -1023,10 +1810,19 @@ Template Management:
   atlcli wiki export template delete <name> --confirm
 
 Examples:
+  # Minimal: one page tree to a single DOCX
+  atlcli wiki export 12345 --template corporate --output handbook.docx --engine ts --scope tree
+
+  # Advanced: whole space, drop internal pages, machine-readable report for CI
+  atlcli wiki export --template corporate --output space.docx --engine ts --scope space \\
+    --space DOCSY --label-exclude internal --completeness partial --json
+
+  # PDF: single page to a tagged, font-embedded PDF with a JSON report for CI
+  atlcli wiki export 12345 --format pdf --output ./report.pdf --json
+
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx
   atlcli wiki export 12345 -t basic -o out.docx --no-images
-  atlcli wiki export 12345 -t book -o book.docx --include-children
   atlcli wiki export 12345 -t scroll-corporate.docx -o out.docx --engine ts
   atlcli wiki export template save corporate --file ./template.docx --level global
   atlcli wiki export template list

@@ -1,5 +1,7 @@
-import type { ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
+import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import {
   pdfColorContrast,
@@ -12,6 +14,7 @@ import type {
   PdfSourceBundle,
   PdfSourceMapEntry,
   PdfTheme,
+  PreparedPdfAsset,
   PreparedPdfBlock,
   PreparedPdfDocument,
 } from "./types.js";
@@ -247,6 +250,9 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
 
 type TableDensity = "normal" | "dense";
 
+/** The layout container the current block renders inside (spec 003 C5/C6). */
+type RenderContainer = "body" | "tableCell" | "calloutCell";
+
 interface RenderContext {
   tableDensity: TableDensity;
   inTable?: boolean;
@@ -256,10 +262,139 @@ interface RenderContext {
     foreground: string;
     theme: PdfTheme;
   };
+  /**
+   * The layout container (spec 003). `pageBreak`/`orientation` render in
+   * `"body"`/`"list"` but are suppressed (children kept, note emitted) inside
+   * `"tableCell"`/`"calloutCell"`, where a Typst `set page` / `pagebreak` has no
+   * effect inside a `table.cell`/`callout` box.
+   */
+  container?: RenderContainer;
+  /**
+   * Usable text width in pt for wide-table classification (spec 003 T1.6). A
+   * landscape orientation region widens this so `classifyTableLayout` escalates
+   * against the landscape text area, not the portrait one. Undefined → portrait.
+   */
+  layoutWidthPt?: number;
 }
 
 const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
+
+// ---- Wide-table layout classification (spec 003 T1.6) ---------------------
+
+/** Escalation tiers for a table that may not fit its available width. */
+export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
+
+/** Usable text width (pt) of the built-in A4 template, portrait / landscape. */
+const PORTRAIT_TEXT_WIDTH_PT = 470;
+const LANDSCAPE_TEXT_WIDTH_PT = 717;
+/** Table cell font size (pt) at normal and the practical readability floor. */
+const TABLE_FONT_SIZE_PT = 9;
+const MIN_TABLE_FONT_SIZE_PT = 7;
+/** Horizontal cell inset (pt) at normal vs. dense density. */
+const NORMAL_CELL_INSET_PT = 6;
+const DENSE_CELL_INSET_PT = 2;
+/** Approximate rendered width of one character as a fraction of the font size. */
+const CHAR_WIDTH_RATIO = 0.55;
+
+/** Estimated rendered width (pt) of an atomic token at a given font size. */
+function estimateTokenWidthPt(tokenLength: number, fontSizePt: number): number {
+  return tokenLength * fontSizePt * CHAR_WIDTH_RATIO;
+}
+
+/**
+ * Classify a table's fit deterministically into the dense → scaled →
+ * overflow-warned escalation (spec 003 T1.6). Pure over validated numeric
+ * inputs so it is unit-testable without the Typst compiler:
+ *
+ * - `"normal"` / `"dense"` — the longest atomic token fits the narrowest track
+ *   at the (dense) inset; `"dense"` iff the column count crosses the existing
+ *   {@link DENSE_TABLE_COLUMN_THRESHOLD} boundary.
+ * - `"scaled"` — the token overflows at normal size but fits once body text is
+ *   scaled down to {@link MIN_TABLE_FONT_SIZE_PT}.
+ * - `"overflow-warned"` — even minimum-size text cannot fit; render at the
+ *   minimum size anyway (accept wrap/clip over losing content) and warn.
+ */
+export function classifyTableLayout(input: {
+  columnCount: number;
+  sourceWidths?: number[];
+  longestAtomicToken: number;
+  availableWidth: number;
+}): TableLayoutClass {
+  const columnCount = Math.max(1, Math.floor(input.columnCount));
+  const available = Number.isFinite(input.availableWidth) && input.availableWidth > 0
+    ? input.availableWidth
+    : PORTRAIT_TEXT_WIDTH_PT;
+  const tokenLength = Math.max(0, Math.floor(input.longestAtomicToken));
+  const dense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
+
+  // Narrowest track width: the minimum column's share of the available width.
+  const widths = input.sourceWidths?.length === columnCount
+    && input.sourceWidths.every((w) => Number.isFinite(w) && w > 0)
+    ? input.sourceWidths
+    : Array.from({ length: columnCount }, () => 1);
+  const total = widths.reduce((sum, w) => sum + w, 0);
+  const narrowestRatio = Math.min(...widths) / total;
+  const trackWidth = (inset: number) => Math.max(0, available * narrowestRatio - 2 * inset);
+
+  const denseInset = dense ? DENSE_CELL_INSET_PT : NORMAL_CELL_INSET_PT;
+  if (estimateTokenWidthPt(tokenLength, TABLE_FONT_SIZE_PT) <= trackWidth(denseInset)) {
+    return dense ? "dense" : "normal";
+  }
+  if (estimateTokenWidthPt(tokenLength, MIN_TABLE_FONT_SIZE_PT) <= trackWidth(DENSE_CELL_INSET_PT)) {
+    return "scaled";
+  }
+  return "overflow-warned";
+}
+
+/**
+ * The longest genuinely-unbreakable token across a table's cell text (chars).
+ * Applies the SAME break opportunities the dense renderer inserts
+ * ({@link denseAtomicToken}: punctuation + every {@link DENSE_ATOMIC_RUN_LENGTH}
+ * alphanumerics) so the measured "atomic" token matches what Typst actually
+ * cannot break — a long URL is NOT atomic, it wraps at its slashes/dots. The
+ * escalation therefore fires only for genuinely unbreakable runs.
+ */
+function longestAtomicTokenLength(rows: PreparedTableRow[]): number {
+  let longest = 0;
+  const splitter = new RegExp(`[\\s${DENSE_BREAK_OPPORTUNITY}]`, "u");
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      const text = blocksPlainText(cell.content);
+      for (const token of denseAtomicToken(text).split(splitter)) {
+        if (token.length > longest) longest = token.length;
+      }
+    }
+  }
+  return longest;
+}
+
+// ---- Captions (spec 003 C3) -----------------------------------------------
+
+/** Map a {@link CaptionKind} to the Typst element function used as `figure(kind:)`. */
+function typstFigureKind(kind: CaptionKind): string {
+  switch (kind) {
+    case "figure":
+      return "image";
+    case "table":
+      return "table";
+    case "code":
+      return "raw";
+    case "equation":
+      return "math.equation";
+  }
+}
+
+/**
+ * The `caption: [...], kind: <fn>` arguments for a Typst `#figure`. The caption
+ * text is serialized at body scope (no dense-table wrapping) and the kind is the
+ * walker-normalized {@link CaptionKind}, so DOCX SEQ labels and PDF figure kinds
+ * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
+ */
+function captionFigureArgs(caption: Caption, writer: Writer): string {
+  const inline = serializeInline(caption.content, writer.labels, writer.notes);
+  return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
+}
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
 const DENSE_STATUS_RUN_LENGTH = 2;
@@ -465,68 +600,110 @@ function serializeInline(
     .join("");
 }
 
-function minHeadingLevel(blocks: PreparedPdfBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        min = Math.min(min, block.level);
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows) {
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        }
-        break;
-    }
-  }
-  return min;
+// Heading-level promotion now lives once in `@atlcli/confluence`
+// (`computeHeadingOffset`, imported above); the local min-heading scan that fed
+// `headingOffset` here was removed so both engines share one implementation.
+
+interface CollectedLabels {
+  /** Link resolution: raw anchor name / heading text → the emitted label. */
+  lookup: Map<string, string>;
+  /**
+   * The EXACT label each explicit-anchor heading / anchor block emits (by
+   * block identity), assigned once here so link resolution and serialization
+   * can never drift.
+   */
+  byBlock: Map<PreparedPdfBlock, string>;
 }
 
-function collectHeadingLabels(blocks: PreparedPdfBlock[]): Map<string, string> {
-  const labels = new Map<string, string>();
+function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
+  const lookup = new Map<string, string>();
+  const byBlock = new Map<PreparedPdfBlock, string>();
   const counts = new Map<string, number>();
-  const walk = (list: PreparedPdfBlock[]): void => {
+  const used = new Set<string>();
+
+  // ---- Pass 1: text-slug labels for anchor-less headings (existing scheme,
+  // byte-stable for single-page exports). Registered into `used` FIRST so an
+  // anchor whose sanitized name collides with a heading slug gets suffixed —
+  // duplicate Typst labels are a compile error.
+  const walkSlugs = (list: PreparedPdfBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
         case "heading": {
+          if (block.explicitAnchor) break;
           const text = inlinePlainText(block.content);
           const base = typstLabel(text);
           const count = (counts.get(base) ?? 0) + 1;
           counts.set(base, count);
           const label = count === 1 ? base : `${base}-${count}`;
-          if (!labels.has(text)) labels.set(text, label);
+          used.add(label);
+          if (!lookup.has(text)) lookup.set(text, label);
           break;
         }
         case "callout":
         case "blockquote":
         case "orientation":
-          walk(block.content);
+          walkSlugs(block.content);
           break;
         case "list":
-          for (const item of block.items) walk(item.content);
+          for (const item of block.items) walkSlugs(item.content);
           break;
         case "table":
-          for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          for (const row of block.rows) for (const cell of row.cells) walkSlugs(cell.content);
           break;
       }
     }
   };
-  walk(blocks);
-  return labels;
+
+  // ---- Pass 2: explicit-anchor headings + anchor blocks. Names are SANITIZED
+  // (raw Confluence anchor macro names like "Table of Contents" are not legal
+  // Typst labels — an unsanitized `<Table of Contents>` fails to compile) and
+  // deduped per document via `uniqueAnchorId` (duplicate labels are a compile
+  // error too). Composed documents arrive pre-sanitized and pre-unique, so
+  // sanitize+dedupe is a no-op there and their ids pass through unchanged.
+  const walkAnchors = (list: PreparedPdfBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "heading": {
+          if (!block.explicitAnchor) break;
+          const label = uniqueAnchorId(block.explicitAnchor, used);
+          used.add(label);
+          byBlock.set(block, label);
+          if (!lookup.has(block.explicitAnchor)) lookup.set(block.explicitAnchor, label);
+          break;
+        }
+        case "anchor": {
+          const label = uniqueAnchorId(block.name, used);
+          used.add(label);
+          byBlock.set(block, label);
+          if (!lookup.has(block.name)) lookup.set(block.name, label);
+          break;
+        }
+        case "callout":
+        case "blockquote":
+        case "orientation":
+          walkAnchors(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walkAnchors(item.content);
+          break;
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) walkAnchors(cell.content);
+          break;
+      }
+    }
+  };
+
+  walkSlugs(blocks);
+  walkAnchors(blocks);
+  return { lookup, byBlock };
 }
 
 interface Writer {
   sourceMap: PdfSourceMapEntry[];
   notes: ExportNote[];
   labels: Map<string, string>;
+  /** Pre-assigned labels for explicit-anchor headings + anchor blocks. */
+  anchorByBlock: Map<PreparedPdfBlock, string>;
   headingOffset: number;
   headingCounts: Map<string, number>;
   theme: PdfTheme;
@@ -653,10 +830,19 @@ function serializeBlock(
   switch (block.type) {
     case "heading": {
       summary = inlinePlainText(block.content);
-      const base = typstLabel(summary);
-      const count = (writer.headingCounts.get(base) ?? 0) + 1;
-      writer.headingCounts.set(base, count);
-      const label = count === 1 ? base : `${base}-${count}`;
+      // Explicit anchor (spec 002) → the heading emits the sanitized, deduped
+      // label the collect pass assigned (the same one links resolve to).
+      // Anchor-less headings keep the text-slug label + dedup counter, so
+      // single-page output is unchanged.
+      let label: string;
+      if (block.explicitAnchor) {
+        label = writer.anchorByBlock.get(block) ?? uniqueAnchorId(block.explicitAnchor, new Set());
+      } else {
+        const base = typstLabel(summary);
+        const count = (writer.headingCounts.get(base) ?? 0) + 1;
+        writer.headingCounts.set(base, count);
+        label = count === 1 ? base : `${base}-${count}`;
+      }
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
       const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
       if (context.inTable) {
@@ -674,18 +860,40 @@ function serializeBlock(
     case "paragraph":
       value = serializeParagraphInline(block.content, writer, context, true);
       break;
-    case "codeBlock":
-      value = `#raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+    case "codeBlock": {
+      // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a
+      // leading `#` is a syntax error ("the character `#` is not valid in
+      // code") — the figure body must be the bare `raw(...)` expression.
+      const rawExpr = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+      // Only CAPTIONED code becomes a figure — caption-less code keeps today's
+      // rendering so C2's `figure.where(kind: raw)` outline never lists every
+      // code block (spec 003 C3).
+      value = block.caption
+        ? `#figure(${rawExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${rawExpr}`;
       break;
-    case "diagram":
+    }
+    case "diagram": {
       // Keep exported content in source order. `placement: auto` turns figures
       // into top/bottom floats, which can move a diagram before its heading or
       // collect multiple headings away from their diagrams in real documents.
-      value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")}))`;
+      const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")})`;
+      value = block.caption
+        ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
+        : `#figure(${img})`;
       break;
+    }
     case "image":
       if (!block.assetPath) {
-        value = `#par[#emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]]`;
+        // A captioned image that failed to embed still emits a NUMBERED figure
+        // fallback so a broken attachment does not shift figure numbering or
+        // leave a caption-less entry in C2's list of figures (spec 003 C3).
+        // Figure arguments are CODE context: the body must be the bare
+        // `emph[...]` expression — `#emph` there is a Typst syntax error.
+        const fallbackExpr = `emph[${literalText(`[Image unavailable: ${block.fallbackLabel}]`)}]`;
+        value = block.caption
+          ? `#figure(${fallbackExpr}, ${captionFigureArgs(block.caption, writer)})`
+          : `#par[#${fallbackExpr}]`;
       } else {
         if (!block.alt) {
           writer.notes.push({
@@ -694,12 +902,16 @@ function serializeBlock(
             message: `${block.fallbackLabel} uses a technical filename fallback for alternative text.`,
           });
         }
-        value = `#figure(image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}))`;
+        const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)})`;
+        value = block.caption
+          ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
+          : `#figure(${img})`;
       }
       break;
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
-      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, context)}\n]`;
+      const calloutContext: RenderContext = { ...context, container: "calloutCell" };
+      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
       break;
     }
     case "blockquote":
@@ -736,9 +948,34 @@ function serializeBlock(
       const grid = tableGrid(block.rows, block.columnWidths);
       const { columnCount } = grid;
       const isDense = columnCount >= DENSE_TABLE_COLUMN_THRESHOLD;
+      // Wide-table escalation (spec 003 T1.6). A landscape orientation region
+      // widens the available text area, so the same table classifies against
+      // the wider track rather than the portrait one.
+      const layout = classifyTableLayout({
+        columnCount,
+        sourceWidths: block.columnWidths,
+        longestAtomicToken: longestAtomicTokenLength(block.rows),
+        availableWidth: context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+      });
+      if (layout === "scaled") {
+        writer.notes.push({
+          level: "info",
+          code: "table-text-scaled",
+          message: `A wide table's text was scaled down to ${MIN_TABLE_FONT_SIZE_PT}pt to fit the page width.`,
+          source: { blockPath: path },
+        });
+      } else if (layout === "overflow-warned") {
+        writer.notes.push({
+          level: "warning",
+          code: "table-overflow-warned",
+          message: "A wide table may overflow the page even at minimum text size; consider a landscape orientation region for it.",
+          source: { blockPath: path },
+        });
+      }
       const cellContext: RenderContext = {
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
+        container: "tableCell",
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
@@ -789,38 +1026,110 @@ function serializeBlock(
         const headerCells = serializedRows
           .slice(0, leadingHeaderCount)
           .flatMap((row) => row.cells);
-        rows.push(`table.header(${headerCells.join(", ")})`);
+        // `repeat: true` is Typst's default, but pin it explicitly so the golden
+        // proves header rows repeat on every page across a break (spec 003 T1.6).
+        rows.push(`table.header(repeat: true, ${headerCells.join(", ")})`);
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
-      const horizontalInset = isDense ? 2 : 6;
-      value = `#block(width: 100%)[\n#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)\n]`;
+      const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      // "scaled"/"overflow-warned" render body text at the readability floor
+      // (accept wrap/clip over losing content).
+      const scaled = layout === "scaled" || layout === "overflow-warned";
+      const tableBody = scaled
+        ? `#[\n#set text(size: ${MIN_TABLE_FONT_SIZE_PT}pt)\n${tableMarkup}\n]`
+        : tableMarkup;
+      // Figure arguments are CODE context: the body must be the bare
+      // `block(...)` call — a leading `#` there is a Typst syntax error. The
+      // `[...]` content argument re-enters markup, so the inner `#table` stays valid.
+      const tableBlockExpr = `block(width: 100%)[\n${tableBody}\n]`;
+      value = block.caption
+        ? `#figure(${tableBlockExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${tableBlockExpr}`;
       break;
     }
     case "divider":
       value = `#line(length: 100%, stroke: rgb(\"#DFE1E6\"))`;
       break;
-    case "unknown":
-      writer.notes.push({
-        level: "warning",
-        code: "pdf-unknown-block",
-        message: `Unsupported ${block.macroName} macro was omitted from the PDF.`,
-        macroName: block.macroName,
-      });
-      value = "";
+    case "unknown": {
+      // Placeholder floor (spec 004): render a visible placeholder line, then
+      // the preserved body/plainBody, instead of silently omitting content.
+      const placeholder = `#text(style: "italic", fill: rgb("#97A0AF"))[${escapeTypstContent(
+        `[${block.macroName} macro not rendered]`
+      )}]`;
+      const parts = [`#par[${placeholder}]`];
+      if (block.body && block.body.length > 0) {
+        parts.push(serializeBlocks(block.body, writer, `${path}.body`, context));
+      } else if (block.plainBody) {
+        const MAX_PLAIN = 20000;
+        let text = block.plainBody;
+        if (text.length > MAX_PLAIN) {
+          text = text.slice(0, MAX_PLAIN);
+          writer.notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was truncated at ${MAX_PLAIN} characters.`,
+            macroName: block.macroName,
+          });
+        }
+        parts.push(
+          serializeBlocks([{ type: "codeBlock", code: text }], writer, `${path}.plainBody`, context)
+        );
+      }
+      value = parts.join("\n");
       break;
-    // No-op renderings (T0.2): the walker never emits these yet; real rendering
-    // lands in T1.5. `writeMapped` still wraps them (source-map precedent).
+    }
+    // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      value = "";
+      if (context.container === "tableCell" || context.container === "calloutCell") {
+        // A `#pagebreak` inside a `table.cell`/`callout` box has no effect —
+        // suppress it with a note (spec 003 C5 container matrix).
+        writer.notes.push({
+          level: "info",
+          code: "pagebreak-suppressed-in-container",
+          message: `A page break inside a ${context.container === "tableCell" ? "table cell" : "callout"} was suppressed (it has no effect inside that box).`,
+          source: { blockPath: path },
+        });
+        value = "";
+      } else {
+        value = "#pagebreak(weak: true)";
+      }
       break;
     case "anchor":
-      value = "";
+      // A zero-width labelable target at this position (`#box[]<label>`), so
+      // `page-<id>` chapter-start links and in-page anchor links resolve here.
+      // The label is the SANITIZED, per-document-unique id from the collect
+      // pass — raw Confluence anchor names ("Table of Contents") are not legal
+      // Typst labels and would fail the compile.
+      value = `#box[]<${writer.anchorByBlock.get(block) ?? uniqueAnchorId(block.name, new Set())}>`;
       break;
-    case "orientation":
-      // Transparent — no `#set page(flipped:)` yet (T1.5); children serialize
-      // exactly as if the region wrapper were absent, so nothing is lost.
-      value = serializeBlocks(block.content, writer, `${path}.content`, context);
+    case "orientation": {
+      if (context.container === "tableCell" || context.container === "calloutCell") {
+        // A Typst `set page` has no effect inside a `table.cell`/`callout` box —
+        // render the children without the wrapper (spec 003 C6 container matrix).
+        writer.notes.push({
+          level: "info",
+          code: "orientation-suppressed-in-container",
+          message: `An orientation region inside a ${context.container === "tableCell" ? "table cell" : "callout"} was rendered without an orientation change.`,
+          source: { blockPath: path },
+        });
+        value = serializeBlocks(block.content, writer, `${path}.content`, context);
+        break;
+      }
+      // A block-scoped `set page(flipped:)` — set to the region's ACTUAL boolean
+      // both ways (a scroll-portrait region inside a landscape document flips
+      // BACK to portrait). Typst set rules are block-scoped; page breaks at the
+      // region boundaries happen automatically. Widen the wide-table layout
+      // width for a landscape region so classifyTableLayout escalates against
+      // the landscape text area (spec 003 C6 / T1.6).
+      const regionContext: RenderContext = {
+        ...context,
+        layoutWidthPt: block.landscape ? LANDSCAPE_TEXT_WIDTH_PT : PORTRAIT_TEXT_WIDTH_PT,
+      };
+      const inner = serializeBlocks(block.content, writer, `${path}.content`, regionContext);
+      value = `#[\n#set page(flipped: ${block.landscape ? "true" : "false"})\n${inner}\n]`;
       break;
+    }
     default: {
       const exhaustive: never = block;
       return exhaustive;
@@ -848,18 +1157,30 @@ export function serializePdfDocument(
   options: PdfSerializeOptions
 ): PdfSourceBundle {
   const theme = resolvePdfTheme(options.theme);
-  const labels = collectHeadingLabels(document.blocks);
-  const min = minHeadingLevel(document.blocks);
+  const collected = collectHeadingLabels(document.blocks);
   const writer: Writer = {
     sourceMap: [],
     notes: [...document.notes],
-    labels,
-    headingOffset: min === Infinity ? 0 : min - 1,
+    labels: collected.lookup,
+    anchorByBlock: collected.byBlock,
+    headingOffset: computeHeadingOffset(document.blocks),
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
   };
   const body = serializeBlocks(document.blocks, writer);
+  const settings = resolvePdfSettings(options.settings);
+  // The validated logo travels as a virtual asset file the compiler maps into
+  // its filesystem — the same path-emission pattern prepared image assets use.
+  // The "atlcli-logo" name cannot collide with prepared assets, whose paths
+  // always carry a numeric index and content hash.
+  const logoAsset: PreparedPdfAsset | undefined = settings.logo
+    ? {
+        path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
+        bytes: settings.logo.bytes,
+        mediaType: settings.logo.mediaType,
+      }
+    : undefined;
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
@@ -875,7 +1196,7 @@ export function serializePdfDocument(
   region: ${meta.region ? typstString(meta.region) : "none"},
   exported-at: ${typstDate(meta.exportedAt)},
   exported-label: ${typstString(exportedLabel)},
-))
+), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
 ${body}
 `;
@@ -883,7 +1204,7 @@ ${body}
   return {
     main,
     template: createAtlcliTypstTemplate(options.theme),
-    assets: document.assets,
+    assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
   };

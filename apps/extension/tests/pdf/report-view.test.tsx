@@ -14,6 +14,7 @@ describe("PdfReportView", () => {
         renderedDiagrams: 1,
         skippedAssets: 0,
         notes: [{ level: "warning", code: "pdf-image-alt-fallback", message: "Alt text missing" }],
+        complete: true,
         timings: { prepareMs: 1, compileMs: 2, emitMs: 1, totalMs: 4 },
       }} />
     );
@@ -38,6 +39,7 @@ describe("PdfReportView", () => {
         renderedDiagrams: 0,
         skippedAssets: 0,
         notes: [],
+        complete: true,
         timings: { prepareMs: 3650, compileMs: 1042, emitMs: 200, totalMs: 4892 },
       }} />
     );

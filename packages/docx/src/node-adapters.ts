@@ -7,11 +7,11 @@
  * Org-Server) composes these with a token-auth {@link AssetFetcher} to get a
  * full {@link ExportEnv}.
  */
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { open, readFile, readdir, rename, unlink } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AssetFetcher, OutputSink, SvgRasterizer, TemplateSource } from "./env.js";
+import type { AssetFetcher, HostCallContext, OutputSink, SvgRasterizer, TemplateSource } from "./env.js";
 
 /**
  * A {@link TemplateSource} that reads the template from one fixed file path.
@@ -29,11 +29,40 @@ export function fileTemplateSource(path: string): TemplateSource {
 /**
  * An {@link OutputSink} that writes to one fixed file path, ignoring the
  * report's suggested filename (the CLI user chose the output path).
+ *
+ * Atomic write (spec 002): the bytes go to an exclusive-create temp file in the
+ * SAME directory (so the final rename never crosses a filesystem boundary),
+ * which is closed and then atomically renamed onto `path`. A crash, an abort, or
+ * any write error therefore leaves a pre-existing target byte-unchanged rather
+ * than a truncated/corrupt file, and the temp file is always cleaned up on
+ * failure. Concurrent exports to different paths get distinct temp names, so
+ * they never collide.
  */
 export function fileOutputSink(path: string): OutputSink {
   return {
-    async emit(_name: string, bytes: Uint8Array): Promise<void> {
-      await writeFile(path, bytes);
+    async emit(_name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void> {
+      context?.signal?.throwIfAborted();
+      const dir = dirname(path);
+      const unique = `${process.pid.toString(36)}${Date.now().toString(36)}${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const tmp = join(dir, `.${basename(path)}.${unique}.tmp`);
+      // "wx": exclusive create — never clobber an existing temp (distinct names
+      // make this effectively a fresh file each call).
+      const handle = await open(tmp, "wx");
+      try {
+        await handle.writeFile(bytes);
+        await handle.close();
+        context?.signal?.throwIfAborted();
+        // Atomic replace: the destination flips from old to new in one step.
+        await rename(tmp, path);
+      } catch (error) {
+        // Close (best-effort — may already be closed) and remove the temp so no
+        // orphan survives a forced failure.
+        await handle.close().catch(() => {});
+        await unlink(tmp).catch(() => {});
+        throw error;
+      }
     },
   };
 }

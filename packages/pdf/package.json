@@ -16,6 +16,9 @@
     "README.md"
   ],
   "type": "module",
+  "scripts": {
+    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
+  },
   "exports": {
     ".": {
       "development": {
@@ -56,7 +59,11 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
+    "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/diagram": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlcli/docx": "workspace:*"
   }
 }

@@ -25,6 +25,8 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/pdf/src/index.browser.ts",
   "packages/pdf/src/internal.ts",
   "packages/pdf-compiler-browser/src/index.ts",
+  "packages/template-pack/src/index.browser.ts",
+  "packages/export-macros/src/index.ts",
 ];
 
 /**

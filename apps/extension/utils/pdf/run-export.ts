@@ -158,7 +158,10 @@ export async function runPdfExport(
 ): Promise<PdfExportReport> {
   const deps = { ...defaultDeps, ...overrides };
   throwIfAborted(input.signal);
-  const { blocks: walkedBlocks, notes: walkerNotes } = storageToBlocks(input.page.details.storage ?? "");
+  const { blocks: walkedBlocks, notes: walkerNotes } = storageToBlocks(
+    input.page.details.storage ?? "",
+    { exporter: "pdf" }
+  );
   let blocks = walkedBlocks;
   const mentionNotes: ExportNote[] = [];
   try {

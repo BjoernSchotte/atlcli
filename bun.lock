@@ -45,9 +45,16 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@atlcli/jira": "workspace:*",
+        "@atlcli/pdf": "workspace:*",
+        "@atlcli/pdf-compiler-browser": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
+        "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
         "@resvg/resvg-wasm": "2.6.2",
+      },
+      "devDependencies": {
+        "ajv": "^8.20.0",
       },
     },
     "apps/extension": {
@@ -114,10 +121,18 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
         "shiki": "^4.3.1",
+      },
+    },
+    "packages/export-macros": {
+      "name": "@atlcli/export-macros",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
       },
     },
     "packages/jira": {
@@ -133,6 +148,10 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
+      },
+      "devDependencies": {
+        "@atlcli/docx": "workspace:*",
       },
     },
     "packages/pdf-compiler-browser": {
@@ -148,6 +167,15 @@
     "packages/plugin-api": {
       "name": "@atlcli/plugin-api",
       "version": "0.6.0",
+    },
+    "packages/template-pack": {
+      "name": "@atlcli/template-pack",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/docx": "workspace:*",
+        "pizzip": "^3.2.0",
+      },
     },
   },
   "patchedDependencies": {
@@ -216,6 +244,8 @@
 
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
 
+    "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
+
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
 
     "@atlcli/jira": ["@atlcli/jira@workspace:packages/jira"],
@@ -225,6 +255,8 @@
     "@atlcli/pdf-compiler-browser": ["@atlcli/pdf-compiler-browser@workspace:packages/pdf-compiler-browser"],
 
     "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
+
+    "@atlcli/template-pack": ["@atlcli/template-pack@workspace:packages/template-pack"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 
@@ -646,7 +678,7 @@
 
     "adm-zip": ["adm-zip@0.5.18", "", {}, "sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng=="],
 
-    "ajv": ["ajv@8.17.1", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g=="],
+    "ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
     "ajv-draft-04": ["ajv-draft-04@1.0.0", "", { "peerDependencies": { "ajv": "^8.5.0" }, "optionalPeers": ["ajv"] }, "sha512-mv00Te6nmYbRp5DCwclxtt7yV/joXJPGS7nM+97GdxvuttCOfgI3K4U25zboyeX0O+myI8ERluxQe5wljMmVIw=="],
 
@@ -1963,6 +1995,8 @@
     "wxt/chokidar": ["chokidar@5.0.0", "", { "dependencies": { "readdirp": "^5.0.0" } }, "sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw=="],
 
     "wxt/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
+
+    "yaml-language-server/ajv": ["ajv@8.17.1", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g=="],
 
     "yaml-language-server/request-light": ["request-light@0.5.8", "", {}, "sha512-3Zjgh+8b5fhRJBQZoy+zbVKpAQGLyka0MPgW3zruTF4dFFJ8Fqcfu9YsAvi/rvdcaTeWG3MkbZv4WKxAn/84Lg=="],
 

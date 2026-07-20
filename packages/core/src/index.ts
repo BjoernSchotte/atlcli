@@ -11,3 +11,4 @@ export * from "./tls.node.js";
 export * from "./update.js";
 export * from "./utils.js";
 export * from "./templates/index.js";
+export * from "./template-library.js";

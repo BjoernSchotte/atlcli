@@ -19,22 +19,39 @@ import type {
   ListItem,
   TableRow,
 } from "@atlcli/confluence";
-import { readableTextColor } from "@atlcli/confluence";
+import {
+  computeHeadingOffset,
+  readableTextColor,
+  sanitizeAnchorId,
+  uniqueAnchorId,
+} from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
 import {
+  bookmarkEnd,
+  bookmarkStart,
   calloutTable,
+  captionParagraph,
   codeLineParagraph,
   dataTable,
   dividerParagraph,
   hyperlinkField,
+  internalHyperlink,
   lineBreakRun,
+  pageBreakParagraph,
   paragraph,
+  resolveCaptionStyleId,
   resolveHeadingStyleId,
   run,
+  sectPrParagraph,
   statusBadgeRun,
+  synthesizeA4SectPr,
   tableCell,
+  toLandscapeSectPr,
+  toPortraitSectPr,
+  type CaptionLang,
   type RunStyle,
 } from "./ooxml.js";
+import type { Caption } from "@atlcli/confluence";
 
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
@@ -96,6 +113,18 @@ export interface SerializeContext {
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
   diagrams?: DiagramEmbedSeam;
+  /**
+   * The template's body-level `<w:sectPr>` (portrait), cloned by the export
+   * orchestrator (spec 003 C6). Threaded so an `orientation` region can emit a
+   * section sandwich whose landscape `pgSz` swaps THIS template's actual page
+   * dimensions. Absent → the region synthesizes an A4 fallback.
+   */
+  bodySectPr?: string;
+  /**
+   * Resolved caption locale (spec 003 C3): explicit option > host locale >
+   * `"en"`. Undefined → `"en"`. Drives {@link captionParagraph}'s SEQ label.
+   */
+  captionLang?: CaptionLang;
 }
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
@@ -107,6 +136,22 @@ interface InternalContext extends SerializeContext {
   headingOffset: number;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
+  /**
+   * Per-export bookmark state (spec 002 anchors): the numeric id counter and
+   * the set of bookmark NAMES already emitted. A mutable object so the state
+   * stays shared when a derived context is spread (`{ ...ctx }`). `used` is
+   * what keeps single-page exports (no compose-time registry) free of duplicate
+   * bookmark names when two raw anchor names sanitize to the same id.
+   */
+  bookmarks: { next: number; used: Set<string> };
+  /**
+   * The layout container the current block renders inside (spec 003 C6/C5).
+   * `pageBreak`/`orientation` render at `"body"` scope (list items inherit it —
+   * lists don't constrain layout controls) but are suppressed (children kept,
+   * layout side-effect skipped, note emitted) in `"tableCell"`/`"calloutCell"`,
+   * where a section break / page break would split the row.
+   */
+  container: "body" | "tableCell" | "calloutCell";
 }
 
 export interface SerializeResult {
@@ -159,11 +204,18 @@ export function serializeInline(nodes: InlineNode[], defaultTextColor?: string):
         const innerRuns = serializeInline(
           node.content.length ? node.content : [{ type: "text", text: "" }]
         );
+        const styled = linkStyledRuns(node.content) || innerRuns;
         if (node.target.kind === "external" && node.target.href) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
           out += hyperlinkField(node.target.href, linkStyledRuns(node.content));
+        } else if (node.target.kind === "anchor") {
+          // Internal anchor link → a real in-document jump (spec 002). The
+          // anchor is the sanitized destination id compose-document assigned;
+          // re-sanitize defensively so a raw single-page anchor still matches
+          // the bookmark name the anchor/heading emits.
+          out += internalHyperlink(sanitizeAnchorId(node.target.anchor), styled);
         } else {
-          out += linkStyledRuns(node.content) || innerRuns;
+          out += styled;
         }
         break;
       }
@@ -226,49 +278,9 @@ function placeMarker(frag: string, markerRun: string): string {
 // Blocks
 // ---------------------------------------------------------------------------
 
-/**
- * Heading-level normalization ("promotion"), matching Scroll Office.
- *
- * Confluence pages usually omit H1 (the page title is the implicit Heading 1)
- * and start their body headings at H2. Preserving levels would leave the top
- * TOC level empty, so Scroll promotes the SHALLOWEST heading in the document to
- * Heading 1. We do the same: `offset = minLevel - 1`, and every heading's
- * effective level is `block.level - offset` (shallowest → 1).
- *
- * The scan spans the WHOLE block tree — headings nested in callouts,
- * blockquotes, list items and table cells count — so a single document-wide
- * offset governs every heading. A document with no headings yields offset 0
- * (no-op); one already starting at H1 (minLevel 1) also yields offset 0.
- */
-function computeHeadingOffset(blocks: ExportBlock[]): number {
-  const min = minHeadingLevel(blocks);
-  return min === Infinity ? 0 : min - 1;
-}
-
-/** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
-function minHeadingLevel(blocks: ExportBlock[]): number {
-  let min = Infinity;
-  for (const block of blocks) {
-    switch (block.type) {
-      case "heading":
-        if (block.level < min) min = block.level;
-        break;
-      case "callout":
-      case "blockquote":
-      case "orientation":
-        min = Math.min(min, minHeadingLevel(block.content));
-        break;
-      case "list":
-        for (const item of block.items) min = Math.min(min, minHeadingLevel(item.content));
-        break;
-      case "table":
-        for (const row of block.rows)
-          for (const cell of row.cells) min = Math.min(min, minHeadingLevel(cell.content));
-        break;
-    }
-  }
-  return min;
-}
+// Heading-level promotion ("promotion", matching Scroll Office) now lives once
+// in `@atlcli/confluence` (`computeHeadingOffset`, imported above) — the single
+// home of the min-heading scan both this engine and the PDF engine consume.
 
 /**
  * Kick off every deferrable cost up front (perf): image asset fetches and
@@ -329,12 +341,38 @@ export async function serializeBlocks(
 ): Promise<SerializeResult> {
   const notes: ExportNote[] = [];
   const parts: string[] = [];
-  const internal: InternalContext = { ...ctx, headingOffset: computeHeadingOffset(blocks) };
+  const internal: InternalContext = {
+    ...ctx,
+    headingOffset: computeHeadingOffset(blocks),
+    bookmarks: { next: 1, used: new Set() },
+    container: "body",
+  };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
-  return { xml: parts.join(""), notes };
+  return { xml: coalesceSectPrParagraphs(parts.join("")), notes };
+}
+
+/**
+ * One section-closing paragraph immediately followed by another creates an
+ * EMPTY section — a spurious blank page (the first closer forces `nextPage`).
+ * Two adjacent orientation regions produce exactly that shape: region 1's
+ * closing `sectPr` paragraph directly precedes region 2's base-restoring one.
+ * Keep the FIRST closer (the region's own) and drop the redundant second: the
+ * following content then belongs to the next real section, which carries the
+ * correct properties (spec 003 C6 review fix).
+ */
+const SECTPR_PARA_SRC = String.raw`<w:p><w:pPr>(?:<w:sectPr\b[^>]*\/>|<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>`;
+
+export function coalesceSectPrParagraphs(xml: string): string {
+  const pair = new RegExp(`(${SECTPR_PARA_SRC})(?:${SECTPR_PARA_SRC})`);
+  let previous: string;
+  do {
+    previous = xml;
+    xml = xml.replace(pair, "$1");
+  } while (xml !== previous);
+  return xml;
 }
 
 async function serializeBlock(
@@ -359,10 +397,22 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
         styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
+      // An explicit anchor (chapter start / in-page heading anchor, spec 002)
+      // wraps the heading paragraph in a real bookmark so `w:hyperlink w:anchor`
+      // jumps land here. `uniqueAnchorId` sanitizes (composed ids pass through
+      // unchanged) AND dedupes per document, so two single-page anchors whose
+      // raw names sanitize identically never emit duplicate bookmark names.
+      if (block.explicitAnchor) {
+        const id = ctx.bookmarks.next++;
+        const name = uniqueAnchorId(block.explicitAnchor, ctx.bookmarks.used);
+        ctx.bookmarks.used.add(name);
+        return `${bookmarkStart(id, name)}${headingPara}${bookmarkEnd(id)}`;
+      }
+      return headingPara;
     }
 
     case "paragraph":
@@ -382,20 +432,30 @@ async function serializeBlock(
           message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${skipped}); rendered as plain monospace.`,
         });
       }
-      return lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      const codeXml = lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      // Caption below code (established convention).
+      return block.caption ? codeXml + captionXml(block.caption, ctx) : codeXml;
     }
 
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
-      const body = await serializeChildren(block.content, ctx, notes, depth + 1);
+      const body = await serializeChildren(
+        block.content,
+        { ...ctx, container: "calloutCell" },
+        notes,
+        depth + 1
+      );
       return calloutTable(block.kind, title, body);
     }
 
     case "list":
       return serializeList(block, ctx, notes, depth);
 
-    case "table":
-      return serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
+    case "table": {
+      const tableXml = await serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
+      // Caption above tables (established convention).
+      return block.caption ? captionXml(block.caption, ctx) + tableXml : tableXml;
+    }
 
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
@@ -410,41 +470,117 @@ async function serializeBlock(
       return dividerParagraph();
 
     case "image": {
+      // A captioned image that fails to embed still emits a numbered figure
+      // fallback (italic placeholder + the SAME caption paragraph), so the SEQ
+      // number is not skipped and downstream captions stay correctly numbered
+      // (spec 003 C3). Caption below figures (established convention).
+      const cap = block.caption ? captionXml(block.caption, ctx) : "";
+      const fallback = () => (block.caption ? imageUnavailablePara(block) + cap : "");
       if (!ctx.images) {
         notes.push({
           level: "info",
           code: "image-skipped",
           message: `Image ${describeImage(block)} skipped — image embedding is unavailable in this export.`,
         });
-        return "";
+        return fallback();
       }
       const outcome = await ctx.images.embed(block);
-      if (outcome.ok) return outcome.xml;
-      // Failure branch: no OOXML, so no dangling relationship — the export
-      // still succeeds with a report line (spec 005 / 004-F3 invariant).
+      if (outcome.ok) return outcome.xml + cap;
+      // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
+      // but keep a numbered fallback when a caption is present.
       notes.push({
         level: "warning",
         code: "image-embed-failed",
         message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
-      return "";
+      return fallback();
     }
 
-    case "unknown":
-      return paragraph(run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" }));
+    case "unknown": {
+      // Stage-4 placeholder floor (spec 004): the placeholder line, followed by
+      // the preserved body/plainBody so an unresolved third-party macro never
+      // silently drops content ("never silently drop" is spec 004's invariant).
+      const placeholder = paragraph(
+        run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" })
+      );
+      const MAX_BODY_DEPTH = 20;
+      if (block.body && block.body.length > 0) {
+        if (depth >= MAX_BODY_DEPTH) {
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was too deeply nested and was truncated.`,
+            macroName: block.macroName,
+          });
+          return placeholder;
+        }
+        const body = await serializeChildren(block.body, ctx, notes, depth + 1);
+        return placeholder + body;
+      }
+      if (block.plainBody) {
+        const MAX_PLAIN = 20000;
+        let text = block.plainBody;
+        if (text.length > MAX_PLAIN) {
+          text = text.slice(0, MAX_PLAIN);
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" macro body was truncated at ${MAX_PLAIN} characters.`,
+            macroName: block.macroName,
+          });
+        }
+        const code = await serializeBlock({ type: "codeBlock", code: text }, ctx, notes, depth + 1);
+        return placeholder + code;
+      }
+      return placeholder;
+    }
 
-    // No-op renderings (T0.2): today's walker never emits these; real rendering
-    // lands in T1.3/T1.5. Silent no-ops keep output and report byte-identical.
+    // Real renderings (spec 002 / T1.3).
     case "pageBreak":
-      return "";
+      if (ctx.container === "tableCell" || ctx.container === "calloutCell") {
+        // A `<w:br w:type="page"/>` inside a `<w:tc>` splits the row/callout,
+        // not the page — suppress it (spec 003 C5 container matrix).
+        notes.push({
+          level: "info",
+          code: "pagebreak-suppressed-in-container",
+          message: `A page break inside a ${ctx.container === "tableCell" ? "table cell" : "callout"} was suppressed (it would split the layout, not the page).`,
+        });
+        return "";
+      }
+      return pageBreakParagraph();
 
-    case "anchor":
-      return "";
+    case "anchor": {
+      // A standalone named anchor → a zero-width bookmark at this position, so
+      // `page-<id>` chapter-start links and in-page anchor links resolve here.
+      // Sanitized + per-document deduped like heading anchors (see above).
+      const id = ctx.bookmarks.next++;
+      const name = uniqueAnchorId(block.name, ctx.bookmarks.used);
+      ctx.bookmarks.used.add(name);
+      return `${bookmarkStart(id, name)}${bookmarkEnd(id)}`;
+    }
 
-    case "orientation":
-      // Transparent passthrough — children render exactly as if the region
-      // wrapper did not exist, so no content is lost before T1.5.
-      return serializeChildren(block.content, ctx, notes, depth);
+    case "orientation": {
+      const children = await serializeChildren(block.content, ctx, notes, depth);
+      if (ctx.container === "tableCell" || ctx.container === "calloutCell") {
+        // A DOCX section break cannot live inside a `<w:tc>`/`<w:tbl>` — keep
+        // the children unstyled and skip the section sandwich (spec 003 C6).
+        notes.push({
+          level: "info",
+          code: "orientation-suppressed-in-container",
+          message: `An orientation region inside a ${ctx.container === "tableCell" ? "table cell" : "callout"} was rendered without an orientation change (a section break cannot live there).`,
+        });
+        return children;
+      }
+      // Section sandwich: a paragraph carrying the cloned portrait sectPr closes
+      // the preceding section, the region's children follow, then a paragraph
+      // carrying the landscape/portrait-flipped sectPr closes the region. The
+      // pgSz swap reads the template's ACTUAL dimensions (Letter, A4, …).
+      const baseSectPr = ctx.bodySectPr ?? synthesizeA4SectPr();
+      const regionSectPr = block.landscape
+        ? toLandscapeSectPr(baseSectPr)
+        : toPortraitSectPr(baseSectPr);
+      return sectPrParagraph(baseSectPr) + children + sectPrParagraph(regionSectPr);
+    }
 
     default: {
       const _exhaustive: never = block;
@@ -455,6 +591,22 @@ async function serializeBlock(
 
 function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
   return block.source.kind === "attachment" ? `"${block.source.filename}"` : `"${block.source.url}"`;
+}
+
+/** Render a {@link Caption} to a caption paragraph (spec 003 C3). */
+function captionXml(caption: Caption, ctx: InternalContext): string {
+  return captionParagraph(
+    resolveCaptionStyleId(ctx.styleNames),
+    caption.kind,
+    ctx.captionLang ?? "en",
+    serializeInline(caption.content)
+  );
+}
+
+/** The italic placeholder paragraph for an image that could not be embedded. */
+function imageUnavailablePara(block: ImageBlock): string {
+  const label = block.alt ?? (block.source.kind === "attachment" ? block.source.filename : block.source.url);
+  return paragraph(run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }));
 }
 
 /**
@@ -627,7 +779,7 @@ async function serializeTable(
         : undefined;
       const body = await serializeChildren(
         cell.content,
-        { ...ctx, defaultTextColor },
+        { ...ctx, defaultTextColor, container: "tableCell" },
         notes,
         1
       );

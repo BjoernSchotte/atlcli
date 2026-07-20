@@ -91,6 +91,49 @@ jobs:
       - name: Check extension output bundle
         run: bun run check:extension-output
 
+  # Spec 008 T3.1 platform gate: the three-run-mode wasm compile check (source,
+  # dist bundle, compiled binary) must hold on macOS as well as Linux — the
+  # release ships binaries for both. Scoped to the PDF compile-port tests to
+  # keep the matrix cost sane; the full suite runs on ubuntu above.
+  pdf-cli-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: PDF compile-port and build-mode tests
+        run: bun test apps/cli/src/commands/export-pdf-assets.test.ts apps/cli/src/commands/export-pdf-build-modes.test.ts apps/cli/src/commands/export-pdf-integration.test.ts
+
+  # Spec 008 T3.2 platform gate: the filePdfOutputSink commit protocol
+  # (exclusive temp, symlink refusal, atomic no-replace commit, containment)
+  # must hold on Windows too — release.yml ships a Windows binary. Scoped to
+  # the sink tests; the full suite runs on ubuntu above.
+  pdf-sink-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Sink commit-protocol tests
+        run: bun test apps/cli/src/commands/export-pdf-sink.test.ts
+
   test-python:
     runs-on: ubuntu-latest
     steps:

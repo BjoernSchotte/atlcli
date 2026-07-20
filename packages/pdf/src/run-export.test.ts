@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock } from "@atlcli/confluence";
 import { PdfExportError, runPdfExport, type PdfExportPhase } from "./run-export.js";
+import { PdfSettingsError } from "./settings.js";
 
 const validPdf = new TextEncoder().encode(
   "%PDF-1.7\n/Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2\n%%EOF\n"
@@ -33,8 +34,65 @@ describe("neutral runPdfExport", () => {
     expect(template).toContain('let cover-paper = rgb("#FFFDF5")');
     expect(report.profile).toBe("pdf-ua-1");
     expect(report.notes[0]?.code).toBe("browser-harness");
-    expect(phases).toEqual(["preparing", "fetching", "compiling", "validating", "emitting"]);
+    expect(phases).toEqual(["configuration", "preparing", "fetching", "compiling", "validating", "emitting"]);
     expect(emitted).toBe(1);
+  });
+
+  it("fails settings validation before any asset fetch", async () => {
+    let resolveCalls = 0;
+    let emitted = 0;
+    try {
+      await runPdfExport(
+        { blocks, metadata, filename: "Test.pdf", settings: { page: "a3" as never } },
+        {
+          assets: { resolve: async () => { resolveCalls += 1; throw new Error("no assets"); } },
+          compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+          output: { emit: async () => { emitted += 1; } },
+        }
+      );
+      throw new Error("expected failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(PdfExportError);
+      expect((error as PdfExportError).phase).toBe("configuration");
+      expect((error as PdfExportError).cause).toBeInstanceOf(PdfSettingsError);
+      expect(((error as PdfExportError).cause as PdfSettingsError).path).toBe("page");
+    }
+    expect(resolveCalls).toBe(0);
+    expect(emitted).toBe(0);
+  });
+
+  it("resolves settings exactly once across validation and serialization", async () => {
+    let pageReads = 0;
+    const settings = {
+      get page(): "letter" {
+        pageReads += 1;
+        return "letter";
+      },
+    };
+    await runPdfExport(
+      { blocks, metadata, filename: "Test.pdf", settings },
+      {
+        assets,
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      }
+    );
+    expect(pageReads).toBe(1);
+  });
+
+  it("does not fail a committed export when the signal fires after emit", async () => {
+    const controller = new AbortController();
+    let emitted = 0;
+    const report = await runPdfExport(
+      { blocks, metadata, filename: "Test.pdf", signal: controller.signal },
+      {
+        assets,
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => { emitted += 1; controller.abort(); } },
+      }
+    );
+    expect(emitted).toBe(1);
+    expect(report.filename).toBe("Test.pdf");
   });
 
   it("preserves structured compiler diagnostics and emits nothing", async () => {
