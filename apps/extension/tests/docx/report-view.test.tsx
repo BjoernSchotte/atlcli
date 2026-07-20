@@ -16,6 +16,7 @@ const emptyScan: ExportReport["scan"] = {
   never: [],
   parts: ["word/document.xml"],
   hasContentPlaceholder: true,
+    stylerefStyleNames: [],
 };
 
 function makeReport(notes: ExportReport["notes"]): ExportReport {
