@@ -18,23 +18,63 @@ import {
   canvasSvgRasterizer as neutralCanvasSvgRasterizer,
   memoryTemplateSource,
 } from "@atlcli/docx/browser-runtime";
-import { getTemplate } from "./template-store.js";
+import { LEGACY_CURRENT_KEY, type TemplateEngine } from "./template-store.js";
+import { idbTemplateLibrary } from "../templates/library.js";
 import { downloadBytes } from "../download.js";
 
 export { memoryTemplateSource };
 
+/** Optional context for {@link idbTemplateSource}. */
+export interface IdbTemplateSourceOptions {
+  /** Ambient Atlassian session origin — isolates two sites sharing a space key. */
+  siteOrigin?: string;
+  /** Current space; a space-scoped override beats the global entry of the same id. */
+  spaceKey?: string;
+  /** Defaults to `"docx"` (the only engine whose bytes this library swaps for v1). */
+  engine?: TemplateEngine;
+}
+
 /**
- * {@link TemplateSource} over the panel's IndexedDB template store. The id is
- * the store slot (the panel uses the single `"current"` slot). Rejects when
- * nothing is stored — the caller (panel) gates Export on a loaded template,
- * so this firing means the template was deleted underneath the panel.
+ * {@link TemplateSource} over the panel's IndexedDB template **library**
+ * (spec 010 T5.2). The `id` is the logical `templateId`; resolution runs through
+ * the shared `resolveTemplate` (space-scoped entry beats global) and the bytes
+ * are sha256-verified before they are handed to the engine — a modified
+ * template is a hard error, never a silent fallback.
+ *
+ * For continuity with the pre-library single-slot panel, an empty id (or the
+ * retired `"current"` slot name) means "whatever is active": the
+ * `template-prefs` selection, or — when nothing was ever selected, which is the
+ * state right after the v1 → v2 migration — the sole entry if there is exactly
+ * one. Rejects when nothing is stored; the panel gates Export on a loaded
+ * template, so this firing means it was deleted underneath the panel.
  */
-export function idbTemplateSource(factory?: IDBFactory): TemplateSource {
+export function idbTemplateSource(
+  factory?: IDBFactory,
+  options: IdbTemplateSourceOptions = {}
+): TemplateSource {
+  const engine = options.engine ?? "docx";
+  const { siteOrigin, spaceKey } = options;
   return {
     async getBytes(id: string): Promise<Uint8Array> {
-      const stored = await getTemplate(id, factory);
-      if (!stored) throw new Error(`No template stored under id "${id}". Upload a template first.`);
-      return new Uint8Array(stored.bytes);
+      const library = idbTemplateLibrary({ factory, siteOrigin });
+      let templateId: string | undefined = id && id !== LEGACY_CURRENT_KEY ? id : undefined;
+      if (!templateId) {
+        templateId = await library.getActiveTemplateId(engine, spaceKey);
+      }
+      if (!templateId) {
+        const available = await library.list(engine, spaceKey);
+        if (available.length === 1) templateId = available[0].id;
+      }
+      if (!templateId) {
+        throw new Error("No template selected. Upload a template first.");
+      }
+      const entry = await library.resolve(templateId, engine, spaceKey);
+      if (!entry) {
+        throw new Error(
+          `No ${engine} template "${templateId}" in the library. Upload a template first.`
+        );
+      }
+      return library.getBytes(entry);
     },
   };
 }

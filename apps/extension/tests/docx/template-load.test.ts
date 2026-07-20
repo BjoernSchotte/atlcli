@@ -16,26 +16,50 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory } from "fake-indexeddb";
 import { loadCurrentTemplate } from "../../entrypoints/sidepanel/TemplateSection.js";
-import { getTemplate, putTemplate, type StoredTemplate } from "../../utils/docx/template-store.js";
+import {
+  buildRecordKey,
+  getTemplate,
+  putTemplate,
+  type StoredTemplateRecord,
+} from "../../utils/docx/template-store.js";
 import { scanTemplate } from "@atlcli/docx/scan";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
+
+const SITE = "https://mayflower.atlassian.net";
+const RECORD_KEY = buildRecordKey({
+  siteOrigin: SITE,
+  engine: "docx",
+  templateId: "tpl-1",
+  scope: "global",
+});
 
 let factory: IDBFactory;
 beforeEach(() => {
   factory = new IDBFactory();
 });
 
-function storeBytes(): { record: StoredTemplate; bytes: Uint8Array } {
+function storeBytes(): { record: StoredTemplateRecord; bytes: Uint8Array } {
   const bytes = buildDocx({
     body: para("$scroll.title") + para("$scroll.pageowner.fullName") + para("$scroll.content"),
   });
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
   return {
     bytes,
     record: {
-      id: "current",
+      recordKey: RECORD_KEY,
+      templateId: "tpl-1",
+      siteOrigin: SITE,
+      displayName: "mayflower.docx",
+      engine: "docx",
+      scope: "global",
       name: "mayflower.docx",
-      bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      bytes: buffer,
       uploadedAt: Date.now(),
+      sha256: "0".repeat(64),
+      size: buffer.byteLength,
     },
   };
 }
@@ -62,11 +86,11 @@ describe("loadCurrentTemplate — the scan is derived, never restored", () => {
         parts: ["word/document.xml"],
         hasContentPlaceholder: true,
       },
-    } as unknown as StoredTemplate;
+    } as unknown as StoredTemplateRecord;
     await putTemplate(legacy, factory);
 
     const current = await loadCurrentTemplate(
-      () => getTemplate("current", factory),
+      () => getTemplate(RECORD_KEY, factory),
       async () => scanTemplate
     );
 
@@ -82,7 +106,7 @@ describe("loadCurrentTemplate — the scan is derived, never restored", () => {
   it("returns null and never loads the scanner when nothing is stored", async () => {
     let loaded = 0;
     const current = await loadCurrentTemplate(
-      () => getTemplate("current", factory),
+      () => getTemplate(RECORD_KEY, factory),
       async () => {
         loaded += 1;
         return scanTemplate;
@@ -98,7 +122,7 @@ describe("loadCurrentTemplate — the scan is derived, never restored", () => {
     await putTemplate(record, factory);
 
     const current = await loadCurrentTemplate(
-      () => getTemplate("current", factory),
+      () => getTemplate(RECORD_KEY, factory),
       async () => scanTemplate
     );
 
