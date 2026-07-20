@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock } from "@atlcli/confluence";
-import { PdfExportError, runPdfExport, type PdfExportPhase } from "./run-export.js";
+import { auditPdfLanguage, PdfExportError, runPdfExport, type PdfExportPhase } from "./run-export.js";
 import { PdfSettingsError } from "./settings.js";
 
 const validPdf = new TextEncoder().encode(
@@ -149,5 +149,84 @@ describe("neutral runPdfExport", () => {
       output: { emit: async () => { emitted += 1; } },
     })).rejects.toHaveProperty("name", "AbortError");
     expect(emitted).toBe(0);
+  });
+});
+
+/**
+ * Language audit (spec 011, PDF/UA 7.2). `auditPdfLanguage` is pure over the
+ * two facts that decide it, so the branch table is asserted directly; the
+ * wiring test below proves `runPdfExport` feeds it the REAL inspection result
+ * rather than re-deriving the answer from the request.
+ */
+describe("PDF language audit", () => {
+  const taggedWithLang = new TextEncoder().encode(
+    "%PDF-1.7\n/Type/Page /Type/Catalog /Lang (de-DE) /StructTreeRoot /MarkInfo /FontFile2\n%%EOF\n"
+  );
+
+  it("warns when no language was supplied", () => {
+    const notes = auditPdfLanguage({ hasLang: true });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ level: "warning", code: "pdf-language-missing" });
+    expect(notes[0]?.message).toContain("no document language");
+  });
+
+  it("warns when the supplied language is not a usable tag", () => {
+    // normalizePdfLocale would silently coerce this to "en" for rendering; the
+    // audit exists precisely to say that the coercion happened.
+    const notes = auditPdfLanguage({ language: "Deutsch (Germany)", hasLang: true });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.message).toContain('"Deutsch (Germany)"');
+  });
+
+  it("stays silent for a usable language on a PDF that declares /Lang", () => {
+    expect(auditPdfLanguage({ language: "de", hasLang: true })).toEqual([]);
+    expect(auditPdfLanguage({ language: "en-GB", hasLang: true })).toEqual([]);
+  });
+
+  it("warns about the compiled file separately from the request", () => {
+    // A Level-B template can drop /Lang even when the metadata was fine, so
+    // these are two independent defects that must both be reportable.
+    const notes = auditPdfLanguage({ language: "de", hasLang: false });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.message).toContain("/Lang");
+    expect(auditPdfLanguage({ hasLang: false })).toHaveLength(2);
+  });
+
+  it("puts the warning on the export report when metadata has no language", async () => {
+    const report = await runPdfExport({ blocks, metadata, filename: "Test.pdf" }, {
+      assets,
+      compiler: { compile: async () => ({ pdf: taggedWithLang, diagnostics: [], compilerVersion: "test" }) },
+      output: { emit: async () => {} },
+    });
+    expect(report.notes.filter((note) => note.code === "pdf-language-missing")).toHaveLength(1);
+  });
+
+  it("keeps the report clean when the language is set and the PDF declares it", async () => {
+    const report = await runPdfExport(
+      { blocks, metadata: { ...metadata, language: "de", region: "DE" }, filename: "Test.pdf" },
+      {
+        assets,
+        compiler: { compile: async () => ({ pdf: taggedWithLang, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      }
+    );
+    expect(report.notes.filter((note) => note.code === "pdf-language-missing")).toEqual([]);
+  });
+
+  it("reads /Lang from the produced bytes, not from the request metadata", async () => {
+    // The strongest form of the wiring assertion: metadata says "de", but the
+    // compiler returns a file WITHOUT /Lang. A report that stayed silent here
+    // would be attesting to a property the file does not have.
+    const report = await runPdfExport(
+      { blocks, metadata: { ...metadata, language: "de" }, filename: "Test.pdf" },
+      {
+        assets,
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      }
+    );
+    const notes = report.notes.filter((note) => note.code === "pdf-language-missing");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.message).toContain("/Lang");
   });
 });

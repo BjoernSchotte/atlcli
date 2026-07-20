@@ -870,6 +870,13 @@ export declare function assertPlausibleCompression(entry: {
 // export: assertSafeDocxEntryName
 export declare function assertSafeDocxEntryName(name: string): void;
 
+// export: auditImageAltText
+export declare function auditImageAltText(input: {
+    alt?: string;
+    name: string;
+    pageId?: string;
+}): ExportNote | null;
+
 // export: bookmarkEnd
 export declare function bookmarkEnd(id: number): string;
 
@@ -1269,6 +1276,9 @@ export declare function inspectNumberingPart(zip: PizZip): {
 
 // export: internalHyperlink
 export declare function internalHyperlink(anchor: string, innerRuns: string): string;
+
+// export: isMissingAltText
+export declare function isMissingAltText(alt: string | undefined): boolean;
 
 // export: isSafeHyperlinkUrl
 export declare function isSafeHyperlinkUrl(url: string): boolean;

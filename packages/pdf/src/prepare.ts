@@ -117,6 +117,24 @@ export interface PreparePdfOptions {
    * the export rather than being swallowed as a per-image skip note.
    */
   signal?: AbortSignal;
+  /**
+   * Fallback provenance for emitted notes (spec 011, PDF/UA alt-text audit).
+   * A block's own attachment `pageId` always wins; this fills the gap for
+   * external images and single-page exports, where the host knows which page
+   * is being exported but the block does not carry it. Purely descriptive —
+   * it never changes what is rendered.
+   */
+  pageContext?: { pageId?: string; pageTitle?: string; pageUrl?: string };
+}
+
+/**
+ * True when an image block carries no author-written alternative text.
+ *
+ * Whitespace-only alt counts as missing: a `alt=" "` attribute satisfies no
+ * assistive technology, and Confluence's editor produces it readily.
+ */
+export function isMissingAltText(alt: string | undefined): boolean {
+  return (alt ?? "").trim().length === 0;
 }
 
 /** True for a cancellation error, from either the DOM or Node abort surface. */
@@ -173,30 +191,44 @@ export async function preparePdfDocument(
     return path;
   };
 
-  const walk = async (list: ExportBlock[]): Promise<PreparedPdfBlock[]> =>
+  // Block paths mirror the serializer's convention (`blocks[0].content[1]`,
+  // `blocks[2].rows[0].cells[1].content[0]`) so a note's `source.blockPath` is
+  // comparable across the prepare and serialize stages and against the PDF
+  // source map.
+  const walk = async (list: ExportBlock[], parentPath = "blocks"): Promise<PreparedPdfBlock[]> =>
     Promise.all(
-      list.map(async (block): Promise<PreparedPdfBlock> => {
+      list.map(async (block, index): Promise<PreparedPdfBlock> => {
+        const path = `${parentPath}[${index}]`;
         switch (block.type) {
           case "callout":
-            return { ...block, content: await walk(block.content) };
+            return { ...block, content: await walk(block.content, `${path}.content`) };
           case "blockquote":
-            return { ...block, content: await walk(block.content) };
+            return { ...block, content: await walk(block.content, `${path}.content`) };
           case "orientation":
-            return { ...block, content: await walk(block.content) };
+            return { ...block, content: await walk(block.content, `${path}.content`) };
           case "list":
             return {
               ...block,
               items: await Promise.all(
-                block.items.map(async (item) => ({ ...item, content: await walk(item.content) }))
+                block.items.map(async (item, itemIndex) => ({
+                  ...item,
+                  content: await walk(item.content, `${path}.items[${itemIndex}].content`),
+                }))
               ),
             };
           case "table":
             return {
               ...block,
               rows: await Promise.all(
-                block.rows.map(async (row) => ({
+                block.rows.map(async (row, rowIndex) => ({
                   cells: await Promise.all(
-                    row.cells.map(async (cell) => ({ ...cell, content: await walk(cell.content) }))
+                    row.cells.map(async (cell, cellIndex) => ({
+                      ...cell,
+                      content: await walk(
+                        cell.content,
+                        `${path}.rows[${rowIndex}].cells[${cellIndex}].content`
+                      ),
+                    }))
                   ),
                 }))
               ),
@@ -206,6 +238,30 @@ export async function preparePdfDocument(
               block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image");
             const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
             const owningPage = block.source.kind === "attachment" ? block.source.pageId : undefined;
+            // Alt-text audit (spec 011, PDF/UA 7.3). Emitted from the SOURCE
+            // block, before any fetch — the defect is on the source page and is
+            // independent of whether the bytes resolve, so a skipped image is
+            // audited too. Provenance points the author at the exact page and
+            // block to fix; without it "an image has no alt text" is unfixable
+            // advice in a 500-page tree export.
+            if (isMissingAltText(block.alt)) {
+              const pageId = owningPage ?? options.pageContext?.pageId;
+              const source = {
+                ...(pageId ? { pageId } : {}),
+                ...(options.pageContext?.pageTitle ? { pageTitle: options.pageContext.pageTitle } : {}),
+                ...(options.pageContext?.pageUrl ? { pageUrl: options.pageContext.pageUrl } : {}),
+                blockPath: path,
+                assetName: filename,
+              };
+              notes.push({
+                level: "warning",
+                code: "pdf-image-missing-alt",
+                message:
+                  `The image "${filename}" has no alternative text; the exported PDF falls back to ` +
+                  `a technical label, which assistive technology cannot use. Add alt text on the source page.`,
+                source,
+              });
+            }
             try {
               const resolved = await limit(() =>
                 resolver.resolve(
@@ -286,7 +342,7 @@ export async function preparePdfDocument(
             // Placeholder floor (spec 004): prepare the preserved body so images
             // /tables inside an unresolved macro still render; keep plainBody.
             const prepared: PreparedPdfBlock = { type: "unknown", macroName: block.macroName };
-            if (block.body && block.body.length > 0) prepared.body = await walk(block.body);
+            if (block.body && block.body.length > 0) prepared.body = await walk(block.body, `${path}.body`);
             if (block.plainBody !== undefined) prepared.plainBody = block.plainBody;
             return prepared;
           }

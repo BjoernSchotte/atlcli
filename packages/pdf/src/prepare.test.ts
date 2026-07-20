@@ -228,3 +228,132 @@ describe("PDF asset preparation", () => {
     );
   });
 });
+
+/**
+ * Alt-text audit (spec 011, PDF/UA 7.3). The audit's value is entirely in its
+ * provenance: "some image has no alt text" is unactionable in a 500-page tree
+ * export, so every assertion here checks WHICH page/block the note names, not
+ * merely that a note exists.
+ */
+describe("PDF alt-text audit", () => {
+  const ok = { resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }) };
+  const altNotes = (notes: Awaited<ReturnType<typeof preparePdfDocument>>["notes"]) =>
+    notes.filter((note) => note.code === "pdf-image-missing-alt");
+
+  function image(alt: string | undefined, filename = "diagram.png", pageId?: string): ExportBlock {
+    return {
+      type: "image",
+      source: { kind: "attachment", filename, ...(pageId ? { pageId } : {}) },
+      ...(alt === undefined ? {} : { alt }),
+    };
+  }
+
+  it("names the source page, block path and asset for an image with no alt", async () => {
+    const prepared = await preparePdfDocument([image(undefined, "chart.png", "12345")], ok);
+    expect(altNotes(prepared.notes)).toEqual([
+      {
+        level: "warning",
+        code: "pdf-image-missing-alt",
+        message: expect.stringContaining("chart.png"),
+        source: { pageId: "12345", blockPath: "blocks[0]", assetName: "chart.png" },
+      },
+    ]);
+  });
+
+  it("stays silent when the author wrote alt text", async () => {
+    const prepared = await preparePdfDocument([image("A revenue chart")], ok);
+    expect(altNotes(prepared.notes)).toEqual([]);
+  });
+
+  it("treats whitespace-only alt as missing", async () => {
+    // Confluence's editor produces `alt=" "` readily; a space helps nobody.
+    const prepared = await preparePdfDocument([image("   ")], ok);
+    expect(altNotes(prepared.notes)).toHaveLength(1);
+  });
+
+  it("audits an image that FAILED to embed, not just the embedded ones", async () => {
+    // The defect is on the source page, so it is independent of whether the
+    // bytes resolved — a broken attachment still needs alt text once fixed.
+    const prepared = await preparePdfDocument([image(undefined, "gone.png")], {
+      resolve: async () => {
+        throw new Error("404");
+      },
+    });
+    expect(altNotes(prepared.notes)).toHaveLength(1);
+    expect(prepared.notes.map((note) => note.code)).toContain("pdf-image-skipped");
+  });
+
+  it("reports a block path that locates the image inside nested containers", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "paragraph", content: [{ type: "text", text: "intro" }] },
+      {
+        type: "table",
+        rows: [
+          {
+            cells: [
+              { header: false, colspan: 1, rowspan: 1, content: [] },
+              {
+                header: false,
+                colspan: 1,
+                rowspan: 1,
+                content: [
+                  {
+                    type: "callout",
+                    kind: "info",
+                    content: [
+                      {
+                        type: "list",
+                        ordered: false,
+                        items: [{ content: [image(undefined, "deep.png")] }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, ok);
+    expect(altNotes(prepared.notes)[0]?.source?.blockPath).toBe(
+      "blocks[1].rows[0].cells[1].content[0].content[0].items[0].content[0]"
+    );
+  });
+
+  it("falls back to the host's page context when the block carries no page id", async () => {
+    // External images and single-page exports have no attachment pageId, but
+    // the caller knows which page it is exporting.
+    const external: ExportBlock = {
+      type: "image",
+      source: { kind: "external", url: "https://example.test/a.png" },
+    };
+    const prepared = await preparePdfDocument([external], ok, {
+      pageContext: { pageId: "777", pageTitle: "Release Notes", pageUrl: "https://wiki.test/777" },
+    });
+    expect(altNotes(prepared.notes)[0]?.source).toEqual({
+      pageId: "777",
+      pageTitle: "Release Notes",
+      pageUrl: "https://wiki.test/777",
+      blockPath: "blocks[0]",
+      assetName: "https://example.test/a.png",
+    });
+  });
+
+  it("prefers the block's own attachment page id over the host fallback", async () => {
+    // In a tree export the fallback names the ROOT page, which would send the
+    // author to the wrong page to fix the alt text.
+    const prepared = await preparePdfDocument([image(undefined, "x.png", "child-9")], ok, {
+      pageContext: { pageId: "root-1" },
+    });
+    expect(altNotes(prepared.notes)[0]?.source?.pageId).toBe("child-9");
+  });
+
+  it("emits exactly one audit note per offending image", async () => {
+    const prepared = await preparePdfDocument(
+      [image(undefined, "a.png"), image("fine", "b.png"), image(undefined, "c.png")],
+      ok
+    );
+    expect(altNotes(prepared.notes).map((note) => note.source?.assetName)).toEqual(["a.png", "c.png"]);
+  });
+});

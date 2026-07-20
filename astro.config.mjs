@@ -107,6 +107,7 @@ export default defineConfig({
             { label: 'Package Versioning', link: '/reference/versioning/' },
             { label: 'PDF Template Settings', link: '/reference/pdf-template-settings/' },
             { label: 'PDF Template Contract', link: '/reference/pdf-template-contract/' },
+            { label: 'PDF Accessibility & PDF/UA', link: '/reference/pdf-accessibility/' },
             { label: 'Template Pack Format', link: '/reference/template-pack-format/' },
             { label: 'Authentication', link: '/authentication/' },
             { label: 'Configuration', link: '/configuration/' },

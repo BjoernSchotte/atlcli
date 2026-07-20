@@ -30,3 +30,7 @@ coverage/
 .scannerwork/
 scripts/bench/out/
 scripts/verapdf/out/
+
+# HEAD-bound security attestation (spec 011) — a CI artifact, never committed:
+# it describes one commit's state and would be stale the moment it landed.
+security-attestation.json

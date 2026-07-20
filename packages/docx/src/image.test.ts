@@ -12,8 +12,10 @@ import {
   MAX_CONTENT_WIDTH_PX,
   MAX_RASTER_AXIS_PX,
   MAX_RASTER_PIXELS,
+  auditImageAltText,
   boundRasterTarget,
   decodeImageInfo,
+  isMissingAltText,
   ensureContentTypeDefault,
   inlineImageParagraph,
   isSvg,
@@ -548,5 +550,56 @@ describe("boundRasterTarget (spec 006 G4)", () => {
     const axis = MAX_RASTER_AXIS_PX;
     expect(axis * axis).toBeGreaterThan(MAX_RASTER_PIXELS);
     expect(boundRasterTarget({ widthPx: axis, heightPx: axis })).toBeNull();
+  });
+});
+
+/**
+ * Alt-text audit (spec 011, PDF/UA lane — DOCX side).
+ *
+ * The audit exists because the emitted XML looks correct either way:
+ * `inlineImageParagraph` always writes a non-empty `descr`, so Word's own
+ * accessibility checker reports "has alt text" while a screen reader announces
+ * a filename. These tests pin BOTH halves of that: the audit fires, and the
+ * fallback it is warning about really is in the XML.
+ */
+describe("image alt-text audit (spec 011)", () => {
+  it("flags an image with no alt and names the page and asset", () => {
+    expect(auditImageAltText({ name: "chart.png", pageId: "12345" })).toEqual({
+      level: "warning",
+      code: "image-missing-alt",
+      message: expect.stringContaining("chart.png"),
+      source: { pageId: "12345", assetName: "chart.png" },
+    });
+  });
+
+  it("stays silent when the author wrote alt text", () => {
+    expect(auditImageAltText({ alt: "Quarterly revenue", name: "chart.png" })).toBeNull();
+  });
+
+  it("treats whitespace-only alt as missing, exactly as the PDF engine does", () => {
+    // The two engines must agree, or the same source page audits differently
+    // depending on which format the author exported.
+    expect(isMissingAltText(undefined)).toBe(true);
+    expect(isMissingAltText("")).toBe(true);
+    expect(isMissingAltText("   ")).toBe(true);
+    expect(isMissingAltText("\n\t")).toBe(true);
+    expect(isMissingAltText("x")).toBe(false);
+    expect(auditImageAltText({ alt: " ", name: "a.png" })).not.toBeNull();
+  });
+
+  it("omits pageId from the note rather than emitting an empty one", () => {
+    expect(auditImageAltText({ name: "https://example.test/a.png" })?.source).toEqual({
+      assetName: "https://example.test/a.png",
+    });
+  });
+
+  it("is warning about a real fallback: descr carries the filename when alt is absent", () => {
+    // Guards the guard — if the embedder ever started writing an EMPTY descr,
+    // the audit's premise (and its message) would be wrong.
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const xml = embedder.embed(pngBytes(40, 20), { name: "chart-final-v2.png" });
+    expect(xml).toContain('descr="chart-final-v2.png"');
+    expect(auditImageAltText({ name: "chart-final-v2.png" })).not.toBeNull();
   });
 });
