@@ -3,12 +3,19 @@
  *
  * The engine's INCLUDE pass calls `deps.getIncludedPage(ref)` and expects a
  * discriminated {@link IncludeLookupOutcome}. Every host (CLI, extension,
- * further hosts) needs the SAME title→CQL construction, id-sorted determinism,
- * ambiguity handling, and error classification — so it lives here once,
- * injectable and isomorphic (no `node:*` / `chrome.*` / direct network). Hosts
- * pass their Confluence client's `getPage`/`searchPages` plus the shared
- * `escapeCqlValue` from `@atlcli/confluence`; unit tests inject plain in-memory
- * functions (no mocking).
+ * further hosts) needs the SAME title lookup, id-sorted determinism, ambiguity
+ * handling, and error classification — so it lives here once, injectable and
+ * isomorphic (no `node:*` / `chrome.*` / direct network). Hosts pass their
+ * Confluence client's `getPage` plus `findPagesByTitle`; unit tests inject plain
+ * in-memory functions (no mocking).
+ *
+ * Title resolution goes through the DIRECT content endpoint
+ * (`findPagesByTitle` → `GET /content?title=…`), NOT the CQL search index,
+ * because the search index lags page creation on Cloud (a freshly created
+ * include target came back "not found" on the first export and only resolved on
+ * a retry minutes later — see {@link IncludeLookupIo.findPagesByTitle}). No CQL
+ * string-literal escaping is involved: the title rides as a plain, URL-encoded
+ * query parameter.
  */
 import type { ConfluencePageDetails } from "@atlcli/confluence";
 import type { IncludePageRef } from "./placeholder-map.js";
@@ -18,10 +25,13 @@ import type { IncludeLookupOutcome } from "./resolver.js";
 export interface IncludeLookupIo {
   /** Fetch a page (with `storage`) by id — the client's `getPage`. */
   getPage: (id: string) => Promise<ConfluencePageDetails>;
-  /** Run a CQL page search; only the hits' `id`s are needed. */
-  searchPages: (cql: string) => Promise<Array<{ id: string }>>;
-  /** The shared CQL string-literal escaper (`@atlcli/confluence`). */
-  escapeCqlValue: (value: string) => string;
+  /**
+   * Look up pages by EXACT title (+ optional space) through the client's
+   * DIRECT content endpoint (`ConfluenceClient.findPagesByTitle`), which reads
+   * the content store rather than the lagging search index. Returns every
+   * match; the builder sorts by id. Only the hits' `id`s are needed.
+   */
+  findPagesByTitle: (title: string, spaceKey?: string) => Promise<Array<{ id: string }>>;
   /** Space of the EXPORTED page, filling a bare-title `(Title)` form. */
   defaultSpaceKey?: string;
 }
@@ -58,12 +68,11 @@ export function classifyIncludeError(err: unknown): IncludeLookupOutcome {
 /**
  * Build a `getIncludedPage` loader from a host's client primitives. Resolution:
  *  - a `pageId` ref → one `getPage`;
- *  - a title ref → a CQL `type = page [and space = "…"] and title = "…"` search
- *    (values escaped via {@link IncludeLookupIo.escapeCqlValue}, `spaceKey`
- *    defaulting to the exported page's space); zero hits →
- *    `not-found-or-forbidden`; the hits are id-sorted for determinism and the
- *    FIRST is fetched — more than one hit still resolves it but reports
- *    `ambiguous` with the count.
+ *  - a title ref → a DIRECT `findPagesByTitle(title, spaceKey)` lookup (NOT CQL
+ *    — avoids the search-index lag; `spaceKey` defaults to the exported page's
+ *    space); zero hits → `not-found-or-forbidden`; the hits are id-sorted for
+ *    determinism and the FIRST is fetched — more than one hit still resolves it
+ *    but reports `ambiguous` with the count.
  *
  * An `AbortError` is rethrown (host cancellation); every other throw is
  * classified by {@link classifyIncludeError}. The loader is memoization-agnostic
@@ -81,10 +90,7 @@ export function buildGetIncludedPage(
       if (!title) return { kind: "not-found-or-forbidden" };
 
       const spaceKey = ref.spaceKey ?? io.defaultSpaceKey;
-      const clauses = [`type = page`];
-      if (spaceKey) clauses.push(`space = "${io.escapeCqlValue(spaceKey)}"`);
-      clauses.push(`title = "${io.escapeCqlValue(title)}"`);
-      const hits = await io.searchPages(clauses.join(" and "));
+      const hits = await io.findPagesByTitle(title, spaceKey);
 
       if (hits.length === 0) return { kind: "not-found-or-forbidden" };
       const sorted = [...hits].sort((a, b) => a.id.localeCompare(b.id));

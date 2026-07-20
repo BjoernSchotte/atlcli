@@ -183,7 +183,12 @@ position — a central imprint, legal disclaimer, or standard appendix maintaine
 into every export. It is a document pass (not a text value): the placeholder paragraph is swapped
 for the referenced page's serialized OOXML body, inserted verbatim. Wire the optional
 `deps.getIncludedPage` round-trip (the CLI and extension both build it from
-`buildGetIncludedPage`, which owns the CQL construction and error mapping).
+`buildGetIncludedPage`, which owns the title lookup, id-sorted determinism, and error mapping).
+Title references resolve through the **direct content endpoint**
+(`client.findPagesByTitle` → `GET /content?title=…`), **not** the CQL search index — so a page
+created moments before the export (e.g. a CI pipeline that creates then immediately exports) is
+findable at once, instead of returning `includepage-unresolved` until the search index catches up
+minutes later.
 
 **Argument forms:**
 
@@ -273,8 +278,8 @@ const report = await runExport(
       },
       getIncludedPage: buildGetIncludedPage({   // $scroll.includepage.(…)
         getPage: (id) => client.getPage(id),
-        searchPages: (cql) => client.searchPages(cql),
-        escapeCqlValue,                     // from @atlcli/confluence
+        // DIRECT title lookup (not CQL) — findable the moment a page exists.
+        findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
         defaultSpaceKey: details.spaceKey,  // fills a bare (Title) form
       }),
     },

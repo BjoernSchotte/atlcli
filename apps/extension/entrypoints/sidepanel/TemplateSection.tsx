@@ -10,7 +10,7 @@
  * DOM/IDB/`chrome`-adjacent wiring.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { ConfluenceClient, escapeCqlValue } from "@atlcli/confluence/browser";
+import { ConfluenceClient } from "@atlcli/confluence/browser";
 import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
@@ -252,13 +252,14 @@ export function TemplateSection({
             // per occurrence, so `buildGetIncludedPage` (isomorphic, in the docx
             // engine chunk that `loadExport()` already fetches for this export)
             // is imported on first use, never pulling the heavy barrel into the
-            // panel's static graph. Same title→CQL + error mapping as the CLI.
+            // panel's static graph. Title lookups use the DIRECT content
+            // endpoint (findPagesByTitle), NOT CQL — same as the CLI — so a
+            // just-created target resolves without the search-index lag.
             getIncludedPage: async (ref) => {
               const { buildGetIncludedPage } = await loadExport();
               return buildGetIncludedPage({
                 getPage: (id) => client.getPage(id),
-                searchPages: (cql) => client.searchPages(cql),
-                escapeCqlValue,
+                findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
                 defaultSpaceKey: loadedPage.details.spaceKey,
               })(ref);
             },

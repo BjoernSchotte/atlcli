@@ -1227,4 +1227,51 @@ describe("ConfluenceClient", () => {
       expect(init?.credentials).toBeUndefined();
     });
   });
+
+  describe("findPagesByTitle — direct content endpoint (no search-index lag, spec 005 D1)", () => {
+    test("hits /content (NOT /content/search) with type=page + title + spaceKey", async () => {
+      const urls: string[] = [];
+      globalThis.fetch = mock((url: string) => {
+        urls.push(url);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [{ id: "500", title: "Imprint", space: { key: "DOCSY" } }],
+              _links: {},
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }) as unknown as typeof fetch;
+
+      const hits = await new ConfluenceClient(mockProfile).findPagesByTitle("Imprint", {
+        spaceKey: "DOCSY",
+      });
+      expect(hits).toEqual([{ id: "500", title: "Imprint", spaceKey: "DOCSY" }]);
+      // The regression pin: the DIRECT content endpoint, never the search index.
+      expect(urls[0]).toContain("/rest/api/content?");
+      expect(urls[0]).not.toContain("/content/search");
+      expect(urls[0]).toContain("type=page");
+      expect(urls[0]).toContain("title=Imprint");
+      expect(urls[0]).toContain("spaceKey=DOCSY");
+    });
+
+    test("follows _links.next to completion (title with multiple matches)", async () => {
+      let call = 0;
+      globalThis.fetch = mock((url: string) => {
+        call++;
+        const body =
+          call === 1
+            ? { results: [{ id: "20", title: "Dup", space: { key: "ENG" } }], _links: { next: "/rest/api/content?type=page&title=Dup&start=1" } }
+            : { results: [{ id: "10", title: "Dup", space: { key: "ENG" } }], _links: {} };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
+        );
+      }) as unknown as typeof fetch;
+
+      const hits = await new ConfluenceClient(mockProfile).findPagesByTitle("Dup");
+      expect(call).toBe(2);
+      expect(hits.map((h) => h.id)).toEqual(["20", "10"]);
+    });
+  });
 });
