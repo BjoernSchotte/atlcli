@@ -132,11 +132,14 @@ export function createAtlcliTypstTemplate(
           //      names the FIRST of them, not the last. The head sits at the top
           //      of the page and the content immediately below it starts with
           //      that first chapter; naming a later one contradicts what the
-          //      reader sees, and the first-on-page reading is also the
-          //      dictionary/guide-word convention. For the normal case — at most
-          //      one chapter per page, which is what composeChapters produces
-          //      with its default per-chapter pageBreak — first and last are the
-          //      same heading, so this refinement is a no-op there (pinned as a
+          //      reader sees. This is also what Word's STYLEREF field does by
+          //      default (search the page top-down, take the first match; if the
+          //      style is absent from the page, fall back to the one still
+          //      running) — its \l switch is what reverses the on-page search to
+          //      bottom-up and yields the last. For the normal case — at most one
+          //      chapter per page, which is what composeChapters produces with
+          //      its default per-chapter pageBreak — first and last are the same
+          //      heading, so this refinement is a no-op there (pinned as a
           //      byte-equality test against a pre-refinement render).
           // Front matter (no chapter heading yet) falls back to the document
           // title, never to an empty head.

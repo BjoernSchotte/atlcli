@@ -179,11 +179,11 @@ all three were verified against the pinned compiler
 - **First on the page, not last.** When several short chapters begin on one page,
   the head names the **first** of them. The head sits at the top of the page and
   the content directly beneath it starts with that first chapter, so naming a
-  later one would contradict what the reader sees; it is also the convention a
-  dictionary's guide words follow. This only ever applies to pages that open more
-  than one chapter — with at most one chapter per page, "first opening here" and
-  "last at or before here" are the same heading, which is why the refinement left
-  ordinary output byte-identical.
+  later one would contradict what the reader sees. This also matches Word's
+  default `STYLEREF` behavior — see [DOCX equivalence](#docx-equivalence). It
+  only ever applies to pages that open more than one chapter: with at most one
+  chapter per page, "first opening here" and "last at or before here" are the
+  same heading, which is why the refinement left ordinary output byte-identical.
 
 Pages before the first chapter heading (a cover, the table of contents, front
 matter) fall back to the **document title**, never to an empty head. The space
@@ -205,12 +205,25 @@ The DOCX engine has the same capability, expressed the way Word expresses it: a
 user template puts a `STYLEREF` field in its header
 (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`) and the engine keeps it resolving
 — field instructions survive byte-exactly, headings carry the exact `w:pStyle`
-id the field names, and `updateFields` prompts Word to refresh on open. Word's
-own rule for that field is *the last H1 that began on or before this page*, which
-is what the Typst resolution above reproduces on every page that opens at most
-one chapter — that is, on every page of a normal chapterized export. The two
-rules part only where several chapters begin on the same page: Word names the
-last of them, PDF names the first, deliberately (see the third bullet above).
+id the field names, and `updateFields` prompts Word to refresh on open.
+
+**The two engines resolve the head the same way.** For a `STYLEREF` field in a
+header, Word searches the current page from the **top down** and takes the
+**first** paragraph in the named style; if the style does not occur on the page
+at all, it searches back from the top of the page toward the beginning of the
+document, i.e. it keeps showing the chapter that is still running. That is
+exactly the PDF resolution above. The `\l` switch
+(`STYLEREF "Scroll Heading 1" \l`) reverses the on-page search to **bottom-up**,
+making Word take the **last** heading beginning on the page instead — the two
+directions together are how Word builds dictionary-style headers, one plain field
+for the first entry on the page and one `\l` field for the last. PDF's `chapter`
+mode corresponds to the **default** (no `\l`) behavior; there is no PDF analogue
+of `\l` today.
+
+Sources for that: Microsoft's ECMA-376 implementation notes state that `\l` in a
+header "causes the search to go from the bottom of the page to the beginning of
+the document" and has no effect elsewhere
+([MS-OI29500 §17.16.5.59](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/0f5599c3-3b12-4970-931d-659e489369f4)).
 
 The two engines differ in **where the decision lives**, not in what it does: PDF
 declares the mode in a validated manifest field, DOCX inherits it from whatever
