@@ -109,6 +109,34 @@ describe("spec 012 second curated template (real compiler)", () => {
     }
   });
 
+  it("drives the SERIALIZER's emitted presentation too, not just the template", async () => {
+    // Regression: SERIALIZE_COLORS/SERIALIZE_LAYOUT used to bind the built-in
+    // design at module scope, so a Manuscript export silently rendered Editorial
+    // Indigo's table stroke / header fill / mention ink — the Manuscript
+    // manifest declared those colors as DEAD DATA. The active design is now
+    // threaded through the writer + render context.
+    const prepared = await preparePdfDocument(BLOCKS, {
+      resolve: async () => {
+        throw new Error("no external assets");
+      },
+    });
+    const manuscript = serializePdfDocument(prepared, {
+      metadata: META,
+      templateManifest: MANUSCRIPT_PDF_TEMPLATE_MANIFEST,
+    });
+    const builtin = serializePdfDocument(prepared, { metadata: META });
+
+    // Manuscript's own table stroke / header fill reach the emitted source…
+    expect(manuscript.main).toContain("#D8DCE3"); // manuscript tableStroke
+    expect(manuscript.main).toContain("#F2F0EB"); // manuscript tableHeaderBackground
+    // …and the built-in's do NOT leak into it.
+    expect(manuscript.main).not.toContain("#DFE1E6"); // builtin tableStroke
+    expect(manuscript.main).not.toContain("#F4F5F7"); // builtin tableHeaderBackground
+    // The built-in export is unchanged.
+    expect(builtin.main).toContain("#DFE1E6");
+    expect(builtin.main).not.toContain("#D8DCE3");
+  }, 30_000);
+
   it("compiles cleanly through the identical engine path and produces distinct bytes", async () => {
     const compiler = await createCompiler();
     const builtin = await compileWith(compiler);
