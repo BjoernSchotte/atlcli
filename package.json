@@ -33,6 +33,7 @@
     "check:browser-export-harness": "bun run --cwd apps/browser-export-harness check:output",
     "assert:conformance-cases": "bun run --cwd apps/browser-export-harness assert:cases",
     "check:parity": "bun run --cwd apps/browser-export-harness check:parity",
+    "bench:m1": "bun scripts/bench/run-m1-acceptance.ts",
     "test:browser-export-harness": "bun run --cwd apps/browser-export-harness test:e2e",
     "check:extension-output": "bun run --cwd apps/extension check:output",
     "obfuscate": "terser dist/index.js --compress --mangle --output dist/index.js",
@@ -47,6 +48,10 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.3",
+    "@atlcli/docx": "workspace:*",
+    "@atlcli/export-fixtures": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@atlcli/pdf-compiler-browser": "workspace:*",
     "astro": "^7.0.7",
     "sharp": "^0.34.2"
   },

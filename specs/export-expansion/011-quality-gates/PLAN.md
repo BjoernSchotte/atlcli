@@ -394,24 +394,30 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       (UMSETZUNGSPLAN's M1 acceptance explicitly needs labels, `scroll-*`
       macros, draw.io diagrams, and a Jira table — see the M1 corpus task
       below, which is a distinct fixture from this one).
-- [ ] **M1 acceptance corpus** (new task, precedes the M1 milestone check):
-      `scripts/bench/generate-m1-corpus.ts` — a versioned 50-page
-      `ExportPageNode[]` tree (not raw blocks) assembled from the same
-      fixture building blocks as harness cases 002/003/004/005 (labels on a
-      subset of pages, `scroll-pagebreak`/`scroll-landscape`/`scroll-title`
-      macros, a draw.io preview-PNG macro, a live-Jira-table macro, an
-      includepage placeholder), committed to
-      `packages/export-fixtures/src/m1-corpus.ts` so it is not tenant- or
-      network-dependent. A new script
+- [~] **M1 acceptance corpus** (new task, precedes the M1 milestone check):
+      a versioned 50-page `ExportPageNode[]` tree (not raw blocks) assembled
+      from the same fixture building blocks as harness cases 002/003/004/005
+      (labels on a subset of pages, `scroll-pagebreak`/`scroll-landscape`/
+      `scroll-title` macros, a draw.io preview macro, a live-Jira-table macro),
+      committed to `packages/export-fixtures/src/m1-corpus.ts` so it is not
+      tenant- or network-dependent. A new script
       `scripts/bench/run-m1-acceptance.ts` runs this corpus through
-      `fetchExportTree`-shaped input → `composeChapters` → both engines, via
-      **both** the browser harness (Playwright) and the CLI-side production
-      path (T3.1), producing DOCX and PDF for each, and emits a
-      machine-readable `m1-acceptance.json` record (`{corpusDigest, docx:
-      {harness, cli}, pdf: {harness, cli}, digestsMatch, notes}`) as a CI
-      artifact. The M1 milestone in UMSETZUNGSPLAN is only marked done once
-      this record is green — a formally green M1 that never ran the
-      integrated product story once is the failure mode this closes.
+      `composeChapters` → both engines, producing DOCX and PDF, and emits a
+      machine-readable `m1-acceptance.json` record. The M1 milestone in
+      UMSETZUNGSPLAN is only marked done once this record is green — a formally
+      green M1 that never ran the integrated product story once is the failure
+      mode this closes.
+      *(Round 2: the corpus + the CLI-side runner are DONE and green offline —
+      `run-m1-acceptance` composes the 50-page tree and exports a byte-stable
+      (deterministic, compiled-twice-identical) DOCX + real-Typst PDF, emitting
+      `{version, corpusDigest, pages, blockCount, docx:{cli}, pdf:{cli},
+      digestsMatch, notes}`. Pending: `includepage` sits in the DOCX template
+      pass, not the block tree, so it is exercised by case 005, not the corpus;
+      the browser-harness (Playwright) M1 leg + `digestsMatch` (browser vs CLI)
+      and the diagram's PNG embedding are pending; the LIVE DOCSY acceptance run
+      is orchestrator territory. Absolute PDF/DOCX bytes are NOT pinned across
+      the repo (they track the Typst wasm/font versions — see Risks); the
+      corpus structural digest IS pinned in `generate-m1-corpus.test.ts`.)*
 - [ ] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
       wall-clock ms: blocks→compose (002), DOCX serialize+zip, PDF
       serialize+compile (real Typst WASM via the T3.1 Bun port). **RSS
@@ -454,8 +460,10 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       workflow to failing. Never a per-PR gate.
 - [x] Regression tests for the generator (determinism: same seed → identical
       JSON; page/block counts exact) in `scripts/bench/generate-fixture.test.ts`
-      and `scripts/bench/generate-m1-corpus.test.ts`. *(generate-fixture.test.ts
-      done; generate-m1-corpus.test.ts pending with the M1 corpus above.)*
+      and `scripts/bench/generate-m1-corpus.test.ts`. *(Both done:
+      generate-m1-corpus.test.ts pins the corpus's page/block/label counts, a
+      golden structural sha256, the integrated-story block coverage, and clean
+      composition — all pure over the corpus JSON, no compile.)*
 - [ ] Document the envelope in `src/content/docs/reference/` once measured —
       engine tier and end-to-end tier reported separately, each tier's scope
       stated explicitly (what it does and does not exercise); this is the

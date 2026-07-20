@@ -25,6 +25,7 @@ export * from "./svg-corpus.js";
 export * from "./macro-fixtures.js";
 export * from "./placeholder-fixtures.js";
 export * from "./docx-quality-fixtures.js";
+export * from "./m1-corpus.js";
 
 const MERMAID_SOURCE = "flowchart LR\n  Source --> Export\n  Export --> Document";
 
