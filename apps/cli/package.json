@@ -13,7 +13,6 @@
     "@atlcli/pdf": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/jira": "workspace:*",
-    "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
