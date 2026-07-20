@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BROWSER_ENTRYPOINTS, checkEntrypoint } from "./check-browser-build.ts";
+import { BROWSER_ENTRYPOINTS, checkEntrypoint } from "./check-browser-build.js";
 
 /**
  * Note on scope: the *positive* proof — that the four §6 entrypoints build for
