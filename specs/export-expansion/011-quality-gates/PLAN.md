@@ -515,12 +515,21 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       image block has no `alt`; surface it in `PdfExportReport` and the CLI
       `--report json` (T3.4) so authors can fix source pages. Same audit in
       the DOCX path (`packages/docx/src/image.ts`).
+      *(Round 2: NOT done — this is a feature-package SOURCE change
+      (`packages/pdf/src/prepare.ts` + `packages/docx/src/image.ts`), outside
+      the 011 harness/scripts/fixtures lane. Confirmed absent from the current
+      public API: no `pdf-image-missing-alt` note code exists. Hand to the pdf/
+      docx feature lane; 011 will add the conformance assertion once it ships.)*
 - [ ] Language audit task: thread `PdfExportMetadata.language` into the Typst
       template (`packages/pdf/src/template.ts`, `set text(lang: ..)`) and
       verify a `/Lang` entry in the catalog; extend
       `packages/pdf/src/validate.ts` with a `hasLang` field and extend
       `packages/pdf/src/validate.test.ts` accordingly. Warn on export when
       metadata has no language.
+      *(Round 2: NOT done — `packages/pdf/src/template.ts` is owned by spec 012
+      (do-not-touch), and `validate.ts`/`prepare.ts` are feature-package source
+      outside the 011 lane. Confirmed `validatePdfOutput` has no `hasLang` and
+      the template threads no `/Lang` today. Hand to 012 / the pdf feature lane.)*
 - [ ] Honest conformance statement in docs: new page
       `src/content/docs/reference/pdf-accessibility.md` stating exactly:
       output is **Tagged PDF** with document language, outline, embedded
@@ -624,6 +633,13 @@ budget).**
       Regression tests with hand-built PizZip archives (declared/actual
       size mismatch, path traversal, 100k-entry archive) in
       `packages/docx/src/scan.test.ts`.
+      *(Round 2: NOT done — enforcing the budget means editing
+      `packages/docx/src/scan.ts` (`unzipDocx`), a feature-package SOURCE change
+      outside the 011 harness/scripts/fixtures lane. Confirmed `unzipDocx` still
+      checks only the compressed input length against `MAX_TEMPLATE_BYTES` — no
+      entry-name / entry-count / decompressed-size guard. The adversarial
+      technique is proven reusable in the archive-corpus gate above; hand the
+      `scan.ts` change to the docx feature lane, then 011 adds the corpus.)*
 - [ ] Active-content policy for imported `.docx` templates: reject-on-import
       (a new `DocxError` kind, never a silent strip) when the archive
       contains `word/vbaProject.bin`, an `word/activeX/*` OLE/ActiveX
@@ -638,6 +654,9 @@ budget).**
       Word. Real hand-crafted fixture templates (VBA-bearing, altChunk,
       DDEAUTO field) in `packages/docx/src/scan.test.ts` and
       `packages/docx/src/export.test.ts`.
+      *(Round 2: NOT done — the new `DocxError` kind + reject/audit logic lives
+      in `packages/docx/src/{scan,export}.ts`, feature-package SOURCE outside the
+      011 lane. Hand to the docx feature lane.)*
 - [ ] Confluence storage parse budget (**cross-plan coordination note**:
       touches `packages/confluence/src/export-blocks.ts`, the hot file
       UMSETZUNGSPLAN sequences T0.1→T1.4→T1.8 — land as a small additive PR
@@ -653,6 +672,11 @@ budget).**
       (hand-authored) in `packages/confluence/src/export-blocks.test.ts`,
       run through both engines via a new harness/parity negative-fixture
       case owned by this folder.
+      *(Round 2: NOT done — the budget enforcement is a SOURCE change in
+      `packages/confluence/src/export-blocks.ts` (`parseXml`/walkers),
+      cross-plan with folder 001 and outside the 011 harness/scripts/fixtures
+      lane. 011 owns only the negative-fixture harness case, which lands once the
+      budget exists.)*
 - [ ] Link-target scheme policy (**same cross-plan coordination note** —
       lands with folder 001/003, specified and gated here): `<a href>`/
       `ac:link` targets flow verbatim from Confluence storage into DOCX
@@ -665,6 +689,11 @@ budget).**
       consumed by both serializers. Malformed-URI fixtures run through both
       engines via the same negative-fixture case as the storage budget
       above.
+      *(Round 2: NOT done — `sanitizeLinkHref` + the serializer wiring are SOURCE
+      changes in `packages/{confluence,docx,pdf}/src`, cross-plan with 001/003
+      and outside the 011 lane. 011 owns only the shared negative-fixture case,
+      which lands once the sanitizer exists. Note: `@atlcli/confluence` already
+      exports `isSafeLinkScheme` — the sanitizer can build on it.)*
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
       *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
       `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock
