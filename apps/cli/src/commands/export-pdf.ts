@@ -41,6 +41,7 @@ import {
 } from "@atlcli/pdf";
 import {
   buildReport,
+  buildTreeExportReport,
   classifyError,
   noteToIssue,
   pdfReportContributions,
@@ -48,7 +49,12 @@ import {
   type Issue,
   type SourcePageEntry,
 } from "./export-report.js";
-import { buildExportScope, type ParsedExportRequest } from "./export-request.js";
+import {
+  buildExportScope,
+  buildScopeReportFields,
+  type ParsedExportRequest,
+  type ScopeReportFields,
+} from "./export-request.js";
 import { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup } from "./export-internals.js";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
@@ -168,6 +174,12 @@ interface ResolvedScope {
   sourcePages: SourcePageEntry[];
   outNameKey: string;
   mentionUnresolved: number;
+  /**
+   * Scope traceability for the report (spec 002 A5), built by the shared
+   * {@link buildScopeReportFields}. Tree/space only — a single-page export has
+   * no scope resolution to trace, matching the DOCX single-page path.
+   */
+  scopeReport?: ScopeReportFields;
 }
 
 export interface ExportPdfArgs {
@@ -279,6 +291,9 @@ async function resolveScope(
     sourcePages,
     outNameKey: request.scopeKind === "space" ? request.spaceKey! : rootId,
     mentionUnresolved: mention.unresolved,
+    // Same builder the DOCX tree path uses — a `--scope space` request stays
+    // traceable to the tree rooted at the resolved homepage id (spec 002 A5).
+    scopeReport: buildScopeReportFields(request, scope),
   };
 }
 
@@ -351,16 +366,27 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         : []),
     ];
 
+    // Report-contract parity with the DOCX path. `complete` rides on EVERY
+    // successful export (spec 002's completeness contract, which a CI consumer
+    // reads via `jq -r '.complete'` — it must never be null on success); the
+    // scope-traceability pair is tree/space-only, exactly as on the DOCX side,
+    // and comes from the same shared builder. A tree/space export goes through
+    // `buildTreeExportReport`, which makes both REQUIRED at compile time.
+    const common = {
+      format,
+      sourcePages: scope.sourcePages,
+      outputDetails: [outputDetail],
+      issues: allIssues,
+      timings: { ...report.timings, totalMs: Date.now() - startedAt },
+      complete: report.complete,
+      strict,
+    };
+
     return {
       ok: true,
-      report: buildReport({
-        format,
-        sourcePages: scope.sourcePages,
-        outputDetails: [outputDetail],
-        issues: allIssues,
-        timings: { ...report.timings, totalMs: Date.now() - startedAt },
-        strict,
-      }),
+      report: scope.scopeReport
+        ? buildTreeExportReport({ ...common, scope: scope.scopeReport })
+        : buildReport(common),
     };
   } catch (error) {
     progress.clear();

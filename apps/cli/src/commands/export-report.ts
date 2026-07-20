@@ -382,6 +382,51 @@ export function buildReport(input: BuildReportInput): ExportReport {
   };
 }
 
+/**
+ * Input for {@link buildTreeExportReport}. Identical to {@link BuildReportInput}
+ * except that the three spec-002 tree fields are REQUIRED rather than optional —
+ * that is the whole point of the type.
+ */
+export interface TreeExportReportInput
+  extends Omit<BuildReportInput, "complete" | "requestedScope" | "resolvedScope"> {
+  /**
+   * Spec 002's completeness contract. REQUIRED: its DoD says the report carries
+   * `complete: boolean` at the top level so a CI consumer can tell a full export
+   * from a partial one, and `jq -r '.complete'` must never yield null.
+   */
+  complete: boolean;
+  /**
+   * Spec 002 A5 scope traceability, from `buildScopeReportFields`. REQUIRED so a
+   * `--scope space` request that resolved to a tree at the homepage id stays
+   * traceable in the report.
+   */
+  scope: { requestedScope: Record<string, unknown>; resolvedScope: Record<string, unknown> };
+}
+
+/**
+ * Assemble the success report for a `--scope tree|space` export — the ONE site
+ * that decides which spec-002 fields a tree/space export carries, used by BOTH
+ * the PDF (`export-pdf.ts`) and DOCX ts (`export.ts`) paths.
+ *
+ * Why this exists rather than each path calling {@link buildReport} directly:
+ * `complete`/`requestedScope`/`resolvedScope` are optional on
+ * {@link BuildReportInput} (single-page exports legitimately omit the scope
+ * pair), so a tree path could — and the PDF path did — silently forget them and
+ * still typecheck. Making them REQUIRED here turns that report-contract gap into
+ * a compile error instead of a field a `--json` consumer discovers is missing.
+ *
+ * Format-specific extras (`engine`, `placeholders`) stay pass-through: they are
+ * documented DOCX-ts-only fields, not part of the shared scope contract.
+ */
+export function buildTreeExportReport(input: TreeExportReportInput): ExportReport {
+  const { scope, ...rest } = input;
+  return buildReport({
+    ...rest,
+    requestedScope: scope.requestedScope,
+    resolvedScope: scope.resolvedScope,
+  });
+}
+
 /** One-line human summary for text mode (stdout stays clean for `--report json`). */
 export function summarizeReport(report: ExportReport): string {
   if (report.exitCode !== EXPORT_EXIT.SUCCESS && report.exitCode !== EXPORT_EXIT.STRICT_WARNINGS) {

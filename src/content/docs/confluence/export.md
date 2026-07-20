@@ -351,12 +351,21 @@ pipe in a headless job:
 | `sourcePages` | One entry per exported page: `id`, `title`, compose/fetch notes |
 | `outputDetails` / `outputs` | Per-artifact metrics: `embeddedImages`, `renderedDiagrams`, `skippedAssets` (and `pageCount` for PDF) |
 | `issues` / `warnings` / `errors` | Structured problems; `notesByCode` is the per-code tally |
-| `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) |
-| `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) |
-| `complete` | `false` when partial mode omitted content |
-| `placeholders` | ts-engine placeholder metrics (`resolved`, `unsupported`) |
+| `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) — `--scope tree`/`space` only |
+| `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) — `--scope tree`/`space` only |
+| `complete` | `false` when partial mode omitted content; present on every successful export |
+| `placeholders` | ts-engine placeholder metrics (`resolved`, `unsupported`) — DOCX `--engine ts` only |
+| `engine` | `python` or `ts` — DOCX only (the PDF path has a single engine) |
 | `timings` | Per-phase wall clocks |
 | `exitCode` | The process exit code, embedded for artifact archiving |
+
+**Format parity.** For the same logical request, `--format docx` and
+`--format pdf` emit the *same* top-level field set — including `complete` and the
+`requestedScope`/`resolvedScope` traceability pair — so a CI job can branch on
+`jq -r '.complete'` regardless of output format. The only documented exceptions
+are `engine` and `placeholders`, which describe DOCX-engine specifics that have
+no PDF equivalent. `requestedScope`/`resolvedScope` are omitted for single-page
+exports on **both** formats: there is no scope resolution to trace.
 
 Exit codes follow the [unified table](#exit-codes): `0` success · `1` usage/config ·
 `2` warnings under `--strict` · `3` auth · `4` remote/API · `5` compile/validation ·
