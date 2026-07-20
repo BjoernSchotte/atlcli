@@ -13,6 +13,8 @@ import type { ConfluencePageDetails, ExportBlock, ExportNode } from "@atlcli/con
 import { buildDocx, para, stylesXml } from "@atlcli/docx/fixtures";
 import type { PdfExportMetadata, PdfTemplateSettings } from "@atlcli/pdf/browser";
 
+export * from "./svg-corpus.js";
+
 const MERMAID_SOURCE = "flowchart LR\n  Source --> Export\n  Export --> Document";
 
 // ---------------------------------------------------------------------------
