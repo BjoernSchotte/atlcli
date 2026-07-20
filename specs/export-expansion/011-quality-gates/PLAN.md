@@ -20,6 +20,18 @@ storage/link/compiler security tasks (several owned by 006/007 or coordinated
 with 001/003), the E2E resource-discipline suite (live DOCSY tenant — orchestrator
 only), and docs pages are unstarted this round.
 
+**Round 2 (2026-07-20, after 005/006 merged) — landed:** rebased onto
+origin/main; TIGHTENED the SVG ratchet — 006's shared `assertSafeSvg` +
+BOM-aware `decodeSvgSource` closed every prior `pending-006` gap, so the CSS
+`url()`/`@import`/`style`-attr cases and the UTF-16LE case flip from ratcheted
+to hard `must-reject` (rules: `css-external-reference` and `blocked-element`);
+WIRED the both-engines gate via the shared sanitizer the PDF and DOCX engines
+both delegate to (no divergence possible). Still pending for a future 011 round:
+browser conformance cases 001–006 (each lands with its folder's follow-up PR),
+the benchmark runner/M1-corpus/CI-trend, all PDF/UA tasks, the remaining
+security tasks (archive corpus, raw `.docx` budget, storage-parse/link-scheme,
+full compiler-timeout coverage), E2E discipline, and docs pages.
+
 ## Reference
 
 - `specs/export-expansion/UMSETZUNGSPLAN.md` — Phase 4 table (T4.3–T4.9),
@@ -485,21 +497,21 @@ budget).**
 
 - [x] **Cross-plan SVG policy conformance gate** (does not implement the
       sanitizer — 006 does): `packages/export-fixtures/src/svg-corpus.ts`,
-      *(Done for the PDF engine via `preparePdfDocument`. Full corpus coverage
-      per this section: `script`/`foreignObject`/`on*`/external-`href`+`xlink`/
-      `javascript:`/`vbscript:`/external-DTD-entity → asserted `must-reject`
-      today. `utf8-bom-script` → `must-reject` (decoder strips the BOM, the
-      sanitizer catches it). `utf16le-bom-script` → asserted `must-reject`, but
-      **the defense today is the media-type sniff, NOT `findSvgSafetyViolation`,
-      which is blind to UTF-16 payloads** — NAMED GAP for 006 to close by
-      decoding-by-BOM before scanning (if the sniff becomes encoding-aware
-      first, the test flips to embedded and fails, catching the regression).
-      Remaining `pending-006` gaps the current regex sanitizer accepts, each
-      pinned by a passing test that flips when closed: CSS `url()` in a
-      `<style>` body, CSS `@import` in a `<style>` body, and CSS `url()` in a
-      `style="…"` attribute. The DOCX side — `packages/docx/src/image.ts`,
-      owned by parallel 006 — is not yet wired; the both-engines-agree
-      assertion joins when 006 merges.)*
+      *(Done — 006 merged and this gate now covers BOTH engines with an EMPTY
+      pending-gap list. Layer 1: every case runs through the real PDF pipeline
+      (`preparePdfDocument`). Layer 2: every case runs through 006's shared
+      `assertSafeSvg(decodeSvgSource(bytes))` — the exact function both engines
+      delegate to (`packages/pdf/src/prepare.ts:77`,
+      `packages/docx/src/export.ts:1121`), so one assertion proves the two
+      engines never diverge on a verdict. Corpus verdicts (rule that fires):
+      `script`/`foreignObject` → `blocked-element`; `on*` →
+      `event-handler-attribute`; external-`href`/`xlink`/`javascript:`/
+      `vbscript:` → `non-fragment-reference`; DTD/entity → `doctype-or-entity`;
+      `utf8-bom-script` and `utf16le-bom-script` → `blocked-element` (006's
+      BOM-aware `decodeSvgSource` decodes UTF-16LE BEFORE the scanner runs, so
+      the sanitizer itself now catches it — no longer sniff-only); CSS
+      `url()`/`@import` in a `<style>` body AND in a `style="…"` attribute →
+      `css-external-reference`. No `pending-006` gaps remain.)*
       an adversarial SVG fixture set covering `script`/`foreignObject`/`on*`/
       external-`href` (today's regex baseline) **plus** CSS-carried
       references (`url(...)`/`@import` in `<style>` bodies and `style="…"`

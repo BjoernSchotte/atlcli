@@ -108,30 +108,29 @@ export const SVG_CORPUS: readonly SvgCase[] = [
     id: "utf16le-bom-script",
     category: "must-reject",
     note:
-      "UTF-16LE+BOM <script> — rejected TODAY by the media-type sniff (bytes " +
-      "don't decode to `<svg` as UTF-8), NOT by findSvgSafetyViolation, which " +
-      "is blind to UTF-16 (named gap: 006's assertSafeSvg must decode by BOM " +
-      "before scanning; if the sniff ever becomes encoding-aware first, this " +
-      "case flips to embedded and the test fails, catching the regression)",
+      "UTF-16LE+BOM <script> — now caught by the SCANNER: 006's decodeSvgSource " +
+      "detects the BOM and decodes UTF-16LE before assertSafeSvg scans, so the " +
+      "<script> is visible (blocked-element). (Previously it was rejected only " +
+      "by the media-type sniff; the shared sanitizer closed that gap.)",
     svg: SCRIPT_PAYLOAD,
     bytes: utf16leWithBom(SCRIPT_PAYLOAD),
   },
   {
     id: "css-url-in-style",
-    category: "pending-006",
-    note: "CSS url() reference inside a <style> body — regex gap",
+    category: "must-reject",
+    note: "CSS url() reference inside a <style> body — 006 css-external-reference rule",
     svg: `<svg ${NS}><style>rect{fill:url(http://evil.example/x)}</style><rect/></svg>`,
   },
   {
     id: "css-import-in-style",
-    category: "pending-006",
-    note: "CSS @import inside a <style> body — regex gap",
+    category: "must-reject",
+    note: "CSS @import inside a <style> body — 006 css-external-reference rule",
     svg: `<svg ${NS}><style>@import url(http://evil.example/x.css);</style><rect/></svg>`,
   },
   {
     id: "css-url-in-style-attr",
-    category: "pending-006",
-    note: "CSS url() inside a style=\"\" attribute — regex gap",
+    category: "must-reject",
+    note: "CSS url() inside a style=\"\" attribute — 006 css-external-reference rule",
     svg: `<svg ${NS}><rect style="fill:url(http://evil.example/x)"/></svg>`,
   },
 ];
