@@ -54,7 +54,10 @@
  *     marker. Resumable by construction: a panel closed mid-backfill leaves
  *     pending rows that the next open finds through the `migrationPending`
  *     index and finishes. A partially-migrated record is never presented as
- *     migrated — {@link listTemplates} consumers filter it out.
+ *     migrated — {@link listTemplates} consumers filter it out. Its write is a
+ *     **compare-and-swap**, because the hash it holds is by definition stale by
+ *     the time it lands; see {@link runMigrationBackfill} for the silent
+ *     data-loss race that makes an unconditional `put()` unsafe.
  *
  * ### Why the pending marker is `1` and not `true`
  *
@@ -199,9 +202,41 @@ export function normalizeSiteOrigin(siteOrigin?: string): string {
 }
 
 /**
+ * Percent-encode the only two characters that can make a `|`-joined key
+ * ambiguous: the delimiter itself and the escape character.
+ *
+ * Without this, raw concatenation is **not injective** and two different
+ * logical templates can mint a byte-identical primary key — at which point the
+ * second `put()` silently destroys the first row *and its uploaded bytes*.
+ * The real collision: `templateId: "handbook|space"` at `scope: "global"` and
+ * `templateId: "handbook"` at `scope: "space", spaceKey: "global"` both flatten
+ * to `<site>|docx|handbook|space|global`.
+ *
+ * Escaping is preferred over rejecting a "safe alphabet" because logical ids
+ * are caller-supplied (`AddTemplateInput.templateId`, and eventually
+ * template-pack ids) and refusing one is a user-visible failure for what is
+ * really an encoding problem. `%` must be escaped *first*, otherwise the
+ * literal text `%7C` and a real `|` would both encode to `%7C` and the
+ * collision would simply move.
+ */
+function encodeKeySegment(value: string): string {
+  return value.replace(/%/g, "%25").replace(/\|/g, "%7C");
+}
+
+/** Join key components so that distinct component tuples yield distinct keys. */
+function joinKeySegments(segments: readonly string[]): string {
+  return segments.map(encodeKeySegment).join("|");
+}
+
+/**
  * Build the IDB primary key for a template record. Global entries get four
  * segments, space-scoped entries a fifth — so a global entry and its space
  * override of the *same* `templateId` are two distinct rows that coexist.
+ *
+ * Every component is escaped ({@link encodeKeySegment}), which is what makes
+ * the mapping from `(siteOrigin, engine, templateId, scope, spaceKey)` to key
+ * one-to-one. A component containing neither `|` nor `%` is passed through
+ * byte-identical, so keys stay readable and pre-existing rows keep their key.
  */
 export function buildRecordKey(parts: {
   siteOrigin: string;
@@ -210,17 +245,32 @@ export function buildRecordKey(parts: {
   scope: TemplateScope;
   spaceKey?: string;
 }): string {
-  const base = `${normalizeSiteOrigin(parts.siteOrigin)}|${parts.engine}|${parts.templateId}|${parts.scope}`;
-  return parts.scope === "space" ? `${base}|${parts.spaceKey ?? ""}` : base;
+  const segments = [
+    normalizeSiteOrigin(parts.siteOrigin),
+    parts.engine,
+    parts.templateId,
+    parts.scope,
+  ];
+  if (parts.scope === "space") segments.push(parts.spaceKey ?? "");
+  return joinKeySegments(segments);
 }
 
-/** Build the `template-prefs` primary key: `<siteOrigin>|<engine>|<spaceKey>`. */
+/**
+ * Build the `template-prefs` primary key: `<siteOrigin>|<engine>|<spaceKey>`.
+ * Escaped for the same reason {@link buildRecordKey} is — a `|` in a space key
+ * would otherwise let one space read and overwrite another space's active
+ * selection and settings values.
+ */
 export function buildPrefsKey(parts: {
   siteOrigin: string;
   engine: TemplateEngine;
   spaceKey?: string;
 }): string {
-  return `${normalizeSiteOrigin(parts.siteOrigin)}|${parts.engine}|${parts.spaceKey ?? ""}`;
+  return joinKeySegments([
+    normalizeSiteOrigin(parts.siteOrigin),
+    parts.engine,
+    parts.spaceKey ?? "",
+  ]);
 }
 
 function resolveFactory(factory?: IDBFactory): IDBFactory {
@@ -309,25 +359,90 @@ function upgradeSync(db: IDBDatabase, upgradeTx: IDBTransaction, siteOrigin: str
   };
 }
 
+/**
+ * How long a *blocked* upgrade may stay queued before we give up on it. A
+ * blocked open is not an error (see {@link openRaw}); it only becomes one when
+ * the other connection never closes — e.g. a second panel wedged on a
+ * long-running task — and we would otherwise hang the caller forever.
+ */
+export const BLOCKED_UPGRADE_TIMEOUT_MS = 10_000;
+
 function openRaw(idb: IDBFactory, siteOrigin: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    // `blocked` is NOT terminal: the open request stays QUEUED and proceeds by
+    // itself as soon as the older connection closes. Rejecting on it (the
+    // original bug) was doubly wrong — the caller saw a failure for an upgrade
+    // that then went on to succeed, migration phase 2 never ran for it, and the
+    // connection that eventually opened was never closed, so it leaked *and*
+    // blocked the next upgrade in turn. So: warn, keep waiting, bound the wait,
+    // and close any connection that arrives after we have given up.
+    let settled = false;
+    let blockedTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const clearBlockedTimer = (): void => {
+      if (blockedTimer !== undefined) clearTimeout(blockedTimer);
+      blockedTimer = undefined;
+    };
+
     const req = idb.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const upgradeTx = req.transaction;
       if (!upgradeTx) {
+        settled = true;
+        clearBlockedTimer();
         reject(new Error("IndexedDB upgrade started without a version-change transaction."));
         return;
       }
       try {
         upgradeSync(req.result, upgradeTx, siteOrigin);
       } catch (error) {
+        settled = true;
+        clearBlockedTimer();
         reject(error);
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
-    req.onblocked = () =>
-      reject(new Error("IndexedDB upgrade is blocked by another open connection."));
+    req.onsuccess = () => {
+      clearBlockedTimer();
+      const db = req.result;
+      if (settled) {
+        // We already rejected (blocked timeout / failed upgrade). Do not leak
+        // the connection — an open connection blocks every later upgrade.
+        db.close();
+        return;
+      }
+      settled = true;
+      // MDN's multi-tab requirement: when another tab wants a newer version we
+      // must get out of the way, or its open request blocks indefinitely. Every
+      // store entry point opens and closes its own connection, so closing here
+      // never pulls the rug out from under an in-flight transaction.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    req.onerror = () => {
+      clearBlockedTimer();
+      if (settled) return;
+      settled = true;
+      reject(req.error ?? new Error("IndexedDB open failed"));
+    };
+    req.onblocked = () => {
+      if (settled || blockedTimer !== undefined) return;
+      console.warn(
+        "[template-store] IndexedDB upgrade is blocked by another open connection — waiting for it to close."
+      );
+      blockedTimer = setTimeout(() => {
+        blockedTimer = undefined;
+        if (settled) return;
+        settled = true;
+        reject(
+          new Error(
+            "IndexedDB upgrade stayed blocked by another open connection " +
+              `for ${BLOCKED_UPGRADE_TIMEOUT_MS}ms — close other panels and retry.`
+          )
+        );
+      }, BLOCKED_UPGRADE_TIMEOUT_MS);
+      // Never keep a Node/Bun process (or a test run) alive just to wait.
+      (blockedTimer as unknown as { unref?: () => void }).unref?.();
+    };
   });
 }
 
@@ -368,6 +483,48 @@ function tx<T>(
   });
 }
 
+/**
+ * Run a multi-request transaction and resolve when it **commits**. Unlike
+ * {@link tx} this issues no single "the" request: the body may queue several
+ * (and may queue more from a request's `onsuccess`, which keeps the
+ * transaction alive), which is what a read-modify-write inside one transaction
+ * needs.
+ */
+function txCommit(
+  db: IDBDatabase,
+  storeName: string,
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(storeName, mode);
+    try {
+      run(t.objectStore(storeName));
+    } catch (error) {
+      try {
+        t.abort();
+      } catch {
+        /* already aborted */
+      }
+      reject(error);
+      return;
+    }
+    t.oncomplete = () => resolve();
+    t.onabort = () => reject(t.error ?? new Error("IndexedDB transaction aborted"));
+    t.onerror = () => reject(t.error ?? new Error("IndexedDB transaction failed"));
+  });
+}
+
+/** Byte-wise equality of a stored buffer against the snapshot we hashed. */
+function sameBytes(stored: ArrayBuffer, snapshot: Uint8Array): boolean {
+  if (stored.byteLength !== snapshot.byteLength) return false;
+  const view = new Uint8Array(stored);
+  for (let i = 0; i < view.length; i++) {
+    if (view[i] !== snapshot[i]) return false;
+  }
+  return true;
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
@@ -382,6 +539,34 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * version-change transaction. Idempotent and resumable: it finds its work
  * through the `migrationPending` index, so an interrupted run simply leaves
  * rows for the next open to finish.
+ *
+ * ### Why the write is a compare-and-swap, not a plain `put()`
+ *
+ * Hashing needs an `await`, so the snapshot this function holds is necessarily
+ * stale by the time it writes. Two panels open at once both open the database,
+ * both find row K pending, and both hash it. Panel A finishes; the user then
+ * *replaces* K with a new upload; panel B — still holding the pre-replacement
+ * snapshot — writes it back. The rollback is completely silent, because the old
+ * bytes and the old hash B carries agree with each other, so `getBytes`'
+ * integrity check happily accepts the resurrected template. **That is user data
+ * loss**, and the "backfill" is the thing that causes it.
+ *
+ * So the write re-reads each row *inside the same `readwrite` transaction* and
+ * only completes it when it is still the row that was hashed:
+ *
+ *  - gone (deleted meanwhile) → skip;
+ *  - no longer carrying {@link MIGRATION_PENDING} → someone else finished or
+ *    replaced it → skip;
+ *  - bytes differ from the snapshot → replaced in place → skip, leaving the row
+ *    for whoever owns those bytes.
+ *
+ * Only the derived fields (`sha256`, `size`, marker removal) are ever written,
+ * and they are written onto the row as it currently exists — never onto a stale
+ * copy of it. IndexedDB serialises overlapping `readwrite` transactions, so the
+ * re-read cannot itself race.
+ *
+ * @returns how many rows this call actually completed (skipped rows do not
+ * count; a concurrent run legitimately reports fewer than it hashed).
  */
 export async function runMigrationBackfill(db: IDBDatabase): Promise<number> {
   const pending = await tx<StoredTemplateRecord[] | undefined>(db, STORE, "readonly", (s) =>
@@ -389,19 +574,28 @@ export async function runMigrationBackfill(db: IDBDatabase): Promise<number> {
   );
   if (!pending || pending.length === 0) return 0;
 
-  const completed: StoredTemplateRecord[] = [];
+  const hashed: { recordKey: string; snapshot: Uint8Array; sha256: string }[] = [];
   for (const row of pending) {
-    const sha256 = await sha256Hex(new Uint8Array(row.bytes));
-    const { migrationPending: _pending, ...rest } = row;
-    completed.push({ ...rest, sha256, size: row.bytes.byteLength });
+    const snapshot = new Uint8Array(row.bytes);
+    hashed.push({ recordKey: row.recordKey, snapshot, sha256: await sha256Hex(snapshot) });
   }
 
-  await tx(db, STORE, "readwrite", (s) => {
-    let last: IDBRequest | undefined;
-    for (const row of completed) last = s.put(row);
-    return last;
+  let completed = 0;
+  await txCommit(db, STORE, "readwrite", (store) => {
+    for (const item of hashed) {
+      const read = store.get(item.recordKey);
+      read.onsuccess = () => {
+        const current = read.result as StoredTemplateRecord | undefined;
+        if (!current) return; // deleted while we were hashing
+        if (current.migrationPending !== MIGRATION_PENDING) return; // finished/replaced already
+        if (!sameBytes(current.bytes, item.snapshot)) return; // different bytes now — not ours
+        const { migrationPending: _pending, ...rest } = current;
+        store.put({ ...rest, sha256: item.sha256, size: current.bytes.byteLength });
+        completed++;
+      };
+    }
   });
-  return completed.length;
+  return completed;
 }
 
 /**

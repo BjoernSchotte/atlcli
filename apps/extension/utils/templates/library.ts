@@ -20,7 +20,10 @@
  *    sites that both use a space called `DOCSY` never see each other's
  *    templates. The one exception is {@link UNKNOWN_SITE_ORIGIN}, the sentinel
  *    the v1 → v2 migration falls back to when no session was resolvable; those
- *    records are listed for every site so a pre-v2 template is never orphaned.
+ *    records are listed for every site so a pre-v2 template is never orphaned —
+ *    unless a real-origin row has superseded them, which would otherwise make
+ *    every resolution of that id ambiguous (see
+ *    {@link withoutShadowedSentinels}).
  *  - **Integrity is a hard error.** {@link idbTemplateLibrary}'s `getBytes`
  *    re-hashes the bytes and throws `TemplateIntegrityError` ("template was
  *    modified — re-upload") on a mismatch. There is no silent fallback to some
@@ -145,6 +148,51 @@ function belongsToSite(record: StoredTemplateRecord, site: string): boolean {
 }
 
 /**
+ * The bucket `resolveTemplate` arbitrates within: same engine + same logical
+ * id + same scope (+ same space for space-scoped rows). Two rows in one bucket
+ * are exactly what `TemplateResolutionConflictError` reports.
+ *
+ * `JSON.stringify` over the component array rather than a joined string: the
+ * mapping has to be injective, and this file must not reinvent the escaping
+ * `buildRecordKey` had to grow for the same reason.
+ */
+function resolutionBucket(record: StoredTemplateRecord): string {
+  return JSON.stringify([record.engine, record.templateId, record.scope, record.spaceKey ?? ""]);
+}
+
+/**
+ * Drop {@link UNKNOWN_SITE_ORIGIN} rows that a real-origin row has superseded.
+ *
+ * The sentinel is site-agnostic on purpose — a template migrated from v1 while
+ * no Atlassian session was resolvable must stay visible on every site. But the
+ * moment the user re-uploads (or otherwise mints) a **real-origin** row with
+ * the same logical id in the same scope, both rows reach `resolveTemplate` as
+ * competing candidates for one site and it throws
+ * `TemplateResolutionConflictError`. The bytes are all still there and every
+ * export fails: the library is deadlocked and nothing in the UI explains why.
+ *
+ * Shadowing here rather than deleting the sentinel keeps the fix
+ * non-destructive: the row is still listed by `listAll` (so the library view
+ * can offer to remove it) and still yields its bytes through `getBytes`, and
+ * deleting the real-origin row makes the sentinel resolvable again — the same
+ * fallback behaviour a space override has over a global entry.
+ *
+ * Because a `recordKey` is `(siteOrigin, engine, templateId, scope, spaceKey)`,
+ * one site can hold at most one real row and one sentinel row per bucket, so
+ * this filter removes the *entire* class of resolution conflicts this adapter
+ * can produce.
+ */
+function withoutShadowedSentinels(records: StoredTemplateRecord[]): StoredTemplateRecord[] {
+  const realBuckets = new Set(
+    records.filter((r) => r.siteOrigin !== UNKNOWN_SITE_ORIGIN).map(resolutionBucket)
+  );
+  if (realBuckets.size === 0) return records;
+  return records.filter(
+    (r) => r.siteOrigin !== UNKNOWN_SITE_ORIGIN || !realBuckets.has(resolutionBucket(r))
+  );
+}
+
+/**
  * A row is only part of the library once migration phase 2 finished it. A
  * pending row still carries `sha256: null`, and presenting it would mean
  * handing out bytes no integrity check can cover.
@@ -191,10 +239,15 @@ export function idbTemplateLibrary(options: IdbTemplateLibraryOptions = {}): Idb
     const candidates = await rows(entry.engine);
     const byKey = (entry as Partial<StoredTemplateEntry>).recordKey;
     if (byKey) {
+      // An explicit physical key always wins, sentinel or not: a caller holding
+      // a shadowed sentinel entry is still entitled to its bytes.
       const hit = candidates.find((r) => r.recordKey === byKey);
       if (hit) return hit;
     }
-    return candidates.find(
+    // Matching by logical id can hit both a sentinel and the real-origin row
+    // that superseded it; resolve that the same way `listResolvable` does, so
+    // the bytes a caller loads are the ones resolution would have picked.
+    return withoutShadowedSentinels(candidates).find(
       (r) =>
         r.templateId === entry.id &&
         r.scope === entry.scope &&
@@ -237,12 +290,16 @@ export function idbTemplateLibrary(options: IdbTemplateLibraryOptions = {}): Idb
    * The bucket `resolveTemplate` arbitrates over: globals plus this space's
    * overrides. A superset would be allowed by the port contract, but the
    * panel's picker wants exactly this.
+   *
+   * Superseded migration sentinels are excluded here — see
+   * {@link withoutShadowedSentinels}. `listAll` deliberately does not exclude
+   * them, so the library view keeps showing (and can delete) the row.
    */
   async function listResolvable(
     engine: TemplateEngine,
     spaceKey?: string
   ): Promise<StoredTemplateEntry[]> {
-    const all = await entries(engine);
+    const all = withoutShadowedSentinels(await rows(engine)).filter(isMigrated).map(toEntry);
     if (spaceKey === undefined) return all;
     return all.filter((e) => e.scope === "global" || e.spaceKey === spaceKey);
   }

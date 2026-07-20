@@ -17,7 +17,13 @@ import { IDBFactory } from "fake-indexeddb";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { TemplateIntegrityError } from "@atlcli/core";
 import { idbTemplateLibrary } from "../../utils/templates/library.js";
-import { listTemplates, putTemplate } from "../../utils/docx/template-store.js";
+import {
+  listTemplates,
+  putTemplate,
+  UNKNOWN_SITE_ORIGIN,
+  type StoredTemplateRecord,
+} from "../../utils/docx/template-store.js";
+import { seedLegacyV1 } from "../docx/seed-v1.js";
 
 const SITE_A = "https://mayflower.atlassian.net";
 const SITE_B = "https://mayflower-staging.atlassian.net";
@@ -35,6 +41,26 @@ function bytesFor(text: string): ArrayBuffer {
 
 function libraryFor(siteOrigin = SITE_A) {
   return idbTemplateLibrary({ factory, siteOrigin });
+}
+
+/**
+ * Run the real v1 → v2 migration with **no resolvable session origin**, which
+ * is the only way an {@link UNKNOWN_SITE_ORIGIN} record ever comes into
+ * existence. `libraryFor(undefined)` cannot do this — the default parameter
+ * turns `undefined` back into `SITE_A`, which is exactly how the previous
+ * version of the sentinel test managed to never touch a sentinel at all.
+ */
+async function migrateSentinelRecord(name: string, body: string): Promise<StoredTemplateRecord> {
+  await seedLegacyV1(factory, { name, buffer: bytesFor(body), uploadedAt: 1_700_000_000_000 });
+  const rows = await listTemplates(factory);
+  const migrated = rows.find((r) => r.name === name);
+  if (!migrated) throw new Error("v1 seed did not migrate");
+  // Guard the fixture itself: if this is not the sentinel, the tests below are
+  // not testing what they claim to.
+  if (migrated.siteOrigin !== UNKNOWN_SITE_ORIGIN) {
+    throw new Error(`expected the ${UNKNOWN_SITE_ORIGIN} sentinel, got ${migrated.siteOrigin}`);
+  }
+  return migrated;
 }
 
 describe("idbTemplateLibrary — listing", () => {
@@ -262,14 +288,154 @@ describe("idbTemplateLibrary — migrated site-agnostic records", () => {
     // The v1 → v2 migration falls back to the `unknown-site` sentinel when the
     // panel was opened on a non-Atlassian tab; that template must not vanish
     // from the library once a real site IS known.
-    const orphan = libraryFor(undefined);
-    const entry = await orphan.add({ name: "orphan.docx", bytes: bytesFor("o") });
+    //
+    // The record is created by a REAL v1 → v2 migration run with no site
+    // origin. The previous version of this test called `libraryFor(undefined)`,
+    // which the default parameter turned straight back into SITE_A — so it
+    // seeded an ordinary same-site row with `add()`, never a sentinel, and
+    // deleting the `UNKNOWN_SITE_ORIGIN` branch from `belongsToSite` would not
+    // have failed it.
+    const migrated = await migrateSentinelRecord("orphan.docx", "o");
 
     const onSite = libraryFor(SITE_A);
     const listed = await onSite.list("docx", "DOCSY");
     expect(listed.map((e) => e.displayName)).toEqual(["orphan.docx"]);
-    expect((await onSite.resolve(entry.id, "docx", "DOCSY"))!.id).toBe(entry.id);
-    // And its bytes still verify from the other site's library instance.
-    expect((await onSite.getBytes(listed[0])).byteLength).toBe(entry.size);
+    expect(listed[0].siteOrigin).toBe(UNKNOWN_SITE_ORIGIN);
+    expect((await onSite.resolve(migrated.templateId, "docx", "DOCSY"))!.id).toBe(
+      migrated.templateId
+    );
+    // And its bytes still verify from a real site's library instance.
+    expect((await onSite.getBytes(listed[0])).byteLength).toBe(migrated.size);
+
+    // Site-agnostic really means every site, not just the first one asked.
+    expect((await libraryFor(SITE_B).list("docx")).map((e) => e.displayName)).toEqual([
+      "orphan.docx",
+    ]);
+  });
+
+  it("stays resolvable after a real-origin row supersedes the sentinel", async () => {
+    // THE DEADLOCK. A sentinel row matches every site, so once the user
+    // re-uploads the same logical template on a real site there are two
+    // candidates in one resolution bucket and `resolveTemplate` throws
+    // `TemplateResolutionConflictError`. Every byte is still on disk and NO
+    // export can run — with nothing in the UI explaining why.
+    const migrated = await migrateSentinelRecord("handbook.docx", "the old one");
+
+    const onSite = libraryFor(SITE_A);
+    const replacement = bytesFor("the new one");
+    const fresh = await onSite.add({
+      name: "handbook.docx",
+      bytes: replacement,
+      templateId: migrated.templateId,
+    });
+    expect(fresh.recordKey).not.toBe(migrated.recordKey);
+
+    // Resolution works and picks the real-origin row…
+    const resolved = await onSite.resolve(migrated.templateId, "docx");
+    expect(resolved).toBeDefined();
+    expect(resolved!.siteOrigin).toBe(SITE_A);
+    expect(await onSite.getBytes(resolved!)).toEqual(new Uint8Array(replacement));
+
+    // …in a space too, where the sentinel would compete just the same.
+    const inSpace = await onSite.resolve(migrated.templateId, "docx", "DOCSY");
+    expect(inSpace!.recordKey).toBe(fresh.recordKey);
+
+    // The picker shows one entry, not an unexplained duplicate.
+    expect(await onSite.list("docx", "DOCSY")).toHaveLength(1);
+  });
+
+  it("keeps the superseded sentinel's bytes — shadowed, not destroyed", async () => {
+    const migrated = await migrateSentinelRecord("handbook.docx", "the old one");
+    const onSite = libraryFor(SITE_A);
+    const fresh = await onSite.add({
+      name: "handbook.docx",
+      bytes: bytesFor("the new one"),
+      templateId: migrated.templateId,
+    });
+
+    // Both rows are still on disk, and the library view still shows the
+    // shadowed one so the user can delete it.
+    expect(await listTemplates(factory)).toHaveLength(2);
+    const all = await onSite.listAll("docx");
+    expect(all.map((e) => e.recordKey).sort()).toEqual(
+      [migrated.recordKey, fresh.recordKey].sort()
+    );
+
+    // Deleting the real-origin row un-shadows the sentinel, exactly like
+    // deleting a space override falls back to the global entry.
+    await onSite.remove(fresh.recordKey);
+    const fallback = await onSite.resolve(migrated.templateId, "docx", "DOCSY");
+    expect(fallback!.recordKey).toBe(migrated.recordKey);
+    expect((await onSite.getBytes(fallback!)).byteLength).toBe(migrated.size);
+  });
+
+  it("does not shadow a sentinel that a real-origin row only overrides per space", async () => {
+    // "Assign to space" mints a real-origin SPACE row sharing the logical id.
+    // That is a different resolution bucket, so the global sentinel must stay
+    // the fallback for every other space.
+    const migrated = await migrateSentinelRecord("handbook.docx", "sentinel body");
+    const onSite = libraryFor(SITE_A);
+    const listed = (await onSite.list("docx")).find((e) => e.id === migrated.templateId)!;
+    const override = await onSite.assignToSpace(listed, "DOCSY");
+
+    expect((await onSite.resolve(migrated.templateId, "docx", "DOCSY"))!.recordKey).toBe(
+      override.recordKey
+    );
+    expect((await onSite.resolve(migrated.templateId, "docx", "OTHER"))!.recordKey).toBe(
+      migrated.recordKey
+    );
+  });
+});
+
+describe("idbTemplateLibrary — delimiter injection in logical ids", () => {
+  it("does not let one upload destroy another's bytes through a colliding record key", async () => {
+    // `recordKey` is `<site>|<engine>|<templateId>|<scope>[|<spaceKey>]`, and a
+    // `|` inside a component shifts every later component one slot along. These
+    // two templates flattened to the SAME primary key, so the second upload
+    // silently replaced the first row — and its DOCX bytes with it.
+    const library = libraryFor(SITE_A);
+
+    const injected = await library.add({
+      name: "injected.docx",
+      bytes: bytesFor("injected body"),
+      templateId: "handbook|space",
+    });
+    const innocent = await library.add({
+      name: "innocent.docx",
+      bytes: bytesFor("innocent body"),
+      templateId: "handbook",
+      scope: "space",
+      spaceKey: "global",
+    });
+
+    expect(injected.recordKey).not.toBe(innocent.recordKey);
+    expect(await listTemplates(factory)).toHaveLength(2);
+
+    // Both sets of bytes are intact and pass their own integrity check.
+    expect(await library.getBytes(injected)).toEqual(new Uint8Array(bytesFor("injected body")));
+    expect(await library.getBytes(innocent)).toEqual(new Uint8Array(bytesFor("innocent body")));
+  });
+
+  it("survives a `|` in a space key", async () => {
+    const library = libraryFor(SITE_A);
+    const a = await library.add({
+      name: "a.docx",
+      bytes: bytesFor("a body"),
+      templateId: "a",
+      scope: "space",
+      spaceKey: "b|space|c",
+    });
+    const b = await library.add({
+      name: "b.docx",
+      bytes: bytesFor("b body"),
+      templateId: "a|space|b",
+      scope: "space",
+      spaceKey: "c",
+    });
+
+    expect(a.recordKey).not.toBe(b.recordKey);
+    expect(await listTemplates(factory)).toHaveLength(2);
+    expect(await library.getBytes(a)).toEqual(new Uint8Array(bytesFor("a body")));
+    expect(await library.getBytes(b)).toEqual(new Uint8Array(bytesFor("b body")));
   });
 });

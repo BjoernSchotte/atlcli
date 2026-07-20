@@ -27,6 +27,8 @@ import {
   UNKNOWN_SITE_ORIGIN,
   type StoredTemplateRecord,
 } from "../../utils/docx/template-store.js";
+import { findPhase1AsyncViolations } from "./phase1-sync-guard.js";
+import { openLegacyV1Connection, seedLegacyV1 } from "./seed-v1.js";
 
 const DB_NAME = "atlcli-docx";
 const SITE = "https://mayflower.atlassian.net";
@@ -54,41 +56,9 @@ async function sha256Of(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
-/**
- * Create the genuine v1 schema (`atlcli-docx` v1, store `templates`,
- * `keyPath: "id"`) and optionally seed the single `"current"` slot.
- */
+/** Seed the genuine v1 schema (see `seed-v1.ts`) against this test's factory. */
 function seedV1(seed?: { name: string; buffer: ArrayBuffer; uploadedAt: number }): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = factory.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore("templates", { keyPath: "id" });
-    };
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => {
-      const db = req.result;
-      if (!seed) {
-        db.close();
-        resolve();
-        return;
-      }
-      const t = db.transaction("templates", "readwrite");
-      t.objectStore("templates").put({
-        id: "current",
-        name: seed.name,
-        bytes: seed.buffer,
-        uploadedAt: seed.uploadedAt,
-      });
-      t.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-      t.onerror = () => {
-        db.close();
-        reject(t.error);
-      };
-    };
-  });
+  return seedLegacyV1(factory, seed);
 }
 
 /** Read every row of a store on an already-open connection. */
@@ -102,30 +72,37 @@ function readAll<T>(db: IDBDatabase, store: string): Promise<T[]> {
   });
 }
 
-/**
- * Drop comments so prose about `await` (of which this store has plenty, since
- * the whole design is about avoiding it) never trips the source guard below.
- */
-function stripComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+/** The real store source the phase-1 guard runs against. */
+function storeSource(): string {
+  return readFileSync(new URL("../../utils/docx/template-store.ts", import.meta.url), "utf8");
 }
 
 /**
- * Extract a top-level `function <name>(...) { ... }` body by brace matching.
- * Returns the whole declaration (signature included) so an `async` keyword is
- * visible to the caller's assertions.
+ * Apply one sabotage to the source, asserting the anchor exists first: a
+ * mutation test whose anchor silently stopped matching would "pass" while
+ * testing nothing — the exact failure mode that let the old guard ship.
  */
-function functionBody(source: string, name: string): string | undefined {
-  const start = source.search(new RegExp(`^(export )?(async )?function ${name}\\b`, "m"));
-  if (start < 0) return undefined;
-  const open = source.indexOf("{", start);
-  if (open < 0) return undefined;
-  let depth = 0;
-  for (let i = open; i < source.length; i++) {
-    if (source[i] === "{") depth++;
-    else if (source[i] === "}" && --depth === 0) return source.slice(start, i + 1);
+function mutate(source: string, anchor: string, replacement: string): string {
+  if (!source.includes(anchor)) {
+    throw new Error(`mutation anchor not found in template-store.ts: ${anchor}`);
   }
-  return undefined;
+  return source.replace(anchor, replacement);
+}
+
+/**
+ * Write one row through an **already-open** connection, so the transaction is
+ * created synchronously at the call site. `putTemplate` cannot be used where
+ * ordering matters: it opens its own connection first, and that async hop is
+ * enough for a concurrent backfill's write to slip in ahead of it.
+ */
+function putRaw(db: IDBDatabase, record: StoredTemplateRecord): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("templates", "readwrite");
+    t.objectStore("templates").put(record);
+    t.oncomplete = () => resolve();
+    t.onabort = () => reject(t.error);
+    t.onerror = () => reject(t.error);
+  });
 }
 
 /** Read rows through the `migrationPending` index — the resumability path. */
@@ -228,6 +205,145 @@ describe("template store v1 → v2 migration", () => {
     }
   });
 
+  it("never lets a slow backfill roll a newer upload back to the migrated bytes", async () => {
+    // THE DATA-LOSS RACE, reproduced.
+    //
+    // Hashing needs an await, so phase 2 necessarily holds a stale snapshot by
+    // the time it writes. Two panels are open; both find row K pending and both
+    // start hashing it. Panel A finishes, the user REPLACES that template with a
+    // new upload — and panel B then writes its pre-replacement snapshot back.
+    //
+    // The rollback is completely silent: the old bytes and the old hash B
+    // carries agree with each other, so `getBytes`' integrity check accepts the
+    // resurrected template and the user simply finds an old file in their
+    // export. Nothing surfaces an error, ever.
+    const { buffer: oldBuffer } = docxBytes();
+    await seedV1({ name: "handbook.docx", buffer: oldBuffer, uploadedAt: 1 });
+
+    const panelA = await openTemplateDb(factory, { siteOrigin: SITE, skipBackfill: true });
+    const panelB = await openTemplateDb(factory, { siteOrigin: SITE, skipBackfill: true });
+    try {
+      const [pending] = await readPending(panelB);
+      expect(pending.sha256).toBeNull();
+
+      const replacement = buildDocx({ body: para("a completely different template") });
+      const newBuffer = replacement.buffer.slice(
+        replacement.byteOffset,
+        replacement.byteOffset + replacement.byteLength
+      ) as ArrayBuffer;
+      expect(new Uint8Array(newBuffer)).not.toEqual(new Uint8Array(oldBuffer));
+
+      const { migrationPending: _cleared, ...completedRow } = pending;
+      const replacement_row: StoredTemplateRecord = {
+        ...completedRow,
+        bytes: newBuffer,
+        size: newBuffer.byteLength,
+        sha256: await sha256Of(new Uint8Array(newBuffer)),
+      };
+
+      // The interleaving is deterministic, not a sleep: IndexedDB runs
+      // overlapping transactions in creation order. B's READ transaction is
+      // created synchronously inside `runMigrationBackfill`, so it goes first;
+      // the replacement transaction is created synchronously on the next line,
+      // so it goes second; B's WRITE transaction is only created after its
+      // `await sha256Hex(...)` resolves, so it necessarily goes last.
+      const stale = runMigrationBackfill(panelB);
+      await putRaw(panelA, replacement_row);
+
+      // B must notice the row is no longer the one it hashed and skip it.
+      expect(await stale).toBe(0);
+
+      const [row] = await readAll<StoredTemplateRecord>(panelA, "templates");
+      expect(new Uint8Array(row.bytes)).toEqual(new Uint8Array(newBuffer));
+      expect(row.sha256).toBe(await sha256Of(new Uint8Array(newBuffer)));
+      expect(row.size).toBe(newBuffer.byteLength);
+      expect(row.migrationPending).toBeUndefined();
+    } finally {
+      panelA.close();
+      panelB.close();
+    }
+  });
+
+  it("lets two concurrent backfills of an untouched row converge without corrupting it", async () => {
+    // The compare-and-swap must not break the ordinary two-panel case: exactly
+    // one run completes the row, the other finds the work already done, and the
+    // stored bytes and hash are correct either way.
+    const { bytes, buffer } = docxBytes();
+    await seedV1({ name: "handbook.docx", buffer, uploadedAt: 3 });
+
+    const panelA = await openTemplateDb(factory, { siteOrigin: SITE, skipBackfill: true });
+    const panelB = await openTemplateDb(factory, { siteOrigin: SITE, skipBackfill: true });
+    try {
+      const counts = await Promise.all([
+        runMigrationBackfill(panelA),
+        runMigrationBackfill(panelB),
+      ]);
+      expect(counts.reduce((a, b) => a + b, 0)).toBe(1);
+
+      const rows = await readAll<StoredTemplateRecord>(panelA, "templates");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sha256).toBe(await sha256Of(bytes));
+      expect(new Uint8Array(rows[0].bytes)).toEqual(new Uint8Array(bytes));
+      expect(rows[0].migrationPending).toBeUndefined();
+    } finally {
+      panelA.close();
+      panelB.close();
+    }
+  });
+
+  it("waits out a blocked upgrade instead of failing it (and finishes the migration)", async () => {
+    // A blocked open request is QUEUED, not failed — it proceeds by itself the
+    // moment the older connection closes. Rejecting on `blocked` reported a
+    // failure for an upgrade that then went on to succeed, skipped phase 2 for
+    // it, and leaked the connection that eventually opened (which in turn
+    // blocks the NEXT upgrade).
+    const { bytes, buffer } = docxBytes();
+    await seedV1({ name: "blocked.docx", buffer, uploadedAt: 17 });
+
+    // A second panel still holding the v1 connection open.
+    const otherPanel = await openLegacyV1Connection(factory);
+    const opening = openTemplateDb(factory, { siteOrigin: SITE });
+
+    // Let the open request reach `blocked`, then let the other panel go.
+    await new Promise((r) => setTimeout(r, 20));
+    otherPanel.close();
+
+    const db = await opening;
+    try {
+      expect(db.version).toBe(2);
+      const rows = await readAll<StoredTemplateRecord>(db, "templates");
+      expect(rows).toHaveLength(1);
+      // Phase 2 ran: the row a rejected open would have left half-migrated.
+      expect(rows[0].sha256).toBe(await sha256Of(bytes));
+      expect(rows[0].migrationPending).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("closes its own connection when another tab needs a newer version", async () => {
+    // MDN's multi-tab requirement: without an `onversionchange` handler our
+    // connection blocks every future upgrade indefinitely.
+    const db = await openTemplateDb(factory, { siteOrigin: SITE });
+    try {
+      const outcome = await new Promise<string>((resolve, reject) => {
+        const req = factory.open(DB_NAME, 3);
+        req.onupgradeneeded = () => {
+          /* schema irrelevant — only whether we get here at all matters */
+        };
+        req.onblocked = () => resolve("blocked");
+        req.onsuccess = () => {
+          req.result.close();
+          resolve("opened");
+        };
+        req.onerror = () => reject(req.error);
+      });
+      expect(outcome).toBe("opened");
+    } finally {
+      db.close();
+    }
+  });
+
   it("is a no-op on a second open at v2", async () => {
     const { buffer } = docxBytes();
     await seedV1({ name: "mayflower.docx", buffer, uploadedAt: 7 });
@@ -293,47 +409,116 @@ describe("template store v1 → v2 migration", () => {
   });
 
   it("keeps migration phase 1 free of any await — the guard a runtime test cannot give us", () => {
-    // WHY THIS IS A SOURCE-LEVEL CHECK, not a behavioural one.
-    //
-    // In a real browser, an `await` inside `onupgradeneeded` lets the
-    // version-change transaction auto-commit mid-await and the follow-up
-    // `put()` throws `TransactionInactiveError`. `fake-indexeddb` — verified by
-    // probe, not assumed — does NOT model that: an upgrade handler that awaits
-    // `crypto.subtle.digest` and then puts succeeds silently under the fake.
-    // So no test run against the fake can catch the regression the two-phase
-    // split exists to prevent; only the source can. Do not "simplify" this into
-    // an assertion about stored records — it would pass while shipping a store
-    // that fails on first upgrade in Chrome.
-    const source = readFileSync(
-      new URL("../../utils/docx/template-store.ts", import.meta.url),
-      "utf8"
-    );
+    // WHY THIS IS A SOURCE-LEVEL CHECK, not a behavioural one: see the module
+    // docstring of `phase1-sync-guard.ts`. `fake-indexeddb` does not model the
+    // auto-commit that makes an awaiting upgrade handler fatal in Chrome, so no
+    // behavioural test can catch this regression — only the source can.
+    const { violations, reached } = findPhase1AsyncViolations(storeSource());
 
-    // Everything reachable synchronously from `onupgradeneeded`.
-    const phase1 = [
-      "upgradeSync",
-      "createTemplatesStore",
-      "ensureIndexes",
-      "toPendingRecord",
-      "buildRecordKey",
-      "normalizeSiteOrigin",
-    ];
+    expect(violations).toEqual([]);
+    // The walk must actually have gone somewhere. Without this, a guard that
+    // resolved nothing would report a clean bill of health forever.
+    expect(reached).toContain("upgradeSync");
+    expect(reached).toContain("createTemplatesStore");
+    expect(reached).toContain("ensureIndexes");
+    expect(reached).toContain("toPendingRecord");
+    expect(reached).toContain("buildRecordKey");
+    expect(reached).toContain("normalizeSiteOrigin");
+    // Reached transitively through `buildRecordKey` → `joinKeySegments`, i.e.
+    // via helpers no hard-coded name list mentions.
+    expect(reached).toContain("joinKeySegments");
+    expect(reached).toContain("encodeKeySegment");
+  });
 
-    for (const name of phase1) {
-      const body = functionBody(stripComments(source), name);
-      expect(body, `phase-1 function ${name} not found in template-store.ts`).toBeDefined();
-      expect(body, `${name} must not be async — it runs inside the version-change transaction`)
-        .not.toMatch(/\basync\b/);
-      expect(body, `${name} must not await — it runs inside the version-change transaction`)
-        .not.toMatch(/\bawait\b/);
-      expect(body, `${name} must not chain promises — it runs inside the version-change transaction`)
-        .not.toMatch(/\.then\s*\(/);
-    }
+  describe("the phase-1 guard itself (mutation tests)", () => {
+    // The previous guard matched six hard-coded top-level `function` names with
+    // a hand-rolled brace matcher, so every route below walked straight past
+    // it while it reported success. A guard nobody has watched fail is not a
+    // guard, so each evasion route gets sabotaged source and must be caught.
 
-    // And the handler that calls them is itself synchronous.
-    const bare = stripComments(source);
-    const handler = bare.slice(bare.indexOf("req.onupgradeneeded"));
-    expect(handler.slice(0, handler.indexOf("req.onsuccess"))).not.toMatch(/\b(async|await)\b/);
+    it("catches an awaiting `const` arrow helper called from phase 1", () => {
+      const sabotaged = mutate(
+        mutate(
+          storeSource(),
+          "function upgradeSync(db: IDBDatabase, upgradeTx: IDBTransaction, siteOrigin: string): void {",
+          "const sneakyArrow = async (value: string): Promise<string> => {\n" +
+            "  await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));\n" +
+            "  return value;\n" +
+            "};\n\n" +
+            "function upgradeSync(db: IDBDatabase, upgradeTx: IDBTransaction, siteOrigin: string): void {"
+        ),
+        "  if (!db.objectStoreNames.contains(PREFS_STORE)) {",
+        "  void sneakyArrow(siteOrigin);\n  if (!db.objectStoreNames.contains(PREFS_STORE)) {"
+      );
+
+      const { violations, reached } = findPhase1AsyncViolations(sabotaged);
+      expect(reached).toContain("sneakyArrow");
+      expect(violations.join("\n")).toMatch(/sneakyArrow (awaits|contains an async function)/);
+    });
+
+    it("catches an imported helper called from phase 1", () => {
+      const sabotaged = mutate(
+        mutate(
+          storeSource(),
+          "const DB_NAME = ",
+          'import { sha256Hex as importedHash } from "@atlcli/core";\n\nconst DB_NAME = '
+        ),
+        "  const templateId = crypto.randomUUID();",
+        "  const templateId = crypto.randomUUID();\n  void importedHash(new Uint8Array(bytes));"
+      );
+
+      const { violations } = findPhase1AsyncViolations(sabotaged);
+      expect(violations.join("\n")).toMatch(/calls imported `importedHash\(\)`/);
+    });
+
+    it("catches an awaiting function whose name is on no list", () => {
+      const sabotaged = mutate(
+        mutate(
+          storeSource(),
+          "function ensureIndexes(store: IDBObjectStore): void {",
+          "async function nameNobodyListed(store: IDBObjectStore): Promise<void> {\n" +
+            "  await crypto.subtle.digest('SHA-256', new Uint8Array(1));\n" +
+            "  store.createIndex('x', 'x');\n" +
+            "}\n\n" +
+            "function ensureIndexes(store: IDBObjectStore): void {"
+        ),
+        '  for (const name of ["engine", "scope", "spaceKey", "migrationPending"] as const) {',
+        '  void nameNobodyListed(store);\n  for (const name of ["engine", "scope", "spaceKey", "migrationPending"] as const) {'
+      );
+
+      const { violations, reached } = findPhase1AsyncViolations(sabotaged);
+      expect(reached).toContain("nameNobodyListed");
+      expect(violations.join("\n")).toMatch(/nameNobodyListed (awaits|contains an async function)/);
+    });
+
+    it("catches an await hidden behind a `}` inside a string literal", () => {
+      // The old brace matcher stopped at the first unbalanced `}` it saw, even
+      // inside a string, and so scanned only a truncated prefix of the body.
+      const sabotaged = mutate(
+        storeSource(),
+        "  const existing = upgradeTx.objectStore(STORE);",
+        '  const brace = "}";\n' +
+          "  void brace;\n" +
+          "  const existing = upgradeTx.objectStore(STORE);"
+      ).replace(
+        "    const legacy = (readAll.result ?? []) as LegacyTemplateRecord[];",
+        "    const legacy = (readAll.result ?? []) as LegacyTemplateRecord[];\n" +
+          "    void crypto.subtle.digest('SHA-256', new Uint8Array(1)).then(() => undefined);"
+      );
+
+      const { violations } = findPhase1AsyncViolations(sabotaged);
+      expect(violations.join("\n")).toMatch(/chains a promise via \.then\(\)|unrecognised method/);
+    });
+
+    it("fails loudly when the entry point disappears instead of reporting success", () => {
+      const sabotaged = storeSource().replace(/req\.onupgradeneeded/g, "req.onUpgradeRenamed");
+      const { violations } = findPhase1AsyncViolations(sabotaged);
+      expect(violations.join("\n")).toMatch(/entry point/);
+    });
+
+    it("does not fire on the unmodified source (no false positive)", () => {
+      expect(findPhase1AsyncViolations(storeSource()).violations).toEqual([]);
+    });
   });
 
   it("drops a stale persisted scan while migrating — verdicts stay derived on read", async () => {
