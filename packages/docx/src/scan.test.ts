@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import PizZip from "pizzip";
 import {
+  DOCX_ARCHIVE_BUDGET,
   DocxError,
   MAX_TEMPLATE_BYTES,
+  assertSafeDocxEntryName,
+  collectRiskyFieldInstructions,
   scanTemplate,
   unzipDocx,
 } from "./scan.js";
@@ -208,5 +212,272 @@ describe("scanTemplate", () => {
     } catch (err) {
       expect((err as DocxError).kind).toBe("too-large");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spec 011 — raw .docx upload archive budget (adversarial)
+// ---------------------------------------------------------------------------
+
+const MB = 1024 * 1024;
+
+/** Assert `fn` throws a {@link DocxError} with exactly `kind`. */
+function expectDocxError(fn: () => unknown, kind: DocxError["kind"]): DocxError {
+  try {
+    fn();
+  } catch (err) {
+    expect(err).toBeInstanceOf(DocxError);
+    // The EXACT kind matters: a case that trips a different guard than the one
+    // under test is a failing test, not a pass.
+    expect((err as DocxError).kind).toBe(kind);
+    return err as DocxError;
+  }
+  throw new Error(`expected a DocxError(${kind}), but nothing was thrown`);
+}
+
+/**
+ * A minimal but real Word archive, plus whatever hostile members the case adds.
+ * Everything below builds actual zip bytes with PizZip and feeds them through
+ * the real `unzipDocx` — no stubbing of the archive layer anywhere.
+ */
+function buildArchive(members: Record<string, string | Uint8Array>, opts?: { docx?: boolean }): Uint8Array {
+  const zip = new PizZip();
+  if (opts?.docx !== false) zip.file("word/document.xml", "<w:document/>");
+  for (const [name, data] of Object.entries(members)) {
+    (zip.file as (n: string, d: string | Uint8Array) => unknown)(name, data);
+  }
+  return zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+}
+
+describe("unzipDocx — archive budget (spec 011)", () => {
+  it("POSITIVE CONTROL: a legitimate template with real media still opens", () => {
+    // 4 MiB of incompressible-ish media across two entries: comfortably inside
+    // every cap, so the guards must be invisible to real templates.
+    const media = new Uint8Array(2 * MB);
+    for (let i = 0; i < media.length; i++) media[i] = (i * 2654435761) & 0xff;
+    const bytes = buildArchive({
+      "word/media/image1.png": media,
+      "word/media/image2.png": media,
+      "word/styles.xml": "<w:styles/>",
+    });
+    expect(bytes.byteLength).toBeLessThan(MAX_TEMPLATE_BYTES);
+    const zip = unzipDocx(bytes);
+    expect(zip.file("word/document.xml")).toBeTruthy();
+    expect(zip.file("word/media/image1.png")).toBeTruthy();
+  });
+
+  it("rejects a REAL zip bomb: one 70 MiB member declared in a ~70 KB archive", () => {
+    // The whole point of the task: MAX_TEMPLATE_BYTES sees a tiny upload and
+    // waves it through, so the decompressed budget is the only thing standing
+    // between this archive and 70 MiB of allocation.
+    const bytes = buildArchive({ "word/media/huge.bin": new Uint8Array(70 * MB) });
+    expect(bytes.byteLength).toBeLessThan(MAX_TEMPLATE_BYTES);
+    const err = expectDocxError(() => unzipDocx(bytes), "entry-too-large");
+    expect(err.path).toBe("word/media/huge.bin");
+    expect(err.message).toContain(String(DOCX_ARCHIVE_BUDGET.maxSingleEntryUncompressedBytes));
+  });
+
+  it("rejects a REAL cumulative zip bomb: 3 x 50 MiB members, each under the per-entry cap", () => {
+    // Every member is individually legal (50 MiB < 64 MiB); only the running
+    // total (150 MiB > 128 MiB) is not — proving cumulative accounting, not
+    // just a per-entry check.
+    const chunk = new Uint8Array(50 * MB);
+    const bytes = buildArchive({
+      "word/media/a.bin": chunk,
+      "word/media/b.bin": chunk,
+      "word/media/c.bin": chunk,
+    });
+    expect(bytes.byteLength).toBeLessThan(MAX_TEMPLATE_BYTES);
+    expectDocxError(() => unzipDocx(bytes), "uncompressed-too-large");
+  });
+
+  it("refuses the bomb WITHOUT inflating it (declared-size accounting)", () => {
+    // If the guard inflated to measure, this would allocate 70 MiB. Instead the
+    // rejection is driven purely by the central-directory declared size, so the
+    // member's data is never touched: assert it stays compressed by checking
+    // that the SAME archive is still rejected on a second pass (a decompressing
+    // implementation would have cached inflated data on the entry).
+    const bytes = buildArchive({ "word/media/huge.bin": new Uint8Array(70 * MB) });
+    const heapBefore = process.memoryUsage().heapUsed;
+    expectDocxError(() => unzipDocx(bytes), "entry-too-large");
+    expectDocxError(() => unzipDocx(bytes), "entry-too-large");
+    // A 70 MiB inflation would dwarf this bound; the declared-size path costs
+    // essentially nothing.
+    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(32 * MB);
+  });
+
+  it("rejects an entry flood past the entry-count cap", () => {
+    const members: Record<string, string> = {};
+    for (let i = 0; i <= DOCX_ARCHIVE_BUDGET.maxEntryCount; i++) members[`word/media/f${i}.bin`] = "x";
+    const bytes = buildArchive(members);
+    const err = expectDocxError(() => unzipDocx(bytes), "too-many-entries");
+    expect(err.message).toContain(String(DOCX_ARCHIVE_BUDGET.maxEntryCount));
+  });
+
+  it("accepts an archive exactly at the entry-count cap (boundary, positive)", () => {
+    const members: Record<string, string> = {};
+    // document.xml is member 1, so add cap-1 more to land exactly on the cap.
+    for (let i = 0; i < DOCX_ARCHIVE_BUDGET.maxEntryCount - 1; i++) members[`word/media/f${i}.bin`] = "x";
+    expect(() => unzipDocx(buildArchive(members))).not.toThrow();
+  });
+});
+
+describe("unzipDocx — hostile entry names (spec 011)", () => {
+  const traversal = [
+    "../../evil.txt",
+    "word/../../../etc/cron.d/evil",
+    "/etc/passwd",
+    "C:/Windows/System32/evil.dll",
+    "word\\document2.xml",
+  ];
+  for (const name of traversal) {
+    it(`rejects the traversal/absolute entry name ${JSON.stringify(name)}`, () => {
+      const err = expectDocxError(() => unzipDocx(buildArchive({ [name]: "x" })), "path-traversal");
+      expect(err.path).toBe(name);
+    });
+  }
+
+  it("rejects a newline smuggled into an entry name", () => {
+    const name = "word/media/evil\n../../x.png";
+    const err = expectDocxError(() => unzipDocx(buildArchive({ [name]: "x" })), "invalid-path");
+    expect(err.path).toBe(name);
+  });
+
+  it("rejects a NUL-truncation entry name (image.png\\0.exe)", () => {
+    // Reads as image.png to a C string API and as .exe to a JS one — the
+    // classic double-extension trick, and a name no real archive needs.
+    const name = "word/media/image.png\u0000.exe";
+    expectDocxError(() => unzipDocx(buildArchive({ [name]: "x" })), "invalid-path");
+  });
+
+  it("POSITIVE CONTROL: ordinary nested Word part names pass", () => {
+    expect(() =>
+      assertSafeDocxEntryName("word/_rels/document.xml.rels")
+    ).not.toThrow();
+    expect(() => assertSafeDocxEntryName("word/media/image1.png")).not.toThrow();
+    expect(() => assertSafeDocxEntryName("[Content_Types].xml")).not.toThrow();
+    // "..." is not a parent segment, and a dotted filename is ordinary.
+    expect(() => assertSafeDocxEntryName("word/media/a..b.png")).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spec 011 — active-content policy (adversarial)
+// ---------------------------------------------------------------------------
+
+describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", () => {
+  it("rejects a real vbaProject.bin (a .docm renamed to .docx)", () => {
+    // Genuine CFB/OLE2 compound-file signature — the actual first bytes of a
+    // Word VBA project storage.
+    const cfbHeader = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+    const bytes = buildArchive({ "word/vbaProject.bin": cfbHeader });
+    const err = expectDocxError(() => unzipDocx(bytes), "active-content");
+    expect(err.path).toBe("word/vbaProject.bin");
+    expect(err.message).toContain("macros");
+  });
+
+  it("rejects vbaProject.bin regardless of case", () => {
+    expectDocxError(
+      () => unzipDocx(buildArchive({ "word/VBAProject.BIN": "x" })),
+      "active-content"
+    );
+  });
+
+  it("rejects the VBA companion data part", () => {
+    expectDocxError(() => unzipDocx(buildArchive({ "word/vbaData.xml": "<wne:vbaSuppData/>" })), "active-content");
+  });
+
+  it("rejects an ActiveX/OLE control part", () => {
+    const err = expectDocxError(
+      () =>
+        unzipDocx(
+          buildArchive({
+            "word/activeX/activeX1.xml":
+              `<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" ax:classid="{8BD21D40-EC42-11CE-9E0D-00AA006002F3}"/>`,
+            "word/activeX/activeX1.bin": "x",
+          })
+        ),
+      "active-content"
+    );
+    expect(err.path?.startsWith("word/activeX/")).toBe(true);
+  });
+
+  it("rejects an <w:altChunk> import-by-reference in document.xml", () => {
+    const zip = new PizZip();
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+        `<w:body><w:altChunk r:id="rId99"/></w:body></w:document>`
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        `<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="evil.html"/></Relationships>`
+    );
+    const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+    const err = expectDocxError(() => unzipDocx(bytes), "active-content");
+    expect(err.path).toBe("word/document.xml");
+    expect(err.message).toContain("altChunk");
+  });
+
+  it("rejects an <w:altChunk> hidden in a header part (not just document.xml)", () => {
+    const bytes = buildArchive({
+      "word/header1.xml": `<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:altChunk r:id="rId7"/></w:hdr>`,
+    });
+    const err = expectDocxError(() => unzipDocx(bytes), "active-content");
+    expect(err.path).toBe("word/header1.xml");
+  });
+
+  it("POSITIVE CONTROL: an ordinary template with no active content opens", () => {
+    const bytes = buildDocx({ body: para("$scroll.title") + para("$scroll.content") });
+    expect(() => unzipDocx(bytes)).not.toThrow();
+    // And a part whose NAME merely contains "activex" as a substring elsewhere
+    // is not mistaken for the activeX folder.
+    expect(() => unzipDocx(buildArchive({ "word/media/activex-logo.png": "x" }))).not.toThrow();
+    // "altChunk" appearing as literal document TEXT is not an altChunk element.
+    expect(() =>
+      unzipDocx(buildDocx({ body: para("The w:altChunk element is documented in ECMA-376.") }))
+    ).not.toThrow();
+  });
+});
+
+describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", () => {
+  it("detects DDEAUTO in a run-split complex field instruction", () => {
+    // The classic DDE payload, split across runs exactly as Word writes it.
+    const xml =
+      `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+      `<w:r><w:instrText xml:space="preserve"> DDEA</w:instrText></w:r>` +
+      `<w:r><w:instrText xml:space="preserve">UTO c:\\\\windows\\\\system32\\\\cmd.exe "/k calc.exe"</w:instrText></w:r>` +
+      `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+    expect(collectRiskyFieldInstructions(xml)).toEqual(["DDEAUTO"]);
+  });
+
+  it("detects INCLUDETEXT in a w:fldSimple instruction attribute", () => {
+    const xml = `<w:fldSimple w:instr=" INCLUDETEXT &quot;\\\\\\\\attacker\\\\share\\\\x.docx&quot; "><w:r><w:t>x</w:t></w:r></w:fldSimple>`;
+    expect(collectRiskyFieldInstructions(xml)).toEqual(["INCLUDETEXT"]);
+  });
+
+  it("POSITIVE CONTROL: ordinary fields produce no risk hits", () => {
+    const xml =
+      `<w:fldSimple w:instr=" PAGE "/>` +
+      `<w:fldSimple w:instr=" STYLEREF &quot;Heading 1&quot; "/>` +
+      `<w:r><w:instrText> TOC \\o "1-3" </w:instrText></w:r>`;
+    expect(collectRiskyFieldInstructions(xml)).toEqual([]);
+  });
+
+  it("surfaces the hits on the scan result without refusing the template", () => {
+    const bytes = buildDocx({
+      body:
+        para("$scroll.content") +
+        `<w:p><w:fldSimple w:instr=" INCLUDEPICTURE &quot;http://attacker.example/x.png&quot; "/></w:p>`,
+    });
+    const scan = scanTemplate(bytes);
+    expect(scan.riskyFieldInstructions).toEqual(["INCLUDEPICTURE"]);
+    expect(scan.hasContentPlaceholder).toBe(true);
+  });
+
+  it("reports nothing for a clean template", () => {
+    const scan = scanTemplate(buildDocx({ body: para("$scroll.title") }));
+    expect(scan.riskyFieldInstructions).toEqual([]);
   });
 });

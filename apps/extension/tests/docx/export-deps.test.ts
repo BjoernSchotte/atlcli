@@ -15,6 +15,7 @@ function scan(...raw: string[]): ScanResult {
     parts: ["word/document.xml"],
     hasContentPlaceholder: true,
     stylerefStyleNames: [],
+    riskyFieldInstructions: [],
   };
 }
 

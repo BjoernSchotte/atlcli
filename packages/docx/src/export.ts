@@ -445,6 +445,20 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // distinguishing "style not in the template at all" from "defined but unused
   // after promotion in this export". Diagnostics only; no behavior change.
   flowNotes.push(...validateStylerefFields(scan.stylerefStyleNames, styleNames, body.headingStyleIds));
+  // Active-content audit (spec 011): VBA / ActiveX / altChunk are refused
+  // outright by `unzipDocx`, but field instructions that reach outside the
+  // document are legitimate often enough that refusing them would break real
+  // templates. Surface them instead — `preprocessScrollText` leaves field
+  // instructions untouched and `ensureUpdateFields` (step 6) tells Word to
+  // refresh every field on open, so this note is the ONLY place the user learns
+  // the exported document will re-run them.
+  if (scan.riskyFieldInstructions.length > 0) {
+    flowNotes.push({
+      level: "warning",
+      code: "template-field-instruction-risk",
+      message: `The template contains field instructions that fetch content when Word refreshes fields (${scan.riskyFieldInstructions.join(", ")}); the exported document refreshes fields on open, so review the template if you did not author it.`,
+    });
+  }
 
   // 3b. Logo pass, embed leg: replace each $scroll.spacelogo /
   //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
