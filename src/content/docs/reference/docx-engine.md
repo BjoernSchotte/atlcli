@@ -176,6 +176,60 @@ extension both do). Details:
 - **Missing dep/fetcher, fetch errors, no space key** all degrade to `logo-skipped` notes; the
   token is blanked, never left literal.
 
+### Included pages — `$scroll.includepage.(…)`
+
+`$scroll.includepage.(…)` embeds the **body of another Confluence page** at the placeholder
+position — a central imprint, legal disclaimer, or standard appendix maintained once and pulled
+into every export. It is a document pass (not a text value): the placeholder paragraph is swapped
+for the referenced page's serialized OOXML body, inserted verbatim. Wire the optional
+`deps.getIncludedPage` round-trip (the CLI and extension both build it from
+`buildGetIncludedPage`, which owns the CQL construction and error mapping).
+
+**Argument forms:**
+
+| Form | Example | Meaning |
+| --- | --- | --- |
+| `(Title)` | `$scroll.includepage.(Imprint)` | A page titled *Imprint* in the exported page's space |
+| `(SPACE:Title)` | `$scroll.includepage.(DOCSY:Imprint)` | A page titled *Imprint* in space `DOCSY` (split on the **first** colon; the title may contain more) |
+| `("Quoted Title")` | `$scroll.includepage.("A: B")` | A quote-wrapped title is verbatim (colon-safe) |
+| `(pageId)` | `$scroll.includepage.(1234567)` | An all-digits argument is a page id |
+
+**Behavior:**
+
+- **Referenced more than once** (body **and** header, header **and** footer, or twice in one
+  part): the target is fetched and walked **once**, cached, and rendered in **every** occurrence.
+  Only a page including **itself** is a cycle (`includepage-cycle`, rendered empty) — every other
+  repeat is intentional and renders.
+- **Atomic paragraph only:** the token must be the *sole* visible content of its paragraph. A
+  token sharing a paragraph with prose (`See our disclaimer: $scroll.includepage.(Imprint)`) is
+  **not** expanded — the surrounding text survives verbatim, the token is blanked, and
+  `includepage-invalid-context` is noted. Put the include on its own line.
+- **Assets follow the part:** an included page's attachment images and Mermaid diagrams embed
+  their relationships into the **target part's own** rels (`word/_rels/header1.xml.rels`,
+  `…/footer1.xml.rels`, …) — never a dangling relationship, even in headers/footers.
+- **Budget:** at most 25 unique included pages and 2 MiB of cumulative included storage per
+  export; beyond that, further **new** targets blank with `includepage-budget-exceeded` (already
+  fetched targets keep rendering). A v1 guess, revisited on real large templates.
+- **Never a literal:** every failure path (invalid args, not found, no permission, auth failure,
+  rate limit, transient/network error, budget, cycle) blanks the token with its own report note.
+
+**Note codes** (all surfaced in the export report, and as `code` in the `--json`
+`atlcli.export-report/1` report):
+
+| Code | Meaning |
+| --- | --- |
+| `includepage-unresolved` | The argument names no page, or the page was not found / not readable (Cloud 403 ≡ 404) |
+| `includepage-invalid-context` | The token shares a paragraph with other text — put it on its own line |
+| `includepage-cycle` | A page referenced itself; rendered empty |
+| `includepage-ambiguous-title` | A title matched several pages; the first (id-sorted) rendered — disambiguate with `SPACE:Title` or `(pageId)` |
+| `includepage-auth-failed` | Authentication failed while fetching (check the export credentials) |
+| `includepage-rate-limited` | Confluence rate-limited the fetch; retry the export |
+| `includepage-transient-error` | A 5xx / network failure (or no include fetcher available) |
+| `includepage-budget-exceeded` | The per-export include budget was exceeded; later new targets blanked |
+
+> A title containing `)` cannot be referenced by title (the scan grammar stops the argument at
+> the first `)`) — use the `(pageId)` form instead.
+
 ## Browser hosts
 
 Browser consumers install the DOCX-specific compatibility layer before importing the engine:
@@ -217,6 +271,12 @@ const report = await runExport(
         const icon = await client.getSpaceIcon(key);
         return icon ? { url: icon.path } : null;
       },
+      getIncludedPage: buildGetIncludedPage({   // $scroll.includepage.(…)
+        getPage: (id) => client.getPage(id),
+        searchPages: (cql) => client.searchPages(cql),
+        escapeCqlValue,                     // from @atlcli/confluence
+        defaultSpaceKey: details.spaceKey,  // fills a bare (Title) form
+      }),
     },
   },
   {
