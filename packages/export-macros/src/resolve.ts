@@ -8,7 +8,7 @@
  * instance's original document position — regardless of which instance's port
  * call settles first.
  */
-import type { ExportBlock, ExportNote, StorageToBlocksResult } from "@atlcli/confluence";
+import type { ExportBlock, ExportNote, ExportNoteCode, StorageToBlocksResult } from "@atlcli/confluence";
 import type {
   AttachmentLookupPort,
   AttachmentMeta,
@@ -24,7 +24,12 @@ import type {
 } from "./types.js";
 import { isAbortError, isPortError, portError } from "./types.js";
 
-type UnknownBlock = Extract<ExportBlock, { type: "unknown" }>;
+/**
+ * The unknown-macro block shape renderers receive. Exported (spec 009 T4.2
+ * closure classification): it is transitively reachable from the frozen
+ * registry surface, so it must be a nameable part of the contract.
+ */
+export type UnknownBlock = Extract<ExportBlock, { type: "unknown" }>;
 
 /** Walker note codes the resolver takes ownership of (positional pairing). */
 const WALKER_MACRO_CODES = new Set(["unknown-macro", "macro-not-rendered"]);
@@ -243,7 +248,7 @@ async function resolveInstance(
 function floor(
   block: UnknownBlock,
   _m: MacroInstance,
-  code: string,
+  code: ExportNoteCode,
   level: "info" | "warning",
   message: string,
   skipNotes: ExportNote[]

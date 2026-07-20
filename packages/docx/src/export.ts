@@ -1440,7 +1440,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
   let cumulativeStorageBytes = 0;
   let budgetNoted = false;
 
-  const note = (code: string, message: string, level: "info" | "warning" = "warning"): void => {
+  const note = (code: ExportNote["code"], message: string, level: "info" | "warning" = "warning"): void => {
     notes.push({ level, code, message });
   };
 

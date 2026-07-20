@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock } from "@atlcli/confluence";
-import { serializeBlocks, columnWidthsDxa } from "@atlcli/docx";
+import { serializeBlocks, columnWidthsDxa } from "@atlcli/docx/internal";
 import { preparePdfDocument } from "./prepare.js";
 import { serializePdfDocument } from "./serialize.js";
 

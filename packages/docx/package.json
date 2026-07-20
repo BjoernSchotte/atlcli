@@ -1,21 +1,80 @@
 {
   "name": "@atlcli/docx",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "license": "Apache-2.0",
-  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": [
+    "./src/browser-runtime.ts",
+    "./dist/browser-runtime.js"
+  ],
+  "files": [
+    "dist",
+    "fonts",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
     ".": {
-      "browser": "./src/index.browser.ts",
-      "default": "./src/index.ts"
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
-    "./browser": "./src/index.browser.ts",
-    "./browser-runtime": "./src/browser-runtime.ts",
-    "./vite": "./src/vite.ts",
-    "./node": "./src/index.ts",
-    "./scan": "./src/scan.ts",
-    "./fixtures": "./src/fixtures.ts",
+    "./browser": {
+      "development": "./src/index.browser.ts",
+      "types": "./dist/index.browser.d.ts",
+      "default": "./dist/index.browser.js"
+    },
+    "./browser-runtime": {
+      "development": "./src/browser-runtime.ts",
+      "types": "./dist/browser-runtime.d.ts",
+      "default": "./dist/browser-runtime.js"
+    },
+    "./vite": {
+      "development": "./src/vite.ts",
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./node": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./scan": {
+      "development": "./src/scan.ts",
+      "types": "./dist/scan.d.ts",
+      "default": "./dist/scan.js"
+    },
+    "./internal": {
+      "development": "./src/internal.ts",
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    },
+    "./fixtures": {
+      "development": "./src/fixtures.ts",
+      "types": "./dist/fixtures.d.ts",
+      "default": "./dist/fixtures.js"
+    },
     "./fonts/*": "./fonts/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
     "@atlcli/export-macros": "workspace:*",

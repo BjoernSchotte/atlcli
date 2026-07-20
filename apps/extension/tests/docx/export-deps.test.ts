@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test";
-import type { ScanResult } from "@atlcli/docx/browser";
+import type { ScanResult } from "@atlcli/docx/scan";
 import { prepareExportDeps, scanDependencies } from "../../utils/docx/export-deps.js";
 
 function scan(...raw: string[]): ScanResult {

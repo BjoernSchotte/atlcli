@@ -2,12 +2,14 @@
   "name": "@atlcli/cli",
   "version": "0.6.0",
   "license": "Apache-2.0",
+  "private": true,
   "type": "module",
   "bin": {
     "atlcli": "src/index.ts"
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
+    "@atlcli/export-node": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/pdf": "workspace:*",

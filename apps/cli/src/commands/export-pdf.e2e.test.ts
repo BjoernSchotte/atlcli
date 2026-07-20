@@ -27,7 +27,9 @@ const PAGE_ID = process.env.ATLCLI_E2E_PAGE_ID ?? "";
 const TREE_ROOT_ID = process.env.ATLCLI_E2E_TREE_ROOT_ID ?? "";
 
 async function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["bun", "run", CLI, ...args], { stdout: "pipe", stderr: "pipe" });
+  // CLI resolves to source (`../index.ts`); the `development` export condition
+  // makes its `@atlcli/*` imports resolve to `src/` instead of demanding `dist/`.
+  const proc = Bun.spawn(["bun", "--conditions=development", "run", CLI, ...args], { stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -104,7 +106,7 @@ describe.skipIf(!RUN)("wiki export --format pdf (live E2E)", () => {
     const dir = await mkdtemp(join(tmpdir(), "atlcli-e2e-pdf-"));
     try {
       const proc = Bun.spawn(
-        ["bun", "run", CLI, "wiki", "export", PAGE_ID, "--format", "pdf", "--profile", PROFILE, "--out-dir", dir, "--report", "json"],
+        ["bun", "--conditions=development", "run", CLI, "wiki", "export", PAGE_ID, "--format", "pdf", "--profile", PROFILE, "--out-dir", dir, "--report", "json"],
         { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_API_TOKEN: "definitely-wrong" } }
       );
       const code = await proc.exited;

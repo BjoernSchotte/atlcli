@@ -1,21 +1,60 @@
 {
   "name": "@atlcli/pdf",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "license": "Apache-2.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
+  "engines": {
+    "node": ">=20"
   },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    ".fonts",
+    "licenses",
+    "README.md"
+  ],
+  "type": "module",
   "exports": {
     ".": {
-      "browser": "./src/index.browser.ts",
-      "default": "./src/index.ts"
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
-    "./browser": "./src/index.browser.ts",
-    "./template": "./src/template.ts",
+    "./browser": {
+      "development": "./src/index.browser.ts",
+      "types": "./dist/index.browser.d.ts",
+      "default": "./dist/index.browser.js"
+    },
+    "./template": {
+      "development": "./src/template.ts",
+      "types": "./dist/template.d.ts",
+      "default": "./dist/template.js"
+    },
+    "./internal": {
+      "development": "./src/internal.ts",
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    },
     "./fonts/*": "./.fonts/*",
     "./licenses/*": "./licenses/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun scripts/ensure-fonts.ts && bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore",
+    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
   },
   "dependencies": {
     "@atlcli/export-macros": "workspace:*",

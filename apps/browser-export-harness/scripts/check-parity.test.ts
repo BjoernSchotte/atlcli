@@ -6,7 +6,7 @@
  * that merely looks structurally plausible.
  */
 import { describe, expect, it } from "bun:test";
-import { unzipDocx } from "@atlcli/docx/browser";
+import { unzipDocx } from "@atlcli/docx/scan";
 import { buildDocx, para, stylesXml } from "@atlcli/docx/fixtures";
 import { decodePng, encodeRgbaPng, encodeRgbaPngWithFilter, type PngFilterType } from "./png-codec.js";
 import {

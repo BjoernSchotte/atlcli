@@ -9,7 +9,7 @@ import {
   type PageRecord,
   type LinkRecord,
   type UserRecord,
-} from "@atlcli/confluence";
+} from "@atlcli/confluence/internal";
 
 describe("audit-wiki", () => {
   let tempDir: string;

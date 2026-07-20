@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "customConditions": ["browser"],
+    "customConditions": ["development", "browser"],
     "types": ["vite/client", "bun-types"],
     "skipLibCheck": true
   },

@@ -14,7 +14,8 @@ import { ConfluenceClient } from "@atlcli/confluence/browser";
 import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
-import type { ScanResult, ExportReport } from "@atlcli/docx/browser";
+import type { ExportReport } from "@atlcli/docx/browser";
+import type { ScanResult } from "@atlcli/docx/scan";
 import type { RasterizerStats } from "../../utils/docx/env.js";
 import {
   deleteTemplate,
@@ -256,7 +257,9 @@ export function TemplateSection({
             // endpoint (findPagesByTitle), NOT CQL — same as the CLI — so a
             // just-created target resolves without the search-index lag.
             getIncludedPage: async (ref) => {
-              const { buildGetIncludedPage } = await loadExport();
+              // buildGetIncludedPage is an internal helper (not a frozen v1
+              // seam) — reach it via ./internal, not the trimmed `.` barrel.
+              const { buildGetIncludedPage } = await import("@atlcli/docx/internal");
               return buildGetIncludedPage({
                 getPage: (id) => client.getPage(id),
                 findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),

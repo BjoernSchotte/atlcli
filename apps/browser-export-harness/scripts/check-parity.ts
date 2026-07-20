@@ -79,7 +79,7 @@ function deadlineCompiler(inner: PdfCompilePort): PdfCompilePort {
 async function buildBunCompiler(): Promise<PdfCompilePort> {
   await ensurePdfFonts({ logger: () => {} });
   const [wasm, ...fonts] = await Promise.all([
-    packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm"),
+    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
     ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
   ]);
   const compiler = new BrowserPdfCompiler({

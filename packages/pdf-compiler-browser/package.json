@@ -1,17 +1,40 @@
 {
   "name": "@atlcli/pdf-compiler-browser",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "Apache-2.0",
-  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "vendor",
+    "README.md"
+  ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./wasm": "./vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm",
+    "./vendor/*": "./vendor/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "bun scripts/vendor-typst.ts && tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist vendor",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "bun scripts/vendor-typst.ts && bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/pdf": "workspace:*",
+    "@atlcli/pdf": "workspace:*"
+  },
+  "devDependencies": {
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0"
   }
 }

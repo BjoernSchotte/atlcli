@@ -62,8 +62,8 @@ import {
   AttachmentInfo,
   // Link storage
   storePageLinks,
-} from "@atlcli/confluence";
-import type { Ignore } from "@atlcli/confluence";
+} from "@atlcli/confluence/internal";
+import type { Ignore } from "@atlcli/confluence/internal";
 
 /** Sync daemon options */
 interface SyncOptions {

@@ -17,6 +17,14 @@ opensrc/
 # Reproducible PDF font cache (downloaded from pinned Adobe releases).
 packages/pdf/.fonts/
 
+# Transient prepack backup written by scripts/strip-dev-condition.ts
+.package.json.prepack-backup
+
+# Reproducible vendored patched typst.ts glue+wasm (~28 MB wasm; regenerated
+# deterministically from the patched install by vendor-typst.ts — see
+# packages/pdf-compiler-browser/scripts/vendor-typst.ts for why not committed).
+packages/pdf-compiler-browser/vendor/
+
 # SonarQube coverage artifact
 coverage/
 .scannerwork/

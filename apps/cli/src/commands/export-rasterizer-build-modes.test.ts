@@ -35,7 +35,10 @@ async function run(cmd: string[], cwd?: string): Promise<{ code: number; stdout:
 
 describe("diagram/SVG rasterizer survives every build mode (spec 006 G4)", () => {
   it("source run rasterizes an SVG to a PNG", async () => {
-    const { code, stdout } = await run(["bun", "run", ENTRY]);
+    // Run from live `src/`: the workspace packages this entry imports only
+    // resolve to source under the `development` export condition (spec 009's
+    // dist-exports model); without it they demand a built `dist/`.
+    const { code, stdout } = await run(["bun", "--conditions=development", "run", ENTRY]);
     expect(stdout).toContain("RASTER_OK");
     expect(code).toBe(0);
   }, 60_000);

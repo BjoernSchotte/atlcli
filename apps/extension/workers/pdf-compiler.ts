@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import wasmUrl from "@myriaddreamin/typst-ts-web-compiler/wasm?url";
+import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 import sansItalicUrl from "@atlcli/pdf/fonts/SourceSans3-It.ttf?url";
 import sansSemiBoldUrl from "@atlcli/pdf/fonts/SourceSans3-Semibold.ttf?url";

@@ -10,7 +10,8 @@
  * packaging mode the release ships (the riskiest T3.1 assumption). Keeping it a
  * dedicated tiny entry (not the full CLI) keeps the build fast and hermetic.
  */
-import { ATLCLI_TYPST_TEMPLATE, type PdfSourceBundle } from "@atlcli/pdf";
+import type { PdfSourceBundle } from "@atlcli/pdf";
+import { ATLCLI_TYPST_TEMPLATE } from "@atlcli/pdf/template";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 
 const bundle: PdfSourceBundle = {

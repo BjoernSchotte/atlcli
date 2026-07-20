@@ -1,4 +1,4 @@
-declare module "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs" {
+declare module "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/typst_ts_web_compiler.mjs" {
   export interface TypstCompiler {
     free(): void;
     reset(): void;

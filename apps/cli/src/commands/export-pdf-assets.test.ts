@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import {
-  ATLCLI_TYPST_TEMPLATE,
   validatePdfOutput,
   type PdfSourceBundle,
 } from "@atlcli/pdf";
+import { ATLCLI_TYPST_TEMPLATE } from "@atlcli/pdf/template";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 import { assertPdfAssetParity, getPdfCompiler, loadPdfCompilerAssets } from "./export-pdf-assets.js";
 

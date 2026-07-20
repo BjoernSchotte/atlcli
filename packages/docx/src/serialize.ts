@@ -71,7 +71,7 @@ export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
  */
 export type ImageEmbedOutcome =
   | { ok: true; xml: string; notes?: ExportNote[] }
-  | { ok: false; reason: string; code?: string; level?: "info" | "warning" };
+  | { ok: false; reason: string; code?: ExportNote["code"]; level?: "info" | "warning" };
 
 /**
  * The serializer's image seam (spec 005): turns an `image` block into an

@@ -2,20 +2,21 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { deflateSync, inflateSync } from "node:zlib";
 import {
-  ATLCLI_TYPST_TEMPLATE,
   PDF_RUNTIME_ASSETS,
   preparePdfDocument,
-  serializePdfDocument,
   validatePdfOutput,
   type ExportBlock,
   type PdfSourceBundle,
   type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
+import { ATLCLI_TYPST_TEMPLATE, serializePdfDocument } from "@atlcli/pdf/internal";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
+import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
+  await ensureVendoredTypst();
 });
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -25,7 +26,7 @@ async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>>
 
 async function createCompiler(): Promise<BrowserPdfCompiler> {
   const [wasm, ...fonts] = await Promise.all([
-    packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm"),
+    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
     ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });

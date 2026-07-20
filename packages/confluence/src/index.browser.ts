@@ -1,12 +1,15 @@
 /**
  * Browser-safe entry point for `@atlcli/confluence` (spec 003 Task 0).
  *
- * The Node barrel (`./index.ts`) re-exports node-only modules (webhook-server,
- * sync-db, poller, atlcli-dir, …) which drag `node:`/`bun:` specifiers into the
- * graph. This entry mirrors the spec-001 `@atlcli/core` pattern: it exports
- * ONLY the isomorphic surface the Chrome extension needs — the REST client and
- * the storage<->markdown converter — both already gated by the browser-build
- * CI check (`scripts/check-browser-build.ts`).
+ * Since the spec 009 barrel trim, the default (Node) barrel (`./index.ts`)
+ * re-exports exactly this browser barrel — the node-only sync machinery
+ * (webhook-server, sync-db, poller, atlcli-dir, …), which drags
+ * `node:`/`bun:` specifiers into the graph, lives behind the explicitly
+ * non-frozen `./internal` subpath (`./internal.ts`). This entry mirrors the
+ * spec-001 `@atlcli/core` pattern: it exports ONLY the isomorphic surface the
+ * Chrome extension needs — the REST client and the storage<->markdown
+ * converter — both already gated by the browser-build CI check
+ * (`scripts/check-browser-build.ts`).
  *
  * Every module re-exported here MUST build for `--target=browser` with zero
  * `node:`/`bun:` specifiers in its transitive graph. Add more modules only when

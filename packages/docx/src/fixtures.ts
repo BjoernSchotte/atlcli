@@ -295,6 +295,15 @@ export interface BuildDocxOptions {
    * untouched — so they round-trip through the export unchanged.
    */
   extraParts?: Record<string, string>;
+  /**
+   * Pins every zip entry's DOS timestamp. PizZip stamps each `file()` with
+   * `new Date()` (2-second resolution) by default, so two independent builds
+   * that straddle a 2-second boundary produce byte-different archives. Passing
+   * a fixed `date` makes the output fully byte-reproducible — required whenever
+   * a build is treated as a fixed asset that gets byte-compared (e.g. a bundled
+   * default template).
+   */
+  date?: Date;
 }
 
 /** Assemble a valid minimal `.docx` and return its bytes. */
@@ -303,33 +312,40 @@ export function buildDocx(opts: BuildDocxOptions): Uint8Array {
   const hasHeader = opts.header != null;
   const hasFooter = opts.footer != null;
   const hasSettings = opts.settings !== null; // default: include settings
+  // A pinned date makes the archive byte-reproducible (see BuildDocxOptions.date).
+  // pizzip's runtime `file()` accepts a per-entry options bag (its documented
+  // API, `date` included), but this repo's module resolution surfaces an older
+  // 2-arg overload, so the options-carrying call is typed explicitly here.
+  const fileOpts = opts.date ? { date: opts.date } : undefined;
+  const addFileWithOpts = (zip.file as (name: string, data: string, options?: { date: Date }) => unknown).bind(zip);
+  const addFile = (name: string, content: string) => addFileWithOpts(name, content, fileOpts);
 
-  zip.file("[Content_Types].xml", CONTENT_TYPES({ header: hasHeader, footer: hasFooter, settings: hasSettings }));
-  zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/document.xml", documentXml(opts.body));
-  zip.file("word/_rels/document.xml.rels", docRels(hasHeader, hasFooter, hasSettings));
-  zip.file("word/styles.xml", opts.styles ?? stylesXml());
+  addFile("[Content_Types].xml", CONTENT_TYPES({ header: hasHeader, footer: hasFooter, settings: hasSettings }));
+  addFile("_rels/.rels", ROOT_RELS);
+  addFile("word/document.xml", documentXml(opts.body));
+  addFile("word/_rels/document.xml.rels", docRels(hasHeader, hasFooter, hasSettings));
+  addFile("word/styles.xml", opts.styles ?? stylesXml());
   if (hasSettings) {
-    zip.file(
+    addFile(
       "word/settings.xml",
       opts.settings ??
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:settings>`
     );
   }
   if (hasHeader) {
-    zip.file(
+    addFile(
       "word/header1.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${OOXML_NS}>${opts.header}</w:hdr>`
     );
   }
   if (hasFooter) {
-    zip.file(
+    addFile(
       "word/footer1.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${OOXML_NS}>${opts.footer}</w:ftr>`
     );
   }
   for (const [path, content] of Object.entries(opts.extraParts ?? {})) {
-    zip.file(path, content);
+    addFile(path, content);
   }
   return zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
 }

@@ -3,18 +3,20 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
+import { formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
   ATLCLI_TYPST_TEMPLATE,
   preparePdfDocument,
   serializePdfDocument,
-  formatPdfCompilerDiagnostics,
   validatePdfOutput,
-} from "@atlcli/pdf/browser";
+} from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
+import { ensureVendoredTypst } from "../../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
+  await ensureVendoredTypst();
 });
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -24,7 +26,7 @@ async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>>
 
 async function createCompiler(): Promise<BrowserPdfCompiler> {
   const [wasm, ...fonts] = await Promise.all([
-    packageBytes("@myriaddreamin/typst-ts-web-compiler/wasm"),
+    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
     packageBytes("@atlcli/pdf/fonts/SourceSans3-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceSans3-It.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceSans3-Semibold.ttf"),

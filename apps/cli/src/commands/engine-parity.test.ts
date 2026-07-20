@@ -119,7 +119,7 @@ describe.skipIf(!PARITY)("dual-engine render diff (live, DOCSY)", () => {
       };
       for (const [engine, out] of Object.entries(outputs)) {
         const proc = Bun.spawn(
-          ["bun", "run", cli, "wiki", "export", pageId, "--profile", profile, "--engine", engine, "--template", template, "-o", out, "--json"],
+          ["bun", "--conditions=development", "run", cli, "wiki", "export", pageId, "--profile", profile, "--engine", engine, "--template", template, "-o", out, "--json"],
           { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_SUPPRESS_ENGINE_NOTICE: "1" } }
         );
         expect(await proc.exited).toBe(0);

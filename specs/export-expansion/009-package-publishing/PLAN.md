@@ -518,7 +518,7 @@ model); note it as the designated fallback.
 
 ### Publish prevention (do first — see Goal and Versioning precondition)
 
-- [ ] **Make every publishable package fail closed today, including
+- [x] **Make every publishable package fail closed today, including
       `apps/cli`.** Add explicit `private: true` to every `package.json`
       under `packages/*` and `apps/*` that has neither `private: true` nor
       an `"atlcli": { "publish": … }` classification yet — concretely
@@ -530,7 +530,7 @@ model); note it as the designated fallback.
       Architecture: Package graph specifies for the (currently inert)
       classification, enforced as a standing regression test starting now,
       not only once a publish pipeline exists.
-- [ ] Retire or convert `.github/workflows/release-core.yml` and
+- [x] Retire or convert `.github/workflows/release-core.yml` and
       `.github/workflows/release-cli.yml` into non-publishing wrappers
       (build+test only); remove or invalidate the `NPM_TOKEN` repo secret
       path they use. This is the acute risk while registry publishing is
@@ -546,7 +546,7 @@ model); note it as the designated fallback.
 
 ### Build artifacts
 
-- [ ] Add `tsconfig.build.json` + `"build": "tsc -p tsconfig.build.json"` +
+- [x] Add `tsconfig.build.json` + `"build": "tsc -p tsconfig.build.json"` +
       `"clean"` to each of `packages/{plugin-api,core,diagram,jira,confluence,docx,pdf,pdf-compiler-browser}/`;
       exclude `**/*.test.ts` (and `packages/docx/src/fixtures.ts` from the
       published `.` surface only if tests don't need it packaged — verify:
@@ -567,7 +567,7 @@ model); note it as the designated fallback.
       test: after build, grep each package's `dist/**/*.{js,d.ts,map}` for
       any `../` path segment escaping the package root or another
       package's `src/`.
-- [ ] Rewrite `exports` in all eight `packages/*/package.json` to `dist/`
+- [x] Rewrite `exports` in all eight `packages/*/package.json` to `dist/`
       targets, nesting `types` **inside** each of `browser`/`default`
       (never a shared top-level `types` — see Architecture: Build output
       model) so a browser consumer's type-checker cannot pick up Node-only
@@ -581,7 +581,7 @@ model); note it as the designated fallback.
       Architecture: Build output model — so the published `exports` never
       contains a target (`./src/index.ts`) that the `files` allowlist
       excludes from the tarball.
-- [ ] Fix `@atlcli/confluence`'s default (Node) entrypoint so it doesn't
+- [x] Fix `@atlcli/confluence`'s default (Node) entrypoint so it doesn't
       statically pull in `bun:sqlite` (see Architecture: Build output
       model): move `sync-db`/`webhook-server`/`atlcli-dir`
       (`packages/confluence/src/index.ts:1-24`) out of the barrel that
@@ -590,22 +590,22 @@ model); note it as the designated fallback.
       touches `bun:sqlite`. Regression test: importing the packed tarball's
       entrypoint under plain Node must not throw
       `Cannot find module 'bun:sqlite'`.
-- [ ] Trim each package's root `exports["."]` to the documented v1 seams
+- [x] Trim each package's root `exports["."]` to the documented v1 seams
       (see Architecture: API freeze & guard architecture) — move
       implementation-detail modules (`scan.js`, `resolver.js`, `ooxml.js`
       helpers in `@atlcli/docx`; `escape.js`, `compiler.js`, `prepare.js`,
       `theme.js`, `validate.js` in `@atlcli/pdf`) behind `./internal/*` or
       out of the barrel, still reachable in-repo via the `development`
       condition.
-- [ ] Add `files` allowlists and remove `private: true` from
+- [x] Add `files` allowlists and remove `private: true` from
       `packages/{docx,pdf,diagram,pdf-compiler-browser}/package.json`;
       add `"sideEffects": false` where true (verify per package — the docx
       browser runtime mutates `globalThis.__atlDocxByteHelpers`, see
       `packages/docx/src/vite.ts`, so audit before claiming it).
-- [ ] Confirm `turbo.json` `build` inputs/outputs still describe reality
+- [x] Confirm `turbo.json` `build` inputs/outputs still describe reality
       (add `tsconfig.build.json` to `inputs`; keep `dist/**` outputs) and that
       `bun run build` builds packages in dependency order via `^build`.
-- [ ] Verify `apps/extension` and `apps/browser-export-harness` (Vite) resolve
+- [x] Verify `apps/extension` and `apps/browser-export-harness` (Vite) resolve
       the new conditions correctly (Vite prefers `browser`); run
       `bun run check:browser` and the harness build
       (`bun run build:browser-export-harness`) as regression gates. Both
@@ -616,12 +616,12 @@ model); note it as the designated fallback.
       resolves the packed tarball's `exports`/`?url` conditions the way an
       external consumer's bundler would. See Consumer smoke below for the
       tarball-based Vite check that closes this gap.
-- [ ] Tests: a `bun test` suite (`scripts/pack-check.test.ts`) that runs
+- [x] Tests: a `bun test` suite (`scripts/pack-check.test.ts`) that runs
       `bun pm pack` per package into the scratch dir and asserts tarball
       contents — `dist/*.js`, `dist/*.d.ts` present; no `src/**/*.ts` leaked;
       asset files present (see Special cases); `exports` targets all exist
       inside the tarball (catches the classic broken-subpath publish).
-- [ ] Declare and test a Node/Bun/package-manager support matrix: add
+- [x] Declare and test a Node/Bun/package-manager support matrix: add
       `engines` to each publishable `package.json` reflecting the real
       constraint (Bun-only vs. Node-LTS-compatible per package, after the
       `bun:sqlite` fix above), and extend `pack-check.test.ts` (or a sibling
@@ -631,7 +631,7 @@ model); note it as the designated fallback.
 
 ### Versioning & release
 
-- [ ] **Decide `@atlcli/cli`'s fate as a *local* concern, not a publish
+- [x] **Decide `@atlcli/cli`'s fate as a *local* concern, not a publish
       decision — publishing it is deferred regardless of which way this
       goes.** `apps/cli/package.json` has no `private` field today (see
       Reference); the Publish prevention task above already makes this safe
@@ -644,11 +644,21 @@ model); note it as the designated fallback.
       folder's active scope — the original "integrate vs. deprecate the `npm
       install -g @atlcli/cli` path" framing assumed a live publish and is
       preserved, unimplemented, in the Deferred appendix for whichever way
-      the product rename lands.
-- [ ] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
+      the product rename lands. **→ DECIDED (2026-07-19): `apps/cli` stays
+      purely this repo's own CLI entry point — `private: true`, bundled by
+      its existing `apps/cli/build.ts` into the repo-root `dist/` for the
+      GitHub-release binaries, with no external package-consumption story.
+      Recorded in `src/content/docs/reference/versioning.md` ("`apps/cli`
+      stays internal"); revisit only if the Deferred appendix is revived
+      after the product rename.**
+- [x] Ensure `workspace:*` ranges are rewritten to concrete semver in packed
       tarballs; add a regression test in `scripts/release.test.ts` (inspect a
-      packed manifest, assert no `workspace:` protocol survives).
-- [ ] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
+      packed manifest, assert no `workspace:` protocol survives). (Covered by
+      `scripts/pack-check.test.ts` — it inspects every packed manifest and
+      fails on any surviving `workspace:` range — plus the consumer-smoke and
+      install-matrix suites, which assert the same on the *installed*
+      manifests; a separate `release.test.ts` duplicate is unnecessary.)
+- [x] Document the semver policy (pre-1.0 minor-may-break, 1.0 at API freeze,
       Conventional-Commit scopes as the per-package changelog) as a new page
       under `src/content/docs/reference/` (sibling to the existing
       `docx-engine.md`/`pdf-engine.md`), registered in the `sidebar` array
@@ -658,13 +668,13 @@ model); note it as the designated fallback.
       that this is a version-numbering policy for packed/filesystem-linked
       artifacts today, and that registry publish is deferred (link to Goal
       and the Deferred appendix).
-- [ ] Decide and implement the changesets question as **rejected** in code:
+- [x] Decide and implement the changesets question as **rejected** in code:
       no `.changeset/`; add a short "why lockstep" note to the same
       reference page so future contributors don't re-litigate it blindly.
 
 ### Packaging documentation
 
-- [ ] Consumer install documentation page under `src/content/docs/reference/`
+- [x] Consumer install documentation page under `src/content/docs/reference/`
       (per docs standards: intro → prerequisites → steps → examples →
       troubleshooting, registered in `astro.config.mjs`'s `sidebar`):
       document the two supported install paths — **workspace/filesystem
@@ -678,7 +688,7 @@ model); note it as the designated fallback.
       recommended Node starting point. Explicitly state that a package
       registry install (`npm install @atlcli/pdf` from a public registry) is
       **not** available today and link to the Deferred appendix for why.
-- [ ] Add a short `README.md` to each of the eight publishable package
+- [x] Add a short `README.md` to each of the eight publishable package
       roots (package role, stable entry points, runtime support — see
       support-matrix task above — minimal import example via filesystem
       linking or tarball install, link to the canonical reference page);
@@ -687,13 +697,13 @@ model); note it as the designated fallback.
 
 ### Batteries-included Node package (post folders 002/008 — additive, not a blocker)
 
-- [ ] Scaffold `packages/export-node/` (own `package.json`,
+- [x] Scaffold `packages/export-node/` (own `package.json`,
       `tsconfig.build.json`, `exports`, `files` allowlist, `README.md`)
       following the same build/pack/publish contract as the other eight
       packages (Build artifacts, above); add it to the publish-set
       classification (Architecture: Package graph) so `pack-check`/
       `api-report`/consumer-smoke pick it up without a hardcoded list edit.
-- [ ] Extract `fileOutputSink`/`fileTemplateSource`
+- [x] Extract `fileOutputSink`/`fileTemplateSource`
       (`packages/docx/src/node-adapters.ts:21-38`, already isomorphic per
       `packages/docx/src/node-consumer.test.ts`) and the CLI's token
       `AssetFetcher` (`apps/cli/src/commands/export-internals.ts:118-159`)
@@ -701,27 +711,34 @@ model); note it as the designated fallback.
       the CLI switches to importing from the new package instead of
       duplicating the logic (regression: CLI DOCX/PDF export behavior
       unchanged, `bun test apps/cli`).
-- [ ] Implement `nodePdfEnv(profile, opts)` / `confluenceTreeSource(profile)`
+- [x] Implement `nodePdfEnv(profile, opts)` / `confluenceTreeSource(profile)`
       matching the BASELINE-DESIGN A5 target snippet (§A5, lines 163-184)
       so it becomes a real, tested example rather than aspirational prose;
       wire folder 002's `fetchExportTree`/`composeChapters` (T1.1–T1.3) and
       folder 008's Bun/Node PDF compile port (T3.1) once both land.
-- [ ] Implement the default DOCX template per Architecture (Batteries-
+- [x] Implement the default DOCX template per Architecture (Batteries-
       included Node consumer): `bundledDefaultTemplate()` and wire it into
       `fileTemplateSource`'s default id resolution; `pack-check` asserts it
       produces a valid DOCX via a real `runExport` call, not just presence.
-- [ ] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
+      (Delivered: the real-`runExport` valid-DOCX assertion lives in
+      `packages/export-node/src/default-template.test.ts` and the
+      tarball-installed consumer smoke — strictly stronger than a pack-check
+      hook; `pack-check` covers the generic tarball structure.)
+- [x] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
       suites (Consumer smoke, below): the BASELINE-DESIGN A5 six-line
       snippet, run verbatim against the installed tarballs, must produce a
       real PDF.
-- [ ] Update Build artifacts / Definition of Done package counts from
-      eight to nine once this lands (kept separate here because it is
+- [x] Update Build artifacts / Definition of Done package counts from
+      eight to nine once this lands — DONE: the publishable set is **eleven**
+      today (the original eight + `export-macros` + `template-pack` from
+      specs 004/007 + `export-node`); every count-sensitive suite derives the
+      set from the `atlcli.publish` classification rather than a number (kept separate here because it is
       gated on 002/008, per Architecture: Batteries-included Node
       consumer).
 
 ### Special cases (wasm/patch/fonts)
 
-- [ ] `@atlcli/pdf-compiler-browser`: add `scripts/vendor-typst.ts` (in
+- [x] `@atlcli/pdf-compiler-browser`: add `scripts/vendor-typst.ts` (in
       `packages/pdf-compiler-browser/scripts/`) that copies the **patched**
       `pkg/` from this repo's installed
       `@myriaddreamin/typst-ts-web-compiler` into
@@ -729,7 +746,7 @@ model); note it as the designated fallback.
       the patch markers (`Blocked unexpected dynamic function`) and a pinned
       sha256 of the `.mjs` + `.wasm`, and copies upstream's Apache-2.0
       LICENSE + NOTICE attribution.
-- [ ] Switch `packages/pdf-compiler-browser/src/compiler.ts` (and
+- [x] Switch `packages/pdf-compiler-browser/src/compiler.ts` (and
       `vendor.d.ts`) from the `@myriaddreamin/...` import to the vendored
       path; remove the dependency from
       `packages/pdf-compiler-browser/package.json`; add exports `./wasm` →
@@ -740,14 +757,14 @@ model); note it as the designated fallback.
       vendored subpath — prefer migrating so the patch exists in exactly one
       delivery channel; then retire `patches/` (follow-up, only after both
       apps are migrated and green).
-- [ ] Regression test (`packages/pdf-compiler-browser/src/vendor.test.ts`,
+- [x] Regression test (`packages/pdf-compiler-browser/src/vendor.test.ts`,
       no mocks): load the vendored `.mjs` under Bun, initialize with the
       vendored wasm bytes, compile a minimal bundle (reuse the pattern from
       `packages/pdf-compiler-browser/src/compiler.test.ts`), and assert the
       patch behavior directly — the glue must **throw** on an unexpected
       dynamic function body (unit-test the exported wrapper contract, not by
       grep alone).
-- [ ] `@atlcli/pdf` fonts: add `prepack` script that runs
+- [x] `@atlcli/pdf` fonts: add `prepack` script that runs
       `packages/pdf/scripts/ensure-fonts.ts` and then verifies every
       `PDF_RUNTIME_ASSETS.fonts` file exists in `packages/pdf/.fonts/` with
       matching sha256, failing the pack otherwise; add `.fonts` and
@@ -755,19 +772,23 @@ model); note it as the designated fallback.
       the gitignored `.fonts/` when allowlisted (npm-compat rule says `files`
       wins over `.gitignore` — do not trust, test in `pack-check.test.ts` by
       listing tarball entries).
-- [ ] Document the `?url` asset contract in `docs/` reference: stable subpaths
+- [x] Document the `?url` asset contract in `docs/` reference: stable subpaths
       (`@atlcli/pdf/fonts/<file>.ttf`, `@atlcli/pdf/licenses/<file>`,
       `@atlcli/docx/fonts/<file>`, `@atlcli/pdf-compiler-browser/wasm`), the
       `BrowserPdfCompilerAssets` input shape, a Vite `?url` example matching
       `apps/browser-export-harness/src/pdf-worker.ts`, and the ambient-types
       snippet from `apps/browser-export-harness/src/worker-assets.d.ts`.
-- [ ] Keep `runtime-assets.ts` as the single source of truth: `pack-check`
+- [x] Keep `runtime-assets.ts` as the single source of truth: `pack-check`
       asserts tarball font list == `PDF_RUNTIME_ASSETS.fonts` (no drift
       between code, downloads, and shipped files).
 
 ### API freeze & guards
 
-- [ ] (After folders 001–008 land) Write the public API reference in `docs/`
+- [x] (After folders 001–008 land) Write the public API reference in `docs/`
+      **→ DONE (2026-07-19): `src/content/docs/reference/export-api.md` (one
+      focused page, all seven seams + stability classes + explicit
+      unstable/internal list), registered in the astro sidebar; policy links
+      to versioning.md instead of duplicating it.**
       (one page per seam, per docs standards): `ExportEnv`/`runExport`
       (`packages/docx/src/env.ts`), `PdfExportEnv`/`runPdfExport`
       (`packages/pdf/src/run-export.ts`), `PdfCompilePort`
@@ -778,7 +799,7 @@ model); note it as the designated fallback.
       `storageToBlocks` (`packages/confluence/src/export-blocks.ts`).
       Mark everything else (e.g. `@atlcli/docx/scan`, `./fixtures`,
       template internals) explicitly **unstable/internal**.
-- [ ] **Classify the full reachable declaration closure, not just the named
+- [x] **Classify the full reachable declaration closure, not just the named
       seams** (see Architecture: API freeze & guard architecture — the v1
       list is necessary but not sufficient). For each frozen entrypoint,
       generate its transitive `.d.ts` closure from `dist/` and mark every
@@ -792,13 +813,26 @@ model); note it as the designated fallback.
       are broad and largely CLI/Bun-internal (`packages/core/src/index.ts`)
       or renderer-internal (`packages/diagram/src/index.ts`) today; a
       package with no recorded decision stays 0.x rather than defaulting to
-      1.0 with the rest.
-- [ ] Write the breaking-change policy into the same docs section: what
+      1.0 with the rest. **→ DONE (2026-07-19): `scripts/api-closure.ts`
+      generates committed `packages/<p>/etc/<p>.closure.md` per package
+      (entrypoint stability classes, per-symbol lists, cross-package closure
+      refs, zero reachable-but-unexported gaps — the named PdfSourceBundle/
+      PdfCompilerDiagnostic/PdfExportMetadata/PdfProfile/PdfThemeOptions/
+      ConfluencePageDetails/TemplateMeta/ResolveDeps gaps are all exported
+      stable now), CI-guarded by api-report.test.ts. Frozen at 1.0.0:
+      confluence, docx, pdf, pdf-compiler-browser, export-macros. Stays 0.x
+      (recorded reasoning in each closure file): core, diagram, jira,
+      plugin-api, template-pack, export-node.**
+- [x] Write the breaking-change policy into the same docs section: what
       counts as breaking (removed/renamed exports, narrowed input types,
       widened output types, changed `exports` subpaths, changed asset
       filenames), deprecation window (one minor with `@deprecated` JSDoc
       before removal), and the pre-1.0 vs post-1.0 rules from Architecture.
-- [ ] Implement the api-report guard: `scripts/api-report.ts` generates a
+      → DONE (2026-07-19) in `src/content/docs/reference/versioning.md`
+      ("What counts as breaking", deprecation window, pre/post-1.0 rules);
+      when the gated API-reference pages land they should link there rather
+      than duplicating the policy.
+- [x] Implement the api-report guard: `scripts/api-report.ts` generates a
       normalized public-surface report per package from the built `dist/*.d.ts`
       (public exports of each `exports` entrypoint, sorted, comments
       stripped); committed reports live in `packages/<p>/etc/<p>.api.md`;
@@ -811,7 +845,7 @@ model); note it as the designated fallback.
       as a report diff — the breaking-change policy's "one minor with
       `@deprecated` before removal" promise is otherwise enforced only by
       reviewer memory, not by the guard.
-- [ ] **Stabilize `ExportNote.code`.** It is typed as plain `string`
+- [x] **Stabilize `ExportNote.code`.** It is typed as plain `string`
       (`packages/confluence/src/export-blocks.ts:119`, despite the doc
       comment "Stable machine code") — renaming or removing a code today
       produces no type error and no api-report diff. Introduce a central
@@ -821,19 +855,23 @@ model); note it as the designated fallback.
       walks every real emission site (`grep`-driven or a lint rule) and
       asserts each emitted code is a member of the registry — catches a
       code renamed at the call site without updating the union.
-- [ ] Add regression coverage for the guard itself: a test fixture package
+- [x] Add regression coverage for the guard itself: a test fixture package
       surface where a removed export / changed signature produces a failing
       diff (guards the guard; no mocks — run the real generator on a tiny
       fixture entrypoint under the scratch of the test).
-- [ ] Bump all frozen packages' `package.json` version to `1.0.0`; changelog
+- [x] Bump all frozen packages' `package.json` version to `1.0.0`; changelog
       entry documents the frozen surface and links the docs pages. This is a
       version-number and changelog commitment, verified via the tarball and
       filesystem-link consumer smoke — publishing `1.0.0` to a registry is
-      deferred (see Goal and the Deferred appendix).
+      deferred (see Goal and the Deferred appendix). **→ DONE (2026-07-19):
+      the five frozen packages are 1.0.0; CHANGELOG.md is git-cliff-generated
+      from Conventional Commits, so the freeze record lives in the commit
+      body and the versioning.md freeze table (per repo convention, no
+      hand-edit of the generated changelog).**
 
 ### Consumer smoke
 
-- [ ] `scripts/consumer-smoke.ts` (+ `scripts/consumer-smoke.test.ts` wiring
+- [x] `scripts/consumer-smoke.ts` (+ `scripts/consumer-smoke.test.ts` wiring
       it into `bun test` behind an env flag for CI): creates a temp project
       via `bun init` in the scratch dir, runs `bun pm pack` for every
       publishable package, installs the **local tarballs** (`bun add
@@ -841,7 +879,7 @@ model); note it as the designated fallback.
       resolving to the sibling tarballs), and asserts installation succeeds
       with no `workspace:` leakage. Real packages, real wasm, no registry —
       and no mocks anywhere in this suite.
-- [ ] **Filesystem-link smoke** (`scripts/consumer-smoke-filelink.ts`, wired
+- [x] **Filesystem-link smoke** (`scripts/consumer-smoke-filelink.ts`, wired
       into `bun test` next to the tarball suite): scaffold a throwaway
       consumer project that declares `@atlcli/docx`/`@atlcli/pdf` (and their
       transitive `@atlcli/*` deps) as `file:`-protocol dependencies pointing
@@ -852,7 +890,7 @@ model); note it as the designated fallback.
       linking against this repo or a sibling checkout, see Goal) and is not
       exercised by the tarball-install suite, which only proves `bun pm
       pack` output.
-- [ ] DOCX smoke inside the temp project: a script that imports `runExport`
+- [x] DOCX smoke inside the temp project: a script that imports `runExport`
       from the installed `@atlcli/docx`, provides a minimal real `ExportEnv`
       (template bytes from the installed package's shipped default template
       path — verify what `TemplateSource` needs and ship a usable default;
@@ -860,7 +898,7 @@ model); note it as the designated fallback.
       `storageToBlocks` from installed `@atlcli/confluence`, and asserts the
       emitted bytes are a valid DOCX (unzip, check `word/document.xml`
       contains the fixture heading).
-- [ ] PDF smoke inside the temp project: imports `runPdfExport` from installed
+- [x] PDF smoke inside the temp project: imports `runPdfExport` from installed
       `@atlcli/pdf` and `BrowserPdfCompiler` from installed
       `@atlcli/pdf-compiler-browser`, loads wasm bytes from the installed
       package's `./wasm` subpath and fonts from installed
@@ -868,11 +906,11 @@ model); note it as the designated fallback.
       already proven in `packages/pdf-compiler-browser/src/compiler.test.ts`,
       but now against `node_modules`, not the workspace), compiles a fixture,
       and asserts `%PDF-` magic bytes + `validatePdfOutput` passes.
-- [ ] Type-consumption check in the temp project: `tsc --noEmit` against a
+- [x] Type-consumption check in the temp project: `tsc --noEmit` against a
       consumer `main.ts` importing from `@atlcli/{docx,pdf,confluence,pdf-compiler-browser}`
       with `"skipLibCheck": false` — proves shipped `.d.ts` are self-contained
       (catches leaked `src/` type imports and missing declaration deps).
-- [ ] **Node-LTS tarball smoke** (`scripts/consumer-smoke-node.ts`), separate
+- [x] **Node-LTS tarball smoke** (`scripts/consumer-smoke-node.ts`), separate
       from the Bun-based suite above: a fresh `npm init` project on the
       oldest supported Node LTS (per the `engines` support-matrix task in
       Build artifacts), `"moduleResolution": "NodeNext"`,
@@ -882,7 +920,7 @@ model); note it as the designated fallback.
       actually proves the `bun:sqlite` fix (Build artifacts) holds for a
       plain-Node consumer, not just that `pack-check` didn't find the
       string `bun:sqlite` in the tarball.
-- [ ] **Vite tarball smoke** (`scripts/consumer-smoke-vite/`, a throwaway
+- [x] **Vite tarball smoke** (`scripts/consumer-smoke-vite/`, a throwaway
       Vite project scaffolded in the scratch dir, not `apps/extension` or
       `apps/browser-export-harness` — those still resolve `workspace:*`,
       see Build artifacts): install the packed tarballs, configure Vite
@@ -894,21 +932,31 @@ model); note it as the designated fallback.
       `packages/pdf-compiler-browser/src/compiler.test.ts`'s pattern —
       compile a fixture inside a Worker to real PDF bytes. Fails if any
       resolution falls through to a `src/` path or a `workspace:` symlink.
-- [ ] CI job (`.github/workflows/`): run the consumer smoke on every PR that
+- [x] CI job (`.github/workflows/`): run the consumer smoke on every PR that
       touches `packages/**` or the publish tooling (path filter), Linux
       runner, no registry credentials needed.
-- [ ] **E2E final gate** (before the freeze release, per CLAUDE.md workflow
+- [x] **E2E final gate** (before the freeze release, per CLAUDE.md workflow
       rules): build the CLI from the packed packages (temp checkout of
       `apps/cli` with `@atlcli/*` deps pointing at the packed tarballs
       instead of `workspace:*`), then export a real page from space `DOCSY`
       with profile `mayflower` to DOCX (and PDF once T3.2 exists) into
       `~/wikisynctest/docs`; assert non-empty valid output; **clean up** any
       test pages/files created, per the cleanup rule.
+      → DONE (2026-07-19, re-run 2026-07-20 post specs 002/003/004/007/008):
+      all 11 tarballs packed (prepack font/vendor guards ran), scratch
+      `apps/cli` copy installed them via `file:` + overrides (no
+      `workspace:` leakage), `wiki export 1117356071` against
+      DOCSY/mayflower produced BOTH a valid DOCX (`--engine ts`; zip magic,
+      42 kB `word/document.xml` containing the page title) AND a valid PDF
+      (`--format pdf` from spec 008; PDF 1.7, 8 pages, title extractable
+      via pdftotext) — the PDF pipeline ran entirely from the tarball
+      artifacts (vendored wasm + shipped fonts). The DOCSY fixture page
+      stays (deliberate, reused across E2E runs).
 
 ## Definition of Done
 
-- `bun run build` produces `dist/` (JS + `.d.ts` + maps) for all eight
-  packages; `bun run typecheck` and `bun test` green; harness and extension
+- `bun run build` produces `dist/` (JS + `.d.ts` + maps) for every
+  publishable package (eleven today, classification-derived); `bun run typecheck` and `bun test` green; harness and extension
   builds green (`check:browser`, `check:extension-output`).
 - `bun pm pack` tarballs for all packages pass `pack-check.test.ts`: correct
   files, working `exports` targets, no `workspace:` ranges, fonts present in

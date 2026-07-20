@@ -260,11 +260,142 @@ export interface ExportNoteSource {
   assetName?: string;
 }
 
+/**
+ * Every stable machine code an {@link ExportNote} can carry (spec 009,
+ * "Stabilize ExportNote.code"). This is the single registry: renaming or
+ * removing a member is a breaking API change (it shows up in the api-report
+ * diff), and emitting a code that is not listed here is a type error at the
+ * call site plus a failure of `scripts/export-note-codes.test.ts`, which
+ * walks every real emission site in the repo. Grouped by emitter.
+ */
+export const EXPORT_NOTE_CODES = [
+  // Confluence storage walk (storageToBlocks)
+  "unknown-macro",
+  "macro-not-rendered",
+  "image-unresolved",
+  "inline-image-skipped",
+  // Scope orchestration / tree fetch (spec 002)
+  "page-unreadable",
+  "subtree-unreadable",
+  "tree-cycle",
+  "page-ambiguous-404",
+  "page-version-changed",
+  "label-filtered",
+  "root-filter-bypassed",
+  "folder-position-unknown",
+  "unsupported-child-type",
+  "link-anchor-missing",
+  "link-outside-scope",
+  "link-target-ambiguous",
+  "mention-unresolved",
+  "heading-depth-clamped",
+  // Content features / scroll-* compat (spec 003)
+  "caption-kind-unknown",
+  "caption-kind-unsupported",
+  "caption-lang-fallback",
+  "scroll-title-caption-fallback",
+  "scroll-ignore-applied",
+  "scroll-ignore-skipped-other-exporter",
+  "scroll-ignore-unknown-exporter",
+  "scroll-only-unknown-exporter",
+  "scroll-only-applied",
+  "scroll-only-skipped-other-exporter",
+  "export-controls-passthrough",
+  "table-overflow-warned",
+  "table-text-scaled",
+  "orientation-marker-unmatched",
+  "orientation-marker-unterminated",
+  "orientation-nested-collapsed",
+  "orientation-suppressed-in-container",
+  "pagebreak-suppressed-in-container",
+  // Macro renderer registry (spec 004)
+  "macro-degraded",
+  "macro-rendered-via",
+  "macro-skipped-by-config",
+  "macro-body-truncated",
+  // includepage / metadata placeholders (spec 005)
+  "includepage-ambiguous-title",
+  "includepage-budget-exceeded",
+  "includepage-cycle",
+  "includepage-invalid-context",
+  "includepage-transient-error",
+  "includepage-unresolved",
+  "includepage-auth-failed",
+  "includepage-rate-limited",
+  // Word quality: numbering, tables, SVG, StyleRef (spec 006)
+  "image-svg-default-size",
+  "image-svg-no-rasterizer",
+  "image-svg-oversized",
+  "list-nesting-clamped",
+  "numbering-cap-reached",
+  "styleref-style-not-in-template",
+  "styleref-style-unused-in-export",
+  "table-geometry-clamped",
+  "table-style-missing",
+  // Template pack validation (spec 007)
+  "docx-scan-failed",
+  "never-placeholders",
+  // Scope orchestration follow-ups (spec 002)
+  "empty-include-result",
+  // CLI report/error taxonomy (spec 008)
+  "usage-error",
+  "cancelled",
+  "asset-budget-exceeded",
+  "space-homepage-missing",
+  "auth-error",
+  "remote-error",
+  "unexpected-error",
+  // Generic fallback used by scope/CLI error paths
+  "other",
+  // DOCX placeholder resolver / export pipeline (@atlcli/docx)
+  "date-format-unknown",
+  "pageproperty-no-key",
+  "placeholder-empty",
+  "placeholder-substituted",
+  "placeholder-unsupported",
+  "placeholder-never",
+  "space-fetch-failed",
+  "space-unavailable",
+  "user-fetch-failed",
+  "user-unavailable",
+  "owner-fetch-failed",
+  "owner-unavailable",
+  "homepage-fetch-failed",
+  "homepage-unavailable",
+  "no-content-placeholder",
+  "logo-skipped",
+  "logo-embed-failed",
+  "perf-timing",
+  // DOCX block serializer (@atlcli/docx)
+  "code-highlight-skipped",
+  "image-skipped",
+  "image-embed-failed",
+  "diagram-skipped",
+  "diagram-unsupported",
+  "diagram-render-failed",
+  "table-shape-approximated",
+  // PDF pipeline (@atlcli/pdf)
+  "pdf-image-skipped",
+  "pdf-image-alt-fallback",
+  "pdf-diagram-unsupported",
+  "pdf-diagram-failed",
+  "pdf-link-unresolved",
+  "pdf-table-cell-contrast-low",
+  "pdf-unknown-block",
+  // Host-emitted source notes (extension panel / conformance harness)
+  "pdf-mention-unresolved",
+  "pdf-mention-resolution-failed",
+  "browser-harness",
+] as const;
+
+/** Stable machine code of an {@link ExportNote} — a member of {@link EXPORT_NOTE_CODES}. */
+export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
+
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
   level: "info" | "warning";
   /** Stable machine code, e.g. `"unknown-macro"`, `"inline-image-skipped"`. */
-  code: string;
+  code: ExportNoteCode;
   message: string;
   macroName?: string;
   /** Where the note originated (spec 003 provenance contract). */

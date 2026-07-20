@@ -6,7 +6,7 @@
  * @module audit-formatters
  */
 
-import type { PageRecord, LinkRecord, UserRecord } from "@atlcli/confluence";
+import type { PageRecord, LinkRecord, UserRecord } from "@atlcli/confluence/internal";
 
 // ============================================================================
 // Types

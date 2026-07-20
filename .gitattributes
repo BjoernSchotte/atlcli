@@ -1,0 +1,33 @@
+# Reproducible cross-platform vendoring (spec 009).
+#
+# `@atlcli/pdf-compiler-browser` vendors the typst.ts wasm-bindgen glue AFTER
+# Bun applies the CSP-hardening patch below. Bun's patch application copies the
+# patch's added lines verbatim, so the patch file's own line endings end up in
+# the vendored glue (`typst_ts_web_compiler.mjs`) whose sha256 is pinned in
+# `TYPST_VENDOR_PINS`. If a contributor has `core.autocrlf=true` (the Windows
+# default) git would check the patch out with CRLF, the patched glue bytes would
+# differ from the LF-computed pin, and the `vendor:typst` postinstall would fail
+# with a sha256 mismatch. Force LF on the patch (and on the vendored text glue,
+# should it ever be committed) so the patched bytes are identical on
+# macOS/Linux/Windows regardless of autocrlf.
+patches/** text eol=lf
+*.mjs text eol=lf
+*.d.ts text eol=lf
+
+# Binary assets must NEVER be line-ending normalized — normalization would
+# corrupt them and the wasm/font sha pins depend on their exact bytes.
+*.wasm binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.dotx binary
+*.xlsx binary
+*.pptx binary

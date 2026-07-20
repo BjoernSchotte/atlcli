@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import type { PageRecord, LinkRecord, UserRecord } from "@atlcli/confluence";
+import type { PageRecord, LinkRecord, UserRecord } from "@atlcli/confluence/internal";
 import {
   formatTimeAgo,
   formatTable,

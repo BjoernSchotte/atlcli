@@ -1,5 +1,10 @@
 import { defineConfig } from "wxt";
-import { DOCX_BROWSER_VITE_DEFINES } from "@atlcli/docx/vite";
+// Relative src import (not "@atlcli/docx/vite"): this config is loaded by
+// wxt's own config loader (jiti, Node-style resolution) which does not request
+// the "development" export condition — the package specifier would resolve to
+// dist/ and break `bun install` (postinstall: wxt prepare) on a fresh clone
+// before any build exists.
+import { DOCX_BROWSER_VITE_DEFINES } from "../../packages/docx/src/vite";
 
 // WXT config for the atlcli Chrome extension (spec 002).
 //
@@ -44,7 +49,10 @@ export default defineConfig({
     // `browser` export condition of @atlcli/core so the Node barrel (with
     // node: imports) is never pulled into the extension bundle.
     resolve: {
-      conditions: ["browser"],
+      // `development` FIRST (spec 009): resolves the @atlcli/* workspace
+      // packages to live src/ (their exports list the development condition
+      // first), so `wxt dev` never serves stale dist/ output.
+      conditions: ["development", "browser"],
     },
     // Spec 004: PizZip / docxtemplater reference the Node `Buffer.*` globals,
     // which are undefined in the MV3 panel and rejected by the output-scan gate.

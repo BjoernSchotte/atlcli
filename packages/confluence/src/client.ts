@@ -1683,7 +1683,7 @@ export class ConfluenceClient {
   async uploadAttachment(params: {
     pageId: string;
     filename: string;
-    data: Buffer | Uint8Array;
+    data: Uint8Array;
     mimeType?: string;
     comment?: string;
   }): Promise<AttachmentInfo> {
@@ -1717,7 +1717,7 @@ export class ConfluenceClient {
     attachmentId: string;
     pageId: string;
     filename?: string;
-    data: Buffer | Uint8Array;
+    data: Uint8Array;
     mimeType?: string;
     comment?: string;
   }): Promise<AttachmentInfo> {

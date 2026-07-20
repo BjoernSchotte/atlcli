@@ -66,7 +66,7 @@ jobs:
           # Bun 1.3.5 can exit with code 1 on Linux even when every test passes.
           # Preserve genuine failures while accepting an exact zero-failure summary.
           set +e
-          bun test 2>&1 | tee "$RUNNER_TEMP/bun-test.log"
+          bun --conditions=development test 2>&1 | tee "$RUNNER_TEMP/bun-test.log"
           TEST_EXIT=${PIPESTATUS[0]}
           set -e
 
@@ -112,13 +112,13 @@ jobs:
         run: bun run fonts:ensure
 
       - name: PDF compile-port and build-mode tests
-        run: bun test apps/cli/src/commands/export-pdf-assets.test.ts apps/cli/src/commands/export-pdf-build-modes.test.ts apps/cli/src/commands/export-pdf-integration.test.ts
+        run: bun --conditions=development test apps/cli/src/commands/export-pdf-assets.test.ts apps/cli/src/commands/export-pdf-build-modes.test.ts apps/cli/src/commands/export-pdf-integration.test.ts
 
       # Spec 006 G4: the diagram/SVG rasterizer's resvg-wasm + font imports must
       # resolve in every build mode on macOS too (the release ships macOS
       # binaries, and SVG attachment embedding depends on this rasterizer).
       - name: Diagram/SVG rasterizer build-mode tests
-        run: bun test apps/cli/src/commands/export-rasterizer-build-modes.test.ts
+        run: bun --conditions=development test apps/cli/src/commands/export-rasterizer-build-modes.test.ts
 
   # Spec 008 T3.2 platform gate: the filePdfOutputSink commit protocol
   # (exclusive temp, symlink refusal, atomic no-replace commit, containment)
@@ -138,7 +138,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Sink commit-protocol tests
-        run: bun test apps/cli/src/commands/export-pdf-sink.test.ts
+        run: bun --conditions=development test apps/cli/src/commands/export-pdf-sink.test.ts
 
   test-python:
     runs-on: ubuntu-latest

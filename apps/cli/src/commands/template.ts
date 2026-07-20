@@ -43,7 +43,7 @@ import {
   type TemplateMetadata,
   type ImportOptions,
 } from "@atlcli/core";
-import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence";
+import { findAtlcliDir, ConfluenceClient, storageToMarkdown } from "@atlcli/confluence/internal";
 
 type Flags = Record<string, string | boolean | string[]>;
 

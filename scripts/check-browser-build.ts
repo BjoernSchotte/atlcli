@@ -19,12 +19,15 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
   "packages/docx/src/index.browser.ts",
+  "packages/docx/src/internal.ts",
   "packages/docx/src/browser-runtime.ts",
   "packages/diagram/src/index.ts",
   "packages/pdf/src/index.browser.ts",
+  "packages/pdf/src/internal.ts",
   "packages/pdf-compiler-browser/src/index.ts",
   "packages/template-pack/src/index.browser.ts",
   "packages/export-macros/src/index.ts",
+  "packages/export-macros/src/internal.ts",
 ];
 
 /**
@@ -87,7 +90,14 @@ function collectDiagnostics(source: unknown): string[] {
 export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckResult> {
   let result: Awaited<ReturnType<typeof Bun.build>>;
   try {
-    result = await Bun.build({ entrypoints: [entrypoint], target: "browser" });
+    // `development` keeps this gate source-based: `@atlcli/*` exports resolve
+    // to `src/*.ts` (workspace DX condition, spec 009) instead of `dist/`,
+    // so the gate needs no prior package build.
+    result = await Bun.build({
+      entrypoints: [entrypoint],
+      target: "browser",
+      conditions: ["development"],
+    });
   } catch (err) {
     const logs = collectDiagnostics(err);
     return {

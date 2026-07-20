@@ -21,7 +21,7 @@ const blocks: ExportBlock[] = [
   { type: "unknown", macroName: "acme-widget", macroId: "m1" },
 ];
 const sourceNotes = [
-  { level: "warning" as const, code: "unknown-macro", message: "placeholder", macroName: "acme-widget" },
+  { level: "warning" as const, code: "unknown-macro" as const, message: "placeholder", macroName: "acme-widget" },
 ];
 
 function widgetRenderer(): MacroRenderer {

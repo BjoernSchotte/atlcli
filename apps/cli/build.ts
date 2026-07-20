@@ -22,6 +22,10 @@ const args = [
   "../../dist",
   "--target",
   "bun",
+  // Bundle from workspace sources: `@atlcli/*` exports resolve their
+  // `development` condition to `src/*.ts` (spec 009), so this build does not
+  // depend on the packages' `dist/` output existing.
+  "--conditions=development",
   `--define`,
   `__ATLCLI_VERSION__="${version}"`,
 ];
