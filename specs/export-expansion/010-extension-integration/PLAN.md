@@ -325,23 +325,27 @@ wiring stays in thin components and entrypoints.
    **Renderer: locally bundled PDF.js, not `<embed>`.** Output goes to a
    capture sink (bytes, not a download) and is handed to PDF.js as a
    `Uint8Array` via `getDocument({ data })` — no intermediate `blob:` URL.
-   A prior draft of this plan specified `<embed type="application/pdf">` over a
-   `blob:` URL and justified it as "CSP-clean under the existing `script-src
-   'self' 'wasm-unsafe-eval'`". **That justification cites the wrong
-   directive**: `<embed>`/`<object>` are governed by `object-src`, which this
-   extension sets to `'self'` (`apps/extension/wxt.config.ts`), and `'self'`
-   does not match `blob:` URLs — a `blob:`-sourced `<embed>` is therefore
-   expected to be blocked outright rather than merely "flaky across Chrome
-   versions" as the old Risks entry assumed. *(Verification note: this is read
-   off the CSP spec and the manifest, not yet reproduced in a running build.
-   The first T5.3 task is to confirm it empirically — if `<embed>` does render,
-   PDF.js is still the choice for the reasons below, but this paragraph must be
-   corrected rather than left as an unverified claim.)* PDF.js renders into a
-   `<canvas>` under `script-src 'self'`, which the existing CSP already allows,
-   so the viewer sidesteps the `object-src` question entirely. It also buys
-   what the built-in viewer cannot: a reduced, controllable surface, page
-   navigation, zoom and fit-width, later text selection/search/thumbnails/
-   outline, and identical behavior across Chrome and Firefox.
+
+   **Decision record (2026-07-20).** Earlier drafts of this plan justified the
+   choice negatively, by asserting that a `blob:`-sourced
+   `<embed type="application/pdf">` is *blocked* by this extension's
+   `object-src 'self'` — read off the CSP spec and the manifest, never
+   reproduced in a running build. That empirical verification was **explicitly
+   dropped by the plan owner**: PDF.js is the choice regardless of how the
+   `<embed>` test would have come out, so paying for the experiment bought
+   nothing. The unverified claim is therefore **removed rather than carried**,
+   and the rationale below stands on its own — none of it depends on what
+   `object-src` does to `<embed>`.
+
+   The positive reasons: PDF.js renders into a `<canvas>` under `script-src
+   'self'`, which the existing CSP already allows, so the viewer never raises
+   an `object-src` question at all. It also buys what the built-in viewer
+   cannot: a reduced, controllable surface, page navigation, zoom and
+   fit-width, later text selection/search/thumbnails/outline, and identical
+   behavior across Chrome and Firefox. The cost is accepted knowingly and is
+   tracked in Risks (bundle weight next to the ≥ 20 MB Typst WASM artifact, a
+   new upstream to watch for advisories, and the `DYNAMIC_CODE_RES` exemption
+   in Architecture point 8).
 
    **Truncation is scope-dependent.** For `scope: page` — the case
    CONFCLOUD-84742 actually describes — the preview compiles the **whole**
@@ -796,10 +800,10 @@ is a single-file change if the preview turns out to be v3.
          Architecture point 4 for why `id`-as-primary-key doesn't work);
          read the legacy `"current"` record (if present) and rewrite it as a
          library entry with a placeholder `sha256: null, size: bytes.byteLength`
-         and a `migrationPending: true` marker: `{ recordKey:
+         and a `migrationPending: 1` marker: `{ recordKey:
          "<site>|docx|<templateId>|global", templateId: crypto.randomUUID(),
          displayName: name, engine: "docx", scope: "global", name, bytes,
-         uploadedAt, sha256: null, size, migrationPending: true }` (v1 only
+         uploadedAt, sha256: null, size, migrationPending: 1 }` (v1 only
          ever stored DOCX templates, so `engine: "docx"` is safe; `<site>` is
          read from the ambient session profile at migration time, not from
          the record — see Open questions if no site is resolvable); delete
@@ -809,12 +813,22 @@ is a single-file change if the preview turns out to be v3.
          selection and per-template settings values.
       2. **Async backfill, after the upgrade transaction commits** (normal
          `readwrite` transaction, opened once the `onupgradeneeded`/`onsuccess`
-         handler returns): for every record with `migrationPending: true`,
+         handler returns): for every record with `migrationPending: 1`,
          compute `sha256Hex(bytes)` and `size`, `put()` the completed record,
          clear the marker. Resumable by construction: if the panel is closed
          mid-backfill, the next open finds `migrationPending` records via the
          index and finishes them — no partial-hash record is ever presented
          as migrated.
+
+         **Why `1` and not `true` (corrected 2026-07-20 — earlier drafts of
+         this plan said `true`, which is a defect).** Booleans are **not valid
+         IndexedDB keys**, and an index whose key path evaluates to an invalid
+         key *silently skips the record* rather than erroring. An index over
+         `migrationPending: true` would therefore always be empty, the
+         interrupted-backfill lookup would find nothing, and the
+         "resumable by construction" guarantee above would quietly not exist —
+         while every test that seeds and reads records directly still passed.
+         Use `1`/absent, never `true`/`false`.
       3. No data leaves IndexedDB — scan verdicts stay derived-on-read
          (existing invariant in the module docstring stays true for v2).
       4. Idempotent: opening at `DB_VERSION` 2 a second time (schema already
@@ -881,15 +895,16 @@ is a single-file change if the preview turns out to be v3.
       (`workers/pdf-compiler.ts`) survives every debounced preview and the
       export that follows it stays warm. Test: rapid preview→preview→export
       sequence creates exactly one worker instance.
-- [ ] **First task, blocking the viewer choice — verify the CSP claim
-      empirically.** Architecture point 5 asserts that a `blob:`-sourced
-      `<embed type="application/pdf">` is blocked by this extension's
-      `object-src 'self'`; that is read off the spec and the manifest, not
-      reproduced. Load an unpacked build, render a PDF both ways, record the
-      outcome in this PLAN (correcting Architecture point 5 if `<embed>` in
-      fact works). PDF.js remains the choice either way — for zoom/fit-width,
-      cross-browser parity and a controllable surface — but the plan must not
-      carry an unverified factual claim as its stated rationale.
+- [x] ~~**First task, blocking the viewer choice — verify the CSP claim
+      empirically.**~~ **Dropped by the plan owner, 2026-07-20.** The experiment
+      would have decided nothing: PDF.js is the choice either way (zoom /
+      fit-width, cross-browser parity, controllable surface). Rather than leave
+      an unverified factual claim standing as the stated rationale, the claim
+      itself was **removed** from Architecture point 5, which now argues
+      positively and no longer depends on `<embed>`/`object-src` behavior at
+      all. Consequence for implementers: **do not** build an `<embed>` fallback
+      path, and do not re-introduce the "blocked by `object-src 'self'`"
+      assertion into docs or code comments — it is unverified.
 - [ ] `apps/extension/utils/pdf/preview.ts` (new): `runPdfPreview(input, deps)`
       — same pipeline as `runPdfExport` but (a) **scope-dependent truncation**:
       `scope: page` compiles the full document (the CONFCLOUD-84742 case — a
@@ -1220,7 +1235,7 @@ Component/unit (new):
 - [ ] `apps/extension/tests/docx/template-store-migration.test.ts` (new,
       fake-indexeddb): seed a **v1** database containing a `"current"`
       record, reopen at `DB_VERSION` 2, assert (a) the synchronous phase
-      completes with a `migrationPending: true` placeholder record (`recordKey`
+      completes with a `migrationPending: 1` placeholder record (`recordKey`
       set, `templateId` a fresh uuid, `engine: "docx"`, `scope: "global"`,
       `sha256: null`) and `"current"` key gone, immediately after
       `onupgradeneeded` returns — i.e. before the async backfill runs; (b)
@@ -1229,8 +1244,23 @@ Component/unit (new):
       between phase 1 and phase 2, reopen — the `migrationPending` record is
       found via its index and finished, never left half-migrated; (d) second
       open at v2 (already migrated) is a no-op; (e) empty v1 DB migrates
-      cleanly; (f) no `TransactionInactiveError` is thrown at any point (the
-      test fails loudly if phase 1 contains an `await`).
+      cleanly; (f) phase 1 is `await`-free.
+
+      **(f) cannot be a behavioural test — corrected 2026-07-20 after probing
+      the fake.** `fake-indexeddb` does **not** model version-change
+      transaction inactivity: an upgrade handler that `await`s
+      `crypto.subtle.digest(...)` and then calls `objectStore.put()` *succeeds
+      silently* under the fake, exactly where Chrome throws
+      `TransactionInactiveError`. A test asserting "no `TransactionInactiveError`
+      is thrown" is therefore **vacuously green** — it passes both with and
+      without the bug, and would have signed off the very regression the
+      two-phase design exists to prevent. Implemented instead as a
+      **source-level guard** that parses the phase-1 call graph and fails if it
+      is not `await`-free, itself mutation-tested (making a phase-1 helper
+      `async` must fail the guard). Do not "upgrade" this to a behavioural test
+      against the fake — that trades a real check for a green light. The real
+      browser behavior is covered by the manual fresh-profile migration item in
+      the release protocol.
 - [ ] `apps/extension/tests/templates/library.test.ts`: v2-store
       `TemplateLibrary` adapter — `list` filtering by engine/space,
       `getBytes` sha256 verification failure is a hard error; a global entry
