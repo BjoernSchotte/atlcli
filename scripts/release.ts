@@ -544,7 +544,13 @@ async function updateHomebrew(newVersion: string): Promise<void> {
   console.log("  Homebrew update workflow triggered");
 }
 
-function showDryRunPlan(currentVersion: string, newVersion: string, skipTests: boolean): void {
+/**
+ * Print the release plan for `--dry-run`, including the pre-release checklist.
+ *
+ * Exported so the checklist can be regression-tested: the security-review
+ * reminder is a release gate, and a gate nobody can see is not a gate.
+ */
+export function showDryRunPlan(currentVersion: string, newVersion: string, skipTests: boolean): void {
   console.log(`
 DRY RUN - No changes will be made.
 
@@ -561,6 +567,17 @@ Steps that would be executed:
   8. Wait for GitHub Actions to build release artifacts
   9. Update Homebrew: gh workflow run update-formula.yml --repo ${HOMEBREW_TAP} \\
        -f formula=atlcli -f tag=v${newVersion} -f repository=${REPO_OWNER}/${REPO_NAME}
+
+Pre-release checklist (not enforced by this script — confirm each yourself):
+  [ ] Security review completed for this release
+      Run /security-review over the diff since the previous tag. It covers the
+      untrusted-input surfaces (raw .docx upload archive budget + active
+      content, .wiki-pdf-template container, embedded SVG, Confluence storage
+      parse budget, link-target schemes, font intake) plus any network code
+      added since the last tag.
+      See docs: Contributing → Releasing → Security Review Before Every Release.
+  [ ] CHANGELOG entry reads correctly (bun scripts/release.ts <type> --preview)
+  [ ] Docs updated for any behavior change in this release
 
 To execute this release, run without --dry-run:
   bun scripts/release.ts ${newVersion.endsWith(".0.0") ? "major" : newVersion.endsWith(".0") ? "minor" : "patch"}

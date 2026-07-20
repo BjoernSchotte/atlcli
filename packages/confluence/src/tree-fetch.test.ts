@@ -893,3 +893,67 @@ describe("applyLabelFilter — pure", () => {
     expect(bodyHeading.level).toBe(3);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// spec 011 round 3 — an unparseable page must not kill the run
+// ---------------------------------------------------------------------------
+
+describe("fetchExportTree — storage parse budget degradation", () => {
+  /** Storage that blows the depth limit — the cheapest way to trip the budget. */
+  const OVERSIZED = "<div>".repeat(1000) + "deep" + "</div>".repeat(1000);
+
+  const withOversizedPage = (): FixtureNode[] => [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "big", kind: "page", title: "Big", parent: "root", position: 0, observedVersion: 1, storage: OVERSIZED },
+    { id: "ok", kind: "page", title: "Ok", parent: "root", position: 1, observedVersion: 1 },
+  ];
+
+  test("partial mode: one unparseable page degrades, its NEIGHBOURS still export", async () => {
+    // The regression this guards: `storageToBlocks` threw straight out of the
+    // body-fetch job, the rejection scan re-threw it, and the whole tree export
+    // died on one page. The budget's own docs promised the opposite.
+    const source = inMemoryTreeSource(withOversizedPage());
+    const result = await fetchExportTree(source, tree("root"), { completenessMode: "partial" });
+
+    expect(result.complete).toBe(false);
+    const note = result.notes.find((n) => n.code === "page-unreadable");
+    expect(note).toBeDefined();
+    // The note must say WHY — "page-unreadable" alone hides "too big to parse".
+    expect(note!.message).toContain("parse budget");
+    expect(note!.message).toContain("too-deep");
+
+    const big = result.nodes.find((n) => nodeId(n) === "big") as ExportPageNode;
+    expect(big.placeholder).toBe(true);
+    expect(big.blocks.length).toBeGreaterThan(0);
+
+    // The whole point: everything else came through.
+    expect(titles(result)).toEqual(["Root", "Big", "Ok"]);
+    const ok = result.nodes.find((n) => nodeId(n) === "ok") as ExportPageNode;
+    expect(ok.placeholder).toBeUndefined();
+  });
+
+  test("strict mode: aborts with a typed completeness error, not a raw parse error", async () => {
+    const source = inMemoryTreeSource(withOversizedPage());
+    const error = await fetchExportTree(source, tree("root")).catch((e) => e);
+    expect(error).toBeInstanceOf(ExportCompletenessError);
+    expect((error as ExportCompletenessError).code).toBe("page-unreadable");
+    expect((error as ExportCompletenessError).affected[0]?.id).toBe("big");
+  });
+
+  test("a non-budget error still propagates untouched", async () => {
+    // The catch must be narrow: only StorageParseError is a completeness
+    // failure. Anything else is a real bug and must not be swallowed.
+    const source = inMemoryTreeSource(withOversizedPage());
+    const boom = new Error("unrelated failure");
+    const original = source.getPage.bind(source);
+    source.getPage = async (id, ctx) => {
+      if (id === "ok") throw boom;
+      return original(id, ctx);
+    };
+    const error = await fetchExportTree(source, tree("root"), {
+      completenessMode: "partial",
+    }).catch((e) => e);
+    expect(error).toBe(boom);
+  });
+});

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { htmlToExportBlocks, isSafeLinkScheme } from "./html-to-blocks.js";
+import { htmlToExportBlocks } from "./html-to-blocks.js";
+// The predicate moved to the canonical `link-safety` module (spec 011); this
+// suite keeps exercising it through its original call site.
+import { isSafeLinkScheme } from "./link-safety.js";
 import type { ExportBlock } from "./export-blocks.js";
 
 describe("htmlToExportBlocks — basic subset", () => {

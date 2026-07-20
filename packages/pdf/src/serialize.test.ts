@@ -581,7 +581,11 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
     expect(bundle.main).toContain("Nope");
     expect(bundle.main).not.toContain("javascript:");
-    expect(bundle.notes.some((note) => note.code === "pdf-link-unresolved")).toBe(true);
+    // spec 011: a BLOCKED scheme is a security decision, so it reports the
+    // specific `unsafe-link-skipped` warning rather than the generic
+    // informational "could not be represented in PDF" note.
+    expect(bundle.notes.some((note) => note.code === "unsafe-link-skipped")).toBe(true);
+    expect(bundle.notes.find((note) => note.code === "unsafe-link-skipped")?.level).toBe("warning");
   });
 
   it("maps generated main.typ lines to the most specific nested block", async () => {
