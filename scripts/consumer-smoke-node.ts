@@ -36,8 +36,9 @@ import * as pdf from "@atlcli/pdf";
 import * as pcb from "@atlcli/pdf-compiler-browser";
 import * as exportMacros from "@atlcli/export-macros";
 import * as templatePack from "@atlcli/template-pack";
+import * as exportNode from "@atlcli/export-node";
 
-for (const [name, mod] of Object.entries({ pluginApi, core, diagram, confluence, docx, pdf, pcb, exportMacros, templatePack })) {
+for (const [name, mod] of Object.entries({ pluginApi, core, diagram, confluence, docx, pdf, pcb, exportMacros, templatePack, exportNode })) {
   if (Object.keys(mod).length === 0) throw new Error(\`\${name} has no exports\`);
 }
 console.log("NODE_IMPORTS_OK");

@@ -5,11 +5,16 @@ description: "How external projects install and use the @atlcli/* export package
 
 # Consuming the `@atlcli/*` Packages
 
-The eight publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
-`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/docx`, `@atlcli/pdf`, and
-`@atlcli/pdf-compiler-browser` — ship compiled ESM (`dist/*.js` + `.d.ts`) and can be consumed
-by any repo outside this monorepo through **two supported install paths**, neither of which
-needs a package registry.
+The eleven publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
+`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/export-macros`, `@atlcli/template-pack`,
+`@atlcli/docx`, `@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and `@atlcli/export-node` —
+ship compiled ESM (`dist/*.js` + `.d.ts`) and can be consumed by any repo outside this
+monorepo through **two supported install paths**, neither of which needs a package registry.
+
+> **Node host? Start with `@atlcli/export-node`.** It bundles the seams the engines need —
+> token-auth asset fetching with a verified disk cache, the wasm/font-wired PDF compiler, a
+> zero-setup default DOCX template, and filesystem adapters — so a pipeline goes from page
+> tree to finished file in a few lines (see the example below).
 
 > **No registry install today.** `npm install @atlcli/pdf` from a public registry is **not**
 > available: npm publishing is deliberately deferred until the product rename is settled (see
@@ -52,6 +57,9 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 | `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser hosts import `./browser-runtime` first |
 | `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
 | `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
+| `@atlcli/export-macros` | Node ≥ 20, Bun, browsers | Isomorphic; hosts inject walker/client ports |
+| `@atlcli/template-pack` | Node ≥ 20, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |
+| `@atlcli/export-node` | Node ≥ 20, Bun | The batteries-included Node starting point |
 
 ## Path 1: Filesystem linking (`file:` directories)
 
@@ -138,6 +146,29 @@ console.log(report.filename, report.notes);
 
 Node hosts can use the ready-made adapters `fileTemplateSource(path)` / `fileOutputSink(path)`
 from the `@atlcli/docx` barrel instead of hand-rolling the seams.
+
+## Recommended Node starting point: `@atlcli/export-node`
+
+The BASELINE-DESIGN §A5 story, verbatim (tested by the consumer-smoke suites against
+installed tarballs):
+
+```ts
+import { fetchExportTree, composeChapters } from "@atlcli/confluence";
+import { runPdfExport } from "@atlcli/pdf";
+import { nodePdfEnv, confluenceTreeSource } from "@atlcli/export-node";
+
+const tree = await fetchExportTree(confluenceTreeSource(profile),
+  { kind: "tree", rootPageId: "123" }, { labels: { exclude: ["internal"] } });
+const doc = composeChapters(tree.nodes);
+await runPdfExport({ blocks: doc.blocks, metadata, filename: "handbook.pdf" },
+  nodePdfEnv(profile, { outDir: "dist" }));
+```
+
+`nodePdfEnv` wires the token-auth asset resolver (verified disk cache under
+`~/.atlcli/cache/assets`), the CSP-patched wasm compiler with the ten canonical fonts (all
+resolved from the installed packages), and a directory output sink. For DOCX with zero
+template setup, `nodeDocxEnv({ outPath })` resolves a programmatically built default template
+(`bundledDefaultTemplate()` — no binary asset shipped); pass `templatePath` to use your own.
 
 ## Advanced example: PDF export
 

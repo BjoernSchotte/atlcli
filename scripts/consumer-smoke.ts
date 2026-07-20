@@ -286,6 +286,7 @@ import {
 } from "@atlcli/pdf-compiler-browser";
 import { resolveMacroBlocks } from "@atlcli/export-macros";
 import { packTemplate, unpackTemplate, type TemplateManifest } from "@atlcli/template-pack";
+import { nodePdfEnv, nodeDocxEnv, bundledDefaultTemplate } from "@atlcli/export-node";
 // The remaining Node-compatible packages: type-check their barrels too, so
 // the skipLibCheck:false proof covers every package the engines matrix
 // marks Node-compatible (jira is deliberately absent — Bun-only).
@@ -305,6 +306,9 @@ const surfaces: unknown[] = [
   resolveMacroBlocks,
   packTemplate,
   unpackTemplate,
+  nodePdfEnv,
+  nodeDocxEnv,
+  bundledDefaultTemplate,
 ];
 const _extraTypes: [DiagramRenderResult, AtlcliPlugin, TemplateManifest] | null = null;
 void _extraTypes;
@@ -312,6 +316,90 @@ const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfC
 void surfaces;
 void _envParts;
 export {};
+`;
+
+/**
+ * The BASELINE-DESIGN §A5 batteries-included story, against the INSTALLED
+ * packages: tree → composeChapters → runPdfExport(nodePdfEnv) to a real PDF
+ * file, plus the zero-setup default-template DOCX path through nodeDocxEnv.
+ * Plain .mjs — runs under Bun AND plain Node.
+ */
+export const EXPORT_NODE_SMOKE_MJS = `
+import { readFileSync } from "node:fs";
+import { fetchExportTree, composeChapters } from "@atlcli/confluence";
+import { runPdfExport } from "@atlcli/pdf";
+import { validatePdfOutput } from "@atlcli/pdf/internal";
+import { runExport } from "@atlcli/docx";
+import { readPart } from "@atlcli/docx/fixtures";
+import { confluenceTreeSource, nodeDocxEnv, nodePdfEnv } from "@atlcli/export-node";
+
+const resolved = import.meta.resolve("@atlcli/export-node");
+if (!resolved.includes("/dist/")) {
+  throw new Error(\`@atlcli/export-node resolved to \${resolved} — expected the built dist/ output\`);
+}
+
+const profile = {
+  name: "smoke",
+  baseUrl: "https://example.invalid",
+  auth: { type: "apiToken", email: "smoke@example.invalid", token: "unused" },
+};
+
+// confluenceTreeSource(profile) must build the client-backed port (no network here).
+const liveSource = confluenceTreeSource(profile);
+if (typeof liveSource.getPage !== "function") throw new Error("confluenceTreeSource is not a TreeSource");
+
+// A5 flow with an in-memory TreeSource (a legitimate port per the contract).
+const pages = {
+  "123": { title: "Handbook", storage: "<h1>Welcome</h1><p>Smoke handbook root.</p>", children: ["124"] },
+  "124": { title: "Install Guide", storage: "<h1>Install</h1><p>Chapter two.</p>", children: [] },
+};
+const source = {
+  getPage: async (id) => ({ id, title: pages[id].title, storage: pages[id].storage, version: 1, labels: [] }),
+  getChildren: async (ref) =>
+    (pages[ref.id]?.children ?? []).map((id, index) => ({
+      id, title: pages[id].title, kind: "page", position: index, observedVersion: 1,
+    })),
+  getPageVersion: async (id) => ({ version: 1, title: pages[id].title }),
+  getSpaceHomepageId: async () => null,
+};
+
+const tree = await fetchExportTree(source, { kind: "tree", rootPageId: "123" }, {});
+if (!tree.complete) throw new Error("tree fetch incomplete");
+const doc = composeChapters(tree.nodes);
+
+await runPdfExport(
+  { blocks: doc.blocks, metadata: { title: "Handbook", exportedAt: new Date("2026-07-15T10:00:00.000Z") }, filename: "handbook.pdf" },
+  nodePdfEnv(profile, {
+    outDir: ".",
+    assets: { resolve: async () => { throw new Error("no assets in smoke"); } },
+  }),
+);
+const pdf = new Uint8Array(readFileSync("handbook.pdf"));
+if (String.fromCharCode(...pdf.slice(0, 5)) !== "%PDF-") throw new Error("bad pdf magic");
+const inspection = validatePdfOutput(pdf);
+if (!inspection.tagged || inspection.pageCount < 2) {
+  throw new Error(\`invalid A5 pdf: \${JSON.stringify(inspection)}\`);
+}
+
+// Zero-setup DOCX: the bundled default template through nodeDocxEnv.
+await runExport(
+  {
+    details: {
+      id: "9002", title: "Default Template Smoke", url: "https://example.invalid/wiki/x",
+      version: 1, spaceKey: "SMOKE", storage: "<h1>Smoke Heading</h1><p>Default template body.</p>",
+      created: "2026-07-01T08:00:00.000Z", modified: "2026-07-02T09:00:00.000Z",
+      createdBy: { displayName: "A" }, modifiedBy: { displayName: "B" }, labels: [],
+    },
+    template: { name: "default.docx", modificationDate: new Date("2026-07-10T00:00:00.000Z") },
+    exportDate: new Date("2026-07-15T10:00:00.000Z"),
+  },
+  nodeDocxEnv({ outPath: "default-template.docx" }),
+);
+const docx = new Uint8Array(readFileSync("default-template.docx"));
+if (!readPart(docx, "word/document.xml").includes("Smoke Heading")) {
+  throw new Error("default-template docx missing the fixture heading");
+}
+console.log("EXPORT_NODE_SMOKE_OK", "pdfPages=" + inspection.pageCount);
 `;
 
 export interface ScaffoldOptions {
@@ -360,6 +448,9 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
   writeFileSync(join(dir, "main.ts"), TYPECHECK_MAIN_TS);
   writeFileSync(join(dir, "docx-smoke.mjs"), DOCX_SMOKE_MJS);
   writeFileSync(join(dir, "pdf-smoke.mjs"), PDF_SMOKE_MJS);
+  if (options.dependencies["@atlcli/export-node"]) {
+    writeFileSync(join(dir, "export-node-smoke.mjs"), EXPORT_NODE_SMOKE_MJS);
+  }
 
   // Generic entrypoint smoke: every installed @atlcli/* package's `.` barrel
   // must import from its built dist and expose a non-empty surface. Generated
@@ -416,6 +507,15 @@ export function runSmokes(
   must(pdf, `${runtime.join(" ")} pdf-smoke.mjs`);
   if (!pdf.stdout.includes("PDF_SMOKE_OK")) {
     throw new Error(`pdf smoke did not report success:\n${pdf.stdout}\n${pdf.stderr}`);
+  }
+  if (existsSync(join(dir, "export-node-smoke.mjs"))) {
+    const exportNode = run([...runtime, "export-node-smoke.mjs"], dir, env);
+    must(exportNode, `${runtime.join(" ")} export-node-smoke.mjs`);
+    if (!exportNode.stdout.includes("EXPORT_NODE_SMOKE_OK")) {
+      throw new Error(
+        `export-node smoke did not report success:\n${exportNode.stdout}\n${exportNode.stderr}`,
+      );
+    }
   }
   return { docx: docx.stdout.trim(), pdf: pdf.stdout.trim() };
 }

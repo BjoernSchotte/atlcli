@@ -697,13 +697,13 @@ model); note it as the designated fallback.
 
 ### Batteries-included Node package (post folders 002/008 — additive, not a blocker)
 
-- [ ] Scaffold `packages/export-node/` (own `package.json`,
+- [x] Scaffold `packages/export-node/` (own `package.json`,
       `tsconfig.build.json`, `exports`, `files` allowlist, `README.md`)
       following the same build/pack/publish contract as the other eight
       packages (Build artifacts, above); add it to the publish-set
       classification (Architecture: Package graph) so `pack-check`/
       `api-report`/consumer-smoke pick it up without a hardcoded list edit.
-- [ ] Extract `fileOutputSink`/`fileTemplateSource`
+- [x] Extract `fileOutputSink`/`fileTemplateSource`
       (`packages/docx/src/node-adapters.ts:21-38`, already isomorphic per
       `packages/docx/src/node-consumer.test.ts`) and the CLI's token
       `AssetFetcher` (`apps/cli/src/commands/export-internals.ts:118-159`)
@@ -711,21 +711,24 @@ model); note it as the designated fallback.
       the CLI switches to importing from the new package instead of
       duplicating the logic (regression: CLI DOCX/PDF export behavior
       unchanged, `bun test apps/cli`).
-- [ ] Implement `nodePdfEnv(profile, opts)` / `confluenceTreeSource(profile)`
+- [x] Implement `nodePdfEnv(profile, opts)` / `confluenceTreeSource(profile)`
       matching the BASELINE-DESIGN A5 target snippet (§A5, lines 163-184)
       so it becomes a real, tested example rather than aspirational prose;
       wire folder 002's `fetchExportTree`/`composeChapters` (T1.1–T1.3) and
       folder 008's Bun/Node PDF compile port (T3.1) once both land.
-- [ ] Implement the default DOCX template per Architecture (Batteries-
+- [x] Implement the default DOCX template per Architecture (Batteries-
       included Node consumer): `bundledDefaultTemplate()` and wire it into
       `fileTemplateSource`'s default id resolution; `pack-check` asserts it
       produces a valid DOCX via a real `runExport` call, not just presence.
-- [ ] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
+- [x] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
       suites (Consumer smoke, below): the BASELINE-DESIGN A5 six-line
       snippet, run verbatim against the installed tarballs, must produce a
       real PDF.
-- [ ] Update Build artifacts / Definition of Done package counts from
-      eight to nine once this lands (kept separate here because it is
+- [x] Update Build artifacts / Definition of Done package counts from
+      eight to nine once this lands — DONE: the publishable set is **eleven**
+      today (the original eight + `export-macros` + `template-pack` from
+      specs 004/007 + `export-node`); every count-sensitive suite derives the
+      set from the `atlcli.publish` classification rather than a number (kept separate here because it is
       gated on 002/008, per Architecture: Batteries-included Node
       consumer).
 
@@ -929,8 +932,8 @@ model); note it as the designated fallback.
 
 ## Definition of Done
 
-- `bun run build` produces `dist/` (JS + `.d.ts` + maps) for all eight
-  packages; `bun run typecheck` and `bun test` green; harness and extension
+- `bun run build` produces `dist/` (JS + `.d.ts` + maps) for every
+  publishable package (eleven today, classification-derived); `bun run typecheck` and `bun test` green; harness and extension
   builds green (`check:browser`, `check:extension-output`).
 - `bun pm pack` tarballs for all packages pass `pack-check.test.ts`: correct
   files, working `exports` targets, no `workspace:` ranges, fonts present in
