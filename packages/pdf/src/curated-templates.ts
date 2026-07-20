@@ -6,8 +6,9 @@
  * engine — it is a different, fully validated manifest with a distinct design:
  * a serif-display/sans-body pairing (the inverse of Editorial Indigo), a deep
  * green accent, wider book-like margins, a larger type scale and rhythm, a
- * warmer callout palette, and different cover geometry. Proving it renders with
- * zero new engine code is the whole point of the 012 migration.
+ * warmer callout palette, different cover geometry, and a chapter running head
+ * (`features.header.mode: "chapter"`). Proving it renders with zero new engine
+ * code is the whole point of the 012 migration.
  */
 
 import {
@@ -33,7 +34,13 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
   features: {
     cover: { enabled: true },
     outline: { enabled: true, depth: 3 },
-    header: { enabled: true },
+    // The one design decision Manuscript makes that Editorial Indigo does not:
+    // a chapter running head. A book-like template repeating the document title
+    // on every page carries no information; the level-1 heading that owns the
+    // page does. Manuscript has no pinned parity digest, so its output changing
+    // here is intended (proven by the chapter-running-head tests). The built-in
+    // stays on the default "title" mode, which is what keeps its digest fixed.
+    header: { enabled: true, mode: "chapter" },
     footer: { enabled: true },
     closingPage: { enabled: true },
   },

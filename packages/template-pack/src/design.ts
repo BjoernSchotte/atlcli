@@ -34,6 +34,33 @@ export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
 /** A key into {@link DesignTypography.fonts}. */
 export type FontRole = "body" | "heading" | "mono";
 
+/**
+ * How the running head ("Kolumnentitel") names each body page.
+ *
+ * - `"title"` — the document title on the left, the space key on the right.
+ *   The historical, and still the **default**, behavior.
+ * - `"chapter"` — the level-1 heading that owns the page on the left, the space
+ *   key on the right. Book-like documents want this: on a 57-page tree export
+ *   `"title"` repeats the root page title on every page, which carries no
+ *   information. Pages before the first level-1 heading (front matter) fall
+ *   back to the document title, never to an empty head.
+ * - `"custom"` — the head is driven by the Level-A `headerText` setting. This
+ *   is declarative: an explicit `headerText` wins in *every* mode (the 007
+ *   behavior is unchanged), so `"custom"` states the template's intent and
+ *   resolves like `"title"` when no `headerText` is supplied.
+ *
+ * Adding a mode is non-breaking; the field is optional and an absent value
+ * means {@link DEFAULT_DESIGN_HEADER_MODE}, so every manifest written before
+ * this field existed keeps rendering byte-identically.
+ */
+export type DesignHeaderMode = "title" | "chapter" | "custom";
+
+/** The bounded set of running-head modes, in declaration order. */
+export const DESIGN_HEADER_MODES: readonly DesignHeaderMode[] = ["title", "chapter", "custom"];
+
+/** The mode an absent `features.header.mode` resolves to. */
+export const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode = "title";
+
 export interface TypographyRole {
   /** Which of the three font families this role renders in. */
   font?: FontRole;
@@ -57,7 +84,14 @@ export interface DesignPage {
 export interface DesignFeatures {
   cover: { enabled: boolean };
   outline: { enabled: boolean; depth: number };
-  header: { enabled: boolean };
+  /**
+   * The running head. `mode` lives here rather than in a new top-level `header`
+   * section because `features` already owns the header as a named section, and
+   * `features.outline` already carries bounded configuration beyond `enabled`
+   * (`depth`) — so "a feature section holds its own bounded options" is the
+   * established convention, not a new one.
+   */
+  header: { enabled: boolean; mode?: DesignHeaderMode };
   footer: { enabled: boolean };
   closingPage: { enabled: boolean };
 }
@@ -281,10 +315,28 @@ function validateFeatures(value: unknown, path: string): DesignFeatures {
         integer: true,
       }),
     },
-    header: { enabled: validateBoolean(header.enabled, `${path}.header.enabled`) },
+    header: validateHeaderFeature(header, `${path}.header`),
     footer: { enabled: validateBoolean(footer.enabled, `${path}.footer.enabled`) },
     closingPage: { enabled: validateBoolean(closingPage.enabled, `${path}.closingPage.enabled`) },
   };
+}
+
+/**
+ * Validate the `features.header` section. `mode` is **optional** and, when
+ * present, must be one of the bounded {@link DESIGN_HEADER_MODES} — the same
+ * reject-never-coerce discipline every other enum in this model uses. An absent
+ * `mode` stays `undefined` (matching `branding.organizationName` /
+ * `TypographyRole.font`); consumers resolve it with
+ * {@link DEFAULT_DESIGN_HEADER_MODE}.
+ */
+function validateHeaderFeature(value: Record<string, unknown>, path: string): DesignFeatures["header"] {
+  const header: DesignFeatures["header"] = {
+    enabled: validateBoolean(value.enabled, `${path}.enabled`),
+  };
+  if (value.mode !== undefined) {
+    header.mode = validateEnum(value.mode, DESIGN_HEADER_MODES, `${path}.mode`);
+  }
+  return header;
 }
 
 function validateBranding(value: unknown, path: string): DesignBranding {

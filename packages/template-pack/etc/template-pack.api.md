@@ -55,6 +55,12 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_HEADER_MODE
+export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
+
+// export: DESIGN_HEADER_MODES
+export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
@@ -75,6 +81,7 @@ export interface DesignFeatures {
     };
     header: {
         enabled: boolean;
+        mode?: DesignHeaderMode;
     };
     footer: {
         enabled: boolean;
@@ -83,6 +90,9 @@ export interface DesignFeatures {
         enabled: boolean;
     };
 }
+
+// export: DesignHeaderMode
+export type DesignHeaderMode = "title" | "chapter" | "custom";
 
 // export: DesignLength
 export type DesignLength = string;
@@ -461,6 +471,12 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_HEADER_MODE
+export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
+
+// export: DESIGN_HEADER_MODES
+export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
@@ -481,6 +497,7 @@ export interface DesignFeatures {
     };
     header: {
         enabled: boolean;
+        mode?: DesignHeaderMode;
     };
     footer: {
         enabled: boolean;
@@ -489,6 +506,9 @@ export interface DesignFeatures {
         enabled: boolean;
     };
 }
+
+// export: DesignHeaderMode
+export type DesignHeaderMode = "title" | "chapter" | "custom";
 
 // export: DesignLength
 export type DesignLength = string;
@@ -867,6 +887,12 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_HEADER_MODE
+export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
+
+// export: DESIGN_HEADER_MODES
+export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
@@ -887,6 +913,7 @@ export interface DesignFeatures {
     };
     header: {
         enabled: boolean;
+        mode?: DesignHeaderMode;
     };
     footer: {
         enabled: boolean;
@@ -895,6 +922,9 @@ export interface DesignFeatures {
         enabled: boolean;
     };
 }
+
+// export: DesignHeaderMode
+export type DesignHeaderMode = "title" | "chapter" | "custom";
 
 // export: DesignLength
 export type DesignLength = string;
@@ -1273,6 +1303,12 @@ export interface DeclaredSettingsShape {
     groups: string[];
 }
 
+// export: DEFAULT_DESIGN_HEADER_MODE
+export declare const DEFAULT_DESIGN_HEADER_MODE: DesignHeaderMode;
+
+// export: DESIGN_HEADER_MODES
+export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
+
 // export: DesignBranding
 export interface DesignBranding {
     accent: DesignColor;
@@ -1293,6 +1329,7 @@ export interface DesignFeatures {
     };
     header: {
         enabled: boolean;
+        mode?: DesignHeaderMode;
     };
     footer: {
         enabled: boolean;
@@ -1301,6 +1338,9 @@ export interface DesignFeatures {
         enabled: boolean;
     };
 }
+
+// export: DesignHeaderMode
+export type DesignHeaderMode = "title" | "chapter" | "custom";
 
 // export: DesignLength
 export type DesignLength = string;
