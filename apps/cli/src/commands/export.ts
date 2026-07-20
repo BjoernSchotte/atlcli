@@ -1116,12 +1116,14 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // on the page storage below.
   const { readFile, stat } = await import("node:fs/promises");
   const [
-    { runExport, fileOutputSink, buildGetIncludedPage },
+    { runExport, fileOutputSink },
+    { buildGetIncludedPage },
     { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
   ] = await Promise.all([
     import("@atlcli/docx"),
+    import("@atlcli/docx/internal"),
     import("./export-internals.js"),
     readFile(resolvedTemplatePath),
     stat(resolvedTemplatePath),

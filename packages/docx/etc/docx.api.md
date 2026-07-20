@@ -20,6 +20,9 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
+// export: boundRasterTarget
+export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
+
 // export: classifyPlaceholder
 export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 
@@ -104,6 +107,7 @@ export interface EmbedSvgOptions {
     heightPx: number;
     partPath?: string;
     pPrXml?: string;
+    origin?: "image" | "diagram";
 }
 
 // export: EMU_PER_PX
@@ -120,6 +124,12 @@ export declare function ensureCodeStyle(zip: PizZip): void;
 
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureListParagraphStyle
+export declare function ensureListParagraphStyle(zip: PizZip): void;
+
+// export: ensureNumberingPart
+export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
 
 // export: ensureUpdateFields
 export declare function ensureUpdateFields(zip: PizZip): void;
@@ -155,6 +165,10 @@ export interface ExportInput {
     captionLang?: string;
     exportControls?: "apply" | "passthrough";
     macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
 }
 
 // export: ExportReport
@@ -183,6 +197,7 @@ export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
     logoFetchMs: number;
+    includeFetchMs: number;
     renderMs: number;
     imageFetchMs: number;
     imageFetches: number;
@@ -245,8 +260,21 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inspectNumberingPart
+export declare function inspectNumberingPart(zip: PizZip): {
+    abstractNumId: number;
+    numId: number;
+};
 
 // export: isSvg
 export declare function isSvg(bytes: Uint8Array): boolean;
@@ -262,6 +290,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
+
+// export: MAX_RASTER_AXIS_PX
+export declare const MAX_RASTER_AXIS_PX = 10000;
+
+// export: MAX_RASTER_PIXELS
+export declare const MAX_RASTER_PIXELS = 40000000;
 
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
@@ -279,11 +313,17 @@ export interface PagePropertyArgs {
     alternateText?: string;
 }
 
+// export: parseIncludePageArgs
+export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
+
 // export: parseLogoArgs
 export declare function parseLogoArgs(raw: string): LogoArgs;
 
 // export: parsePagePropertyArgs
 export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
+
+// export: parseSvgSize
+export declare function parseSvgSize(source: string): TargetSize | null;
 
 // export: placeholderBase
 export declare function placeholderBase(raw: string): string;
@@ -297,7 +337,7 @@ export interface PlaceholderClass {
 }
 
 // export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo";
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
@@ -375,6 +415,9 @@ export interface AssetRef {
     filename?: string;
     trust?: "page" | "export-view";
 }
+
+// export: boundRasterTarget
+export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 
 // export: bundledDiagramFonts
 export declare function bundledDiagramFonts(): Promise<Uint8Array[]>;
@@ -463,6 +506,7 @@ export interface EmbedSvgOptions {
     heightPx: number;
     partPath?: string;
     pPrXml?: string;
+    origin?: "image" | "diagram";
 }
 
 // export: EMU_PER_PX
@@ -479,6 +523,12 @@ export declare function ensureCodeStyle(zip: PizZip): void;
 
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureListParagraphStyle
+export declare function ensureListParagraphStyle(zip: PizZip): void;
+
+// export: ensureNumberingPart
+export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
 
 // export: ensureUpdateFields
 export declare function ensureUpdateFields(zip: PizZip): void;
@@ -514,6 +564,10 @@ export interface ExportInput {
     captionLang?: string;
     exportControls?: "apply" | "passthrough";
     macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
 }
 
 // export: ExportReport
@@ -542,6 +596,7 @@ export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
     logoFetchMs: number;
+    includeFetchMs: number;
     renderMs: number;
     imageFetchMs: number;
     imageFetches: number;
@@ -610,8 +665,21 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inspectNumberingPart
+export declare function inspectNumberingPart(zip: PizZip): {
+    abstractNumId: number;
+    numId: number;
+};
 
 // export: isSvg
 export declare function isSvg(bytes: Uint8Array): boolean;
@@ -627,6 +695,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
+
+// export: MAX_RASTER_AXIS_PX
+export declare const MAX_RASTER_AXIS_PX = 10000;
+
+// export: MAX_RASTER_PIXELS
+export declare const MAX_RASTER_PIXELS = 40000000;
 
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
@@ -644,11 +718,17 @@ export interface PagePropertyArgs {
     alternateText?: string;
 }
 
+// export: parseIncludePageArgs
+export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
+
 // export: parseLogoArgs
 export declare function parseLogoArgs(raw: string): LogoArgs;
 
 // export: parsePagePropertyArgs
 export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
+
+// export: parseSvgSize
+export declare function parseSvgSize(source: string): TargetSize | null;
 
 // export: placeholderBase
 export declare function placeholderBase(raw: string): string;
@@ -662,7 +742,7 @@ export interface PlaceholderClass {
 }
 
 // export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo";
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
@@ -754,6 +834,9 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
+// export: boundRasterTarget
+export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
+
 // export: classifyPlaceholder
 export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 
@@ -838,6 +921,7 @@ export interface EmbedSvgOptions {
     heightPx: number;
     partPath?: string;
     pPrXml?: string;
+    origin?: "image" | "diagram";
 }
 
 // export: EMU_PER_PX
@@ -854,6 +938,12 @@ export declare function ensureCodeStyle(zip: PizZip): void;
 
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureListParagraphStyle
+export declare function ensureListParagraphStyle(zip: PizZip): void;
+
+// export: ensureNumberingPart
+export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
 
 // export: ensureUpdateFields
 export declare function ensureUpdateFields(zip: PizZip): void;
@@ -889,6 +979,10 @@ export interface ExportInput {
     captionLang?: string;
     exportControls?: "apply" | "passthrough";
     macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
 }
 
 // export: ExportReport
@@ -917,6 +1011,7 @@ export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
     logoFetchMs: number;
+    includeFetchMs: number;
     renderMs: number;
     imageFetchMs: number;
     imageFetches: number;
@@ -979,8 +1074,21 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inspectNumberingPart
+export declare function inspectNumberingPart(zip: PizZip): {
+    abstractNumId: number;
+    numId: number;
+};
 
 // export: isSvg
 export declare function isSvg(bytes: Uint8Array): boolean;
@@ -996,6 +1104,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
+
+// export: MAX_RASTER_AXIS_PX
+export declare const MAX_RASTER_AXIS_PX = 10000;
+
+// export: MAX_RASTER_PIXELS
+export declare const MAX_RASTER_PIXELS = 40000000;
 
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
@@ -1013,11 +1127,17 @@ export interface PagePropertyArgs {
     alternateText?: string;
 }
 
+// export: parseIncludePageArgs
+export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
+
 // export: parseLogoArgs
 export declare function parseLogoArgs(raw: string): LogoArgs;
 
 // export: parsePagePropertyArgs
 export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
+
+// export: parseSvgSize
+export declare function parseSvgSize(source: string): TargetSize | null;
 
 // export: placeholderBase
 export declare function placeholderBase(raw: string): string;
@@ -1031,7 +1151,7 @@ export interface PlaceholderClass {
 }
 
 // export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo";
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
@@ -1205,6 +1325,9 @@ export declare function bookmarkEnd(id: number): string;
 // export: bookmarkStart
 export declare function bookmarkStart(id: number, name: string): string;
 
+// export: buildGetIncludedPage
+export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+
 // export: calloutTable
 export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string): string;
 
@@ -1226,6 +1349,9 @@ export declare function captionSeqName(kind: CaptionKind): string;
 // export: captionStyleXml
 export declare function captionStyleXml(): string;
 
+// export: classifyIncludeError
+export declare function classifyIncludeError(err: unknown): IncludeLookupOutcome;
+
 // export: coalesceSectPrParagraphs
 export declare function coalesceSectPrParagraphs(xml: string): string;
 
@@ -1246,6 +1372,12 @@ export declare function codeLineParagraph(tokens: {
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
 
+// export: collectStylerefFields
+export declare function collectStylerefFields(xml: string): string[];
+
+// export: columnWidthsDxa
+export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number): number[] | undefined;
+
 // export: CurrentUser
 export interface CurrentUser {
     accountId: string;
@@ -1254,7 +1386,13 @@ export interface CurrentUser {
 }
 
 // export: dataTable
-export declare function dataTable(gridCols: number, rowsXml: string): string;
+export declare function dataTable(gridCols: number, rowsXml: string, opts?: DataTableOptions): string;
+
+// export: DataTableOptions
+export interface DataTableOptions {
+    widthsDxa?: number[];
+    tableStyle?: TableStyleSource;
+}
 
 // export: DiagramEmbedOutcome
 export type DiagramEmbedOutcome = {
@@ -1314,9 +1452,12 @@ export type ImageBlock = Extract<ExportBlock, {
 export type ImageEmbedOutcome = {
     ok: true;
     xml: string;
+    notes?: ExportNote[];
 } | {
     ok: false;
     reason: string;
+    code?: ExportNote["code"];
+    level?: "info" | "warning";
 };
 
 // export: ImageEmbedSeam
@@ -1324,6 +1465,34 @@ export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
 }
+
+// export: IncludeLookupIo
+export interface IncludeLookupIo {
+    getPage: (id: string) => Promise<ConfluencePageDetails>;
+    findPagesByTitle: (title: string, spaceKey?: string) => Promise<Array<{
+        id: string;
+    }>>;
+    defaultSpaceKey?: string;
+}
+
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: ConfluencePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: ConfluencePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
 
 // export: internalHyperlink
 export declare function internalHyperlink(anchor: string, innerRuns: string): string;
@@ -1333,6 +1502,12 @@ export declare function isSafeHyperlinkUrl(url: string): boolean;
 
 // export: lineBreakRun
 export declare function lineBreakRun(): string;
+
+// export: LIST_PARAGRAPH_STYLE_ID
+export declare const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
+
+// export: listParagraphStyleXml
+export declare function listParagraphStyleXml(): string;
 
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
@@ -1385,10 +1560,14 @@ export interface ResolveDeps {
     getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
     getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
     getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
 
 // export: resolveHeadingStyleId
 export declare function resolveHeadingStyleId(styleNames: Map<string, string>, level: number): string;
+
+// export: resolveListStyleId
+export declare function resolveListStyleId(styleNames: Map<string, string>, ordered: boolean, ilvl: number): string;
 
 // export: resolveOne
 export declare function resolveOne(raw: string, ctx: ResolveContext, fetched: Fetched, notes: ExportNote[]): string;
@@ -1435,6 +1614,7 @@ export interface ScanResult {
     never: ScanHit[];
     parts: string[];
     hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
 }
 
 // export: scanTemplate
@@ -1452,10 +1632,12 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 // export: SerializeContext
 export interface SerializeContext {
     styleNames: Map<string, string>;
+    numbering?: NumberingAllocator;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
     bodySectPr?: string;
     captionLang?: CaptionLang;
+    tableStyle?: TableStyleSource;
 }
 
 // export: serializeInline
@@ -1465,6 +1647,7 @@ export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: 
 export interface SerializeResult {
     xml: string;
     notes: ExportNote[];
+    headingStyleIds: string[];
 }
 
 // export: statusBadgeRun
@@ -1479,7 +1662,14 @@ export declare function tableCell(paragraphsXml: string, opts?: {
     vMerge?: "restart" | "continue";
     header?: boolean;
     backgroundColor?: string;
+    widthDxa?: number;
 }): string;
+
+// export: TableStyleSource
+export interface TableStyleSource {
+    source: "template" | "confluence";
+    styleId?: string;
+}
 
 // export: TemplateMeta
 export interface TemplateMeta {
@@ -1512,6 +1702,9 @@ export interface AssetRef {
     filename?: string;
     trust?: "page" | "export-view";
 }
+
+// export: boundRasterTarget
+export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 
 // export: bundledDiagramFonts
 export declare function bundledDiagramFonts(): Promise<Uint8Array[]>;
@@ -1600,6 +1793,7 @@ export interface EmbedSvgOptions {
     heightPx: number;
     partPath?: string;
     pPrXml?: string;
+    origin?: "image" | "diagram";
 }
 
 // export: EMU_PER_PX
@@ -1616,6 +1810,12 @@ export declare function ensureCodeStyle(zip: PizZip): void;
 
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureListParagraphStyle
+export declare function ensureListParagraphStyle(zip: PizZip): void;
+
+// export: ensureNumberingPart
+export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
 
 // export: ensureUpdateFields
 export declare function ensureUpdateFields(zip: PizZip): void;
@@ -1651,6 +1851,10 @@ export interface ExportInput {
     captionLang?: string;
     exportControls?: "apply" | "passthrough";
     macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
 }
 
 // export: ExportReport
@@ -1679,6 +1883,7 @@ export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
     logoFetchMs: number;
+    includeFetchMs: number;
     renderMs: number;
     imageFetchMs: number;
     imageFetches: number;
@@ -1747,8 +1952,21 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inspectNumberingPart
+export declare function inspectNumberingPart(zip: PizZip): {
+    abstractNumId: number;
+    numId: number;
+};
 
 // export: isSvg
 export declare function isSvg(bytes: Uint8Array): boolean;
@@ -1764,6 +1982,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
+
+// export: MAX_RASTER_AXIS_PX
+export declare const MAX_RASTER_AXIS_PX = 10000;
+
+// export: MAX_RASTER_PIXELS
+export declare const MAX_RASTER_PIXELS = 40000000;
 
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
@@ -1781,11 +2005,17 @@ export interface PagePropertyArgs {
     alternateText?: string;
 }
 
+// export: parseIncludePageArgs
+export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
+
 // export: parseLogoArgs
 export declare function parseLogoArgs(raw: string): LogoArgs;
 
 // export: parsePagePropertyArgs
 export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
+
+// export: parseSvgSize
+export declare function parseSvgSize(source: string): TargetSize | null;
 
 // export: placeholderBase
 export declare function placeholderBase(raw: string): string;
@@ -1799,7 +2029,7 @@ export interface PlaceholderClass {
 }
 
 // export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo";
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
 
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
@@ -1878,6 +2108,9 @@ export declare function warmDiagramRenderer(): void;
 ### Entry point `./scan`
 
 ```ts
+// export: collectStylerefFields
+export declare function collectStylerefFields(xml: string): string[];
+
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];
 
@@ -1909,6 +2142,7 @@ export interface ScanResult {
     never: ScanHit[];
     parts: string[];
     hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
 }
 
 // export: scanTemplate

@@ -29,6 +29,9 @@ export interface ApplyLabelFilterOptions {
     rootId?: string | null;
 }
 
+// export: assertSafeSvg
+export declare function assertSafeSvg(source: string): void;
+
 // export: ASSET_MAX_BYTES
 export declare const ASSET_MAX_BYTES: number;
 
@@ -209,6 +212,15 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -482,6 +494,9 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: decodeSvgSource
+export declare function decodeSvgSource(bytes: Uint8Array): string;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -530,6 +545,23 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-rendered-via",
     "macro-skipped-by-config",
     "macro-body-truncated",
+    "includepage-ambiguous-title",
+    "includepage-budget-exceeded",
+    "includepage-cycle",
+    "includepage-invalid-context",
+    "includepage-transient-error",
+    "includepage-unresolved",
+    "includepage-auth-failed",
+    "includepage-rate-limited",
+    "image-svg-default-size",
+    "image-svg-no-rasterizer",
+    "image-svg-oversized",
+    "list-nesting-clamped",
+    "numbering-cap-reached",
+    "styleref-style-not-in-template",
+    "styleref-style-unused-in-export",
+    "table-geometry-clamped",
+    "table-style-missing",
     "docx-scan-failed",
     "never-placeholders",
     "empty-include-result",
@@ -779,6 +811,9 @@ export interface FetchExportTreeResult {
     notes: ExportNote[];
     complete: boolean;
 }
+
+// export: findSvgSafetyViolation
+export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
 // export: FolderChild
 export type FolderChild = {
@@ -1120,6 +1155,15 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SVG_UNSAFE_MESSAGE
+export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
+
+// export: SvgSafetyViolation
+export interface SvgSafetyViolation {
+    rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
+    detail: string;
+}
 
 // export: SyncScope
 export type SyncScope = {
@@ -1337,6 +1381,9 @@ export interface ApplyLabelFilterOptions {
     rootId?: string | null;
 }
 
+// export: assertSafeSvg
+export declare function assertSafeSvg(source: string): void;
+
 // export: ASSET_MAX_BYTES
 export declare const ASSET_MAX_BYTES: number;
 
@@ -1517,6 +1564,15 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -1790,6 +1846,9 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: decodeSvgSource
+export declare function decodeSvgSource(bytes: Uint8Array): string;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -1838,6 +1897,23 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-rendered-via",
     "macro-skipped-by-config",
     "macro-body-truncated",
+    "includepage-ambiguous-title",
+    "includepage-budget-exceeded",
+    "includepage-cycle",
+    "includepage-invalid-context",
+    "includepage-transient-error",
+    "includepage-unresolved",
+    "includepage-auth-failed",
+    "includepage-rate-limited",
+    "image-svg-default-size",
+    "image-svg-no-rasterizer",
+    "image-svg-oversized",
+    "list-nesting-clamped",
+    "numbering-cap-reached",
+    "styleref-style-not-in-template",
+    "styleref-style-unused-in-export",
+    "table-geometry-clamped",
+    "table-style-missing",
     "docx-scan-failed",
     "never-placeholders",
     "empty-include-result",
@@ -2087,6 +2163,9 @@ export interface FetchExportTreeResult {
     notes: ExportNote[];
     complete: boolean;
 }
+
+// export: findSvgSafetyViolation
+export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
 // export: FolderChild
 export type FolderChild = {
@@ -2428,6 +2507,15 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SVG_UNSAFE_MESSAGE
+export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
+
+// export: SvgSafetyViolation
+export interface SvgSafetyViolation {
+    rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
+    detail: string;
+}
 
 // export: SyncScope
 export type SyncScope = {
@@ -2645,6 +2733,9 @@ export interface ApplyLabelFilterOptions {
     rootId?: string | null;
 }
 
+// export: assertSafeSvg
+export declare function assertSafeSvg(source: string): void;
+
 // export: ASSET_MAX_BYTES
 export declare const ASSET_MAX_BYTES: number;
 
@@ -2825,6 +2916,15 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -3098,6 +3198,9 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: decodeSvgSource
+export declare function decodeSvgSource(bytes: Uint8Array): string;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -3146,6 +3249,23 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-rendered-via",
     "macro-skipped-by-config",
     "macro-body-truncated",
+    "includepage-ambiguous-title",
+    "includepage-budget-exceeded",
+    "includepage-cycle",
+    "includepage-invalid-context",
+    "includepage-transient-error",
+    "includepage-unresolved",
+    "includepage-auth-failed",
+    "includepage-rate-limited",
+    "image-svg-default-size",
+    "image-svg-no-rasterizer",
+    "image-svg-oversized",
+    "list-nesting-clamped",
+    "numbering-cap-reached",
+    "styleref-style-not-in-template",
+    "styleref-style-unused-in-export",
+    "table-geometry-clamped",
+    "table-style-missing",
     "docx-scan-failed",
     "never-placeholders",
     "empty-include-result",
@@ -3395,6 +3515,9 @@ export interface FetchExportTreeResult {
     notes: ExportNote[];
     complete: boolean;
 }
+
+// export: findSvgSafetyViolation
+export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
 // export: FolderChild
 export type FolderChild = {
@@ -3736,6 +3859,15 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SVG_UNSAFE_MESSAGE
+export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
+
+// export: SvgSafetyViolation
+export interface SvgSafetyViolation {
+    rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
+    detail: string;
+}
 
 // export: SyncScope
 export type SyncScope = {
@@ -4209,6 +4341,15 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -4699,6 +4840,23 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-rendered-via",
     "macro-skipped-by-config",
     "macro-body-truncated",
+    "includepage-ambiguous-title",
+    "includepage-budget-exceeded",
+    "includepage-cycle",
+    "includepage-invalid-context",
+    "includepage-transient-error",
+    "includepage-unresolved",
+    "includepage-auth-failed",
+    "includepage-rate-limited",
+    "image-svg-default-size",
+    "image-svg-no-rasterizer",
+    "image-svg-oversized",
+    "list-nesting-clamped",
+    "numbering-cap-reached",
+    "styleref-style-not-in-template",
+    "styleref-style-unused-in-export",
+    "table-geometry-clamped",
+    "table-style-missing",
     "docx-scan-failed",
     "never-placeholders",
     "empty-include-result",
@@ -6352,6 +6510,9 @@ export interface ApplyLabelFilterOptions {
     rootId?: string | null;
 }
 
+// export: assertSafeSvg
+export declare function assertSafeSvg(source: string): void;
+
 // export: ASSET_MAX_BYTES
 export declare const ASSET_MAX_BYTES: number;
 
@@ -6532,6 +6693,15 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -6805,6 +6975,9 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: decodeSvgSource
+export declare function decodeSvgSource(bytes: Uint8Array): string;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -6853,6 +7026,23 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-rendered-via",
     "macro-skipped-by-config",
     "macro-body-truncated",
+    "includepage-ambiguous-title",
+    "includepage-budget-exceeded",
+    "includepage-cycle",
+    "includepage-invalid-context",
+    "includepage-transient-error",
+    "includepage-unresolved",
+    "includepage-auth-failed",
+    "includepage-rate-limited",
+    "image-svg-default-size",
+    "image-svg-no-rasterizer",
+    "image-svg-oversized",
+    "list-nesting-clamped",
+    "numbering-cap-reached",
+    "styleref-style-not-in-template",
+    "styleref-style-unused-in-export",
+    "table-geometry-clamped",
+    "table-style-missing",
     "docx-scan-failed",
     "never-placeholders",
     "empty-include-result",
@@ -7102,6 +7292,9 @@ export interface FetchExportTreeResult {
     notes: ExportNote[];
     complete: boolean;
 }
+
+// export: findSvgSafetyViolation
+export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
 // export: FolderChild
 export type FolderChild = {
@@ -7443,6 +7636,15 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SVG_UNSAFE_MESSAGE
+export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
+
+// export: SvgSafetyViolation
+export interface SvgSafetyViolation {
+    rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
+    detail: string;
+}
 
 // export: SyncScope
 export type SyncScope = {

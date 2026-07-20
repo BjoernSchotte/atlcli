@@ -219,8 +219,8 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     // (and this plan's own E2E acceptance) can assert on `code` — the report
     // kernel from 008 already carries it, this pins that it does not regress.
     const notes = [
-      { level: "warning" as const, code: "includepage-cycle", message: "a page cannot include itself" },
-      { level: "info" as const, code: "includepage-ambiguous-title", message: "matched 3 pages" },
+      { level: "warning" as const, code: "includepage-cycle" as const, message: "a page cannot include itself" },
+      { level: "info" as const, code: "includepage-ambiguous-title" as const, message: "matched 3 pages" },
     ];
     const issues = notes.map((n) => noteToIssue(n, "prepare"));
     expect(issues.map((i) => i.code)).toEqual(["includepage-cycle", "includepage-ambiguous-title"]);
