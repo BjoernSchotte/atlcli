@@ -231,6 +231,29 @@ describe("localization injection hardening (spec 012 security regression)", () =
     ).toThrow(/key must be a safe identifier/);
   });
 
+  it("warns about an unknown-but-safe document label instead of rejecting or silently dropping it", () => {
+    // Forward compatibility: a manifest written for a NEWER engine may carry
+    // labels this build does not know. It must still import (not rejected), the
+    // resolver drops it at render time (see settings.test.ts), and the author
+    // must be told by name (not silently swallowed).
+    const warnings: string[] = [];
+    const document = completeDocument();
+    document.futureEngineLabel = "Appendix";
+    const result = validateLocalization(withDocument(document), {
+      requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+      onWarning: (w) => warnings.push(w),
+    });
+    // Not rejected: the manifest imports and keeps the key in its bundle.
+    expect(result.locales.en!.document!.futureEngineLabel).toBe("Appendix");
+    // Not silent: the warning names the offending key and its fate.
+    const warning = warnings.find((w) => w.includes("futureEngineLabel"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("unknown document label");
+    expect(warning).toContain("ignored at render time");
+    // Known labels never warn.
+    expect(warnings.some((w) => w.includes("contents"))).toBe(false);
+  });
+
   it("still accepts legitimate UI copy containing punctuation (host-side only)", () => {
     const value = withDocument(completeDocument()) as {
       locales: { en: Record<string, unknown> };

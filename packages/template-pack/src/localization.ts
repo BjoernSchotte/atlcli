@@ -228,6 +228,22 @@ export function validateLocalization(
         reporter: (message) => options.onWarning!(`${message.path}: ${message.text}`),
       });
     }
+    // Warn (never reject) for document labels outside the engine's vocabulary.
+    // Forward compatibility: a manifest written for a NEWER engine may carry
+    // labels this build does not know, so an unknown key must still import —
+    // it is dropped at render time, and this warning is how a template author
+    // finds out instead of watching a label silently vanish.
+    if (requiredDocs.length > 0) {
+      const known = new Set<string>(requiredDocs);
+      for (const [locale, bundle] of Object.entries(locales)) {
+        for (const key of Object.keys(bundle.document ?? {})) {
+          if (known.has(key)) continue;
+          options.onWarning(
+            `${path}.locales.${locale}.document.${key}: unknown document label — ignored at render time`
+          );
+        }
+      }
+    }
   }
 
   return { defaultLocale, fallbackLocale, locales };
