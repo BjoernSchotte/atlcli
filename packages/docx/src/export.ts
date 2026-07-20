@@ -335,7 +335,6 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     blocks = resolved.blocks;
     walkNotes = resolved.notes;
   }
->>>>>>> 34ff1f1 (feat(export): wire macro resolver into DOCX and PDF engines (spec 004 T1.7))
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
