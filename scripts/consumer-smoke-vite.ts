@@ -31,20 +31,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  atlcliClosure,
   buildPackages,
   packAll,
   run,
   type SmokeRunResult,
 } from "./consumer-smoke.js";
 
-/** pdf + pdf-compiler-browser + their @atlcli closure. */
-const VITE_PACKAGES = [
-  "@atlcli/core",
-  "@atlcli/diagram",
-  "@atlcli/confluence",
-  "@atlcli/pdf",
-  "@atlcli/pdf-compiler-browser",
-];
+/** pdf + pdf-compiler-browser roots; the transitive @atlcli closure is
+ *  derived from the real manifests (never a hardcoded list). */
+const VITE_ROOTS = ["@atlcli/pdf", "@atlcli/pdf-compiler-browser"];
 
 const VITE_VERSION = "8.1.4"; // same major the harness builds with
 
@@ -168,7 +164,7 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   mkdirSync(join(projectDir, "src"), { recursive: true });
 
   const dependencies: Record<string, string> = {};
-  for (const name of VITE_PACKAGES) {
+  for (const name of atlcliClosure(VITE_ROOTS)) {
     const tarball = tarballs.get(name);
     if (!tarball) throw new Error(`${name} was not packed`);
     dependencies[name] = `file:${tarball}`;

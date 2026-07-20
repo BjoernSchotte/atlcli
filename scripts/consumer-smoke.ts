@@ -43,6 +43,31 @@ export function publishablePackages(): PublishablePackage[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * The transitive `@atlcli/*` dependency closure of the given package names,
+ * derived from the real manifests — never a hardcoded list, so new internal
+ * dependency edges (e.g. pdf → export-macros) are picked up automatically.
+ */
+export function atlcliClosure(rootNames: string[]): string[] {
+  const byName = new Map(publishablePackages().map((p) => [p.name, p.dir]));
+  const seen = new Set<string>();
+  const queue = [...rootNames];
+  while (queue.length > 0) {
+    const name = queue.shift()!;
+    if (seen.has(name)) continue;
+    const dir = byName.get(name);
+    if (!dir) throw new Error(`${name} is not in the publishable set`);
+    seen.add(name);
+    const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    for (const dep of Object.keys(manifest.dependencies ?? {})) {
+      if (dep.startsWith("@atlcli/")) queue.push(dep);
+    }
+  }
+  return [...seen].sort();
+}
+
 export function run(
   cmd: string[],
   cwd: string,
@@ -259,6 +284,8 @@ import {
   BrowserPdfCompiler,
   type BrowserPdfCompilerAssets,
 } from "@atlcli/pdf-compiler-browser";
+import { resolveMacroBlocks } from "@atlcli/export-macros";
+import { packTemplate, unpackTemplate, type TemplateManifest } from "@atlcli/template-pack";
 // The remaining Node-compatible packages: type-check their barrels too, so
 // the skipLibCheck:false proof covers every package the engines matrix
 // marks Node-compatible (jira is deliberately absent — Bun-only).
@@ -275,8 +302,11 @@ const surfaces: unknown[] = [
   converted.blocks.length,
   getActiveProfile,
   renderDiagram,
+  resolveMacroBlocks,
+  packTemplate,
+  unpackTemplate,
 ];
-const _extraTypes: [DiagramRenderResult, AtlcliPlugin] | null = null;
+const _extraTypes: [DiagramRenderResult, AtlcliPlugin, TemplateManifest] | null = null;
 void _extraTypes;
 const _envParts: [TemplateSource, OutputSink, PdfExportEnv, PdfCompilePort, PdfCompileResult, RunPdfExportInput, BrowserPdfCompilerAssets] | null = null;
 void surfaces;
@@ -330,6 +360,26 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
   writeFileSync(join(dir, "main.ts"), TYPECHECK_MAIN_TS);
   writeFileSync(join(dir, "docx-smoke.mjs"), DOCX_SMOKE_MJS);
   writeFileSync(join(dir, "pdf-smoke.mjs"), PDF_SMOKE_MJS);
+
+  // Generic entrypoint smoke: every installed @atlcli/* package's `.` barrel
+  // must import from its built dist and expose a non-empty surface. Generated
+  // from the actual dependency list so newly classified packages are covered
+  // automatically, with no hardcoded package list to forget.
+  const names = Object.keys(options.dependencies).filter((n) => n.startsWith("@atlcli/"));
+  writeFileSync(
+    join(dir, "entrypoints-smoke.mjs"),
+    `const names = ${JSON.stringify(names, null, 2)};
+for (const name of names) {
+  const resolved = import.meta.resolve(name);
+  if (!resolved.includes("/dist/")) {
+    throw new Error(\`\${name} resolved to \${resolved} — expected the built dist/ output\`);
+  }
+  const mod = await import(name);
+  if (Object.keys(mod).length === 0) throw new Error(\`\${name} has no exports\`);
+}
+console.log("ENTRYPOINTS_SMOKE_OK", names.length);
+`,
+  );
 }
 
 /** Assert no installed @atlcli manifest still carries a workspace: range. */
@@ -368,6 +418,19 @@ export function runSmokes(
     throw new Error(`pdf smoke did not report success:\n${pdf.stdout}\n${pdf.stderr}`);
   }
   return { docx: docx.stdout.trim(), pdf: pdf.stdout.trim() };
+}
+
+/** Run the generated entrypoints smoke (every installed @atlcli barrel from dist). */
+export function runEntrypointsSmoke(
+  dir: string,
+  runtime: string[] = ["bun"],
+  env?: Record<string, string>,
+): void {
+  const res = run([...runtime, "entrypoints-smoke.mjs"], dir, env);
+  must(res, `${runtime.join(" ")} entrypoints-smoke.mjs`);
+  if (!res.stdout.includes("ENTRYPOINTS_SMOKE_OK")) {
+    throw new Error(`entrypoints smoke did not report success:\n${res.stdout}\n${res.stderr}`);
+  }
 }
 
 /** Run the consumer-local tsc (installed by the consumer project itself). */
@@ -409,6 +472,7 @@ export async function runTarballSmoke(baseDir?: string): Promise<TarballSmokeRes
   must(run(["bun", "install"], projectDir), "bun install (tarball consumer)");
   assertNoWorkspaceLeak(projectDir);
 
+  runEntrypointsSmoke(projectDir);
   const smokes = runSmokes(projectDir, ["bun"]);
   runConsumerTypecheck(projectDir);
   return { projectDir, smokes };

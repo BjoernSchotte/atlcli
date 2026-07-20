@@ -17,24 +17,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CONSUMER_DEV_DEPS,
+  atlcliClosure,
   buildPackages,
   publishablePackages,
   repoRoot,
   run,
+  runEntrypointsSmoke,
   runSmokes,
   scaffoldConsumer,
   type SmokeRunResult,
 } from "./consumer-smoke.js";
 
-/** The packages the DOCX/PDF smokes need: docx + pdf + their @atlcli closure. */
-const FILELINK_PACKAGES = [
-  "@atlcli/core",
-  "@atlcli/diagram",
-  "@atlcli/confluence",
-  "@atlcli/docx",
-  "@atlcli/pdf",
-  "@atlcli/pdf-compiler-browser",
-];
+/** The packages the DOCX/PDF smokes need: docx + pdf(+compiler) roots; the
+ *  transitive @atlcli closure is derived from the real manifests. */
+const FILELINK_ROOTS = ["@atlcli/docx", "@atlcli/pdf", "@atlcli/pdf-compiler-browser"];
 
 export interface FilelinkSmokeResult {
   projectDir: string;
@@ -49,10 +45,8 @@ export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeR
 
   const byName = new Map(publishablePackages().map((p) => [p.name, p.dir]));
   const dependencies: Record<string, string> = {};
-  for (const name of FILELINK_PACKAGES) {
-    const dir = byName.get(name);
-    if (!dir) throw new Error(`${name} is not in the publishable set`);
-    dependencies[name] = `file:${dir}`;
+  for (const name of atlcliClosure(FILELINK_ROOTS)) {
+    dependencies[name] = `file:${byName.get(name)!}`;
   }
 
   const projectDir = join(workDir, "consumer");
@@ -71,6 +65,7 @@ export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeR
 
   // Defensive NODE_ENV=production (Bun skips `development` by default anyway
   // unless --conditions=development is passed) — the fixtures assert /dist/.
+  runEntrypointsSmoke(projectDir, ["bun"], { NODE_ENV: "production" });
   const smokes = runSmokes(projectDir, ["bun"], { NODE_ENV: "production" });
   return { projectDir, smokes };
 }
