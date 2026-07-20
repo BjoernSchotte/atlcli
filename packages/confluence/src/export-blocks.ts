@@ -374,6 +374,10 @@ export const EXPORT_NOTE_CODES = [
   "code-highlight-skipped",
   "image-skipped",
   "image-embed-failed",
+  // Accessibility audit (spec 011, PDF/UA): an embedded image whose source
+  // block carries no author-written alt text, so the DOCX `descr` falls back
+  // to a technical filename.
+  "image-missing-alt",
   "diagram-skipped",
   "diagram-unsupported",
   "diagram-render-failed",
@@ -381,6 +385,12 @@ export const EXPORT_NOTE_CODES = [
   // PDF pipeline (@atlcli/pdf)
   "pdf-image-skipped",
   "pdf-image-alt-fallback",
+  // Accessibility audits (spec 011, PDF/UA). `pdf-image-missing-alt` is the
+  // SOURCE-side audit emitted by `preparePdfDocument` with page/block
+  // provenance (which page to fix); `pdf-image-alt-fallback` above is the
+  // RENDER-side statement that the filename was substituted into `alt:`.
+  "pdf-image-missing-alt",
+  "pdf-language-missing",
   "pdf-diagram-unsupported",
   "pdf-diagram-failed",
   "pdf-link-unresolved",
