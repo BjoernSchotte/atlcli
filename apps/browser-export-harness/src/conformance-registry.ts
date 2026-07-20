@@ -6,9 +6,15 @@
  * A feature lane adds one entry here + one manifest entry + its own `*-case.ts`.
  */
 import { CONFORMANCE_MANIFEST, type ConformanceCaseMeta } from "./conformance-manifest.js";
+import { runBlocksCase } from "./blocks-case.js";
+import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
+import { runDocxQualityCase } from "./docx-quality-case.js";
+import { runMacroCase } from "./macro-case.js";
 import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
+import { runPlaceholderCase } from "./placeholder-case.js";
+import { runScopeCase } from "./scope-case.js";
 
 export interface ConformanceCase extends ConformanceCaseMeta {
   run: () => Promise<unknown>;
@@ -19,6 +25,12 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   docx: runDocxCase,
   pdf: runPdfCase,
   "pdf-settings": runPdfSettingsCase,
+  blocks: runBlocksCase,
+  scope: runScopeCase,
+  "content-compat": runContentCase,
+  macros: runMacroCase,
+  placeholders: runPlaceholderCase,
+  "docx-quality": runDocxQualityCase,
 };
 
 export const CONFORMANCE_CASES: readonly ConformanceCase[] = CONFORMANCE_MANIFEST.map((meta) => {

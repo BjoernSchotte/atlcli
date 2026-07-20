@@ -59,6 +59,54 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     mediaPolicy: "none",
     emitsDigests: true,
   },
+  {
+    id: "blocks",
+    title: "Block model (001)",
+    folderTaskIds: ["001/T0.1", "001/T0.2"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
+    id: "scope",
+    title: "Scope / tree compose (002)",
+    folderTaskIds: ["002/T1.1", "002/T1.2", "002/T1.3"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
+    id: "content-compat",
+    title: "Content-feature compat (003)",
+    folderTaskIds: ["003/T1.4", "003/T1.5", "003/T1.6"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
+    id: "macros",
+    title: "Macro renderer registry (004)",
+    folderTaskIds: ["004/T1.7", "004/T1.8", "004/T1.9", "004/T1.10"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
+    id: "placeholders",
+    title: "Includepage + metadata placeholders (005)",
+    folderTaskIds: ["005/T1.11", "005/T1.12"],
+    engines: ["docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
+    id: "docx-quality",
+    title: "Word quality: numbering, tblGrid, svgBlip, STYLEREF (006)",
+    folderTaskIds: ["006/T1.13", "006/T1.14", "006/T1.15", "006/T1.16"],
+    engines: ["docx"],
+    mediaPolicy: "raster",
+    emitsDigests: false,
+  },
 ];
 
 /**
@@ -66,17 +114,23 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * (`assert-case-manifest.ts`) fails if the manifest's id set diverges — an
  * unregistered or duplicated case is caught before merge.
  *
- * As of this round only the general `docx`/`pdf`/`pdf-abort` contracts and the
- * `pdf-settings` (007) feature case have landed. The feature folders 001–004
- * are MERGED but their harness cases are not written yet — each lands with its
- * folder's follow-up PR: 002 `scope`, 003 `content-compat`, 004 `macros`, 001
- * `blocks` (startable now), plus the parallel 005 `placeholders` / 006
- * `docx-quality` (gated on those unmerged specs). Add each id here in the same
- * PR that adds its case + registry entry.
+ * The general `docx`/`pdf`/`pdf-abort` contracts, the `pdf-settings` (007)
+ * feature case, and all six feature-lane cases 001–006 (`blocks`, `scope`,
+ * `content-compat`, `macros`, `placeholders`, `docx-quality`) have landed now
+ * that every feature spec is merged. Cases 001–004 emit PDF digests consumed by
+ * the shape-parity gate; 005/006 are DOCX-only and assert their invariants
+ * in-case. Add each new id here in the same PR that adds its case + registry
+ * entry.
  */
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-abort",
   "docx",
   "pdf",
   "pdf-settings",
+  "blocks",
+  "scope",
+  "content-compat",
+  "macros",
+  "placeholders",
+  "docx-quality",
 ];
