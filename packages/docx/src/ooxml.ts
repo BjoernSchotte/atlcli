@@ -78,6 +78,52 @@ export function resolveHeadingStyleId(styleNames: Map<string, string>, level: nu
   return `Heading${level}`;
 }
 
+/** The builtin fallback list paragraph style id (spec 006 G2). */
+export const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
+
+/**
+ * Resolve the paragraph style id for a list level against a template's
+ * style-name map (spec 006 G2). The real Scroll naming convention is
+ * asymmetric (`spec/scroll-word-exporter-features.md` §3): level 1 (`ilvl 0`)
+ * is SUFFIXLESS — `Scroll List Bullet` / `Scroll List Number` — and only
+ * levels 2–8 (`ilvl 1–7`) carry the numeric suffix `2`…`8`. Fallback chain:
+ *   `Scroll List {Bullet|Number}[ N]` → builtin `List {Bullet|Number}[ N]`
+ *   → `ListParagraph`.
+ * Names are matched case-insensitively against `parseStyleNames` output; the
+ * template's own visual control (font/spacing) stays with the style, while the
+ * indent + number format live in the synthesized `w:lvl` definitions.
+ */
+export function resolveListStyleId(
+  styleNames: Map<string, string>,
+  ordered: boolean,
+  ilvl: number
+): string {
+  const kind = ordered ? "number" : "bullet";
+  // ilvl 0 → no suffix; ilvl 1..7 → suffix 2..8. Deeper levels clamp to 8.
+  const level = Math.min(Math.max(ilvl, 0), 7);
+  const suffix = level === 0 ? "" : ` ${level + 1}`;
+  const scroll = styleNames.get(`scroll list ${kind}${suffix}`);
+  if (scroll) return scroll;
+  const builtin = styleNames.get(`list ${kind}${suffix}`);
+  if (builtin) return builtin;
+  return styleNames.get("listparagraph") ?? styleNames.get("list paragraph") ?? LIST_PARAGRAPH_STYLE_ID;
+}
+
+/**
+ * A `<w:style>` for the fallback list paragraph, injected into styles.xml when
+ * the template lacks a `ListParagraph` style AND no template list style matched
+ * (spec 006 G2). Visual control normally lives in the template; this exists so
+ * a bare template still produces a defined, indent-only list style.
+ */
+export function listParagraphStyleXml(): string {
+  return (
+    `<w:style w:type="paragraph" w:styleId="${LIST_PARAGRAPH_STYLE_ID}">` +
+    `<w:name w:val="List Paragraph"/>` +
+    `<w:pPr><w:ind w:left="720"/><w:contextualSpacing/></w:pPr>` +
+    `</w:style>`
+  );
+}
+
 /** The synthesized code-block paragraph style id. */
 export const CODE_STYLE_ID = "AtlcliCode";
 
@@ -451,29 +497,88 @@ export function calloutTable(
   );
 }
 
-/** Build a data table from row/cell OOXML with a light grid + header shading. */
-export function dataTable(gridCols: number, rowsXml: string): string {
-  const grid = Array.from({ length: Math.max(1, gridCols) }, () => `<w:gridCol w:w="${Math.floor(9000 / Math.max(1, gridCols))}"/>`).join("");
+/**
+ * Table style source (spec 006 G3b / B9). `"confluence"` (default) keeps the
+ * built-in `TableGrid` + hard-coded borders + per-cell shading — today's
+ * behavior, byte-identical. `"template"` emits only the named style + a
+ * `w:tblLook` (first-row banding) and omits inline borders/shading so a
+ * template's house table style controls appearance.
+ */
+export interface TableStyleSource {
+  source: "template" | "confluence";
+  /** The resolved style id, used only in `"template"` mode. */
+  styleId?: string;
+}
+
+export interface DataTableOptions {
+  /** Per-column `w:gridCol` widths in dxa (spec 006 G3). Absent → even split. */
+  widthsDxa?: number[];
+  /** Table style source (spec 006 G3b). Defaults to `"confluence"`. */
+  tableStyle?: TableStyleSource;
+}
+
+/**
+ * Build a data table from row/cell OOXML. With `widthsDxa` (spec 006 G3) the
+ * `w:tblGrid` carries real per-column widths and a `w:tblLayout w:type="fixed"`
+ * so Word does not re-autofit; without it the grid is an even 9000-dxa split
+ * (pre-006 behavior). The table style is either the built-in confluence grid or
+ * a template style (spec 006 G3b).
+ */
+export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOptions = {}): string {
+  const cols = Math.max(1, gridCols);
+  const widths = opts.widthsDxa;
+  const even = Math.floor(9000 / cols);
+  const grid = Array.from({ length: cols }, (_, i) => `<w:gridCol w:w="${widths?.[i] ?? even}"/>`).join("");
+  const fixedLayout = widths ? `<w:tblLayout w:type="fixed"/>` : "";
+  const style = opts.tableStyle ?? { source: "confluence" as const };
+  let tblPrInner: string;
+  if (style.source === "template" && style.styleId) {
+    // Template style controls borders/shading; emit only the style ref + look.
+    tblPrInner =
+      `<w:tblStyle w:val="${esc(style.styleId)}"/>` +
+      `<w:tblW w:w="9000" w:type="dxa"/>` +
+      fixedLayout +
+      `<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>`;
+  } else {
+    // Schema order matters (CT_TblPrBase, ECMA-376 §17.4.60): tblBorders (seq 11)
+    // MUST precede tblLayout (seq 13), so fixedLayout goes AFTER tblBorders here.
+    tblPrInner =
+      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblBorders>` +
+      `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
+      `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
+      `<w:insideH w:val="single" w:sz="4" w:color="AAAAAA"/><w:insideV w:val="single" w:sz="4" w:color="AAAAAA"/>` +
+      `</w:tblBorders>` +
+      fixedLayout;
+  }
   return (
     `<w:tbl>` +
-    `<w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
-    `<w:tblBorders>` +
-    `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
-    `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
-    `<w:insideH w:val="single" w:sz="4" w:color="AAAAAA"/><w:insideV w:val="single" w:sz="4" w:color="AAAAAA"/>` +
-    `</w:tblBorders></w:tblPr>` +
+    `<w:tblPr>${tblPrInner}</w:tblPr>` +
     `<w:tblGrid>${grid}</w:tblGrid>` +
     rowsXml +
     `</w:tbl>`
   );
 }
 
-/** A table cell with colspan (gridSpan), rowspan (vMerge), header shading. */
+/**
+ * A table cell with an optional fixed width (spec 006 G3 — `w:tcW`, emitted as
+ * the FIRST `tcPr` child per schema order), colspan (gridSpan), rowspan
+ * (vMerge), and header/background shading. Passing no `backgroundColor`/`header`
+ * (template table-style mode) omits `w:shd` so the template style's fills win.
+ */
 export function tableCell(
   paragraphsXml: string,
-  opts: { colspan?: number; vMerge?: "restart" | "continue"; header?: boolean; backgroundColor?: string } = {}
+  opts: {
+    colspan?: number;
+    vMerge?: "restart" | "continue";
+    header?: boolean;
+    backgroundColor?: string;
+    widthDxa?: number;
+  } = {}
 ): string {
   const props: string[] = [];
+  // Schema order: tcW must precede gridSpan.
+  if (opts.widthDxa !== undefined) props.push(`<w:tcW w:w="${opts.widthDxa}" w:type="dxa"/>`);
   if (opts.colspan && opts.colspan > 1) props.push(`<w:gridSpan w:val="${opts.colspan}"/>`);
   if (opts.vMerge) props.push(`<w:vMerge w:val="${opts.vMerge}"/>`);
   const fill = normalizeExportColor(opts.backgroundColor)?.slice(1) ?? (opts.header ? "F4F5F7" : undefined);

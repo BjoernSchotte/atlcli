@@ -610,7 +610,7 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
   });
 
-  it("degrades undecodable bytes (SVG) to a report line, export still succeeds", async () => {
+  it("degrades an SVG attachment with no rasterizer to image-svg-no-rasterizer (spec 006 G4)", async () => {
     const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
     const { report } = await exportDocx({
       templateBytes: imageTemplate(),
@@ -621,10 +621,13 @@ describe("exportDocx — image embedding (spec 005)", () => {
       template,
       deps,
       assets: { fetch: async () => svg },
+      // No rasterizer: the SVG cannot be rasterized, so it degrades with the
+      // precise code instead of the generic image-embed-failed.
     });
-    const note = report.notes.find((n) => n.code === "image-embed-failed");
-    expect(note?.message).toContain("SVG");
+    const note = report.notes.find((n) => n.code === "image-svg-no-rasterizer");
+    expect(note?.level).toBe("warning");
     expect(report.skippedImages).toBe(1);
+    expect(report.embeddedImages).toBe(0);
   });
 
   it("embedImages: false skips embedding without touching the fetcher", async () => {
@@ -1479,5 +1482,566 @@ describe("exportDocx — spec 003 review fixes", () => {
     expect(readPart(first.bytes, "word/styles.xml")).toBe(readPart(second.bytes, "word/styles.xml"));
     // Pin the full serialized body across refactors (snapshot golden).
     expect(firstDoc).toMatchSnapshot("scroll-macro-feature-zoo-document-xml");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-page include pass (spec 005 D1)
+// ---------------------------------------------------------------------------
+describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
+  const SENTINEL = "IMPRINT_SENTINEL_9f3a";
+  const includePage = (id: string, extraStorage = ""): ConfluencePageDetails => ({
+    id,
+    title: `Imprint ${id}`,
+    spaceKey: "ENG",
+    storage: `<p>${SENTINEL} ${id}</p>${extraStorage}`,
+  });
+
+  /** A getIncludedPage that resolves any ref to `page`, counting calls. */
+  function resolver(pages: Record<string, ConfluencePageDetails>) {
+    const calls: string[] = [];
+    return {
+      calls,
+      getIncludedPage: async (ref: { pageId?: string; title?: string; spaceKey?: string }) => {
+        calls.push(ref.pageId ?? `${ref.spaceKey ?? ""}:${ref.title ?? ""}`);
+        const key = ref.pageId ?? ref.title ?? "";
+        const page = pages[key];
+        return page
+          ? { kind: "resolved" as const, page }
+          : { kind: "not-found-or-forbidden" as const };
+      },
+    };
+  }
+
+  const styledTemplate = (opts: { body: string; header?: string; footer?: string }) =>
+    buildDocx({
+      body: opts.body,
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+      ...(opts.header ? { header: opts.header } : {}),
+      ...(opts.footer ? { footer: opts.footer } : {}),
+    });
+
+  it("renders the same include target in BOTH body and header, fetched once", async () => {
+    const page = includePage("Imprint");
+    const { calls, getIncludedPage } = resolver({ Imprint: page });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
+        header: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    const header = readPart(bytes, "word/header1.xml");
+    expect(doc).toContain(SENTINEL);
+    expect(header).toContain(SENTINEL);
+    // One canonical ref key → exactly one fetch (cache hit on the 2nd occurrence).
+    expect(calls).toEqual(["ENG:Imprint"]);
+    for (const part of [doc, header]) {
+      expect(part).not.toContain("$scroll.");
+      assertBalancedXml(part);
+    }
+  });
+
+  it("renders two occurrences of the same include in one part with one fetch", async () => {
+    const { calls, getIncludedPage } = resolver({ Imprint: includePage("Imprint") });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body:
+          para("$scroll.content") +
+          para("$scroll.includepage.(ENG:Imprint)") +
+          para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc.match(new RegExp(SENTINEL, "g"))?.length).toBe(2);
+    expect(calls).toEqual(["ENG:Imprint"]);
+  });
+
+  it("finds and replaces a run-split include token", async () => {
+    const { getIncludedPage } = resolver({ Imprint: includePage("Imprint") });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + runSplitPara(["$scroll.includepage.", "(ENG:Imprint)"]),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(SENTINEL);
+    expect(doc).not.toContain("$scroll.");
+  });
+
+  it("does NOT expand a non-atomic paragraph; surrounding text survives verbatim", async () => {
+    const { calls, getIncludedPage } = resolver({ Imprint: includePage("Imprint") });
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body:
+          para("$scroll.content") +
+          para("See our disclaimer: $scroll.includepage.(ENG:Imprint)") +
+          para("$scroll.includepage.(A) and $scroll.includepage.(B)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("See our disclaimer: ");
+    expect(doc).not.toContain(SENTINEL); // never expanded
+    expect(doc).not.toContain("$scroll."); // but token still blanked
+    // No fetch happened for a non-atomic paragraph.
+    expect(calls).toHaveLength(0);
+    expect(report.notes.filter((n) => n.code === "includepage-invalid-context")).toHaveLength(2);
+  });
+
+  it("blanks every failure class with its OWN distinct note code (no literal)", async () => {
+    const cases: Array<[string, { kind: string; message?: string }, string]> = [
+      ["nf", { kind: "not-found-or-forbidden" }, "includepage-unresolved"],
+      ["auth", { kind: "auth-failed" }, "includepage-auth-failed"],
+      ["rl", { kind: "rate-limited" }, "includepage-rate-limited"],
+      ["tr", { kind: "transient-error", message: "socket hangup" }, "includepage-transient-error"],
+    ];
+    for (const [arg, outcome, code] of cases) {
+      const { bytes, report } = await exportDocx({
+        templateBytes: styledTemplate({
+          body: para("$scroll.content") + para(`$scroll.includepage.(${arg})`),
+        }),
+        details,
+        template,
+        deps: { ...deps, getIncludedPage: async () => outcome as never },
+      });
+      const doc = readPart(bytes, "word/document.xml");
+      expect(doc).not.toContain("$scroll.");
+      expect(report.notes.some((n) => n.code === code)).toBe(true);
+    }
+  });
+
+  it("treats an absent getIncludedPage dep as a transient failure (no literal)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details,
+      template,
+      deps,
+    });
+    expect(readPart(bytes, "word/document.xml")).not.toContain("$scroll.");
+    expect(report.notes.some((n) => n.code === "includepage-transient-error")).toBe(true);
+  });
+
+  it("still renders an ambiguous title, noting the count", async () => {
+    const page = includePage("Dup");
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(Dup)"),
+      }),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: async () => ({ kind: "ambiguous" as const, count: 3, page }),
+      },
+    });
+    expect(readPart(bytes, "word/document.xml")).toContain(SENTINEL);
+    const note = report.notes.find((n) => n.code === "includepage-ambiguous-title");
+    expect(note?.message).toContain("3");
+  });
+
+  it("blocks self-include with includepage-cycle but NOT a non-self repeat", async () => {
+    // The exported page id is `123`. A pageId ref to itself is a cycle; a
+    // different target referenced twice (body+header) must NOT be flagged.
+    const other = includePage("Imprint");
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body:
+          para("$scroll.content") +
+          para("$scroll.includepage.(123)") +
+          para("$scroll.includepage.(ENG:Imprint)"),
+        header: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: other }).getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("$scroll.");
+    expect(report.notes.filter((n) => n.code === "includepage-cycle")).toHaveLength(1);
+    // The non-self target still rendered in both parts.
+    expect(doc).toContain(SENTINEL);
+    expect(readPart(bytes, "word/header1.xml")).toContain(SENTINEL);
+  });
+
+  it("embeds an included FOOTER page's image into footer1.xml.rels, not document.xml.rels", async () => {
+    const footerPage = includePage(
+      "Imprint",
+      '<ac:image><ri:attachment ri:filename="inc.png"/></ac:image>'
+    );
+    const fetchedRefs: { url: string; pageId?: string }[] = [];
+    const assets = {
+      async fetch(ref: { url: string; pageId?: string }) {
+        fetchedRefs.push(ref);
+        return pngFixtureBytes(120, 60);
+      },
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        // The exported page's own body also carries an image → document.xml.rels.
+        body: para("$scroll.content"),
+        footer: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: {
+        ...details,
+        storage: '<p>own</p><ac:image><ri:attachment ri:filename="own.png"/></ac:image>',
+      },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: footerPage }).getIncludedPage },
+      assets,
+    });
+    const footer = readPart(bytes, "word/footer1.xml");
+    expect(footer).toContain("<w:drawing>");
+    assertBalancedXml(footer);
+    const footerRels = readPart(bytes, "word/_rels/footer1.xml.rels");
+    expect(footerRels).toContain("relationships/image");
+    // The exported page's own body image is in the document part's rels.
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).toContain("relationships/image");
+    // The included image was fetched from the INCLUDED page's id, not the root.
+    expect(fetchedRefs.some((r) => r.url.includes("/attachments/Imprint/inc.png"))).toBe(true);
+  });
+
+  it("embeds an included FOOTER page's Mermaid diagram into footer1.xml.rels, not document.xml.rels", async () => {
+    // The included footer page's ONLY content is a mermaid diagram; the diagram
+    // seam must thread the occurrence's part so the svgBlip/PNG relationships
+    // land in the footer's rels (dangling-relationship regression for diagrams).
+    const diagramPage: ConfluencePageDetails = {
+      id: "Imprint",
+      title: "Imprint",
+      spaceKey: "ENG",
+      storage:
+        '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[graph TD\n  A --> B]]></ac:plain-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content"),
+        footer: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: { ...details, storage: "<p>own body, no diagram</p>" },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: diagramPage }).getIncludedPage },
+      rasterizer: {
+        async rasterize(_svg: string, target: { widthPx: number; heightPx: number }) {
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+    expect(report.renderedDiagrams).toBe(1);
+    const footer = readPart(bytes, "word/footer1.xml");
+    expect(footer).toContain("<w:drawing>");
+    assertBalancedXml(footer);
+    // The diagram's svgBlip/PNG relationships live in the FOOTER's rels…
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain("relationships/image");
+    // …and NOT in the document part (whose own body carries no diagram).
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).not.toContain("relationships/image");
+    expect(readPart(bytes, "word/document.xml")).not.toContain("<w:drawing>");
+  });
+
+  it("synthesizes the code style when only an included page carries a code macro", async () => {
+    const codePage: ConfluencePageDetails = {
+      id: "Imprint",
+      title: "Imprint",
+      spaceKey: "ENG",
+      storage:
+        '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[const x = 1;]]></ac:plain-text-body></ac:structured-macro>",
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: { ...details, storage: "<p>plain</p>" },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: codePage }).getIncludedPage },
+    });
+    expect(readPart(bytes, "word/styles.xml")).toContain('w:styleId="AtlcliCode"');
+  });
+
+  it("enforces the unique-target budget deterministically (cache still serves repeats)", async () => {
+    // 26 distinct targets + 1 repeat of the first. The 26th unique target is
+    // over the 25-page cap and blanks; the repeat of #1 still renders (cache).
+    const pages: Record<string, ConfluencePageDetails> = {};
+    let body = para("$scroll.content");
+    for (let i = 1; i <= 26; i++) {
+      const id = `P${i}`;
+      pages[id] = includePage(id);
+      body += para(`$scroll.includepage.(${id})`);
+    }
+    body += para("$scroll.includepage.(P1)"); // repeat of an accepted target
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({ body }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage: resolver(pages).getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).not.toContain("$scroll.");
+    expect(doc).toContain(`${SENTINEL} P1`); // first accepted + its later repeat
+    expect(doc).toContain(`${SENTINEL} P25`);
+    expect(doc).not.toContain(`${SENTINEL} P26`); // over budget → blanked
+    expect(report.notes.filter((n) => n.code === "includepage-budget-exceeded")).toHaveLength(1);
+    // The repeat of P1 renders → P1 sentinel appears twice.
+    expect(doc.match(new RegExp(`${SENTINEL} P1\\b`, "g"))?.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SVG attachment embedding (spec 006 G4)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — SVG attachment embedding (spec 006 G4)", () => {
+  const svgTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  const svgStorage = (filename = "arch.svg") =>
+    `<ac:image><ri:attachment ri:filename="${filename}"/></ac:image>`;
+
+  /** A rasterizer recording calls, serving real PNG fixture bytes at the target size. */
+  function recordingRasterizer() {
+    const calls: { svg: string; widthPx: number; heightPx: number }[] = [];
+    return {
+      calls,
+      rasterizer: {
+        async rasterize(svg: string, target: { widthPx: number; heightPx: number }) {
+          calls.push({ svg, ...target });
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    };
+  }
+
+  const CLEAN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60"/></svg>';
+
+  it("embeds a clean SVG attachment as svgBlip + PNG@2x, counting as an image not a diagram", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(CLEAN_SVG) },
+      rasterizer,
+    });
+
+    // Rasterized once at 2× the intrinsic display size.
+    expect(calls).toHaveLength(1);
+    expect(calls[0].widthPx).toBe(240);
+    expect(calls[0].heightPx).toBe(120);
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("<w:drawing>");
+    expect(doc).toContain("<asvg:svgBlip");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).toContain('Target="media/atlcli-image1.svg"');
+    expect(rels).toContain('Target="media/atlcli-image2.png"');
+
+    // Counters: an SVG attachment is an image, not a rendered diagram.
+    expect(report.embeddedImages).toBe(1);
+    expect(report.renderedDiagrams).toBe(0);
+    expect(report.skippedImages).toBe(0);
+  });
+
+  it("uses the 600×400 default with an info note when the SVG has no intrinsic size", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const noSize = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(noSize) },
+      rasterizer,
+    });
+    // Width capped to 600 → 2× = 1200; height 400 → 2× = 800.
+    expect(calls[0].widthPx).toBe(1200);
+    expect(calls[0].heightPx).toBe(800);
+    expect(report.notes.some((n) => n.code === "image-svg-default-size")).toBe(true);
+    expect(report.embeddedImages).toBe(1);
+  });
+
+  it("rejects a hostile <script> SVG with a note and leaves the archive untouched", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+    const { bytes, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(hostile) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0); // never rasterized
+    const note = report.notes.find((n) => n.message.includes("active or externally loaded"));
+    expect(note).toBeDefined();
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("rejects a UTF-16LE + BOM <script> SVG end-to-end (spec 011 must-reject)", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+    // Encode UTF-16LE with a BOM — a naive UTF-8 decode would garble it and hide
+    // the <script>; the BOM-aware seam decodes it and the scanner rejects it.
+    const bytes = new Uint8Array(2 + hostile.length * 2);
+    bytes[0] = 0xff;
+    bytes[1] = 0xfe;
+    for (let i = 0; i < hostile.length; i++) {
+      const c = hostile.charCodeAt(i);
+      bytes[2 + i * 2] = c & 0xff;
+      bytes[3 + i * 2] = c >> 8;
+    }
+    const { bytes: out, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => bytes },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0); // never rasterized
+    expect(report.notes.some((n) => n.message.includes("active or externally loaded"))).toBe(true);
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    const zip = new PizZip(out);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("rejects a CSS-carried external reference SVG", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const cssHostile =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>.a{background:url(https://evil/x)}</style></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(cssHostile) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0);
+    expect(report.notes.some((n) => n.message.includes("active or externally loaded"))).toBe(true);
+    expect(report.skippedImages).toBe(1);
+  });
+
+  it("degrades an oversized SVG with image-svg-oversized, never invoking the rasterizer", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    // Author dimensions force a pathological target: width capped to 600, but an
+    // extreme aspect ratio via viewBox pushes the height past the axis budget.
+    const huge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000000"><rect/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(huge) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0);
+    expect(report.notes.some((n) => n.code === "image-svg-oversized")).toBe(true);
+    expect(report.skippedImages).toBe(1);
+    expect(report.embeddedImages).toBe(0);
+  });
+
+  it("counters: one diagram + one successful SVG + one skipped SVG → (1,1,1)", async () => {
+    // The rasterizer is export-wide, so a single export cannot mix a "no
+    // rasterizer" SVG with a successfully-rasterized diagram. The DoD's exact
+    // (renderedDiagrams=1, embeddedImages=1, skippedImages=1) triple is achieved
+    // with a rasterizer present and the third asset degrading for a different
+    // reason (an oversized SVG) — the reporting semantics are identical, and the
+    // no-rasterizer path is asserted separately above.
+    const { rasterizer } = recordingRasterizer();
+    const assets = {
+      async fetch(ref: { url: string; filename?: string }) {
+        const huge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000000"><rect/></svg>';
+        const isHuge = (ref.filename ?? ref.url).includes("huge");
+        return new TextEncoder().encode(isHuge ? huge : CLEAN_SVG);
+      },
+    };
+    const storage =
+      `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
+      `<ac:plain-text-body><![CDATA[graph TD\n A --> B]]></ac:plain-text-body></ac:structured-macro>` +
+      svgStorage("clean.svg") +
+      svgStorage("huge.svg");
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage },
+      template,
+      deps,
+      assets,
+      rasterizer,
+    });
+    expect(report.renderedDiagrams).toBe(1);
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table column widths + table style source (spec 006 G3/G3b)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — table widths & style source (spec 006 G3/G3b)", () => {
+  const tableStorage =
+    '<table><colgroup><col style="width: 100px"/><col style="width: 300px"/></colgroup>' +
+    "<tbody><tr><th><p>H1</p></th><th><p>H2</p></th></tr>" +
+    "<tr><td><p>a</p></td><td><p>b</p></td></tr></tbody></table>";
+
+  const tmpl = (extraStyles = "") =>
+    buildDocx({ body: para("$scroll.content"), styles: stylesXml(headingStyle("Heading1", "Heading 1") + extraStyles) });
+
+  const detailsFor = (storage: string): ConfluencePageDetails => ({ ...details, storage });
+
+  it("honors colgroup widths as non-uniform w:gridGrid summing to 9000 (G3)", async () => {
+    const { bytes } = await exportDocx({ templateBytes: tmpl(), details: detailsFor(tableStorage), template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    const cols = [...doc.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].map((m) => Number(m[1]));
+    expect(cols).toEqual([2250, 6750]);
+    expect(cols.reduce((s, w) => s + w, 0)).toBe(9000);
+    expect(doc).toContain('<w:tblLayout w:type="fixed"/>');
+  });
+
+  it("source template resolves 'Scroll Table Normal' and omits inline borders (G3b)", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: tmpl(headingStyle("ScrollTableNormalId", "Scroll Table Normal")),
+      details: detailsFor(tableStorage),
+      template,
+      deps,
+      tableStyle: { source: "template" },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:tblStyle w:val="ScrollTableNormalId"/>');
+    expect(doc).not.toContain("<w:tblBorders>");
+  });
+
+  it("source template with an undefined style falls back to the grid + a note (G3b)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: tmpl(),
+      details: detailsFor(tableStorage),
+      template,
+      deps,
+      tableStyle: { source: "template" },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:tblStyle w:val="TableGrid"/>');
+    expect(report.notes.some((n) => n.code === "table-style-missing")).toBe(true);
   });
 });

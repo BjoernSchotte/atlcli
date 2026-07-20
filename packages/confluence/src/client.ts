@@ -890,6 +890,54 @@ export class ConfluenceClient {
   }
 
   /**
+   * Look up pages by EXACT title through the DIRECT content endpoint
+   * (`GET /content?type=page&title=…[&spaceKey=…]`), NOT the CQL search index.
+   *
+   * Why direct, not `search`/CQL: Confluence Cloud's search index lags page
+   * creation by up to minutes, so a freshly created target (e.g. a CI pipeline
+   * that creates a page then immediately exports a template that includes it by
+   * title) comes back "not found" on the first try and only resolves on a later
+   * retry. The `/content` endpoint reads the content store directly, so a page
+   * is findable the moment it exists — the same reason spec 004's children macro
+   * moved off CQL to the direct child-page endpoint (spec 005 D1).
+   *
+   * Titles are NOT unique (same title across spaces, or a bare-title lookup), so
+   * this returns EVERY match; the caller sorts by id for deterministic
+   * ambiguity handling. Paginated through the shared {@link drainPaginated}
+   * driver (a title with many matches never silently truncates).
+   */
+  async findPagesByTitle(
+    title: string,
+    options: { spaceKey?: string; limit?: number; signal?: AbortSignal } = {}
+  ): Promise<Array<{ id: string; title: string; spaceKey?: string }>> {
+    const { spaceKey, limit = 25, signal } = options;
+    const query: Record<string, string | number | undefined> = {
+      type: "page",
+      title,
+      expand: "space",
+      limit,
+      ...(spaceKey ? { spaceKey } : {}),
+    };
+    return drainPaginated<{ id: string; title: string; spaceKey?: string }>(async (token) => {
+      // First page uses the structured query; subsequent pages follow the
+      // server's own `_links.next` path (its query already baked in), stripping
+      // the /rest/api prefix request() re-adds — same shape as searchByUrl.
+      const data = (token === undefined
+        ? await this.request("/content", { query, signal })
+        : await this.request(token.replace(/^\/rest\/api/, ""), { signal })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      return {
+        items: results.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          spaceKey: item.space?.key,
+        })),
+        next: data._links?.next,
+      };
+    });
+  }
+
+  /**
    * Follow a pagination URL to get the next page of search results.
    * Strips the /rest/api prefix from the URL since request() adds it.
    */

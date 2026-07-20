@@ -41,6 +41,7 @@ import {
   paragraph,
   resolveCaptionStyleId,
   resolveHeadingStyleId,
+  resolveListStyleId,
   run,
   sectPrParagraph,
   statusBadgeRun,
@@ -50,8 +51,10 @@ import {
   toPortraitSectPr,
   type CaptionLang,
   type RunStyle,
+  type TableStyleSource,
 } from "./ooxml.js";
 import type { Caption } from "@atlcli/confluence";
+import { MAX_ILVL, NumberingAllocator } from "./numbering.js";
 
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
@@ -59,8 +62,16 @@ export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
 /** The `codeBlock` variant of {@link ExportBlock} (carries mermaid source). */
 export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
 
-/** Result of one image-embed attempt (spec 005). */
-export type ImageEmbedOutcome = { ok: true; xml: string } | { ok: false; reason: string };
+/**
+ * Result of one image-embed attempt (spec 005). A success may carry side
+ * notes (spec 006 G4: an SVG that used its default size emits an info note yet
+ * still embeds); a failure may name a specific note code + level (spec 006 G4:
+ * `image-svg-no-rasterizer` / `image-svg-oversized`) so the report can
+ * distinguish them from the generic `image-embed-failed`.
+ */
+export type ImageEmbedOutcome =
+  | { ok: true; xml: string; notes?: ExportNote[] }
+  | { ok: false; reason: string; code?: string; level?: "info" | "warning" };
 
 /**
  * The serializer's image seam (spec 005): turns an `image` block into an
@@ -109,6 +120,14 @@ export interface DiagramEmbedSeam {
 export interface SerializeContext {
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
+  /**
+   * Native list-numbering allocator (spec 006 G2). Threaded so `w:numPr` /
+   * `word/numbering.xml` ids stay export-wide unique. Absent → `serializeBlocks`
+   * constructs a zero-based allocator (the standalone-serializer path); the
+   * export orchestrator passes one pre-based on the template's existing
+   * numbering part so ids never collide.
+   */
+  numbering?: NumberingAllocator;
   /** Image embedding seam; absent → images degrade to report notes. */
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
@@ -125,6 +144,13 @@ export interface SerializeContext {
    * `"en"`. Undefined → `"en"`. Drives {@link captionParagraph}'s SEQ label.
    */
   captionLang?: CaptionLang;
+  /**
+   * Table style source (spec 006 G3b / B9): `"confluence"` (default) keeps the
+   * built-in grid + borders + per-cell shading; `"template"` defers appearance
+   * to the resolved template style id. The export orchestrator resolves the
+   * style name (`Scroll Table Normal`) to an id before passing it here.
+   */
+  tableStyle?: TableStyleSource;
 }
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
@@ -134,6 +160,8 @@ interface InternalContext extends SerializeContext {
    * the document maps to Heading 1 ("promotion"; see {@link computeHeadingOffset}).
    */
   headingOffset: number;
+  /** The active numbering allocator (always present inside the walk). */
+  numbering: NumberingAllocator;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
   /**
@@ -144,6 +172,8 @@ interface InternalContext extends SerializeContext {
    * bookmark names when two raw anchor names sanitize to the same id.
    */
   bookmarks: { next: number; used: Set<string> };
+  /** Distinct heading style ids emitted so far (spec 006 G1 STYLEREF check). */
+  emittedHeadingStyles: Set<string>;
   /**
    * The layout container the current block renders inside (spec 003 C6/C5).
    * `pageBreak`/`orientation` render at `"body"` scope (list items inherit it —
@@ -157,6 +187,13 @@ interface InternalContext extends SerializeContext {
 export interface SerializeResult {
   xml: string;
   notes: ExportNote[];
+  /**
+   * The distinct heading paragraph style ids the body actually emitted
+   * (spec 006 G1). Used to validate STYLEREF fields against the styles this
+   * particular export produced after promotion — a template field can name a
+   * style no heading in THIS export ends up using.
+   */
+  headingStyleIds: string[];
 }
 
 /** Twips of indent per list nesting level. */
@@ -344,14 +381,20 @@ export async function serializeBlocks(
   const internal: InternalContext = {
     ...ctx,
     headingOffset: computeHeadingOffset(blocks),
+    numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
     bookmarks: { next: 1, used: new Set() },
+    emittedHeadingStyles: new Set<string>(),
     container: "body",
   };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
-  return { xml: coalesceSectPrParagraphs(parts.join("")), notes };
+  return {
+    xml: coalesceSectPrParagraphs(parts.join("")),
+    notes,
+    headingStyleIds: [...internal.emittedHeadingStyles],
+  };
 }
 
 /**
@@ -397,8 +440,10 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
+      const headingStyleId = resolveHeadingStyleId(ctx.styleNames, styleLevel);
+      ctx.emittedHeadingStyles.add(headingStyleId);
       const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
-        styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
+        styleId: headingStyleId,
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
       // An explicit anchor (chapter start / in-page heading anchor, spec 002)
@@ -449,10 +494,17 @@ async function serializeBlock(
     }
 
     case "list":
-      return serializeList(block, ctx, notes, depth);
+      // `listLevel` starts at 0 for every list, independent of container
+      // `depth` (callouts/blockquotes/table cells don't deepen list nesting).
+      return serializeList(block, ctx, notes, depth, 0);
 
     case "table": {
-      const tableXml = await serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
+      const tableXml = await serializeTable(
+        block.rows,
+        block.columnWidths,
+        { ...ctx, defaultTextColor: undefined },
+        notes
+      );
       // Caption above tables (established convention).
       return block.caption ? captionXml(block.caption, ctx) + tableXml : tableXml;
     }
@@ -485,12 +537,16 @@ async function serializeBlock(
         return fallback();
       }
       const outcome = await ctx.images.embed(block);
-      if (outcome.ok) return outcome.xml + cap;
+      if (outcome.ok) {
+        if (outcome.notes) notes.push(...outcome.notes);
+        return outcome.xml + cap;
+      }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
-      // but keep a numbered fallback when a caption is present.
+      // but keep a numbered fallback when a caption is present. The seam may name
+      // a specific code (spec 006 G4 SVG codes) — else the generic one.
       notes.push({
-        level: "warning",
-        code: "image-embed-failed",
+        level: outcome.level ?? "warning",
+        code: outcome.code ?? "image-embed-failed",
         message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
       return fallback();
@@ -666,19 +722,43 @@ async function serializeChildren(
   return parts.join("");
 }
 
-// ---- Lists ----------------------------------------------------------------
+// ---- Lists (spec 006 G2: native w:numPr numbering) ------------------------
 
+/** dxa left indent for a list level's continuation content (matches numbering.xml). */
+function listIndent(ilvl: number): number {
+  return (ilvl + 1) * 720;
+}
+
+/**
+ * Serialize one list NODE. `listLevel` is the SEMANTIC nesting depth (drives
+ * `w:ilvl` and one `numId` acquisition per node); `depth` is the generic
+ * container depth threaded to child blocks for their own recursion limits.
+ *
+ * `ctx.numbering.acquire(list.ordered)` runs once per node, lazily (only when a
+ * non-task item actually needs a `numId`) — so a nested `<ol>` inside a `<ul>`,
+ * or a second logically-separate `<ol>` at the same position, each gets its own
+ * type-correct `numId`. Bullets share one instance; every ordered node
+ * restarts at 1 via its own instance.
+ */
 async function serializeList(
   list: Extract<ExportBlock, { type: "list" }>,
   ctx: InternalContext,
   notes: ExportNote[],
-  level: number
+  depth: number,
+  listLevel: number
 ): Promise<string> {
+  if (listLevel > MAX_ILVL && !notes.some((n) => n.code === "list-nesting-clamped")) {
+    notes.push({
+      level: "info",
+      code: "list-nesting-clamped",
+      message: `List nesting deeper than ${MAX_ILVL + 1} levels was clamped to level ${MAX_ILVL + 1} (Word's list-level limit); visual indentation is preserved.`,
+    });
+  }
+  let numId: number | undefined;
+  const acquire = (): number => (numId ??= ctx.numbering.acquire(list.ordered));
   let out = "";
-  let index = 1;
   for (const item of list.items) {
-    out += await serializeListItem(item, list.ordered, index, level, ctx, notes);
-    index += 1;
+    out += await serializeListItem(item, list.ordered, listLevel, depth, acquire, ctx, notes);
   }
   return out;
 }
@@ -686,42 +766,90 @@ async function serializeList(
 async function serializeListItem(
   item: ListItem,
   ordered: boolean,
-  index: number,
-  level: number,
+  listLevel: number,
+  depth: number,
+  acquireNumId: () => number,
   ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
-  const marker =
-    item.checked === true ? "☑" : item.checked === false ? "☐" : ordered ? `${index}.` : "•";
-  const markerRun = run(`${marker} `);
-  const indent = INDENT_STEP + level * INDENT_STEP;
+  const ilvl = Math.min(listLevel, MAX_ILVL);
+  const isTask = item.checked !== undefined;
+  const styleId = resolveListStyleId(ctx.styleNames, ordered, ilvl);
+  const contIndent = `<w:ind w:left="${listIndent(ilvl)}"/>`;
   let out = "";
-  let markerPlaced = false;
+  let firstPlaced = false;
 
   for (const block of item.content) {
     if (block.type === "list") {
-      // Nested lists carry their own (deeper) indent; never the item marker.
-      out += await serializeList(block, ctx, notes, level + 1);
+      // A nested list node is its own level — never the item marker/numId.
+      out += await serializeList(block, ctx, notes, depth + 1, listLevel + 1);
       continue;
     }
-    // Indent the block under the bullet, then attach the marker to the FIRST
-    // rendered block regardless of its type (heading-first items must not get a
-    // trailing marker-only paragraph).
-    let frag = addParagraphProps(
-      await serializeBlock(block, ctx, notes, level + 1),
-      `<w:ind w:left="${indent}"/>`
-    );
-    if (!markerPlaced) {
-      frag = placeMarker(frag, markerRun);
-      markerPlaced = true;
+    const frag = await serializeBlock(block, ctx, notes, depth + 1);
+    if (!firstPlaced) {
+      firstPlaced = true;
+      if (isTask) {
+        // Task items keep the ☑/☐ glyph (Word has no checkbox numbering) but
+        // adopt the resolved list paragraph style + level indent.
+        const marker = run(`${item.checked ? "☑" : "☐"} `);
+        out += placeMarker(applyFirstListProps(frag, styleId, undefined, contIndent), marker);
+      } else {
+        // Numbered/bulleted: real w:numPr, no literal marker, indent from
+        // the numbering definition.
+        const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+        out += applyFirstListProps(frag, styleId, numPr, undefined);
+      }
+    } else {
+      // Continuation blocks: level-matched visual indent only, no numPr.
+      out += addParagraphProps(frag, contIndent);
     }
-    out += frag;
   }
 
-  if (!markerPlaced) {
-    out += paragraph(markerRun, { extraPPr: `<w:ind w:left="${indent}"/>` });
+  if (!firstPlaced) {
+    // An empty item still needs a marked line so numbering is not skipped.
+    if (isTask) {
+      out += paragraph(run(`${item.checked ? "☑" : "☐"} `), {
+        styleId,
+        extraPPr: contIndent,
+      });
+    } else {
+      const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+      out += paragraph(run(""), { styleId, extraPPr: numPr });
+    }
   }
   return out;
+}
+
+/**
+ * Apply list paragraph properties to the FIRST paragraph of an item's first
+ * block: a `<w:pStyle>` (unless the paragraph already carries one — a heading
+ * keeps its own) plus `propsXml` (either a `<w:numPr>` for numbered/bulleted
+ * items or a `<w:ind>` for task items). When the first block is not a
+ * paragraph (a callout table), an empty styled paragraph is prepended so the
+ * marker/number has somewhere to live (the `placeMarker` special case).
+ */
+function applyFirstListProps(
+  frag: string,
+  styleId: string,
+  numPrXml: string | undefined,
+  indXml: string | undefined
+): string {
+  const extra = numPrXml ?? indXml ?? "";
+  if (!frag.startsWith("<w:p")) {
+    return paragraph(run(""), { styleId, extraPPr: extra }) + frag;
+  }
+  // Insert into the FIRST paragraph only.
+  const pStyleTag = `<w:pStyle w:val="${styleId}"/>`;
+  // Case: <w:p ...><w:pPr><w:pStyle .../>…  → keep existing pStyle, add extra after it.
+  if (/^<w:p\b[^>]*><w:pPr><w:pStyle\b/.test(frag)) {
+    return frag.replace(/^(<w:p\b[^>]*><w:pPr><w:pStyle\b[^>]*\/>)/, `$1${extra}`);
+  }
+  // Case: <w:p ...><w:pPr>… (no pStyle) → add our pStyle + extra at pPr start.
+  if (/^<w:p\b[^>]*><w:pPr>/.test(frag)) {
+    return frag.replace(/^(<w:p\b[^>]*><w:pPr>)/, `$1${pStyleTag}${extra}`);
+  }
+  // Case: <w:p ...> (no pPr) → add a fresh pPr.
+  return frag.replace(/^(<w:p\b[^>]*>)/, `$1<w:pPr>${pStyleTag}${extra}</w:pPr>`);
 }
 
 // ---- Tables ---------------------------------------------------------------
@@ -732,33 +860,73 @@ interface Carry {
   backgroundColor?: string;
 }
 
+/** Budget caps against malformed/pathological table geometry (spec 006 G3). */
+const MAX_TABLE_COLUMNS = 200;
+const MAX_TABLE_SPAN = 200;
+
+/** One laid-out cell descriptor (no XML yet — emitted in the render phase). */
+interface CellDesc {
+  colStart: number;
+  colspan: number;
+  kind: "source" | "carry" | "padding";
+  body?: string;
+  header?: boolean;
+  backgroundColor?: string;
+  vMerge?: "restart" | "continue";
+}
+
+/**
+ * Serialize a table in two phases (spec 006 G3): a LAYOUT phase produces
+ * per-cell descriptors and discovers `gridCols` (colspan/rowspan/carry
+ * bookkeeping, budget-guarded), then a RENDER phase — once `gridCols` and the
+ * derived width array are final — emits `w:tcW`/`w:gridCol` from the source
+ * `columnWidths`. Splitting the passes is required because a cell's `w:tcW`
+ * depends on the FINAL grid width, unknown until the last row is laid out.
+ */
 async function serializeTable(
   rows: TableRow[],
+  columnWidths: number[] | undefined,
   ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
-  // The grid grows as needed: a row's width is the columns carried in by
-  // rowspans from above PLUS this row's own cells. The naive "widest row by
-  // summed colspan" undercounts when a carried rowspan pushes later cells past
-  // that width, which dropped those cells. Here every source cell is emitted;
-  // rows shorter than the final grid are padded so the table stays rectangular.
   const carry: (Carry | null)[] = [];
-  const rowCells: string[] = [];
+  const rowDescs: CellDesc[][] = [];
   const rowWidths: number[] = [];
   let gridCols = 0;
+  let budgetNoted = false;
+  const noteBudget = (): void => {
+    if (budgetNoted) return;
+    budgetNoted = true;
+    notes.push({
+      level: "warning",
+      code: "table-geometry-clamped",
+      message: `A table cell's span or the table's column count exceeded safe limits (max ${MAX_TABLE_COLUMNS} columns, span ${MAX_TABLE_SPAN}) and was clamped.`,
+    });
+  };
+  const safeSpan = (raw: number): number => {
+    if (!Number.isSafeInteger(raw) || raw < 1 || raw > MAX_TABLE_SPAN) {
+      if (raw > MAX_TABLE_SPAN || !Number.isSafeInteger(raw)) noteBudget();
+      return 1;
+    }
+    return raw;
+  };
 
   for (const r of rows) {
     let col = 0;
     let sourceIdx = 0;
-    let cellsXml = "";
+    const descs: CellDesc[] = [];
 
-    // A row is done once every source cell is placed AND no carried rowspan
-    // still occupies a column at or beyond the cursor.
     while (sourceIdx < r.cells.length || hasCarryFrom(carry, col)) {
+      if (col >= MAX_TABLE_COLUMNS) {
+        noteBudget();
+        break;
+      }
       const active = carry[col];
       if (active) {
-        cellsXml += tableCell("", {
+        descs.push({
+          colStart: col,
           colspan: active.colspan,
+          kind: "carry",
           vMerge: "continue",
           backgroundColor: active.backgroundColor,
         });
@@ -773,7 +941,8 @@ async function serializeTable(
 
       if (sourceIdx >= r.cells.length) break;
       const cell = r.cells[sourceIdx++];
-      const colspan = Math.max(1, cell.colspan);
+      const colspan = safeSpan(Math.max(1, cell.colspan));
+      const rowspan = safeSpan(Math.max(1, cell.rowspan));
       const defaultTextColor = cell.backgroundColor
         ? readableTextColor(cell.backgroundColor).slice(1)
         : undefined;
@@ -783,32 +952,29 @@ async function serializeTable(
         notes,
         1
       );
-      cellsXml += tableCell(body || paragraph(run("")), {
+      descs.push({
+        colStart: col,
         colspan,
-        vMerge: cell.rowspan > 1 ? "restart" : undefined,
+        kind: "source",
+        body: body || paragraph(run("")),
         header: cell.header,
         backgroundColor: cell.backgroundColor,
+        vMerge: rowspan > 1 ? "restart" : undefined,
       });
-      if (cell.rowspan > 1) {
+      if (rowspan > 1) {
         for (let k = col; k < col + colspan; k++) {
-          carry[k] = {
-            colspan,
-            rowsRemaining: cell.rowspan - 1,
-            backgroundColor: cell.backgroundColor,
-          };
+          carry[k] = { colspan, rowsRemaining: rowspan - 1, backgroundColor: cell.backgroundColor };
         }
       }
       col += colspan;
     }
 
-    rowCells.push(cellsXml);
+    rowDescs.push(descs);
     rowWidths.push(col);
     gridCols = Math.max(gridCols, col);
   }
-  gridCols = Math.max(1, gridCols);
+  gridCols = Math.max(1, Math.min(gridCols, MAX_TABLE_COLUMNS));
 
-  // A rowspan that reaches past the last row leaves an active carry: the shape
-  // can't be fully represented, so note it rather than corrupt anything.
   if (carry.some((c) => c)) {
     notes.push({
       level: "info",
@@ -817,14 +983,66 @@ async function serializeTable(
     });
   }
 
+  // Render phase: widths are now final. Derive the dxa width array; each cell
+  // gets the sum of its spanned columns so the fixed layout is not repaired.
+  const widthsDxa = columnWidthsDxa(columnWidths, gridCols);
+  const templateStyle = ctx.tableStyle?.source === "template" && ctx.tableStyle.styleId;
+  const spanWidth = (colStart: number, colspan: number): number | undefined => {
+    if (!widthsDxa) return undefined;
+    let sum = 0;
+    for (let k = colStart; k < colStart + colspan && k < widthsDxa.length; k++) sum += widthsDxa[k];
+    return sum;
+  };
+  const emit = (d: CellDesc): string =>
+    tableCell(d.kind === "padding" ? paragraph(run("")) : d.body ?? "", {
+      colspan: d.colspan,
+      vMerge: d.vMerge,
+      // Template style mode suppresses inline header/background shading.
+      header: templateStyle ? false : d.header,
+      backgroundColor: templateStyle ? undefined : d.backgroundColor,
+      ...(spanWidth(d.colStart, d.colspan) !== undefined ? { widthDxa: spanWidth(d.colStart, d.colspan) } : {}),
+    });
+
   let rowsXml = "";
-  for (let i = 0; i < rowCells.length; i++) {
-    let cells = rowCells[i];
-    for (let k = rowWidths[i]; k < gridCols; k++) cells += tableCell(paragraph(run("")), {});
+  for (let i = 0; i < rowDescs.length; i++) {
+    let cells = rowDescs[i].map(emit).join("");
+    for (let k = rowWidths[i]; k < gridCols; k++) {
+      cells += emit({ colStart: k, colspan: 1, kind: "padding" });
+    }
     rowsXml += `<w:tr>${cells}</w:tr>`;
   }
 
-  return dataTable(gridCols, rowsXml);
+  return dataTable(gridCols, rowsXml, {
+    ...(widthsDxa ? { widthsDxa } : {}),
+    ...(ctx.tableStyle ? { tableStyle: ctx.tableStyle } : {}),
+  });
+}
+
+/**
+ * Scale source `columnWidths` to the fixed 9000-dxa table width (spec 006 G3),
+ * or `undefined` for an even split. Mirrors the PDF engine's validation
+ * (`packages/pdf/src/serialize.ts` `tableColumns`): length must equal
+ * `gridCols`, every width finite and > 0, and the max/min SPREAD must exceed
+ * 1.05 — near-equal widths keep the clean even split. Unlike PDF, DOCX does
+ * NOT port the `inferredTableTracks` content-length heuristic (predictability
+ * over content-sniffing): near-equal/absent-width tables may render differently
+ * across the two engines — a documented divergence, not a bug. The rounding
+ * remainder is corrected on the last column so the widths sum to exactly 9000.
+ */
+export function columnWidthsDxa(
+  columnWidths: number[] | undefined,
+  gridCols: number
+): number[] | undefined {
+  if (!columnWidths || columnWidths.length !== gridCols) return undefined;
+  if (!columnWidths.every((w) => Number.isFinite(w) && w > 0)) return undefined;
+  const spread = Math.max(...columnWidths) / Math.min(...columnWidths);
+  if (spread <= 1.05) return undefined;
+  const total = columnWidths.reduce((s, w) => s + w, 0);
+  const dxa = columnWidths.map((w) => Math.max(1, Math.round((w / total) * 9000)));
+  const sum = dxa.reduce((s, w) => s + w, 0);
+  dxa[dxa.length - 1] += 9000 - sum; // absorb the rounding remainder
+  if (dxa[dxa.length - 1] < 1) dxa[dxa.length - 1] = 1;
+  return dxa;
 }
 
 /** True if any carried rowspan still occupies a column at or beyond `col`. */

@@ -249,6 +249,21 @@ export function TemplateSection({
             getCurrentUser: () => client.getCurrentUser(),
             getPageOwner: (id) => client.getPageOwner(id),
             getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+            // Cross-page include (spec 005 D1): lazy — the include pass calls it
+            // per occurrence, so `buildGetIncludedPage` (isomorphic, in the docx
+            // engine chunk that `loadExport()` already fetches for this export)
+            // is imported on first use, never pulling the heavy barrel into the
+            // panel's static graph. Title lookups use the DIRECT content
+            // endpoint (findPagesByTitle), NOT CQL — same as the CLI — so a
+            // just-created target resolves without the search-index lag.
+            getIncludedPage: async (ref) => {
+              const { buildGetIncludedPage } = await loadExport();
+              return buildGetIncludedPage({
+                getPage: (id) => client.getPage(id),
+                findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
+                defaultSpaceKey: loadedPage.details.spaceKey,
+              })(ref);
+            },
           })
         : {};
       const [{ runExport }, env] = await Promise.all([loadExport(), loadEnv()]);

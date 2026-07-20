@@ -1,5 +1,5 @@
 import type { ConfluenceClient } from "@atlcli/confluence/browser";
-import type { ResolveDeps } from "@atlcli/docx/internal";
+import type { IncludeLookupOutcome, IncludePageRef, ResolveDeps } from "@atlcli/docx/internal";
 import type { ScanResult } from "@atlcli/docx/scan";
 
 type SpaceInfo = Awaited<ReturnType<ConfluenceClient["getSpaceWithIcon"]>>;
@@ -9,6 +9,13 @@ export interface ExportDependencyLoaders {
   getCurrentUser(): ReturnType<ConfluenceClient["getCurrentUser"]>;
   getPageOwner(id: string): ReturnType<ConfluenceClient["getPageOwner"]>;
   getSpaceHomepageStorage(key: string): ReturnType<ConfluenceClient["getSpaceHomepageStorage"]>;
+  /**
+   * Cross-page include lookup (spec 005 D1). Unlike the other four loaders it is
+   * NOT pre-started by {@link scanDependencies} (its refs are discovered only
+   * inside the engine's include pass, per occurrence), so it stays lazy and
+   * uncalled until an include token is actually expanded.
+   */
+  getIncludedPage(ref: IncludePageRef): Promise<IncludeLookupOutcome>;
 }
 
 type ExportDependency = "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo";
@@ -106,6 +113,10 @@ export function prepareExportDeps(
       const icon = (await spaceInfo(key)).icon;
       return icon ? { url: icon.path } : null;
     },
+    // Wired straight through (spec 005 D1): the include pass invokes it lazily
+    // per occurrence, so — unlike the four loaders above — there is no
+    // pre-start branch for it in `scanDependencies`.
+    getIncludedPage: loaders.getIncludedPage,
   };
 
   const required = scanDependencies(scan);

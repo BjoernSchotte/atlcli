@@ -42,6 +42,22 @@ export function mightContainMermaid(storage: string): boolean {
   );
 }
 
+/**
+ * Cheap, conservative gate for whether a page might need a rasterizer for an
+ * IMAGE (spec 006 G4): any `<ac:image>` / attachment reference. Deliberately
+ * over-triggering — it matches any image, not just SVG attachments, because
+ * parsing storage deeply enough to know an attachment's extension before
+ * fetching it is not worth the complexity. A false positive costs an unused
+ * rasterizer build; a false negative would silently degrade an SVG-only page's
+ * SVG in the CLI even though the engine supports it, which is the failure mode
+ * worth avoiding. The DOCX SVG-attachment path degrades with
+ * `image-svg-no-rasterizer` when no rasterizer is available, so the CLI must
+ * build one whenever this OR {@link mightContainMermaid} matches.
+ */
+export function mightReferenceImage(storage: string): boolean {
+  return /<ac:image\b/i.test(storage) || /<ri:attachment\b/i.test(storage);
+}
+
 /** Start only the page-key-dependent requests named by the local template scan. */
 export function prestartPageDependentDeps(input: {
   pagePromise: Promise<{ spaceKey?: string }>;

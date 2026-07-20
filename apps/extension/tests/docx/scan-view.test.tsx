@@ -18,6 +18,7 @@ function makeScan(hasContentPlaceholder: boolean): ScanResult {
     never: [],
     parts: ["word/document.xml"],
     hasContentPlaceholder,
+    stylerefStyleNames: [],
   };
 }
 
@@ -73,6 +74,7 @@ describe("ScanView — per-placeholder reasons (E2E finding)", () => {
     ],
     parts: ["word/document.xml"],
     hasContentPlaceholder: true,
+    stylerefStyleNames: [],
   };
 
   it("renders each unsupported row's own reason, not one shared note", () => {

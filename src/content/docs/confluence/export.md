@@ -579,6 +579,19 @@ via `.(height,width)` in px); on Confluence Cloud the global logo is not separat
 logos are SVGs, which are not embedded yet — upload a custom PNG/JPEG logo to the space for logo
 embedding.
 
+`$scroll.includepage.(Title | SPACE:Title | pageId)` embeds the body of another Confluence page
+at the placeholder position (a central imprint or disclaimer, reused across exports). The same
+target referenced in the body and a header/footer renders in every occurrence; only a page
+including itself is blocked. Put the token on its own line — a token sharing a paragraph with
+other text is left unexpanded (the surrounding text is preserved). See the
+[DOCX engine reference](/reference/docx-engine/#included-pages--scrollincludepage) for argument
+forms, budgets, and the full note-code list.
+
+`$scroll.metadata.(key)` (Comala Metadata) is **unsupported**: the value lives in a third-party
+app, so the token is emptied and listed in the report with the remedy — map the key to a
+Confluence content property in the export settings. (The alias bridge itself is a follow-up; see
+below.)
+
 ## Troubleshooting
 
 ### Word Can't Open the File
@@ -598,6 +611,23 @@ embedding.
 - Verify images are attached to the Confluence page
 - Check that `--no-images` flag is not set
 - Embedded images use the template's image placeholder styling
+
+### An Included Page Renders Empty
+
+`$scroll.includepage.(…)` blanks the token and adds a report note whenever the reference can't
+be rendered. Check the note `code` (in `--json` under the report's `issues`/`notesByCode`):
+
+- `includepage-invalid-context` — the token shares a paragraph with other text; put it on its
+  own line.
+- `includepage-unresolved` — the name matches no page, or the export credential can't read it
+  (Cloud makes 403 and 404 indistinguishable). Verify the title/space or use the `(pageId)` form.
+- `includepage-ambiguous-title` — several pages share the title; the first (id-sorted) rendered.
+  Disambiguate with `SPACE:Title` or `(pageId)`.
+- `includepage-auth-failed` / `includepage-rate-limited` / `includepage-transient-error` —
+  credential, throttling, or network/5xx problem; fix the credential or retry the export.
+- `includepage-cycle` — the reference resolved to the page being exported (self-include).
+- `includepage-budget-exceeded` — more than 25 unique included pages (or 2 MiB of included
+  storage); later new targets are blanked.
 
 ### "require --engine ts" Error
 

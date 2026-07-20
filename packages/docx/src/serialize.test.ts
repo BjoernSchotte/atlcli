@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { composeChapters, storageToBlocks, type ExportBlock, type ExportNode, type InlineNode } from "@atlcli/confluence";
 import {
+  columnWidthsDxa,
   serializeBlocks,
   serializeInline,
   type CodeBlock,
@@ -8,7 +9,7 @@ import {
   type DiagramEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
-import { parseStyleNames, resolveCaptionLang } from "./ooxml.js";
+import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 
 const noStyles = new Map<string, string>();
@@ -433,12 +434,13 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     ];
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain("Only heading");
-    // Promoted: the lone H2 (in a list item) → Heading1.
+    // Promoted: the lone H2 (in a list item) → Heading1, and the heading keeps
+    // its own style while gaining native list numbering (no literal marker).
     expect(xml).toContain('<w:pStyle w:val="Heading1"/>');
-    // Exactly one marker — no extra marker-only paragraph after the heading.
-    expect((xml.match(/•/g) ?? []).length).toBe(1);
-    // The marker sits inside the heading paragraph (before its text run).
-    expect(xml.indexOf("•")).toBeLessThan(xml.indexOf("Only heading"));
+    expect(xml).not.toContain("•");
+    // Exactly one numPr at ilvl 0 — no extra marker-only paragraph.
+    expect((xml.match(/<w:numPr>/g) ?? []).length).toBe(1);
+    expect(xml).toContain('<w:ilvl w:val="0"/>');
   });
 
   it("reports a note when an unknown language degrades to plain text (#14)", async () => {
@@ -527,7 +529,7 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("raster exploded");
   });
 
-  it("renders nested lists with markers", async () => {
+  it("renders nested lists with native numbering (distinct numId per node)", async () => {
     const blocks: ExportBlock[] = [
       {
         type: "list",
@@ -545,7 +547,14 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain("top");
     expect(xml).toContain("nested");
-    expect(xml).toContain("1."); // ordered nested marker
+    // Native numbering: the outer bullet is ilvl 0, the nested <ol> is ilvl 1
+    // and gets its OWN (decimal) numId, distinct from the bullet's.
+    const numIds = [...xml.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
+    expect(numIds).toHaveLength(2);
+    expect(new Set(numIds).size).toBe(2);
+    expect(xml).toContain('<w:ilvl w:val="0"/>');
+    expect(xml).toContain('<w:ilvl w:val="1"/>');
+    expect(xml).not.toContain("•");
   });
 });
 
@@ -1004,5 +1013,173 @@ describe("resolveCaptionLang", () => {
     const result = resolveCaptionLang("fr-FR");
     expect(result.lang).toBe("en");
     expect(result.note).toMatchObject({ level: "warning", code: "caption-lang-fallback" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G3 — table column widths + G3b table style source (spec 006)
+// ---------------------------------------------------------------------------
+
+describe("columnWidthsDxa (spec 006 G3)", () => {
+  it("scales ratios [100, 300] to gridCol 2250/6750 (PDF-parity numbers)", () => {
+    expect(columnWidthsDxa([100, 300], 2)).toEqual([2250, 6750]);
+  });
+
+  it("even-splits (undefined) on a length mismatch", () => {
+    expect(columnWidthsDxa([100, 300], 3)).toBeUndefined();
+    expect(columnWidthsDxa(undefined, 2)).toBeUndefined();
+  });
+
+  it("even-splits (undefined) for near-equal widths below the 1.05 spread threshold", () => {
+    expect(columnWidthsDxa([226, 226], 2)).toBeUndefined();
+    expect(columnWidthsDxa([230, 226], 2)).toBeUndefined(); // spread ~1.018
+  });
+
+  it("honors an explicit non-near-equal spread and sums to exactly 9000", () => {
+    const dxa = columnWidthsDxa([1, 2, 6], 3)!;
+    expect(dxa).toBeDefined();
+    expect(dxa.reduce((s, w) => s + w, 0)).toBe(9000);
+  });
+
+  it("rejects non-finite / non-positive widths", () => {
+    expect(columnWidthsDxa([0, 300], 2)).toBeUndefined();
+    expect(columnWidthsDxa([Number.NaN, 300], 2)).toBeUndefined();
+  });
+});
+
+describe("serializeBlocks — table widths + style (spec 006 G3/G3b)", () => {
+  const noStyles = new Map<string, string>();
+  const cell = (text: string, extra: Partial<{ colspan: number; rowspan: number; header: boolean }> = {}) => ({
+    colspan: extra.colspan ?? 1,
+    rowspan: extra.rowspan ?? 1,
+    header: extra.header ?? false,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+  const table = (columnWidths: number[] | undefined, rows: ReturnType<typeof cell>[][]): ExportBlock => ({
+    type: "table",
+    rows: rows.map((cells) => ({ cells })),
+    ...(columnWidths ? { columnWidths } : {}),
+  });
+
+  it("emits real gridCol widths + tblLayout fixed for explicit unequal widths", async () => {
+    const { xml } = await serializeBlocks([table([100, 300], [[cell("a"), cell("b")]])], {
+      styleNames: noStyles,
+    });
+    expect(xml).toContain('<w:gridCol w:w="2250"/>');
+    expect(xml).toContain('<w:gridCol w:w="6750"/>');
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    // Per-cell tcW matches the column widths.
+    expect(xml).toContain('<w:tcW w:w="2250" w:type="dxa"/>');
+    expect(xml).toContain('<w:tcW w:w="6750" w:type="dxa"/>');
+  });
+
+  it("falls back to an even split (no tcW, no fixed layout) for near-equal widths", async () => {
+    const { xml } = await serializeBlocks([table([226, 226], [[cell("a"), cell("b")]])], {
+      styleNames: noStyles,
+    });
+    expect(xml).not.toContain("<w:tcW");
+    expect(xml).not.toContain('w:type="fixed"');
+  });
+
+  it("a colspan cell's tcW equals the sum of its spanned columns", async () => {
+    // 3 columns [100,100,300] of total 500 → dxa [1800,1800,5400]. A cell
+    // spanning cols 0-1 → tcW 3600; the 3rd column → 5400.
+    const { xml } = await serializeBlocks(
+      [
+        table(
+          [100, 100, 300],
+          [
+            [cell("h1"), cell("h2"), cell("h3")],
+            [cell("wide", { colspan: 2 }), cell("tail")],
+          ]
+        ),
+      ],
+      { styleNames: noStyles }
+    );
+    expect(xml).toContain('<w:gridCol w:w="1800"/>');
+    expect(xml).toContain('<w:gridCol w:w="5400"/>');
+    // The spanning cell sums cols 0+1 = 3600.
+    expect(xml).toContain('<w:tcW w:w="3600" w:type="dxa"/>');
+    expect(xml).toContain('<w:gridSpan w:val="2"/>');
+  });
+
+  it("handles a combined fixture: ragged rows, rowspan carries, colspans, padding", async () => {
+    const blocks = [
+      table(undefined, [
+        [cell("r1c1", { rowspan: 2 }), cell("r1c2", { colspan: 2 })],
+        [cell("r2c2"), cell("r2c3")],
+        [cell("r3only")],
+      ]),
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    // vMerge restart + continue for the rowspan.
+    expect(xml).toContain('<w:vMerge w:val="restart"/>');
+    expect(xml).toContain('<w:vMerge w:val="continue"/>');
+    expect(xml).toContain('<w:gridSpan w:val="2"/>');
+    // Rectangular: 3 rows each summing to gridCols=3 columns.
+    expect((xml.match(/<w:tr>/g) ?? []).length).toBe(3);
+  });
+
+  it("clamps a pathological colspan and emits a budget note", async () => {
+    const { xml, notes } = await serializeBlocks(
+      [table(undefined, [[cell("boom", { colspan: 100000 })]])],
+      { styleNames: noStyles }
+    );
+    expect(notes.some((n) => n.code === "table-geometry-clamped")).toBe(true);
+    // Not driven to an oversized grid.
+    expect((xml.match(/<w:gridCol/g) ?? []).length).toBeLessThanOrEqual(200);
+  });
+
+  it("G3b: source template emits the style ref and omits inline borders/shading", async () => {
+    const { xml } = await serializeBlocks(
+      [table(undefined, [[cell("h", { header: true })]])],
+      { styleNames: noStyles, tableStyle: { source: "template", styleId: "ScrollTableNormal" } }
+    );
+    expect(xml).toContain('<w:tblStyle w:val="ScrollTableNormal"/>');
+    expect(xml).toContain("<w:tblLook");
+    expect(xml).not.toContain("<w:tblBorders>");
+    // Header shading is suppressed under the template style.
+    expect(xml).not.toContain("<w:shd");
+  });
+
+  it("G3b: source confluence (default) keeps the built-in grid + borders", async () => {
+    const { xml } = await serializeBlocks([table(undefined, [[cell("x")]])], { styleNames: noStyles });
+    expect(xml).toContain('<w:tblStyle w:val="TableGrid"/>');
+    expect(xml).toContain("<w:tblBorders>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dataTable tblPr child order (ECMA-376 §17.4.60 CT_TblPrBase)
+// ---------------------------------------------------------------------------
+
+describe("dataTable — tblPr schema child order (spec 006 G3)", () => {
+  const row = "<w:tr><w:tc><w:tcPr/><w:p/></w:tc></w:tr>";
+
+  it("confluence branch: tblBorders (seq 11) precedes tblLayout (seq 13) with fixed widths", () => {
+    const xml = dataTable(2, row, { widthsDxa: [3000, 6000] });
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    // Relative order, not mere presence — a strict CT_TblPrBase validator rejects
+    // tblLayout before tblBorders.
+    expect(xml.indexOf("<w:tblBorders>")).toBeGreaterThan(-1);
+    expect(xml.indexOf("<w:tblBorders>")).toBeLessThan(xml.indexOf("<w:tblLayout"));
+    // tblStyle (seq 1) and tblW (seq 7) still precede tblBorders (seq 11).
+    expect(xml.indexOf("<w:tblStyle")).toBeLessThan(xml.indexOf("<w:tblW"));
+    expect(xml.indexOf("<w:tblW")).toBeLessThan(xml.indexOf("<w:tblBorders>"));
+  });
+
+  it("template branch: tblStyle < tblW < tblLayout < tblLook (ascending seq)", () => {
+    const xml = dataTable(2, row, {
+      widthsDxa: [3000, 6000],
+      tableStyle: { source: "template", styleId: "ScrollTableNormal" },
+    });
+    const iStyle = xml.indexOf('<w:tblStyle w:val="ScrollTableNormal"/>');
+    const iW = xml.indexOf("<w:tblW");
+    const iLayout = xml.indexOf("<w:tblLayout");
+    const iLook = xml.indexOf("<w:tblLook");
+    expect(iStyle).toBeGreaterThan(-1);
+    expect(iStyle).toBeLessThan(iW);
+    expect(iW).toBeLessThan(iLayout);
+    expect(iLayout).toBeLessThan(iLook);
   });
 });

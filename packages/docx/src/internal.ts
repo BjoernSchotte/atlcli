@@ -9,5 +9,6 @@
  */
 export * from "./scan.js";
 export * from "./resolver.js";
+export * from "./include-lookup.js";
 export * from "./serialize.js";
 export * from "./ooxml.js";

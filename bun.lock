@@ -26,8 +26,10 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-fixtures": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
+        "@atlcli/template-pack": "workspace:*",
       },
       "devDependencies": {
         "@playwright/test": "1.55.0",
@@ -127,6 +129,15 @@
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
         "shiki": "^4.3.1",
+      },
+    },
+    "packages/export-fixtures": {
+      "name": "@atlcli/export-fixtures",
+      "version": "0.0.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
+        "@atlcli/docx": "workspace:*",
+        "@atlcli/pdf": "workspace:*",
       },
     },
     "packages/export-macros": {
@@ -255,6 +266,8 @@
     "@atlcli/diagram": ["@atlcli/diagram@workspace:packages/diagram"],
 
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
+
+    "@atlcli/export-fixtures": ["@atlcli/export-fixtures@workspace:packages/export-fixtures"],
 
     "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
 

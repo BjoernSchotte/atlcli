@@ -28,3 +28,4 @@ packages/pdf-compiler-browser/vendor/
 # SonarQube coverage artifact
 coverage/
 .scannerwork/
+scripts/bench/out/

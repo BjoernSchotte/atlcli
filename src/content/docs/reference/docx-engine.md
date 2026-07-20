@@ -16,8 +16,12 @@ inject.
 - [Architecture](#architecture)
 - [Host ports](#host-ports)
 - [Browser hosts](#browser-hosts)
+- [Lists and numbering](#lists-and-numbering)
+- [Tables](#tables)
 - [Image embedding](#image-embedding)
+- [SVG attachments](#svg-attachments)
 - [Mermaid diagrams](#mermaid-diagrams)
+- [Running headers (STYLEREF)](#running-headers-styleref)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
 - [Performance model](#performance-model)
 - [Guarantees and gates](#guarantees-and-gates)
@@ -81,6 +85,66 @@ ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-runtime`) and
 rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 `packages/docx/src/node-adapters.ts`) that the CLI uses.
 
+## Lists and numbering
+
+Lists export as **native Word lists** — real `w:numPr` references plus a synthesized
+`word/numbering.xml` — not literal `•`/`1.` characters. They renumber when edited, respond to
+the template's list styles, and expose list structure to screen readers.
+
+- **Restart-per-list:** bullets share one numbering instance; every ordered list **node**
+  (top-level or nested, and two logically separate `<ol>`s side by side) gets its own `numId`
+  and **restarts at 1** — matching Confluence, not Word's document-wide default. A nested
+  `<ol>` inside a `<ul>` gets its own decimal `numId`, never the parent bullet's.
+- **Nesting level (`w:ilvl`) is semantic:** it reflects true list-nesting depth, starting at 0
+  for every list regardless of any enclosing callout, blockquote, or table cell. A list that is
+  the first block in a callout still starts at level 1.
+- **Template list styles** are honored via the real, asymmetric Scroll naming convention: level 1
+  is **suffixless** (`Scroll List Bullet` / `Scroll List Number`) and levels 2–8 carry a numeric
+  suffix (`Scroll List Bullet 2` … `Scroll List Bullet 8`). The fallback chain is
+  `Scroll List …` → builtin `List Bullet`/`List Number` → `ListParagraph`. The template controls
+  font and spacing; the engine's synthesized levels control indent and number format.
+
+  | `w:ilvl` | List level | Bullet style name | Number style name |
+  | --- | --- | --- | --- |
+  | 0 | 1 | `Scroll List Bullet` | `Scroll List Number` |
+  | 1 | 2 | `Scroll List Bullet 2` | `Scroll List Number 2` |
+  | … | … | … | … |
+  | 7 | 8 | `Scroll List Bullet 8` | `Scroll List Number 8` |
+
+- **Task lists** keep their `☑`/`☐` glyphs (Word has no native checkbox numbering) but adopt the
+  resolved list paragraph style for consistent indentation.
+- **Limits (documented, enforced with report notes):** nesting deeper than **9 levels** (ilvl
+  0–8) clamps to ilvl 8 and keeps only visual indentation (`list-nesting-clamped`, info). Word
+  caps numbering definitions at **2047 instances** per document; since ids are allocated above
+  the template's existing maximum, roughly **2046 ordered-list nodes** per export get their own
+  restart instance — beyond the cap the last instance is reused and a `numbering-cap-reached`
+  warning is emitted (a valid file, not an invalid one). Ids are always allocated **above** the
+  template's existing `word/numbering.xml` (scanned before serialization), so a template that
+  already ships numbering never collides.
+
+## Tables
+
+Confluence column widths are honored. When a table carries an explicit `<colgroup>` whose
+widths are meaningfully unequal (max/min spread **> 1.05**), the engine emits real
+`w:tblGrid`/`w:gridCol` widths and per-cell `w:tcW`, scaled proportionally to the fixed 9000-dxa
+table width with `w:tblLayout w:type="fixed"` so Word does not re-autofit. A colspan cell's width
+is the sum of its spanned columns.
+
+- **Even-split fallback:** absent, mismatched, invalid, or near-equal (≤ 1.05 spread) widths fall
+  back to the clean even split (no `w:tcW`). This is a **documented divergence** from the PDF
+  engine, which additionally applies a content-length heuristic (`inferredTableTracks`) that can
+  widen a dominant narrative column for near-equal/absent widths. DOCX deliberately does **not**
+  port that heuristic (predictability over content-sniffing); the two engines agree on explicit,
+  non-near-equal widths.
+- **Budget guards:** pathological `colspan`/`rowspan`/column-count (beyond 200) is clamped with a
+  `table-geometry-clamped` warning instead of driving an unbounded allocation.
+- **Table style source (B9):** by default (`source: "confluence"`) tables use the built-in grid
+  with inline borders and per-cell shading — byte-identical to earlier releases. Pass
+  `tableStyle: { source: "template" }` to defer appearance to the template's own table style
+  (default name **`Scroll Table Normal`**, or `styleId` to name another): the engine then emits
+  only the style reference + banding `w:tblLook` and suppresses inline borders/shading. A missing
+  named style falls back to the built-in grid with a `table-style-missing` note.
+
 ## Image embedding
 
 Images embed through a self-built OOXML image module (`packages/docx/src/image.ts` — the
@@ -89,7 +153,9 @@ docxtemplater free tier has no image support): per image the engine writes a
 inline `<w:drawing>` with unique element ids and alt text. Details that matter to hosts:
 
 - **Formats:** PNG, JPEG, GIF (dimensions decoded from the header bytes, no image library).
-  SVG is detected but deferred — it degrades to a report note.
+  **SVG attachments** embed vector-sharp through the same `asvg:svgBlip` dual-part path as
+  mermaid diagrams (SVG + a 2× PNG fallback for older Word / LibreOffice) — see
+  [SVG attachments](#svg-attachments).
 - **Sizing:** page-set width/height (`ac:width`) wins over the intrinsic size; everything is
   capped to the content width (600 px at 96 dpi) preserving aspect ratio.
 - **Failure is never fatal:** a failed fetch/decode/oversized image produces an
@@ -105,6 +171,32 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
   (`tokenAssetFetcher` in `apps/cli/src/commands/export.ts`).
 - Byte-identical images share one media part; the report counts `embeddedImages` and
   `skippedImages`.
+
+## SVG attachments
+
+SVG page attachments embed vector-sharp through the same `asvg:svgBlip` dual-part path as
+mermaid diagrams: the SVG plus a **2× PNG fallback** (older Word and LibreOffice render the PNG,
+modern Word the vector). This reuses the host's injected `SvgRasterizer`, so it shares the
+mermaid path's constraints.
+
+- **Safety:** every embedded SVG is validated by the shared sanitizer (`assertSafeSvg`, exported
+  from `@atlcli/confluence` and used identically by the PDF pipeline). It rejects `script` /
+  `foreignObject` elements, `on*` handlers, external/`data:`/`javascript:` `href`s, `DOCTYPE`/
+  `ENTITY` declarations, **and** CSS-carried external references (`url(https:|data:)` / external
+  `@import` in a `<style>` body or `style=` attribute). The engine validates and embeds the
+  **same decoded string**, so a BOM or non-UTF-8 declaration cannot slip a different byte
+  sequence past the check. A hostile SVG degrades to a report note; the archive is untouched.
+- **Sizing:** the intrinsic size comes from the `<svg>` `width`/`height` (px or unitless) or the
+  `viewBox`; when undeterminable the engine uses a 600×400 default and emits an
+  `image-svg-default-size` info note. A shared rasterization **size budget** (finite/safe-integer
+  axes, symmetric per-axis cap, total-pixel cap — applied to mermaid too) rejects pathological
+  dimensions with `image-svg-oversized` instead of allocating an oversized canvas.
+- **No rasterizer:** a host without a rasterizer degrades the SVG with `image-svg-no-rasterizer`
+  (counted in `skippedImages`). The CLI builds a rasterizer for any page referencing an image or
+  attachment — not just mermaid pages — so an SVG-only page exports vector-sharp. Successful SVG
+  attachments count toward `embeddedImages` (they are images, not rendered diagrams).
+- **Host constraint:** the browser canvas rasterizer does not load external fonts referenced by
+  the SVG (same limitation as mermaid today); LibreOffice and older Word render the PNG fallback.
 
 ## Mermaid diagrams
 
@@ -168,13 +260,107 @@ extension both do). Details:
   is the height (width scales by aspect ratio). Both are optional.
 - **Headers/footers work:** the `r:embed` relationship is written into the referencing part's
   own rels (e.g. `word/_rels/header1.xml.rels`).
-- **Cloud default logos are SVG** and therefore degrade to a `logo-embed-failed` note (same SVG
-  deferral as page images). Custom logos (PNG/JPEG/GIF) embed. On a token host, a custom logo's
+- **Cloud default logos are SVG** and therefore degrade to a `logo-embed-failed` note (the logo
+  pass embeds raster formats only; SVG page *attachments* do embed — see
+  [SVG attachments](#svg-attachments)). Custom logos (PNG/JPEG/GIF) embed. On a token host, a custom logo's
   `icon.path` is a cookie-only `/download/attachments/{contentId}/{filename}` URL — carry the
   content id + filename on the `AssetRef` so the fetcher resolves them via the REST attachment
   listing (the CLI's `getSpaceLogo` does exactly this).
 - **Missing dep/fetcher, fetch errors, no space key** all degrade to `logo-skipped` notes; the
   token is blanked, never left literal.
+
+### Included pages — `$scroll.includepage.(…)`
+
+`$scroll.includepage.(…)` embeds the **body of another Confluence page** at the placeholder
+position — a central imprint, legal disclaimer, or standard appendix maintained once and pulled
+into every export. It is a document pass (not a text value): the placeholder paragraph is swapped
+for the referenced page's serialized OOXML body, inserted verbatim. Wire the optional
+`deps.getIncludedPage` round-trip (the CLI and extension both build it from
+`buildGetIncludedPage`, which owns the title lookup, id-sorted determinism, and error mapping).
+Title references resolve through the **direct content endpoint**
+(`client.findPagesByTitle` → `GET /content?title=…`), **not** the CQL search index — so a page
+created moments before the export (e.g. a CI pipeline that creates then immediately exports) is
+findable at once, instead of returning `includepage-unresolved` until the search index catches up
+minutes later.
+
+**Argument forms:**
+
+| Form | Example | Meaning |
+| --- | --- | --- |
+| `(Title)` | `$scroll.includepage.(Imprint)` | A page titled *Imprint* in the exported page's space |
+| `(SPACE:Title)` | `$scroll.includepage.(DOCSY:Imprint)` | A page titled *Imprint* in space `DOCSY` (split on the **first** colon; the title may contain more) |
+| `("Quoted Title")` | `$scroll.includepage.("A: B")` | A quote-wrapped title is verbatim (colon-safe) |
+| `(pageId)` | `$scroll.includepage.(1234567)` | An all-digits argument is a page id |
+
+**Behavior:**
+
+- **Referenced more than once** (body **and** header, header **and** footer, or twice in one
+  part): the target is fetched and walked **once**, cached, and rendered in **every** occurrence.
+  Only a page including **itself** is a cycle (`includepage-cycle`, rendered empty) — every other
+  repeat is intentional and renders.
+- **Atomic paragraph only:** the token must be the *sole* visible content of its paragraph. A
+  token sharing a paragraph with prose (`See our disclaimer: $scroll.includepage.(Imprint)`) is
+  **not** expanded — the surrounding text survives verbatim, the token is blanked, and
+  `includepage-invalid-context` is noted. Put the include on its own line.
+- **Assets follow the part:** an included page's attachment images and Mermaid diagrams embed
+  their relationships into the **target part's own** rels (`word/_rels/header1.xml.rels`,
+  `…/footer1.xml.rels`, …) — never a dangling relationship, even in headers/footers.
+- **Budget:** at most 25 unique included pages and 2 MiB of cumulative included storage per
+  export; beyond that, further **new** targets blank with `includepage-budget-exceeded` (already
+  fetched targets keep rendering). A v1 guess, revisited on real large templates.
+- **Never a literal:** every failure path (invalid args, not found, no permission, auth failure,
+  rate limit, transient/network error, budget, cycle) blanks the token with its own report note.
+
+**Note codes** (all surfaced in the export report, and as `code` in the `--json`
+`atlcli.export-report/1` report):
+
+| Code | Meaning |
+| --- | --- |
+| `includepage-unresolved` | The argument names no page, or the page was not found / not readable (Cloud 403 ≡ 404) |
+| `includepage-invalid-context` | The token shares a paragraph with other text — put it on its own line |
+| `includepage-cycle` | A page referenced itself; rendered empty |
+| `includepage-ambiguous-title` | A title matched several pages; the first (id-sorted) rendered — disambiguate with `SPACE:Title` or `(pageId)` |
+| `includepage-auth-failed` | Authentication failed while fetching (check the export credentials) |
+| `includepage-rate-limited` | Confluence rate-limited the fetch; retry the export |
+| `includepage-transient-error` | A 5xx / network failure (or no include fetcher available) |
+| `includepage-budget-exceeded` | The per-export include budget was exceeded; later new targets blanked |
+
+> A title containing `)` cannot be referenced by title (the scan grammar stops the argument at
+> the first `)`) — use the `(pageId)` form instead.
+
+## Running headers (STYLEREF)
+
+Templates commonly put the current chapter heading into the running header via a `STYLEREF`
+field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this working:
+
+- Field **instructions survive byte-exactly** — the preprocessor and docxtemplater never touch
+  them (only a field's cached *result* runs are rewritten).
+- Headings carry the **exact `w:pStyle` id** whose style *name* the field references
+  (`resolveHeadingStyleId` against the template's `word/styles.xml`).
+- `word/settings.xml` gets `<w:updateFields w:val="true"/>` so Word offers to refresh fields on
+  open.
+
+Two diagnostics flag a field that will not resolve as intended (they change nothing — the export
+still succeeds):
+
+- `styleref-style-not-in-template` (info) — the referenced style name is not defined in the
+  template at all; Word falls back to its own name resolution or leaves the header blank.
+- `styleref-style-unused-in-export` (warning) — the style **is** defined, but heading promotion
+  (the shallowest heading in the document maps to Heading 1) means no heading in *this* export
+  ends up using it, so the header may show a previous chapter. This is the promotion trap: a
+  field naming `Scroll Heading 2` dangles when the page's own headings all promote to level 1.
+
+**Manual Word verification (per release train).** LibreOffice computes STYLEREF slightly
+differently from Word, so the automated LibreOffice smoke (a self-skipping CI test) is necessary
+but not sufficient. Once per release, confirm in Word 365:
+
+1. Export a multi-page document whose template header carries the STYLEREF field.
+2. Open in Word 365. If the header shows a **stale** chapter, press **F9** (or reopen) to refresh
+   fields — `updateFields` prompts this automatically on first open.
+3. Confirm each page's header shows the **last H1 that began on or before that page**.
+4. If it stays blank or stale after refresh, check the report for a `styleref-*` note — a
+   warning means promotion left the referenced style unused (fix the template's field to name the
+   effective heading style), an info means the style name is not in the template.
 
 ## Browser hosts
 
@@ -217,6 +403,12 @@ const report = await runExport(
         const icon = await client.getSpaceIcon(key);
         return icon ? { url: icon.path } : null;
       },
+      getIncludedPage: buildGetIncludedPage({   // $scroll.includepage.(…)
+        getPage: (id) => client.getPage(id),
+        // DIRECT title lookup (not CQL) — findable the moment a page exists.
+        findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
+        defaultSpaceKey: details.spaceKey,  // fills a bare (Title) form
+      }),
     },
   },
   {
