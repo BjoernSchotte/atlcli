@@ -17,11 +17,13 @@ import {
   createExternalAssetFetcher,
   createExternalAssetPolicy,
   EXTERNAL_ASSET_POLICY_FIXTURES,
+  EXTERNAL_ASSET_PRIVATE_HOST_FIXTURES,
   externalAssetPolicyFromPageUrl,
   isExternalAssetBlockedError,
+  isExternalAssetTimeoutError,
   isPrivateHost,
+  parseIpv6,
   POLICY_FIXTURE_SITE_ORIGIN,
-  type ExternalAssetPolicyFixture,
 } from "../../utils/macros/external-asset-policy.js";
 
 const policy = createExternalAssetPolicy({ siteOrigin: POLICY_FIXTURE_SITE_ORIGIN });
@@ -56,22 +58,95 @@ function redirect(to: string): Response {
   return new Response(null, { status: 302, headers: { location: to } });
 }
 
-describe("ExternalAssetPolicy — shared fixture set", () => {
-  const direct = EXTERNAL_ASSET_POLICY_FIXTURES.filter((f) => !f.redirectsTo);
+/**
+ * Answer a 302 chain: `start` bounces to `chain[0]`, `chain[0]` to `chain[1]`,
+ * …, and the last entry answers 200. Anything else answers 200 too, so a hop
+ * the fetcher invents rather than follows still shows up in the log.
+ */
+function installChain(start: string, chain: readonly string[]): FetchLog {
+  const hops = [start, ...chain];
+  return installFetch((url) => {
+    const at = hops.indexOf(url);
+    return at >= 0 && at < chain.length ? redirect(chain[at]!) : ok();
+  });
+}
 
+describe("ExternalAssetPolicy — shared fixture set", () => {
   it("covers every category the plan names", () => {
     const names = EXTERNAL_ASSET_POLICY_FIXTURES.map((f) => f.name);
-    expect(names).toContain("site origin");
-    expect(names).toContain("allowed Atlassian media origin");
-    expect(names).toContain("disallowed third-party origin");
-    expect(names).toContain("redirect to a disallowed origin");
-    expect(names).toContain("loopback target");
-    expect(names).toContain("private RFC1918 target");
+    for (const required of [
+      "site origin",
+      "allowed Atlassian media origin",
+      "disallowed third-party origin",
+      "redirect to a disallowed origin",
+      "multi-hop redirect ending at a private target",
+      "loopback target",
+      "private RFC1918 target",
+      "mapped-IPv6 loopback target",
+      "mapped-IPv6 metadata target",
+      "unspecified IPv6 target",
+      "unique-local IPv6 metadata target",
+      "GCE metadata hostname",
+    ]) {
+      expect(names).toContain(required);
+    }
+    expect(new Set(names).size).toBe(names.length);
   });
 
-  for (const fixture of direct) {
+  /**
+   * The guard that makes the array self-driving. Redirect fixtures used to be
+   * FILTERED OUT of the loop below and two were hand-picked by name, so
+   * `allowedAfterRedirect` was never read: a fixture could declare any outcome
+   * at all and the suite stayed green.
+   */
+  it("drives every declared expectation — no fixture field is decorative", () => {
+    const redirecting = EXTERNAL_ASSET_POLICY_FIXTURES.filter((f) => f.redirectChain);
+    expect(redirecting.length).toBeGreaterThan(2);
+    // A chain without an outcome (or an outcome without a chain) is an
+    // expectation nothing can assert on.
+    expect(
+      EXTERNAL_ASSET_POLICY_FIXTURES.filter(
+        (f) => (f.redirectChain !== undefined) !== (f.allowedAfterRedirect !== undefined)
+      ).map((f) => f.name)
+    ).toEqual([]);
+    expect(redirecting.every((f) => f.redirectChain!.length > 0)).toBe(true);
+    // At least one chain is longer than a single hop: a one-hop-only set cannot
+    // tell a per-hop check apart from one that re-checks only the first bounce.
+    expect(Math.max(...redirecting.map((f) => f.redirectChain!.length))).toBeGreaterThan(1);
+  });
+
+  // EVERY fixture, redirecting ones included — `allow()` is the verdict for the
+  // fixture's own URL regardless of where it later bounces.
+  for (const fixture of EXTERNAL_ASSET_POLICY_FIXTURES) {
     it(`allow() — ${fixture.name}: ${fixture.reason}`, () => {
       expect(policy.allow(fixture.url)).toBe(fixture.allowed);
+    });
+  }
+
+  for (const fixture of EXTERNAL_ASSET_POLICY_FIXTURES.filter((f) => f.redirectChain)) {
+    it(`fetch() through the redirect chain — ${fixture.name}: ${fixture.reason}`, async () => {
+      const chain = fixture.redirectChain!;
+      const log = installChain(fixture.url, chain);
+      const fetcher = createExternalAssetFetcher(policy);
+      const error = await fetcher
+        .fetch(fixture.url, { maxBytes: 1024 })
+        .then(() => undefined)
+        .catch((e: unknown) => e);
+
+      expect(error === undefined).toBe(fixture.allowedAfterRedirect!);
+      if (fixture.allowedAfterRedirect) {
+        expect(log.urls).toEqual([fixture.url, ...chain]);
+      } else {
+        // The blocked hop is never requested — the guard runs BEFORE the fetch,
+        // so a disallowed final destination sees no traffic at all.
+        expect(isExternalAssetBlockedError(error)).toBe(true);
+        expect(log.urls).toEqual([fixture.url, ...chain.slice(0, -1)]);
+        expect(log.urls).not.toContain(chain[chain.length - 1]);
+      }
+      for (const init of log.inits) {
+        expect(init.credentials).toBe("omit");
+        expect(init.redirect).toBe("manual");
+      }
     });
   }
 });
@@ -107,34 +182,54 @@ describe("ExternalAssetPolicy — origin rules", () => {
   });
 });
 
-describe("SSRF guard", () => {
-  const privateHosts = [
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "10.1.2.3",
-    "192.168.1.1",
-    "172.16.0.1",
-    "169.254.169.254",
-    "::1",
-    "fd00::1",
-    "fe80::1",
-    "intranet",
-  ];
-  for (const host of privateHosts) {
-    it(`rejects ${host}`, () => {
-      expect(isPrivateHost(host)).toBe(true);
+/**
+ * These assert `isPrivateHost` DIRECTLY, never `policy.allow()`.
+ *
+ * `allow()` rejects a private host and an off-allowlist origin with the same
+ * `false`, and every private host is also off-allowlist — so an `allow()`-based
+ * assertion passes whether or not the SSRF guard fires. That is precisely how
+ * `http://[::ffff:127.0.0.1]/` looked covered while `isPrivateHost` was blind to
+ * the hex form WHATWG `URL` actually produces (`[::ffff:7f00:1]`).
+ */
+describe("SSRF guard — isPrivateHost, asserted on the predicate itself", () => {
+  for (const fixture of EXTERNAL_ASSET_PRIVATE_HOST_FIXTURES) {
+    it(`${fixture.private ? "rejects" : "allows"} ${fixture.host}: ${fixture.reason}`, () => {
+      expect(isPrivateHost(fixture.host)).toBe(fixture.private);
     });
   }
 
-  it("does not reject ordinary public hosts", () => {
-    expect(isPrivateHost("fixture.atlassian.net")).toBe(false);
-    expect(isPrivateHost("api.media.atlassian.com")).toBe(false);
-    expect(isPrivateHost("8.8.8.8")).toBe(false);
+  it("sees the canonical form the URL parser hands the policy, not the source spelling", () => {
+    // The regression in one line: this is what `new URL()` leaves for the guard.
+    expect(new URL("http://[::ffff:127.0.0.1]/x.png").hostname).toBe("[::ffff:7f00:1]");
+    expect(isPrivateHost(new URL("http://[::ffff:127.0.0.1]/x.png").hostname)).toBe(true);
+    expect(isPrivateHost(new URL("http://[::ffff:169.254.169.254]/x").hostname)).toBe(true);
+    expect(isPrivateHost(new URL("http://[::]/x").hostname)).toBe(true);
   });
 
-  it("rejects an IPv4-mapped loopback address", () => {
-    expect(policy.allow("http://[::ffff:127.0.0.1]/x.png")).toBe(false);
+  it("collapses every spelling of one address to the same groups", () => {
+    const loopback = [0, 0, 0, 0, 0, 0xffff, 0x7f00, 1];
+    expect(parseIpv6("::ffff:127.0.0.1")).toEqual(loopback);
+    expect(parseIpv6("::ffff:7f00:1")).toEqual(loopback);
+    expect(parseIpv6("0:0:0:0:0:ffff:7f00:0001")).toEqual(loopback);
+    expect(parseIpv6("[::ffff:7f00:1]")).toEqual(loopback);
+    expect(parseIpv6("::")).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(parseIpv6("8.8.8.8")).toBeUndefined();
+    expect(parseIpv6("example.com")).toBeUndefined();
+    expect(parseIpv6("::ffff:999.0.0.1")).toBeUndefined();
+    expect(parseIpv6("1:2:3:4:5:6:7:8:9")).toBeUndefined();
+  });
+
+  it("blocks a mapped/unspecified IPv6 even when the caller allowlists its origin", () => {
+    // The guard runs BEFORE the origin comparison, so a host adapter that adds
+    // one of these to `allowedMediaOrigins` still cannot reach it. Without this,
+    // an `allow()`-only assertion would pass on the origin mismatch alone.
+    for (const origin of ["http://[::ffff:7f00:1]", "http://[::]", "http://[fd00:ec2::254]"]) {
+      const permissive = createExternalAssetPolicy({
+        siteOrigin: origin,
+        allowedMediaOrigins: [origin],
+      });
+      expect(permissive.allow(`${origin}/internal.png`)).toBe(false);
+    }
   });
 });
 
@@ -165,36 +260,34 @@ describe("ExternalAssetFetcher — enforcement across the whole request", () => 
 
   it("re-checks the policy on every redirect hop", async () => {
     const fixture = EXTERNAL_ASSET_POLICY_FIXTURES.find(
-      (f) => f.name === "redirect to a disallowed origin"
-    ) as ExternalAssetPolicyFixture;
-    const log = installFetch((url) =>
-      url === fixture.url ? redirect(fixture.redirectsTo!) : ok()
-    );
+      (f) => f.name === "multi-hop redirect ending at a private target"
+    )!;
+    const log = installChain(fixture.url, fixture.redirectChain!);
     const fetcher = createExternalAssetFetcher(policy);
-    // The FIRST url is allowed — an allowed origin must not be usable as an
-    // open redirector into a disallowed one.
+    // The first TWO urls are allowed — an allowed origin must not be usable as
+    // an open redirector into a disallowed one, however many hops it takes.
     expect(policy.allow(fixture.url)).toBe(true);
+    expect(policy.allow(fixture.redirectChain![0]!)).toBe(true);
     const error = await fetcher
       .fetch(fixture.url, { maxBytes: 1024 })
       .then(() => undefined)
       .catch((e: unknown) => e);
     expect(isExternalAssetBlockedError(error)).toBe(true);
     expect((error as Error).message).toMatch(/redirected to a disallowed origin/);
-    // One request issued (the allowed hop); the disallowed hop was never fetched.
-    expect(log.urls).toEqual([fixture.url]);
+    // Two requests issued (both allowed hops); the metadata service was never
+    // contacted.
+    expect(log.urls).toEqual([fixture.url, fixture.redirectChain![0]!]);
   });
 
   it("follows a redirect that stays inside the allowlist", async () => {
     const fixture = EXTERNAL_ASSET_POLICY_FIXTURES.find(
       (f) => f.name === "redirect within the allowlist"
-    ) as ExternalAssetPolicyFixture;
-    const log = installFetch((url) =>
-      url === fixture.url ? redirect(fixture.redirectsTo!) : ok()
-    );
+    )!;
+    const log = installChain(fixture.url, fixture.redirectChain!);
     const fetcher = createExternalAssetFetcher(policy);
     const { bytes } = await fetcher.fetch(fixture.url, { maxBytes: 1024 });
     expect(bytes.byteLength).toBe(8);
-    expect(log.urls).toEqual([fixture.url, fixture.redirectsTo!]);
+    expect(log.urls).toEqual([fixture.url, ...fixture.redirectChain!]);
   });
 
   it("treats an opaque cross-origin redirect as blocked, not as an empty asset", async () => {
@@ -251,6 +344,100 @@ describe("ExternalAssetFetcher — enforcement across the whole request", () => 
     await expect(
       fetcher.fetch("https://api.media.atlassian.com/file/a/binary", { maxBytes: 40 })
     ).rejects.toThrow(/exceeded the 40-byte export limit/);
+  });
+
+  /**
+   * The stall case. `maxBytes` bounds how much a hostile response can cost;
+   * nothing bounded how LONG it could take, and the caller's `AbortSignal` is
+   * optional — so a body that stops arriving without ever ending left
+   * `reader.read()` pending for the life of the panel.
+   */
+  describe("internal deadline", () => {
+    /** Headers, one byte, then silence — the stream never ends and never errors. */
+    function stalledBody(): Response {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1]));
+            // Deliberately no close(), no error(), no further enqueue.
+          },
+        }),
+        { status: 200, headers: { "content-type": "image/png" } }
+      );
+    }
+
+    // The explicit per-test timeout is the point of these two: with the internal
+    // deadline removed they do not fail, they HANG — there is nothing else in
+    // the fetcher that could ever settle them.
+    it(
+      "gives up on a body that stalls mid-stream, with no caller signal at all",
+      async () => {
+        installFetch(() => stalledBody());
+        const fetcher = createExternalAssetFetcher(policy, { timeoutMs: 25 });
+        const error = await fetcher
+          .fetch("https://api.media.atlassian.com/file/a/binary", { maxBytes: 1024 })
+          .then(() => undefined)
+          .catch((e: unknown) => e);
+        expect(isExternalAssetTimeoutError(error)).toBe(true);
+        expect((error as Error).message).toMatch(/timed out after 25 ms/);
+      },
+      2_000
+    );
+
+    it(
+      "gives up on a response that never arrives",
+      async () => {
+        // A hop whose headers never come back — the deadline covers the request,
+        // not just the body read.
+        const never = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+        const fetcher = createExternalAssetFetcher(policy, { fetchFn: never, timeoutMs: 25 });
+        await expect(
+          fetcher.fetch("https://api.media.atlassian.com/file/a/binary", { maxBytes: 1024 })
+        ).rejects.toThrow(/timed out after 25 ms/);
+      },
+      2_000
+    );
+
+    it(
+      "keeps signed media tokens out of the timeout message",
+      async () => {
+        installFetch(() => stalledBody());
+        const fetcher = createExternalAssetFetcher(policy, { timeoutMs: 25 });
+        const error = await fetcher
+          .fetch("https://api.media.atlassian.com/file/a/binary?token=SUPERSECRET", {
+            maxBytes: 1024,
+          })
+          .then(() => undefined)
+          .catch((e: unknown) => e);
+        expect((error as Error).message).not.toContain("SUPERSECRET");
+      },
+      2_000
+    );
+
+    it(
+      "still lets the caller's own signal win, with its own reason",
+      async () => {
+        installFetch(() => stalledBody());
+        const controller = new AbortController();
+        const fetcher = createExternalAssetFetcher(policy, { timeoutMs: 10_000 });
+        const pending = fetcher.fetch("https://api.media.atlassian.com/file/a/binary", {
+          maxBytes: 1024,
+          signal: controller.signal,
+        });
+        controller.abort(new Error("panel closed"));
+        await expect(pending).rejects.toThrow("panel closed");
+      },
+      2_000
+    );
+
+    it("does not fire on a response that completes inside the budget", async () => {
+      installFetch(() => ok());
+      const fetcher = createExternalAssetFetcher(policy, { timeoutMs: 5_000 });
+      const { bytes } = await fetcher.fetch("https://api.media.atlassian.com/file/a/binary", {
+        maxBytes: 1024,
+      });
+      expect(bytes.byteLength).toBe(8);
+    });
   });
 
   it("keeps signed media tokens out of the report message", async () => {

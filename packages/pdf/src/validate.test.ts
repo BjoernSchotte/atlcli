@@ -138,23 +138,37 @@ describe("validatePdfOutput", () => {
     }
 
     /**
+     * The structural minimum every accepted document needs, parked in the final
+     * chunk well clear of the boundary under test.
+     *
+     * The two reduced variants exist because a tail that already carries the
+     * marker under test makes the boundary case UNFALSIFIABLE: `tagged` is true
+     * either way, so a chunked scan that missed the planted `/StructTreeRoot`
+     * entirely would still pass. Dropping the marker from the tail makes the
+     * planted, boundary-straddling one the only one in the file.
+     */
+    const TAIL_FULL = `\n7 0 obj\n<< /Type /Page /StructTreeRoot 8 0 R /MarkInfo << /Marked true >> /FontFile2 9 0 R >>\nendobj\n`;
+    const TAIL_WITHOUT_STRUCT_TREE_ROOT = `\n7 0 obj\n<< /Type /Page /MarkInfo << /Marked true >> /FontFile2 9 0 R >>\nendobj\n`;
+    const TAIL_WITHOUT_MARK_INFO = `\n7 0 obj\n<< /Type /Page /StructTreeRoot 8 0 R /FontFile2 9 0 R >>\nendobj\n`;
+
+    /**
      * A multi-chunk document with `body` planted so that its first byte sits at
      * `at`. Filler is `.` — neither a word character (so a planted marker's `\b`
      * behaves as it would in a real file) nor whitespace (so `\s*` cannot bridge
      * two unrelated planted markers and fabricate a match).
      */
-    function plantedAt(at: number, body: string, totalBytes: number): Uint8Array {
+    function plantedAt(
+      at: number,
+      body: string,
+      totalBytes: number,
+      tail: string = TAIL_FULL
+    ): Uint8Array {
       const bytes = new Uint8Array(totalBytes).fill(0x2e);
       const encoder = new TextEncoder();
       const write = (text: string, offset: number): void => bytes.set(encoder.encode(text), offset);
       write("%PDF-1.7\n", 0);
       write(body, at);
-      // The structural minimum every accepted document needs, parked in the
-      // final chunk well clear of the boundary under test.
-      write(
-        `\n7 0 obj\n<< /Type /Page /StructTreeRoot 8 0 R /MarkInfo << /Marked true >> /FontFile2 9 0 R >>\nendobj\n`,
-        totalBytes - 300
-      );
+      write(tail, totalBytes - 300);
       write("\n%%EOF\n", totalBytes - 7);
       return bytes;
     }
@@ -202,13 +216,46 @@ describe("validatePdfOutput", () => {
     );
 
     it.each([BOUNDARY - 16, BOUNDARY - 8, BOUNDARY - 1, BOUNDARY, BOUNDARY + 4])(
-      "detects /StructTreeRoot and /Outlines straddling the boundary at offset %i",
+      "detects /Outlines straddling the boundary at offset %i",
       (at) => {
         const bytes = plantedAt(at, "/Outlines", SIZE);
         expect(validatePdfOutput(bytes).hasOutline).toBe(true);
         agrees(bytes);
       }
     );
+
+    // `/StructTreeRoot` is the longest literal any pattern matches (15 bytes),
+    // so it is the one that most needs the window extension to be big enough.
+    // The tail carries no `/StructTreeRoot`, so `tagged` is true only if the
+    // planted, boundary-straddling one is actually found.
+    it.each(Array.from({ length: 18 }, (_, i) => BOUNDARY - 16 + i))(
+      "detects the document's ONLY /StructTreeRoot straddling the boundary at offset %i",
+      (at) => {
+        const bytes = plantedAt(at, "/StructTreeRoot 8 0 R", SIZE, TAIL_WITHOUT_STRUCT_TREE_ROOT);
+        expect(validatePdfOutput(bytes).tagged).toBe(true);
+        agrees(bytes);
+      }
+    );
+
+    it.each(Array.from({ length: 13 }, (_, i) => BOUNDARY - 10 + i))(
+      "detects the document's ONLY /MarkInfo straddling the boundary at offset %i",
+      (at) => {
+        const bytes = plantedAt(at, "/MarkInfo << /Marked true >>", SIZE, TAIL_WITHOUT_MARK_INFO);
+        expect(validatePdfOutput(bytes).tagged).toBe(true);
+        agrees(bytes);
+      }
+    );
+
+    it("reports untagged when the only /StructTreeRoot is a near-miss at the boundary", () => {
+      // The other direction: `/StructTreeRootX` must NOT satisfy
+      // `/StructTreeRoot\b`, and a chunk edge must not fabricate the word
+      // boundary that makes it look like it does.
+      for (let at = BOUNDARY - 16; at <= BOUNDARY; at += 1) {
+        const bytes = plantedAt(at, "/StructTreeRootX", SIZE, TAIL_WITHOUT_STRUCT_TREE_ROOT);
+        expect(() => validatePdfOutput(bytes)).toThrow(/tag structure/);
+        agrees(bytes);
+      }
+    });
 
     it("does not gain a false word boundary from the chunk edge", () => {
       // `/Pages` must NOT count as `/Page\b`. If the window ended mid-token the
@@ -230,7 +277,45 @@ describe("validatePdfOutput", () => {
       agrees(bytes);
     });
 
-    it("finds a catalog /Lang whose object spans the chunk boundary", () => {
+    /**
+     * The two hazards COMBINED: the literal itself is split by the boundary AND
+     * the unbounded `\s*` has to carry the window thousands of bytes further.
+     * Each alone was covered; the interaction — where the window has to be
+     * extended past a partial literal *and then* past a whitespace run that
+     * starts inside the extension — was not.
+     */
+    it("joins a /Type at BOUNDARY-1 to a /Page thousands of spaces later", () => {
+      const bytes = plantedAt(BOUNDARY - 1, `/Type${" ".repeat(4096)}/Page`, SIZE);
+      expect(validatePdfOutput(bytes).pageCount).toBe(2);
+      agrees(bytes);
+    });
+
+    it("joins a /Type at BOUNDARY-1 to a /Catalog thousands of spaces later", () => {
+      const body = `\n2 0 obj\n<< /Type${" ".repeat(4096)}/Catalog /Lang (de-DE) >>\nendobj\n`;
+      const bytes = plantedAt(BOUNDARY - 1 - body.indexOf("/Type"), body, SIZE);
+      expect(validatePdfOutput(bytes).hasLang).toBe(true);
+      agrees(bytes);
+    });
+
+    /**
+     * The previous version of this planted the catalog object at `BOUNDARY - 6`,
+     * which put `/Type /Catalog` itself — 14 bytes starting 12 bytes into the
+     * object — WHOLLY past the boundary. It exercised a catalog in chunk 1, not
+     * a catalog match split by the boundary. These place the marker itself.
+     */
+    it.each(Array.from({ length: 16 }, (_, i) => BOUNDARY - 15 + i))(
+      "finds a catalog /Lang when /Type /Catalog itself starts at offset %i",
+      (typeAt) => {
+        const body = `\n2 0 obj\n<< /Type /Catalog /Lang (de-DE) >>\nendobj\n`;
+        const bytes = plantedAt(typeAt - body.indexOf("/Type"), body, SIZE);
+        expect(validatePdfOutput(bytes).hasLang).toBe(true);
+        agrees(bytes);
+      }
+    );
+
+    it("finds a catalog /Lang whose enclosing object spans the chunk boundary", () => {
+      // The object straddles even though the marker does not: `lastIndexOf(" obj")`
+      // reaches back into chunk 0 while `indexOf("endobj")` reaches into chunk 1.
       const bytes = plantedAt(
         BOUNDARY - 6,
         `\n2 0 obj\n<< /Type /Catalog /Lang (de-DE) >>\nendobj\n`,

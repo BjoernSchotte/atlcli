@@ -364,4 +364,85 @@ describe("PDF job store", () => {
       }
     });
   });
+
+  /**
+   * The measured bytes and the stored bytes must be the same bytes
+   * (spec 010 wave-1 review, C1).
+   *
+   * `putPdfJob` measures on entry but `add()`s after an `await` on the database
+   * open, and `PdfSourceBundle` is a plain mutable object. Every test here
+   * mutates the caller's bundle INSIDE that window — synchronously after the
+   * call, before the returned promise settles — which is exactly what a second
+   * tab, a retry path, or a caller reusing its builder can do by accident.
+   */
+  describe("byte caps cannot be bypassed by mutating the bundle after the call", () => {
+    it("stores what it measured when assets are appended mid-write", async () => {
+      const live = bundle(1);
+      const pending = putPdfJob({ id, sourceIdentity: "mutate", bundle: live }, factory);
+      // The window: the DB open has not resolved yet.
+      live.assets.push({
+        path: "assets/smuggled.png",
+        mediaType: "image/png",
+        bytes: new Uint8Array(1024),
+      });
+      const stored = await pending;
+
+      const round = await getPdfJob(id, factory);
+      const actualBytes =
+        new TextEncoder().encode(round!.bundle!.main).byteLength +
+        new TextEncoder().encode(round!.bundle!.template).byteLength +
+        round!.bundle!.assets.reduce((sum, asset) => sum + asset.bytes.byteLength, 0);
+      // The meta record's number IS the payload store's size — not 3 vs 1025.
+      expect(stored.inputBytes).toBe(actualBytes);
+      expect((await getPdfJobMeta(id, factory))!.inputBytes).toBe(actualBytes);
+      expect(round!.bundle!.assets.map((a) => a.path)).toEqual(["assets/a.png"]);
+    });
+
+    it("does not let a post-call append walk a bundle past the per-job cap", async () => {
+      const live = bundle(64);
+      const pending = putPdfJob({ id, sourceIdentity: "oversize", bundle: live }, factory);
+      live.assets.push({
+        path: "assets/huge.png",
+        mediaType: "image/png",
+        bytes: new Uint8Array(PDF_JOB_MAX_BYTES + 1),
+      });
+      await pending;
+
+      const stored = (await getPdfJob(id, factory))!;
+      const total = stored.bundle!.assets.reduce((sum, a) => sum + a.bytes.byteLength, 0);
+      expect(total).toBeLessThanOrEqual(PDF_JOB_MAX_BYTES);
+      expect(stored.inputBytes).toBeLessThanOrEqual(PDF_JOB_MAX_BYTES);
+      expect(stored.bundle!.assets).toHaveLength(1);
+    });
+
+    it("compiles the source it measured, not a swapped-in one", async () => {
+      // Not a size bypass — a CONTENT one. `claimPdfJob` hands the compiler the
+      // stored bundle, so a `main` or a `path` swapped after the measurement
+      // used to decide what actually got compiled.
+      const live = bundle(4);
+      const pending = putPdfJob({ id, sourceIdentity: "swap", bundle: live }, factory);
+      live.main = "= Something else entirely";
+      live.template = "other-template";
+      live.assets[0]!.path = "assets/elsewhere.png";
+      await pending;
+
+      const claimed = await claimPdfJob(id, factory);
+      expect(claimed!.bundle.main).toBe("= Job");
+      expect(claimed!.bundle.template).toBe("template");
+      expect(claimed!.bundle.assets[0]!.path).toBe("assets/a.png");
+    });
+
+    it("returns the snapshot it stored, so the caller cannot mutate it afterwards", async () => {
+      const live = bundle(4);
+      const stored = await putPdfJob({ id, sourceIdentity: "returned", bundle: live }, factory);
+      live.main = "= Mutated after the fact";
+      live.assets.push({
+        path: "assets/late.png",
+        mediaType: "image/png",
+        bytes: new Uint8Array(8),
+      });
+      expect(stored.bundle!.main).toBe("= Job");
+      expect(stored.bundle!.assets).toHaveLength(1);
+    });
+  });
 });

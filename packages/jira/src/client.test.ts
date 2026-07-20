@@ -126,3 +126,40 @@ describe("JiraClient session auth mode (spec 001 task 5)", () => {
     expect(init?.credentials).toBeUndefined();
   });
 });
+
+describe("JiraClient 429 retry delay is bounded (spec 010 wave-1 review, B6)", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("does not retry immediately when Retry-After is unparseable", async () => {
+    // Proves the clamp is WIRED INTO the request loop, not merely exported:
+    // `parseInt("unavailable", 10) * 1000` is NaN, and `setTimeout(fn, NaN)`
+    // fires on the next tick, so the client used to answer a 429 with an
+    // instant second request.
+    const timestamps: number[] = [];
+    let callCount = 0;
+    globalThis.fetch = mock(() => {
+      timestamps.push(Date.now());
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response("Rate limited", {
+            status: 429,
+            headers: { "Retry-After": "unavailable" },
+          })
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: "1", key: "TEST-1", fields: {} }), { status: 200 })
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new JiraClient(mockProfile);
+    await client.getIssue("TEST-1");
+
+    expect(callCount).toBe(2);
+    // Fell back to the 1 s exponential base rather than to NaN.
+    expect(timestamps[1]! - timestamps[0]!).toBeGreaterThanOrEqual(500);
+  });
+});

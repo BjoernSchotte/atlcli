@@ -166,6 +166,43 @@ function storedJobBytes(meta: StoredPdfJobMeta): number {
   return meta.inputBytes + meta.outputBytes;
 }
 
+/**
+ * A structural snapshot of the caller's bundle, taken synchronously on entry to
+ * {@link putPdfJob}.
+ *
+ * `putPdfJob` measures the bundle, then `await`s an IndexedDB open, and only
+ * *then* does the `add()` whose structured clone is what actually gets stored.
+ * `PdfSourceBundle` is a plain mutable object (`packages/pdf/src/types.ts`), so
+ * everything the caller does to it in that window used to land in the store
+ * without ever being measured:
+ *
+ *   - appending assets made the meta record claim 3 bytes for 1025 stored, so
+ *     `PDF_STORE_MAX_BYTES` was enforced against a number that bore no relation
+ *     to the disk quota actually consumed;
+ *   - the same trick walked a bundle straight past `PDF_JOB_MAX_BYTES`;
+ *   - swapping `main` or an asset `path` made the compiler consume content
+ *     other than what the caps were checked against.
+ *
+ * Copying the container closes all three: from here on nothing reads the
+ * caller's object again, so the bytes that were measured are the bytes that get
+ * cloned into IndexedDB.
+ *
+ * Asset BYTES are referenced, not copied. A `Uint8Array`'s `byteLength` is
+ * fixed for the life of the view, so a shared reference cannot grow past a cap
+ * the way a mutable container can — and copying up to 64 MiB here to prove a
+ * point would reintroduce exactly the allocation T5.6 exists to remove. The
+ * one case a fixed `byteLength` does not cover is a view onto a *resizable*
+ * `ArrayBuffer`; the re-measure inside the write transaction covers that.
+ */
+function snapshotSourceBundle(bundle: PdfSourceBundle): PdfSourceBundle {
+  return {
+    ...bundle,
+    assets: bundle.assets.map((asset) => ({ ...asset })),
+    sourceMap: [...bundle.sourceMap],
+    notes: [...bundle.notes],
+  };
+}
+
 export function openPdfJobDb(factory?: IDBFactory): Promise<IDBDatabase> {
   const idb = resolveFactory(factory);
   return new Promise((resolve, reject) => {
@@ -235,7 +272,10 @@ export async function putPdfJob(
   factory?: IDBFactory
 ): Promise<StoredPdfJob> {
   if (!isPdfJobId(input.id)) throw new Error("Invalid PDF job id.");
-  const inputBytes = sourceBundleBytes(input.bundle);
+  // Snapshot BEFORE measuring — see snapshotSourceBundle. Everything below
+  // reads `bundle`, never `input.bundle`.
+  const bundle = snapshotSourceBundle(input.bundle);
+  const inputBytes = sourceBundleBytes(bundle);
   if (inputBytes > PDF_JOB_MAX_BYTES) {
     throw new Error(`PDF export input exceeds the ${PDF_JOB_MAX_BYTES} byte job limit.`);
   }
@@ -261,11 +301,21 @@ export async function putPdfJob(
           reject(new Error("PDF export storage exceeds the 128 MB total quota."));
           return;
         }
+        // Re-measure in the SAME synchronous turn as the `add()` below. IndexedDB
+        // structured-clones at the moment `add()` is called, and a single JS turn
+        // cannot be interleaved, so agreeing here proves the number written to
+        // the meta record describes the bytes written to the payload store — the
+        // one thing a snapshot alone cannot prove for a view onto a resizable
+        // ArrayBuffer.
+        if (sourceBundleBytes(bundle) !== inputBytes) {
+          reject(new Error("PDF export input changed size while it was being stored."));
+          return;
+        }
         const addMeta = stores[META_STORE]!.add(meta);
         addMeta.onerror = () => reject(addMeta.error ?? new Error("Failed to store PDF job."));
         addMeta.onsuccess = () => {
-          const addBundle = stores[BUNDLE_STORE]!.add({ id: input.id, bundle: input.bundle });
-          addBundle.onsuccess = () => done({ ...meta, bundle: input.bundle });
+          const addBundle = stores[BUNDLE_STORE]!.add({ id: input.id, bundle });
+          addBundle.onsuccess = () => done({ ...meta, bundle });
           addBundle.onerror = () =>
             reject(addBundle.error ?? new Error("Failed to store PDF job bundle."));
         };

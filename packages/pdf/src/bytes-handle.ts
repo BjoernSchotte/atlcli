@@ -44,6 +44,36 @@
  * return promises anyway, because a `Blob`-backed one cannot (`asUint8Array()`
  * is `await blob.arrayBuffer()`), and a seam whose signature has to change the
  * day the backing store changes is not a seam.
+ *
+ * ## The `asUint8Array()` borrow contract
+ *
+ * `asUint8Array()` hands back a **borrowed reference to the handle's backing
+ * bytes, not a copy.** Two consumers that both call it hold the same object;
+ * mutating it, or detaching its `ArrayBuffer`, changes (or destroys) what every
+ * other consumer — and the handle itself — will read. This is a deliberate
+ * decision, not an oversight, and it is pinned by a test in
+ * `bytes-handle.test.ts` so it cannot drift silently.
+ *
+ * Returning a copy was the alternative, and it was rejected: this handle exists
+ * *because* `new Blob([bytes])` next to a live `Uint8Array` was measured at
+ * +64.0 MiB for a 64 MiB document. Copying on every `asUint8Array()` — or even
+ * memoizing one defensive copy — puts that exact allocation back, to defend
+ * against a mutation that no consumer in the codebase performs. A handle whose
+ * safety property is "it duplicates the thing it was built to stop
+ * duplicating" is not worth having.
+ *
+ * So the obligation sits with the consumer, and it is short:
+ *
+ *   - **Read-only? Just use it.** The Node sink, the download path, size
+ *     accounting and hashing all read and never write.
+ *   - **Need to mutate?** `new Uint8Array(await h.asUint8Array())` first.
+ *   - **Handing the bytes to something that may TRANSFER the buffer?** Copy
+ *     first. `pdfjs.getDocument({ data })` is the live example: PDF.js may
+ *     transfer `data`'s `ArrayBuffer` to its worker, which detaches it and
+ *     leaves every other holder — including this handle — with a zero-length
+ *     view. Prefer {@link PdfBytesHandle.objectUrl} or
+ *     {@link PdfBytesHandle.asBlob} there; PDF.js accepts a URL and never
+ *     detaches anything.
  */
 
 /**
@@ -67,14 +97,22 @@ export interface PdfBytesHandle {
   /** The bytes as a `Blob`. O(1) once materialized; memoized. */
   asBlob(): Promise<Blob>;
   /**
-   * The bytes as a `Uint8Array`. Prefer {@link asBlob} where the consumer only
-   * needs to hand the bytes to a browser API — this may materialize a heap copy
-   * when the handle is not array-backed.
+   * The bytes as a `Uint8Array`, **borrowed, not owned** — see
+   * "The `asUint8Array()` borrow contract" in the module comment. Treat the
+   * result as read-only and do not detach its buffer; `slice()` it if you need
+   * either. Prefer {@link asBlob} where the consumer only needs to hand the
+   * bytes to a browser API — this may materialize a heap copy when the handle
+   * is not array-backed.
    */
   asUint8Array(): Promise<Uint8Array>;
   /**
    * A `blob:` URL for the bytes, memoized so repeated calls do not leak a URL
-   * per call. The handle owns revocation: call {@link release} when done.
+   * per call — including *concurrent* calls, which is the harder half. The
+   * handle owns revocation: call {@link release} when done.
+   *
+   * Rejects if {@link release} lands while the URL is still being minted: the
+   * URL is revoked rather than handed to a caller that would be holding a
+   * reference the handle no longer owns.
    */
   objectUrl(): Promise<string>;
   /**
@@ -111,8 +149,14 @@ function handle(
   let blob: Promise<Blob> | undefined;
   let bytes: Promise<Uint8Array> | undefined;
   let url: string | undefined;
+  let pendingUrl: Promise<string> | undefined;
+  /**
+   * Bumped by every `release()`. A mint that started before a release finishes
+   * into a handle that has already given its URL up, and must not install it.
+   */
+  let generation = 0;
 
-  return {
+  const self: PdfBytesHandle = {
     size,
     mimeType,
     asBlob() {
@@ -123,19 +167,37 @@ function handle(
       bytes ??= load.bytes();
       return bytes;
     },
-    async objectUrl() {
-      if (url === undefined) url = createObjectUrl(await this.asBlob());
-      return url;
+    objectUrl() {
+      // Memoize the PROMISE, not the settled URL. Testing `url === undefined`
+      // *before* an `await` let two concurrent callers both find it unset and
+      // both call `createObjectURL`; the second assignment then overwrote the
+      // first, `release()` revoked only what it could still see, and the other
+      // URL — with its whole document pinned behind it — leaked for the life of
+      // the page. T5.3's viewer is the first caller that will race itself.
+      pendingUrl ??= (async () => {
+        const mintedAt = generation;
+        const created = createObjectUrl(await self.asBlob());
+        if (mintedAt !== generation) {
+          revokeObjectUrl(created);
+          throw new Error("PdfBytesHandle was released while objectUrl() was still resolving.");
+        }
+        url = created;
+        return created;
+      })();
+      return pendingUrl;
     },
     release() {
+      generation += 1;
       if (url !== undefined) {
         revokeObjectUrl(url);
         url = undefined;
       }
+      pendingUrl = undefined;
       blob = undefined;
       bytes = undefined;
     },
   };
+  return self;
 }
 
 /**
@@ -151,8 +213,10 @@ export function pdfBytesFromUint8Array(
   const mimeType = options.mimeType ?? PDF_MIME;
   return handle(source.byteLength, mimeType, {
     blob: async () => new Blob([source as BlobPart], { type: mimeType }),
-    // The array IS the backing store, so this hands back the same buffer rather
-    // than copying — a consumer that mutates it mutates the handle's bytes.
+    // The array IS the backing store, so this hands back the same object rather
+    // than copying — a consumer that mutates or detaches it mutates or destroys
+    // the handle's bytes. Deliberate; see "The `asUint8Array()` borrow
+    // contract" in the module comment for why copying here is the worse trade.
     bytes: async () => source,
   });
 }
