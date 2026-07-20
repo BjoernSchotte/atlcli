@@ -31,18 +31,32 @@ versions from different trains: when you pack or link at commit X, every interna
 
 ## Pre-1.0 semver rules
 
-While the packages are `0.x`:
+While a package is `0.x`:
 
 - **Breaking changes bump the minor** and must appear under a "Breaking" changelog heading.
 - **Patch releases are strictly non-breaking.**
 
 ## 1.0 and the API freeze
 
-When the public API freeze (spec 009, T4.2) completes — after the export-expansion folders
-001–008 land — the frozen packages jump to `1.0.0` and standard semver applies (breaking =
-major). This is a version-number and changelog commitment verified through tarball and
-filesystem-link consumption; a registry publish of `1.0.0` remains deferred. Packages without
-a reviewed API classification (e.g. `@atlcli/jira`) stay `0.x` under the pre-1.0 rules.
+**The freeze (spec 009 T4.2) is executed** — the export-expansion folders 001–008 landed and
+five packages froze at `1.0.0` with reviewed closure classifications (committed at
+`packages/<p>/etc/<p>.closure.md`, CI-guarded together with the api reports). Standard semver
+applies to frozen packages (breaking = major, with one `@deprecated` minor first); the pre-1.0
+rules keep applying to the rest. A registry publish remains deferred either way.
+
+| Package | Version | Frozen | Why |
+|---|---|---|---|
+| `@atlcli/confluence` | 1.0.0 | yes | Core v1 seams: `ExportBlock`/`storageToBlocks`, `ExportNoteCode` registry, client, `TreeSource`/`fetchExportTree`/`composeChapters` |
+| `@atlcli/docx` | 1.0.0 | yes | `ExportEnv`/`runExport` seams, proven across three hosts; internals behind `./scan`/`./internal` |
+| `@atlcli/pdf` | 1.0.0 | yes | `PdfExportEnv`/`runPdfExport` + `PdfCompilePort` contract; internals behind `./internal` |
+| `@atlcli/pdf-compiler-browser` | 1.0.0 | yes | Tiny stable surface over the sha256-pinned vendored compiler |
+| `@atlcli/export-macros` | 1.0.0 | yes | `MacroRendererRegistry`/`resolveMacroBlocks` contract is embedded in the frozen docx/pdf surfaces; the renderer *set* may grow additively |
+| `@atlcli/core` | 0.6.0 | no | Barrel is largely CLI/Bun-internal; frozen packages freeze only their *use* of its types (frozen-by-closure) |
+| `@atlcli/diagram` | 0.6.0 | no | Renderer-internal beyond `renderDiagram`/`DiagramTheme` (frozen-by-closure via docx) |
+| `@atlcli/jira` | 0.6.0 | no | Never API-reviewed; Bun-only engines |
+| `@atlcli/plugin-api` | 0.6.0 | no | Never API-reviewed |
+| `@atlcli/template-pack` | 0.6.0 | no | Spec 007 did not decide public-API status; the byte format has its own manifest versioning |
+| `@atlcli/export-node` | 0.6.0 | no | Days old; convenience surface should harden against real consumers first |
 
 ## What counts as breaking
 

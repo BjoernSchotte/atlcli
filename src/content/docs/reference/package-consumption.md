@@ -110,8 +110,8 @@ concrete versions. Install the tarballs with the same `overrides` technique:
 ```jsonc
 {
   "dependencies": {
-    "@atlcli/docx": "file:./tarballs/atlcli-docx-0.6.0.tgz",
-    "@atlcli/confluence": "file:./tarballs/atlcli-confluence-0.6.0.tgz",
+    "@atlcli/docx": "file:./tarballs/atlcli-docx-1.0.0.tgz",
+    "@atlcli/confluence": "file:./tarballs/atlcli-confluence-1.0.0.tgz",
     "@atlcli/core": "file:./tarballs/atlcli-core-0.6.0.tgz",
     "@atlcli/diagram": "file:./tarballs/atlcli-diagram-0.6.0.tgz"
   },

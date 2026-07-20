@@ -84,7 +84,7 @@
     },
     "packages/confluence": {
       "name": "@atlcli/confluence",
-      "version": "0.6.0",
+      "version": "1.0.0",
       "dependencies": {
         "@atlcli/core": "workspace:*",
         "diff": "^8.0.2",
@@ -119,7 +119,7 @@
     },
     "packages/docx": {
       "name": "@atlcli/docx",
-      "version": "0.6.0",
+      "version": "1.0.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
@@ -142,7 +142,7 @@
     },
     "packages/export-macros": {
       "name": "@atlcli/export-macros",
-      "version": "0.6.0",
+      "version": "1.0.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
       },
@@ -167,7 +167,7 @@
     },
     "packages/pdf": {
       "name": "@atlcli/pdf",
-      "version": "0.6.0",
+      "version": "1.0.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
@@ -179,7 +179,7 @@
     },
     "packages/pdf-compiler-browser": {
       "name": "@atlcli/pdf-compiler-browser",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@atlcli/pdf": "workspace:*",
       },
