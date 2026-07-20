@@ -332,6 +332,59 @@ function altChunkScanParts(zip: PizZip): string[] {
 }
 
 /**
+ * Every relationship part in the package (`*.rels`), for the aFChunk sweep.
+ *
+ * Deliberately not narrowed to `word/_rels/document.xml.rels`: a header's or
+ * footer's own rels part can carry the relationship just as well, and matching
+ * on the suffix costs nothing while leaving no part uncovered.
+ */
+function relationshipPartNames(zip: PizZip): string[] {
+  return Object.keys(zip.files).filter((n) => /\.rels$/i.test(n));
+}
+
+/**
+ * Resolve XML character references in an attribute value.
+ *
+ * A conforming parser resolves `&#107;` to `k` before the value is ever
+ * compared, so `…/aFChun&#107;` and `…/aFChunk` are the same relationship type
+ * to Word while differing as raw text. Numeric refs are expanded before
+ * `&amp;` so that a literal `&amp;#107;` — which denotes the *text* `&#107;`,
+ * not `k` — is not over-decoded.
+ */
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * True when a `.rels` part declares an altChunk relationship — a `Type` ending
+ * in `/aFChunk` (`…/officeDocument/2006/relationships/aFChunk`).
+ *
+ * This is the companion half of the `<w:altChunk>` element scan, and the more
+ * reliable of the two. The element scan matches a literal `w:` prefix, but XML
+ * binds namespaces by URI, not by prefix: a template that declares
+ * `xmlns:x="…/wordprocessingml/2006/main"` and writes `<x:altChunk r:id="…"/>`
+ * carries the very same element as far as Word is concerned, while matching no
+ * `<w:altChunk` text. A relationship `Type`, by contrast, is a plain attribute
+ * *value* that has to equal the aFChunk URI for Word to resolve the import at
+ * all — there is no prefix indirection to hide behind.
+ *
+ * Both halves are required for the import to fire (an element with no matching
+ * relationship is an inert dangling `r:id`, and vice versa), so scanning each
+ * one closes the gap the other leaves. Matching is case-insensitive and runs on
+ * the entity-decoded value: neither variation would function in Word, so a hit
+ * on one can only mean an obfuscation attempt.
+ */
+export function hasAltChunkRelationship(relsXml: string): boolean {
+  for (const m of relsXml.matchAll(/\bType\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    if (/\/aFChunk$/i.test(decodeXmlEntities(m[1] ?? m[2] ?? "").trim())) return true;
+  }
+  return false;
+}
+
+/**
  * Refuse an imported template that carries active content (spec 011).
  *
  * REJECT, never strip. A silent strip would hand back a document that looks
@@ -364,6 +417,19 @@ export function assertNoActiveContent(zip: PizZip): void {
       throw new DocxError(
         "active-content",
         `Template part "${part}" embeds external content via <w:altChunk>. Templates that import content by reference cannot be used; inline the content and re-save.`,
+        part
+      );
+    }
+  }
+  // Runs AFTER the element scan so a template carrying both halves is still
+  // reported against the part the author would recognise (document.xml), with
+  // the relationship sweep catching only what the element regex missed.
+  for (const part of relationshipPartNames(zip)) {
+    const xml = zip.file(part)?.asText() ?? "";
+    if (hasAltChunkRelationship(xml)) {
+      throw new DocxError(
+        "active-content",
+        `Template part "${part}" declares an altChunk (aFChunk) relationship, the import-by-reference channel behind <w:altChunk>. Templates that import content by reference cannot be used; inline the content and re-save.`,
         part
       );
     }

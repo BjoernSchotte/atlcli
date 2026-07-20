@@ -6,6 +6,7 @@ import {
   MAX_TEMPLATE_BYTES,
   assertSafeDocxEntryName,
   collectRiskyFieldInstructions,
+  hasAltChunkRelationship,
   scanTemplate,
   unzipDocx,
 } from "./scan.js";
@@ -426,6 +427,96 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
     });
     const err = expectDocxError(() => unzipDocx(bytes), "active-content");
     expect(err.path).toBe("word/header1.xml");
+  });
+
+  it("ADVERSARIAL: catches an altChunk whose element hides behind a non-w: prefix", () => {
+    // XML binds namespaces by URI, not by prefix. With `x` bound to
+    // wordprocessingml, `<x:altChunk>` IS `<w:altChunk>` as far as Word is
+    // concerned — but the element regex matches literal `<w:altChunk` text and
+    // sees nothing at all. The aFChunk relationship is what gives it away.
+    const obfuscatedDocument =
+      `<x:document xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+      `<x:body><x:altChunk r:id="rId99"/></x:body></x:document>`;
+
+    // First: prove the gap is real. Without its relationship part, the same
+    // hostile document sails straight past the element scan.
+    expect(() => unzipDocx(buildArchive({ "word/document.xml": obfuscatedDocument }))).not.toThrow();
+
+    // Now the complete, functional payload — element plus the relationship it
+    // needs to actually resolve — is refused by the relationship sweep.
+    const err = expectDocxError(
+      () =>
+        unzipDocx(
+          buildArchive({
+            "word/document.xml": obfuscatedDocument,
+            "word/_rels/document.xml.rels":
+              `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+              `<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="evil.html"/></Relationships>`,
+          })
+        ),
+      "active-content"
+    );
+    expect(err.path).toBe("word/_rels/document.xml.rels");
+    expect(err.message).toContain("aFChunk");
+  });
+
+  it("ADVERSARIAL: catches an aFChunk Type obfuscated with a character reference", () => {
+    // `&#107;` is `k` to any conforming parser, so this Type resolves to the
+    // real aFChunk URI while differing from it as raw text.
+    const err = expectDocxError(
+      () =>
+        unzipDocx(
+          buildArchive({
+            "word/_rels/document.xml.rels":
+              `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+              `<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChun&#107;" Target="evil.html"/></Relationships>`,
+          })
+        ),
+      "active-content"
+    );
+    expect(err.path).toBe("word/_rels/document.xml.rels");
+  });
+
+  it("sweeps every .rels part, not just document.xml.rels", () => {
+    const err = expectDocxError(
+      () =>
+        unzipDocx(
+          buildArchive({
+            "word/_rels/header1.xml.rels":
+              `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+              `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="evil.rtf"/></Relationships>`,
+          })
+        ),
+      "active-content"
+    );
+    expect(err.path).toBe("word/_rels/header1.xml.rels");
+  });
+
+  it("POSITIVE CONTROL: ordinary relationship types are left alone", () => {
+    const ordinary =
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+      `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>` +
+      `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>` +
+      `<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/>` +
+      `</Relationships>`;
+    expect(hasAltChunkRelationship(ordinary)).toBe(false);
+    expect(() =>
+      unzipDocx(buildArchive({ "word/_rels/document.xml.rels": ordinary }))
+    ).not.toThrow();
+
+    // A Target that merely mentions aFChunk is not a relationship TYPE, and a
+    // type that merely CONTAINS the token mid-path does not end in it.
+    expect(
+      hasAltChunkRelationship(
+        `<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/aFChunk"/>`
+      )
+    ).toBe(false);
+    expect(
+      hasAltChunkRelationship(
+        `<Relationship Id="rId9" Type="http://example.com/aFChunk/notReally" Target="x"/>`
+      )
+    ).toBe(false);
   });
 
   it("POSITIVE CONTROL: an ordinary template with no active content opens", () => {

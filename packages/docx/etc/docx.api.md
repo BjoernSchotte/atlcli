@@ -1139,6 +1139,9 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
 
+// export: hasAltChunkRelationship
+export declare function hasAltChunkRelationship(relsXml: string): boolean;
+
 // export: hyperlinkField
 export declare function hyperlinkField(url: string, innerRuns: string): string;
 
@@ -1875,6 +1878,9 @@ export declare class DocxError extends Error {
 
 // export: DocxErrorKind
 export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "active-content";
+
+// export: hasAltChunkRelationship
+export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
