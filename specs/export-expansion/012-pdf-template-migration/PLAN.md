@@ -528,6 +528,78 @@ byte-identically in both modes; a document with no chapter heading does too,
 which is simultaneously the fallback proof and the ToC-exclusion regression
 guard). That is a stronger claim than a substring match, not a weaker one.
 
+**Refinement — first chapter on the page, not the last (2026-07-20).** Came from
+the user's review of the M1 acceptance artifacts produced by the entry above, so
+it belongs to this same follow-up rather than to a new spec. When SEVERAL
+chapters begin on one page, `started.last()` named the *last* of them; the head
+now names the *first*. Rationale: the head sits at the top of the page and the
+content directly below it starts with that first chapter, so naming a later one
+contradicts what the reader sees. The resolution became:
+
+```typst
+let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+let opening = chapters.filter(h => h.location().page() == here().page())
+let running = chapters.filter(h => h.location().page() < here().page())
+let chapter-head = if opening.len() > 0 { opening.first().body }
+  else if running.len() > 0 { running.last().body }
+  else { meta.title }
+```
+
+Both behaviours the entry above measured survive unchanged and are pinned by
+their own tests: the `== here().page()` branch still selects a chapter that
+*opens* on this page (the one-page lag of `.before(here())` does not return), and
+the `h.outlined` filter still keeps the ToC's own "Contents" heading out.
+
+**Correction: this CONVERGED with Word, it did not diverge from it.** The entry
+above, and the reference docs derived from it, claimed Word's `STYLEREF` rule is
+"the last H1 that began on or before this page". That is wrong, and the review of
+this refinement is what caught it. Word's default for a `STYLEREF` field in a
+header searches the page **top-down** and takes the **first** matching paragraph;
+if the style does not occur on the page it searches back toward the start of the
+document, i.e. the chapter still running. The `\l` switch is what reverses the
+on-page search to bottom-up and yields the *last* one — Microsoft's ECMA-376
+implementation notes state that `\l` in a header "causes the search to go from the
+bottom of the page to the beginning of the document and then to the end of the
+document" and has no effect elsewhere ([MS-OI29500 §17.16.5.59] /
+[MS-OE376 §2.16.5.66], note (f)). So the pre-refinement PDF rule was the `\l`
+behaviour, and the refinement moved PDF onto Word's *default*. The remaining
+difference is only the exhausted case: Word then searches forward to the end of
+the document, PDF falls back to `meta.title`. `docx-engine.md` and
+`pdf-template-contract.md` were corrected accordingly; the stale "last H1"
+wording also sat in this repo's DOCX release-train manual-verification step,
+which would have produced a wrong verdict on a multi-chapter page.
+
+`collectStylerefFields` (`packages/docx/src/scan.ts`, spec 006 G1) captures only
+the quoted style name — it does not parse switches, so `\l` is ignored, as are
+`\* MERGEFORMAT` and the numbering switches. That is correct for its purpose (the
+diagnostic asks only *does this export emit the style the field names*) and
+nothing in the DOCX engine encodes a first/last assumption anywhere:
+`validateStylerefFields` compares style names, and the field instruction survives
+byte-exactly for Word to resolve. Noted in `docx-engine.md`.
+
+[MS-OI29500 §17.16.5.59]: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/0f5599c3-3b12-4970-931d-659e489369f4
+[MS-OE376 §2.16.5.66]: https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/34d69bba-3782-470b-97d3-e9852c3257f0
+
+**Equivalence in the normal case, proven not asserted.** `composeChapters`
+inserts a `pageBreak` per chapter by default, so ordinary tree/space exports put
+at most one chapter on a page — and there "first opening here" and "last at or
+before here" are the same heading. Because the old rule can no longer be
+executed, the proof is a pinned digest: a one-chapter-per-page fixture was
+compiled against `origin/main` at `62a0031` (the commit before this refinement)
+with the pinned compiler, and its sha256
+`90bef12c83c654c059f5cc3918b21469c3640c7dad78683676b7766b02023ca0` is asserted by
+`chapter-running-head.test.ts` after the change. It reproduces byte-for-byte.
+Provenance is recorded on the constant; a change there means the refinement
+altered output in the case it was supposed to leave alone, so it is never a
+re-baselining candidate.
+
+The new discriminating tests were themselves checked by temporarily restoring the
+`started.last()` rule: the first-on-page assertion and its mirrored control both
+fail under it, while the equivalence digest passes under *both* rules — which is
+exactly the split the change claims. `template-migration-parity.test.ts` still
+pins `351fd2d4…` unchanged (the default design is `title` mode, so the chapter
+branch is never emitted for it).
+
 ## Definition of Done
 
 - The built-in template's default output is proven parity-identical

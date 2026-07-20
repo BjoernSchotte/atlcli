@@ -6,6 +6,10 @@
  * fixed `headerText` string. Neither is chapter-aware, so a 57-page tree export
  * repeated the root page title on every page. `"chapter"` is the third mode.
  *
+ * A second follow-up (2026-07-20, user review of the M1 acceptance artifacts)
+ * refined *which* chapter a page names when several chapters begin on one page:
+ * the FIRST one, not the last. See the "first on the page" section below.
+ *
  * ## Why the assertions look the way they do
  *
  * Typst subsets its fonts and emits glyph ids, so header text is NOT recoverable
@@ -25,8 +29,10 @@ import { fileURLToPath } from "node:url";
 import {
   PDF_RUNTIME_ASSETS,
   preparePdfDocument,
+  validatePdfOutput,
   type ExportBlock,
   type PdfExportMetadata,
+  type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
 import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
@@ -41,11 +47,20 @@ import {
 } from "@atlcli/template-pack";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
-import { BrowserPdfCompiler } from "./index.js";
+import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 
-/** The Typst construct the chapter mode is built on (verified below). */
-const CHAPTER_QUERY =
-  "query(heading.where(level: 1)).filter(h => h.outlined and h.location().page() <= here().page())";
+/**
+ * The Typst constructs the chapter mode is built on (all verified below).
+ *
+ * `CHAPTER_QUERY` is the chapter *set* — every outlined level-1 heading.
+ * `OPENING_ON_PAGE` / `STILL_RUNNING` split it by page index, and the head is
+ * the FIRST of the ones opening on this page, else the LAST of the ones already
+ * running.
+ */
+const CHAPTER_QUERY = "query(heading.where(level: 1)).filter(h => h.outlined)";
+const OPENING_ON_PAGE = "chapters.filter(h => h.location().page() == here().page())";
+const STILL_RUNNING = "chapters.filter(h => h.location().page() < here().page())";
+const FIRST_ON_PAGE = "if opening.len() > 0 { opening.first().body }";
 
 /**
  * A validated built-in manifest with an explicit running-head mode. Re-runs the
@@ -77,6 +92,77 @@ function filler(tag: string): ExportBlock[] {
   );
 }
 
+/**
+ * Three chapters short enough that all three BEGIN on the same body page — the
+ * case the first-on-page rule is about. Asserted, not assumed: the tests that
+ * use it check the resulting page count.
+ */
+function crowdedPage(): ExportBlock[] {
+  return [
+    heading("Alpha Chapter"),
+    paragraph("Alpha is a stub chapter: a single line of body copy."),
+    heading("Beta Chapter"),
+    paragraph("Beta is a stub chapter: a single line of body copy."),
+    heading("Gamma Chapter"),
+    paragraph("Gamma is a stub chapter: a single line of body copy."),
+  ];
+}
+
+/**
+ * The equivalence fixture: one chapter per page, which is what `composeChapters`
+ * produces with its default per-chapter `pageBreak`. Under this layout the
+ * pre-refinement rule ("last outlined level-1 heading at or before this page")
+ * and the refined rule ("first one opening on this page, else the still-running
+ * one") select the same heading on every page.
+ *
+ * KEEP BYTE-STABLE: {@link ONE_PER_PAGE_PRE_REFINEMENT_DIGEST} is a digest of
+ * this exact fixture. Editing the blocks, the metadata, or the manifest
+ * invalidates the pinned number and the equivalence proof with it.
+ */
+const ONE_PER_PAGE_CHAPTERS = ["Alpha", "Beta", "Gamma", "Delta"] as const;
+
+const ONE_PER_PAGE_BLOCKS: ExportBlock[] = ONE_PER_PAGE_CHAPTERS.flatMap((name, index) => [
+  ...(index === 0 ? [] : [{ type: "pageBreak" } as ExportBlock]),
+  heading(`${name} Chapter`),
+  paragraph(`${name} body copy, short enough to leave the page well before its foot.`),
+]);
+
+const ONE_PER_PAGE_METADATA: PdfExportMetadata = {
+  title: "One Chapter Per Page",
+  space: "DOCSY",
+  version: 3,
+  author: "Ada Lovelace",
+  exporter: "atlcli",
+  language: "en",
+  region: "GB",
+  exportedAt: new Date("2026-07-19T00:00:00.000Z"),
+};
+
+/**
+ * sha256 of {@link ONE_PER_PAGE_BLOCKS} rendered in `chapter` mode through the
+ * built-in manifest by the PRE-REFINEMENT rule, i.e. by
+ *
+ *   let started = query(heading.where(level: 1))
+ *     .filter(h => h.outlined and h.location().page() <= here().page())
+ *   let chapter-head = if started.len() > 0 { started.last().body } else { meta.title }
+ *
+ * Provenance: captured from `origin/main` at commit
+ * `62a003134bb139270441be907bd1572ed41c7c4a` (PR #66, the commit immediately
+ * before the first-on-page refinement) with the pinned compiler
+ * {@link PINNED_COMPILER}, by compiling this fixture with that checkout's
+ * unmodified `packages/pdf/src/template.ts`. The refined rule reproducing this
+ * digest byte-for-byte is the proof that the normal one-chapter-per-page case
+ * did not regress.
+ *
+ * A change here is NOT a re-baselining candidate: it means the refinement
+ * altered output in the very case it was supposed to leave alone.
+ */
+const ONE_PER_PAGE_PRE_REFINEMENT_DIGEST =
+  "90bef12c83c654c059f5cc3918b21469c3640c7dad78683676b7766b02023ca0";
+
+/** Digests are only comparable within one compiler version. */
+const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
+
 function metadata(title: string): PdfExportMetadata {
   return {
     title,
@@ -99,14 +185,19 @@ let compiler: BrowserPdfCompiler;
 async function render(
   blocks: ExportBlock[],
   meta: PdfExportMetadata,
-  templateManifest: TemplateManifest
+  templateManifest: TemplateManifest,
+  settings?: PdfTemplateSettings
 ): Promise<Uint8Array> {
   const prepared = await preparePdfDocument(blocks, {
     resolve: async () => {
       throw new Error("this fixture has no external assets");
     },
   });
-  const bundle = serializePdfDocument(prepared, { metadata: meta, templateManifest });
+  const bundle = serializePdfDocument(prepared, {
+    metadata: meta,
+    templateManifest,
+    ...(settings === undefined ? {} : { settings }),
+  });
   const result = await compiler.compile(bundle);
   const errors = result.diagnostics.filter((d) => d.severity === "error");
   if (errors.length) throw new Error(`compile failed: ${JSON.stringify(errors)}`);
@@ -171,14 +262,31 @@ describe("chapter running head (real compiler)", () => {
   it("chapter mode emits the verified page-index query, not the lagging before(here()) form", () => {
     const source = createAtlcliTypstTemplate(manifestWithHeaderMode("chapter").design!);
     expect(source).toContain(CHAPTER_QUERY);
-    // `here()` in a page header resolves to the TOP of the page, so a
-    // `.before(here())` selector excludes a chapter that opens on that page and
-    // lags one page behind at every chapter opening. Verified against the pinned
-    // compiler; the page-index comparison is the construct that survived.
+    // Invariant 1: a chapter that OPENS on this page must be selected. `here()`
+    // in a page header resolves to the TOP of the page, so a `.before(here())`
+    // selector excludes such a chapter and lags one page behind at every
+    // chapter opening. Verified against the pinned compiler; the page-index
+    // equality comparison is the construct that survived.
+    expect(source).toContain(OPENING_ON_PAGE);
     expect(source).not.toContain(".before(here())");
+    // Invariant 3: first-on-page, and the still-running chapter as the fallback
+    // for a page no chapter opens on.
+    expect(source).toContain(FIRST_ON_PAGE);
+    expect(source).toContain(STILL_RUNNING);
+    expect(source).toContain("running.last().body");
+    // ...never `.last()` over the headings opening on this page.
+    expect(source).not.toContain("opening.last()");
     // The space key stays on the right and the hairline is unchanged.
     expect(source).toContain("grid(columns: (1fr, auto), chapter-head, meta.space)");
     expect(source).toContain("line(length: 100%,");
+  });
+
+  it("chapter mode keeps the outlined filter that excludes the ToC heading", () => {
+    // Invariant 2, asserted on the source as well as behaviorally (the fallback
+    // test below is the render-level regression guard). `outline()` emits its
+    // own level-1 heading; it is the only one with `outlined: false`.
+    const source = createAtlcliTypstTemplate(manifestWithHeaderMode("chapter").design!);
+    expect(source).toContain("h.outlined");
   });
 
   it("a single chapter whose title equals the document title renders identically in both modes", async () => {
@@ -260,6 +368,127 @@ describe("chapter running head (real compiler)", () => {
     const chaptered = await render(blocks, meta, manifestWithHeaderMode("chapter"));
     expect(digest(chaptered)).not.toBe(digest(titled));
   }, 180_000);
+
+  // -------------------------------------------------------------------------
+  // (d) several chapters on one page -> the FIRST of them
+  // -------------------------------------------------------------------------
+  //
+  // Refinement of 2026-07-20 (user review of the M1 acceptance artifacts). The
+  // head sits at the TOP of the page and the content directly below it starts
+  // with the first chapter that begins there, so naming a later one contradicts
+  // what the reader sees. It is also the dictionary/guide-word convention.
+
+  it("names the FIRST chapter when several chapters begin on the same page", async () => {
+    // Three short chapters share one body page (asserted). Header-bearing pages
+    // are the ToC page (fallback -> document title) and that one body page. With
+    // the document title set to the FIRST chapter, title mode reads
+    // "Alpha Chapter" on both, and chapter mode can only agree if the body page
+    // resolves to "Alpha Chapter" too. The previous `.last()` rule resolved it
+    // to "Gamma Chapter" and this assertion fails under it.
+    const blocks = crowdedPage();
+    const meta = metadata("Alpha Chapter");
+    const chaptered = await render(blocks, meta, manifestWithHeaderMode("chapter"));
+    // cover + ToC + one body page + closing page: all three chapters share a page.
+    expect(validatePdfOutput(chaptered).pageCount).toBe(4);
+    const titled = await render(blocks, meta, manifestWithHeaderMode("title"));
+    expect(digest(chaptered)).toBe(digest(titled));
+  }, 180_000);
+
+  it("does NOT name the last chapter when several chapters begin on the same page", async () => {
+    // The mirrored control. Same fixture, document title set to the LAST chapter
+    // instead: chapter mode must now DIFFER from title mode, because the body
+    // page reads "Alpha Chapter" while the title-mode head reads "Gamma
+    // Chapter". Without this control the test above would also pass for a rule
+    // that ignored chapters entirely and always emitted the document title.
+    const blocks = crowdedPage();
+    const meta = metadata("Gamma Chapter");
+    const titled = await render(blocks, meta, manifestWithHeaderMode("title"));
+    const chaptered = await render(blocks, meta, manifestWithHeaderMode("chapter"));
+    expect(digest(chaptered)).not.toBe(digest(titled));
+  }, 180_000);
+
+  // -------------------------------------------------------------------------
+  // (e) the two page kinds, isolated
+  // -------------------------------------------------------------------------
+
+  it("a chapter that OPENS on a page heads that page (invariant 1, isolated)", async () => {
+    // One short chapter: the only body page is the page the chapter opens on.
+    // Document title differs from the chapter, so title mode heads that page
+    // "Unrelated Document" and chapter mode must head it "Alpha Chapter" — the
+    // renders differ, and the opening page is the ONLY page that can account for
+    // it (the ToC page falls back to the document title in both modes). A
+    // `.before(here())` selector, which excludes a chapter opening on this very
+    // page, would make the two renders equal and fail here.
+    const blocks = [heading("Alpha Chapter"), paragraph("A chapter short enough to fit its page.")];
+    const opening = await render(blocks, metadata("Unrelated Document"), manifestWithHeaderMode("chapter"));
+    expect(validatePdfOutput(opening).pageCount).toBe(4);
+    const titled = await render(blocks, metadata("Unrelated Document"), manifestWithHeaderMode("title"));
+    expect(digest(opening)).not.toBe(digest(titled));
+
+    // ...and the positive pins it to exactly the chapter's own text.
+    const meta = metadata("Alpha Chapter");
+    expect(digest(await render(blocks, meta, manifestWithHeaderMode("chapter")))).toBe(
+      digest(await render(blocks, meta, manifestWithHeaderMode("title")))
+    );
+  }, 240_000);
+
+  it("a CONTINUATION page heads the still-running chapter (isolated)", async () => {
+    // Cover and outline are switched off, so the chapter opens on page 1 — where
+    // the header is suppressed — and the closing page is the last. Every
+    // header-bearing page is therefore a pure continuation page of "Alpha
+    // Chapter": no chapter begins on it. If the still-running branch were
+    // missing (a page with no chapter opening on it falling through to the
+    // document-title fallback) these two renders would be EQUAL, so the
+    // inequality is attributable to continuation pages and nothing else.
+    const blocks = [heading("Alpha Chapter"), ...filler("alpha"), ...filler("alpha continued")];
+    const bare: PdfTemplateSettings = { cover: false, outline: false };
+    const chaptered = await render(blocks, metadata("Unrelated Document"), manifestWithHeaderMode("chapter"), bare);
+    // >= 4 pages means at least two header-bearing continuation pages exist.
+    expect(validatePdfOutput(chaptered).pageCount).toBeGreaterThanOrEqual(4);
+    const titled = await render(blocks, metadata("Unrelated Document"), manifestWithHeaderMode("title"), bare);
+    expect(digest(chaptered)).not.toBe(digest(titled));
+
+    // ...and the positive pins those continuation heads to the chapter's text.
+    const meta = metadata("Alpha Chapter");
+    expect(digest(await render(blocks, meta, manifestWithHeaderMode("chapter"), bare))).toBe(
+      digest(await render(blocks, meta, manifestWithHeaderMode("title"), bare))
+    );
+  }, 240_000);
+
+  // -------------------------------------------------------------------------
+  // (f) equivalence with the pre-refinement rule in the normal case
+  // -------------------------------------------------------------------------
+
+  it("a one-chapter-per-page document is byte-identical to the pre-refinement render", async () => {
+    // For documents with at most ONE chapter starting per page — the normal
+    // case, since `composeChapters` inserts a pageBreak per chapter by default —
+    // "first chapter opening on this page" and "last heading at or before this
+    // page" select the same heading, so the refinement must be a no-op.
+    //
+    // The old rule cannot be executed any more, so the proof is a pinned digest
+    // of a render produced by it. See ONE_PER_PAGE_PRE_REFINEMENT_DIGEST for the
+    // provenance of that number.
+    const chaptered = await render(
+      ONE_PER_PAGE_BLOCKS,
+      ONE_PER_PAGE_METADATA,
+      manifestWithHeaderMode("chapter")
+    );
+    // cover + ToC + one page per chapter + closing page: exactly one chapter
+    // starts on each body page, which is the precondition the claim is about.
+    expect(validatePdfOutput(chaptered).pageCount).toBe(3 + ONE_PER_PAGE_CHAPTERS.length);
+    expect(PDF_BROWSER_COMPILER_VERSION).toBe(PINNED_COMPILER);
+    expect(digest(chaptered)).toBe(ONE_PER_PAGE_PRE_REFINEMENT_DIGEST);
+
+    // Guard the fixture: the head really does track the chapters here (the
+    // document title matches none of them), so the digest above is not the
+    // trivially chapter-independent title-mode output.
+    const titled = await render(
+      ONE_PER_PAGE_BLOCKS,
+      ONE_PER_PAGE_METADATA,
+      manifestWithHeaderMode("title")
+    );
+    expect(digest(chaptered)).not.toBe(digest(titled));
+  }, 240_000);
 
   // -------------------------------------------------------------------------
   // Manuscript ships the mode

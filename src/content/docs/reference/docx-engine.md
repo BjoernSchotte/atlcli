@@ -336,8 +336,9 @@ field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this work
 > **PDF equivalent.** The PDF engine offers the same capability as a declared template
 > design field, `design.features.header.mode: "chapter"` — see
 > [Running-head modes](pdf-template-contract.md#running-head-modes). Same result (each page
-> headed by the last H1 that began on or before it), different declaration point: DOCX
-> inherits the field from the user's `.docx`, PDF validates a manifest enum.
+> headed by the first H1 beginning on it, or by the chapter still running if none begins
+> there), different declaration point: DOCX inherits the field from the user's `.docx`,
+> PDF validates a manifest enum.
 
 
 - Field **instructions survive byte-exactly** — the preprocessor and docxtemplater never touch
@@ -346,6 +347,23 @@ field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this work
   (`resolveHeadingStyleId` against the template's `word/styles.xml`).
 - `word/settings.xml` gets `<w:updateFields w:val="true"/>` so Word offers to refresh fields on
   open.
+
+**Which heading a page gets.** By default Word searches the page from the **top down** and
+shows the **first** paragraph in the named style; if the style does not occur on the page, it
+searches back toward the start of the document, so the chapter still running stays in the
+header. The `\l` switch (`STYLEREF "Scroll Heading 1" \l`) reverses the on-page search to
+bottom-up and shows the **last** such heading instead — the pair is how Word builds
+dictionary-style headers. With one chapter per page (what `composeChapters` produces by
+default) both directions give the same heading.
+
+:::note[The scan records style names only]
+`collectStylerefFields` matches `STYLEREF "<style name>"` and captures the name; it does not
+parse switches, so `\l` — like `\* MERGEFORMAT` and the numbering switches — is ignored. That
+is intentional for a diagnostic whose only question is *does this export emit the style the
+field names*, and it means the notes below read the same for `\l` and non-`\l` fields. Nothing
+in the engine reorders, rewrites, or depends on a field's search direction: the instruction
+survives byte-exactly and Word alone resolves it.
+:::
 
 Two diagnostics flag a field that will not resolve as intended (they change nothing — the export
 still succeeds):
@@ -364,7 +382,10 @@ but not sufficient. Once per release, confirm in Word 365:
 1. Export a multi-page document whose template header carries the STYLEREF field.
 2. Open in Word 365. If the header shows a **stale** chapter, press **F9** (or reopen) to refresh
    fields — `updateFields` prompts this automatically on first open.
-3. Confirm each page's header shows the **last H1 that began on or before that page**.
+3. Confirm each page's header shows the **first H1 beginning on that page**, or — on a page
+   where no H1 begins — the chapter still running from an earlier page. (With one chapter per
+   page these coincide; they differ only where a page opens several chapters, and a `\l` field
+   would show the last one instead.)
 4. If it stays blank or stale after refresh, check the report for a `styleref-*` note — a
    warning means promotion left the referenced style unused (fix the template's field to name the
    effective heading style), an info means the style name is not in the template.
