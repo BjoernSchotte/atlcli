@@ -114,6 +114,12 @@ jobs:
       - name: PDF compile-port and build-mode tests
         run: bun test apps/cli/src/commands/export-pdf-assets.test.ts apps/cli/src/commands/export-pdf-build-modes.test.ts apps/cli/src/commands/export-pdf-integration.test.ts
 
+      # Spec 006 G4: the diagram/SVG rasterizer's resvg-wasm + font imports must
+      # resolve in every build mode on macOS too (the release ships macOS
+      # binaries, and SVG attachment embedding depends on this rasterizer).
+      - name: Diagram/SVG rasterizer build-mode tests
+        run: bun test apps/cli/src/commands/export-rasterizer-build-modes.test.ts
+
   # Spec 008 T3.2 platform gate: the filePdfOutputSink commit protocol
   # (exclusive temp, symlink refusal, atomic no-replace commit, containment)
   # must hold on Windows too — release.yml ships a Windows binary. Scoped to

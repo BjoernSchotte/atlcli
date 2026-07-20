@@ -1189,20 +1189,32 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const rasterizerPromise = pagePromise.then(async (details) => {
     const storage = details.storage ?? "";
     if (!mightContainMermaid(storage) && !mightReferenceImage(storage)) {
-      return { needed: false as const, rasterizer: null };
+      return { needed: false as const, rasterizer: null, error: undefined as string | undefined };
     }
     try {
       const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
-      return { needed: true as const, rasterizer: await buildDiagramRasterizer() };
-    } catch {
-      return { needed: true as const, rasterizer: null };
+      let error: string | undefined;
+      const rasterizer = await buildDiagramRasterizer((message) => {
+        error = message;
+      });
+      return { needed: true as const, rasterizer, error };
+    } catch (err) {
+      return {
+        needed: true as const,
+        rasterizer: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   });
   rasterizerPromise.catch(() => {});
   const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
   const rasterizer = rasterizerState.rasterizer;
   if (rasterizerState.needed && !rasterizer) {
-    cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
+    cliNotes.push(
+      "diagram rasterizer unavailable; mermaid diagrams export as code blocks and SVG attachments are skipped" +
+        (rasterizerState.error ? ` (${rasterizerState.error})` : "") +
+        "."
+    );
   }
 
   // Resolve @mentions to display names before serialization, matching the
@@ -1509,14 +1521,22 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     let rasterizer: import("@atlcli/docx").SvgRasterizer | undefined;
     const cliNotes: string[] = [];
     if (embedImages && blocksNeedRasterizer(composed.blocks)) {
+      let rasterizerError: string | undefined;
       try {
         const { buildDiagramRasterizer } = await import("./export-rasterizer.js");
-        rasterizer = (await buildDiagramRasterizer()) ?? undefined;
-      } catch {
+        rasterizer = (await buildDiagramRasterizer((message) => {
+          rasterizerError = message;
+        })) ?? undefined;
+      } catch (err) {
+        rasterizerError = err instanceof Error ? err.message : String(err);
         rasterizer = undefined;
       }
       if (!rasterizer) {
-        cliNotes.push("diagram rasterizer unavailable; mermaid diagrams export as code blocks.");
+        cliNotes.push(
+          "diagram rasterizer unavailable; mermaid diagrams export as code blocks and SVG attachments are skipped" +
+            (rasterizerError ? ` (${rasterizerError})` : "") +
+            "."
+        );
       }
     }
 
