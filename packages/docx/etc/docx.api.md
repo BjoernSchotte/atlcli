@@ -9,7 +9,7 @@
 ```ts
 // export: AssetFetcher
 export interface AssetFetcher {
-    fetch(ref: AssetRef): Promise<Uint8Array>;
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: AssetRef
@@ -17,6 +17,7 @@ export interface AssetRef {
     url: string;
     pageId?: string;
     filename?: string;
+    trust?: "page" | "export-view";
 }
 
 // export: classifyPlaceholder
@@ -111,6 +112,9 @@ export declare const EMU_PER_PX = 9525;
 // export: encodeXmlText
 export declare function encodeXmlText(text: string): string;
 
+// export: ensureCaptionStyle
+export declare function ensureCaptionStyle(zip: PizZip): void;
+
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
@@ -128,6 +132,7 @@ export interface ExportEnv {
     templates: TemplateSource;
     assets?: AssetFetcher;
     rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
     output: OutputSink;
 }
 
@@ -135,6 +140,11 @@ export interface ExportEnv {
 export interface ExportInput {
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -142,6 +152,9 @@ export interface ExportInput {
     embedImages?: boolean;
     rasterizer?: SvgRasterizer;
     diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
 }
 
 // export: ExportReport
@@ -154,6 +167,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
 }
@@ -184,6 +198,11 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
 
 // export: ImageEmbedder
 export declare class ImageEmbedder {
@@ -244,9 +263,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
 
+// export: mergeTrailingRegionSectPr
+export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
 // export: OutputSink
 export interface OutputSink {
-    emit(name: string, bytes: Uint8Array): Promise<void>;
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
 }
 
 // export: PagePropertyArgs
@@ -285,6 +307,9 @@ export declare function preprocessScrollText(zip: PizZip, values: Map<string, st
 
 // export: pxToEmu
 export declare function pxToEmu(px: number): number;
+
+// export: readBodySectPr
+export declare function readBodySectPr(zip: PizZip): string | undefined;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
@@ -340,7 +365,7 @@ export declare function warmDiagramRenderer(): void;
 ```ts
 // export: AssetFetcher
 export interface AssetFetcher {
-    fetch(ref: AssetRef): Promise<Uint8Array>;
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: AssetRef
@@ -348,6 +373,7 @@ export interface AssetRef {
     url: string;
     pageId?: string;
     filename?: string;
+    trust?: "page" | "export-view";
 }
 
 // export: bundledDiagramFonts
@@ -445,6 +471,9 @@ export declare const EMU_PER_PX = 9525;
 // export: encodeXmlText
 export declare function encodeXmlText(text: string): string;
 
+// export: ensureCaptionStyle
+export declare function ensureCaptionStyle(zip: PizZip): void;
+
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
@@ -462,6 +491,7 @@ export interface ExportEnv {
     templates: TemplateSource;
     assets?: AssetFetcher;
     rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
     output: OutputSink;
 }
 
@@ -469,6 +499,11 @@ export interface ExportEnv {
 export interface ExportInput {
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -476,6 +511,9 @@ export interface ExportInput {
     embedImages?: boolean;
     rasterizer?: SvgRasterizer;
     diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
 }
 
 // export: ExportReport
@@ -488,6 +526,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
 }
@@ -524,6 +563,11 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
 
 // export: ImageEmbedder
 export declare class ImageEmbedder {
@@ -584,9 +628,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
 
+// export: mergeTrailingRegionSectPr
+export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
 // export: OutputSink
 export interface OutputSink {
-    emit(name: string, bytes: Uint8Array): Promise<void>;
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
 }
 
 // export: PagePropertyArgs
@@ -625,6 +672,9 @@ export declare function preprocessScrollText(zip: PizZip, values: Map<string, st
 
 // export: pxToEmu
 export declare function pxToEmu(px: number): number;
+
+// export: readBodySectPr
+export declare function readBodySectPr(zip: PizZip): string | undefined;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
@@ -693,7 +743,7 @@ export declare function warmDiagramRenderer(): void;
 ```ts
 // export: AssetFetcher
 export interface AssetFetcher {
-    fetch(ref: AssetRef): Promise<Uint8Array>;
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: AssetRef
@@ -701,6 +751,7 @@ export interface AssetRef {
     url: string;
     pageId?: string;
     filename?: string;
+    trust?: "page" | "export-view";
 }
 
 // export: classifyPlaceholder
@@ -795,6 +846,9 @@ export declare const EMU_PER_PX = 9525;
 // export: encodeXmlText
 export declare function encodeXmlText(text: string): string;
 
+// export: ensureCaptionStyle
+export declare function ensureCaptionStyle(zip: PizZip): void;
+
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
@@ -812,6 +866,7 @@ export interface ExportEnv {
     templates: TemplateSource;
     assets?: AssetFetcher;
     rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
     output: OutputSink;
 }
 
@@ -819,6 +874,11 @@ export interface ExportEnv {
 export interface ExportInput {
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -826,6 +886,9 @@ export interface ExportInput {
     embedImages?: boolean;
     rasterizer?: SvgRasterizer;
     diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
 }
 
 // export: ExportReport
@@ -838,6 +901,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
 }
@@ -868,6 +932,11 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
 
 // export: ImageEmbedder
 export declare class ImageEmbedder {
@@ -928,9 +997,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
 
+// export: mergeTrailingRegionSectPr
+export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
 // export: OutputSink
 export interface OutputSink {
-    emit(name: string, bytes: Uint8Array): Promise<void>;
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
 }
 
 // export: PagePropertyArgs
@@ -969,6 +1041,9 @@ export declare function preprocessScrollText(zip: PizZip, values: Map<string, st
 
 // export: pxToEmu
 export declare function pxToEmu(px: number): number;
+
+// export: readBodySectPr
+export declare function readBodySectPr(zip: PizZip): string | undefined;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
@@ -1124,8 +1199,35 @@ export declare function textBoxTitlePara(text: string): string;
 ### Entry point `./internal`
 
 ```ts
+// export: bookmarkEnd
+export declare function bookmarkEnd(id: number): string;
+
+// export: bookmarkStart
+export declare function bookmarkStart(id: number, name: string): string;
+
 // export: calloutTable
 export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string): string;
+
+// export: CAPTION_STYLE_ID
+export declare const CAPTION_STYLE_ID = "Caption";
+
+// export: CaptionLang
+export type CaptionLang = "en" | "de";
+
+// export: captionParagraph
+export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string): string;
+
+// export: captionSeqLabel
+export declare function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string;
+
+// export: captionSeqName
+export declare function captionSeqName(kind: CaptionKind): string;
+
+// export: captionStyleXml
+export declare function captionStyleXml(): string;
+
+// export: coalesceSectPrParagraphs
+export declare function coalesceSectPrParagraphs(xml: string): string;
 
 // export: CODE_STYLE_ID
 export declare const CODE_STYLE_ID = "AtlcliCode";
@@ -1223,6 +1325,12 @@ export interface ImageEmbedSeam {
     prefetch?(block: ImageBlock): void;
 }
 
+// export: internalHyperlink
+export declare function internalHyperlink(anchor: string, innerRuns: string): string;
+
+// export: isSafeHyperlinkUrl
+export declare function isSafeHyperlinkUrl(url: string): boolean;
+
 // export: lineBreakRun
 export declare function lineBreakRun(): string;
 
@@ -1231,6 +1339,9 @@ export declare const MAX_TEMPLATE_BYTES: number;
 
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
+
+// export: pageBreakParagraph
+export declare function pageBreakParagraph(): string;
 
 // export: PageOwner
 export interface PageOwner {
@@ -1250,6 +1361,15 @@ export declare function parseStyleNames(stylesXml: string): Map<string, string>;
 
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
+
+// export: resolveCaptionLang
+export declare function resolveCaptionLang(raw: string | undefined): {
+    lang: CaptionLang;
+    note?: ExportNote;
+};
+
+// export: resolveCaptionStyleId
+export declare function resolveCaptionStyleId(styleNames: Map<string, string>): string;
 
 // export: ResolveContext
 export interface ResolveContext {
@@ -1323,6 +1443,9 @@ export declare function scanTemplate(bytes: Uint8Array): ScanResult;
 // export: scanZip
 export declare function scanZip(zip: PizZip): ScanResult;
 
+// export: sectPrParagraph
+export declare function sectPrParagraph(sectPr: string): string;
+
 // export: serializeBlocks
 export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeContext): Promise<SerializeResult>;
 
@@ -1331,6 +1454,8 @@ export interface SerializeContext {
     styleNames: Map<string, string>;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
+    bodySectPr?: string;
+    captionLang?: CaptionLang;
 }
 
 // export: serializeInline
@@ -1344,6 +1469,9 @@ export interface SerializeResult {
 
 // export: statusBadgeRun
 export declare function statusBadgeRun(text: string, color: string): string;
+
+// export: synthesizeA4SectPr
+export declare function synthesizeA4SectPr(): string;
 
 // export: tableCell
 export declare function tableCell(paragraphsXml: string, opts?: {
@@ -1359,6 +1487,12 @@ export interface TemplateMeta {
     modificationDate: Date;
 }
 
+// export: toLandscapeSectPr
+export declare function toLandscapeSectPr(baseSectPr: string): string;
+
+// export: toPortraitSectPr
+export declare function toPortraitSectPr(baseSectPr: string): string;
+
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array): PizZip;
 ```
@@ -1368,7 +1502,7 @@ export declare function unzipDocx(bytes: Uint8Array): PizZip;
 ```ts
 // export: AssetFetcher
 export interface AssetFetcher {
-    fetch(ref: AssetRef): Promise<Uint8Array>;
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: AssetRef
@@ -1376,6 +1510,7 @@ export interface AssetRef {
     url: string;
     pageId?: string;
     filename?: string;
+    trust?: "page" | "export-view";
 }
 
 // export: bundledDiagramFonts
@@ -1473,6 +1608,9 @@ export declare const EMU_PER_PX = 9525;
 // export: encodeXmlText
 export declare function encodeXmlText(text: string): string;
 
+// export: ensureCaptionStyle
+export declare function ensureCaptionStyle(zip: PizZip): void;
+
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
@@ -1490,6 +1628,7 @@ export interface ExportEnv {
     templates: TemplateSource;
     assets?: AssetFetcher;
     rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
     output: OutputSink;
 }
 
@@ -1497,6 +1636,11 @@ export interface ExportEnv {
 export interface ExportInput {
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -1504,6 +1648,9 @@ export interface ExportInput {
     embedImages?: boolean;
     rasterizer?: SvgRasterizer;
     diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
 }
 
 // export: ExportReport
@@ -1516,6 +1663,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
 }
@@ -1552,6 +1700,11 @@ export declare function formatDatePlaceholder(date: Date, argument?: string): Da
 
 // export: formatSimpleDate
 export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
 
 // export: ImageEmbedder
 export declare class ImageEmbedder {
@@ -1612,9 +1765,12 @@ export declare const MAX_CONTENT_WIDTH_PX = 600;
 // export: MAX_IMAGE_BYTES
 export declare const MAX_IMAGE_BYTES: number;
 
+// export: mergeTrailingRegionSectPr
+export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
 // export: OutputSink
 export interface OutputSink {
-    emit(name: string, bytes: Uint8Array): Promise<void>;
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
 }
 
 // export: PagePropertyArgs
@@ -1653,6 +1809,9 @@ export declare function preprocessScrollText(zip: PizZip, values: Map<string, st
 
 // export: pxToEmu
 export declare function pxToEmu(px: number): number;
+
+// export: readBodySectPr
+export declare function readBodySectPr(zip: PizZip): string | undefined;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;

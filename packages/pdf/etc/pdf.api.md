@@ -7,6 +7,21 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: DEFAULT_PDF_ACCENT_COLOR
+export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
+
+// export: DEFAULT_PDF_WATERMARK_ANGLE
+export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
+
+// export: DEFAULT_PDF_WATERMARK_COLOR
+export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
+
+// export: DEFAULT_PDF_WATERMARK_OPACITY
+export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
+
+// export: DEFAULT_PDF_WATERMARK_SIZE
+export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -64,6 +79,11 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
 
 // export: ExportNote
@@ -72,6 +92,41 @@ export interface ExportNote {
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
+}
+
+// export: FontAsset
+export interface FontAsset {
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    license?: {
+        kind: "OFL" | "Apache-2.0" | "proprietary";
+        evidence: string;
+    };
+}
+
+// export: FontParseError
+export declare class FontParseError extends Error {
+    readonly reason: FontParseErrorReason;
+    constructor(reason: FontParseErrorReason, message: string);
+}
+
+// export: FontParseErrorReason
+export type FontParseErrorReason = "empty" | "too-large" | "truncated" | "unsupported-format" | "web-packaged" | "missing-name-table" | "malformed-name-table";
+
+// export: FontSource
+export interface FontSource {
+    list(): Promise<FontAsset[]>;
+    getBytes(sha256: string): Promise<Uint8Array>;
+}
+
+// export: FontVerificationError
+export declare class FontVerificationError extends Error {
+    readonly expected: string;
+    readonly actual: string;
+    constructor(expected: string, actual: string);
 }
 
 // export: formatPdfCompilerDiagnostics
@@ -106,6 +161,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -116,11 +172,34 @@ export type LinkTarget = {
     anchor: string;
 };
 
+// export: MAX_FONT_BYTES
+export declare const MAX_FONT_BYTES: number;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
     region?: string;
 };
+
+// export: ParsedFontFace
+export interface ParsedFontFace {
+    family: string;
+    subfamily: string;
+    style: "normal" | "italic";
+    weight: number;
+}
+
+// export: parseFontMeta
+export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_ASSET_CONCURRENCY
+export declare const PDF_ASSET_CONCURRENCY = 4;
+
+// export: PDF_MAX_ASSET_BYTES
+export declare const PDF_MAX_ASSET_BYTES: number;
+
+// export: PDF_MAX_TOTAL_ASSET_BYTES
+export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -138,11 +217,15 @@ export interface PdfAssetRef {
     kind: "attachment" | "external";
     filename?: string;
     url?: string;
+    trust?: "page" | "export-view";
+    pageId?: string;
 }
 
 // export: PdfAssetResolver
 export interface PdfAssetResolver {
-    resolve(ref: PdfAssetRef): Promise<PdfResolvedAsset>;
+    resolve(ref: PdfAssetRef, context?: {
+        signal?: AbortSignal;
+    }): Promise<PdfResolvedAsset>;
 }
 
 // export: PdfCompileContext
@@ -180,6 +263,7 @@ export interface PdfExportEnv {
     compiler: PdfCompilePort;
     output: PdfOutputSink;
     now?: () => number;
+    macros?: MacroResolutionOptions;
 }
 
 // export: PdfExportError
@@ -195,7 +279,7 @@ export declare class PdfExportError extends Error {
 }
 
 // export: PdfExportErrorPhase
-export type PdfExportErrorPhase = "prepare" | "compile" | "validate" | "emit";
+export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
 
 // export: PdfExportMetadata
 export interface PdfExportMetadata {
@@ -210,7 +294,7 @@ export interface PdfExportMetadata {
 }
 
 // export: PdfExportPhase
-export type PdfExportPhase = "preparing" | "fetching" | "compiling" | "validating" | "emitting";
+export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compiling" | "validating" | "emitting";
 
 // export: PdfExportReport
 export interface PdfExportReport {
@@ -222,6 +306,8 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    complete: boolean;
+    compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;
 }
 
@@ -231,6 +317,21 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfLogoAsset
+export interface PdfLogoAsset {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt?: string;
+}
+
+// export: PdfOutputInspection
+export interface PdfOutputInspection {
+    pageCount: number;
+    tagged: boolean;
+    hasOutline: boolean;
+    embeddedFontFiles: number;
 }
 
 // export: PdfOutputSink
@@ -265,6 +366,19 @@ export interface PdfSerializeOptions {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
+}
+
+// export: PdfSettingsError
+export declare class PdfSettingsError extends Error {
+    readonly path: string;
+    readonly value: unknown;
+    readonly constraint: string;
+    constructor(options: {
+        path: string;
+        value: unknown;
+        constraint: string;
+    });
 }
 
 // export: PdfSourceBundle
@@ -289,6 +403,20 @@ export interface PdfSourceMapEntry {
 
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
+
+// export: PdfTemplateSettings
+export interface PdfTemplateSettings {
+    page?: "a4" | "letter";
+    orientation?: "portrait" | "landscape";
+    cover?: boolean;
+    outline?: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor?: string;
+    organizationName?: string;
+    logo?: PdfLogoAsset;
+    watermark?: PdfWatermarkSettings;
+}
 
 // export: PdfTheme
 export interface PdfTheme {
@@ -322,6 +450,15 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfWatermarkSettings
+export interface PdfWatermarkSettings {
+    text: string;
+    color?: string;
+    opacity?: number;
+    angle?: number;
+    size?: number;
+}
+
 // export: PreparedPdfAsset
 export interface PreparedPdfAsset {
     path: string;
@@ -331,8 +468,13 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation";
+    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
+    type: "unknown";
+    macroName: string;
+    body?: PreparedPdfBlock[];
+    plainBody?: string;
+} | {
     type: "callout";
     kind: Extract<ExportBlock, {
         type: "callout";
@@ -394,6 +536,48 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: preparePdfDocument
+export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: PreparePdfOptions
+export interface PreparePdfOptions {
+    onProgress?: ExportProgressCallback;
+    signal?: AbortSignal;
+}
+
+// export: ResolvedPdfLogo
+export interface ResolvedPdfLogo {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt: string;
+}
+
+// export: ResolvedPdfSettings
+export interface ResolvedPdfSettings {
+    page: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    cover: boolean;
+    outline: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor: string;
+    organizationName?: string;
+    logo?: ResolvedPdfLogo;
+    watermark?: ResolvedPdfWatermark;
+}
+
+// export: ResolvedPdfWatermark
+export interface ResolvedPdfWatermark {
+    text: string;
+    color: string;
+    opacity: number;
+    angle: number;
+    size: number;
+}
+
+// export: resolvePdfSettings
+export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -404,15 +588,55 @@ export interface RunPdfExportInput {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
+    onProgress?: ExportProgressCallback;
+    complete?: boolean;
+    page?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 }
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
+
+// export: typstSettingsDict
+export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
+    logoPath?: string;
+}): string;
+
+// export: validatePdfOutput
+export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: verifyFontBytes
+export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WEB_PACKAGED_FONT_GUIDANCE
+export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: DEFAULT_PDF_ACCENT_COLOR
+export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
+
+// export: DEFAULT_PDF_WATERMARK_ANGLE
+export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
+
+// export: DEFAULT_PDF_WATERMARK_COLOR
+export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
+
+// export: DEFAULT_PDF_WATERMARK_OPACITY
+export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
+
+// export: DEFAULT_PDF_WATERMARK_SIZE
+export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -470,6 +694,11 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
 
 // export: ExportNote
@@ -478,6 +707,41 @@ export interface ExportNote {
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
+}
+
+// export: FontAsset
+export interface FontAsset {
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    license?: {
+        kind: "OFL" | "Apache-2.0" | "proprietary";
+        evidence: string;
+    };
+}
+
+// export: FontParseError
+export declare class FontParseError extends Error {
+    readonly reason: FontParseErrorReason;
+    constructor(reason: FontParseErrorReason, message: string);
+}
+
+// export: FontParseErrorReason
+export type FontParseErrorReason = "empty" | "too-large" | "truncated" | "unsupported-format" | "web-packaged" | "missing-name-table" | "malformed-name-table";
+
+// export: FontSource
+export interface FontSource {
+    list(): Promise<FontAsset[]>;
+    getBytes(sha256: string): Promise<Uint8Array>;
+}
+
+// export: FontVerificationError
+export declare class FontVerificationError extends Error {
+    readonly expected: string;
+    readonly actual: string;
+    constructor(expected: string, actual: string);
 }
 
 // export: formatPdfCompilerDiagnostics
@@ -512,6 +776,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -522,11 +787,34 @@ export type LinkTarget = {
     anchor: string;
 };
 
+// export: MAX_FONT_BYTES
+export declare const MAX_FONT_BYTES: number;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
     region?: string;
 };
+
+// export: ParsedFontFace
+export interface ParsedFontFace {
+    family: string;
+    subfamily: string;
+    style: "normal" | "italic";
+    weight: number;
+}
+
+// export: parseFontMeta
+export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_ASSET_CONCURRENCY
+export declare const PDF_ASSET_CONCURRENCY = 4;
+
+// export: PDF_MAX_ASSET_BYTES
+export declare const PDF_MAX_ASSET_BYTES: number;
+
+// export: PDF_MAX_TOTAL_ASSET_BYTES
+export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -544,11 +832,15 @@ export interface PdfAssetRef {
     kind: "attachment" | "external";
     filename?: string;
     url?: string;
+    trust?: "page" | "export-view";
+    pageId?: string;
 }
 
 // export: PdfAssetResolver
 export interface PdfAssetResolver {
-    resolve(ref: PdfAssetRef): Promise<PdfResolvedAsset>;
+    resolve(ref: PdfAssetRef, context?: {
+        signal?: AbortSignal;
+    }): Promise<PdfResolvedAsset>;
 }
 
 // export: PdfCompileContext
@@ -586,6 +878,7 @@ export interface PdfExportEnv {
     compiler: PdfCompilePort;
     output: PdfOutputSink;
     now?: () => number;
+    macros?: MacroResolutionOptions;
 }
 
 // export: PdfExportError
@@ -601,7 +894,7 @@ export declare class PdfExportError extends Error {
 }
 
 // export: PdfExportErrorPhase
-export type PdfExportErrorPhase = "prepare" | "compile" | "validate" | "emit";
+export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
 
 // export: PdfExportMetadata
 export interface PdfExportMetadata {
@@ -616,7 +909,7 @@ export interface PdfExportMetadata {
 }
 
 // export: PdfExportPhase
-export type PdfExportPhase = "preparing" | "fetching" | "compiling" | "validating" | "emitting";
+export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compiling" | "validating" | "emitting";
 
 // export: PdfExportReport
 export interface PdfExportReport {
@@ -628,6 +921,8 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    complete: boolean;
+    compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;
 }
 
@@ -637,6 +932,21 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfLogoAsset
+export interface PdfLogoAsset {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt?: string;
+}
+
+// export: PdfOutputInspection
+export interface PdfOutputInspection {
+    pageCount: number;
+    tagged: boolean;
+    hasOutline: boolean;
+    embeddedFontFiles: number;
 }
 
 // export: PdfOutputSink
@@ -671,6 +981,19 @@ export interface PdfSerializeOptions {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
+}
+
+// export: PdfSettingsError
+export declare class PdfSettingsError extends Error {
+    readonly path: string;
+    readonly value: unknown;
+    readonly constraint: string;
+    constructor(options: {
+        path: string;
+        value: unknown;
+        constraint: string;
+    });
 }
 
 // export: PdfSourceBundle
@@ -695,6 +1018,20 @@ export interface PdfSourceMapEntry {
 
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
+
+// export: PdfTemplateSettings
+export interface PdfTemplateSettings {
+    page?: "a4" | "letter";
+    orientation?: "portrait" | "landscape";
+    cover?: boolean;
+    outline?: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor?: string;
+    organizationName?: string;
+    logo?: PdfLogoAsset;
+    watermark?: PdfWatermarkSettings;
+}
 
 // export: PdfTheme
 export interface PdfTheme {
@@ -728,6 +1065,15 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfWatermarkSettings
+export interface PdfWatermarkSettings {
+    text: string;
+    color?: string;
+    opacity?: number;
+    angle?: number;
+    size?: number;
+}
+
 // export: PreparedPdfAsset
 export interface PreparedPdfAsset {
     path: string;
@@ -737,8 +1083,13 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation";
+    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
+    type: "unknown";
+    macroName: string;
+    body?: PreparedPdfBlock[];
+    plainBody?: string;
+} | {
     type: "callout";
     kind: Extract<ExportBlock, {
         type: "callout";
@@ -800,6 +1151,48 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: preparePdfDocument
+export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: PreparePdfOptions
+export interface PreparePdfOptions {
+    onProgress?: ExportProgressCallback;
+    signal?: AbortSignal;
+}
+
+// export: ResolvedPdfLogo
+export interface ResolvedPdfLogo {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt: string;
+}
+
+// export: ResolvedPdfSettings
+export interface ResolvedPdfSettings {
+    page: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    cover: boolean;
+    outline: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor: string;
+    organizationName?: string;
+    logo?: ResolvedPdfLogo;
+    watermark?: ResolvedPdfWatermark;
+}
+
+// export: ResolvedPdfWatermark
+export interface ResolvedPdfWatermark {
+    text: string;
+    color: string;
+    opacity: number;
+    angle: number;
+    size: number;
+}
+
+// export: resolvePdfSettings
+export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -810,15 +1203,55 @@ export interface RunPdfExportInput {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
+    onProgress?: ExportProgressCallback;
+    complete?: boolean;
+    page?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 }
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
+
+// export: typstSettingsDict
+export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
+    logoPath?: string;
+}): string;
+
+// export: validatePdfOutput
+export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: verifyFontBytes
+export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WEB_PACKAGED_FONT_GUIDANCE
+export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: DEFAULT_PDF_ACCENT_COLOR
+export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
+
+// export: DEFAULT_PDF_WATERMARK_ANGLE
+export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
+
+// export: DEFAULT_PDF_WATERMARK_COLOR
+export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
+
+// export: DEFAULT_PDF_WATERMARK_OPACITY
+export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
+
+// export: DEFAULT_PDF_WATERMARK_SIZE
+export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -876,6 +1309,11 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
 
 // export: ExportNote
@@ -884,6 +1322,41 @@ export interface ExportNote {
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
+}
+
+// export: FontAsset
+export interface FontAsset {
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    license?: {
+        kind: "OFL" | "Apache-2.0" | "proprietary";
+        evidence: string;
+    };
+}
+
+// export: FontParseError
+export declare class FontParseError extends Error {
+    readonly reason: FontParseErrorReason;
+    constructor(reason: FontParseErrorReason, message: string);
+}
+
+// export: FontParseErrorReason
+export type FontParseErrorReason = "empty" | "too-large" | "truncated" | "unsupported-format" | "web-packaged" | "missing-name-table" | "malformed-name-table";
+
+// export: FontSource
+export interface FontSource {
+    list(): Promise<FontAsset[]>;
+    getBytes(sha256: string): Promise<Uint8Array>;
+}
+
+// export: FontVerificationError
+export declare class FontVerificationError extends Error {
+    readonly expected: string;
+    readonly actual: string;
+    constructor(expected: string, actual: string);
 }
 
 // export: formatPdfCompilerDiagnostics
@@ -918,6 +1391,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -928,11 +1402,34 @@ export type LinkTarget = {
     anchor: string;
 };
 
+// export: MAX_FONT_BYTES
+export declare const MAX_FONT_BYTES: number;
+
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
     region?: string;
 };
+
+// export: ParsedFontFace
+export interface ParsedFontFace {
+    family: string;
+    subfamily: string;
+    style: "normal" | "italic";
+    weight: number;
+}
+
+// export: parseFontMeta
+export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
+
+// export: PDF_ASSET_CONCURRENCY
+export declare const PDF_ASSET_CONCURRENCY = 4;
+
+// export: PDF_MAX_ASSET_BYTES
+export declare const PDF_MAX_ASSET_BYTES: number;
+
+// export: PDF_MAX_TOTAL_ASSET_BYTES
+export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -950,11 +1447,15 @@ export interface PdfAssetRef {
     kind: "attachment" | "external";
     filename?: string;
     url?: string;
+    trust?: "page" | "export-view";
+    pageId?: string;
 }
 
 // export: PdfAssetResolver
 export interface PdfAssetResolver {
-    resolve(ref: PdfAssetRef): Promise<PdfResolvedAsset>;
+    resolve(ref: PdfAssetRef, context?: {
+        signal?: AbortSignal;
+    }): Promise<PdfResolvedAsset>;
 }
 
 // export: PdfCompileContext
@@ -992,6 +1493,7 @@ export interface PdfExportEnv {
     compiler: PdfCompilePort;
     output: PdfOutputSink;
     now?: () => number;
+    macros?: MacroResolutionOptions;
 }
 
 // export: PdfExportError
@@ -1007,7 +1509,7 @@ export declare class PdfExportError extends Error {
 }
 
 // export: PdfExportErrorPhase
-export type PdfExportErrorPhase = "prepare" | "compile" | "validate" | "emit";
+export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
 
 // export: PdfExportMetadata
 export interface PdfExportMetadata {
@@ -1022,7 +1524,7 @@ export interface PdfExportMetadata {
 }
 
 // export: PdfExportPhase
-export type PdfExportPhase = "preparing" | "fetching" | "compiling" | "validating" | "emitting";
+export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compiling" | "validating" | "emitting";
 
 // export: PdfExportReport
 export interface PdfExportReport {
@@ -1034,6 +1536,8 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    complete: boolean;
+    compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;
 }
 
@@ -1043,6 +1547,21 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfLogoAsset
+export interface PdfLogoAsset {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt?: string;
+}
+
+// export: PdfOutputInspection
+export interface PdfOutputInspection {
+    pageCount: number;
+    tagged: boolean;
+    hasOutline: boolean;
+    embeddedFontFiles: number;
 }
 
 // export: PdfOutputSink
@@ -1077,6 +1596,19 @@ export interface PdfSerializeOptions {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
+}
+
+// export: PdfSettingsError
+export declare class PdfSettingsError extends Error {
+    readonly path: string;
+    readonly value: unknown;
+    readonly constraint: string;
+    constructor(options: {
+        path: string;
+        value: unknown;
+        constraint: string;
+    });
 }
 
 // export: PdfSourceBundle
@@ -1101,6 +1633,20 @@ export interface PdfSourceMapEntry {
 
 // export: PdfTableCellTextMode
 export type PdfTableCellTextMode = "auto" | "source";
+
+// export: PdfTemplateSettings
+export interface PdfTemplateSettings {
+    page?: "a4" | "letter";
+    orientation?: "portrait" | "landscape";
+    cover?: boolean;
+    outline?: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor?: string;
+    organizationName?: string;
+    logo?: PdfLogoAsset;
+    watermark?: PdfWatermarkSettings;
+}
 
 // export: PdfTheme
 export interface PdfTheme {
@@ -1134,6 +1680,15 @@ export interface PdfThemeOptions {
     };
 }
 
+// export: PdfWatermarkSettings
+export interface PdfWatermarkSettings {
+    text: string;
+    color?: string;
+    opacity?: number;
+    angle?: number;
+    size?: number;
+}
+
 // export: PreparedPdfAsset
 export interface PreparedPdfAsset {
     path: string;
@@ -1143,8 +1698,13 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation";
+    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
+    type: "unknown";
+    macroName: string;
+    body?: PreparedPdfBlock[];
+    plainBody?: string;
+} | {
     type: "callout";
     kind: Extract<ExportBlock, {
         type: "callout";
@@ -1206,6 +1766,48 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: preparePdfDocument
+export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: PreparePdfOptions
+export interface PreparePdfOptions {
+    onProgress?: ExportProgressCallback;
+    signal?: AbortSignal;
+}
+
+// export: ResolvedPdfLogo
+export interface ResolvedPdfLogo {
+    bytes: Uint8Array;
+    mediaType: "image/png" | "image/svg+xml";
+    alt: string;
+}
+
+// export: ResolvedPdfSettings
+export interface ResolvedPdfSettings {
+    page: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    cover: boolean;
+    outline: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor: string;
+    organizationName?: string;
+    logo?: ResolvedPdfLogo;
+    watermark?: ResolvedPdfWatermark;
+}
+
+// export: ResolvedPdfWatermark
+export interface ResolvedPdfWatermark {
+    text: string;
+    color: string;
+    opacity: number;
+    angle: number;
+    size: number;
+}
+
+// export: resolvePdfSettings
+export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
 
@@ -1216,10 +1818,35 @@ export interface RunPdfExportInput {
     metadata: PdfExportMetadata;
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
+    settings?: PdfTemplateSettings;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
+    onProgress?: ExportProgressCallback;
+    complete?: boolean;
+    page?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 }
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
+
+// export: typstSettingsDict
+export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
+    logoPath?: string;
+}): string;
+
+// export: validatePdfOutput
+export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: verifyFontBytes
+export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WEB_PACKAGED_FONT_GUIDANCE
+export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `./internal`
@@ -1227,6 +1854,14 @@ export interface RunPdfExportInput {
 ```ts
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
+
+// export: classifyTableLayout
+export declare function classifyTableLayout(input: {
+    columnCount: number;
+    sourceWidths?: number[];
+    longestAtomicToken: number;
+    availableWidth: number;
+}): TableLayoutClass;
 
 // export: createAtlcliTypstTemplate
 export declare function createAtlcliTypstTemplate(options?: PdfThemeOptions): string;
@@ -1284,7 +1919,13 @@ export interface PdfOutputInspection {
 export declare function pdfTableCellForeground(background: string, theme: PdfTheme): string;
 
 // export: preparePdfDocument
-export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver): Promise<PreparedPdfDocument>;
+export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: PreparePdfOptions
+export interface PreparePdfOptions {
+    onProgress?: ExportProgressCallback;
+    signal?: AbortSignal;
+}
 
 // export: preservePdfSourceCellColor
 export declare function preservePdfSourceCellColor(sourceColor: string | undefined, background: string, theme: PdfTheme): string | undefined;
@@ -1297,6 +1938,9 @@ export declare function safeColor(value: string | undefined, fallback?: string):
 
 // export: serializePdfDocument
 export declare function serializePdfDocument(document: PreparedPdfDocument, options: PdfSerializeOptions): PdfSourceBundle;
+
+// export: TableLayoutClass
+export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
 
 // export: typstLabel
 export declare function typstLabel(value: string): string;

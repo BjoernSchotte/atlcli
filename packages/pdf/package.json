@@ -16,9 +16,6 @@
     "README.md"
   ],
   "type": "module",
-  "scripts": {
-    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
-  },
   "exports": {
     ".": {
       "development": {
@@ -56,7 +53,8 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "prepack": "bun scripts/ensure-fonts.ts && bun ../../scripts/strip-dev-condition.ts strip",
-    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore",
+    "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
   },
   "dependencies": {
     "@atlcli/export-macros": "workspace:*",

@@ -8,7 +8,7 @@
  * instance's original document position — regardless of which instance's port
  * call settles first.
  */
-import type { ExportBlock, ExportNote, StorageToBlocksResult } from "@atlcli/confluence";
+import type { ExportBlock, ExportNote, ExportNoteCode, StorageToBlocksResult } from "@atlcli/confluence";
 import type {
   AttachmentLookupPort,
   AttachmentMeta,
@@ -243,7 +243,7 @@ async function resolveInstance(
 function floor(
   block: UnknownBlock,
   _m: MacroInstance,
-  code: string,
+  code: ExportNoteCode,
   level: "info" | "warning",
   message: string,
   skipNotes: ExportNote[]

@@ -7,6 +7,73 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: AnchorRegistry
+export declare class AnchorRegistry {
+    private readonly lookup;
+    private readonly used;
+    static chapterKey(id: string): string;
+    static inPageKey(pageId: string, name: string): string;
+    register(rawKey: string): string;
+    registerOccurrence(rawKey: string): string;
+    resolve(rawKey: string): string | undefined;
+}
+
+// export: applyLabelFilter
+export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
+    nodes: ExportNode[];
+    notes: ExportNote[];
+};
+
+// export: ApplyLabelFilterOptions
+export interface ApplyLabelFilterOptions {
+    rootId?: string | null;
+}
+
+// export: ASSET_MAX_BYTES
+export declare const ASSET_MAX_BYTES: number;
+
+// export: ASSET_MAX_TOTAL_BYTES
+export declare const ASSET_MAX_TOTAL_BYTES: number;
+
+// export: AssetBudget
+export declare class AssetBudget {
+    private readonly maxTotalBytes;
+    private total;
+    private readonly buckets;
+    private readonly counted;
+    constructor(options?: AssetBudgetOptions);
+    get totalBytes(): number;
+    account(bytes: Uint8Array, meta: AssetBudgetMeta): {
+        deduped: boolean;
+    };
+}
+
+// export: AssetBudgetExceededError
+export declare class AssetBudgetExceededError extends Error {
+    readonly offenders: readonly AssetBudgetOffender[];
+    readonly totalBytes: number;
+    readonly limitBytes: number;
+    constructor(offenders: readonly AssetBudgetOffender[], totalBytes: number, limitBytes: number);
+}
+
+// export: AssetBudgetMeta
+export interface AssetBudgetMeta {
+    filename: string;
+    pageId?: string;
+}
+
+// export: AssetBudgetOffender
+export interface AssetBudgetOffender {
+    filename: string;
+    pageId?: string;
+    sizeBytes: number;
+}
+
+// export: AssetBudgetOptions
+export interface AssetBudgetOptions {
+    maxTotalBytes?: number;
+}
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -14,6 +81,7 @@ export interface AttachmentInfo {
     mediaType: string;
     fileSize: number;
     version: number;
+    modified?: string;
     pageId: string;
     downloadUrl: string;
     url?: string;
@@ -52,6 +120,9 @@ export interface Caption {
     content: InlineNode[];
 }
 
+// export: CaptionableBlockType
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
+
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -61,6 +132,31 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: CompletenessCode
+export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
+
+// export: CompletenessMode
+export type CompletenessMode = "strict" | "partial";
+
+// export: composeChapters
+export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
+
+// export: ComposeOptions
+export interface ComposeOptions {
+    chapterBreak?: "none" | "pageBreak";
+    chapterTitleFromPage?: boolean;
+    resolveExternalUrl?: (target: ExternalLinkTarget, anchor?: string) => string;
+}
+
+// export: ComposeResult
+export interface ComposeResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+}
+
+// export: computeHeadingOffset
+export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -87,7 +183,18 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
-    getPageDetails(id: string): Promise<ConfluencePageDetails>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -97,8 +204,11 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
     }): Promise<SearchResults>;
-    searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -117,6 +227,7 @@ export declare class ConfluenceClient {
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
     getChildrenWithPosition(parentId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<Array<ConfluencePage & {
         position: number | null;
     }>>;
@@ -131,6 +242,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
@@ -150,7 +262,9 @@ export declare class ConfluenceClient {
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
-    getPageVersion(id: string): Promise<PageChangeInfo>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -187,6 +301,8 @@ export declare class ConfluenceClient {
     deleteAttachment(attachmentId: string): Promise<void>;
     downloadAttachment(attachment: AttachmentInfo | {
         downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
     private requestBinary;
@@ -250,6 +366,7 @@ export declare class ConfluenceClient {
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
     createFolder(params: {
@@ -270,6 +387,9 @@ export declare class ConfluenceClient {
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
     getUser(accountId: string): Promise<UserInfo | null>;
     getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
@@ -342,6 +462,9 @@ export type ConfluenceSpace = {
     url?: string;
 };
 
+// export: confluenceTreeSource
+export declare function confluenceTreeSource(client: TreeSourceClient): TreeSource;
+
 // export: ConfluenceUser
 export type ConfluenceUser = {
     accountId?: string;
@@ -356,12 +479,68 @@ export interface ConversionOptions {
     onWarning?: (message: string) => void;
 }
 
+// export: createInOrderLimiter
+export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: drainPaginated
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "page-unreadable",
+    "subtree-unreadable",
+    "tree-cycle",
+    "page-ambiguous-404",
+    "page-version-changed",
+    "label-filtered",
+    "root-filter-bypassed",
+    "folder-position-unknown",
+    "unsupported-child-type",
+    "link-anchor-missing",
+    "link-outside-scope",
+    "link-target-ambiguous",
+    "mention-unresolved",
+    "heading-depth-clamped",
+    "caption-kind-unknown",
+    "caption-kind-unsupported",
+    "caption-lang-fallback",
+    "scroll-title-caption-fallback",
+    "scroll-ignore-applied",
+    "scroll-ignore-skipped-other-exporter",
+    "scroll-ignore-unknown-exporter",
+    "scroll-only-unknown-exporter",
+    "scroll-only-applied",
+    "scroll-only-skipped-other-exporter",
+    "export-controls-passthrough",
+    "table-overflow-warned",
+    "table-text-scaled",
+    "orientation-marker-unmatched",
+    "orientation-marker-unterminated",
+    "orientation-nested-collapsed",
+    "orientation-suppressed-in-container",
+    "pagebreak-suppressed-in-container",
+    "macro-degraded",
+    "macro-rendered-via",
+    "macro-skipped-by-config",
+    "macro-body-truncated",
+    "docx-scan-failed",
+    "never-placeholders",
+    "empty-include-result",
+    "usage-error",
+    "cancelled",
+    "asset-budget-exceeded",
+    "space-homepage-missing",
+    "auth-error",
+    "remote-error",
+    "unexpected-error",
+    "other",
     "date-format-unknown",
     "pageproperty-no-key",
     "placeholder-empty",
@@ -456,7 +635,36 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
+
+// export: ExportCompletenessError
+export declare class ExportCompletenessError extends Error {
+    readonly code: CompletenessCode;
+    readonly affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>;
+    constructor(code: CompletenessCode, affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>, message?: string);
+}
+
+// export: ExportFolderNode
+export interface ExportFolderNode {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -467,25 +675,116 @@ export interface ExportMentionResolution {
     unresolved: number;
 }
 
+// export: ExportNode
+export type ExportNode = ExportPageNode | ExportFolderNode;
+
 // export: ExportNote
 export interface ExportNote {
     level: "info" | "warning";
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
 }
 
 // export: ExportNoteCode
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
 
+// export: ExportNoteSource
+export interface ExportNoteSource {
+    pageId?: string;
+    pageTitle?: string;
+    pageUrl?: string;
+    blockPath?: string;
+    assetName?: string;
+}
+
+// export: ExportPageNode
+export interface ExportPageNode {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        observedVersion?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+    placeholder?: boolean;
+}
+
+// export: ExportPhase
+export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
+
+// export: ExportProgressCallback
+export type ExportProgressCallback = (event: ExportProgressEvent) => void;
+
+// export: ExportProgressEvent
+export interface ExportProgressEvent {
+    phase: ExportPhase;
+    done: number;
+    total: number | null;
+    detail?: string;
+    retrying?: boolean;
+}
+
+// export: ExportScope
+export type ExportScope = {
+    kind: "page";
+    pageId: string;
+} | {
+    kind: "tree";
+    rootPageId: string;
+    includeRoot?: boolean;
+    maxDepth?: number;
+} | {
+    kind: "space";
+    spaceKey: string;
+};
+
+// export: ExportScopeError
+export declare class ExportScopeError extends Error {
+    readonly code: "export-scope-invalid";
+    constructor(message: string);
+}
+
+// export: ExternalLinkTarget
+export interface ExternalLinkTarget {
+    contentId?: string;
+    contentTitle: string;
+    spaceKey?: string;
+}
+
 // export: extractAttachmentRefs
 export declare function extractAttachmentRefs(markdown: string): string[];
+
+// export: extractExportViewMacros
+export declare function extractExportViewMacros(html: string): Map<string, string>;
+
+// export: extractMacroBody
+export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
+
+// export: fetchExportTree
+export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
+
+// export: FetchExportTreeResult
+export interface FetchExportTreeResult {
+    nodes: readonly ExportNode[];
+    notes: ExportNote[];
+    complete: boolean;
+}
 
 // export: FolderChild
 export type FolderChild = {
     id: string;
     title: string;
-    type: "page" | "folder";
+    type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
     url?: string;
@@ -496,16 +795,52 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: hasActiveLabelFilter
+export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
+
 // export: hashContent
 export declare function hashContent(content: string): string;
+
+// export: HeadingScanBlock
+export interface HeadingScanBlock {
+    readonly type: string;
+    readonly level?: number;
+    readonly content?: readonly unknown[];
+    readonly items?: readonly {
+        readonly content: readonly unknown[];
+    }[];
+    readonly rows?: readonly {
+        readonly cells: readonly {
+            readonly content: readonly unknown[];
+        }[];
+    }[];
+}
+
+// export: HtmlConversionLimits
+export interface HtmlConversionLimits {
+    maxInputBytes?: number;
+    maxNodes?: number;
+    maxDepth?: number;
+    maxAttrsPerNode?: number;
+    maxTextPerNode?: number;
+    maxOutputBlocks?: number;
+}
+
+// export: htmlToExportBlocks
+export declare function htmlToExportBlocks(html: string, limits?: HtmlConversionLimits): {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+};
 
 // export: ImageSource
 export type ImageSource = {
     kind: "attachment";
     filename: string;
+    pageId?: string;
 } | {
     kind: "external";
     url: string;
+    trust?: "page" | "export-view";
 };
 
 // export: InlineComment
@@ -544,8 +879,24 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isSafeLinkScheme
+export declare function isSafeLinkScheme(href: string): boolean;
+
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
+
+// export: LabelFilter
+export interface LabelFilter {
+    include?: string[];
+    exclude?: string[];
+    excludeMode?: "prune-subtree" | "page-only";
+}
+
+// export: LabelFilterError
+export declare class LabelFilterError extends Error {
+    readonly code: "empty-include-result" | "labels-unavailable";
+    constructor(code: "empty-include-result" | "labels-unavailable", message: string);
+}
 
 // export: LabelInfo
 export interface LabelInfo {
@@ -561,6 +912,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -614,8 +966,26 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MAX_ANCHOR_ID_LENGTH
+export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: minHeadingLevel
+export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
+
+// export: nodeId
+export declare function nodeId(node: ExportNode): string;
+
+// export: normalizeCaptionKind
+export declare function normalizeCaptionKind(raw: string | undefined, targetBlockType: CaptionableBlockType): {
+    kind: CaptionKind;
+    note?: ExportNote;
+};
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
+
+// export: normalizeLabelFilter
+export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
@@ -664,6 +1034,19 @@ export interface PageVersion {
     minorEdit: boolean;
 }
 
+// export: PaginatedPage
+export interface PaginatedPage<T> {
+    items: T[];
+    next?: string;
+}
+
+// export: PaginationLoopError
+export declare class PaginationLoopError extends Error {
+    readonly token: string;
+    readonly code: "pagination-loop";
+    constructor(token: string);
+}
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -679,6 +1062,9 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: sanitizeAnchorId
+export declare function sanitizeAnchorId(rawKey: string): string;
+
 // export: SearchResults
 export interface SearchResults {
     results: ConfluenceSearchResult[];
@@ -692,6 +1078,12 @@ export interface SearchResults {
 
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
+
+// export: SpaceHomepageError
+export declare class SpaceHomepageError extends Error {
+    readonly spaceKey: string;
+    constructor(spaceKey: string);
+}
 
 // export: SpaceIcon
 export type SpaceIcon = {
@@ -707,6 +1099,14 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
     exporter?: "pdf" | "word";
+    exportControls?: "apply" | "passthrough";
+    pageContext?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+        title?: string;
+        url?: string;
+    };
 }
 
 // export: StorageToBlocksResult
@@ -747,6 +1147,132 @@ export interface TableRow {
     cells: TableCell[];
 }
 
+// export: TreeChild
+export interface TreeChild {
+    id: string;
+    title: string;
+    kind: "page" | "folder" | "unsupported";
+    unsupportedKind?: string;
+    position: number | null;
+    observedVersion?: number;
+}
+
+// export: TreeFetchContext
+export interface TreeFetchContext {
+    signal?: AbortSignal;
+}
+
+// export: TreeFetchOptions
+export interface TreeFetchOptions {
+    labels?: LabelFilter;
+    maxPages?: number;
+    maxFolders?: number;
+    concurrency?: number;
+    completenessMode?: CompletenessMode;
+    signal?: AbortSignal;
+    onProgress?: (progress: TreeFetchProgress) => void;
+}
+
+// export: TreeFetchProgress
+export interface TreeFetchProgress {
+    fetched: number;
+    total: number | null;
+    currentTitle: string;
+}
+
+// export: TreeLimitExceededError
+export declare class TreeLimitExceededError extends Error {
+    readonly code: "max-pages" | "max-folders";
+    readonly limit: number;
+    constructor(code: "max-pages" | "max-folders", limit: number, message?: string);
+}
+
+// export: TreeNodeRef
+export interface TreeNodeRef {
+    id: string;
+    kind: "page" | "folder";
+}
+
+// export: TreeSource
+export interface TreeSource {
+    getPage(id: string, context: TreeFetchContext): Promise<TreeSourcePage>;
+    getChildren(nodeRef: TreeNodeRef, context: TreeFetchContext): Promise<TreeChild[]>;
+    getPageVersion(id: string, context: TreeFetchContext): Promise<TreeSourceVersion>;
+    getSpaceHomepageId(spaceKey: string, context: TreeFetchContext): Promise<string | null>;
+    searchPages?(cql: string, context: TreeFetchContext): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourceClient
+export interface TreeSourceClient {
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        id: string;
+        title: string;
+        storage: string;
+        version?: number;
+        labels?: string[];
+        spaceKey?: string;
+    }>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        title: string;
+        version: number;
+    }>;
+    getChildrenWithPosition(parentId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        version?: number;
+        position: number | null;
+    }>>;
+    getPageDirectChildren(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getFolderChildren(folderId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourcePage
+export interface TreeSourcePage {
+    id: string;
+    title: string;
+    storage: string;
+    version?: number;
+    labels?: string[];
+    spaceKey?: string;
+}
+
+// export: TreeSourceVersion
+export interface TreeSourceVersion {
+    version?: number;
+    title: string;
+}
+
+// export: uniqueAnchorId
+export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
 // export: UserInfo
 export interface UserInfo {
     accountId: string;
@@ -755,6 +1281,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: validateExportScope
+export declare function validateExportScope(scope: ExportScope): ExportScope;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -786,6 +1315,73 @@ export interface XmlText {
 ### Entry point `. (default)`
 
 ```ts
+// export: AnchorRegistry
+export declare class AnchorRegistry {
+    private readonly lookup;
+    private readonly used;
+    static chapterKey(id: string): string;
+    static inPageKey(pageId: string, name: string): string;
+    register(rawKey: string): string;
+    registerOccurrence(rawKey: string): string;
+    resolve(rawKey: string): string | undefined;
+}
+
+// export: applyLabelFilter
+export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
+    nodes: ExportNode[];
+    notes: ExportNote[];
+};
+
+// export: ApplyLabelFilterOptions
+export interface ApplyLabelFilterOptions {
+    rootId?: string | null;
+}
+
+// export: ASSET_MAX_BYTES
+export declare const ASSET_MAX_BYTES: number;
+
+// export: ASSET_MAX_TOTAL_BYTES
+export declare const ASSET_MAX_TOTAL_BYTES: number;
+
+// export: AssetBudget
+export declare class AssetBudget {
+    private readonly maxTotalBytes;
+    private total;
+    private readonly buckets;
+    private readonly counted;
+    constructor(options?: AssetBudgetOptions);
+    get totalBytes(): number;
+    account(bytes: Uint8Array, meta: AssetBudgetMeta): {
+        deduped: boolean;
+    };
+}
+
+// export: AssetBudgetExceededError
+export declare class AssetBudgetExceededError extends Error {
+    readonly offenders: readonly AssetBudgetOffender[];
+    readonly totalBytes: number;
+    readonly limitBytes: number;
+    constructor(offenders: readonly AssetBudgetOffender[], totalBytes: number, limitBytes: number);
+}
+
+// export: AssetBudgetMeta
+export interface AssetBudgetMeta {
+    filename: string;
+    pageId?: string;
+}
+
+// export: AssetBudgetOffender
+export interface AssetBudgetOffender {
+    filename: string;
+    pageId?: string;
+    sizeBytes: number;
+}
+
+// export: AssetBudgetOptions
+export interface AssetBudgetOptions {
+    maxTotalBytes?: number;
+}
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -793,6 +1389,7 @@ export interface AttachmentInfo {
     mediaType: string;
     fileSize: number;
     version: number;
+    modified?: string;
     pageId: string;
     downloadUrl: string;
     url?: string;
@@ -831,6 +1428,9 @@ export interface Caption {
     content: InlineNode[];
 }
 
+// export: CaptionableBlockType
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
+
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -840,6 +1440,31 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: CompletenessCode
+export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
+
+// export: CompletenessMode
+export type CompletenessMode = "strict" | "partial";
+
+// export: composeChapters
+export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
+
+// export: ComposeOptions
+export interface ComposeOptions {
+    chapterBreak?: "none" | "pageBreak";
+    chapterTitleFromPage?: boolean;
+    resolveExternalUrl?: (target: ExternalLinkTarget, anchor?: string) => string;
+}
+
+// export: ComposeResult
+export interface ComposeResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+}
+
+// export: computeHeadingOffset
+export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -866,7 +1491,18 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
-    getPageDetails(id: string): Promise<ConfluencePageDetails>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -876,8 +1512,11 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
     }): Promise<SearchResults>;
-    searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -896,6 +1535,7 @@ export declare class ConfluenceClient {
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
     getChildrenWithPosition(parentId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<Array<ConfluencePage & {
         position: number | null;
     }>>;
@@ -910,6 +1550,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
@@ -929,7 +1570,9 @@ export declare class ConfluenceClient {
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
-    getPageVersion(id: string): Promise<PageChangeInfo>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -966,6 +1609,8 @@ export declare class ConfluenceClient {
     deleteAttachment(attachmentId: string): Promise<void>;
     downloadAttachment(attachment: AttachmentInfo | {
         downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
     private requestBinary;
@@ -1029,6 +1674,7 @@ export declare class ConfluenceClient {
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
     createFolder(params: {
@@ -1049,6 +1695,9 @@ export declare class ConfluenceClient {
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
     getUser(accountId: string): Promise<UserInfo | null>;
     getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
@@ -1121,6 +1770,9 @@ export type ConfluenceSpace = {
     url?: string;
 };
 
+// export: confluenceTreeSource
+export declare function confluenceTreeSource(client: TreeSourceClient): TreeSource;
+
 // export: ConfluenceUser
 export type ConfluenceUser = {
     accountId?: string;
@@ -1135,12 +1787,68 @@ export interface ConversionOptions {
     onWarning?: (message: string) => void;
 }
 
+// export: createInOrderLimiter
+export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: drainPaginated
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "page-unreadable",
+    "subtree-unreadable",
+    "tree-cycle",
+    "page-ambiguous-404",
+    "page-version-changed",
+    "label-filtered",
+    "root-filter-bypassed",
+    "folder-position-unknown",
+    "unsupported-child-type",
+    "link-anchor-missing",
+    "link-outside-scope",
+    "link-target-ambiguous",
+    "mention-unresolved",
+    "heading-depth-clamped",
+    "caption-kind-unknown",
+    "caption-kind-unsupported",
+    "caption-lang-fallback",
+    "scroll-title-caption-fallback",
+    "scroll-ignore-applied",
+    "scroll-ignore-skipped-other-exporter",
+    "scroll-ignore-unknown-exporter",
+    "scroll-only-unknown-exporter",
+    "scroll-only-applied",
+    "scroll-only-skipped-other-exporter",
+    "export-controls-passthrough",
+    "table-overflow-warned",
+    "table-text-scaled",
+    "orientation-marker-unmatched",
+    "orientation-marker-unterminated",
+    "orientation-nested-collapsed",
+    "orientation-suppressed-in-container",
+    "pagebreak-suppressed-in-container",
+    "macro-degraded",
+    "macro-rendered-via",
+    "macro-skipped-by-config",
+    "macro-body-truncated",
+    "docx-scan-failed",
+    "never-placeholders",
+    "empty-include-result",
+    "usage-error",
+    "cancelled",
+    "asset-budget-exceeded",
+    "space-homepage-missing",
+    "auth-error",
+    "remote-error",
+    "unexpected-error",
+    "other",
     "date-format-unknown",
     "pageproperty-no-key",
     "placeholder-empty",
@@ -1235,7 +1943,36 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
+
+// export: ExportCompletenessError
+export declare class ExportCompletenessError extends Error {
+    readonly code: CompletenessCode;
+    readonly affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>;
+    constructor(code: CompletenessCode, affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>, message?: string);
+}
+
+// export: ExportFolderNode
+export interface ExportFolderNode {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -1246,25 +1983,116 @@ export interface ExportMentionResolution {
     unresolved: number;
 }
 
+// export: ExportNode
+export type ExportNode = ExportPageNode | ExportFolderNode;
+
 // export: ExportNote
 export interface ExportNote {
     level: "info" | "warning";
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
 }
 
 // export: ExportNoteCode
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
 
+// export: ExportNoteSource
+export interface ExportNoteSource {
+    pageId?: string;
+    pageTitle?: string;
+    pageUrl?: string;
+    blockPath?: string;
+    assetName?: string;
+}
+
+// export: ExportPageNode
+export interface ExportPageNode {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        observedVersion?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+    placeholder?: boolean;
+}
+
+// export: ExportPhase
+export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
+
+// export: ExportProgressCallback
+export type ExportProgressCallback = (event: ExportProgressEvent) => void;
+
+// export: ExportProgressEvent
+export interface ExportProgressEvent {
+    phase: ExportPhase;
+    done: number;
+    total: number | null;
+    detail?: string;
+    retrying?: boolean;
+}
+
+// export: ExportScope
+export type ExportScope = {
+    kind: "page";
+    pageId: string;
+} | {
+    kind: "tree";
+    rootPageId: string;
+    includeRoot?: boolean;
+    maxDepth?: number;
+} | {
+    kind: "space";
+    spaceKey: string;
+};
+
+// export: ExportScopeError
+export declare class ExportScopeError extends Error {
+    readonly code: "export-scope-invalid";
+    constructor(message: string);
+}
+
+// export: ExternalLinkTarget
+export interface ExternalLinkTarget {
+    contentId?: string;
+    contentTitle: string;
+    spaceKey?: string;
+}
+
 // export: extractAttachmentRefs
 export declare function extractAttachmentRefs(markdown: string): string[];
+
+// export: extractExportViewMacros
+export declare function extractExportViewMacros(html: string): Map<string, string>;
+
+// export: extractMacroBody
+export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
+
+// export: fetchExportTree
+export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
+
+// export: FetchExportTreeResult
+export interface FetchExportTreeResult {
+    nodes: readonly ExportNode[];
+    notes: ExportNote[];
+    complete: boolean;
+}
 
 // export: FolderChild
 export type FolderChild = {
     id: string;
     title: string;
-    type: "page" | "folder";
+    type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
     url?: string;
@@ -1275,16 +2103,52 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: hasActiveLabelFilter
+export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
+
 // export: hashContent
 export declare function hashContent(content: string): string;
+
+// export: HeadingScanBlock
+export interface HeadingScanBlock {
+    readonly type: string;
+    readonly level?: number;
+    readonly content?: readonly unknown[];
+    readonly items?: readonly {
+        readonly content: readonly unknown[];
+    }[];
+    readonly rows?: readonly {
+        readonly cells: readonly {
+            readonly content: readonly unknown[];
+        }[];
+    }[];
+}
+
+// export: HtmlConversionLimits
+export interface HtmlConversionLimits {
+    maxInputBytes?: number;
+    maxNodes?: number;
+    maxDepth?: number;
+    maxAttrsPerNode?: number;
+    maxTextPerNode?: number;
+    maxOutputBlocks?: number;
+}
+
+// export: htmlToExportBlocks
+export declare function htmlToExportBlocks(html: string, limits?: HtmlConversionLimits): {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+};
 
 // export: ImageSource
 export type ImageSource = {
     kind: "attachment";
     filename: string;
+    pageId?: string;
 } | {
     kind: "external";
     url: string;
+    trust?: "page" | "export-view";
 };
 
 // export: InlineComment
@@ -1323,8 +2187,24 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isSafeLinkScheme
+export declare function isSafeLinkScheme(href: string): boolean;
+
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
+
+// export: LabelFilter
+export interface LabelFilter {
+    include?: string[];
+    exclude?: string[];
+    excludeMode?: "prune-subtree" | "page-only";
+}
+
+// export: LabelFilterError
+export declare class LabelFilterError extends Error {
+    readonly code: "empty-include-result" | "labels-unavailable";
+    constructor(code: "empty-include-result" | "labels-unavailable", message: string);
+}
 
 // export: LabelInfo
 export interface LabelInfo {
@@ -1340,6 +2220,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -1393,8 +2274,26 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MAX_ANCHOR_ID_LENGTH
+export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: minHeadingLevel
+export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
+
+// export: nodeId
+export declare function nodeId(node: ExportNode): string;
+
+// export: normalizeCaptionKind
+export declare function normalizeCaptionKind(raw: string | undefined, targetBlockType: CaptionableBlockType): {
+    kind: CaptionKind;
+    note?: ExportNote;
+};
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
+
+// export: normalizeLabelFilter
+export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
@@ -1443,6 +2342,19 @@ export interface PageVersion {
     minorEdit: boolean;
 }
 
+// export: PaginatedPage
+export interface PaginatedPage<T> {
+    items: T[];
+    next?: string;
+}
+
+// export: PaginationLoopError
+export declare class PaginationLoopError extends Error {
+    readonly token: string;
+    readonly code: "pagination-loop";
+    constructor(token: string);
+}
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -1458,6 +2370,9 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: sanitizeAnchorId
+export declare function sanitizeAnchorId(rawKey: string): string;
+
 // export: SearchResults
 export interface SearchResults {
     results: ConfluenceSearchResult[];
@@ -1471,6 +2386,12 @@ export interface SearchResults {
 
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
+
+// export: SpaceHomepageError
+export declare class SpaceHomepageError extends Error {
+    readonly spaceKey: string;
+    constructor(spaceKey: string);
+}
 
 // export: SpaceIcon
 export type SpaceIcon = {
@@ -1486,6 +2407,14 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
     exporter?: "pdf" | "word";
+    exportControls?: "apply" | "passthrough";
+    pageContext?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+        title?: string;
+        url?: string;
+    };
 }
 
 // export: StorageToBlocksResult
@@ -1526,6 +2455,132 @@ export interface TableRow {
     cells: TableCell[];
 }
 
+// export: TreeChild
+export interface TreeChild {
+    id: string;
+    title: string;
+    kind: "page" | "folder" | "unsupported";
+    unsupportedKind?: string;
+    position: number | null;
+    observedVersion?: number;
+}
+
+// export: TreeFetchContext
+export interface TreeFetchContext {
+    signal?: AbortSignal;
+}
+
+// export: TreeFetchOptions
+export interface TreeFetchOptions {
+    labels?: LabelFilter;
+    maxPages?: number;
+    maxFolders?: number;
+    concurrency?: number;
+    completenessMode?: CompletenessMode;
+    signal?: AbortSignal;
+    onProgress?: (progress: TreeFetchProgress) => void;
+}
+
+// export: TreeFetchProgress
+export interface TreeFetchProgress {
+    fetched: number;
+    total: number | null;
+    currentTitle: string;
+}
+
+// export: TreeLimitExceededError
+export declare class TreeLimitExceededError extends Error {
+    readonly code: "max-pages" | "max-folders";
+    readonly limit: number;
+    constructor(code: "max-pages" | "max-folders", limit: number, message?: string);
+}
+
+// export: TreeNodeRef
+export interface TreeNodeRef {
+    id: string;
+    kind: "page" | "folder";
+}
+
+// export: TreeSource
+export interface TreeSource {
+    getPage(id: string, context: TreeFetchContext): Promise<TreeSourcePage>;
+    getChildren(nodeRef: TreeNodeRef, context: TreeFetchContext): Promise<TreeChild[]>;
+    getPageVersion(id: string, context: TreeFetchContext): Promise<TreeSourceVersion>;
+    getSpaceHomepageId(spaceKey: string, context: TreeFetchContext): Promise<string | null>;
+    searchPages?(cql: string, context: TreeFetchContext): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourceClient
+export interface TreeSourceClient {
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        id: string;
+        title: string;
+        storage: string;
+        version?: number;
+        labels?: string[];
+        spaceKey?: string;
+    }>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        title: string;
+        version: number;
+    }>;
+    getChildrenWithPosition(parentId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        version?: number;
+        position: number | null;
+    }>>;
+    getPageDirectChildren(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getFolderChildren(folderId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourcePage
+export interface TreeSourcePage {
+    id: string;
+    title: string;
+    storage: string;
+    version?: number;
+    labels?: string[];
+    spaceKey?: string;
+}
+
+// export: TreeSourceVersion
+export interface TreeSourceVersion {
+    version?: number;
+    title: string;
+}
+
+// export: uniqueAnchorId
+export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
 // export: UserInfo
 export interface UserInfo {
     accountId: string;
@@ -1534,6 +2589,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: validateExportScope
+export declare function validateExportScope(scope: ExportScope): ExportScope;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -1565,6 +2623,73 @@ export interface XmlText {
 ### Entry point `./browser`
 
 ```ts
+// export: AnchorRegistry
+export declare class AnchorRegistry {
+    private readonly lookup;
+    private readonly used;
+    static chapterKey(id: string): string;
+    static inPageKey(pageId: string, name: string): string;
+    register(rawKey: string): string;
+    registerOccurrence(rawKey: string): string;
+    resolve(rawKey: string): string | undefined;
+}
+
+// export: applyLabelFilter
+export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
+    nodes: ExportNode[];
+    notes: ExportNote[];
+};
+
+// export: ApplyLabelFilterOptions
+export interface ApplyLabelFilterOptions {
+    rootId?: string | null;
+}
+
+// export: ASSET_MAX_BYTES
+export declare const ASSET_MAX_BYTES: number;
+
+// export: ASSET_MAX_TOTAL_BYTES
+export declare const ASSET_MAX_TOTAL_BYTES: number;
+
+// export: AssetBudget
+export declare class AssetBudget {
+    private readonly maxTotalBytes;
+    private total;
+    private readonly buckets;
+    private readonly counted;
+    constructor(options?: AssetBudgetOptions);
+    get totalBytes(): number;
+    account(bytes: Uint8Array, meta: AssetBudgetMeta): {
+        deduped: boolean;
+    };
+}
+
+// export: AssetBudgetExceededError
+export declare class AssetBudgetExceededError extends Error {
+    readonly offenders: readonly AssetBudgetOffender[];
+    readonly totalBytes: number;
+    readonly limitBytes: number;
+    constructor(offenders: readonly AssetBudgetOffender[], totalBytes: number, limitBytes: number);
+}
+
+// export: AssetBudgetMeta
+export interface AssetBudgetMeta {
+    filename: string;
+    pageId?: string;
+}
+
+// export: AssetBudgetOffender
+export interface AssetBudgetOffender {
+    filename: string;
+    pageId?: string;
+    sizeBytes: number;
+}
+
+// export: AssetBudgetOptions
+export interface AssetBudgetOptions {
+    maxTotalBytes?: number;
+}
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -1572,6 +2697,7 @@ export interface AttachmentInfo {
     mediaType: string;
     fileSize: number;
     version: number;
+    modified?: string;
     pageId: string;
     downloadUrl: string;
     url?: string;
@@ -1610,6 +2736,9 @@ export interface Caption {
     content: InlineNode[];
 }
 
+// export: CaptionableBlockType
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
+
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -1619,6 +2748,31 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: CompletenessCode
+export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
+
+// export: CompletenessMode
+export type CompletenessMode = "strict" | "partial";
+
+// export: composeChapters
+export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
+
+// export: ComposeOptions
+export interface ComposeOptions {
+    chapterBreak?: "none" | "pageBreak";
+    chapterTitleFromPage?: boolean;
+    resolveExternalUrl?: (target: ExternalLinkTarget, anchor?: string) => string;
+}
+
+// export: ComposeResult
+export interface ComposeResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+}
+
+// export: computeHeadingOffset
+export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -1645,7 +2799,18 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
-    getPageDetails(id: string): Promise<ConfluencePageDetails>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -1655,8 +2820,11 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
     }): Promise<SearchResults>;
-    searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -1675,6 +2843,7 @@ export declare class ConfluenceClient {
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
     getChildrenWithPosition(parentId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<Array<ConfluencePage & {
         position: number | null;
     }>>;
@@ -1689,6 +2858,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
@@ -1708,7 +2878,9 @@ export declare class ConfluenceClient {
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
-    getPageVersion(id: string): Promise<PageChangeInfo>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -1745,6 +2917,8 @@ export declare class ConfluenceClient {
     deleteAttachment(attachmentId: string): Promise<void>;
     downloadAttachment(attachment: AttachmentInfo | {
         downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
     private requestBinary;
@@ -1808,6 +2982,7 @@ export declare class ConfluenceClient {
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
     createFolder(params: {
@@ -1828,6 +3003,9 @@ export declare class ConfluenceClient {
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
     getUser(accountId: string): Promise<UserInfo | null>;
     getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
@@ -1900,6 +3078,9 @@ export type ConfluenceSpace = {
     url?: string;
 };
 
+// export: confluenceTreeSource
+export declare function confluenceTreeSource(client: TreeSourceClient): TreeSource;
+
 // export: ConfluenceUser
 export type ConfluenceUser = {
     accountId?: string;
@@ -1914,12 +3095,68 @@ export interface ConversionOptions {
     onWarning?: (message: string) => void;
 }
 
+// export: createInOrderLimiter
+export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: drainPaginated
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "page-unreadable",
+    "subtree-unreadable",
+    "tree-cycle",
+    "page-ambiguous-404",
+    "page-version-changed",
+    "label-filtered",
+    "root-filter-bypassed",
+    "folder-position-unknown",
+    "unsupported-child-type",
+    "link-anchor-missing",
+    "link-outside-scope",
+    "link-target-ambiguous",
+    "mention-unresolved",
+    "heading-depth-clamped",
+    "caption-kind-unknown",
+    "caption-kind-unsupported",
+    "caption-lang-fallback",
+    "scroll-title-caption-fallback",
+    "scroll-ignore-applied",
+    "scroll-ignore-skipped-other-exporter",
+    "scroll-ignore-unknown-exporter",
+    "scroll-only-unknown-exporter",
+    "scroll-only-applied",
+    "scroll-only-skipped-other-exporter",
+    "export-controls-passthrough",
+    "table-overflow-warned",
+    "table-text-scaled",
+    "orientation-marker-unmatched",
+    "orientation-marker-unterminated",
+    "orientation-nested-collapsed",
+    "orientation-suppressed-in-container",
+    "pagebreak-suppressed-in-container",
+    "macro-degraded",
+    "macro-rendered-via",
+    "macro-skipped-by-config",
+    "macro-body-truncated",
+    "docx-scan-failed",
+    "never-placeholders",
+    "empty-include-result",
+    "usage-error",
+    "cancelled",
+    "asset-budget-exceeded",
+    "space-homepage-missing",
+    "auth-error",
+    "remote-error",
+    "unexpected-error",
+    "other",
     "date-format-unknown",
     "pageproperty-no-key",
     "placeholder-empty",
@@ -2014,7 +3251,36 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
+
+// export: ExportCompletenessError
+export declare class ExportCompletenessError extends Error {
+    readonly code: CompletenessCode;
+    readonly affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>;
+    constructor(code: CompletenessCode, affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>, message?: string);
+}
+
+// export: ExportFolderNode
+export interface ExportFolderNode {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -2025,25 +3291,116 @@ export interface ExportMentionResolution {
     unresolved: number;
 }
 
+// export: ExportNode
+export type ExportNode = ExportPageNode | ExportFolderNode;
+
 // export: ExportNote
 export interface ExportNote {
     level: "info" | "warning";
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
 }
 
 // export: ExportNoteCode
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
 
+// export: ExportNoteSource
+export interface ExportNoteSource {
+    pageId?: string;
+    pageTitle?: string;
+    pageUrl?: string;
+    blockPath?: string;
+    assetName?: string;
+}
+
+// export: ExportPageNode
+export interface ExportPageNode {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        observedVersion?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+    placeholder?: boolean;
+}
+
+// export: ExportPhase
+export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
+
+// export: ExportProgressCallback
+export type ExportProgressCallback = (event: ExportProgressEvent) => void;
+
+// export: ExportProgressEvent
+export interface ExportProgressEvent {
+    phase: ExportPhase;
+    done: number;
+    total: number | null;
+    detail?: string;
+    retrying?: boolean;
+}
+
+// export: ExportScope
+export type ExportScope = {
+    kind: "page";
+    pageId: string;
+} | {
+    kind: "tree";
+    rootPageId: string;
+    includeRoot?: boolean;
+    maxDepth?: number;
+} | {
+    kind: "space";
+    spaceKey: string;
+};
+
+// export: ExportScopeError
+export declare class ExportScopeError extends Error {
+    readonly code: "export-scope-invalid";
+    constructor(message: string);
+}
+
+// export: ExternalLinkTarget
+export interface ExternalLinkTarget {
+    contentId?: string;
+    contentTitle: string;
+    spaceKey?: string;
+}
+
 // export: extractAttachmentRefs
 export declare function extractAttachmentRefs(markdown: string): string[];
+
+// export: extractExportViewMacros
+export declare function extractExportViewMacros(html: string): Map<string, string>;
+
+// export: extractMacroBody
+export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
+
+// export: fetchExportTree
+export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
+
+// export: FetchExportTreeResult
+export interface FetchExportTreeResult {
+    nodes: readonly ExportNode[];
+    notes: ExportNote[];
+    complete: boolean;
+}
 
 // export: FolderChild
 export type FolderChild = {
     id: string;
     title: string;
-    type: "page" | "folder";
+    type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
     url?: string;
@@ -2054,16 +3411,52 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: hasActiveLabelFilter
+export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
+
 // export: hashContent
 export declare function hashContent(content: string): string;
+
+// export: HeadingScanBlock
+export interface HeadingScanBlock {
+    readonly type: string;
+    readonly level?: number;
+    readonly content?: readonly unknown[];
+    readonly items?: readonly {
+        readonly content: readonly unknown[];
+    }[];
+    readonly rows?: readonly {
+        readonly cells: readonly {
+            readonly content: readonly unknown[];
+        }[];
+    }[];
+}
+
+// export: HtmlConversionLimits
+export interface HtmlConversionLimits {
+    maxInputBytes?: number;
+    maxNodes?: number;
+    maxDepth?: number;
+    maxAttrsPerNode?: number;
+    maxTextPerNode?: number;
+    maxOutputBlocks?: number;
+}
+
+// export: htmlToExportBlocks
+export declare function htmlToExportBlocks(html: string, limits?: HtmlConversionLimits): {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+};
 
 // export: ImageSource
 export type ImageSource = {
     kind: "attachment";
     filename: string;
+    pageId?: string;
 } | {
     kind: "external";
     url: string;
+    trust?: "page" | "export-view";
 };
 
 // export: InlineComment
@@ -2102,8 +3495,24 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isSafeLinkScheme
+export declare function isSafeLinkScheme(href: string): boolean;
+
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
+
+// export: LabelFilter
+export interface LabelFilter {
+    include?: string[];
+    exclude?: string[];
+    excludeMode?: "prune-subtree" | "page-only";
+}
+
+// export: LabelFilterError
+export declare class LabelFilterError extends Error {
+    readonly code: "empty-include-result" | "labels-unavailable";
+    constructor(code: "empty-include-result" | "labels-unavailable", message: string);
+}
 
 // export: LabelInfo
 export interface LabelInfo {
@@ -2119,6 +3528,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -2172,8 +3582,26 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MAX_ANCHOR_ID_LENGTH
+export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: minHeadingLevel
+export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
+
+// export: nodeId
+export declare function nodeId(node: ExportNode): string;
+
+// export: normalizeCaptionKind
+export declare function normalizeCaptionKind(raw: string | undefined, targetBlockType: CaptionableBlockType): {
+    kind: CaptionKind;
+    note?: ExportNote;
+};
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
+
+// export: normalizeLabelFilter
+export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
@@ -2222,6 +3650,19 @@ export interface PageVersion {
     minorEdit: boolean;
 }
 
+// export: PaginatedPage
+export interface PaginatedPage<T> {
+    items: T[];
+    next?: string;
+}
+
+// export: PaginationLoopError
+export declare class PaginationLoopError extends Error {
+    readonly token: string;
+    readonly code: "pagination-loop";
+    constructor(token: string);
+}
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -2237,6 +3678,9 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: sanitizeAnchorId
+export declare function sanitizeAnchorId(rawKey: string): string;
+
 // export: SearchResults
 export interface SearchResults {
     results: ConfluenceSearchResult[];
@@ -2250,6 +3694,12 @@ export interface SearchResults {
 
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
+
+// export: SpaceHomepageError
+export declare class SpaceHomepageError extends Error {
+    readonly spaceKey: string;
+    constructor(spaceKey: string);
+}
 
 // export: SpaceIcon
 export type SpaceIcon = {
@@ -2265,6 +3715,14 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
     exporter?: "pdf" | "word";
+    exportControls?: "apply" | "passthrough";
+    pageContext?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+        title?: string;
+        url?: string;
+    };
 }
 
 // export: StorageToBlocksResult
@@ -2305,6 +3763,132 @@ export interface TableRow {
     cells: TableCell[];
 }
 
+// export: TreeChild
+export interface TreeChild {
+    id: string;
+    title: string;
+    kind: "page" | "folder" | "unsupported";
+    unsupportedKind?: string;
+    position: number | null;
+    observedVersion?: number;
+}
+
+// export: TreeFetchContext
+export interface TreeFetchContext {
+    signal?: AbortSignal;
+}
+
+// export: TreeFetchOptions
+export interface TreeFetchOptions {
+    labels?: LabelFilter;
+    maxPages?: number;
+    maxFolders?: number;
+    concurrency?: number;
+    completenessMode?: CompletenessMode;
+    signal?: AbortSignal;
+    onProgress?: (progress: TreeFetchProgress) => void;
+}
+
+// export: TreeFetchProgress
+export interface TreeFetchProgress {
+    fetched: number;
+    total: number | null;
+    currentTitle: string;
+}
+
+// export: TreeLimitExceededError
+export declare class TreeLimitExceededError extends Error {
+    readonly code: "max-pages" | "max-folders";
+    readonly limit: number;
+    constructor(code: "max-pages" | "max-folders", limit: number, message?: string);
+}
+
+// export: TreeNodeRef
+export interface TreeNodeRef {
+    id: string;
+    kind: "page" | "folder";
+}
+
+// export: TreeSource
+export interface TreeSource {
+    getPage(id: string, context: TreeFetchContext): Promise<TreeSourcePage>;
+    getChildren(nodeRef: TreeNodeRef, context: TreeFetchContext): Promise<TreeChild[]>;
+    getPageVersion(id: string, context: TreeFetchContext): Promise<TreeSourceVersion>;
+    getSpaceHomepageId(spaceKey: string, context: TreeFetchContext): Promise<string | null>;
+    searchPages?(cql: string, context: TreeFetchContext): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourceClient
+export interface TreeSourceClient {
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        id: string;
+        title: string;
+        storage: string;
+        version?: number;
+        labels?: string[];
+        spaceKey?: string;
+    }>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        title: string;
+        version: number;
+    }>;
+    getChildrenWithPosition(parentId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        version?: number;
+        position: number | null;
+    }>>;
+    getPageDirectChildren(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getFolderChildren(folderId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourcePage
+export interface TreeSourcePage {
+    id: string;
+    title: string;
+    storage: string;
+    version?: number;
+    labels?: string[];
+    spaceKey?: string;
+}
+
+// export: TreeSourceVersion
+export interface TreeSourceVersion {
+    version?: number;
+    title: string;
+}
+
+// export: uniqueAnchorId
+export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
 // export: UserInfo
 export interface UserInfo {
     accountId: string;
@@ -2313,6 +3897,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: validateExportScope
+export declare function validateExportScope(scope: ExportScope): ExportScope;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {
@@ -2402,6 +3989,7 @@ export interface AttachmentInfo {
     mediaType: string;
     fileSize: number;
     version: number;
+    modified?: string;
     pageId: string;
     downloadUrl: string;
     url?: string;
@@ -2494,6 +4082,9 @@ export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
 }
+
+// export: CaptionableBlockType
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
 
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
@@ -2592,7 +4183,18 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
-    getPageDetails(id: string): Promise<ConfluencePageDetails>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -2602,8 +4204,11 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
     }): Promise<SearchResults>;
-    searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -2622,6 +4227,7 @@ export declare class ConfluenceClient {
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
     getChildrenWithPosition(parentId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<Array<ConfluencePage & {
         position: number | null;
     }>>;
@@ -2636,6 +4242,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
@@ -2655,7 +4262,9 @@ export declare class ConfluenceClient {
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
-    getPageVersion(id: string): Promise<PageChangeInfo>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -2692,6 +4301,8 @@ export declare class ConfluenceClient {
     deleteAttachment(attachmentId: string): Promise<void>;
     downloadAttachment(attachment: AttachmentInfo | {
         downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
     private requestBinary;
@@ -2755,6 +4366,7 @@ export declare class ConfluenceClient {
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
     createFolder(params: {
@@ -2775,6 +4387,9 @@ export declare class ConfluenceClient {
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
     getUser(accountId: string): Promise<UserInfo | null>;
     getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
@@ -3039,12 +4654,62 @@ export declare function ensureUserPlaceholders(users: UserPlaceholder[], adapter
 // export: ensureUsersFromPages
 export declare function ensureUsersFromPages(pages: ConfluencePageDetails[], adapter: SyncDbAdapter): Promise<void>;
 
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "page-unreadable",
+    "subtree-unreadable",
+    "tree-cycle",
+    "page-ambiguous-404",
+    "page-version-changed",
+    "label-filtered",
+    "root-filter-bypassed",
+    "folder-position-unknown",
+    "unsupported-child-type",
+    "link-anchor-missing",
+    "link-outside-scope",
+    "link-target-ambiguous",
+    "mention-unresolved",
+    "heading-depth-clamped",
+    "caption-kind-unknown",
+    "caption-kind-unsupported",
+    "caption-lang-fallback",
+    "scroll-title-caption-fallback",
+    "scroll-ignore-applied",
+    "scroll-ignore-skipped-other-exporter",
+    "scroll-ignore-unknown-exporter",
+    "scroll-only-unknown-exporter",
+    "scroll-only-applied",
+    "scroll-only-skipped-other-exporter",
+    "export-controls-passthrough",
+    "table-overflow-warned",
+    "table-text-scaled",
+    "orientation-marker-unmatched",
+    "orientation-marker-unterminated",
+    "orientation-nested-collapsed",
+    "orientation-suppressed-in-container",
+    "pagebreak-suppressed-in-container",
+    "macro-degraded",
+    "macro-rendered-via",
+    "macro-skipped-by-config",
+    "macro-body-truncated",
+    "docx-scan-failed",
+    "never-placeholders",
+    "empty-include-result",
+    "usage-error",
+    "cancelled",
+    "asset-budget-exceeded",
+    "space-homepage-missing",
+    "auth-error",
+    "remote-error",
+    "unexpected-error",
+    "other",
     "date-format-unknown",
     "pageproperty-no-key",
     "placeholder-empty",
@@ -3139,6 +4804,11 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
 
 // export: ExportMentionLookup
@@ -3156,10 +4826,20 @@ export interface ExportNote {
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
 }
 
 // export: ExportNoteCode
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
+
+// export: ExportNoteSource
+export interface ExportNoteSource {
+    pageId?: string;
+    pageTitle?: string;
+    pageUrl?: string;
+    blockPath?: string;
+    assetName?: string;
+}
 
 // export: extractAttachmentRefs
 export declare function extractAttachmentRefs(markdown: string): string[];
@@ -3247,7 +4927,7 @@ export declare function findUsersWithUnknownStatus(adapter: SyncDbAdapter): Prom
 export type FolderChild = {
     id: string;
     title: string;
-    type: "page" | "folder";
+    type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
     url?: string;
@@ -3429,9 +5109,11 @@ export interface IgnoreResult {
 export type ImageSource = {
     kind: "attachment";
     filename: string;
+    pageId?: string;
 } | {
     kind: "external";
     url: string;
+    trust?: "page" | "export-view";
 };
 
 // export: InaccessibleReason
@@ -3626,6 +5308,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -3777,6 +5460,12 @@ export declare function naturalCompare(a: string, b: string): number;
 
 // export: needsMigration
 export declare function needsMigration(atlcliDir: string): boolean;
+
+// export: normalizeCaptionKind
+export declare function normalizeCaptionKind(raw: string | undefined, targetBlockType: CaptionableBlockType): {
+    kind: CaptionKind;
+    note?: ExportNote;
+};
 
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
@@ -4230,6 +5919,14 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
     exporter?: "pdf" | "word";
+    exportControls?: "apply" | "passthrough";
+    pageContext?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+        title?: string;
+        url?: string;
+    };
 }
 
 // export: StorageToBlocksResult
@@ -4633,6 +6330,73 @@ export interface XmlText {
 ### Entry point `./node`
 
 ```ts
+// export: AnchorRegistry
+export declare class AnchorRegistry {
+    private readonly lookup;
+    private readonly used;
+    static chapterKey(id: string): string;
+    static inPageKey(pageId: string, name: string): string;
+    register(rawKey: string): string;
+    registerOccurrence(rawKey: string): string;
+    resolve(rawKey: string): string | undefined;
+}
+
+// export: applyLabelFilter
+export declare function applyLabelFilter(nodes: readonly ExportNode[], labelsById: ReadonlyMap<string, readonly string[]>, filter: LabelFilter, options?: ApplyLabelFilterOptions): {
+    nodes: ExportNode[];
+    notes: ExportNote[];
+};
+
+// export: ApplyLabelFilterOptions
+export interface ApplyLabelFilterOptions {
+    rootId?: string | null;
+}
+
+// export: ASSET_MAX_BYTES
+export declare const ASSET_MAX_BYTES: number;
+
+// export: ASSET_MAX_TOTAL_BYTES
+export declare const ASSET_MAX_TOTAL_BYTES: number;
+
+// export: AssetBudget
+export declare class AssetBudget {
+    private readonly maxTotalBytes;
+    private total;
+    private readonly buckets;
+    private readonly counted;
+    constructor(options?: AssetBudgetOptions);
+    get totalBytes(): number;
+    account(bytes: Uint8Array, meta: AssetBudgetMeta): {
+        deduped: boolean;
+    };
+}
+
+// export: AssetBudgetExceededError
+export declare class AssetBudgetExceededError extends Error {
+    readonly offenders: readonly AssetBudgetOffender[];
+    readonly totalBytes: number;
+    readonly limitBytes: number;
+    constructor(offenders: readonly AssetBudgetOffender[], totalBytes: number, limitBytes: number);
+}
+
+// export: AssetBudgetMeta
+export interface AssetBudgetMeta {
+    filename: string;
+    pageId?: string;
+}
+
+// export: AssetBudgetOffender
+export interface AssetBudgetOffender {
+    filename: string;
+    pageId?: string;
+    sizeBytes: number;
+}
+
+// export: AssetBudgetOptions
+export interface AssetBudgetOptions {
+    maxTotalBytes?: number;
+}
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -4640,6 +6404,7 @@ export interface AttachmentInfo {
     mediaType: string;
     fileSize: number;
     version: number;
+    modified?: string;
     pageId: string;
     downloadUrl: string;
     url?: string;
@@ -4678,6 +6443,9 @@ export interface Caption {
     content: InlineNode[];
 }
 
+// export: CaptionableBlockType
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
+
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -4687,6 +6455,31 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: CompletenessCode
+export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
+
+// export: CompletenessMode
+export type CompletenessMode = "strict" | "partial";
+
+// export: composeChapters
+export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
+
+// export: ComposeOptions
+export interface ComposeOptions {
+    chapterBreak?: "none" | "pageBreak";
+    chapterTitleFromPage?: boolean;
+    resolveExternalUrl?: (target: ExternalLinkTarget, anchor?: string) => string;
+}
+
+// export: ComposeResult
+export interface ComposeResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+}
+
+// export: computeHeadingOffset
+export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -4713,7 +6506,18 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
-    getPageDetails(id: string): Promise<ConfluencePageDetails>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -4723,8 +6527,11 @@ export declare class ConfluenceClient {
         start?: number;
         excerpt?: boolean;
         detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
     }): Promise<SearchResults>;
-    searchPages(cql: string, limit?: number): Promise<ConfluenceSearchResult[]>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
     private searchByUrl;
     private parseSearchResult;
     createPage(params: {
@@ -4743,6 +6550,7 @@ export declare class ConfluenceClient {
     movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
     getChildrenWithPosition(parentId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<Array<ConfluencePage & {
         position: number | null;
     }>>;
@@ -4757,6 +6565,7 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSearchResult[]>;
     getPageDirectChildren(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     deletePage(pageId: string): Promise<void>;
     archivePage(pageId: string): Promise<ConfluencePage>;
@@ -4776,7 +6585,9 @@ export declare class ConfluenceClient {
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
-    getPageVersion(id: string): Promise<PageChangeInfo>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
     getPagesSince(params: {
         scope: SyncScope;
         since: string;
@@ -4813,6 +6624,8 @@ export declare class ConfluenceClient {
     deleteAttachment(attachmentId: string): Promise<void>;
     downloadAttachment(attachment: AttachmentInfo | {
         downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
     private requestBinary;
@@ -4876,6 +6689,7 @@ export declare class ConfluenceClient {
     updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
     getFolderChildren(folderId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<FolderChild[]>;
     getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
     createFolder(params: {
@@ -4896,6 +6710,9 @@ export declare class ConfluenceClient {
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
     getUser(accountId: string): Promise<UserInfo | null>;
     getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
@@ -4968,6 +6785,9 @@ export type ConfluenceSpace = {
     url?: string;
 };
 
+// export: confluenceTreeSource
+export declare function confluenceTreeSource(client: TreeSourceClient): TreeSource;
+
 // export: ConfluenceUser
 export type ConfluenceUser = {
     accountId?: string;
@@ -4982,12 +6802,68 @@ export interface ConversionOptions {
     onWarning?: (message: string) => void;
 }
 
+// export: createInOrderLimiter
+export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: drainPaginated
+export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "page-unreadable",
+    "subtree-unreadable",
+    "tree-cycle",
+    "page-ambiguous-404",
+    "page-version-changed",
+    "label-filtered",
+    "root-filter-bypassed",
+    "folder-position-unknown",
+    "unsupported-child-type",
+    "link-anchor-missing",
+    "link-outside-scope",
+    "link-target-ambiguous",
+    "mention-unresolved",
+    "heading-depth-clamped",
+    "caption-kind-unknown",
+    "caption-kind-unsupported",
+    "caption-lang-fallback",
+    "scroll-title-caption-fallback",
+    "scroll-ignore-applied",
+    "scroll-ignore-skipped-other-exporter",
+    "scroll-ignore-unknown-exporter",
+    "scroll-only-unknown-exporter",
+    "scroll-only-applied",
+    "scroll-only-skipped-other-exporter",
+    "export-controls-passthrough",
+    "table-overflow-warned",
+    "table-text-scaled",
+    "orientation-marker-unmatched",
+    "orientation-marker-unterminated",
+    "orientation-nested-collapsed",
+    "orientation-suppressed-in-container",
+    "pagebreak-suppressed-in-container",
+    "macro-degraded",
+    "macro-rendered-via",
+    "macro-skipped-by-config",
+    "macro-body-truncated",
+    "docx-scan-failed",
+    "never-placeholders",
+    "empty-include-result",
+    "usage-error",
+    "cancelled",
+    "asset-budget-exceeded",
+    "space-homepage-missing",
+    "auth-error",
+    "remote-error",
+    "unexpected-error",
+    "other",
     "date-format-unknown",
     "pageproperty-no-key",
     "placeholder-empty",
@@ -5082,7 +6958,36 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 };
+
+// export: ExportCompletenessError
+export declare class ExportCompletenessError extends Error {
+    readonly code: CompletenessCode;
+    readonly affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>;
+    constructor(code: CompletenessCode, affected: ReadonlyArray<{
+        id: string;
+        title: string;
+    }>, message?: string);
+}
+
+// export: ExportFolderNode
+export interface ExportFolderNode {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -5093,25 +6998,116 @@ export interface ExportMentionResolution {
     unresolved: number;
 }
 
+// export: ExportNode
+export type ExportNode = ExportPageNode | ExportFolderNode;
+
 // export: ExportNote
 export interface ExportNote {
     level: "info" | "warning";
     code: ExportNoteCode;
     message: string;
     macroName?: string;
+    source?: ExportNoteSource;
 }
 
 // export: ExportNoteCode
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
 
+// export: ExportNoteSource
+export interface ExportNoteSource {
+    pageId?: string;
+    pageTitle?: string;
+    pageUrl?: string;
+    blockPath?: string;
+    assetName?: string;
+}
+
+// export: ExportPageNode
+export interface ExportPageNode {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        observedVersion?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+    placeholder?: boolean;
+}
+
+// export: ExportPhase
+export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
+
+// export: ExportProgressCallback
+export type ExportProgressCallback = (event: ExportProgressEvent) => void;
+
+// export: ExportProgressEvent
+export interface ExportProgressEvent {
+    phase: ExportPhase;
+    done: number;
+    total: number | null;
+    detail?: string;
+    retrying?: boolean;
+}
+
+// export: ExportScope
+export type ExportScope = {
+    kind: "page";
+    pageId: string;
+} | {
+    kind: "tree";
+    rootPageId: string;
+    includeRoot?: boolean;
+    maxDepth?: number;
+} | {
+    kind: "space";
+    spaceKey: string;
+};
+
+// export: ExportScopeError
+export declare class ExportScopeError extends Error {
+    readonly code: "export-scope-invalid";
+    constructor(message: string);
+}
+
+// export: ExternalLinkTarget
+export interface ExternalLinkTarget {
+    contentId?: string;
+    contentTitle: string;
+    spaceKey?: string;
+}
+
 // export: extractAttachmentRefs
 export declare function extractAttachmentRefs(markdown: string): string[];
+
+// export: extractExportViewMacros
+export declare function extractExportViewMacros(html: string): Map<string, string>;
+
+// export: extractMacroBody
+export declare function extractMacroBody(storage: string, macroNames: readonly string[], name: string): string | undefined;
+
+// export: fetchExportTree
+export declare function fetchExportTree(source: TreeSource, scope: ExportScope, opts?: TreeFetchOptions): Promise<FetchExportTreeResult>;
+
+// export: FetchExportTreeResult
+export interface FetchExportTreeResult {
+    nodes: readonly ExportNode[];
+    notes: ExportNote[];
+    complete: boolean;
+}
 
 // export: FolderChild
 export type FolderChild = {
     id: string;
     title: string;
-    type: "page" | "folder";
+    type: "page" | "folder" | (string & {});
     spaceId?: string;
     parentId?: string | null;
     url?: string;
@@ -5122,16 +7118,52 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: hasActiveLabelFilter
+export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
+
 // export: hashContent
 export declare function hashContent(content: string): string;
+
+// export: HeadingScanBlock
+export interface HeadingScanBlock {
+    readonly type: string;
+    readonly level?: number;
+    readonly content?: readonly unknown[];
+    readonly items?: readonly {
+        readonly content: readonly unknown[];
+    }[];
+    readonly rows?: readonly {
+        readonly cells: readonly {
+            readonly content: readonly unknown[];
+        }[];
+    }[];
+}
+
+// export: HtmlConversionLimits
+export interface HtmlConversionLimits {
+    maxInputBytes?: number;
+    maxNodes?: number;
+    maxDepth?: number;
+    maxAttrsPerNode?: number;
+    maxTextPerNode?: number;
+    maxOutputBlocks?: number;
+}
+
+// export: htmlToExportBlocks
+export declare function htmlToExportBlocks(html: string, limits?: HtmlConversionLimits): {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+};
 
 // export: ImageSource
 export type ImageSource = {
     kind: "attachment";
     filename: string;
+    pageId?: string;
 } | {
     kind: "external";
     url: string;
+    trust?: "page" | "export-view";
 };
 
 // export: InlineComment
@@ -5170,8 +7202,24 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isSafeLinkScheme
+export declare function isSafeLinkScheme(href: string): boolean;
+
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
+
+// export: LabelFilter
+export interface LabelFilter {
+    include?: string[];
+    exclude?: string[];
+    excludeMode?: "prune-subtree" | "page-only";
+}
+
+// export: LabelFilterError
+export declare class LabelFilterError extends Error {
+    readonly code: "empty-include-result" | "labels-unavailable";
+    constructor(code: "empty-include-result" | "labels-unavailable", message: string);
+}
 
 // export: LabelInfo
 export interface LabelInfo {
@@ -5187,6 +7235,7 @@ export type LinkTarget = {
 } | {
     kind: "page";
     contentTitle: string;
+    contentId?: string;
     spaceKey?: string;
     anchor?: string;
 } | {
@@ -5240,8 +7289,26 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MAX_ANCHOR_ID_LENGTH
+export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: minHeadingLevel
+export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
+
+// export: nodeId
+export declare function nodeId(node: ExportNode): string;
+
+// export: normalizeCaptionKind
+export declare function normalizeCaptionKind(raw: string | undefined, targetBlockType: CaptionableBlockType): {
+    kind: CaptionKind;
+    note?: ExportNote;
+};
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
+
+// export: normalizeLabelFilter
+export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
@@ -5290,6 +7357,19 @@ export interface PageVersion {
     minorEdit: boolean;
 }
 
+// export: PaginatedPage
+export interface PaginatedPage<T> {
+    items: T[];
+    next?: string;
+}
+
+// export: PaginationLoopError
+export declare class PaginationLoopError extends Error {
+    readonly token: string;
+    readonly code: "pagination-loop";
+    constructor(token: string);
+}
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -5305,6 +7385,9 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: sanitizeAnchorId
+export declare function sanitizeAnchorId(rawKey: string): string;
+
 // export: SearchResults
 export interface SearchResults {
     results: ConfluenceSearchResult[];
@@ -5318,6 +7401,12 @@ export interface SearchResults {
 
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
+
+// export: SpaceHomepageError
+export declare class SpaceHomepageError extends Error {
+    readonly spaceKey: string;
+    constructor(spaceKey: string);
+}
 
 // export: SpaceIcon
 export type SpaceIcon = {
@@ -5333,6 +7422,14 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
     exporter?: "pdf" | "word";
+    exportControls?: "apply" | "passthrough";
+    pageContext?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+        title?: string;
+        url?: string;
+    };
 }
 
 // export: StorageToBlocksResult
@@ -5373,6 +7470,132 @@ export interface TableRow {
     cells: TableCell[];
 }
 
+// export: TreeChild
+export interface TreeChild {
+    id: string;
+    title: string;
+    kind: "page" | "folder" | "unsupported";
+    unsupportedKind?: string;
+    position: number | null;
+    observedVersion?: number;
+}
+
+// export: TreeFetchContext
+export interface TreeFetchContext {
+    signal?: AbortSignal;
+}
+
+// export: TreeFetchOptions
+export interface TreeFetchOptions {
+    labels?: LabelFilter;
+    maxPages?: number;
+    maxFolders?: number;
+    concurrency?: number;
+    completenessMode?: CompletenessMode;
+    signal?: AbortSignal;
+    onProgress?: (progress: TreeFetchProgress) => void;
+}
+
+// export: TreeFetchProgress
+export interface TreeFetchProgress {
+    fetched: number;
+    total: number | null;
+    currentTitle: string;
+}
+
+// export: TreeLimitExceededError
+export declare class TreeLimitExceededError extends Error {
+    readonly code: "max-pages" | "max-folders";
+    readonly limit: number;
+    constructor(code: "max-pages" | "max-folders", limit: number, message?: string);
+}
+
+// export: TreeNodeRef
+export interface TreeNodeRef {
+    id: string;
+    kind: "page" | "folder";
+}
+
+// export: TreeSource
+export interface TreeSource {
+    getPage(id: string, context: TreeFetchContext): Promise<TreeSourcePage>;
+    getChildren(nodeRef: TreeNodeRef, context: TreeFetchContext): Promise<TreeChild[]>;
+    getPageVersion(id: string, context: TreeFetchContext): Promise<TreeSourceVersion>;
+    getSpaceHomepageId(spaceKey: string, context: TreeFetchContext): Promise<string | null>;
+    searchPages?(cql: string, context: TreeFetchContext): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourceClient
+export interface TreeSourceClient {
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        id: string;
+        title: string;
+        storage: string;
+        version?: number;
+        labels?: string[];
+        spaceKey?: string;
+    }>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        title: string;
+        version: number;
+    }>;
+    getChildrenWithPosition(parentId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        version?: number;
+        position: number | null;
+    }>>;
+    getPageDirectChildren(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getFolderChildren(folderId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        type: string;
+    }>>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+    }>>;
+}
+
+// export: TreeSourcePage
+export interface TreeSourcePage {
+    id: string;
+    title: string;
+    storage: string;
+    version?: number;
+    labels?: string[];
+    spaceKey?: string;
+}
+
+// export: TreeSourceVersion
+export interface TreeSourceVersion {
+    version?: number;
+    title: string;
+}
+
+// export: uniqueAnchorId
+export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
 // export: UserInfo
 export interface UserInfo {
     accountId: string;
@@ -5381,6 +7604,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: validateExportScope
+export declare function validateExportScope(scope: ExportScope): ExportScope;
 
 // export: WebhookRegistration
 export interface WebhookRegistration {

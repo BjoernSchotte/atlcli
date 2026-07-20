@@ -14,7 +14,7 @@ function unknownBlock(macroName: string, extra: Partial<Extract<ExportBlock, { t
   return { type: "unknown", macroName, ...extra };
 }
 
-function walkerNote(macroName: string, code = "unknown-macro"): ExportNote {
+function walkerNote(macroName: string, code: ExportNote["code"] = "unknown-macro"): ExportNote {
   return { level: "warning", code, message: `${macroName} placeholder`, macroName };
 }
 

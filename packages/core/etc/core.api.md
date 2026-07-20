@@ -287,8 +287,17 @@ export declare function redactSensitive<T>(obj: T): T;
 // export: redactValue
 export declare function redactValue(value: string): string;
 
+// export: resolveAndLoadTemplate
+export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
+    entry: TemplateLibraryEntry;
+    bytes: Uint8Array;
+}>;
+
 // export: resolveDeploymentType
 export declare function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType;
+
+// export: resolveTemplate
+export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
 // export: ResultData
 export interface ResultData {
@@ -297,6 +306,9 @@ export interface ResultData {
     durationMs: number;
     result?: unknown;
 }
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
 // export: SyncEventData
 export interface SyncEventData {
@@ -308,6 +320,51 @@ export interface SyncEventData {
     details?: unknown;
 }
 
+// export: TemplateIntegrityError
+export declare class TemplateIntegrityError extends Error {
+    readonly id: string;
+    readonly kind: "size" | "sha256";
+    readonly expected: string;
+    readonly actual: string;
+    constructor(id: string, kind: "size" | "sha256", expected: string, actual: string);
+}
+
+// export: TemplateLibrary
+export interface TemplateLibrary {
+    list(engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<TemplateLibraryEntry[]>;
+    getBytes(entry: TemplateLibraryEntry): Promise<Uint8Array>;
+}
+
+// export: TemplateLibraryEntry
+export interface TemplateLibraryEntry {
+    id: string;
+    displayName: string;
+    engine: "docx" | "typst";
+    scope: "global" | "space";
+    spaceKey?: string;
+    sha256: string;
+    size: number;
+    uploadedAt: string;
+}
+
+// export: TemplateNotFoundError
+export declare class TemplateNotFoundError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly spaceKey: string | undefined;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], spaceKey: string | undefined);
+}
+
+// export: TemplateResolutionConflictError
+export declare class TemplateResolutionConflictError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly scope: TemplateLibraryEntry["scope"];
+    readonly spaceKey: string | undefined;
+    readonly count: number;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
+}
+
 // export: TlsOptions
 export type TlsOptions = {
     ca?: string;
@@ -316,6 +373,9 @@ export type TlsOptions = {
 
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
+
+// export: verifyTemplateBytes
+export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 ```
 
 ### Entry point `. (default)`
@@ -948,11 +1008,20 @@ export interface RenderResult {
     missingVariables: string[];
 }
 
+// export: resolveAndLoadTemplate
+export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
+    entry: TemplateLibraryEntry;
+    bytes: Uint8Array;
+}>;
+
 // export: resolveDefaults
 export declare function resolveDefaults(config: Config, profile?: Profile): DefaultsConfig;
 
 // export: resolveDeploymentType
 export declare function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType;
+
+// export: resolveTemplate
+export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
@@ -988,6 +1057,9 @@ export declare function setProfile(config: Config, profile: Profile): void;
 
 // export: setProjectFlag
 export declare function setProjectFlag(name: string, value: FlagValue): Promise<void>;
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
 // export: shouldCheckForUpdates
 export declare function shouldCheckForUpdates(state: UpdateState): boolean;
@@ -1075,6 +1147,33 @@ export interface TemplateFilter {
     includeOverridden?: boolean;
 }
 
+// export: TemplateIntegrityError
+export declare class TemplateIntegrityError extends Error {
+    readonly id: string;
+    readonly kind: "size" | "sha256";
+    readonly expected: string;
+    readonly actual: string;
+    constructor(id: string, kind: "size" | "sha256", expected: string, actual: string);
+}
+
+// export: TemplateLibrary
+export interface TemplateLibrary {
+    list(engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<TemplateLibraryEntry[]>;
+    getBytes(entry: TemplateLibraryEntry): Promise<Uint8Array>;
+}
+
+// export: TemplateLibraryEntry
+export interface TemplateLibraryEntry {
+    id: string;
+    displayName: string;
+    engine: "docx" | "typst";
+    scope: "global" | "space";
+    spaceKey?: string;
+    sha256: string;
+    size: number;
+    uploadedAt: string;
+}
+
 // export: TemplateMetadata
 export interface TemplateMetadata {
     name: string;
@@ -1090,6 +1189,14 @@ export interface TemplateMetadata {
     _source_version?: string;
 }
 
+// export: TemplateNotFoundError
+export declare class TemplateNotFoundError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly spaceKey: string | undefined;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], spaceKey: string | undefined);
+}
+
 // export: TemplatePackManifest
 export interface TemplatePackManifest {
     name: string;
@@ -1102,6 +1209,16 @@ export interface TemplatePackManifest {
         profiles?: Record<string, string[]>;
         spaces?: Record<string, string[]>;
     };
+}
+
+// export: TemplateResolutionConflictError
+export declare class TemplateResolutionConflictError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly scope: TemplateLibraryEntry["scope"];
+    readonly spaceKey: string | undefined;
+    readonly count: number;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
 }
 
 // export: TemplateResolver
@@ -1234,6 +1351,9 @@ export interface VariableValidationResult {
     error?: string;
     coerced?: unknown;
 }
+
+// export: verifyTemplateBytes
+export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 
 // export: writeTextFile
 export declare function writeTextFile(path: string, contents: string): Promise<void>;
@@ -1522,8 +1642,17 @@ export declare function redactSensitive<T>(obj: T): T;
 // export: redactValue
 export declare function redactValue(value: string): string;
 
+// export: resolveAndLoadTemplate
+export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
+    entry: TemplateLibraryEntry;
+    bytes: Uint8Array;
+}>;
+
 // export: resolveDeploymentType
 export declare function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType;
+
+// export: resolveTemplate
+export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
 // export: ResultData
 export interface ResultData {
@@ -1532,6 +1661,9 @@ export interface ResultData {
     durationMs: number;
     result?: unknown;
 }
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
 // export: SyncEventData
 export interface SyncEventData {
@@ -1543,6 +1675,51 @@ export interface SyncEventData {
     details?: unknown;
 }
 
+// export: TemplateIntegrityError
+export declare class TemplateIntegrityError extends Error {
+    readonly id: string;
+    readonly kind: "size" | "sha256";
+    readonly expected: string;
+    readonly actual: string;
+    constructor(id: string, kind: "size" | "sha256", expected: string, actual: string);
+}
+
+// export: TemplateLibrary
+export interface TemplateLibrary {
+    list(engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<TemplateLibraryEntry[]>;
+    getBytes(entry: TemplateLibraryEntry): Promise<Uint8Array>;
+}
+
+// export: TemplateLibraryEntry
+export interface TemplateLibraryEntry {
+    id: string;
+    displayName: string;
+    engine: "docx" | "typst";
+    scope: "global" | "space";
+    spaceKey?: string;
+    sha256: string;
+    size: number;
+    uploadedAt: string;
+}
+
+// export: TemplateNotFoundError
+export declare class TemplateNotFoundError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly spaceKey: string | undefined;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], spaceKey: string | undefined);
+}
+
+// export: TemplateResolutionConflictError
+export declare class TemplateResolutionConflictError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly scope: TemplateLibraryEntry["scope"];
+    readonly spaceKey: string | undefined;
+    readonly count: number;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
+}
+
 // export: TlsOptions
 export type TlsOptions = {
     ca?: string;
@@ -1551,6 +1728,9 @@ export type TlsOptions = {
 
 // export: TokenResolver
 export type TokenResolver = (profile: Profile) => string | null;
+
+// export: verifyTemplateBytes
+export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 ```
 
 ### Entry point `./node`
@@ -2183,11 +2363,20 @@ export interface RenderResult {
     missingVariables: string[];
 }
 
+// export: resolveAndLoadTemplate
+export declare function resolveAndLoadTemplate(library: TemplateLibrary, id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<{
+    entry: TemplateLibraryEntry;
+    bytes: Uint8Array;
+}>;
+
 // export: resolveDefaults
 export declare function resolveDefaults(config: Config, profile?: Profile): DefaultsConfig;
 
 // export: resolveDeploymentType
 export declare function resolveDeploymentType(profile: ConfluenceProfile): DeploymentType;
+
+// export: resolveTemplate
+export declare function resolveTemplate(entries: TemplateLibraryEntry[], id: string, engine: TemplateLibraryEntry["engine"], spaceKey?: string): TemplateLibraryEntry | undefined;
 
 // export: resolveToken
 export declare function resolveToken(profile: Profile): string | null;
@@ -2223,6 +2412,9 @@ export declare function setProfile(config: Config, profile: Profile): void;
 
 // export: setProjectFlag
 export declare function setProjectFlag(name: string, value: FlagValue): Promise<void>;
+
+// export: sha256Hex
+export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
 
 // export: shouldCheckForUpdates
 export declare function shouldCheckForUpdates(state: UpdateState): boolean;
@@ -2310,6 +2502,33 @@ export interface TemplateFilter {
     includeOverridden?: boolean;
 }
 
+// export: TemplateIntegrityError
+export declare class TemplateIntegrityError extends Error {
+    readonly id: string;
+    readonly kind: "size" | "sha256";
+    readonly expected: string;
+    readonly actual: string;
+    constructor(id: string, kind: "size" | "sha256", expected: string, actual: string);
+}
+
+// export: TemplateLibrary
+export interface TemplateLibrary {
+    list(engine: TemplateLibraryEntry["engine"], spaceKey?: string): Promise<TemplateLibraryEntry[]>;
+    getBytes(entry: TemplateLibraryEntry): Promise<Uint8Array>;
+}
+
+// export: TemplateLibraryEntry
+export interface TemplateLibraryEntry {
+    id: string;
+    displayName: string;
+    engine: "docx" | "typst";
+    scope: "global" | "space";
+    spaceKey?: string;
+    sha256: string;
+    size: number;
+    uploadedAt: string;
+}
+
 // export: TemplateMetadata
 export interface TemplateMetadata {
     name: string;
@@ -2325,6 +2544,14 @@ export interface TemplateMetadata {
     _source_version?: string;
 }
 
+// export: TemplateNotFoundError
+export declare class TemplateNotFoundError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly spaceKey: string | undefined;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], spaceKey: string | undefined);
+}
+
 // export: TemplatePackManifest
 export interface TemplatePackManifest {
     name: string;
@@ -2337,6 +2564,16 @@ export interface TemplatePackManifest {
         profiles?: Record<string, string[]>;
         spaces?: Record<string, string[]>;
     };
+}
+
+// export: TemplateResolutionConflictError
+export declare class TemplateResolutionConflictError extends Error {
+    readonly id: string;
+    readonly engine: TemplateLibraryEntry["engine"];
+    readonly scope: TemplateLibraryEntry["scope"];
+    readonly spaceKey: string | undefined;
+    readonly count: number;
+    constructor(id: string, engine: TemplateLibraryEntry["engine"], scope: TemplateLibraryEntry["scope"], spaceKey: string | undefined, count: number);
 }
 
 // export: TemplateResolver
@@ -2469,6 +2706,9 @@ export interface VariableValidationResult {
     error?: string;
     coerced?: unknown;
 }
+
+// export: verifyTemplateBytes
+export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 
 // export: writeTextFile
 export declare function writeTextFile(path: string, contents: string): Promise<void>;
