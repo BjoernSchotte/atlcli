@@ -17,6 +17,18 @@
  * Browser-safe: no `node:`/`bun:` imports.
  */
 
+import { validateBindings, type WikiPdfTemplateSettingBindingV1 } from "./bindings.js";
+import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
+import {
+  validateLocalization,
+  WIKI_PDF_V1_DOCUMENT_LABELS,
+  type DeclaredSettingsShape,
+  type WikiPdfTemplateLocalizationV1,
+} from "./localization.js";
+import { ManifestValidationError, type ManifestErrorReason } from "./manifest-error.js";
+
+export { ManifestValidationError, type ManifestErrorReason };
+
 /** Manifest file name; always the first entry in a pack. */
 export const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
 
@@ -85,26 +97,12 @@ export interface TemplateManifest {
   requiredFonts?: RequiredFont[];
   settings?: Record<string, ManifestSetting>;
   provenance?: TemplateProvenance;
-}
-
-/** Typed rejection reasons carried by {@link ManifestValidationError}. */
-export type ManifestErrorReason =
-  | "unknown-schema-version"
-  | "unknown-api"
-  | "compiler-range-mismatch"
-  | "shape-error";
-
-/** Thrown by {@link validateManifest} on any rejection, with a typed reason. */
-export class ManifestValidationError extends Error {
-  constructor(
-    readonly reason: ManifestErrorReason,
-    message: string,
-    /** Offending manifest field path, when applicable. */
-    readonly path?: string
-  ) {
-    super(message);
-    this.name = "ManifestValidationError";
-  }
+  /** Presentation model (spec 012): typography, tokens, palettes, components. */
+  design?: WikiPdfTemplateDesignV1;
+  /** Setting → design-field bindings (spec 012). */
+  bindings?: WikiPdfTemplateSettingBindingV1[];
+  /** Document + UI copy per locale (spec 012). */
+  localization?: WikiPdfTemplateLocalizationV1;
 }
 
 export interface ValidateManifestOptions {
@@ -115,6 +113,15 @@ export interface ValidateManifestOptions {
    * Defaults to {@link PINNED_TYPST_VERSION}.
    */
   pinnedTypstVersion?: string;
+  /**
+   * Bundled runtime font inventory to cross-check `requiredFonts` against (spec
+   * 012 T6.1). When provided, an unsatisfiable required font (no matching
+   * family+style+weight) is rejected at import; when omitted, `requiredFonts`
+   * is shape-checked only (007's behavior).
+   */
+  availableFonts?: ReadonlyArray<{ family: string; style: string; weight: number }>;
+  /** Sink for non-fatal localization warnings (partial non-fallback locales). */
+  collectWarnings?: (warning: string) => void;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -272,8 +279,21 @@ export function validateManifest(
 
   // 6. Declarative field shapes.
   const requiredFonts = validateRequiredFonts(json.requiredFonts);
+  crossCheckRequiredFonts(requiredFonts, options.availableFonts);
   const settings = validateSettings(json.settings);
   const provenance = validateProvenance(json.provenance);
+
+  // 7. Presentation model (spec 012): design / bindings / localization.
+  const design = json.design !== undefined ? validateDesign(json.design) : undefined;
+  const bindings = json.bindings !== undefined ? validateBindings(json.bindings) : undefined;
+  const localization =
+    json.localization !== undefined
+      ? validateLocalization(json.localization, {
+          requiredDocumentLabels: kind === "typst" ? WIKI_PDF_V1_DOCUMENT_LABELS : [],
+          declared: declaredSettingsShape(settings),
+          ...(options.collectWarnings ? { onWarning: options.collectWarnings } : {}),
+        })
+      : undefined;
 
   const manifest: TemplateManifest = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
@@ -284,8 +304,58 @@ export function validateManifest(
     ...(requiredFonts ? { requiredFonts } : {}),
     ...(settings ? { settings } : {}),
     ...(provenance ? { provenance } : {}),
+    ...(design ? { design } : {}),
+    ...(bindings ? { bindings } : {}),
+    ...(localization ? { localization } : {}),
   };
   return manifest;
+}
+
+/** Reject any required font the bundled inventory cannot satisfy (spec 012). */
+function crossCheckRequiredFonts(
+  requiredFonts: RequiredFont[] | undefined,
+  availableFonts: ValidateManifestOptions["availableFonts"]
+): void {
+  if (!requiredFonts || !availableFonts) return;
+  requiredFonts.forEach((font, i) => {
+    const satisfiable = availableFonts.some(
+      (a) => a.family === font.family && a.style === font.style && a.weight === font.weight
+    );
+    if (!satisfiable) {
+      throw new ManifestValidationError(
+        "shape-error",
+        `requiredFonts[${i}] (${font.family} ${font.style} ${font.weight}) is not in the bundled font inventory`,
+        `requiredFonts[${i}]`
+      );
+    }
+  });
+}
+
+/** Project declared `settings` into the shape the localization check needs. */
+function declaredSettingsShape(
+  settings: Record<string, ManifestSetting> | undefined
+): DeclaredSettingsShape {
+  const shape: DeclaredSettingsShape = { settings: {}, groups: [] };
+  if (!settings) return shape;
+  for (const [key, setting] of Object.entries(settings)) {
+    const options = choiceOptionValues(setting);
+    shape.settings[key] = options ? { options } : {};
+    const group = setting.group;
+    if (typeof group === "string" && !shape.groups.includes(group)) shape.groups.push(group);
+  }
+  return shape;
+}
+
+function choiceOptionValues(setting: ManifestSetting): string[] | undefined {
+  if (setting.type !== "choice" || !Array.isArray(setting.options)) return undefined;
+  const values: string[] = [];
+  for (const option of setting.options) {
+    if (typeof option === "string") values.push(option);
+    else if (option && typeof option === "object" && typeof (option as { value?: unknown }).value === "string") {
+      values.push((option as { value: string }).value);
+    }
+  }
+  return values.length > 0 ? values : undefined;
 }
 
 function validateRequiredFonts(value: unknown): RequiredFont[] | undefined {
