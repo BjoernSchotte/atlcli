@@ -92,6 +92,32 @@ function sha256(bytes: Uint8Array): string {
 }
 
 /**
+ * Whether a vendored file is binary (must never be line-ending normalized).
+ * Only the wasm is binary; the glue/`.d.ts` companions are text.
+ */
+function isBinaryVendorFile(name: string): boolean {
+  return name.endsWith(".wasm");
+}
+
+/**
+ * LF-normalize the bytes of a TEXT vendored file so the pinned sha256 is
+ * platform-independent. The glue is produced by Bun applying the CSP patch to
+ * the upstream `.mjs`; if the patch (or the base file) carries CRLF on Windows
+ * — e.g. a contributor with `core.autocrlf=true` — the patched bytes would
+ * differ from the LF-computed pin and fail `vendor:typst` with a sha mismatch.
+ * Normalizing on BOTH write and hash makes the shipped file and the pin LF on
+ * every platform. The wasm is binary and is returned byte-for-byte untouched.
+ * (`.gitattributes` forces the patch to LF as the primary guard; this is the
+ * belt-and-suspenders so vendoring is deterministic even if a stray CR slips
+ * through, e.g. from a differently-configured install.)
+ */
+export function normalizeVendorBytes(name: string, bytes: Uint8Array): Uint8Array {
+  if (isBinaryVendorFile(name)) return bytes;
+  const normalized = Buffer.from(bytes).toString("utf8").replace(/\r\n/g, "\n");
+  return new Uint8Array(Buffer.from(normalized, "utf8"));
+}
+
+/**
  * Verify an existing vendor directory: files present, patch markers present
  * in the glue, sha256 pins matching. Throws with a precise message otherwise.
  */
@@ -104,7 +130,7 @@ export function verifyVendoredTypst(vendorDir: string = VENDOR_DIR): void {
     }
     const pin = TYPST_VENDOR_PINS[name];
     if (pin) {
-      const actual = sha256(readFileSync(path));
+      const actual = sha256(normalizeVendorBytes(name, readFileSync(path)));
       if (actual !== pin) {
         throw new Error(
           `vendor-typst: sha256 mismatch for ${path}: expected ${pin}, got ${actual}. ` +
@@ -188,7 +214,13 @@ export async function ensureVendoredTypst(): Promise<EnsureVendoredTypstResult> 
 
   mkdirSync(VENDORED_PKG_DIR, { recursive: true });
   for (const name of TYPST_VENDOR_FILES) {
-    writeFileSync(join(VENDORED_PKG_DIR, name), readFileSync(join(sourcePkgDir, name)));
+    // LF-normalize the text glue/`.d.ts` (leave the binary wasm untouched) so
+    // the vendored copy is byte-identical — and matches the sha pin — on every
+    // platform regardless of how the patch/base file was checked out.
+    writeFileSync(
+      join(VENDORED_PKG_DIR, name),
+      normalizeVendorBytes(name, readFileSync(join(sourcePkgDir, name))),
+    );
   }
 
   // Apache-2.0 license text: upstream's npm tarball ships none, but both the

@@ -4,10 +4,13 @@ import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import { ATLCLI_TYPST_TEMPLATE, validatePdfOutput } from "@atlcli/pdf/internal";
 import { ensurePdfFonts, PDF_FONT_CACHE_DIR } from "../../pdf/scripts/ensure-fonts.js";
 import { PDF_RUNTIME_ASSETS } from "../../pdf/src/runtime-assets.js";
+import { createHash } from "node:crypto";
 import {
   ensureVendoredTypst,
+  normalizeVendorBytes,
   verifyVendoredTypst,
   PATCH_MARKER,
+  TYPST_VENDOR_PINS,
   VENDORED_MJS,
   VENDORED_WASM,
 } from "../scripts/vendor-typst.js";
@@ -35,6 +38,29 @@ describe("vendored typst.ts glue (spec 009)", () => {
     const glue = readFileSync(VENDORED_MJS, "utf8");
     expect(glue.split(PATCH_MARKER).length - 1).toBeGreaterThanOrEqual(2);
     expect(glue).not.toContain("new Function(");
+  });
+
+  it("line-ending normalization makes the glue sha platform-independent (Windows CRLF regression)", () => {
+    // Root cause of the pdf-sink-windows failure: on a Windows checkout with
+    // core.autocrlf, Bun applied the CSP patch with CRLF line endings, so the
+    // patched glue bytes differed from the LF-computed pin and vendor:typst
+    // threw a sha256 mismatch. The vendored glue must hash to the LF pin
+    // regardless of the line endings it was produced with; the binary wasm
+    // must NEVER be normalized.
+    const sha = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+    const lf = readFileSync(VENDORED_MJS);
+    const crlf = Buffer.from(lf.toString("utf8").replace(/\n/g, "\r\n"), "utf8");
+    const pin = TYPST_VENDOR_PINS["typst_ts_web_compiler.mjs"]!;
+
+    // Sanity: raw CRLF bytes do NOT match the pin (this is the Windows symptom).
+    expect(sha(crlf)).not.toBe(pin);
+    // Normalized CRLF and normalized LF both hash to the committed LF pin.
+    expect(sha(normalizeVendorBytes("typst_ts_web_compiler.mjs", crlf))).toBe(pin);
+    expect(sha(normalizeVendorBytes("typst_ts_web_compiler.mjs", lf))).toBe(pin);
+
+    // Binary wasm must pass through byte-for-byte (normalization would corrupt it).
+    const wasm = new Uint8Array(readFileSync(VENDORED_WASM));
+    expect(normalizeVendorBytes("typst_ts_web_compiler_bg.wasm", wasm)).toEqual(wasm);
   });
 
   it("the patched glue throws on unexpected dynamic function bodies and allows the static allowlist", async () => {
