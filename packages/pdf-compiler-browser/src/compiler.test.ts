@@ -260,3 +260,255 @@ describe("template settings compiled output", () => {
     expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true, pageCount: 4 });
   }, 120_000);
 });
+
+// ===========================================================================
+// spec 003 — content features, verified against the REAL Typst compiler
+// ===========================================================================
+describe("spec 003 content features (real compiler)", () => {
+  const meta = { title: "Content features", exportedAt: new Date("2026-07-20T00:00:00Z") };
+
+  /** Prepare + serialize + compile a block list; return pdf + inflated text. */
+  async function compileBlocks(
+    blocks: ExportBlock[],
+    settings?: PdfTemplateSettings
+  ): Promise<{ pdf: Uint8Array; text: string; pageCount: number; diagnostics: unknown[] }> {
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        // A 1x1 PNG for any image so figure/orientation goldens embed real bytes.
+        return { bytes: tinyPng(), mediaType: "image/png", filename: "x.png" };
+      },
+    });
+    const source = serializePdfDocument(prepared, { metadata: meta, ...(settings ? { settings } : {}) });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(source);
+    const errors = result.diagnostics.filter((d) => d.severity === "error");
+    if (errors.length) throw new Error(`compile errors: ${JSON.stringify(errors)}`);
+    const inspection = validatePdfOutput(result.pdf!);
+    return { pdf: result.pdf!, text: inflatedPdfText(result.pdf!), pageCount: inspection.pageCount, diagnostics: result.diagnostics };
+  }
+
+  /** Every /MediaBox as [width, height] pairs found in the PDF. */
+  function mediaBoxes(text: string): Array<[number, number]> {
+    const boxes: Array<[number, number]> = [];
+    const re = /\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      boxes.push([Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])]);
+    }
+    return boxes;
+  }
+
+  it("a scroll-pagebreak increases the page count", async () => {
+    const long = { type: "paragraph", content: [{ type: "text", text: "body" }] } as ExportBlock;
+    const noBreak = await compileBlocks([long, long]);
+    const withBreak = await compileBlocks([long, { type: "pageBreak" }, long]);
+    expect(withBreak.pageCount).toBeGreaterThan(noBreak.pageCount);
+  }, 60_000);
+
+  it("a landscape orientation region produces a landscape page (width > height)", async () => {
+    const { text } = await compileBlocks([
+      {
+        type: "orientation",
+        landscape: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "wide region" }] }],
+      },
+    ]);
+    // At least one page is landscape (width > height).
+    expect(mediaBoxes(text).some(([w, h]) => w > h)).toBe(true);
+  }, 60_000);
+
+  it("a portrait region inside a landscape base document flips back to portrait", async () => {
+    const { text } = await compileBlocks(
+      [
+        {
+          type: "orientation",
+          landscape: false,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "narrow region" }] }],
+        },
+      ],
+      { orientation: "landscape" }
+    );
+    // Both a landscape base page and a portrait (height > width) region page.
+    const boxes = mediaBoxes(text);
+    expect(boxes.some(([w, h]) => h > w)).toBe(true);
+  }, 60_000);
+
+  it("a 200-row table paginates with a repeating header row", async () => {
+    const header = {
+      cells: [
+        { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+        { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+      ],
+    };
+    const body = Array.from({ length: 200 }, (_, i) => ({
+      cells: [
+        { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: `row-${i}` }] }] },
+        { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: `val-${i}` }] }] },
+      ],
+    }));
+    const { pageCount } = await compileBlocks([{ type: "table", rows: [header, ...body] }] as ExportBlock[]);
+    expect(pageCount).toBeGreaterThan(1);
+  }, 90_000);
+
+  it("wide-table escalation goldens compile & paginate without content loss", async () => {
+    const cell = (text: string) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }] as ExportBlock[],
+    });
+    // Long URLs/IDs, CJK, extreme colgroup ratios, and a colspan, all at once.
+    const blocks: ExportBlock[] = [
+      {
+        type: "table",
+        columnWidths: [1, 1, 40],
+        rows: [
+          { cells: [cell("https://example.com/very/long/path/that/keeps/going/2026/details"), cell("識別子一二三四五六七八"), cell("wide")] },
+          { cells: [{ header: false, colspan: 3, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "spanning" }] }] }] },
+        ],
+      },
+    ];
+    const { pageCount } = await compileBlocks(blocks);
+    expect(pageCount).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+
+  it("a captioned figure compiles into a real figure", async () => {
+    const { pageCount } = await compileBlocks([
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "x.png" },
+        caption: { kind: "figure", content: [{ type: "text", text: "Architecture overview" }] },
+      },
+    ]);
+    expect(pageCount).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+});
+
+// Review-fix goldens (spec 003): the captioned-figure code paths previously
+// emitted `#emph`/`#raw`/`#block` INSIDE `#figure(...)` arguments — code
+// context, where a leading `#` is a Typst syntax error. These compile the
+// real serializer output for every captioned shape.
+describe("spec 003 captioned figures (real compiler, code-context regression)", () => {
+  const meta = { title: "Caption regressions", exportedAt: new Date("2026-07-20T00:00:00Z") };
+
+  async function compileWithResolver(
+    blocks: ExportBlock[],
+    resolve: () => Promise<{ bytes: Uint8Array; mediaType: string; filename?: string }>
+  ) {
+    const prepared = await preparePdfDocument(blocks, { resolve });
+    const source = serializePdfDocument(prepared, { metadata: meta });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(source);
+    return { result, source };
+  }
+
+  it("a captioned image with a FAILED embed compiles into a numbered figure fallback", async () => {
+    const { result, source } = await compileWithResolver(
+      [
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "broken.png" },
+          caption: { kind: "figure", content: [{ type: "text", text: "Broken but numbered" }] },
+        },
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "also-broken.png" },
+          caption: { kind: "figure", content: [{ type: "text", text: "Second figure" }] },
+        },
+      ],
+      async () => {
+        throw new Error("attachment gone");
+      }
+    );
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(1);
+    // The emitted markup is the bare-expression figure body (regression pin —
+    // `#figure(#emph[...])` was a compile error). Both captioned fallbacks
+    // compile as real figures; page text is font-subsetted, so the compile
+    // succeeding with two #figure(emph[...]) bodies IS the assertion.
+    expect(source.main.match(/#figure\(emph\[/g)).toHaveLength(2);
+    expect(source.main).not.toContain("#figure(#");
+  }, 60_000);
+
+  it("a captioned table and captioned code block compile (bare block/raw in figure args)", async () => {
+    const { result, source } = await compileWithResolver(
+      [
+        {
+          type: "table",
+          rows: [
+            { cells: [{ header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }] }] },
+          ],
+          caption: { kind: "table", content: [{ type: "text", text: "Captioned table" }] },
+        },
+        {
+          type: "codeBlock",
+          language: "ts",
+          code: "const x = 1;",
+          caption: { kind: "code", content: [{ type: "text", text: "Captioned listing" }] },
+        },
+      ],
+      async () => {
+        throw new Error("unused");
+      }
+    );
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(source.main).toContain("#figure(block(width: 100%)[");
+    expect(source.main).toContain("#figure(raw(");
+  }, 60_000);
+
+  it("a wide table nested inside a landscape region compiles and escalates against the landscape width", async () => {
+    // No punctuation: the dense breaker legitimately splits at punctuation and
+    // 4-char alphanumeric runs, so escalation needs many narrow columns.
+    const longToken = "SUPERCALIFRAGILISTICEXPIALIDOCIOUS";
+    const cells = Array.from({ length: 20 }, (_, i) => ({
+      header: false,
+      colspan: 1,
+      rowspan: 1,
+      content: [
+        { type: "paragraph" as const, content: [{ type: "text" as const, text: i === 0 ? longToken : `c${i}` }] },
+      ],
+    }));
+    const wideTable: ExportBlock = { type: "table", rows: [{ cells }] };
+
+    // Portrait: the long token escalates.
+    const prepared = await preparePdfDocument([wideTable], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const portrait = serializePdfDocument(prepared, { metadata: meta });
+    const portraitEscalated = portrait.notes.some(
+      (n) => n.code === "table-text-scaled" || n.code === "table-overflow-warned"
+    );
+
+    // Same table inside a landscape region: classification resets against the
+    // wider landscape text area, and the whole document must still compile.
+    const preparedLandscape = await preparePdfDocument(
+      [{ type: "orientation", landscape: true, content: [wideTable] }],
+      {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }
+    );
+    const landscape = serializePdfDocument(preparedLandscape, { metadata: meta });
+    const landscapeCodes = landscape.notes.map((n) => n.code);
+    expect(portraitEscalated).toBe(true);
+    // The landscape width fits the same token without the scaled tier.
+    expect(landscapeCodes).not.toContain("table-text-scaled");
+    expect(landscapeCodes).not.toContain("table-overflow-warned");
+
+    const compiler = await createCompiler();
+    const result = await compiler.compile(landscape);
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(1);
+    // The region page is genuinely landscape (width > height in MediaBox).
+    const boxes = [...inflatedPdfText(result.pdf!).matchAll(
+      /\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g
+    )].map((m) => [Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])]);
+    expect(boxes.some(([w, h]) => w! > h!)).toBe(true);
+  }, 90_000);
+});

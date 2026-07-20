@@ -231,6 +231,27 @@ export type ExportBlock =
        */
       sourcePage?: { id: string; version?: number; spaceKey?: string } };
 
+/**
+ * Provenance of an {@link ExportNote} — where in a (possibly multi-page) export
+ * the observation originated. Additive optional field (spec 003, owner of the
+ * contract) that 011-quality-gates' cross-engine report-parity check reads and
+ * 004-macro-renderer adopts for its own note codes. Every field is optional so
+ * a single-page export (no page context, no path threading) leaves it absent
+ * and stays byte-identical to before.
+ */
+export interface ExportNoteSource {
+  /** The source page's id (from {@link StorageToBlocksOptions.pageContext}). */
+  pageId?: string;
+  /** The source page's title, when the host threads it. */
+  pageTitle?: string;
+  /** The source page's canonical URL, when the host threads it. */
+  pageUrl?: string;
+  /** The emitting block's position in the tree (e.g. `blocks[3].content[0]`). */
+  blockPath?: string;
+  /** The name of an asset the note is about (image/attachment filename). */
+  assetName?: string;
+}
+
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
   level: "info" | "warning";
@@ -238,6 +259,8 @@ export interface ExportNote {
   code: string;
   message: string;
   macroName?: string;
+  /** Where the note originated (spec 003 provenance contract). */
+  source?: ExportNoteSource;
 }
 
 /** Result of {@link storageToBlocks}: the block tree plus report notes. */
@@ -249,18 +272,34 @@ export interface StorageToBlocksResult {
 /** Options for {@link storageToBlocks}. */
 export interface StorageToBlocksOptions {
   /**
-   * Exporter identity for `scroll-only` / `scroll-ignore` scoping. Consumed
-   * from T1.4 on — no behavioral effect yet.
+   * Exporter identity for `scroll-only` / `scroll-ignore` scoping (spec 003 C4).
+   * Answers "which target format is this?" and decides match/mismatch for a
+   * macro's own `exporter` parameter. Undefined → apply both macros
+   * unconditionally (a macro's `exporter` param cannot mismatch an absent
+   * identity), matching the pre-003 default.
    */
   exporter?: "pdf" | "word";
+  /**
+   * Whether the export-control macros (`scroll-only`/`scroll-ignore`, spec 003
+   * C4) filter at all. `"apply"` (default) runs the C4 truth table; the
+   * orthogonal `"passthrough"` (CLI `--keep-ignored`) keeps BOTH macro bodies
+   * so nothing is dropped — for debugging "why is section X missing?". This is
+   * a DIFFERENT axis from {@link exporter}: `exporter` alone cannot implement
+   * passthrough, because a `scroll-ignore` with no `exporter` param drops its
+   * body regardless of exporter identity.
+   */
+  exportControls?: "apply" | "passthrough";
   /**
    * The page whose storage is being walked, in a multi-page (tree/space)
    * export. When set, attachment {@link ImageSource}s get `pageId` and every
    * `unknown` block gets `sourcePage`, so a downstream asset resolver / macro
    * renderer can bind to the correct page (spec 002). Unset for single-page
    * export (fields stay absent — output is byte-identical to before).
+   *
+   * `title`/`url` are additive (spec 003 provenance): when a host threads
+   * them, every {@link ExportNote.source} carries `pageTitle`/`pageUrl` too.
    */
-  pageContext?: { id: string; version?: number; spaceKey?: string };
+  pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -422,10 +461,23 @@ interface WalkCtx {
   /** Exporter identity (from options); undefined for hosts that don't set it. */
   exporter?: "pdf" | "word";
   /**
+   * Export-control filtering mode (from options). `"apply"` (default) runs the
+   * C4 truth table; `"passthrough"` keeps both `scroll-only`/`scroll-ignore`
+   * bodies. An INDEPENDENT field from {@link exporter} — never collapse the two.
+   */
+  exportControls: "apply" | "passthrough";
+  /**
    * Source-page context (from options); undefined for single-page export.
    * Threaded into attachment {@link ImageSource}s and `unknown` blocks.
    */
-  pageContext?: { id: string; version?: number; spaceKey?: string };
+  pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /**
+   * The tree position of the block currently being walked (spec 003
+   * provenance), e.g. `blocks[3]` / `blocks[3].content[0]`. Maintained by
+   * {@link walkBlocks} (save/restore around each block element); read by
+   * {@link noteSource} so notes carry `source.blockPath`.
+   */
+  blockPath?: string;
 }
 
 /**
@@ -495,6 +547,7 @@ export function storageToBlocks(
   const ctx: WalkCtx = {
     notes: [],
     exporter: options?.exporter,
+    exportControls: options?.exportControls ?? "apply",
     pageContext: options?.pageContext,
   };
   const nodes = parseXml(storage);
@@ -537,10 +590,17 @@ function trimInline(nodes: InlineNode[]): InlineNode[] {
 function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
   const out: ExportBlock[] = [];
   let inlineBuf: XmlNode[] = [];
+  // Provenance path prefix (spec 003): the enclosing block's path plus
+  // `.content`, or the root `blocks`. Saved/restored around each element so
+  // sibling walks after a nested walk see their own prefix again.
+  const parentPath = ctx.blockPath === undefined ? "blocks" : `${ctx.blockPath}.content`;
+  const savedPath = ctx.blockPath;
 
   const flush = () => {
     if (inlineBuf.length === 0) return;
+    ctx.blockPath = `${parentPath}[${out.length}]`;
     const inline = trimInline(walkInline(inlineBuf, ctx));
+    ctx.blockPath = savedPath;
     if (hasMeaningfulInline(inline)) out.push({ type: "paragraph", content: inline });
     inlineBuf = [];
   };
@@ -555,20 +615,95 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
       continue;
     }
     flush();
+    ctx.blockPath = `${parentPath}[${out.length}]`;
     out.push(...handleBlockElement(node, ctx));
+    ctx.blockPath = savedPath;
   }
   flush();
-  return out;
+  // C6 marker shape: convert scroll-landscape/scroll-portrait marker sequences
+  // in this sibling stream into body-wrapped orientation regions, so engines
+  // consume ONE shape regardless of how the source expressed the region.
+  return normalizeOrientationMarkers(out, ctx);
 }
 
 /**
- * A `status` structured-macro is the only inline-level macro.
- *
- * Seam for Lane C (T1.4): the `scroll-only-inline`/`scroll-ignore-inline`
- * exporter-scoped inline handling lands here, not in T0.
+ * Marker-shaped orientation blocks (a `scroll-landscape`/`scroll-portrait`
+ * macro with NO `ac:rich-text-body`): stateful open/close markers that orient
+ * everything up to the matching counter-marker, per the K15t-documented
+ * behavior. Tagged here so {@link normalizeOrientationMarkers} can tell a
+ * marker from a genuinely empty body-wrapped region.
+ */
+const ORIENTATION_MARKERS = new WeakSet<object>();
+
+/**
+ * C6 marker-sequence normalization (spec 003): fold a marker-shaped
+ * `scroll-landscape` … `scroll-portrait` sequence in a sibling block stream
+ * into the same body-wrapped `orientation { landscape, content }` block the
+ * body-wrapped macro produces — a landscape marker opens a region, a portrait
+ * marker ends it, and an unterminated region closes at end-of-stream with the
+ * base orientation restored (info note). A portrait marker with no open region
+ * matches nothing and is dropped with an info note. No markers → the input
+ * array is returned unchanged (byte-identical fast path).
+ */
+function normalizeOrientationMarkers(blocks: ExportBlock[], ctx: WalkCtx): ExportBlock[] {
+  if (!blocks.some((block) => ORIENTATION_MARKERS.has(block))) return blocks;
+  const out: ExportBlock[] = [];
+  let open: { landscape: boolean; content: ExportBlock[] } | null = null;
+  const closeOpen = () => {
+    if (!open) return;
+    out.push({ type: "orientation", landscape: open.landscape, content: open.content });
+    open = null;
+  };
+  for (const block of blocks) {
+    if (ORIENTATION_MARKERS.has(block) && block.type === "orientation") {
+      if (block.landscape) {
+        // A landscape marker while a region is open closes it first (markers
+        // cannot nest — the stateful semantics are strictly sequential).
+        closeOpen();
+        open = { landscape: true, content: [] };
+      } else if (open) {
+        closeOpen();
+      } else {
+        ctx.notes.push(
+          withSource(ctx, {
+            level: "info",
+            code: "orientation-marker-unmatched",
+            message: "A scroll-portrait marker had no open landscape region to close; it was ignored.",
+            macroName: "scroll-portrait",
+          })
+        );
+      }
+      continue;
+    }
+    if (open) open.content.push(block);
+    else out.push(block);
+  }
+  if (open) {
+    closeOpen();
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "orientation-marker-unterminated",
+        message: "A scroll-landscape marker region was not closed; it was ended at the end of its content and the base orientation restored.",
+        macroName: "scroll-landscape",
+      })
+    );
+  }
+  return out;
+}
+
+/** The inline-level `scroll-*` export-control macros (C4). */
+const INLINE_SCROLL_MACROS = new Set(["scroll-only-inline", "scroll-ignore-inline"]);
+
+/**
+ * Inline-level structured macros: the `status` badge and the C4 export-control
+ * inline variants (`scroll-only-inline`/`scroll-ignore-inline`). A block-level
+ * walk buffers these into the enclosing implicit paragraph instead of flushing.
  */
 function isInlineMacro(node: XmlElement): boolean {
-  return node.name === "ac:structured-macro" && (node.attrs["ac:name"] ?? "").toLowerCase() === "status";
+  if (node.name !== "ac:structured-macro") return false;
+  const name = (node.attrs["ac:name"] ?? "").toLowerCase();
+  return name === "status" || INLINE_SCROLL_MACROS.has(name);
 }
 
 /** Dispatch a single block-level element to zero or more {@link ExportBlock}s. */
@@ -635,6 +770,148 @@ function macroParam(macro: XmlElement, paramName: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Build the {@link ExportNoteSource} for a note emitted during this walk from
+ * the available page context (spec 003 provenance contract). Returns `undefined`
+ * for single-page export (no page context), keeping that output byte-identical.
+ */
+function noteSource(ctx: WalkCtx): ExportNoteSource | undefined {
+  if (!ctx.pageContext) return undefined;
+  const source: ExportNoteSource = { pageId: ctx.pageContext.id };
+  if (ctx.pageContext.title !== undefined) source.pageTitle = ctx.pageContext.title;
+  if (ctx.pageContext.url !== undefined) source.pageUrl = ctx.pageContext.url;
+  if (ctx.blockPath !== undefined) source.blockPath = ctx.blockPath;
+  return source;
+}
+
+/** Attach a provenance source to a note when page context is available. */
+function withSource(ctx: WalkCtx, note: ExportNote): ExportNote {
+  const source = noteSource(ctx);
+  return source ? { ...note, source } : note;
+}
+
+// ---- Caption-kind normalization (C3) --------------------------------------
+
+/**
+ * Known {@link CaptionKind} values and their case-insensitive aliases. Maps a
+ * `scroll-title` `type` parameter (free text) to a closed enum so DOCX's SEQ
+ * label and PDF's `figure(kind:)` never diverge. `equation` is deliberately
+ * absent — it is rejected until a real math block exists.
+ */
+const CAPTION_KIND_ALIASES: Readonly<Record<string, CaptionKind>> = {
+  figure: "figure",
+  fig: "figure",
+  image: "figure",
+  picture: "figure",
+  photo: "figure",
+  table: "table",
+  tbl: "table",
+  code: "code",
+  codeblock: "code",
+  "code block": "code",
+  listing: "code",
+  snippet: "code",
+};
+
+/** The block types a {@link Caption} can attach to. */
+export type CaptionableBlockType = "image" | "table" | "codeBlock";
+
+/** The natural caption kind for a captionable block type. */
+function naturalCaptionKind(blockType: CaptionableBlockType): CaptionKind {
+  switch (blockType) {
+    case "image":
+      return "figure";
+    case "table":
+      return "table";
+    case "codeBlock":
+      return "code";
+  }
+}
+
+/**
+ * Resolve a free-text caption kind (a `scroll-title` `type` parameter) against a
+ * closed {@link CaptionKind} enum (spec 003 C3). Pure and standalone-testable —
+ * returns the resolved kind plus an optional warning {@link ExportNote} the
+ * caller pushes into the report.
+ *
+ * - Empty/absent input → the target block's natural kind, no note.
+ * - A known value/alias (case-insensitive) → that kind wins even when it
+ *   conflicts with the target block type (e.g. `type="table"` on an image), so
+ *   DOCX SEQ labels and PDF figure kinds agree on ONE resolved kind.
+ * - `equation` (or an unknown value) → falls back to the natural kind + a
+ *   warning note. `equation` is rejected until a real math block exists.
+ */
+export function normalizeCaptionKind(
+  raw: string | undefined,
+  targetBlockType: CaptionableBlockType
+): { kind: CaptionKind; note?: ExportNote } {
+  const natural = naturalCaptionKind(targetBlockType);
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { kind: natural };
+  const key = trimmed.toLowerCase();
+  const mapped = CAPTION_KIND_ALIASES[key];
+  if (mapped) return { kind: mapped };
+  if (key === "equation" || key === "formula" || key === "math") {
+    return {
+      kind: natural,
+      note: {
+        level: "warning",
+        code: "caption-kind-unsupported",
+        message: `Caption kind "${trimmed}" is not supported yet (no math block exists); it was labeled as "${natural}".`,
+      },
+    };
+  }
+  return {
+    kind: natural,
+    note: {
+      level: "warning",
+      code: "caption-kind-unknown",
+      message: `Unknown caption kind "${trimmed}"; it was labeled as "${natural}".`,
+    },
+  };
+}
+
+// ---- Exporter-parameter matching (C4) -------------------------------------
+
+/** Normalize a macro `exporter` parameter value to a known exporter or null. */
+function normalizeExporterValue(raw: string): "pdf" | "word" | null {
+  const key = raw.trim().toLowerCase();
+  switch (key) {
+    case "pdf":
+    case "scroll-pdf":
+    case "scrollpdf":
+      return "pdf";
+    case "word":
+    case "office":
+    case "scroll-word":
+    case "scroll-office":
+    case "scrollword":
+    case "scrolloffice":
+    case "docx":
+    case "microsoft word":
+      return "word";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Classify a macro's `exporter` parameter against the active exporter identity
+ * (spec 003 C4 truth table). `"absent"` covers both a missing parameter and the
+ * case where no exporter identity is set (the pre-003 "apply both
+ * unconditionally" default — a param cannot mismatch an unknown identity).
+ */
+function classifyExporterParam(
+  raw: string | undefined,
+  ctx: WalkCtx
+): "absent" | "match" | "mismatch" | "unknown" {
+  if (raw === undefined || raw.trim() === "") return "absent";
+  const normalized = normalizeExporterValue(raw);
+  if (normalized === null) return "unknown";
+  if (ctx.exporter === undefined) return "absent";
+  return normalized === ctx.exporter ? "match" : "mismatch";
 }
 
 // ---- Lists ----------------------------------------------------------------
@@ -884,6 +1161,31 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     // A nameless anchor macro anchors nothing — fall through to unknown capture.
   }
 
+  // C4: scroll-only / scroll-ignore export-control macros. The filter is a
+  // content decision made ONCE here (BASELINE-DESIGN C4b) so the engines never
+  // duplicate identical drop-logic for a block that never renders.
+  if (macroName === "scroll-only" || macroName === "scroll-ignore") {
+    return walkExportControlMacro(el, macroName, ctx);
+  }
+
+  // C5: scroll-pagebreak → a hard page break the engines render natively.
+  if (macroName === "scroll-pagebreak") {
+    return [{ type: "pageBreak" }];
+  }
+
+  // C6: scroll-landscape / scroll-portrait → an orientation region. Body-wrapped
+  // shape (verified assumption, see fixtures); nested regions collapse to the
+  // outer one + a warning note.
+  if (macroName === "scroll-landscape" || macroName === "scroll-portrait") {
+    return walkOrientationMacro(el, macroName === "scroll-landscape", ctx);
+  }
+
+  // C3: scroll-title → a Caption attached to the first captionable block of its
+  // body (native numbering: Word SEQ fields, Typst figure counters).
+  if (macroName === "scroll-title") {
+    return walkScrollTitleMacro(el, ctx);
+  }
+
   // Anything else is an unknown/unhandled macro → explicit block + note. We
   // consult KNOWN_MACROS (shared with the converter) only to grade the note.
   const known = KNOWN_MACROS.includes(macroName);
@@ -935,6 +1237,208 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   }
 
   return [block];
+}
+
+/**
+ * C4: apply a `scroll-only` / `scroll-ignore` macro per the truth table
+ * (Architecture). Returns the walked body (kept) or `[]` (dropped), always with
+ * a report note. `exportControls: "passthrough"` keeps both bodies unconditionally.
+ */
+function walkExportControlMacro(
+  el: XmlElement,
+  macroName: "scroll-only" | "scroll-ignore",
+  ctx: WalkCtx
+): ExportBlock[] {
+  const isIgnore = macroName === "scroll-ignore";
+  const bodyEl = childByName(el, "ac:rich-text-body");
+  const walkBody = (): ExportBlock[] => (bodyEl ? walkBlocks(bodyEl.children, ctx) : []);
+
+  if (ctx.exportControls === "passthrough") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "export-controls-passthrough",
+        message: `"${macroName}" was kept unmodified (--keep-ignored); this export is not representative of a normal run.`,
+        macroName,
+      })
+    );
+    return walkBody();
+  }
+
+  const classification = classifyExporterParam(macroParam(el, "exporter"), ctx);
+
+  if (classification === "unknown") {
+    // Fail-safe: never drop content on an unrecognized exporter value.
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: isIgnore ? "scroll-ignore-unknown-exporter" : "scroll-only-unknown-exporter",
+        message: `"${macroName}" has an unrecognized exporter value; its content was kept to avoid data loss.`,
+        macroName,
+      })
+    );
+    return walkBody();
+  }
+
+  if (isIgnore) {
+    // scroll-ignore: drop on absent/match, keep on mismatch.
+    if (classification === "mismatch") {
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "info",
+          code: "scroll-ignore-skipped-other-exporter",
+          message: `"scroll-ignore" targets a different exporter; its content was kept.`,
+          macroName,
+        })
+      );
+      return walkBody();
+    }
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "scroll-ignore-applied",
+        message: `"scroll-ignore" content was omitted from this export.`,
+        macroName,
+      })
+    );
+    return [];
+  }
+
+  // scroll-only: keep on absent/match, drop on mismatch.
+  if (classification === "mismatch") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "scroll-only-skipped-other-exporter",
+        message: `"scroll-only" is exclusive to a different exporter; its content was omitted.`,
+        macroName,
+      })
+    );
+    return [];
+  }
+  ctx.notes.push(
+    withSource(ctx, {
+      level: "info",
+      code: "scroll-only-applied",
+      message: `"scroll-only" content was included in this export.`,
+      macroName,
+    })
+  );
+  return walkBody();
+}
+
+/**
+ * C6: build an `orientation` region from a `scroll-landscape`/`scroll-portrait`
+ * macro. Two source shapes normalize to the SAME downstream block:
+ *
+ * - **Body-wrapped** (`ac:rich-text-body` contains the region content): walked
+ *   directly. Any orientation region nested ANYWHERE in the body — including
+ *   inside lists, blockquotes, callouts, and table cells — is unwrapped into
+ *   its children (outer wins) with a warning note, so the engines never have to
+ *   reason about nested `set page`/section breaks.
+ * - **Marker** (no body): a stateful open/close marker. Emitted as a tagged
+ *   empty region that {@link normalizeOrientationMarkers} folds into a real
+ *   region over the sibling stream.
+ */
+function walkOrientationMacro(el: XmlElement, landscape: boolean, ctx: WalkCtx): ExportBlock[] {
+  const bodyEl = childByName(el, "ac:rich-text-body");
+  if (!bodyEl) {
+    const marker: ExportBlock = { type: "orientation", landscape, content: [] };
+    ORIENTATION_MARKERS.add(marker);
+    return [marker];
+  }
+  const content = walkBlocks(bodyEl.children, ctx);
+  const { blocks: flattened, found: nested } = stripNestedOrientation(content);
+  if (nested) {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: "orientation-nested-collapsed",
+        message: "A nested orientation region was collapsed into its enclosing region (outer orientation wins).",
+        macroName: landscape ? "scroll-landscape" : "scroll-portrait",
+      })
+    );
+  }
+  return [{ type: "orientation", landscape, content: flattened }];
+}
+
+/**
+ * Unwrap every orientation region in a block tree into its children — a DEEP
+ * scan through lists, blockquotes, callouts, and table cells, not just direct
+ * children (an inner region nested one level down would otherwise survive and
+ * fight the outer region's section/page state in the engines).
+ */
+function stripNestedOrientation(blocks: ExportBlock[]): { blocks: ExportBlock[]; found: boolean } {
+  let found = false;
+  const walk = (list: ExportBlock[]): ExportBlock[] =>
+    list.flatMap((block): ExportBlock[] => {
+      switch (block.type) {
+        case "orientation":
+          found = true;
+          return walk(block.content);
+        case "callout":
+        case "blockquote":
+          return [{ ...block, content: walk(block.content) }];
+        case "list":
+          return [
+            { ...block, items: block.items.map((item) => ({ ...item, content: walk(item.content) })) },
+          ];
+        case "table":
+          return [
+            {
+              ...block,
+              rows: block.rows.map((row) => ({
+                cells: row.cells.map((cell) => ({ ...cell, content: walk(cell.content) })),
+              })),
+            },
+          ];
+        default:
+          return [block];
+      }
+    });
+  const result = walk(blocks);
+  return { blocks: result, found };
+}
+
+/**
+ * C3: build a {@link Caption} from a `scroll-title` macro and attach it to the
+ * first captionable block (`image`/`table`/`codeBlock`) in the macro body. When
+ * the body has no captionable block, fall back to an italic caption paragraph
+ * plus an info note so the title text is never silently lost.
+ */
+function walkScrollTitleMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const bodyEl = childByName(el, "ac:rich-text-body");
+  const inner = bodyEl ? walkBlocks(bodyEl.children, ctx) : [];
+  const rawKind = macroParam(el, "type");
+  // The title text is the macro's `title` param, else its unnamed first param.
+  const titleText = macroParam(el, "title") ?? macroParam(el, "");
+  const content: InlineNode[] = titleText ? [{ type: "text", text: titleText }] : [];
+
+  const targetIndex = inner.findIndex(
+    (block) => block.type === "image" || block.type === "table" || block.type === "codeBlock"
+  );
+
+  if (targetIndex === -1) {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "scroll-title-caption-fallback",
+        message: "A scroll-title had no figure/table/code to caption; its text was rendered as an italic caption paragraph.",
+        macroName: "scroll-title",
+      })
+    );
+    if (content.length === 0) return inner;
+    const italic: InlineNode[] = content.map((node) =>
+      node.type === "text" ? { ...node, marks: [...(node.marks ?? []), "italic"] } : node
+    );
+    return [...inner, { type: "paragraph", content: italic }];
+  }
+
+  const target = inner[targetIndex] as Extract<ExportBlock, { type: "image" | "table" | "codeBlock" }>;
+  const { kind, note } = normalizeCaptionKind(rawKind, target.type);
+  if (note) ctx.notes.push(withSource(ctx, note));
+  inner[targetIndex] = { ...target, caption: { kind, content } };
+  return inner;
 }
 
 /** The `ri:*` child names {@link captureMacroParams} recognizes as references. */
@@ -1071,10 +1575,20 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     return datetime ? [{ type: "text", text: datetime }] : [];
   }
 
-  if (name === "ac:structured-macro" && (el.attrs["ac:name"] ?? "").toLowerCase() === "status") {
-    const color = (macroParam(el, "colour") ?? macroParam(el, "color") ?? "grey").toLowerCase();
-    const title = macroParam(el, "title") ?? "";
-    return [{ type: "status", text: title, color }];
+  if (name === "ac:structured-macro") {
+    const macroName = (el.attrs["ac:name"] ?? "").toLowerCase();
+    if (macroName === "status") {
+      const color = (macroParam(el, "colour") ?? macroParam(el, "color") ?? "grey").toLowerCase();
+      const title = macroParam(el, "title") ?? "";
+      return [{ type: "status", text: title, color }];
+    }
+    if (INLINE_SCROLL_MACROS.has(macroName)) {
+      return walkInlineExportControlMacro(
+        el,
+        macroName as "scroll-only-inline" | "scroll-ignore-inline",
+        ctx
+      );
+    }
   }
 
   if (name === "ac:image") {
@@ -1143,6 +1657,94 @@ function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
 
   // Degenerate ac:link with no recognizable target — keep any body text.
   return bodyInline;
+}
+
+/**
+ * C4 inline variant: apply `scroll-only-inline` / `scroll-ignore-inline` per the
+ * same truth table as the block form. Returns the walked inline body (kept) or
+ * `[]` (dropped), always with a report note; `passthrough` keeps both bodies.
+ */
+function walkInlineExportControlMacro(
+  el: XmlElement,
+  macroName: "scroll-only-inline" | "scroll-ignore-inline",
+  ctx: WalkCtx
+): InlineNode[] {
+  const isIgnore = macroName === "scroll-ignore-inline";
+  const bodyEl = childByName(el, "ac:rich-text-body");
+  // A body-less inline control keeps NOTHING: walking `el.children` here would
+  // descend into `<ac:parameter>` elements and leak parameter text into the
+  // document (the block form has the same safe empty fallback).
+  const walkBody = (): InlineNode[] => (bodyEl ? walkInline(bodyEl.children, ctx) : []);
+
+  if (ctx.exportControls === "passthrough") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "export-controls-passthrough",
+        message: `"${macroName}" was kept unmodified (--keep-ignored); this export is not representative of a normal run.`,
+        macroName,
+      })
+    );
+    return walkBody();
+  }
+
+  const classification = classifyExporterParam(macroParam(el, "exporter"), ctx);
+
+  if (classification === "unknown") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: isIgnore ? "scroll-ignore-unknown-exporter" : "scroll-only-unknown-exporter",
+        message: `"${macroName}" has an unrecognized exporter value; its content was kept to avoid data loss.`,
+        macroName,
+      })
+    );
+    return walkBody();
+  }
+
+  if (isIgnore) {
+    if (classification === "mismatch") {
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "info",
+          code: "scroll-ignore-skipped-other-exporter",
+          message: `"scroll-ignore-inline" targets a different exporter; its content was kept.`,
+          macroName,
+        })
+      );
+      return walkBody();
+    }
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "scroll-ignore-applied",
+        message: `"scroll-ignore-inline" content was omitted from this export.`,
+        macroName,
+      })
+    );
+    return [];
+  }
+
+  if (classification === "mismatch") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "info",
+        code: "scroll-only-skipped-other-exporter",
+        message: `"scroll-only-inline" is exclusive to a different exporter; its content was omitted.`,
+        macroName,
+      })
+    );
+    return [];
+  }
+  ctx.notes.push(
+    withSource(ctx, {
+      level: "info",
+      code: "scroll-only-applied",
+      message: `"scroll-only-inline" content was included in this export.`,
+      macroName,
+    })
+  );
+  return walkBody();
 }
 
 /** Return a copy of `nodes` with `mark` added to every text run (recursing into links). */

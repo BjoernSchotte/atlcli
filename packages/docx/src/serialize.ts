@@ -30,6 +30,7 @@ import {
   bookmarkEnd,
   bookmarkStart,
   calloutTable,
+  captionParagraph,
   codeLineParagraph,
   dataTable,
   dividerParagraph,
@@ -38,12 +39,19 @@ import {
   lineBreakRun,
   pageBreakParagraph,
   paragraph,
+  resolveCaptionStyleId,
   resolveHeadingStyleId,
   run,
+  sectPrParagraph,
   statusBadgeRun,
+  synthesizeA4SectPr,
   tableCell,
+  toLandscapeSectPr,
+  toPortraitSectPr,
+  type CaptionLang,
   type RunStyle,
 } from "./ooxml.js";
+import type { Caption } from "@atlcli/confluence";
 
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
@@ -105,6 +113,18 @@ export interface SerializeContext {
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
   diagrams?: DiagramEmbedSeam;
+  /**
+   * The template's body-level `<w:sectPr>` (portrait), cloned by the export
+   * orchestrator (spec 003 C6). Threaded so an `orientation` region can emit a
+   * section sandwich whose landscape `pgSz` swaps THIS template's actual page
+   * dimensions. Absent → the region synthesizes an A4 fallback.
+   */
+  bodySectPr?: string;
+  /**
+   * Resolved caption locale (spec 003 C3): explicit option > host locale >
+   * `"en"`. Undefined → `"en"`. Drives {@link captionParagraph}'s SEQ label.
+   */
+  captionLang?: CaptionLang;
 }
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
@@ -124,6 +144,14 @@ interface InternalContext extends SerializeContext {
    * bookmark names when two raw anchor names sanitize to the same id.
    */
   bookmarks: { next: number; used: Set<string> };
+  /**
+   * The layout container the current block renders inside (spec 003 C6/C5).
+   * `pageBreak`/`orientation` render at `"body"` scope (list items inherit it —
+   * lists don't constrain layout controls) but are suppressed (children kept,
+   * layout side-effect skipped, note emitted) in `"tableCell"`/`"calloutCell"`,
+   * where a section break / page break would split the row.
+   */
+  container: "body" | "tableCell" | "calloutCell";
 }
 
 export interface SerializeResult {
@@ -317,12 +345,34 @@ export async function serializeBlocks(
     ...ctx,
     headingOffset: computeHeadingOffset(blocks),
     bookmarks: { next: 1, used: new Set() },
+    container: "body",
   };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
-  return { xml: parts.join(""), notes };
+  return { xml: coalesceSectPrParagraphs(parts.join("")), notes };
+}
+
+/**
+ * One section-closing paragraph immediately followed by another creates an
+ * EMPTY section — a spurious blank page (the first closer forces `nextPage`).
+ * Two adjacent orientation regions produce exactly that shape: region 1's
+ * closing `sectPr` paragraph directly precedes region 2's base-restoring one.
+ * Keep the FIRST closer (the region's own) and drop the redundant second: the
+ * following content then belongs to the next real section, which carries the
+ * correct properties (spec 003 C6 review fix).
+ */
+const SECTPR_PARA_SRC = String.raw`<w:p><w:pPr>(?:<w:sectPr\b[^>]*\/>|<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>`;
+
+export function coalesceSectPrParagraphs(xml: string): string {
+  const pair = new RegExp(`(${SECTPR_PARA_SRC})(?:${SECTPR_PARA_SRC})`);
+  let previous: string;
+  do {
+    previous = xml;
+    xml = xml.replace(pair, "$1");
+  } while (xml !== previous);
+  return xml;
 }
 
 async function serializeBlock(
@@ -382,20 +432,30 @@ async function serializeBlock(
           message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${skipped}); rendered as plain monospace.`,
         });
       }
-      return lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      const codeXml = lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      // Caption below code (established convention).
+      return block.caption ? codeXml + captionXml(block.caption, ctx) : codeXml;
     }
 
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
-      const body = await serializeChildren(block.content, ctx, notes, depth + 1);
+      const body = await serializeChildren(
+        block.content,
+        { ...ctx, container: "calloutCell" },
+        notes,
+        depth + 1
+      );
       return calloutTable(block.kind, title, body);
     }
 
     case "list":
       return serializeList(block, ctx, notes, depth);
 
-    case "table":
-      return serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
+    case "table": {
+      const tableXml = await serializeTable(block.rows, { ...ctx, defaultTextColor: undefined }, notes);
+      // Caption above tables (established convention).
+      return block.caption ? captionXml(block.caption, ctx) + tableXml : tableXml;
+    }
 
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
@@ -410,24 +470,30 @@ async function serializeBlock(
       return dividerParagraph();
 
     case "image": {
+      // A captioned image that fails to embed still emits a numbered figure
+      // fallback (italic placeholder + the SAME caption paragraph), so the SEQ
+      // number is not skipped and downstream captions stay correctly numbered
+      // (spec 003 C3). Caption below figures (established convention).
+      const cap = block.caption ? captionXml(block.caption, ctx) : "";
+      const fallback = () => (block.caption ? imageUnavailablePara(block) + cap : "");
       if (!ctx.images) {
         notes.push({
           level: "info",
           code: "image-skipped",
           message: `Image ${describeImage(block)} skipped — image embedding is unavailable in this export.`,
         });
-        return "";
+        return fallback();
       }
       const outcome = await ctx.images.embed(block);
-      if (outcome.ok) return outcome.xml;
-      // Failure branch: no OOXML, so no dangling relationship — the export
-      // still succeeds with a report line (spec 005 / 004-F3 invariant).
+      if (outcome.ok) return outcome.xml + cap;
+      // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
+      // but keep a numbered fallback when a caption is present.
       notes.push({
         level: "warning",
         code: "image-embed-failed",
         message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
-      return "";
+      return fallback();
     }
 
     case "unknown":
@@ -435,6 +501,16 @@ async function serializeBlock(
 
     // Real renderings (spec 002 / T1.3).
     case "pageBreak":
+      if (ctx.container === "tableCell" || ctx.container === "calloutCell") {
+        // A `<w:br w:type="page"/>` inside a `<w:tc>` splits the row/callout,
+        // not the page — suppress it (spec 003 C5 container matrix).
+        notes.push({
+          level: "info",
+          code: "pagebreak-suppressed-in-container",
+          message: `A page break inside a ${ctx.container === "tableCell" ? "table cell" : "callout"} was suppressed (it would split the layout, not the page).`,
+        });
+        return "";
+      }
       return pageBreakParagraph();
 
     case "anchor": {
@@ -447,10 +523,28 @@ async function serializeBlock(
       return `${bookmarkStart(id, name)}${bookmarkEnd(id)}`;
     }
 
-    case "orientation":
-      // Transparent passthrough — children render exactly as if the region
-      // wrapper did not exist, so no content is lost before T1.5.
-      return serializeChildren(block.content, ctx, notes, depth);
+    case "orientation": {
+      const children = await serializeChildren(block.content, ctx, notes, depth);
+      if (ctx.container === "tableCell" || ctx.container === "calloutCell") {
+        // A DOCX section break cannot live inside a `<w:tc>`/`<w:tbl>` — keep
+        // the children unstyled and skip the section sandwich (spec 003 C6).
+        notes.push({
+          level: "info",
+          code: "orientation-suppressed-in-container",
+          message: `An orientation region inside a ${ctx.container === "tableCell" ? "table cell" : "callout"} was rendered without an orientation change (a section break cannot live there).`,
+        });
+        return children;
+      }
+      // Section sandwich: a paragraph carrying the cloned portrait sectPr closes
+      // the preceding section, the region's children follow, then a paragraph
+      // carrying the landscape/portrait-flipped sectPr closes the region. The
+      // pgSz swap reads the template's ACTUAL dimensions (Letter, A4, …).
+      const baseSectPr = ctx.bodySectPr ?? synthesizeA4SectPr();
+      const regionSectPr = block.landscape
+        ? toLandscapeSectPr(baseSectPr)
+        : toPortraitSectPr(baseSectPr);
+      return sectPrParagraph(baseSectPr) + children + sectPrParagraph(regionSectPr);
+    }
 
     default: {
       const _exhaustive: never = block;
@@ -461,6 +555,22 @@ async function serializeBlock(
 
 function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
   return block.source.kind === "attachment" ? `"${block.source.filename}"` : `"${block.source.url}"`;
+}
+
+/** Render a {@link Caption} to a caption paragraph (spec 003 C3). */
+function captionXml(caption: Caption, ctx: InternalContext): string {
+  return captionParagraph(
+    resolveCaptionStyleId(ctx.styleNames),
+    caption.kind,
+    ctx.captionLang ?? "en",
+    serializeInline(caption.content)
+  );
+}
+
+/** The italic placeholder paragraph for an image that could not be embedded. */
+function imageUnavailablePara(block: ImageBlock): string {
+  const label = block.alt ?? (block.source.kind === "attachment" ? block.source.filename : block.source.url);
+  return paragraph(run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }));
 }
 
 /**
@@ -633,7 +743,7 @@ async function serializeTable(
         : undefined;
       const body = await serializeChildren(
         cell.content,
-        { ...ctx, defaultTextColor },
+        { ...ctx, defaultTextColor, container: "tableCell" },
         notes,
         1
       );

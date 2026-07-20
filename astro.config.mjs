@@ -40,6 +40,7 @@ export default defineConfig({
             { label: 'History', link: '/confluence/history/' },
             { label: 'Templates', link: '/confluence/templates/' },
             { label: 'Macros', link: '/confluence/macros/' },
+            { label: 'Scroll Compatibility Macros', link: '/confluence/scroll-macros/' },
             { label: 'Attachments', link: '/confluence/attachments/' },
             { label: 'Webhooks', link: '/confluence/webhooks/' },
             { label: 'Validation', link: '/confluence/validation/' },
