@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { PdfSettingsError, resolvePdfSettings, typstSettingsDict } from "./settings.js";
+import {
+  applyBindings,
+  PdfSettingsError,
+  resolvePdfSettings,
+  resolveTemplateLabels,
+  typstSettingsDict,
+} from "./settings.js";
+import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import type { PdfLogoAsset } from "./types.js";
 
 function pngBytes(): Uint8Array {
@@ -29,13 +36,20 @@ function expectSettingsError(run: () => unknown, path: string): PdfSettingsError
 
 describe("resolvePdfSettings defaults", () => {
   it("fills every Level-A default when nothing is supplied", () => {
-    expect(resolvePdfSettings()).toEqual({
+    const resolved = resolvePdfSettings();
+    expect(resolved).toMatchObject({
       page: "a4",
       orientation: "portrait",
       cover: true,
       outline: true,
       accentColor: "#4B57A3",
     });
+    // The resolved design carries the built-in defaults (bindings applied) and
+    // the labels resolve to the fallback locale.
+    expect(resolved.design.branding.accent).toBe("#4B57A3");
+    expect(resolved.design.page.size).toBe("a4");
+    expect(resolved.design.features.cover.enabled).toBe(true);
+    expect(resolved.labels.contents).toBe("Contents");
   });
 
   it("is deterministic for equal input", () => {
@@ -256,19 +270,74 @@ describe("resolvePdfSettings text caps and re-resolution", () => {
   });
 });
 
+describe("resolver: bindings, locale, labels (spec 012)", () => {
+  const design = BUILTIN_PDF_TEMPLATE_MANIFEST.design!;
+
+  it("applies a binding to the correct design path without mutating the manifest", () => {
+    const bound = applyBindings(
+      design,
+      [{ setting: "accentColor", targets: ["branding.accent", "tokens.colors.accent"] }],
+      { ...resolvePdfSettings(), accentColor: "#0052CC" }
+    );
+    expect(bound.branding.accent).toBe("#0052CC");
+    expect(bound.tokens.colors.accent).toBe("#0052CC");
+    // The manifest's design is untouched (immutable copy).
+    expect(design.branding.accent).toBe("#4B57A3");
+  });
+
+  it("leaves the manifest default in place when the source value is undefined", () => {
+    const bound = applyBindings(
+      design,
+      [{ setting: "organizationName", targets: ["branding.organizationName"] }],
+      { ...resolvePdfSettings() } // no organizationName
+    );
+    expect(bound.branding.organizationName).toBeUndefined();
+  });
+
+  it("rejects two bindings writing the same design path", () => {
+    expect(() =>
+      applyBindings(
+        design,
+        [
+          { setting: "accentColor", targets: ["branding.accent"] },
+          { setting: "page", targets: ["branding.accent"] },
+        ],
+        { ...resolvePdfSettings(), accentColor: "#0052CC", page: "letter" }
+      )
+    ).toThrow(/more than one binding/);
+  });
+
+  it("resolves labels through the region → base-language fallback chain", () => {
+    // de-CH has no entry; the base language de wins.
+    const deCh = resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "de", "CH");
+    expect(deCh.contents).toBe("Inhalt");
+    expect(deCh.endOfDocument).toBe("DOKUMENTENDE");
+    // fr has no entry; falls through to the fallback/default English.
+    const fr = resolveTemplateLabels(BUILTIN_PDF_TEMPLATE_MANIFEST, "fr", undefined);
+    expect(fr.contents).toBe("Contents");
+  });
+
+  it("resolvePdfSettings threads the document locale into resolved labels", () => {
+    expect(resolvePdfSettings({}, { locale: "de" }).labels.contents).toBe("Inhalt");
+    expect(resolvePdfSettings({}, { locale: "en" }).labels.contents).toBe("Contents");
+  });
+});
+
 describe("typstSettingsDict", () => {
-  it("emits defaults only when nothing is supplied", () => {
+  it("emits the design subset and labels when nothing is supplied", () => {
     const dict = typstSettingsDict(resolvePdfSettings());
-    expect(dict).toContain('page: "a4"');
+    expect(dict).toContain('accent: "#4B57A3"');
+    expect(dict).toContain('size: "a4"');
     expect(dict).toContain('orientation: "portrait"');
-    expect(dict).toContain("cover: true");
-    expect(dict).toContain("outline: true");
-    expect(dict).toContain('accent-color: "#4B57A3"');
+    expect(dict).toContain("cover: (enabled: true)");
+    expect(dict).toContain("outline: (enabled: true, depth: 3)");
+    expect(dict).toContain("labels: (");
+    expect(dict).toContain('version: "Version"');
     expect(dict).not.toContain("header-text");
     expect(dict).not.toContain("watermark:");
   });
 
-  it("emits kebab-case keys and filled watermark defaults", () => {
+  it("emits the settings-driven design subset and filled watermark defaults", () => {
     const dict = typstSettingsDict(
       resolvePdfSettings({
         page: "letter",
@@ -279,11 +348,11 @@ describe("typstSettingsDict", () => {
         watermark: { text: "DRAFT" },
       })
     );
-    expect(dict).toContain('page: "letter"');
+    expect(dict).toContain('size: "letter"');
     expect(dict).toContain('orientation: "landscape"');
+    expect(dict).toContain('organization-name: "Acme"');
     expect(dict).toContain('header-text: "Head"');
     expect(dict).toContain('footer-text: "Foot"');
-    expect(dict).toContain('organization-name: "Acme"');
     expect(dict).toContain("watermark: (");
     expect(dict).toContain('text: "DRAFT"');
     expect(dict).toContain('color: "#DE350B"');
@@ -318,5 +387,13 @@ describe("typstSettingsDict", () => {
     expect(dict).toContain('\\" #{sys.exit()} \\\\ end');
     // Every occurrence is inside a quoted, escaped string literal.
     expect(dict).toContain(`header-text: "${attack.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+  });
+
+  it("escapes hostile label strings so a manifest label can never inject Typst (spec 012)", () => {
+    const resolved = resolvePdfSettings();
+    resolved.labels = { ...resolved.labels, contents: 'X" #{sys.exit()} \\ end' };
+    const dict = typstSettingsDict(resolved);
+    expect(dict).toContain('contents: "X\\" #{sys.exit()} \\\\ end"');
+    expect(dict).not.toContain('contents: "X" #{sys.exit()}');
   });
 });

@@ -7,6 +7,15 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -117,6 +126,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -156,6 +168,12 @@ export type LinkTarget = {
     kind: "anchor";
     anchor: string;
 };
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -340,6 +358,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
 }
 
 // export: PdfSourceBundle
@@ -506,6 +525,12 @@ export interface PreparePdfOptions {
     signal?: AbortSignal;
 }
 
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
+
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
@@ -525,6 +550,8 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    labels: ResolvedPdfLabels;
 }
 
 // export: ResolvedPdfWatermark
@@ -537,7 +564,15 @@ export interface ResolvedPdfWatermark {
 }
 
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: TemplateManifest;
+}
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
@@ -550,6 +585,7 @@ export interface RunPdfExportInput {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -562,16 +598,50 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateManifest
+export interface TemplateManifest {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -682,6 +752,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -721,6 +794,12 @@ export type LinkTarget = {
     kind: "anchor";
     anchor: string;
 };
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -905,6 +984,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
 }
 
 // export: PdfSourceBundle
@@ -1071,6 +1151,12 @@ export interface PreparePdfOptions {
     signal?: AbortSignal;
 }
 
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
+
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
@@ -1090,6 +1176,8 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    labels: ResolvedPdfLabels;
 }
 
 // export: ResolvedPdfWatermark
@@ -1102,7 +1190,15 @@ export interface ResolvedPdfWatermark {
 }
 
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: TemplateManifest;
+}
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
@@ -1115,6 +1211,7 @@ export interface RunPdfExportInput {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -1127,16 +1224,50 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateManifest
+export interface TemplateManifest {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
+
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -1247,6 +1378,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -1286,6 +1420,12 @@ export type LinkTarget = {
     kind: "anchor";
     anchor: string;
 };
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
@@ -1470,6 +1610,7 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
 }
 
 // export: PdfSourceBundle
@@ -1636,6 +1777,12 @@ export interface PreparePdfOptions {
     signal?: AbortSignal;
 }
 
+// export: ResolvedPdfDesign
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
+// export: ResolvedPdfLabels
+export type ResolvedPdfLabels = Record<string, string>;
+
 // export: ResolvedPdfLogo
 export interface ResolvedPdfLogo {
     bytes: Uint8Array;
@@ -1655,6 +1802,8 @@ export interface ResolvedPdfSettings {
     organizationName?: string;
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
+    design: ResolvedPdfDesign;
+    labels: ResolvedPdfLabels;
 }
 
 // export: ResolvedPdfWatermark
@@ -1667,7 +1816,15 @@ export interface ResolvedPdfWatermark {
 }
 
 // export: resolvePdfSettings
-export declare function resolvePdfSettings(options?: PdfTemplateSettings): ResolvedPdfSettings;
+export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
+
+// export: ResolvePdfSettingsContext
+export interface ResolvePdfSettingsContext {
+    locale?: string;
+    region?: string;
+    theme?: PdfThemeOptions;
+    manifest?: TemplateManifest;
+}
 
 // export: runPdfExport
 export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv): Promise<PdfExportReport>;
@@ -1680,6 +1837,7 @@ export interface RunPdfExportInput {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
+    templateManifest?: TemplateManifest;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -1692,11 +1850,36 @@ export interface RunPdfExportInput {
     };
 }
 
+// export: TemplateManifest
+export interface TemplateManifest {
+    schemaVersion: number;
+    id: string;
+    name: string;
+    version: string;
+    engine: TemplateEngineSpec;
+    requiredFonts?: RequiredFont[];
+    settings?: Record<string, ManifestSetting>;
+    provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
+}
+
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
 ```
 
 ### Entry point `./internal`
@@ -1704,6 +1887,21 @@ export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Pr
 ```ts
 // export: ATLCLI_TYPST_TEMPLATE
 export declare const ATLCLI_TYPST_TEMPLATE: string;
+
+// export: BUILTIN_PDF_DESIGN
+export declare const BUILTIN_PDF_DESIGN: WikiPdfTemplateDesignV1;
+
+// export: BUILTIN_PDF_FALLBACK_LABELS
+export declare const BUILTIN_PDF_FALLBACK_LABELS: Record<string, string>;
+
+// export: BUILTIN_PDF_TEMPLATE_ID
+export declare const BUILTIN_PDF_TEMPLATE_ID = "builtin.editorial-indigo";
+
+// export: BUILTIN_PDF_TEMPLATE_MANIFEST
+export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
+
+// export: BUILTIN_PDF_TEMPLATES
+export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
 
 // export: classifyTableLayout
 export declare function classifyTableLayout(input: {
@@ -1714,7 +1912,7 @@ export declare function classifyTableLayout(input: {
 }): TableLayoutClass;
 
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(options?: PdfThemeOptions): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
@@ -1724,6 +1922,15 @@ export declare function escapeTypstContent(value: string): string;
 
 // export: escapeTypstString
 export declare function escapeTypstString(value: string): string;
+
+// export: getBuiltinPdfTemplate
+export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
+
+// export: MANUSCRIPT_PDF_TEMPLATE_ID
+export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
+
+// export: MANUSCRIPT_PDF_TEMPLATE_MANIFEST
+export declare const MANUSCRIPT_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 
 // export: mapPdfDiagnostics
 export declare function mapPdfDiagnostics(diagnostics: Array<{
@@ -1809,5 +2016,5 @@ export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspectio
 export declare const ATLCLI_TYPST_TEMPLATE: string;
 
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(options?: PdfThemeOptions): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>): string;
 ```

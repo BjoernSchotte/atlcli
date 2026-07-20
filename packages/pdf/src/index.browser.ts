@@ -29,9 +29,16 @@ export type { PdfCompilePort, PdfCompileResult, PdfCompileContext } from "./comp
 export { preparePdfDocument } from "./prepare.js";
 export type { PreparePdfOptions } from "./prepare.js";
 
-// --- Template settings resolution (settings.ts, spec 007) ---
+// --- Template settings resolution (settings.ts, spec 007/012) ---
 export { resolvePdfSettings } from "./settings.js";
-export type { ResolvedPdfSettings, ResolvedPdfWatermark, ResolvedPdfLogo } from "./settings.js";
+export type {
+  ResolvedPdfSettings,
+  ResolvedPdfWatermark,
+  ResolvedPdfLogo,
+  ResolvedPdfDesign,
+  ResolvedPdfLabels,
+  ResolvePdfSettingsContext,
+} from "./settings.js";
 
 // --- Font intake (fonts.ts, spec 007/008) ---
 export { parseFontMeta, verifyFontBytes } from "./fonts.js";
@@ -49,6 +56,16 @@ export type { PdfOutputInspection } from "./validate.js";
 // --- Runtime asset manifest (runtime-assets.ts) ---
 export { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
+
+// --- Curated built-in templates + manifest contract (spec 012) ---
+export { BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+export {
+  MANUSCRIPT_PDF_TEMPLATE_ID,
+  MANUSCRIPT_PDF_TEMPLATE_MANIFEST,
+  BUILTIN_PDF_TEMPLATES,
+  getBuiltinPdfTemplate,
+} from "./curated-templates.js";
+export type { TemplateManifest, WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
 
 // --- Shared document/PDF model (types.ts) ---
 export type {

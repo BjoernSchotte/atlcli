@@ -1,5 +1,6 @@
 import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
 import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
+import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -399,14 +400,16 @@ const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
 const DENSE_STATUS_RUN_LENGTH = 2;
 
-const CONFLUENCE_STATUS_COLORS: Readonly<Record<string, string>> = {
-  grey: "#42526E",
-  gray: "#42526E",
-  red: "#DE350B",
-  yellow: "#FF991F",
-  green: "#00875A",
-  blue: "#0052CC",
-};
+// Serializer-emitted presentation values come from the built-in template's
+// validated design (spec 012) \u2014 no bare literals in this file. The Confluence
+// status palette is a fixed semantic mapping (green = done, red = removed, \u2026),
+// so it is resolved from the canonical built-in manifest rather than the
+// per-export design; the template's own status-badge styling still flows
+// through the per-export design via the Typst helper.
+const SERIALIZE_COLORS = BUILTIN_PDF_DESIGN.tokens.colors;
+const SERIALIZE_LAYOUT = BUILTIN_PDF_DESIGN.tokens.layout;
+const CONFLUENCE_STATUS_COLORS: Readonly<Record<string, string>> =
+  BUILTIN_PDF_DESIGN.semanticPalettes.statuses;
 
 function denseAtomicToken(value: string, runLength = DENSE_ATOMIC_RUN_LENGTH): string {
   return value
@@ -528,7 +531,8 @@ function serializeMention(
   context: RenderContext
 ): string {
   const label = node.displayName ?? node.accountId;
-  const color = effectiveCellTextColor("#0747A6", context) ?? "#0747A6";
+  const color =
+    effectiveCellTextColor(SERIALIZE_COLORS.mention, context) ?? SERIALIZE_COLORS.mention;
   if (!context.availableWidth) {
     return `#text(fill: rgb(${typstString(color)}))[${literalText(`@${label}`)}]`;
   }
@@ -940,7 +944,7 @@ function serializeBlock(
         const checked = item.checked === true ? "true" : "false";
         return `[#task-item(${checked})[${content}]]`;
       });
-      const options = isTaskList ? "marker: none, body-indent: 0pt, " : "";
+      const options = isTaskList ? `marker: none, body-indent: ${SERIALIZE_LAYOUT.taskListBodyIndent}, ` : "";
       value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
       break;
     }
@@ -980,7 +984,8 @@ function serializeBlock(
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
-          const backgroundColor = cell.backgroundColor ?? (cell.header ? "#F4F5F7" : undefined);
+          const backgroundColor =
+            cell.backgroundColor ?? (cell.header ? SERIALIZE_COLORS.tableHeaderBackground : undefined);
           const foregroundColor = cell.backgroundColor
             ? pdfTableCellForeground(cell.backgroundColor, writer.theme)
             : undefined;
@@ -1032,7 +1037,7 @@ function serializeBlock(
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${SERIALIZE_LAYOUT.tableCellInsetY}), stroke: rgb(${typstString(SERIALIZE_COLORS.tableStroke)}),\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -1049,12 +1054,12 @@ function serializeBlock(
       break;
     }
     case "divider":
-      value = `#line(length: 100%, stroke: rgb(\"#DFE1E6\"))`;
+      value = `#line(length: 100%, stroke: rgb(${typstString(SERIALIZE_COLORS.tableStroke)}))`;
       break;
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
       // the preserved body/plainBody, instead of silently omitting content.
-      const placeholder = `#text(style: "italic", fill: rgb("#97A0AF"))[${escapeTypstContent(
+      const placeholder = `#text(style: "italic", fill: rgb(${typstString(SERIALIZE_COLORS.placeholder)}))[${escapeTypstContent(
         `[${block.macroName} macro not rendered]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
@@ -1169,7 +1174,12 @@ export function serializePdfDocument(
     contrastWarnings: new Set(),
   };
   const body = serializeBlocks(document.blocks, writer);
-  const settings = resolvePdfSettings(options.settings);
+  const settings = resolvePdfSettings(options.settings, {
+    ...(options.metadata.language !== undefined ? { locale: options.metadata.language } : {}),
+    ...(options.metadata.region !== undefined ? { region: options.metadata.region } : {}),
+    ...(options.theme !== undefined ? { theme: options.theme } : {}),
+    ...(options.templateManifest !== undefined ? { manifest: options.templateManifest } : {}),
+  });
   // The validated logo travels as a virtual asset file the compiler maps into
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
@@ -1203,7 +1213,7 @@ ${body}
 
   return {
     main,
-    template: createAtlcliTypstTemplate(options.theme),
+    template: createAtlcliTypstTemplate(settings.design, settings.labels),
     assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,

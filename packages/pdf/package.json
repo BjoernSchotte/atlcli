@@ -59,7 +59,8 @@
   "dependencies": {
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
-    "@atlcli/diagram": "workspace:*"
+    "@atlcli/diagram": "workspace:*",
+    "@atlcli/template-pack": "workspace:*"
   },
   "devDependencies": {
     "@atlcli/docx": "workspace:*"

@@ -15,9 +15,24 @@
  * the template-rendering task (T2.2), a strictly additive follow-up.
  */
 import { decodeSvgSource, normalizeExportColor } from "@atlcli/confluence";
+import {
+  localeChain,
+  ManifestValidationError,
+  WIKI_PDF_V1_DOCUMENT_LABELS,
+  type TemplateManifest,
+  type WikiPdfTemplateDesignV1,
+  type WikiPdfTemplateSettingBindingV1,
+} from "@atlcli/template-pack";
+import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { typstString } from "./escape.js";
 import { findSvgSafetyViolation } from "./svg-safety.js";
-import type { PdfLogoAsset, PdfTemplateSettings, PdfWatermarkSettings } from "./types.js";
+import { resolvePdfTheme } from "./theme.js";
+import type {
+  PdfLogoAsset,
+  PdfTemplateSettings,
+  PdfThemeOptions,
+  PdfWatermarkSettings,
+} from "./types.js";
 
 /** Structured validation failure naming the exact offending settings field. */
 export class PdfSettingsError extends Error {
@@ -48,6 +63,12 @@ export interface ResolvedPdfLogo {
   alt: string;
 }
 
+/** The document-facing labels resolved for the export's locale (spec 012). */
+export type ResolvedPdfLabels = Record<string, string>;
+
+/** The fully resolved, bound design (spec 012) — same shape as the manifest's. */
+export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
+
 /** Fully-defaulted internal settings ready for Typst emission. */
 export interface ResolvedPdfSettings {
   page: "a4" | "letter";
@@ -60,6 +81,28 @@ export interface ResolvedPdfSettings {
   organizationName?: string;
   logo?: ResolvedPdfLogo;
   watermark?: ResolvedPdfWatermark;
+  /**
+   * The resolved presentation model (spec 012 T6.2): the manifest's `design`
+   * with declared bindings applied and the theme's ink/paper injected. The
+   * template consumes this — static tokens interpolated when the template
+   * string is generated, the settings-driven subset read from the emitted
+   * `settings.design` dict at Typst runtime.
+   */
+  design: ResolvedPdfDesign;
+  /** Document-facing labels for the export locale (spec 012 T6.2). */
+  labels: ResolvedPdfLabels;
+}
+
+/** Context that drives design binding + label resolution (spec 012 T6.2). */
+export interface ResolvePdfSettingsContext {
+  /** Document locale for label resolution (from `metadata.language`). */
+  locale?: string;
+  /** Region for locale resolution (from `metadata.region`). */
+  region?: string;
+  /** Theme whose ink/paper are injected into the resolved design tokens. */
+  theme?: PdfThemeOptions;
+  /** Template manifest driving resolution; defaults to the built-in. */
+  manifest?: TemplateManifest;
 }
 
 export const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
@@ -210,8 +253,16 @@ const resolvedSettings = new WeakSet<ResolvedPdfSettings>();
  * internal render settings. Throws {@link PdfSettingsError} on any invalid
  * value — this function never clamps. Passing an object this function already
  * returned short-circuits and returns it unchanged.
+ *
+ * The seven-step resolution (007 Risks "Built-in vs. manifest settings"):
+ * manifest defaults → persisted host values → per-export overrides →
+ * validation/normalization → **apply declared bindings to an immutable design
+ * copy** → **document-locale selection + label resolution** → asset resolution.
  */
-export function resolvePdfSettings(options: PdfTemplateSettings = {}): ResolvedPdfSettings {
+export function resolvePdfSettings(
+  options: PdfTemplateSettings = {},
+  context: ResolvePdfSettingsContext = {}
+): ResolvedPdfSettings {
   if (resolvedSettings.has(options as ResolvedPdfSettings)) {
     return options as ResolvedPdfSettings;
   }
@@ -226,6 +277,9 @@ export function resolvePdfSettings(options: PdfTemplateSettings = {}): ResolvedP
     cover: resolveBoolean(options.cover, true, "cover"),
     outline: resolveBoolean(options.outline, true, "outline"),
     accentColor: resolveColor(options.accentColor, DEFAULT_PDF_ACCENT_COLOR, "accentColor"),
+    // Placeholders; filled in below once the Level-A values exist.
+    design: undefined as unknown as ResolvedPdfDesign,
+    labels: {},
   };
 
   const headerText = resolveText(options.headerText, "headerText");
@@ -237,8 +291,147 @@ export function resolvePdfSettings(options: PdfTemplateSettings = {}): ResolvedP
   if (options.logo !== undefined) resolved.logo = resolveLogo(options.logo);
   if (options.watermark !== undefined) resolved.watermark = resolveWatermark(options.watermark);
 
+  const manifest = context.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
+  resolved.design = resolveTemplateDesign(manifest, resolved, context.theme);
+  resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
+
   resolvedSettings.add(resolved);
   return resolved;
+}
+
+/**
+ * Build the resolved design: the manifest's design with declared bindings
+ * applied and the theme's ink/paper injected. Pure — never mutates the
+ * manifest's design.
+ */
+export function resolveTemplateDesign(
+  manifest: TemplateManifest,
+  values: ResolvedPdfSettings,
+  themeOptions?: PdfThemeOptions
+): ResolvedPdfDesign {
+  if (!manifest.design) {
+    throw new PdfSettingsError({
+      path: "manifest.design",
+      value: undefined,
+      constraint: "template manifest has no design block",
+    });
+  }
+  const design = applyBindings(manifest.design, manifest.bindings ?? [], values);
+  // Theme injection: ink/paper (and the contrast target) follow the resolved
+  // theme so a custom PdfThemeOptions still reaches the template's design.
+  const theme = resolvePdfTheme(themeOptions);
+  design.tokens.colors.ink = theme.colors.ink;
+  design.tokens.colors.paper = theme.colors.paper;
+  design.tokens.contrast.minimum = theme.table.coloredCellText.minimumContrast;
+  return design;
+}
+
+/** The Level-A resolved value a binding's `setting` reads. */
+function bindingSourceValue(setting: string, values: ResolvedPdfSettings): unknown {
+  switch (setting) {
+    case "accentColor":
+      return values.accentColor;
+    case "organizationName":
+      return values.organizationName;
+    case "page":
+      return values.page;
+    case "orientation":
+      return values.orientation;
+    case "cover":
+      return values.cover;
+    case "outline":
+      return values.outline;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Apply declared bindings to a deep copy of `design`. One allowlisted write per
+ * binding target; two bindings writing the same path is a validation error, not
+ * last-write-wins. An `undefined` source value leaves the manifest default in
+ * place (e.g. an unset organization name).
+ */
+export function applyBindings(
+  design: WikiPdfTemplateDesignV1,
+  bindings: WikiPdfTemplateSettingBindingV1[],
+  values: ResolvedPdfSettings
+): WikiPdfTemplateDesignV1 {
+  const copy: WikiPdfTemplateDesignV1 = structuredClone(design);
+  const written = new Set<string>();
+  for (const binding of bindings) {
+    const source = bindingSourceValue(binding.setting, values);
+    if (source === undefined) continue;
+    const value = applyTransform(binding, source);
+    for (const target of binding.targets) {
+      if (written.has(target)) {
+        throw new ManifestValidationError(
+          "shape-error",
+          `binding target "${target}" is written by more than one binding`,
+          target
+        );
+      }
+      written.add(target);
+      writeDesignPath(copy, target, value);
+    }
+  }
+  return copy;
+}
+
+function applyTransform(binding: WikiPdfTemplateSettingBindingV1, source: unknown): unknown {
+  const transform = binding.transform ?? { kind: "identity" };
+  if (transform.kind === "identity") return source;
+  const key = String(source);
+  if (!(key in transform.map)) {
+    throw new ManifestValidationError(
+      "shape-error",
+      `choice-map for setting "${binding.setting}" has no entry for value "${key}"`,
+      binding.setting
+    );
+  }
+  return transform.map[key];
+}
+
+/** Write a value to one allowlisted design path (dot-separated). */
+function writeDesignPath(design: WikiPdfTemplateDesignV1, path: string, value: unknown): void {
+  const segments = path.split(".");
+  let cursor: Record<string, unknown> = design as unknown as Record<string, unknown>;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const next = cursor[segments[i]!];
+    if (typeof next !== "object" || next === null) {
+      throw new ManifestValidationError("shape-error", `binding target path "${path}" is invalid`, path);
+    }
+    cursor = next as Record<string, unknown>;
+  }
+  cursor[segments[segments.length - 1]!] = value;
+}
+
+/**
+ * Resolve the document-facing labels for the export locale, merging the
+ * locale-fallback chain (exact → base language → default → fallback). The
+ * validated manifest guarantees a complete fallback locale, so every required
+ * label resolves to a non-empty string.
+ */
+export function resolveTemplateLabels(
+  manifest: TemplateManifest,
+  locale: string | undefined,
+  region: string | undefined
+): ResolvedPdfLabels {
+  const labels: ResolvedPdfLabels = {};
+  const localization = manifest.localization;
+  if (!localization) return labels;
+  const requested = [locale, region].filter(Boolean).join("-") || locale;
+  // Walk lowest → highest priority so higher-priority copy wins on merge.
+  const chain = localeChain(localization, requested).reverse();
+  for (const bundle of chain) {
+    for (const [key, value] of Object.entries(bundle.document ?? {})) {
+      labels[key] = value;
+    }
+  }
+  for (const key of WIKI_PDF_V1_DOCUMENT_LABELS) {
+    if (labels[key] === undefined) labels[key] = "";
+  }
+  return labels;
 }
 
 function numberLiteral(value: number): string {
@@ -248,8 +441,14 @@ function numberLiteral(value: number): string {
 
 /**
  * Emit the resolved settings as a Typst dictionary literal. Every host-supplied
- * string is escaped through `typstString`; kebab-case keys match the template's
- * defensive `settings.at("...")` reads (e.g. `headerText` → `header-text`).
+ * string is escaped through `typstString`.
+ *
+ * Two namespaces carry the migrated presentation model (spec 012):
+ * - `design` — the settings-driven subset the template reads at Typst runtime
+ *   (accent, organization name, page size/orientation, cover/outline). Static
+ *   design (typography, tokens, palettes, layout) is interpolated when the
+ *   template string is generated, not emitted here.
+ * - `labels` — the document-facing strings for the export locale.
  *
  * The logo is emitted as a virtual-filesystem *path* (plus its alt text), not
  * as bytes: `serializePdfDocument` adds the validated bytes to the bundle's
@@ -260,21 +459,43 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const lines: string[] = [
-    `  page: ${typstString(resolved.page)},`,
-    `  orientation: ${typstString(resolved.orientation)},`,
-    `  cover: ${resolved.cover ? "true" : "false"},`,
-    `  outline: ${resolved.outline ? "true" : "false"},`,
-    `  accent-color: ${typstString(resolved.accentColor)},`,
+  const design = resolved.design;
+  const designLines: string[] = [
+    "  design: (",
+    "    branding: (",
+    `      accent: ${typstString(design.branding.accent)},`,
   ];
+  if (design.branding.organizationName !== undefined) {
+    designLines.push(`      organization-name: ${typstString(design.branding.organizationName)},`);
+  }
+  designLines.push(
+    "    ),",
+    "    page: (",
+    `      size: ${typstString(design.page.size)},`,
+    `      orientation: ${typstString(design.page.orientation)},`,
+    "    ),",
+    "    features: (",
+    `      cover: (enabled: ${design.features.cover.enabled ? "true" : "false"}),`,
+    `      outline: (enabled: ${design.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
+      design.features.outline.depth
+    )}),`,
+    "    ),",
+    "  ),"
+  );
+
+  const labelLines: string[] = ["  labels: ("];
+  for (const [key, value] of Object.entries(resolved.labels)) {
+    labelLines.push(`    ${key}: ${typstString(value)},`);
+  }
+  labelLines.push("  ),");
+
+  const lines: string[] = [...designLines, ...labelLines];
+
   if (resolved.headerText !== undefined) {
     lines.push(`  header-text: ${typstString(resolved.headerText)},`);
   }
   if (resolved.footerText !== undefined) {
     lines.push(`  footer-text: ${typstString(resolved.footerText)},`);
-  }
-  if (resolved.organizationName !== undefined) {
-    lines.push(`  organization-name: ${typstString(resolved.organizationName)},`);
   }
   if (resolved.logo && options.logoPath !== undefined) {
     lines.push(
