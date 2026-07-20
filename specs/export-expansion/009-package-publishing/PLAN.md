@@ -784,7 +784,11 @@ model); note it as the designated fallback.
 
 ### API freeze & guards
 
-- [ ] (After folders 001–008 land) Write the public API reference in `docs/`
+- [x] (After folders 001–008 land) Write the public API reference in `docs/`
+      **→ DONE (2026-07-19): `src/content/docs/reference/export-api.md` (one
+      focused page, all seven seams + stability classes + explicit
+      unstable/internal list), registered in the astro sidebar; policy links
+      to versioning.md instead of duplicating it.**
       (one page per seam, per docs standards): `ExportEnv`/`runExport`
       (`packages/docx/src/env.ts`), `PdfExportEnv`/`runPdfExport`
       (`packages/pdf/src/run-export.ts`), `PdfCompilePort`
@@ -795,7 +799,7 @@ model); note it as the designated fallback.
       `storageToBlocks` (`packages/confluence/src/export-blocks.ts`).
       Mark everything else (e.g. `@atlcli/docx/scan`, `./fixtures`,
       template internals) explicitly **unstable/internal**.
-- [ ] **Classify the full reachable declaration closure, not just the named
+- [x] **Classify the full reachable declaration closure, not just the named
       seams** (see Architecture: API freeze & guard architecture — the v1
       list is necessary but not sufficient). For each frozen entrypoint,
       generate its transitive `.d.ts` closure from `dist/` and mark every
@@ -809,7 +813,16 @@ model); note it as the designated fallback.
       are broad and largely CLI/Bun-internal (`packages/core/src/index.ts`)
       or renderer-internal (`packages/diagram/src/index.ts`) today; a
       package with no recorded decision stays 0.x rather than defaulting to
-      1.0 with the rest.
+      1.0 with the rest. **→ DONE (2026-07-19): `scripts/api-closure.ts`
+      generates committed `packages/<p>/etc/<p>.closure.md` per package
+      (entrypoint stability classes, per-symbol lists, cross-package closure
+      refs, zero reachable-but-unexported gaps — the named PdfSourceBundle/
+      PdfCompilerDiagnostic/PdfExportMetadata/PdfProfile/PdfThemeOptions/
+      ConfluencePageDetails/TemplateMeta/ResolveDeps gaps are all exported
+      stable now), CI-guarded by api-report.test.ts. Frozen at 1.0.0:
+      confluence, docx, pdf, pdf-compiler-browser, export-macros. Stays 0.x
+      (recorded reasoning in each closure file): core, diagram, jira,
+      plugin-api, template-pack, export-node.**
 - [x] Write the breaking-change policy into the same docs section: what
       counts as breaking (removed/renamed exports, narrowed input types,
       widened output types, changed `exports` subpaths, changed asset
@@ -846,11 +859,15 @@ model); note it as the designated fallback.
       surface where a removed export / changed signature produces a failing
       diff (guards the guard; no mocks — run the real generator on a tiny
       fixture entrypoint under the scratch of the test).
-- [ ] Bump all frozen packages' `package.json` version to `1.0.0`; changelog
+- [x] Bump all frozen packages' `package.json` version to `1.0.0`; changelog
       entry documents the frozen surface and links the docs pages. This is a
       version-number and changelog commitment, verified via the tarball and
       filesystem-link consumer smoke — publishing `1.0.0` to a registry is
-      deferred (see Goal and the Deferred appendix).
+      deferred (see Goal and the Deferred appendix). **→ DONE (2026-07-19):
+      the five frozen packages are 1.0.0; CHANGELOG.md is git-cliff-generated
+      from Conventional Commits, so the freeze record lives in the commit
+      body and the versioning.md freeze table (per repo convention, no
+      hand-edit of the generated changelog).**
 
 ### Consumer smoke
 
