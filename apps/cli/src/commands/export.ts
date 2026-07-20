@@ -1156,7 +1156,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const templateDeps = new Set<string>();
   try {
     const { scanZip, unzipDocx } = await import("@atlcli/docx/scan");
-    const { classifyPlaceholder } = await import("@atlcli/docx");
+    // classifyPlaceholder is an internal helper (not a frozen v1 seam) — spec
+    // 009 review C1 trimmed it out of the `.` barrel; reach it via ./internal.
+    const { classifyPlaceholder } = await import("@atlcli/docx/internal");
     const scan = scanZip(unzipDocx(templateBytes));
     for (const dependency of scan.supported
       .flatMap((h) => h.raw)

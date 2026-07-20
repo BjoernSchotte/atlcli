@@ -19,9 +19,11 @@ import {
 import type { AssetFetcher, AssetRef, HostCallContext } from "@atlcli/docx";
 import type { PdfAssetResolver, PdfResolvedAsset } from "@atlcli/pdf";
 import { JiraClient, type JiraIssue } from "@atlcli/jira";
+// jiraStatusColor is a renderer helper (not a frozen v1 seam) — spec 009
+// review C1 trimmed it out of the `.` barrel; reach it via ./internal.
+import { jiraStatusColor } from "@atlcli/export-macros/internal";
 import {
   defaultRegistry,
-  jiraStatusColor,
   portError,
   type AttachmentLookupPort,
   type AttachmentMeta,

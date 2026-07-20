@@ -12,3 +12,12 @@ export * from "./resolver.js";
 export * from "./include-lookup.js";
 export * from "./serialize.js";
 export * from "./ooxml.js";
+// Non-frozen helpers dropped from the trimmed v1 barrel (spec 009 review C1):
+// placeholder classification, date formatting, image/OOXML embedding, and the
+// numbering + lower-level export helpers stay reachable here for in-repo
+// consumers and adventurous hosts.
+export * from "./placeholder-map.js";
+export * from "./dateformat.js";
+export * from "./image.js";
+export * from "./numbering.js";
+export * from "./export.js";

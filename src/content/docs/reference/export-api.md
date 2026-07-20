@@ -77,9 +77,15 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
   preparing → fetching → compiling → validating → emitting; failures are typed
   `PdfExportError`s).
 - `PdfExportEnv` seams: `PdfAssetResolver`, `PdfCompilePort`, `PdfOutputSink`.
+- Host helper seams (specs 007/008): `preparePdfDocument` (pre-compile asset resolution),
+  `validatePdfOutput` (structural output gate), `resolvePdfSettings` (template settings),
+  `normalizePdfLocale`, `parseFontMeta`/`verifyFontBytes` (font intake),
+  `formatPdfCompilerDiagnostics`, `PDF_RUNTIME_ASSETS` (the canonical font/license manifest).
 - Transitively frozen types: `PdfSourceBundle`, `PdfCompilerDiagnostic`, `PdfExportMetadata`,
   `PdfProfile`, `PdfThemeOptions`, `PdfTemplateSettings` (spec 007 settings/watermark),
-  `PDF_RUNTIME_ASSETS` (the canonical font/license manifest).
+  `PreparePdfOptions`/`PreparedPdfDocument`, `ResolvedPdfSettings`, `ParsedFontFace`.
+- Internal helpers deliberately **not** frozen (reachable via `./internal`): `sha256Hex`,
+  `typstSettingsDict`, the `DEFAULT_PDF_*` watermark consts, and the asset-limit consts.
 
 ## PDF compiler port: PdfCompilePort & BrowserPdfCompiler
 
@@ -93,19 +99,28 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 
 `@atlcli/export-macros` (spec 004).
 
-- `MacroRendererRegistry` + `defaultRegistry(deps)` — hosts inject the walker/converter deps
-  and client ports; the package has zero runtime imports from other `@atlcli/*` packages.
+- `MacroRendererRegistry` + `defaultRegistry(deps)`/`createRegistry` — hosts inject the
+  walker/converter deps and client ports; the package has zero runtime imports from other
+  `@atlcli/*` packages.
 - `resolveMacroBlocks(blocks, options: MacroResolutionOptions)` — the async resolver pass both
   engines call; `MacroResolutionOptions` is embedded in the frozen docx/pdf surfaces.
-- The registry/resolve **contract** is frozen; the shipped renderer *set* may grow additively
-  in minor releases.
+- The frozen surface is the registry/port **contract** (the injected dep + port interfaces, the
+  error helpers `portError`/`isPortError`) and the resolver pass — **not** the concrete
+  renderer instances (`tocRenderer`, `jiraMacroRenderer`, …) or their helpers
+  (`slugifyHeading`, `issueTable`, `jiraStatusColor`, …). `defaultRegistry` wires those
+  internally; they stay reachable via `@atlcli/export-macros/internal`. The renderer *set* may
+  grow additively in minor releases.
 
 ## Unstable and internal surfaces
 
 Explicitly **not** part of the freeze:
 
-- `./internal` subpaths (confluence sync machinery — Bun-only; docx resolver/serializer/OOXML;
-  pdf prepare/serialize/theme/validate; the include-lookup wiring).
+- `./internal` subpaths — non-frozen implementation helpers, still importable in-repo and by
+  adventurous hosts: confluence sync machinery (Bun-only); docx resolver/serializer/OOXML plus
+  placeholder classification (`classifyPlaceholder`), date formatting, image embedding and the
+  numbering helpers; pdf Typst escaping/serialization/theming (`preparePdfDocument` and
+  `validatePdfOutput` themselves ARE frozen seams — only the serialize/theme/escape internals
+  are not); export-macros' concrete renderer instances + helpers.
 - `@atlcli/docx/scan` and `@atlcli/docx/fixtures` (dev/test API), `@atlcli/pdf/template`
   (raw Typst template), `./browser-runtime` and `./vite` (host bootstrap, experimental).
 - The 0.x packages: `@atlcli/core`, `@atlcli/diagram`, `@atlcli/jira`, `@atlcli/plugin-api`,

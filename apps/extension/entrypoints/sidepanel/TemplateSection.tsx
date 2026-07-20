@@ -257,7 +257,9 @@ export function TemplateSection({
             // endpoint (findPagesByTitle), NOT CQL — same as the CLI — so a
             // just-created target resolves without the search-index lag.
             getIncludedPage: async (ref) => {
-              const { buildGetIncludedPage } = await loadExport();
+              // buildGetIncludedPage is an internal helper (not a frozen v1
+              // seam) — reach it via ./internal, not the trimmed `.` barrel.
+              const { buildGetIncludedPage } = await import("@atlcli/docx/internal");
               return buildGetIncludedPage({
                 getPage: (id) => client.getPage(id),
                 findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),

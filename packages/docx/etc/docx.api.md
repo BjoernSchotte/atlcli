@@ -20,12 +20,6 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
-// export: boundRasterTarget
-export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
-
-// export: classifyPlaceholder
-export declare function classifyPlaceholder(raw: string): PlaceholderClass;
-
 // export: CurrentUser
 export interface CurrentUser {
     accountId: string;
@@ -33,106 +27,11 @@ export interface CurrentUser {
     email?: string;
 }
 
-// export: DateFormatResult
-export interface DateFormatResult {
-    text: string;
-    unknownToken?: string;
-}
-
-// export: decodeImageInfo
-export declare function decodeImageInfo(bytes: Uint8Array): ImageInfo | null;
-
-// export: DEFAULT_DIAGRAM_THEME
-export declare const DEFAULT_DIAGRAM_THEME: DiagramTheme;
-
-// export: DiagramRenderResult
-export type DiagramRenderResult = {
-    kind: "svg";
-    svg: string;
-    widthPx: number;
-    heightPx: number;
-} | {
-    kind: "unsupported";
-    diagramType: string;
-} | {
-    kind: "failed";
-    reason: string;
-};
-
-// export: DiagramTheme
-export interface DiagramTheme {
-    bg: string;
-    fg: string;
-    line?: string;
-    accent?: string;
-    muted?: string;
-    surface?: string;
-    border?: string;
-    font?: string;
-}
-
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
     constructor(message: string, details: string[]);
 }
-
-// export: DrawingParams
-export interface DrawingParams {
-    relId: string;
-    docPrId: number;
-    name: string;
-    descr: string;
-    cxEmu: number;
-    cyEmu: number;
-    pPrXml?: string;
-    svgRelId?: string;
-}
-
-// export: EmbedImageOptions
-export interface EmbedImageOptions {
-    alt?: string;
-    name?: string;
-    widthPx?: number;
-    heightPx?: number;
-    partPath?: string;
-    pPrXml?: string;
-}
-
-// export: EmbedSvgOptions
-export interface EmbedSvgOptions {
-    alt?: string;
-    name?: string;
-    widthPx: number;
-    heightPx: number;
-    partPath?: string;
-    pPrXml?: string;
-    origin?: "image" | "diagram";
-}
-
-// export: EMU_PER_PX
-export declare const EMU_PER_PX = 9525;
-
-// export: encodeXmlText
-export declare function encodeXmlText(text: string): string;
-
-// export: ensureCaptionStyle
-export declare function ensureCaptionStyle(zip: PizZip): void;
-
-// export: ensureCodeStyle
-export declare function ensureCodeStyle(zip: PizZip): void;
-
-// export: ensureContentTypeDefault
-export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
-
-// export: ensureListParagraphStyle
-export declare function ensureListParagraphStyle(zip: PizZip): void;
-
-// export: ensureNumberingPart
-export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
-
-// export: ensureUpdateFields
-export declare function ensureUpdateFields(zip: PizZip): void;
 
 // export: exportDocx
 export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
@@ -205,59 +104,9 @@ export interface ExportTimings {
     diagramRasterMs: number;
 }
 
-// export: flattenSvgStyles
-export declare function flattenSvgStyles(svg: string): string;
-
-// export: formatDatePlaceholder
-export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
-
-// export: formatSimpleDate
-export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
-
 // export: HostCallContext
 export interface HostCallContext {
     signal?: AbortSignal;
-}
-
-// export: ImageEmbedder
-export declare class ImageEmbedder {
-    private readonly zip;
-    private readonly maxWidthPx;
-    private nextDocPrId;
-    private mediaIndex;
-    private embedded;
-    private diagramsEmbedded;
-    private readonly dedup;
-    constructor(zip: PizZip, opts?: ImageEmbedderOptions);
-    get embeddedCount(): number;
-    get diagramCount(): number;
-    embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
-    embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
-    private findOrCreateMedia;
-    private writeMedia;
-    private ensureRelationship;
-}
-
-// export: ImageEmbedderOptions
-export interface ImageEmbedderOptions {
-    maxWidthPx?: number;
-}
-
-// export: ImageEmbedError
-export declare class ImageEmbedError extends Error {
-    constructor(message: string);
-}
-
-// export: ImageFormat
-export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
-
-// export: ImageInfo
-export interface ImageInfo {
-    format: ImageFormat;
-    ext: string;
-    mime: string;
-    width: number;
-    height: number;
 }
 
 // export: IncludeLookupOutcome
@@ -285,39 +134,6 @@ export interface IncludePageRef {
     title?: string;
     pageId?: string;
 }
-
-// export: inlineImageParagraph
-export declare function inlineImageParagraph(p: DrawingParams): string;
-
-// export: inspectNumberingPart
-export declare function inspectNumberingPart(zip: PizZip): {
-    abstractNumId: number;
-    numId: number;
-};
-
-// export: isSvg
-export declare function isSvg(bytes: Uint8Array): boolean;
-
-// export: LogoArgs
-export interface LogoArgs {
-    heightPx?: number;
-    widthPx?: number;
-}
-
-// export: MAX_CONTENT_WIDTH_PX
-export declare const MAX_CONTENT_WIDTH_PX = 600;
-
-// export: MAX_IMAGE_BYTES
-export declare const MAX_IMAGE_BYTES: number;
-
-// export: MAX_RASTER_AXIS_PX
-export declare const MAX_RASTER_AXIS_PX = 10000;
-
-// export: MAX_RASTER_PIXELS
-export declare const MAX_RASTER_PIXELS = 40000000;
-
-// export: mergeTrailingRegionSectPr
-export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
 // export: NumberingAllocator
 export declare class NumberingAllocator {
@@ -365,57 +181,8 @@ export interface PageOwner {
     email?: string;
 }
 
-// export: PagePropertyArgs
-export interface PagePropertyArgs {
-    key: string;
-    macroId?: string;
-    fallbackEnabled: boolean;
-    alternateText?: string;
-}
-
-// export: parseIncludePageArgs
-export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
-
-// export: parseLogoArgs
-export declare function parseLogoArgs(raw: string): LogoArgs;
-
-// export: parsePagePropertyArgs
-export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
-
-// export: parseSvgSize
-export declare function parseSvgSize(source: string): TargetSize | null;
-
-// export: placeholderBase
-export declare function placeholderBase(raw: string): string;
-
-// export: PlaceholderClass
-export interface PlaceholderClass {
-    base: string;
-    status: PlaceholderStatus;
-    dependency: PlaceholderDependency;
-    reason?: string;
-}
-
-// export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
-
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
-
-// export: preprocessScrollText
-export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
-
-// export: pxToEmu
-export declare function pxToEmu(px: number): number;
-
-// export: readBodySectPr
-export declare function readBodySectPr(zip: PizZip): string | undefined;
-
-// export: relsPathFor
-export declare function relsPathFor(partPath: string): string;
-
-// export: renderDiagram
-export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -426,15 +193,6 @@ export interface ResolveDeps {
     getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
     getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
-
-// export: resolveTargetSize
-export declare function resolveTargetSize(intrinsic: {
-    width: number;
-    height: number;
-}, wanted: {
-    widthPx?: number;
-    heightPx?: number;
-}, maxWidthPx: number): TargetSize;
 
 // export: runExport
 export declare function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport>;
@@ -471,12 +229,6 @@ export interface SvgRasterizer {
     }): Promise<Uint8Array>;
 }
 
-// export: TargetSize
-export interface TargetSize {
-    widthPx: number;
-    heightPx: number;
-}
-
 // export: TemplateMeta
 export interface TemplateMeta {
     name: string;
@@ -487,12 +239,6 @@ export interface TemplateMeta {
 export interface TemplateSource {
     getBytes(id: string): Promise<Uint8Array>;
 }
-
-// export: toDownloadFilename
-export declare function toDownloadFilename(title: string): string;
-
-// export: warmDiagramRenderer
-export declare function warmDiagramRenderer(): void;
 ```
 
 ### Entry point `. (default)`
@@ -511,14 +257,8 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
-// export: boundRasterTarget
-export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
-
 // export: bundledDiagramFonts
 export declare function bundledDiagramFonts(): Promise<Uint8Array[]>;
-
-// export: classifyPlaceholder
-export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -527,106 +267,11 @@ export interface CurrentUser {
     email?: string;
 }
 
-// export: DateFormatResult
-export interface DateFormatResult {
-    text: string;
-    unknownToken?: string;
-}
-
-// export: decodeImageInfo
-export declare function decodeImageInfo(bytes: Uint8Array): ImageInfo | null;
-
-// export: DEFAULT_DIAGRAM_THEME
-export declare const DEFAULT_DIAGRAM_THEME: DiagramTheme;
-
-// export: DiagramRenderResult
-export type DiagramRenderResult = {
-    kind: "svg";
-    svg: string;
-    widthPx: number;
-    heightPx: number;
-} | {
-    kind: "unsupported";
-    diagramType: string;
-} | {
-    kind: "failed";
-    reason: string;
-};
-
-// export: DiagramTheme
-export interface DiagramTheme {
-    bg: string;
-    fg: string;
-    line?: string;
-    accent?: string;
-    muted?: string;
-    surface?: string;
-    border?: string;
-    font?: string;
-}
-
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
     constructor(message: string, details: string[]);
 }
-
-// export: DrawingParams
-export interface DrawingParams {
-    relId: string;
-    docPrId: number;
-    name: string;
-    descr: string;
-    cxEmu: number;
-    cyEmu: number;
-    pPrXml?: string;
-    svgRelId?: string;
-}
-
-// export: EmbedImageOptions
-export interface EmbedImageOptions {
-    alt?: string;
-    name?: string;
-    widthPx?: number;
-    heightPx?: number;
-    partPath?: string;
-    pPrXml?: string;
-}
-
-// export: EmbedSvgOptions
-export interface EmbedSvgOptions {
-    alt?: string;
-    name?: string;
-    widthPx: number;
-    heightPx: number;
-    partPath?: string;
-    pPrXml?: string;
-    origin?: "image" | "diagram";
-}
-
-// export: EMU_PER_PX
-export declare const EMU_PER_PX = 9525;
-
-// export: encodeXmlText
-export declare function encodeXmlText(text: string): string;
-
-// export: ensureCaptionStyle
-export declare function ensureCaptionStyle(zip: PizZip): void;
-
-// export: ensureCodeStyle
-export declare function ensureCodeStyle(zip: PizZip): void;
-
-// export: ensureContentTypeDefault
-export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
-
-// export: ensureListParagraphStyle
-export declare function ensureListParagraphStyle(zip: PizZip): void;
-
-// export: ensureNumberingPart
-export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
-
-// export: ensureUpdateFields
-export declare function ensureUpdateFields(zip: PizZip): void;
 
 // export: exportDocx
 export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
@@ -705,59 +350,9 @@ export declare function fileOutputSink(path: string): OutputSink;
 // export: fileTemplateSource
 export declare function fileTemplateSource(path: string): TemplateSource;
 
-// export: flattenSvgStyles
-export declare function flattenSvgStyles(svg: string): string;
-
-// export: formatDatePlaceholder
-export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
-
-// export: formatSimpleDate
-export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
-
 // export: HostCallContext
 export interface HostCallContext {
     signal?: AbortSignal;
-}
-
-// export: ImageEmbedder
-export declare class ImageEmbedder {
-    private readonly zip;
-    private readonly maxWidthPx;
-    private nextDocPrId;
-    private mediaIndex;
-    private embedded;
-    private diagramsEmbedded;
-    private readonly dedup;
-    constructor(zip: PizZip, opts?: ImageEmbedderOptions);
-    get embeddedCount(): number;
-    get diagramCount(): number;
-    embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
-    embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
-    private findOrCreateMedia;
-    private writeMedia;
-    private ensureRelationship;
-}
-
-// export: ImageEmbedderOptions
-export interface ImageEmbedderOptions {
-    maxWidthPx?: number;
-}
-
-// export: ImageEmbedError
-export declare class ImageEmbedError extends Error {
-    constructor(message: string);
-}
-
-// export: ImageFormat
-export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
-
-// export: ImageInfo
-export interface ImageInfo {
-    format: ImageFormat;
-    ext: string;
-    mime: string;
-    width: number;
-    height: number;
 }
 
 // export: IncludeLookupOutcome
@@ -785,39 +380,6 @@ export interface IncludePageRef {
     title?: string;
     pageId?: string;
 }
-
-// export: inlineImageParagraph
-export declare function inlineImageParagraph(p: DrawingParams): string;
-
-// export: inspectNumberingPart
-export declare function inspectNumberingPart(zip: PizZip): {
-    abstractNumId: number;
-    numId: number;
-};
-
-// export: isSvg
-export declare function isSvg(bytes: Uint8Array): boolean;
-
-// export: LogoArgs
-export interface LogoArgs {
-    heightPx?: number;
-    widthPx?: number;
-}
-
-// export: MAX_CONTENT_WIDTH_PX
-export declare const MAX_CONTENT_WIDTH_PX = 600;
-
-// export: MAX_IMAGE_BYTES
-export declare const MAX_IMAGE_BYTES: number;
-
-// export: MAX_RASTER_AXIS_PX
-export declare const MAX_RASTER_AXIS_PX = 10000;
-
-// export: MAX_RASTER_PIXELS
-export declare const MAX_RASTER_PIXELS = 40000000;
-
-// export: mergeTrailingRegionSectPr
-export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
 // export: NumberingAllocator
 export declare class NumberingAllocator {
@@ -865,57 +427,8 @@ export interface PageOwner {
     email?: string;
 }
 
-// export: PagePropertyArgs
-export interface PagePropertyArgs {
-    key: string;
-    macroId?: string;
-    fallbackEnabled: boolean;
-    alternateText?: string;
-}
-
-// export: parseIncludePageArgs
-export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
-
-// export: parseLogoArgs
-export declare function parseLogoArgs(raw: string): LogoArgs;
-
-// export: parsePagePropertyArgs
-export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
-
-// export: parseSvgSize
-export declare function parseSvgSize(source: string): TargetSize | null;
-
-// export: placeholderBase
-export declare function placeholderBase(raw: string): string;
-
-// export: PlaceholderClass
-export interface PlaceholderClass {
-    base: string;
-    status: PlaceholderStatus;
-    dependency: PlaceholderDependency;
-    reason?: string;
-}
-
-// export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
-
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
-
-// export: preprocessScrollText
-export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
-
-// export: pxToEmu
-export declare function pxToEmu(px: number): number;
-
-// export: readBodySectPr
-export declare function readBodySectPr(zip: PizZip): string | undefined;
-
-// export: relsPathFor
-export declare function relsPathFor(partPath: string): string;
-
-// export: renderDiagram
-export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -926,15 +439,6 @@ export interface ResolveDeps {
     getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
     getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
-
-// export: resolveTargetSize
-export declare function resolveTargetSize(intrinsic: {
-    width: number;
-    height: number;
-}, wanted: {
-    widthPx?: number;
-    heightPx?: number;
-}, maxWidthPx: number): TargetSize;
 
 // export: ResvgRasterizerAssets
 export interface ResvgRasterizerAssets {
@@ -981,12 +485,6 @@ export interface SvgRasterizer {
     }): Promise<Uint8Array>;
 }
 
-// export: TargetSize
-export interface TargetSize {
-    widthPx: number;
-    heightPx: number;
-}
-
 // export: TemplateMeta
 export interface TemplateMeta {
     name: string;
@@ -998,14 +496,8 @@ export interface TemplateSource {
     getBytes(id: string): Promise<Uint8Array>;
 }
 
-// export: toDownloadFilename
-export declare function toDownloadFilename(title: string): string;
-
 // export: unsupportedAssetFetcher
 export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
-
-// export: warmDiagramRenderer
-export declare function warmDiagramRenderer(): void;
 ```
 
 ### Entry point `./browser`
@@ -1024,12 +516,6 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
-// export: boundRasterTarget
-export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
-
-// export: classifyPlaceholder
-export declare function classifyPlaceholder(raw: string): PlaceholderClass;
-
 // export: CurrentUser
 export interface CurrentUser {
     accountId: string;
@@ -1037,106 +523,11 @@ export interface CurrentUser {
     email?: string;
 }
 
-// export: DateFormatResult
-export interface DateFormatResult {
-    text: string;
-    unknownToken?: string;
-}
-
-// export: decodeImageInfo
-export declare function decodeImageInfo(bytes: Uint8Array): ImageInfo | null;
-
-// export: DEFAULT_DIAGRAM_THEME
-export declare const DEFAULT_DIAGRAM_THEME: DiagramTheme;
-
-// export: DiagramRenderResult
-export type DiagramRenderResult = {
-    kind: "svg";
-    svg: string;
-    widthPx: number;
-    heightPx: number;
-} | {
-    kind: "unsupported";
-    diagramType: string;
-} | {
-    kind: "failed";
-    reason: string;
-};
-
-// export: DiagramTheme
-export interface DiagramTheme {
-    bg: string;
-    fg: string;
-    line?: string;
-    accent?: string;
-    muted?: string;
-    surface?: string;
-    border?: string;
-    font?: string;
-}
-
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
     constructor(message: string, details: string[]);
 }
-
-// export: DrawingParams
-export interface DrawingParams {
-    relId: string;
-    docPrId: number;
-    name: string;
-    descr: string;
-    cxEmu: number;
-    cyEmu: number;
-    pPrXml?: string;
-    svgRelId?: string;
-}
-
-// export: EmbedImageOptions
-export interface EmbedImageOptions {
-    alt?: string;
-    name?: string;
-    widthPx?: number;
-    heightPx?: number;
-    partPath?: string;
-    pPrXml?: string;
-}
-
-// export: EmbedSvgOptions
-export interface EmbedSvgOptions {
-    alt?: string;
-    name?: string;
-    widthPx: number;
-    heightPx: number;
-    partPath?: string;
-    pPrXml?: string;
-    origin?: "image" | "diagram";
-}
-
-// export: EMU_PER_PX
-export declare const EMU_PER_PX = 9525;
-
-// export: encodeXmlText
-export declare function encodeXmlText(text: string): string;
-
-// export: ensureCaptionStyle
-export declare function ensureCaptionStyle(zip: PizZip): void;
-
-// export: ensureCodeStyle
-export declare function ensureCodeStyle(zip: PizZip): void;
-
-// export: ensureContentTypeDefault
-export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
-
-// export: ensureListParagraphStyle
-export declare function ensureListParagraphStyle(zip: PizZip): void;
-
-// export: ensureNumberingPart
-export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
-
-// export: ensureUpdateFields
-export declare function ensureUpdateFields(zip: PizZip): void;
 
 // export: exportDocx
 export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
@@ -1209,59 +600,9 @@ export interface ExportTimings {
     diagramRasterMs: number;
 }
 
-// export: flattenSvgStyles
-export declare function flattenSvgStyles(svg: string): string;
-
-// export: formatDatePlaceholder
-export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
-
-// export: formatSimpleDate
-export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
-
 // export: HostCallContext
 export interface HostCallContext {
     signal?: AbortSignal;
-}
-
-// export: ImageEmbedder
-export declare class ImageEmbedder {
-    private readonly zip;
-    private readonly maxWidthPx;
-    private nextDocPrId;
-    private mediaIndex;
-    private embedded;
-    private diagramsEmbedded;
-    private readonly dedup;
-    constructor(zip: PizZip, opts?: ImageEmbedderOptions);
-    get embeddedCount(): number;
-    get diagramCount(): number;
-    embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
-    embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
-    private findOrCreateMedia;
-    private writeMedia;
-    private ensureRelationship;
-}
-
-// export: ImageEmbedderOptions
-export interface ImageEmbedderOptions {
-    maxWidthPx?: number;
-}
-
-// export: ImageEmbedError
-export declare class ImageEmbedError extends Error {
-    constructor(message: string);
-}
-
-// export: ImageFormat
-export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
-
-// export: ImageInfo
-export interface ImageInfo {
-    format: ImageFormat;
-    ext: string;
-    mime: string;
-    width: number;
-    height: number;
 }
 
 // export: IncludeLookupOutcome
@@ -1289,39 +630,6 @@ export interface IncludePageRef {
     title?: string;
     pageId?: string;
 }
-
-// export: inlineImageParagraph
-export declare function inlineImageParagraph(p: DrawingParams): string;
-
-// export: inspectNumberingPart
-export declare function inspectNumberingPart(zip: PizZip): {
-    abstractNumId: number;
-    numId: number;
-};
-
-// export: isSvg
-export declare function isSvg(bytes: Uint8Array): boolean;
-
-// export: LogoArgs
-export interface LogoArgs {
-    heightPx?: number;
-    widthPx?: number;
-}
-
-// export: MAX_CONTENT_WIDTH_PX
-export declare const MAX_CONTENT_WIDTH_PX = 600;
-
-// export: MAX_IMAGE_BYTES
-export declare const MAX_IMAGE_BYTES: number;
-
-// export: MAX_RASTER_AXIS_PX
-export declare const MAX_RASTER_AXIS_PX = 10000;
-
-// export: MAX_RASTER_PIXELS
-export declare const MAX_RASTER_PIXELS = 40000000;
-
-// export: mergeTrailingRegionSectPr
-export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
 // export: NumberingAllocator
 export declare class NumberingAllocator {
@@ -1369,57 +677,8 @@ export interface PageOwner {
     email?: string;
 }
 
-// export: PagePropertyArgs
-export interface PagePropertyArgs {
-    key: string;
-    macroId?: string;
-    fallbackEnabled: boolean;
-    alternateText?: string;
-}
-
-// export: parseIncludePageArgs
-export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
-
-// export: parseLogoArgs
-export declare function parseLogoArgs(raw: string): LogoArgs;
-
-// export: parsePagePropertyArgs
-export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
-
-// export: parseSvgSize
-export declare function parseSvgSize(source: string): TargetSize | null;
-
-// export: placeholderBase
-export declare function placeholderBase(raw: string): string;
-
-// export: PlaceholderClass
-export interface PlaceholderClass {
-    base: string;
-    status: PlaceholderStatus;
-    dependency: PlaceholderDependency;
-    reason?: string;
-}
-
-// export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
-
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
-
-// export: preprocessScrollText
-export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
-
-// export: pxToEmu
-export declare function pxToEmu(px: number): number;
-
-// export: readBodySectPr
-export declare function readBodySectPr(zip: PizZip): string | undefined;
-
-// export: relsPathFor
-export declare function relsPathFor(partPath: string): string;
-
-// export: renderDiagram
-export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -1430,15 +689,6 @@ export interface ResolveDeps {
     getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
     getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
-
-// export: resolveTargetSize
-export declare function resolveTargetSize(intrinsic: {
-    width: number;
-    height: number;
-}, wanted: {
-    widthPx?: number;
-    heightPx?: number;
-}, maxWidthPx: number): TargetSize;
 
 // export: runExport
 export declare function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport>;
@@ -1475,12 +725,6 @@ export interface SvgRasterizer {
     }): Promise<Uint8Array>;
 }
 
-// export: TargetSize
-export interface TargetSize {
-    widthPx: number;
-    heightPx: number;
-}
-
 // export: TemplateMeta
 export interface TemplateMeta {
     name: string;
@@ -1491,12 +735,6 @@ export interface TemplateMeta {
 export interface TemplateSource {
     getBytes(id: string): Promise<Uint8Array>;
 }
-
-// export: toDownloadFilename
-export declare function toDownloadFilename(title: string): string;
-
-// export: warmDiagramRenderer
-export declare function warmDiagramRenderer(): void;
 ```
 
 ### Entry point `./browser-runtime`
@@ -1610,6 +848,9 @@ export declare function bookmarkEnd(id: number): string;
 // export: bookmarkStart
 export declare function bookmarkStart(id: number, name: string): string;
 
+// export: boundRasterTarget
+export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
+
 // export: buildGetIncludedPage
 export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 
@@ -1636,6 +877,9 @@ export declare function captionStyleXml(): string;
 
 // export: classifyIncludeError
 export declare function classifyIncludeError(err: unknown): IncludeLookupOutcome;
+
+// export: classifyPlaceholder
+export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 
 // export: coalesceSectPrParagraphs
 export declare function coalesceSectPrParagraphs(xml: string): string;
@@ -1679,6 +923,15 @@ export interface DataTableOptions {
     tableStyle?: TableStyleSource;
 }
 
+// export: DateFormatResult
+export interface DateFormatResult {
+    text: string;
+    unknownToken?: string;
+}
+
+// export: decodeImageInfo
+export declare function decodeImageInfo(bytes: Uint8Array): ImageInfo | null;
+
 // export: DiagramEmbedOutcome
 export type DiagramEmbedOutcome = {
     ok: true;
@@ -1711,11 +964,136 @@ export declare class DocxError extends Error {
     constructor(kind: "not-zip" | "not-docx" | "too-large", message: string);
 }
 
+// export: DocxRenderError
+export declare class DocxRenderError extends Error {
+    readonly details: string[];
+    constructor(message: string, details: string[]);
+}
+
+// export: DrawingParams
+export interface DrawingParams {
+    relId: string;
+    docPrId: number;
+    name: string;
+    descr: string;
+    cxEmu: number;
+    cyEmu: number;
+    pPrXml?: string;
+    svgRelId?: string;
+}
+
+// export: EmbedImageOptions
+export interface EmbedImageOptions {
+    alt?: string;
+    name?: string;
+    widthPx?: number;
+    heightPx?: number;
+    partPath?: string;
+    pPrXml?: string;
+}
+
+// export: EmbedSvgOptions
+export interface EmbedSvgOptions {
+    alt?: string;
+    name?: string;
+    widthPx: number;
+    heightPx: number;
+    partPath?: string;
+    pPrXml?: string;
+    origin?: "image" | "diagram";
+}
+
+// export: EMU_PER_PX
+export declare const EMU_PER_PX = 9525;
+
+// export: encodeXmlText
+export declare function encodeXmlText(text: string): string;
+
+// export: ensureCaptionStyle
+export declare function ensureCaptionStyle(zip: PizZip): void;
+
+// export: ensureCodeStyle
+export declare function ensureCodeStyle(zip: PizZip): void;
+
+// export: ensureContentTypeDefault
+export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureListParagraphStyle
+export declare function ensureListParagraphStyle(zip: PizZip): void;
+
+// export: ensureNumberingPart
+export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
+
+// export: ensureUpdateFields
+export declare function ensureUpdateFields(zip: PizZip): void;
+
 // export: esc
 export declare function esc(s: string): string;
 
 // export: escapeFieldArgument
 export declare function escapeFieldArgument(value: string): string;
+
+// export: exportDocx
+export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
+
+// export: ExportInput
+export interface ExportInput {
+    templateBytes: Uint8Array;
+    details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
+    template: TemplateMeta;
+    exportDate?: Date;
+    deps?: ResolveDeps;
+    assets?: AssetFetcher;
+    embedImages?: boolean;
+    rasterizer?: SvgRasterizer;
+    diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
+}
+
+// export: ExportReport
+export interface ExportReport {
+    resolvedCount: number;
+    unsupportedNames: string[];
+    skippedImages: number;
+    embeddedImages: number;
+    renderedDiagrams: number;
+    durationMs: number;
+    filename: string;
+    notes: ExportNote[];
+    complete: boolean;
+    scan: ScanResult;
+    timings: ExportTimings;
+}
+
+// export: ExportResult
+export interface ExportResult {
+    bytes: Uint8Array;
+    report: ExportReport;
+}
+
+// export: ExportTimings
+export interface ExportTimings {
+    resolveMs: number;
+    bodyMs: number;
+    logoFetchMs: number;
+    includeFetchMs: number;
+    renderMs: number;
+    imageFetchMs: number;
+    imageFetches: number;
+    diagramRenderMs: number;
+    diagramRasterMs: number;
+}
 
 // export: Fetched
 export interface Fetched {
@@ -1725,6 +1103,12 @@ export interface Fetched {
     homepageProperties?: PagePropertiesMacro[];
 }
 
+// export: formatDatePlaceholder
+export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
+
+// export: formatSimpleDate
+export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
+
 // export: hyperlinkField
 export declare function hyperlinkField(url: string, innerRuns: string): string;
 
@@ -1732,6 +1116,35 @@ export declare function hyperlinkField(url: string, innerRuns: string): string;
 export type ImageBlock = Extract<ExportBlock, {
     type: "image";
 }>;
+
+// export: ImageEmbedder
+export declare class ImageEmbedder {
+    private readonly zip;
+    private readonly maxWidthPx;
+    private nextDocPrId;
+    private mediaIndex;
+    private embedded;
+    private diagramsEmbedded;
+    private readonly dedup;
+    constructor(zip: PizZip, opts?: ImageEmbedderOptions);
+    get embeddedCount(): number;
+    get diagramCount(): number;
+    embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    private findOrCreateMedia;
+    private writeMedia;
+    private ensureRelationship;
+}
+
+// export: ImageEmbedderOptions
+export interface ImageEmbedderOptions {
+    maxWidthPx?: number;
+}
+
+// export: ImageEmbedError
+export declare class ImageEmbedError extends Error {
+    constructor(message: string);
+}
 
 // export: ImageEmbedOutcome
 export type ImageEmbedOutcome = {
@@ -1749,6 +1162,18 @@ export type ImageEmbedOutcome = {
 export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
+}
+
+// export: ImageFormat
+export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
+
+// export: ImageInfo
+export interface ImageInfo {
+    format: ImageFormat;
+    ext: string;
+    mime: string;
+    width: number;
+    height: number;
 }
 
 // export: IncludeLookupIo
@@ -1779,11 +1204,30 @@ export type IncludeLookupOutcome = {
     message: string;
 };
 
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
+// export: inlineImageParagraph
+export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inspectNumberingPart
+export declare function inspectNumberingPart(zip: PizZip): {
+    abstractNumId: number;
+    numId: number;
+};
+
 // export: internalHyperlink
 export declare function internalHyperlink(anchor: string, innerRuns: string): string;
 
 // export: isSafeHyperlinkUrl
 export declare function isSafeHyperlinkUrl(url: string): boolean;
+
+// export: isSvg
+export declare function isSvg(bytes: Uint8Array): boolean;
 
 // export: lineBreakRun
 export declare function lineBreakRun(): string;
@@ -1794,11 +1238,72 @@ export declare const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
 // export: listParagraphStyleXml
 export declare function listParagraphStyleXml(): string;
 
+// export: LogoArgs
+export interface LogoArgs {
+    heightPx?: number;
+    widthPx?: number;
+}
+
+// export: MAX_CONTENT_WIDTH_PX
+export declare const MAX_CONTENT_WIDTH_PX = 600;
+
+// export: MAX_ILVL
+export declare const MAX_ILVL = 8;
+
+// export: MAX_IMAGE_BYTES
+export declare const MAX_IMAGE_BYTES: number;
+
+// export: MAX_NUM_INSTANCES
+export declare const MAX_NUM_INSTANCES = 2047;
+
+// export: MAX_RASTER_AXIS_PX
+export declare const MAX_RASTER_AXIS_PX = 10000;
+
+// export: MAX_RASTER_PIXELS
+export declare const MAX_RASTER_PIXELS = 40000000;
+
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
 
+// export: mergeTrailingRegionSectPr
+export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
+
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private readonly decimalAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedNumIds;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private decimalAbstractNum;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
 
 // export: pageBreakParagraph
 export declare function pageBreakParagraph(): string;
@@ -1810,17 +1315,66 @@ export interface PageOwner {
     email?: string;
 }
 
+// export: PagePropertyArgs
+export interface PagePropertyArgs {
+    key: string;
+    macroId?: string;
+    fallbackEnabled: boolean;
+    alternateText?: string;
+}
+
 // export: paragraph
 export declare function paragraph(runsXml: string, opts?: {
     styleId?: string;
     extraPPr?: string;
 }): string;
 
+// export: parseIncludePageArgs
+export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
+
+// export: parseLogoArgs
+export declare function parseLogoArgs(raw: string): LogoArgs;
+
+// export: parsePagePropertyArgs
+export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
+
 // export: parseStyleNames
 export declare function parseStyleNames(stylesXml: string): Map<string, string>;
 
+// export: parseSvgSize
+export declare function parseSvgSize(source: string): TargetSize | null;
+
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
+
+// export: placeholderBase
+export declare function placeholderBase(raw: string): string;
+
+// export: PlaceholderClass
+export interface PlaceholderClass {
+    base: string;
+    status: PlaceholderStatus;
+    dependency: PlaceholderDependency;
+    reason?: string;
+}
+
+// export: PlaceholderDependency
+export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
+
+// export: PlaceholderStatus
+export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: preprocessScrollText
+export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
+
+// export: pxToEmu
+export declare function pxToEmu(px: number): number;
+
+// export: readBodySectPr
+export declare function readBodySectPr(zip: PizZip): string | undefined;
+
+// export: relsPathFor
+export declare function relsPathFor(partPath: string): string;
 
 // export: resolveCaptionLang
 export declare function resolveCaptionLang(raw: string | undefined): {
@@ -1867,6 +1421,15 @@ export interface ResolveResult {
     resolvedCount: number;
     unsupportedNames: string[];
 }
+
+// export: resolveTargetSize
+export declare function resolveTargetSize(intrinsic: {
+    width: number;
+    height: number;
+}, wanted: {
+    widthPx?: number;
+    heightPx?: number;
+}, maxWidthPx: number): TargetSize;
 
 // export: run
 export declare function run(text: string, style?: RunStyle): string;
@@ -1956,11 +1519,20 @@ export interface TableStyleSource {
     styleId?: string;
 }
 
+// export: TargetSize
+export interface TargetSize {
+    widthPx: number;
+    heightPx: number;
+}
+
 // export: TemplateMeta
 export interface TemplateMeta {
     name: string;
     modificationDate: Date;
 }
+
+// export: toDownloadFilename
+export declare function toDownloadFilename(title: string): string;
 
 // export: toLandscapeSectPr
 export declare function toLandscapeSectPr(baseSectPr: string): string;
@@ -1988,14 +1560,8 @@ export interface AssetRef {
     trust?: "page" | "export-view";
 }
 
-// export: boundRasterTarget
-export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
-
 // export: bundledDiagramFonts
 export declare function bundledDiagramFonts(): Promise<Uint8Array[]>;
-
-// export: classifyPlaceholder
-export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -2004,106 +1570,11 @@ export interface CurrentUser {
     email?: string;
 }
 
-// export: DateFormatResult
-export interface DateFormatResult {
-    text: string;
-    unknownToken?: string;
-}
-
-// export: decodeImageInfo
-export declare function decodeImageInfo(bytes: Uint8Array): ImageInfo | null;
-
-// export: DEFAULT_DIAGRAM_THEME
-export declare const DEFAULT_DIAGRAM_THEME: DiagramTheme;
-
-// export: DiagramRenderResult
-export type DiagramRenderResult = {
-    kind: "svg";
-    svg: string;
-    widthPx: number;
-    heightPx: number;
-} | {
-    kind: "unsupported";
-    diagramType: string;
-} | {
-    kind: "failed";
-    reason: string;
-};
-
-// export: DiagramTheme
-export interface DiagramTheme {
-    bg: string;
-    fg: string;
-    line?: string;
-    accent?: string;
-    muted?: string;
-    surface?: string;
-    border?: string;
-    font?: string;
-}
-
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
     constructor(message: string, details: string[]);
 }
-
-// export: DrawingParams
-export interface DrawingParams {
-    relId: string;
-    docPrId: number;
-    name: string;
-    descr: string;
-    cxEmu: number;
-    cyEmu: number;
-    pPrXml?: string;
-    svgRelId?: string;
-}
-
-// export: EmbedImageOptions
-export interface EmbedImageOptions {
-    alt?: string;
-    name?: string;
-    widthPx?: number;
-    heightPx?: number;
-    partPath?: string;
-    pPrXml?: string;
-}
-
-// export: EmbedSvgOptions
-export interface EmbedSvgOptions {
-    alt?: string;
-    name?: string;
-    widthPx: number;
-    heightPx: number;
-    partPath?: string;
-    pPrXml?: string;
-    origin?: "image" | "diagram";
-}
-
-// export: EMU_PER_PX
-export declare const EMU_PER_PX = 9525;
-
-// export: encodeXmlText
-export declare function encodeXmlText(text: string): string;
-
-// export: ensureCaptionStyle
-export declare function ensureCaptionStyle(zip: PizZip): void;
-
-// export: ensureCodeStyle
-export declare function ensureCodeStyle(zip: PizZip): void;
-
-// export: ensureContentTypeDefault
-export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
-
-// export: ensureListParagraphStyle
-export declare function ensureListParagraphStyle(zip: PizZip): void;
-
-// export: ensureNumberingPart
-export declare function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void;
-
-// export: ensureUpdateFields
-export declare function ensureUpdateFields(zip: PizZip): void;
 
 // export: exportDocx
 export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
@@ -2182,59 +1653,9 @@ export declare function fileOutputSink(path: string): OutputSink;
 // export: fileTemplateSource
 export declare function fileTemplateSource(path: string): TemplateSource;
 
-// export: flattenSvgStyles
-export declare function flattenSvgStyles(svg: string): string;
-
-// export: formatDatePlaceholder
-export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
-
-// export: formatSimpleDate
-export declare function formatSimpleDate(date: Date, pattern: string): DateFormatResult;
-
 // export: HostCallContext
 export interface HostCallContext {
     signal?: AbortSignal;
-}
-
-// export: ImageEmbedder
-export declare class ImageEmbedder {
-    private readonly zip;
-    private readonly maxWidthPx;
-    private nextDocPrId;
-    private mediaIndex;
-    private embedded;
-    private diagramsEmbedded;
-    private readonly dedup;
-    constructor(zip: PizZip, opts?: ImageEmbedderOptions);
-    get embeddedCount(): number;
-    get diagramCount(): number;
-    embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
-    embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
-    private findOrCreateMedia;
-    private writeMedia;
-    private ensureRelationship;
-}
-
-// export: ImageEmbedderOptions
-export interface ImageEmbedderOptions {
-    maxWidthPx?: number;
-}
-
-// export: ImageEmbedError
-export declare class ImageEmbedError extends Error {
-    constructor(message: string);
-}
-
-// export: ImageFormat
-export type ImageFormat = "png" | "jpeg" | "gif" | "svg";
-
-// export: ImageInfo
-export interface ImageInfo {
-    format: ImageFormat;
-    ext: string;
-    mime: string;
-    width: number;
-    height: number;
 }
 
 // export: IncludeLookupOutcome
@@ -2262,39 +1683,6 @@ export interface IncludePageRef {
     title?: string;
     pageId?: string;
 }
-
-// export: inlineImageParagraph
-export declare function inlineImageParagraph(p: DrawingParams): string;
-
-// export: inspectNumberingPart
-export declare function inspectNumberingPart(zip: PizZip): {
-    abstractNumId: number;
-    numId: number;
-};
-
-// export: isSvg
-export declare function isSvg(bytes: Uint8Array): boolean;
-
-// export: LogoArgs
-export interface LogoArgs {
-    heightPx?: number;
-    widthPx?: number;
-}
-
-// export: MAX_CONTENT_WIDTH_PX
-export declare const MAX_CONTENT_WIDTH_PX = 600;
-
-// export: MAX_IMAGE_BYTES
-export declare const MAX_IMAGE_BYTES: number;
-
-// export: MAX_RASTER_AXIS_PX
-export declare const MAX_RASTER_AXIS_PX = 10000;
-
-// export: MAX_RASTER_PIXELS
-export declare const MAX_RASTER_PIXELS = 40000000;
-
-// export: mergeTrailingRegionSectPr
-export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
 // export: NumberingAllocator
 export declare class NumberingAllocator {
@@ -2342,57 +1730,8 @@ export interface PageOwner {
     email?: string;
 }
 
-// export: PagePropertyArgs
-export interface PagePropertyArgs {
-    key: string;
-    macroId?: string;
-    fallbackEnabled: boolean;
-    alternateText?: string;
-}
-
-// export: parseIncludePageArgs
-export declare function parseIncludePageArgs(raw: string): IncludePageRef | null;
-
-// export: parseLogoArgs
-export declare function parseLogoArgs(raw: string): LogoArgs;
-
-// export: parsePagePropertyArgs
-export declare function parsePagePropertyArgs(raw: string): PagePropertyArgs;
-
-// export: parseSvgSize
-export declare function parseSvgSize(source: string): TargetSize | null;
-
-// export: placeholderBase
-export declare function placeholderBase(raw: string): string;
-
-// export: PlaceholderClass
-export interface PlaceholderClass {
-    base: string;
-    status: PlaceholderStatus;
-    dependency: PlaceholderDependency;
-    reason?: string;
-}
-
-// export: PlaceholderDependency
-export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" | "spaceHomepage" | "spaceLogo" | "includePage";
-
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
-
-// export: preprocessScrollText
-export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
-
-// export: pxToEmu
-export declare function pxToEmu(px: number): number;
-
-// export: readBodySectPr
-export declare function readBodySectPr(zip: PizZip): string | undefined;
-
-// export: relsPathFor
-export declare function relsPathFor(partPath: string): string;
-
-// export: renderDiagram
-export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -2403,15 +1742,6 @@ export interface ResolveDeps {
     getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
     getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
-
-// export: resolveTargetSize
-export declare function resolveTargetSize(intrinsic: {
-    width: number;
-    height: number;
-}, wanted: {
-    widthPx?: number;
-    heightPx?: number;
-}, maxWidthPx: number): TargetSize;
 
 // export: ResvgRasterizerAssets
 export interface ResvgRasterizerAssets {
@@ -2458,12 +1788,6 @@ export interface SvgRasterizer {
     }): Promise<Uint8Array>;
 }
 
-// export: TargetSize
-export interface TargetSize {
-    widthPx: number;
-    heightPx: number;
-}
-
 // export: TemplateMeta
 export interface TemplateMeta {
     name: string;
@@ -2475,14 +1799,8 @@ export interface TemplateSource {
     getBytes(id: string): Promise<Uint8Array>;
 }
 
-// export: toDownloadFilename
-export declare function toDownloadFilename(title: string): string;
-
 // export: unsupportedAssetFetcher
 export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
-
-// export: warmDiagramRenderer
-export declare function warmDiagramRenderer(): void;
 ```
 
 ### Entry point `./scan`

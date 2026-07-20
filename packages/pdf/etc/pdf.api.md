@@ -7,21 +7,6 @@
 ### Entry point `. (browser)`
 
 ```ts
-// export: DEFAULT_PDF_ACCENT_COLOR
-export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
-
-// export: DEFAULT_PDF_WATERMARK_ANGLE
-export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
-
-// export: DEFAULT_PDF_WATERMARK_COLOR
-export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
-
-// export: DEFAULT_PDF_WATERMARK_OPACITY
-export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
-
-// export: DEFAULT_PDF_WATERMARK_SIZE
-export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
-
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -172,9 +157,6 @@ export type LinkTarget = {
     anchor: string;
 };
 
-// export: MAX_FONT_BYTES
-export declare const MAX_FONT_BYTES: number;
-
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -191,15 +173,6 @@ export interface ParsedFontFace {
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
-
-// export: PDF_ASSET_CONCURRENCY
-export declare const PDF_ASSET_CONCURRENCY = 4;
-
-// export: PDF_MAX_ASSET_BYTES
-export declare const PDF_MAX_ASSET_BYTES: number;
-
-// export: PDF_MAX_TOTAL_ASSET_BYTES
-export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -367,18 +340,6 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-}
-
-// export: PdfSettingsError
-export declare class PdfSettingsError extends Error {
-    readonly path: string;
-    readonly value: unknown;
-    readonly constraint: string;
-    constructor(options: {
-        path: string;
-        value: unknown;
-        constraint: string;
-    });
 }
 
 // export: PdfSourceBundle
@@ -601,42 +562,16 @@ export interface RunPdfExportInput {
     };
 }
 
-// export: sha256Hex
-export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
-
-// export: typstSettingsDict
-export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
-    logoPath?: string;
-}): string;
-
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
-
-// export: WEB_PACKAGED_FONT_GUIDANCE
-export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `. (default)`
 
 ```ts
-// export: DEFAULT_PDF_ACCENT_COLOR
-export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
-
-// export: DEFAULT_PDF_WATERMARK_ANGLE
-export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
-
-// export: DEFAULT_PDF_WATERMARK_COLOR
-export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
-
-// export: DEFAULT_PDF_WATERMARK_OPACITY
-export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
-
-// export: DEFAULT_PDF_WATERMARK_SIZE
-export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
-
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -787,9 +722,6 @@ export type LinkTarget = {
     anchor: string;
 };
 
-// export: MAX_FONT_BYTES
-export declare const MAX_FONT_BYTES: number;
-
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -806,15 +738,6 @@ export interface ParsedFontFace {
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
-
-// export: PDF_ASSET_CONCURRENCY
-export declare const PDF_ASSET_CONCURRENCY = 4;
-
-// export: PDF_MAX_ASSET_BYTES
-export declare const PDF_MAX_ASSET_BYTES: number;
-
-// export: PDF_MAX_TOTAL_ASSET_BYTES
-export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -982,18 +905,6 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-}
-
-// export: PdfSettingsError
-export declare class PdfSettingsError extends Error {
-    readonly path: string;
-    readonly value: unknown;
-    readonly constraint: string;
-    constructor(options: {
-        path: string;
-        value: unknown;
-        constraint: string;
-    });
 }
 
 // export: PdfSourceBundle
@@ -1216,42 +1127,16 @@ export interface RunPdfExportInput {
     };
 }
 
-// export: sha256Hex
-export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
-
-// export: typstSettingsDict
-export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
-    logoPath?: string;
-}): string;
-
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
-
-// export: WEB_PACKAGED_FONT_GUIDANCE
-export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `./browser`
 
 ```ts
-// export: DEFAULT_PDF_ACCENT_COLOR
-export declare const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
-
-// export: DEFAULT_PDF_WATERMARK_ANGLE
-export declare const DEFAULT_PDF_WATERMARK_ANGLE = -54;
-
-// export: DEFAULT_PDF_WATERMARK_COLOR
-export declare const DEFAULT_PDF_WATERMARK_COLOR = "#DE350B";
-
-// export: DEFAULT_PDF_WATERMARK_OPACITY
-export declare const DEFAULT_PDF_WATERMARK_OPACITY = 0.08;
-
-// export: DEFAULT_PDF_WATERMARK_SIZE
-export declare const DEFAULT_PDF_WATERMARK_SIZE = 96;
-
 // export: ExportBlock
 export type ExportBlock = {
     type: "heading";
@@ -1402,9 +1287,6 @@ export type LinkTarget = {
     anchor: string;
 };
 
-// export: MAX_FONT_BYTES
-export declare const MAX_FONT_BYTES: number;
-
 // export: normalizePdfLocale
 export declare function normalizePdfLocale(locale: string | undefined): {
     language: string;
@@ -1421,15 +1303,6 @@ export interface ParsedFontFace {
 
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
-
-// export: PDF_ASSET_CONCURRENCY
-export declare const PDF_ASSET_CONCURRENCY = 4;
-
-// export: PDF_MAX_ASSET_BYTES
-export declare const PDF_MAX_ASSET_BYTES: number;
-
-// export: PDF_MAX_TOTAL_ASSET_BYTES
-export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -1597,18 +1470,6 @@ export interface PdfSerializeOptions {
     profile?: PdfProfile;
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
-}
-
-// export: PdfSettingsError
-export declare class PdfSettingsError extends Error {
-    readonly path: string;
-    readonly value: unknown;
-    readonly constraint: string;
-    constructor(options: {
-        path: string;
-        value: unknown;
-        constraint: string;
-    });
 }
 
 // export: PdfSourceBundle
@@ -1831,22 +1692,11 @@ export interface RunPdfExportInput {
     };
 }
 
-// export: sha256Hex
-export declare function sha256Hex(bytes: Uint8Array): Promise<string>;
-
-// export: typstSettingsDict
-export declare function typstSettingsDict(resolved: ResolvedPdfSettings, options?: {
-    logoPath?: string;
-}): string;
-
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
 
 // export: verifyFontBytes
 export declare function verifyFontBytes(asset: FontAsset, bytes: Uint8Array): Promise<void>;
-
-// export: WEB_PACKAGED_FONT_GUIDANCE
-export declare const WEB_PACKAGED_FONT_GUIDANCE: string;
 ```
 
 ### Entry point `./internal`

@@ -19,9 +19,6 @@ export interface AttachmentMeta {
     modified?: string;
 }
 
-// export: childrenRenderer
-export declare function childrenRenderer(): MacroRenderer;
-
 // export: ConfluenceContentPort
 export interface ConfluenceContentPort {
     getPageStorage(title: string, spaceKey?: string): Promise<{
@@ -48,9 +45,6 @@ export interface ConfluenceContentPort {
     }[]>;
 }
 
-// export: cqlFromParams
-export declare function cqlFromParams(m: MacroInstance): string | undefined;
-
 // export: createRegistry
 export declare function createRegistry(renderers: readonly MacroRenderer[]): MacroRendererRegistry;
 
@@ -64,26 +58,6 @@ export interface DefaultRegistryDeps {
     parsePageProperties: ParsePagePropertiesDep;
     extractMacroBody: ExtractMacroBodyDep;
 }
-
-// export: diagramMacroRenderer
-export declare function diagramMacroRenderer(): MacroRenderer;
-
-// export: escapeCqlValue
-export declare function escapeCqlValue(value: string): string;
-
-// export: excerptIncludeRenderer
-export declare function excerptIncludeRenderer(deps: {
-    storageToBlocks: StorageToBlocksDep;
-    extractMacroBody: ExtractMacroBodyDep;
-}): MacroRenderer;
-
-// export: excerptRenderer
-export declare function excerptRenderer(): MacroRenderer;
-
-// export: exportViewFallbackRenderer
-export declare function exportViewFallbackRenderer(deps: {
-    htmlToExportBlocks: HtmlToExportBlocksDep;
-}): MacroRenderer;
 
 // export: ExportViewPort
 export interface ExportViewPort {
@@ -115,19 +89,11 @@ export type HtmlToExportBlocksDep = (html: string) => {
     notes: ExportNote[];
 };
 
-// export: includeRenderer
-export declare function includeRenderer(deps: {
-    storageToBlocks: StorageToBlocksDep;
-}): MacroRenderer;
-
 // export: isAbortError
 export declare function isAbortError(e: unknown): boolean;
 
 // export: isPortError
 export declare function isPortError(e: unknown): e is PortError;
-
-// export: issueTable
-export declare function issueTable(columns: string[], issues: JiraIssueRef[]): ExportBlock;
 
 // export: JiraIssuePort
 export interface JiraIssuePort {
@@ -147,12 +113,6 @@ export interface JiraIssueRef {
     url: string;
     fields?: Record<string, string>;
 }
-
-// export: jiraMacroRenderer
-export declare function jiraMacroRenderer(): MacroRenderer;
-
-// export: jiraStatusColor
-export declare function jiraStatusColor(categoryColor: string | undefined): string;
 
 // export: MACRO_DEGRADED
 export declare const MACRO_DEGRADED = "macro-degraded";
@@ -199,9 +159,6 @@ export interface MacroInstance {
 // export: MacroInstanceId
 export type MacroInstanceId = string;
 
-// export: macroParamText
-export declare function macroParamText(params: MacroParameter[] | undefined, name: string): string | undefined;
-
 // export: MacroRenderer
 export interface MacroRenderer {
     readonly macros: readonly string[];
@@ -245,27 +202,12 @@ export interface MacroResolutionOptions {
     live?: boolean;
 }
 
-// export: multiexcerptIncludeRenderer
-export declare function multiexcerptIncludeRenderer(deps: {
-    storageToBlocks: StorageToBlocksDep;
-    extractMacroBody: ExtractMacroBodyDep;
-}): MacroRenderer;
-
-// export: pagePropertiesReportRenderer
-export declare function pagePropertiesReportRenderer(deps: {
-    storageToBlocks: StorageToBlocksDep;
-    parsePageProperties: ParsePagePropertiesDep;
-}): MacroRenderer;
-
 // export: ParsePagePropertiesDep
 export type ParsePagePropertiesDep = (storage: string) => {
     id?: string;
     macroId?: string;
     rows: Map<string, string>;
 }[];
-
-// export: parseWidths
-export declare function parseWidths(raw: string | undefined): number[] | undefined;
 
 // export: portError
 export declare function portError(kind: PortErrorKind, message: string, opts?: {
@@ -291,12 +233,6 @@ export declare function resolveMacroBlocks(input: StorageToBlocksResult, registr
     targetEngine?: "docx" | "pdf";
 }): Promise<StorageToBlocksResult>;
 
-// export: scrollTableLayoutRenderer
-export declare function scrollTableLayoutRenderer(): MacroRenderer;
-
-// export: slugifyHeading
-export declare function slugifyHeading(text: string): string;
-
 // export: StorageToBlocksDep
 export type StorageToBlocksDep = (storage: string, opts?: {
     exporter?: "pdf" | "word";
@@ -310,6 +246,79 @@ export type StorageToBlocksDep = (storage: string, opts?: {
     notes: ExportNote[];
 };
 
+// export: UnknownBlock
+export type UnknownBlock = Extract<ExportBlock, {
+    type: "unknown";
+}>;
+```
+
+### Entry point `./internal`
+
+```ts
+// export: childrenRenderer
+export declare function childrenRenderer(): MacroRenderer;
+
+// export: cqlFromParams
+export declare function cqlFromParams(m: MacroInstance): string | undefined;
+
+// export: diagramMacroRenderer
+export declare function diagramMacroRenderer(): MacroRenderer;
+
+// export: escapeCqlValue
+export declare function escapeCqlValue(value: string): string;
+
+// export: excerptIncludeRenderer
+export declare function excerptIncludeRenderer(deps: {
+    storageToBlocks: StorageToBlocksDep;
+    extractMacroBody: ExtractMacroBodyDep;
+}): MacroRenderer;
+
+// export: excerptRenderer
+export declare function excerptRenderer(): MacroRenderer;
+
+// export: exportViewFallbackRenderer
+export declare function exportViewFallbackRenderer(deps: {
+    htmlToExportBlocks: HtmlToExportBlocksDep;
+}): MacroRenderer;
+
+// export: includeRenderer
+export declare function includeRenderer(deps: {
+    storageToBlocks: StorageToBlocksDep;
+}): MacroRenderer;
+
+// export: issueTable
+export declare function issueTable(columns: string[], issues: JiraIssueRef[]): ExportBlock;
+
+// export: jiraMacroRenderer
+export declare function jiraMacroRenderer(): MacroRenderer;
+
+// export: jiraStatusColor
+export declare function jiraStatusColor(categoryColor: string | undefined): string;
+
+// export: macroParamText
+export declare function macroParamText(params: MacroParameter[] | undefined, name: string): string | undefined;
+
+// export: multiexcerptIncludeRenderer
+export declare function multiexcerptIncludeRenderer(deps: {
+    storageToBlocks: StorageToBlocksDep;
+    extractMacroBody: ExtractMacroBodyDep;
+}): MacroRenderer;
+
+// export: pagePropertiesReportRenderer
+export declare function pagePropertiesReportRenderer(deps: {
+    storageToBlocks: StorageToBlocksDep;
+    parsePageProperties: ParsePagePropertiesDep;
+}): MacroRenderer;
+
+// export: parseWidths
+export declare function parseWidths(raw: string | undefined): number[] | undefined;
+
+// export: scrollTableLayoutRenderer
+export declare function scrollTableLayoutRenderer(): MacroRenderer;
+
+// export: slugifyHeading
+export declare function slugifyHeading(text: string): string;
+
 // export: tocFromHeadings
 export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
     minLevel?: number;
@@ -318,9 +327,4 @@ export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
 
 // export: tocRenderer
 export declare function tocRenderer(): MacroRenderer;
-
-// export: UnknownBlock
-export type UnknownBlock = Extract<ExportBlock, {
-    type: "unknown";
-}>;
 ```

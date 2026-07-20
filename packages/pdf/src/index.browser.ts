@@ -1,27 +1,81 @@
 /**
- * Browser entry point for `@atlcli/pdf` (spec 009).
+ * Browser entry point for `@atlcli/pdf` (spec 009 — frozen v1 surface).
  *
- * Trimmed to the documented host-facing seams: the export runner
- * (`runPdfExport`/`PdfExportEnv`), the compile port contract
- * (`PdfCompilePort`/`PdfCompileResult`/`PdfCompileContext` +
- * `formatPdfCompilerDiagnostics`), the runtime asset manifest
- * (`PDF_RUNTIME_ASSETS`), the spec-007/008 host seams — template settings
- * (`resolvePdfSettings`/`normalizePdfLocale`), font intake
- * (`parseFontMeta`/`verifyFontAsset`), pre-compile asset resolution
- * (`preparePdfDocument`) and output validation (`validatePdfOutput`) — and
- * the shared types the seams transitively need (`PdfSourceBundle`,
- * `PdfCompilerDiagnostic`, `PdfProfile`, `PdfThemeOptions`,
- * `PdfExportMetadata`, `PdfAssetResolver`, …).
- *
- * Rendering internals (escape/serialize/theme and the raw Typst template)
- * stay reachable via the explicit `./template` subpath and the non-frozen
- * `./internal` subpath.
+ * EXPLICIT named re-exports of exactly the documented v1 seams (see
+ * `docs/reference/export-api.md`) plus the types they transitively require
+ * (the closure guard, `scripts/api-closure.ts`, fails on any
+ * reachable-but-unexported gap). A blanket `export *` is deliberately NOT
+ * used: it would freeze implementation helpers (`sha256Hex`,
+ * `typstSettingsDict`, the `DEFAULT_PDF_*` consts, …) into the stable 1.0.0
+ * surface. Rendering internals (escape/serialize/theme, the raw Typst
+ * template) stay reachable via `./internal` and `./template`.
  */
-export * from "./compiler.js";
-export * from "./fonts.js";
-export * from "./prepare.js";
-export * from "./run-export.js";
-export * from "./runtime-assets.js";
-export * from "./settings.js";
-export * from "./validate.js";
-export type * from "./types.js";
+
+// --- Export runner (run-export.ts) ---
+export { runPdfExport, normalizePdfLocale, PdfExportError } from "./run-export.js";
+export type {
+  PdfExportEnv,
+  PdfOutputSink,
+  PdfExportPhase,
+  PdfExportErrorPhase,
+  RunPdfExportInput,
+} from "./run-export.js";
+
+// --- Compile port contract (compiler.ts) ---
+export { formatPdfCompilerDiagnostics } from "./compiler.js";
+export type { PdfCompilePort, PdfCompileResult, PdfCompileContext } from "./compiler.js";
+
+// --- Pre-compile asset resolution (prepare.ts) ---
+export { preparePdfDocument } from "./prepare.js";
+export type { PreparePdfOptions } from "./prepare.js";
+
+// --- Template settings resolution (settings.ts, spec 007) ---
+export { resolvePdfSettings } from "./settings.js";
+export type { ResolvedPdfSettings, ResolvedPdfWatermark, ResolvedPdfLogo } from "./settings.js";
+
+// --- Font intake (fonts.ts, spec 007/008) ---
+export { parseFontMeta, verifyFontBytes } from "./fonts.js";
+export type {
+  ParsedFontFace,
+  FontParseError,
+  FontVerificationError,
+  FontParseErrorReason,
+} from "./fonts.js";
+
+// --- Output validation (validate.ts) ---
+export { validatePdfOutput } from "./validate.js";
+export type { PdfOutputInspection } from "./validate.js";
+
+// --- Runtime asset manifest (runtime-assets.ts) ---
+export { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
+export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
+
+// --- Shared document/PDF model (types.ts) ---
+export type {
+  PdfExportMetadata,
+  PdfAssetRef,
+  PdfResolvedAsset,
+  PdfAssetResolver,
+  PreparedPdfAsset,
+  PreparedPdfBlock,
+  PreparedPdfDocument,
+  PdfSourceMapEntry,
+  PdfSourceBundle,
+  PdfProfile,
+  PdfTableCellTextMode,
+  PdfThemeOptions,
+  PdfTheme,
+  PdfWatermarkSettings,
+  PdfLogoAsset,
+  PdfTemplateSettings,
+  PdfSerializeOptions,
+  PdfExportTimings,
+  PdfExportReport,
+  PdfCompilerDiagnostic,
+  FontAsset,
+  FontSource,
+} from "./types.js";
+
+// --- Shared document model (owned by @atlcli/confluence, surfaced here so PDF
+// consumers get it from one barrel — the same set types.ts re-exports). ---
+export type { ExportBlock, ExportNote, InlineNode, LinkTarget } from "./types.js";
