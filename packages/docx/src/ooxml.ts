@@ -12,7 +12,7 @@
  * `AtlcliCode` paragraph style; callouts are self-styled single-cell tables.
  */
 import type { CaptionKind, ExportNote } from "@atlcli/confluence";
-import { normalizeExportColor } from "@atlcli/confluence";
+import { isSafeLinkScheme, normalizeExportColor } from "@atlcli/confluence";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
@@ -232,25 +232,20 @@ export function escapeFieldArgument(value: string): string {
 }
 
 /**
- * Defense-in-depth scheme allowlist for {@link hyperlinkField} (spec 004).
- * Mirrors `isSafeLinkScheme` in `@atlcli/confluence`'s html-to-blocks: control
- * characters ANYWHERE in the URL are stripped before scheme detection (a URL
- * parser strips C0 controls and space, so `java\tscript:` IS `javascript:`);
- * scheme-less (relative) URLs and `http(s):`/`mailto:` pass, everything else
- * fails. The converters upstream already enforce this — the re-check here means
- * a future caller (or a bypassed converter) can never turn `javascript:`/`file:`
- * into a live Word HYPERLINK field.
+ * Defense-in-depth scheme allowlist for {@link hyperlinkField}.
+ *
+ * A THIN WRAPPER over the canonical policy in `@atlcli/confluence`'s
+ * `link-safety` module (spec 011) — it used to be a hand-copied duplicate of
+ * `isSafeLinkScheme`, which meant two policies that could silently drift apart.
+ * The name is kept because callers and the published API surface depend on it.
+ *
+ * The converters upstream already degrade unsafe targets to plain text and emit
+ * an `unsafe-link-skipped` note; this re-check means a future caller (or a
+ * bypassed converter) can still never turn `javascript:`/`file:` into a live
+ * Word HYPERLINK field.
  */
 export function isSafeHyperlinkUrl(url: string): boolean {
-  // eslint-disable-next-line no-control-regex
-  const normalized = url.replace(/[\u0000-\u0020\u007F]/g, "").toLowerCase();
-  if (normalized === "") return false;
-  if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return true; // relative
-  return (
-    normalized.startsWith("http:") ||
-    normalized.startsWith("https:") ||
-    normalized.startsWith("mailto:")
-  );
+  return isSafeLinkScheme(url);
 }
 
 /**

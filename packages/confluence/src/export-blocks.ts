@@ -26,6 +26,7 @@
 
 import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
+import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -345,6 +346,9 @@ export const EXPORT_NOTE_CODES = [
   "auth-error",
   "remote-error",
   "unexpected-error",
+  // Security hardening (spec 011)
+  "unsafe-link-skipped",
+  "template-field-instruction-risk",
   // Generic fallback used by scope/CLI error paths
   "other",
   // DOCX placeholder resolver / export pipeline (@atlcli/docx)
@@ -820,6 +824,11 @@ export function storageToBlocks(
   const nodes = parseXml(storage, options?.parseBudget ?? DEFAULT_STORAGE_PARSE_BUDGET);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
+}
+
+/** Flatten an inline list to its plain text (for note messages). */
+function inlineText(nodes: InlineNode[]): string {
+  return nodes.map((n) => (n.type === "text" ? n.text : "")).join("");
 }
 
 /** True if the inline list has any renderable content (not just whitespace). */
@@ -1852,13 +1861,23 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "a") {
     const href = el.attrs.href ?? "";
     const content = walkInline(el.children, ctx);
-    return [
-      {
-        type: "link",
-        target: { kind: "external", href },
-        content: hasMeaningfulInline(content) ? content : [{ type: "text", text: href }],
-      },
-    ];
+    const display = hasMeaningfulInline(content) ? content : [{ type: "text" as const, text: href }];
+    // Shared scheme policy (spec 011). Storage `<a href>` used to flow verbatim
+    // into a live Word HYPERLINK field / Typst #link(); the DOCX and PDF
+    // serializers each re-check as defense in depth, but degrading HERE is what
+    // makes the two engines agree and what produces a note the user can see.
+    const verdict = sanitizeLinkHref(href);
+    if (!verdict.safe) {
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "warning",
+          code: UNSAFE_LINK_NOTE_CODE,
+          message: unsafeLinkMessage(verdict, inlineText(display)),
+        })
+      );
+      return display;
+    }
+    return [{ type: "link", target: { kind: "external", href }, content: display }];
   }
 
   if (name === "ac:link") return walkAcLink(el, ctx);

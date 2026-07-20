@@ -219,6 +219,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: SvgRasterizer
@@ -475,6 +476,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: SvgRasterizer
@@ -715,6 +717,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: SvgRasterizer
@@ -843,6 +846,22 @@ export declare function textBoxTitlePara(text: string): string;
 ### Entry point `./internal`
 
 ```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+}
+
+// export: assertArchiveBudget
+export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
+
+// export: assertNoActiveContent
+export declare function assertNoActiveContent(zip: PizZip): void;
+
+// export: assertSafeDocxEntryName
+export declare function assertSafeDocxEntryName(name: string): void;
+
 // export: bookmarkEnd
 export declare function bookmarkEnd(id: number): string;
 
@@ -902,6 +921,9 @@ export declare function codeLineParagraph(tokens: {
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
 
+// export: collectRiskyFieldInstructions
+export declare function collectRiskyFieldInstructions(xml: string): string[];
+
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
 
@@ -959,11 +981,18 @@ export declare function dividerParagraph(): string;
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];
 
+// export: DOCX_ARCHIVE_BUDGET
+export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
-    readonly kind: "not-zip" | "not-docx" | "too-large";
-    constructor(kind: "not-zip" | "not-docx" | "too-large", message: string);
+    readonly kind: DocxErrorKind;
+    readonly path?: string | undefined;
+    constructor(kind: DocxErrorKind, message: string, path?: string | undefined);
 }
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "active-content";
 
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
@@ -1464,6 +1493,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: scanTemplate
@@ -1542,7 +1572,7 @@ export declare function toLandscapeSectPr(baseSectPr: string): string;
 export declare function toPortraitSectPr(baseSectPr: string): string;
 
 // export: unzipDocx
-export declare function unzipDocx(bytes: Uint8Array): PizZip;
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
 ```
 
 ### Entry point `./node`
@@ -1779,6 +1809,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: SvgRasterizer
@@ -1807,17 +1838,43 @@ export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
 ### Entry point `./scan`
 
 ```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+}
+
+// export: assertArchiveBudget
+export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
+
+// export: assertNoActiveContent
+export declare function assertNoActiveContent(zip: PizZip): void;
+
+// export: assertSafeDocxEntryName
+export declare function assertSafeDocxEntryName(name: string): void;
+
+// export: collectRiskyFieldInstructions
+export declare function collectRiskyFieldInstructions(xml: string): string[];
+
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
 
 // export: documentPartNames
 export declare function documentPartNames(zip: PizZip): string[];
 
+// export: DOCX_ARCHIVE_BUDGET
+export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
-    readonly kind: "not-zip" | "not-docx" | "too-large";
-    constructor(kind: "not-zip" | "not-docx" | "too-large", message: string);
+    readonly kind: DocxErrorKind;
+    readonly path?: string | undefined;
+    constructor(kind: DocxErrorKind, message: string, path?: string | undefined);
 }
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "active-content";
 
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
@@ -1842,6 +1899,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    riskyFieldInstructions: string[];
 }
 
 // export: scanTemplate
@@ -1851,7 +1909,7 @@ export declare function scanTemplate(bytes: Uint8Array): ScanResult;
 export declare function scanZip(zip: PizZip): ScanResult;
 
 // export: unzipDocx
-export declare function unzipDocx(bytes: Uint8Array): PizZip;
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
 ```
 
 ### Entry point `./vite`

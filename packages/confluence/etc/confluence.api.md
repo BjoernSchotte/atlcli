@@ -497,6 +497,9 @@ export declare function createInOrderLimiter(limit: number): <T>(task: () => Pro
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_STORAGE_PARSE_BUDGET
+export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -572,6 +575,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "auth-error",
     "remote-error",
     "unexpected-error",
+    "unsafe-link-skipped",
+    "template-field-instruction-risk",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -940,6 +945,16 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LinkSanitizeResult
+export type LinkSanitizeResult = {
+    safe: true;
+    href: string;
+} | {
+    safe: false;
+    reason: UnsafeLinkReason;
+    scheme?: string;
+};
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -1022,6 +1037,9 @@ export declare function normalizeExportColor(value: string | undefined): string 
 // export: normalizeLabelFilter
 export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
+// export: normalizeLinkHref
+export declare function normalizeLinkHref(href: string): string;
+
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
@@ -1086,7 +1104,7 @@ export declare class PaginationLoopError extends Error {
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
 // export: parseXml
-export declare function parseXml(input: string): XmlNode[];
+export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -1097,8 +1115,18 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: SAFE_LINK_SCHEMES
+export declare const SAFE_LINK_SCHEMES: readonly [
+    "http:",
+    "https:",
+    "mailto:"
+];
+
 // export: sanitizeAnchorId
 export declare function sanitizeAnchorId(rawKey: string): string;
+
+// export: sanitizeLinkHref
+export declare function sanitizeLinkHref(href: string): LinkSanitizeResult;
 
 // export: SearchResults
 export interface SearchResults {
@@ -1128,6 +1156,22 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: StorageParseBudget
+export interface StorageParseBudget {
+    maxNodes: number;
+    maxDepth: number;
+    maxTextLength: number;
+}
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: StorageParseErrorKind
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
 
@@ -1142,6 +1186,7 @@ export interface StorageToBlocksOptions {
         title?: string;
         url?: string;
     };
+    parseBudget?: StorageParseBudget;
 }
 
 // export: StorageToBlocksResult
@@ -1316,6 +1361,17 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UNSAFE_LINK_NOTE_CODE
+export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
+
+// export: unsafeLinkMessage
+export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
+    safe: false;
+}>, text: string): string;
+
+// export: UnsafeLinkReason
+export type UnsafeLinkReason = "empty" | "blocked-scheme";
 
 // export: UserInfo
 export interface UserInfo {
@@ -1849,6 +1905,9 @@ export declare function createInOrderLimiter(limit: number): <T>(task: () => Pro
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_STORAGE_PARSE_BUDGET
+export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -1924,6 +1983,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "auth-error",
     "remote-error",
     "unexpected-error",
+    "unsafe-link-skipped",
+    "template-field-instruction-risk",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -2292,6 +2353,16 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LinkSanitizeResult
+export type LinkSanitizeResult = {
+    safe: true;
+    href: string;
+} | {
+    safe: false;
+    reason: UnsafeLinkReason;
+    scheme?: string;
+};
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -2374,6 +2445,9 @@ export declare function normalizeExportColor(value: string | undefined): string 
 // export: normalizeLabelFilter
 export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
+// export: normalizeLinkHref
+export declare function normalizeLinkHref(href: string): string;
+
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
@@ -2438,7 +2512,7 @@ export declare class PaginationLoopError extends Error {
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
 // export: parseXml
-export declare function parseXml(input: string): XmlNode[];
+export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -2449,8 +2523,18 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: SAFE_LINK_SCHEMES
+export declare const SAFE_LINK_SCHEMES: readonly [
+    "http:",
+    "https:",
+    "mailto:"
+];
+
 // export: sanitizeAnchorId
 export declare function sanitizeAnchorId(rawKey: string): string;
+
+// export: sanitizeLinkHref
+export declare function sanitizeLinkHref(href: string): LinkSanitizeResult;
 
 // export: SearchResults
 export interface SearchResults {
@@ -2480,6 +2564,22 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: StorageParseBudget
+export interface StorageParseBudget {
+    maxNodes: number;
+    maxDepth: number;
+    maxTextLength: number;
+}
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: StorageParseErrorKind
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
 
@@ -2494,6 +2594,7 @@ export interface StorageToBlocksOptions {
         title?: string;
         url?: string;
     };
+    parseBudget?: StorageParseBudget;
 }
 
 // export: StorageToBlocksResult
@@ -2668,6 +2769,17 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UNSAFE_LINK_NOTE_CODE
+export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
+
+// export: unsafeLinkMessage
+export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
+    safe: false;
+}>, text: string): string;
+
+// export: UnsafeLinkReason
+export type UnsafeLinkReason = "empty" | "blocked-scheme";
 
 // export: UserInfo
 export interface UserInfo {
@@ -3201,6 +3313,9 @@ export declare function createInOrderLimiter(limit: number): <T>(task: () => Pro
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_STORAGE_PARSE_BUDGET
+export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -3276,6 +3391,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "auth-error",
     "remote-error",
     "unexpected-error",
+    "unsafe-link-skipped",
+    "template-field-instruction-risk",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -3644,6 +3761,16 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LinkSanitizeResult
+export type LinkSanitizeResult = {
+    safe: true;
+    href: string;
+} | {
+    safe: false;
+    reason: UnsafeLinkReason;
+    scheme?: string;
+};
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -3726,6 +3853,9 @@ export declare function normalizeExportColor(value: string | undefined): string 
 // export: normalizeLabelFilter
 export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
+// export: normalizeLinkHref
+export declare function normalizeLinkHref(href: string): string;
+
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
@@ -3790,7 +3920,7 @@ export declare class PaginationLoopError extends Error {
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
 // export: parseXml
-export declare function parseXml(input: string): XmlNode[];
+export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -3801,8 +3931,18 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: SAFE_LINK_SCHEMES
+export declare const SAFE_LINK_SCHEMES: readonly [
+    "http:",
+    "https:",
+    "mailto:"
+];
+
 // export: sanitizeAnchorId
 export declare function sanitizeAnchorId(rawKey: string): string;
+
+// export: sanitizeLinkHref
+export declare function sanitizeLinkHref(href: string): LinkSanitizeResult;
 
 // export: SearchResults
 export interface SearchResults {
@@ -3832,6 +3972,22 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: StorageParseBudget
+export interface StorageParseBudget {
+    maxNodes: number;
+    maxDepth: number;
+    maxTextLength: number;
+}
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: StorageParseErrorKind
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
 
@@ -3846,6 +4002,7 @@ export interface StorageToBlocksOptions {
         title?: string;
         url?: string;
     };
+    parseBudget?: StorageParseBudget;
 }
 
 // export: StorageToBlocksResult
@@ -4020,6 +4177,17 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UNSAFE_LINK_NOTE_CODE
+export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
+
+// export: unsafeLinkMessage
+export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
+    safe: false;
+}>, text: string): string;
+
+// export: UnsafeLinkReason
+export type UnsafeLinkReason = "empty" | "blocked-scheme";
 
 // export: UserInfo
 export interface UserInfo {
@@ -4726,6 +4894,9 @@ export declare function createWebhookServer(port: number, options?: Partial<Webh
 // export: CURRENT_SCHEMA_VERSION
 export declare const CURRENT_SCHEMA_VERSION = 2;
 
+// export: DEFAULT_STORAGE_PARSE_BUDGET
+export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
+
 // export: DEFAULT_USER_CACHE_TTL_MS
 export declare const DEFAULT_USER_CACHE_TTL_MS: number;
 
@@ -4867,6 +5038,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "auth-error",
     "remote-error",
     "unexpected-error",
+    "unsafe-link-skipped",
+    "template-field-instruction-risk",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -5807,7 +5980,7 @@ export declare function parseScope(flags: Record<string, string | boolean | stri
 export declare function parseStorageLinks(storage: string): StorageLink[];
 
 // export: parseXml
-export declare function parseXml(input: string): XmlNode[];
+export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
 
 // export: PollChangeEvent
 export interface PollChangeEvent {
@@ -6071,6 +6244,22 @@ export interface StorageLink {
     raw: string;
 }
 
+// export: StorageParseBudget
+export interface StorageParseBudget {
+    maxNodes: number;
+    maxDepth: number;
+    maxTextLength: number;
+}
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: StorageParseErrorKind
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
 
@@ -6085,6 +6274,7 @@ export interface StorageToBlocksOptions {
         title?: string;
         url?: string;
     };
+    parseBudget?: StorageParseBudget;
 }
 
 // export: StorageToBlocksResult
@@ -6978,6 +7168,9 @@ export declare function createInOrderLimiter(limit: number): <T>(task: () => Pro
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_STORAGE_PARSE_BUDGET
+export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
+
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
@@ -7053,6 +7246,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "auth-error",
     "remote-error",
     "unexpected-error",
+    "unsafe-link-skipped",
+    "template-field-instruction-risk",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -7421,6 +7616,16 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LinkSanitizeResult
+export type LinkSanitizeResult = {
+    safe: true;
+    href: string;
+} | {
+    safe: false;
+    reason: UnsafeLinkReason;
+    scheme?: string;
+};
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -7503,6 +7708,9 @@ export declare function normalizeExportColor(value: string | undefined): string 
 // export: normalizeLabelFilter
 export declare function normalizeLabelFilter(filter: LabelFilter | undefined): LabelFilter | undefined;
 
+// export: normalizeLinkHref
+export declare function normalizeLinkHref(href: string): string;
+
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
@@ -7567,7 +7775,7 @@ export declare class PaginationLoopError extends Error {
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
 // export: parseXml
-export declare function parseXml(input: string): XmlNode[];
+export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -7578,8 +7786,18 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
+// export: SAFE_LINK_SCHEMES
+export declare const SAFE_LINK_SCHEMES: readonly [
+    "http:",
+    "https:",
+    "mailto:"
+];
+
 // export: sanitizeAnchorId
 export declare function sanitizeAnchorId(rawKey: string): string;
+
+// export: sanitizeLinkHref
+export declare function sanitizeLinkHref(href: string): LinkSanitizeResult;
 
 // export: SearchResults
 export interface SearchResults {
@@ -7609,6 +7827,22 @@ export type SpaceIcon = {
     isDefault?: boolean;
 };
 
+// export: StorageParseBudget
+export interface StorageParseBudget {
+    maxNodes: number;
+    maxDepth: number;
+    maxTextLength: number;
+}
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: StorageParseErrorKind
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
 // export: storageToBlocks
 export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
 
@@ -7623,6 +7857,7 @@ export interface StorageToBlocksOptions {
         title?: string;
         url?: string;
     };
+    parseBudget?: StorageParseBudget;
 }
 
 // export: StorageToBlocksResult
@@ -7797,6 +8032,17 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UNSAFE_LINK_NOTE_CODE
+export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
+
+// export: unsafeLinkMessage
+export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
+    safe: false;
+}>, text: string): string;
+
+// export: UnsafeLinkReason
+export type UnsafeLinkReason = "empty" | "blocked-scheme";
 
 // export: UserInfo
 export interface UserInfo {

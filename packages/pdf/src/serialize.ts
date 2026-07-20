@@ -1,5 +1,10 @@
 import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
-import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
+import {
+  UNSAFE_LINK_NOTE_CODE,
+  computeHeadingOffset,
+  isSafeLinkScheme,
+  uniqueAnchorId,
+} from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -234,6 +239,13 @@ function tableColumns(
 function resolveLink(target: LinkTarget, labels: Map<string, string>): string | null {
   switch (target.kind) {
     case "external":
+      // Shared scheme policy (spec 011): this used to be a third, independent
+      // `/^(https?:|mailto:)/i` test that disagreed with the DOCX and walker
+      // checks (it never stripped control characters). It now delegates, so the
+      // two engines cannot drift. PDF additionally requires an ABSOLUTE target
+      // — a relative href the policy allows has no base URL to resolve against
+      // in a standalone document, so it degrades to `pdf-link-unresolved`.
+      if (!isSafeLinkScheme(target.href)) return null;
       return /^(https?:|mailto:)/i.test(target.href) ? target.href : null;
     case "anchor":
       return labels.get(target.anchor) ? `<${labels.get(target.anchor)}>` : null;
@@ -583,10 +595,18 @@ function serializeInline(
           const content = serializeInline(node.content, labels, notes, context);
           const href = resolveLink(node.target, labels);
           if (!href) {
+            // Distinguish "blocked by the shared scheme policy" from "merely
+            // not representable in a standalone PDF" (spec 011): the first is a
+            // security decision the user should see as a warning, the second is
+            // an informational limitation.
+            const blocked =
+              node.target.kind === "external" && !isSafeLinkScheme(node.target.href);
             notes.push({
-              level: "info",
-              code: "pdf-link-unresolved",
-              message: `Link target could not be represented in PDF: ${inlinePlainText(node.content) || "link"}`,
+              level: blocked ? "warning" : "info",
+              code: blocked ? UNSAFE_LINK_NOTE_CODE : "pdf-link-unresolved",
+              message: blocked
+                ? `A link used a blocked scheme and was kept as plain text without a clickable target: ${inlinePlainText(node.content) || "link"}`
+                : `Link target could not be represented in PDF: ${inlinePlainText(node.content) || "link"}`,
             });
             return content;
           }
