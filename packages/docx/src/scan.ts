@@ -51,6 +51,38 @@ export interface ScanResult {
   parts: string[];
   /** True when the template contains a `$scroll.content` insertion point. */
   hasContentPlaceholder: boolean;
+  /**
+   * Style names referenced by `STYLEREF` fields anywhere in the template
+   * (spec 006 G1). Inventory ONLY — the scan records the names; it does NOT
+   * decide pass/fail, because it runs before the page body is serialized and
+   * so cannot know which heading styles this export will actually emit after
+   * promotion. `exportDocx` validates this against the emitted styles.
+   */
+  stylerefStyleNames: string[];
+}
+
+/**
+ * Collect the style names referenced by `STYLEREF` fields in one part's XML
+ * (spec 006 G1). Covers both `w:fldSimple` (instruction in an attribute) and
+ * complex fields (`w:instrText`), reassembling instruction text split across
+ * multiple `w:instrText` runs before matching. Diagnostics-only — never
+ * mutates anything. Quotes may be literal or XML-escaped (`&quot;`).
+ */
+export function collectStylerefFields(xml: string): string[] {
+  const names: string[] = [];
+  const decode = (s: string): string =>
+    s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
+  const matchRefs = (instr: string): void => {
+    for (const m of decode(instr).matchAll(/STYLEREF\s+"([^"]+)"/gi)) names.push(m[1].trim());
+  };
+  for (const m of xml.matchAll(/<w:fldSimple\b[^>]*\bw:instr="([^"]*)"/g)) matchRefs(m[1]);
+  // Reassemble run-split complex-field instruction text: concatenate adjacent
+  // instrText runs so ` STYL` + `EREF "…"` split across runs still matches.
+  const instrConcat = [...xml.matchAll(/<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g)]
+    .map((m) => m[1])
+    .join("");
+  matchRefs(instrConcat);
+  return names;
 }
 
 /**
@@ -121,9 +153,13 @@ export function scanZip(zip: PizZip): ScanResult {
   const parts = documentPartNames(zip);
   const byBase = new Map<string, ScanHit>();
   let hasContent = false;
+  const stylerefStyleNames: string[] = [];
 
   for (const part of parts) {
     const xml = zip.file(part)?.asText() ?? "";
+    for (const name of collectStylerefFields(xml)) {
+      if (!stylerefStyleNames.includes(name)) stylerefStyleNames.push(name);
+    }
     // Walk every paragraph the replacement will touch — including text-box
     // (mc:Choice + mc:Fallback) and drawing-adjacent occurrences — so the panel's
     // supported-list matches what preprocessScrollText actually resolves.
@@ -167,7 +203,7 @@ export function scanZip(zip: PizZip): ScanResult {
   unsupported.sort(byName);
   never.sort(byName);
 
-  return { supported, unsupported, never, parts, hasContentPlaceholder: hasContent };
+  return { supported, unsupported, never, parts, hasContentPlaceholder: hasContent, stylerefStyleNames };
 }
 
 /** Validate + unzip + scan uploaded template bytes in one call (Task 3). */

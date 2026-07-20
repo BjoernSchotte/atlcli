@@ -172,6 +172,8 @@ interface InternalContext extends SerializeContext {
    * bookmark names when two raw anchor names sanitize to the same id.
    */
   bookmarks: { next: number; used: Set<string> };
+  /** Distinct heading style ids emitted so far (spec 006 G1 STYLEREF check). */
+  emittedHeadingStyles: Set<string>;
   /**
    * The layout container the current block renders inside (spec 003 C6/C5).
    * `pageBreak`/`orientation` render at `"body"` scope (list items inherit it —
@@ -185,6 +187,13 @@ interface InternalContext extends SerializeContext {
 export interface SerializeResult {
   xml: string;
   notes: ExportNote[];
+  /**
+   * The distinct heading paragraph style ids the body actually emitted
+   * (spec 006 G1). Used to validate STYLEREF fields against the styles this
+   * particular export produced after promotion — a template field can name a
+   * style no heading in THIS export ends up using.
+   */
+  headingStyleIds: string[];
 }
 
 /** Twips of indent per list nesting level. */
@@ -374,13 +383,18 @@ export async function serializeBlocks(
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
     bookmarks: { next: 1, used: new Set() },
+    emittedHeadingStyles: new Set<string>(),
     container: "body",
   };
   prefetchBlocks(blocks, internal);
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
-  return { xml: coalesceSectPrParagraphs(parts.join("")), notes };
+  return {
+    xml: coalesceSectPrParagraphs(parts.join("")),
+    notes,
+    headingStyleIds: [...internal.emittedHeadingStyles],
+  };
 }
 
 /**
@@ -426,8 +440,10 @@ async function serializeBlock(
       // E2E finding: empty TOC on custom-heading-style templates). Outline levels
       // are 0-based (Heading 1 → 0), clamped to the OOXML 0–8 range.
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
+      const headingStyleId = resolveHeadingStyleId(ctx.styleNames, styleLevel);
+      ctx.emittedHeadingStyles.add(headingStyleId);
       const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
-        styleId: resolveHeadingStyleId(ctx.styleNames, styleLevel),
+        styleId: headingStyleId,
         extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
       // An explicit anchor (chapter start / in-page heading anchor, spec 002)

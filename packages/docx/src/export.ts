@@ -439,6 +439,11 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const flowNotes: ExportNote[] = [];
   if (captionLocale.note) flowNotes.push(captionLocale.note);
   if (tableStyleResolution.note) flowNotes.push(tableStyleResolution.note);
+  // STYLEREF verification (spec 006 G1): validate each template STYLEREF field's
+  // referenced style name against the styles this export actually emitted —
+  // distinguishing "style not in the template at all" from "defined but unused
+  // after promotion in this export". Diagnostics only; no behavior change.
+  flowNotes.push(...validateStylerefFields(scan.stylerefStyleNames, styleNames, body.headingStyleIds));
 
   // 3b. Logo pass, embed leg: replace each $scroll.spacelogo /
   //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
@@ -588,6 +593,43 @@ function resolveTableStyle(
     };
   }
   return { tableStyle: { source: "template", styleId: id } };
+}
+
+/**
+ * Validate STYLEREF fields against the heading styles this export emitted
+ * (spec 006 G1). Two distinct diagnostics:
+ *  - `styleref-style-not-in-template` (info): the referenced style name is not
+ *    defined in `word/styles.xml` at all (builtin-fallback / localized-name /
+ *    typo case) — the field resolves via Word's own name lookup or blank.
+ *  - `styleref-style-unused-in-export` (warning): the style IS defined but no
+ *    heading in THIS export carries it (heading promotion shifted every
+ *    heading's effective level), so the field resolves to the previous
+ *    section's text or blank rather than the intended chapter.
+ */
+function validateStylerefFields(
+  referencedNames: string[],
+  styleNames: Map<string, string>,
+  emittedHeadingStyleIds: string[]
+): ExportNote[] {
+  const notes: ExportNote[] = [];
+  const emitted = new Set(emittedHeadingStyleIds);
+  for (const name of referencedNames) {
+    const id = styleNames.get(name.toLowerCase());
+    if (!id) {
+      notes.push({
+        level: "info",
+        code: "styleref-style-not-in-template",
+        message: `A STYLEREF field references the style "${name}", which is not defined in the template; the running header relies on Word's own name resolution.`,
+      });
+    } else if (!emitted.has(id)) {
+      notes.push({
+        level: "warning",
+        code: "styleref-style-unused-in-export",
+        message: `A STYLEREF field references the style "${name}", but no heading in this export uses it (heading promotion), so the running header may show a previous chapter or be blank.`,
+      });
+    }
+  }
+  return notes;
 }
 
 /** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
