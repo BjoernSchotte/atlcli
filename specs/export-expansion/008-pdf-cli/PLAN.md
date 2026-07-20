@@ -1,6 +1,6 @@
 # 008 — PDF CLI & headless export
 
-Status: Plan. Covers Lane K of `specs/export-expansion/UMSETZUNGSPLAN.md`
+Status: **Implemented**, 2026-07-20 (PR #53). Merged to `main`; gated PDF E2E verified against DOCSY. Includes the deferred 002 PDF-CLI hand-off. Covers Lane K of `specs/export-expansion/UMSETZUNGSPLAN.md`
 (T3.1–T3.5): the PDF compile port for Bun, `atlcli wiki export --format pdf`,
 scope/label flags for both engines, CI/CD developer experience, and the
 preparation to make the ts DOCX engine the CLI default.
