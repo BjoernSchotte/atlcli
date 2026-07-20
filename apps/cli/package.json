@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
+    "@atlcli/export-node": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/pdf": "workspace:*",

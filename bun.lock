@@ -46,6 +46,7 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-node": "workspace:*",
         "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
@@ -133,6 +134,17 @@
       "version": "0.6.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
+      },
+    },
+    "packages/export-node": {
+      "name": "@atlcli/export-node",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
+        "@atlcli/core": "workspace:*",
+        "@atlcli/docx": "workspace:*",
+        "@atlcli/pdf": "workspace:*",
+        "@atlcli/pdf-compiler-browser": "workspace:*",
       },
     },
     "packages/jira": {
@@ -245,6 +257,8 @@
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
 
     "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
+
+    "@atlcli/export-node": ["@atlcli/export-node@workspace:packages/export-node"],
 
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
 
