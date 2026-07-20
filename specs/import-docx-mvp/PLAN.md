@@ -4,6 +4,8 @@ Status: **Planned**
 
 Planned at: `63b02ac` (`feat(publishing): packaging readiness & API guards (spec 009) (#50)`), 2026-07-20
 
+Amended at: `18f6f1e`, 2026-07-20 — deterministic create-only title-conflict handling and the post-MVP import capability DAG were added after the 2026 Marketplace/JTBD review.
+
 Priority: **P1**
 
 Estimated effort: **L / 6–9 implementation weeks plus optional community-operated Data Center validation**
@@ -45,6 +47,7 @@ The MVP is successful only when all of the following are true:
 11. Users may explicitly retain the byte-identical input DOCX as a page attachment. Visible reference is a separate exclusive choice: `none` by default, a link section at the page footer, or a page-level comment linking the attachment. The choice is previewed, digest-bound, read back, and never silently degraded.
 12. The built CLI passes an automated live E2E against profile `mayflower`, space `DOCSY`, reads the page back, exports it to DOCX with comments, reimports that DOCX, proves the semantic/comment roundtrip, source-attachment behavior, and removes every created resource in `finally` cleanup.
 13. Data Center ships as **implemented · contract-tested · not project-live-certified**: exact REST v1/Storage/auth/context-path/attachment/comment/readback/rollback contracts are automated, while the reusable live harness remains optional for community-operated DC environments and does not block release.
+14. Before approval, the target is checked for title collisions. The default `fail` policy blocks with exact conflicting content evidence; explicit `rename` deterministically selects and previews one collision-free title. Neither policy mutates, replaces, appends to, or deletes an existing page, and a post-approval race never triggers an unreviewed rename.
 
 The feature is **create-only** in this MVP. Updating, merging, or replacing an existing page is out of scope because it adds content-diff, comment-reanchoring, attachment-collision, and rollback semantics that deserve a separate plan.
 
@@ -219,6 +222,76 @@ The source attachment is not an `ImportAsset`: it has the distinct role `origina
 If source retention or a selected visible reference cannot be completed, the requested import contract is unfulfilled: fail, roll back the newly created page by default, and never report a successful import without the requested source artifact/reference. Upload/readback must prove byte equality by downloading within configured budgets and comparing SHA-256. The review explicitly warns that the unchanged original can retain comments, tracked changes, metadata, external links, and safe-but-unsupported embedded content; page permissions govern who can download it. Source retention never bypasses macro/package/relationship safety rejection.
 
 A generated `comment` reference has provenance role `source-reference`, not `document-comment`. Its complete thread, including later replies, is excluded from Word-comment export and document-comment counts by authoritative page-manifest/comment-property identity, never by matching its visible text. If that provenance is missing or corrupt, the exporter must not suppress a user comment heuristically; it treats the root/replies according to normal native-comment policy and emits a provenance issue where detectable.
+
+### 2.12 Title conflicts are resolved before approval
+
+The MVP exposes exactly two create-only policies:
+
+```ts
+export type TitleConflictPolicy = "fail" | "rename";
+
+export interface ResolvedTitlePlanV1 {
+  requested: string;
+  resolved: string;
+  policy: TitleConflictPolicy;
+  renamed: boolean;
+  conflictingContentIds: string[];
+  availability: "unchecked" | "available" | "renamed";
+  checkedAtCapabilityDigest?: string;
+}
+```
+
+- `fail` is the default. An exact target-visible collision is a blocker before preview approval and before page creation.
+- `rename` chooses the lowest available deterministic suffix using the target adapter's proven comparison rules: `Title`, `Title (2)`, `Title (3)`, and so on. The chosen title, conflicting IDs, and policy appear in terminal/HTML/JSON preview and participate in `destinationDigest` and `planDigest`.
+- Title lookup is paginated, bounded, and edition-aware. The executor must probe Cloud and Data Center exact-match, case, Unicode-normalization, ancestor/space scope, archived/trash visibility, and permission behavior in Task 0 rather than guessing that both editions share uniqueness rules.
+- An inability to prove availability because lookup is truncated, forbidden, ambiguous, or capability-stale blocks publication. `rename` is not a permission or discovery bypass.
+- The publisher creates only the exact `resolved` title approved in `PreparedImport`. A 409 or newly observed conflict after approval stops, rolls back any shell/resources owned by this run, returns `title-conflict-race`, and asks the operator to rebuild/review the plan. It never selects the next suffix after approval.
+- `--from-plan` regenerates the title lookup and fails stale before mutation when the collision set or resolved title changed.
+- The default offline `--dry-run` performs no target lookup and records `availability: "unchecked"`, `title-availability-unchecked`, and `review.publishable: false`; this is analysis evidence, not publication approval. `--dry-run --check-target` may perform only the bounded read-only capability/title lookup and remains zero-write. A replayable `--plan-out` requires a checked target; with offline dry-run it fails with an actionable usage error rather than serializing a falsely approved destination.
+- Existing-page `replace`, `append`, `merge`, delete/recreate, and child deletion remain outside this MVP and are specified separately in `specs/006-import-docx/PLAN.md`.
+
+Research basis:
+
+- Data Center exposes rename/replace/delete conflict modes and a document-outline preview: https://confluence.atlassian.com/doc/import-a-word-document-into-confluence-170493136.html
+- Aptify advertises automatic rename or overwrite: https://marketplace.atlassian.com/apps/631785764/advanced-word-importer-for-confluence
+- NGPILOT advertises duplicate-title handling: https://marketplace.atlassian.com/apps/977066696/modern-importer-exporter-for-confluence
+- A January 2026 Data Center report shows a duplicate heading failing despite rename being selected and surfacing the useful cause only in logs: https://community.atlassian.com/forums/Confluence-questions/Importing-a-Word-file-fails-completely-when-splitting-on/qaq-p/3180298
+
+The JTBD is: **create the reviewed page at a predictable location without overwriting unrelated content, and receive an actionable conflict before a long import starts**.
+
+### 2.13 Post-MVP capability DAG
+
+The MVP is the baseline for every follow-on plan. Numbering is topological, not a strict serial execution queue:
+
+```mermaid
+graph TD
+  MVP["import-docx-mvp"] --> H["002 numbered headings"]
+  MVP --> E["003 editability budgets"]
+  MVP --> A["004 attachment source"]
+  MVP --> G["005 destination governance"]
+  MVP --> U["006 safe update-in-place"]
+  MVP --> R["007 shared recipes"]
+  MVP --> Q["008 deterministic equations"]
+  H --> T["009 DOCX to page tree"]
+  E --> T
+  T --> B["010 batch/folder/resume"]
+  E --> B
+  G --> B
+```
+
+Plans `002` through `008` may start in parallel after the MVP evidence ledger is complete. Plan `009` waits for the heading-numbering and editability contracts; plan `010` waits for page-tree, editability, and destination-governance contracts. Update-in-place intentionally starts with a single imported page and does not block page-tree or batch work.
+
+| Follow-on plan | Research decision from the 2026 review | Execution wave |
+|---|---|---|
+| `specs/002-import-docx/PLAN.md` | Candidate 4 — numbered headings | A, parallel |
+| `specs/003-import-docx/PLAN.md` | Candidate 3 — editability budgets | A, parallel |
+| `specs/004-import-docx/PLAN.md` | Candidate 5 — existing attachment as source | A, parallel |
+| `specs/005-import-docx/PLAN.md` | Candidate 7 — destination restrictions/private staging | A, parallel |
+| `specs/006-import-docx/PLAN.md` | Candidate 8 — safe single-page update-in-place | A, parallel |
+| `specs/007-import-docx/PLAN.md` | Candidate 9 — shared transformation recipes | A, parallel |
+| `specs/008-import-docx/PLAN.md` | Candidate 10 — deterministic equation rendering | A, parallel |
+| `specs/009-import-docx/PLAN.md` | Candidate 2 — one DOCX to page tree | B, after 002+003 |
+| `specs/010-import-docx/PLAN.md` | Candidate 6 — batch/folder/resume | C, after 003+005+009 |
 
 ---
 
@@ -946,7 +1019,13 @@ export interface DocxImportPlanV1 {
     capabilitiesDigest: string;
   };
   target: ConfluenceImportCapabilities;
-  destination: { title: string; spaceKey: string; parentId?: string; labels: string[] };
+  destination: {
+    title: string;
+    spaceKey: string;
+    parentId?: string;
+    labels: string[];
+    titleResolution: ResolvedTitlePlanV1;
+  };
   publication: {
     representation: "atlas_doc_format" | "storage";
     bodyDigest: string;
@@ -1007,6 +1086,14 @@ export interface DocxImportReportV1 {
     spaceKey: string;
     pageId?: string;
     pageUrl?: string;
+  };
+  destination: {
+    requestedTitle: string;
+    resolvedTitle: string;
+    titleConflictPolicy: TitleConflictPolicy;
+    renamed: boolean;
+    conflictingContentIds: string[];
+    titleAvailability: "unchecked" | "available" | "renamed";
   };
   coverage: Record<string, { source: number; native: number; approximated: number; omitted: number }>;
   assets: { planned: number; uploaded: number; deduplicated: number; failed: number };
@@ -1278,6 +1365,7 @@ Identity and placement:
   --title <title>            Explicit page title
   --parent <page-id>         Optional parent
   --label <name>             Repeatable label applied after successful body finalize
+  --title-conflict <mode>    fail|rename (default fail; create-only)
 
 Import behavior:
   --format docx              Optional when extension identifies .docx; required for stdin
@@ -1294,6 +1382,7 @@ Import behavior:
 
 Review/approval:
   --dry-run                  Parse, normalize, encode, validate; zero Confluence writes
+  --check-target             Allow bounded read-only Confluence calls during --dry-run
   --confirm                  Direct import without interactive review/prompt
   --preview <format>         auto|terminal|html (default auto)
   --preview-output <path>    Required for html preview; written atomically
@@ -1316,12 +1405,15 @@ Do not expose dozens of ZIP-budget flags in the first public help. Safe defaults
 Flag rules:
 
 - `--dry-run` and `--confirm` are mutually exclusive.
+- `--check-target` is valid only with `--dry-run`. It permits bounded read-only requests and never permits create/update/upload/comment/label/property/delete calls. Default dry-run remains fully offline.
 - stdin (`-`) is non-replayable and consumes the confirmation input; it therefore requires `--dry-run` or `--confirm` and cannot be combined with `--plan-out`/`--from-plan`.
 - `--style-map` and `--overrides` are mutually exclusive and feed the same validator.
+- `--title-conflict` accepts only `fail|rename`. It never enables replace/append/delete. The resolved title is part of preview, saved-plan validation, and approval; a conflict race after approval stops rather than choosing a different title.
 - `--source-reference footer|comment` requires `--attach-source`; it never implies upload. `none` is the default and produces no page-body block or comment.
 - `--attach-source` with a local file preserves its basename as `originalFilename` and derives a target-safe `uploadFilename`. With stdin it requires `--source-filename <name.docx>`; the flag is otherwise invalid. The supplied name is untrusted metadata and follows the same sanitation, length, Unicode, and collision rules.
 - `--preview html` requires `--preview-output`; `--open-preview` requires both, a TTY, and explicit user invocation. AtlCLI never opens a browser merely because the command ran interactively.
 - `--from-plan` requires the original DOCX path and is incompatible with flags that change title, destination, mapping, comments, revisions, page breaks, unsupported policy, source attachment/reference/filename, labels, or strictness. Auth/profile selection may differ only if the resolved capability/destination digests remain identical.
+- `--plan-out` requires a checked title/capability snapshot. Under `--dry-run`, the operator must add `--check-target`; offline dry-run may still write a report/HTML preview but not a replayable plan.
 - `--confirm` may be combined with `--plan-out`, `--report`, or an explicitly requested preview artifact for auditability; it skips only the prompt.
 - Do not add synonyms such as `--yes`, `--apply`, `--no-preview`, or `--force`.
 
@@ -1357,6 +1449,8 @@ The approved object is the exact `PreparedImport` created before preview. Do not
 - optionally write a developer artifact directory only when `--report` or a future explicit debug flag requests it;
 - never create a page, attachment, comment, label, temp file outside a scoped OS temp directory, or cache entry.
 
+By default it installs the existing throwing fetch sentinel and records title availability as unchecked. With explicit `--check-target`, inject a read-only Confluence-check port whose MVP surface exposes only capability/title lookup; mutation methods are absent, not merely avoided by convention. Follow-on source/update plans may add specifically typed reads to that port but never writes. Tests fail if any write-method/path is attempted. This mode may create a replayable checked plan but still performs zero Confluence mutation.
+
 A test installs a fetch function that throws on any call and proves dry-run still succeeds.
 
 `--plan-out` writes the canonical JSON serialization of Section 7.8 plus `planDigest`; formatting/key order is deterministic. `--from-plan` parses the file as untrusted input, rejects unknown schema versions/duplicate JSON keys where the parser can detect them, rebuilds the plan from current source and options, and compares every integrity field before prompting or honoring `--confirm`. Saved plans are review evidence, not a cache of trusted target payloads.
@@ -1373,7 +1467,8 @@ DOCX import preview — no remote changes
 Source       handbook.docx
 Destination  DOCSY / Engineering
 Target       Confluence Cloud / ADF · live-certified
-Title        Engineering Handbook
+Title        Engineering Handbook (2) · renamed from “Engineering Handbook”
+Conflict     rename · 1 existing exact-title match
 Plan         7b91…e14c
 
 Content      42 paragraphs · 8 headings · 5 tables · 12 images
@@ -1641,6 +1736,7 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 - [ ] Re-run Node 22, Node 24, Bun, and browser-target bundle smoke on `packages/export/tests/fixtures/golden-export.docx` plus the new comments/revisions fixtures.
 - [ ] Prove comment start/end ranges, reply parent IDs, and resolved state. If the parser omits thread data, document exact required parts (`commentsExtended.xml` and relationships) and a minimal supplemental parser contract.
 - [ ] In `mayflower`/`DOCSY`, prove Cloud ADF page creation via REST v2 and read back `atlas_doc_format`.
+- [ ] Probe Cloud title lookup/create semantics in `DOCSY`: exact match, case and Unicode variants, same/different parent, archived/trash visibility, pagination, permission failure, and a create-time collision. Derive a bounded public-API contract for availability rather than treating search omission as proof.
 - [ ] Prove Cloud image identity end-to-end: create shell, upload a known image, fetch attachment `fileId`, finalize an ADF `mediaSingle/media`, read back, and verify rendered/export view. Determine the required collection value from authoritative response/readback, not guesswork.
 - [ ] Prove byte-identical DOCX attachment upload/download live on Cloud. For Data Center, derive returned attachment/content identity, context-path-safe download/reference construction, filename normalization, size/error handling, and body/comment links from documented REST v1 contracts and lock them into deterministic local HTTP fixtures; do not invent URL shapes or require a maintainer-owned tenant.
 - [ ] Prove one TOC macro path: create a known TOC through Storage or UI, fetch its ADF, sanitize instance IDs, create a second ADF page from the derived typed intent, and read it back. If this is not reproducible through public APIs, mark Cloud TOC intent deferred.
@@ -1648,6 +1744,7 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 - [ ] Prove Cloud `/api/v2/comments/{comment-id}/properties` create/read/update/delete for inline and footer comments, including returned value/version semantics and scopes. Prove the page-property recovery manifest separately.
 - [ ] Prove the fixed visible attribution paragraph live through Cloud comment create/read/render and structurally through the DC Storage/comment transport plus parser/readback fixtures. An optional community DC run may strengthen this evidence but is not a release prerequisite.
 - [ ] Research supported Data Center comment-content-property endpoints/version floors from authoritative documentation and response contracts. If the intended DC range lacks one explicit portable contract, set `commentProperties: "unsupported"` and use the documented page-manifest + visible-marker fallback; do not depend on tenant probing or invent an endpoint.
+- [ ] Derive Data Center title comparison/conflict behavior from official Word-import/REST contracts and encode it in the deterministic local HTTP suite. A community live run may add evidence but is not required.
 - [ ] Create a minimal standard OOXML comment/reply/resolved fixture plus `customXml/atlcli-comment-provenance.xml`; prove Word/LibreOffice-produced variants parse, the current exporter package can preserve/add required parts, and custom-part removal still leaves author/body/range readable.
 - [ ] Delete every Cloud probe page/attachment/comment in `finally` and record cleanup. Optional community DC probes use the same ownership/cleanup contract.
 
@@ -1655,6 +1752,7 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 
 - [ ] Parser recommendation remains `@office-open/docx`; otherwise stop and revise Sections 2/6/7 before implementation.
 - [ ] Cloud ADF text/table page creation and readback pass.
+- [ ] Cloud title lookup produces an exact documented adapter contract or blocks conflict-sensitive publication; DC has an exact deterministic contract fixture. Neither edition assumes the other's comparison rules.
 - [ ] Cloud media mapping is either proven with exact fields or explicitly blocks image support/implementation pending a decision.
 - [ ] Original-DOCX upload/download and `footer`/`comment` links have live Cloud proof and exact DC contract fixtures; otherwise gate only the unsupported edition/capability rather than silently omitting the requested artifact/reference.
 - [ ] TOC macro is labeled proven or deferred; no invented ADF extension payload.
@@ -1827,6 +1925,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Add typed page-body methods without breaking existing `createPage({ storage })`/`updatePage({ storage })` callers. Prefer additive overload/wrapper migration, then move callers deliberately.
 - [ ] Add Cloud v2 page create/get/update by space ID and `atlas_doc_format` body.
 - [ ] Reuse current v1 Storage create/update/upload for DC and preserve context paths.
+- [ ] Add a bounded, paginated, edition-aware exact-title lookup returning stable content IDs and enough normalized metadata to distinguish an available title from a permission/visibility/transport uncertainty. Do not hide target comparison rules in the CLI.
 - [ ] Return Cloud attachment `fileId` and other proven identity fields through a normalized upload result.
 - [ ] Add normalized source-artifact upload/download verification and typed body/comment attachment-link builders for Cloud/DC. The core supplies intent plus returned attachment identity; target adapters alone own exact URLs/markup.
 - [ ] Split Cloud-v2 comment behavior from DC content-v1 footer comments. Mark DC inline unsupported unless Task 0/13 produces an official, versioned contract.
@@ -1842,6 +1941,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Existing page/comments/client tests remain green.
 - [ ] Cloud methods are never selected for DC profile and vice versa.
 - [ ] A simulated 409 version conflict does not retry/overwrite.
+- [ ] Cloud and DC transport tests cover no match, one/multiple exact matches, pagination, case/Unicode variants, archived/trash responses where exposed, forbidden lookup, malformed response, and target context paths. An incomplete lookup can never be treated as availability.
 - [ ] Attachment upload result preserves fileId/filename/content ID without conflation.
 - [ ] Source-artifact transport tests prove exact input bytes are uploaded, bounded download bytes hash identically, filenames/links are escaped once, and Cloud/DC path/context handling cannot cross-select.
 - [ ] Cloud comment property and page manifest transport tests assert exact endpoints/scopes/payload/version behavior; Data Center tests assert proven content-property path or explicit unsupported capability.
@@ -1857,6 +1957,8 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Keep parse/encode separate from network execution and expose canonical `DocxImportPlanV1` plus process-local `PreparedImport`.
 - [ ] Require a matching `ImportApproval` at the only publisher mutation entrypoint; reject missing approval, plan-digest mismatch, unaccepted warnings, strict warnings, and non-publishable plans before the first port call.
 - [ ] Implement atomic plan serialization and safe `--from-plan` regeneration/comparison. Saved target bodies/asset metadata are evidence only and are never trusted as upload/write input.
+- [ ] Resolve `TitleConflictPolicy` before preview: `fail` produces a blocker with exact visible conflicts; `rename` chooses the lowest free suffix deterministically. Bind requested/resolved title, conflict IDs, lookup/capability digest, and policy into the plan and approval.
+- [ ] Preserve offline dry-run: without the explicit read-only target-check port, emit an unchecked/non-publishable analysis and perform no fetch; never fabricate an available title.
 - [ ] Upload assets deterministically and finalize the body with remote identities.
 - [ ] When requested, upload and SHA-256-verify the original DOCX before content assets; keep `original-docx` separate from `ImportAsset`, and finalize `footer` only from the verified returned attachment identity.
 - [ ] Compute Cloud comment occurrence mapping from finalized/readback visible text.
@@ -1882,6 +1984,8 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] No network method is called during dry-run.
 - [ ] Publisher type/runtime tests prove there is no raw body/IR mutation path that bypasses approval.
 - [ ] Source byte change, option/override/capability/destination change, edited plan JSON, body digest change, and semantic digest change each fail as stale before any network method.
+- [ ] Table/property tests prove deterministic suffix choice across gaps, large conflict sets, Unicode/case fixtures, pagination, repeated runs, and concurrent in-memory planners. A post-approval create conflict returns `title-conflict-race` and never retries with a newly chosen title.
+- [ ] A title plan with `availability: "unchecked"` cannot create `ImportApproval`, enter the publisher, or be saved as a replayable plan.
 - [ ] Interactive in-process approval publishes the exact `PreparedImport` instance/digest that produced the preview; it does not parse or encode twice.
 
 ### Task 9 — Preserve comment identity and implement DOCX comment roundtrip export
@@ -1920,6 +2024,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 **Files:** CLI import handler/request/report/preview/plan-file, wiki dispatch/help, PTY/non-TTY tests, preview HTML browser tests, root/build inputs.
 
 - [ ] Parse command/flags exactly as Section 10 and reject ambiguous/missing values.
+- [ ] Implement `--title-conflict fail|rename`, default `fail`; include requested/resolved title and conflict evidence in human/HTML/JSON previews, saved plans, reports, and final output.
 - [ ] Implement `--attach-source`, exclusive `--source-reference none|footer|comment`, and stdin-only `--source-filename`; defaults produce no source upload or visible reference. Include all resolved values in options/plan digest and report.
 - [ ] Read a file or stdin through the CLI-owned `import-source.ts` adapter; convert immediately to `Uint8Array` and require `--format docx` for stdin.
 - [ ] Resolve profile/default space/title/parent without duplicating auth logic.
@@ -1934,8 +2039,10 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 **Acceptance/tests:**
 
 - [ ] CLI parser table covers every flag, repeated label, valueless flags, stdin, wrong extension, incompatible modes, strict mode, target, preview, confirm, override, and saved-plan combinations.
+- [ ] CLI conflict tests cover default fail, explicit fail, deterministic rename, invalid mode, inaccessible lookup, saved-plan collision drift, non-TTY behavior, and a create-time race. Every failure before page creation performs zero mutation.
 - [ ] Source-retention parser tests cover default-off, attach+none, attach+footer, attach+comment, reference-without-attach rejection, local-file/source-filename rejection, stdin missing/valid filename, hostile filenames, and saved-plan mismatch.
 - [ ] `--dry-run --json` snapshot matches `atlcli.docx-import-report/1` and performs no fetch.
+- [ ] Offline dry-run reports `title-availability-unchecked`, cannot write a replayable plan, and performs no fetch. `--dry-run --check-target` performs only bounded read requests, resolves `fail|rename`, may write a replayable plan, and type/runtime tests prove no mutation method is reachable.
 - [ ] Pseudo-TTY tests prove default preview → exact prompt → default no/no write; yes publishes; EOF/interrupt does not write; `--confirm` never prompts; non-TTY without an explicit mode fails without hanging or fetching.
 - [ ] `--strict --confirm` blocks on a known warning, while non-strict `--confirm` publishes and records accepted warnings. Neither mode bypasses an error issue.
 - [ ] Human preview contains title/destination/target/plan digest/coverage/comments/revisions/ordered warnings; no raw JSON dump unless requested.
@@ -2187,10 +2294,12 @@ All boxes must be backed by evidence:
 - [ ] Built CLI DOCX export with `--comments` writes standard Word comment fields from source attribution for imported comments and platform display name for native comments; custom provenance loss has the tested standard-field fallback.
 - [ ] Cloud DOCSY import→DOCX export→reimport preserves the normalized comment digest and cleans both pages/resources; the DC contract server proves the corresponding Storage/fallback digest and failure semantics without a live-certification claim.
 - [ ] Publisher rollback/readback/version-conflict tests pass at every transition.
+- [ ] Create-only title handling defaults to `fail`; explicit `rename` resolves before approval, is visible/digest-bound, and is proven for Cloud live plus DC contracts. Replace/append/delete are impossible through this flag.
 - [ ] Original-source retention defaults off; attach+none, attach+footer, and attach+comment are plan-digest-bound, Cloud-live-proven, DC-contract-proven, and roll back rather than silently degrading. The original remains a distinct immutable source artifact and is never overwritten by export.
 - [ ] A provenance-tagged source-reference comment is excluded from document-comment counts/DOCX export, while lookalike or provenance-lost user comments are never suppressed heuristically.
 - [ ] Preview body/projection, plan JSON, terminal summary, static HTML, and publisher share one semantic digest and issue/override provenance; no second mapping path exists.
 - [ ] `wiki import` help, review-first TTY flow, `--confirm`, dry-run, strict, HTML preview, plan-out/replay, overrides, JSON/report, progress, stdin, title/space/parent, comments, revisions, source attachment/reference, and labels behave as specified.
+- [ ] `--title-conflict fail|rename` behaves as specified; collision lookup uncertainty and post-approval races never overwrite or silently rename content.
 - [ ] Non-TTY cannot hang or mutate without `--confirm`; strict/hard safety/plan-integrity blockers cannot be overridden.
 - [ ] Saved-plan replay rejects changed source/options/overrides/capabilities/destination/plan before any network call.
 - [ ] Source, dist, and compiled binary dry-run the same real fixture with the same digest.
