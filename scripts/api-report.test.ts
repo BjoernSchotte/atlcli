@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPackages } from "./consumer-smoke.js";
 import { generateAllReports, reportForDts } from "./api-report.js";
-import { generateAllClosures } from "./api-closure.js";
+import { generateAllClosures, closureForEntrypoints } from "./api-closure.js";
 
 /**
  * API report guard (spec 009, API freeze & guards).
@@ -74,6 +74,49 @@ describe("api-report guard (spec 009)", () => {
     },
     120000,
   );
+
+  it("guard-the-guard: the closure detector reports a gap for a non-barrel type reference", () => {
+    // A synthetic package laid out so ownerOf() recognizes it
+    // (…/packages/<name>/dist/…). The stable entrypoint exports a function
+    // whose parameter references a type declared in the SAME package but not
+    // re-exported from any stable entrypoint — the exact "reachable-but-
+    // unexported" shape the freeze guard must catch.
+    const root = mkdtempSync(join(tmpdir(), "atlcli-closure-guard-"));
+    const distDir = join(root, "packages", "gap-fixture", "dist");
+    require("node:fs").mkdirSync(distDir, { recursive: true });
+    writeFileSync(
+      join(distDir, "hidden.d.ts"),
+      `export interface HiddenShape { width: number; }\n`,
+    );
+    writeFileSync(
+      join(distDir, "index.d.ts"),
+      `import type { HiddenShape } from "./hidden.js";\n` +
+        `export declare function frozen(input: HiddenShape): void;\n`,
+    );
+
+    const entry = join(distDir, "index.d.ts");
+    const [closure] = closureForEntrypoints("@atlcli/gap-fixture", [
+      { label: ".", dtsPath: entry, stability: "stable" },
+    ]);
+
+    expect(closure!.stability).toBe("stable");
+    expect(closure!.exports).toContain("frozen");
+    // HiddenShape is same-package, reachable from `frozen`, and not exported →
+    // it must be reported as a gap.
+    expect(closure!.gaps).toContain("HiddenShape");
+
+    // Re-exporting it closes the gap.
+    writeFileSync(
+      join(distDir, "index.d.ts"),
+      `import type { HiddenShape } from "./hidden.js";\n` +
+        `export type { HiddenShape } from "./hidden.js";\n` +
+        `export declare function frozen(input: HiddenShape): void;\n`,
+    );
+    const [fixed] = closureForEntrypoints("@atlcli/gap-fixture", [
+      { label: ".", dtsPath: entry, stability: "stable" },
+    ]);
+    expect(fixed!.gaps).toEqual([]);
+  });
 
   it("guard-the-guard: surface changes on a fixture entrypoint produce failing diffs", () => {
     const dir = mkdtempSync(join(tmpdir(), "atlcli-api-report-fixture-"));

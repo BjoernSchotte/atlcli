@@ -23,11 +23,20 @@ repo can publish.
 
 ## Lockstep versioning
 
-All `@atlcli/*` packages move as one **fixed/lockstep version train** on the existing release
-tooling (`scripts/release.ts`, git-cliff changelog, one tag). A consumer never mixes package
-versions from different trains: when you pack or link at commit X, every internal
-`@atlcli/*` dependency range resolves to the same train (verified by
-`scripts/pack-check.test.ts` and the consumer-smoke suites).
+The `@atlcli/*` packages are developed and tested only together, on the existing release
+tooling (`scripts/release.ts`, git-cliff changelog, one tag) — there is no per-package release
+schedule. Since the API freeze there are **two version tiers**: the frozen set at `1.0.0`
+(`confluence`, `docx`, `pdf`, `pdf-compiler-browser`, `export-macros`) and the rest still at
+`0.x` (see the [freeze table](#10-and-the-api-freeze)). Internal `@atlcli/*` dependencies use
+`workspace:*`, which `bun pm pack` rewrites to each dependency's **concrete current version**
+at pack time — so a packed tarball resolves its siblings to whatever version they carry at
+that commit (mixed `1.0.0`/`0.x` today), not to a single train number.
+
+What the tooling actually verifies: `scripts/pack-check.test.ts` asserts no `workspace:` range
+survives into a packed manifest and that every `exports` target exists in the tarball; the
+consumer-smoke suites additionally assert no `workspace:` leakage in the *installed* manifests
+and that the packages build and export end-to-end. Neither asserts a single uniform version
+across packages — that uniformity is a development-process convention, not a checked invariant.
 
 ## Pre-1.0 semver rules
 
