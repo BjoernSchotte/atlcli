@@ -439,6 +439,12 @@ export interface StorageToBlocksOptions {
    * them, every {@link ExportNote.source} carries `pageTitle`/`pageUrl` too.
    */
   pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /**
+   * Override the {@link DEFAULT_STORAGE_PARSE_BUDGET} applied while parsing this
+   * page's storage (spec 011). Exceeding it throws a {@link StorageParseError},
+   * which a tree export can catch per page and degrade to a note.
+   */
+  parseBudget?: StorageParseBudget;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +462,84 @@ export interface XmlElement {
   children: XmlNode[];
 }
 export type XmlNode = XmlText | XmlElement;
+
+/**
+ * Resource budget for {@link parseXml} (spec 011 security hardening).
+ *
+ * `maxPages` (spec 002) bounds how many pages a tree export walks; it says
+ * nothing about ONE pathological page. Before this budget existed, a single
+ * page whose storage nested 50 000 elements deep would recurse
+ * {@link storageToBlocks}'s walkers past the JS stack limit and take the whole
+ * process down with a `RangeError` no caller could meaningfully catch.
+ *
+ * Capping DEPTH at the parse boundary is what makes the walkers safe: the
+ * walkers (`walkBlocks` / `handleBlockElement` / `walkInline`) recurse strictly
+ * along the tree `parseXml` produced, so a tree that cannot exceed
+ * {@link maxDepth} cannot drive them past a few thousand frames. They need no
+ * depth counter of their own.
+ */
+export interface StorageParseBudget {
+  /** Maximum total nodes (elements + text) materialized. */
+  maxNodes: number;
+  /** Maximum element nesting depth. */
+  maxDepth: number;
+  /** Maximum cumulative decoded text length across all text nodes. */
+  maxTextLength: number;
+}
+
+/**
+ * Default {@link StorageParseBudget}.
+ *
+ * Sized so that any page Confluence itself accepts parses without complaint —
+ * Cloud caps a page body at roughly 5 MB — while bounding the cost of one page:
+ *  - `maxNodes: 400_000` — a 5 MB body at realistic storage density is tens of
+ *    thousands of nodes; 400k is an order of magnitude above that and holds the
+ *    materialized tree to the low hundreds of MB.
+ *  - `maxDepth: 256` — the deepest real storage seen is a layout > table > cell
+ *    > list > list chain around 20 levels. 256 is far beyond any authored page
+ *    and keeps walker recursion in the low thousands of frames.
+ *  - `maxTextLength: 16 MiB` — above the platform body limit, so it only fires
+ *    on input that was never a real page.
+ */
+export const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget = {
+  maxNodes: 400_000,
+  maxDepth: 256,
+  maxTextLength: 16 * 1024 * 1024,
+};
+
+/** Which {@link StorageParseBudget} limit a {@link StorageParseError} hit. */
+export type StorageParseErrorKind = "too-many-nodes" | "too-deep" | "text-too-long";
+
+/**
+ * Thrown by {@link parseXml} when a storage fragment exceeds
+ * {@link StorageParseBudget}. A typed, catchable error on purpose: a host can
+ * degrade one bad page to a visible note and keep exporting the rest of the
+ * tree, which a stack overflow never allowed.
+ */
+export class StorageParseError extends Error {
+  constructor(
+    readonly kind: StorageParseErrorKind,
+    message: string
+  ) {
+    super(message);
+    this.name = "StorageParseError";
+  }
+}
+
+/**
+ * Characters that are illegal in XML 1.0 text: the C0 controls except tab (09),
+ * line feed (0A) and carriage return (0D), plus DEL and the two permanently
+ * unassigned noncharacters.
+ *
+ * Confluence storage can carry these via numeric charrefs (`&#x1;`), and they
+ * survive entity decoding. They are dropped HERE, at the single parse boundary,
+ * because every downstream serializer would otherwise emit them verbatim: an
+ * unescaped U+0001 inside a `<w:t>` run produces a `.docx` Word refuses to open
+ * with "unreadable content", which is a corrupt-output bug reachable from page
+ * content alone.
+ */
+// eslint-disable-next-line no-control-regex
+const XML_ILLEGAL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufffe\uffff]/g;
 
 /**
  * Decode the XML/HTML entities that appear in Confluence storage.
@@ -485,16 +569,48 @@ function decodeEntities(text: string): string {
  * the close tag of a *nested* macro and silently mis-slices the outer one — the
  * same class of bug that the non-greedy `<w:p>` regex caused in the DOCX text-box
  * finding. Reuse this instead of writing another matcher.
+ *
+ * Bounded by {@link StorageParseBudget} (spec 011): node count, nesting depth
+ * and cumulative text length. Text is additionally stripped of characters
+ * illegal in XML 1.0 (see {@link XML_ILLEGAL_CHARS}).
+ *
+ * @throws {StorageParseError} when the fragment exceeds `budget`.
  */
-export function parseXml(input: string): XmlNode[] {
+export function parseXml(
+  input: string,
+  budget: StorageParseBudget = DEFAULT_STORAGE_PARSE_BUDGET
+): XmlNode[] {
   const root: XmlElement = { type: "element", name: "#root", attrs: {}, children: [] };
   const stack: XmlElement[] = [root];
   let i = 0;
   const n = input.length;
+  let nodeCount = 0;
+  let textLength = 0;
+
+  const countNode = () => {
+    if (++nodeCount > budget.maxNodes) {
+      throw new StorageParseError(
+        "too-many-nodes",
+        `Page storage exceeds the ${budget.maxNodes}-node parse limit.`
+      );
+    }
+  };
 
   const pushText = (raw: string, literal: boolean) => {
     if (raw === "") return;
-    const text = literal ? raw : decodeEntities(raw);
+    const decoded = literal ? raw : decodeEntities(raw);
+    // Strip AFTER decoding: a control character smuggled in as `&#x1;` is only
+    // a control character once decoded.
+    const text = decoded.replace(XML_ILLEGAL_CHARS, "");
+    if (text === "") return;
+    textLength += text.length;
+    if (textLength > budget.maxTextLength) {
+      throw new StorageParseError(
+        "text-too-long",
+        `Page storage exceeds the ${budget.maxTextLength}-character text limit.`
+      );
+    }
+    countNode();
     stack[stack.length - 1].children.push({ type: "text", text });
   };
 
@@ -559,9 +675,19 @@ export function parseXml(input: string): XmlNode[] {
     }
     const name = nameMatch[1].toLowerCase();
     const attrs = parseAttributes(tag.slice(nameMatch[1].length));
+    countNode();
     const el: XmlElement = { type: "element", name, attrs, children: [] };
     stack[stack.length - 1].children.push(el);
-    if (!selfClosing && !VOID_ELEMENTS.has(name)) stack.push(el);
+    if (!selfClosing && !VOID_ELEMENTS.has(name)) {
+      stack.push(el);
+      // `stack` includes the synthetic `#root`, so its length is depth + 1.
+      if (stack.length - 1 > budget.maxDepth) {
+        throw new StorageParseError(
+          "too-deep",
+          `Page storage nests deeper than the ${budget.maxDepth}-level parse limit.`
+        );
+      }
+    }
     i = gt + 1;
   }
 
@@ -580,7 +706,9 @@ function parseAttributes(source: string): Record<string, string> {
     const key = m[1].toLowerCase();
     let value = m[2] ?? "";
     if (value && (value[0] === '"' || value[0] === "'")) value = value.slice(1, -1);
-    attrs[key] = decodeEntities(value);
+    // Same XML-1.0 normalization as text nodes: attribute values reach
+    // serializers too (link hrefs, macro parameters, anchor names).
+    attrs[key] = decodeEntities(value).replace(XML_ILLEGAL_CHARS, "");
   }
   return attrs;
 }
@@ -689,7 +817,7 @@ export function storageToBlocks(
     exportControls: options?.exportControls ?? "apply",
     pageContext: options?.pageContext,
   };
-  const nodes = parseXml(storage);
+  const nodes = parseXml(storage, options?.parseBudget ?? DEFAULT_STORAGE_PARSE_BUDGET);
   const blocks = walkBlocks(nodes, ctx);
   return { blocks, notes: ctx.notes };
 }

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DEFAULT_STORAGE_PARSE_BUDGET,
+  StorageParseError,
   macroParamText,
   normalizeCaptionKind,
+  parseXml,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
@@ -1261,5 +1264,135 @@ describe("ExportNote.source — full provenance (pageTitle/pageUrl/blockPath)", 
       "</ac:rich-text-body></ac:structured-macro>";
     const { notes } = storageToBlocks(xml, { exporter: "pdf", pageContext: { id: "1" } });
     expect(notes[0]!.source?.blockPath).toBe("blocks[0].content[1]");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// spec 011 — storage parse budget (adversarial)
+// ---------------------------------------------------------------------------
+
+/** Assert `fn` throws a {@link StorageParseError} with exactly `kind`. */
+function expectParseError(fn: () => unknown, kind: StorageParseError["kind"]): StorageParseError {
+  try {
+    fn();
+  } catch (err) {
+    expect(err).toBeInstanceOf(StorageParseError);
+    expect((err as StorageParseError).kind).toBe(kind);
+    return err as StorageParseError;
+  }
+  throw new Error(`expected a StorageParseError(${kind}), but nothing was thrown`);
+}
+
+describe("parseXml — storage parse budget (spec 011)", () => {
+  test("rejects a pathological nesting bomb instead of overflowing the stack", () => {
+    // 50 000 nested <div>s. Before the budget this parsed into a 50 000-deep
+    // tree and `walkBlocks` then recursed past the JS stack limit — a RangeError
+    // that killed the whole export rather than one page.
+    const depth = 50_000;
+    const storage = "<div>".repeat(depth) + "deep" + "</div>".repeat(depth);
+    const err = expectParseError(() => storageToBlocks(storage), "too-deep");
+    expect(err.message).toContain(String(DEFAULT_STORAGE_PARSE_BUDGET.maxDepth));
+  });
+
+  test("the nesting bomb is a REAL stack overflow without the budget", () => {
+    // Proves the guard is load-bearing: with the depth cap lifted, walking the
+    // same document throws a RangeError (not a StorageParseError). If this ever
+    // stops overflowing, the cap can be revisited — but not silently.
+    const depth = 50_000;
+    const storage = "<div>".repeat(depth) + "deep" + "</div>".repeat(depth);
+    let overflowed = false;
+    try {
+      storageToBlocks(storage, {
+        parseBudget: { ...DEFAULT_STORAGE_PARSE_BUDGET, maxDepth: depth + 10 },
+      });
+    } catch (err) {
+      overflowed = err instanceof RangeError;
+    }
+    expect(overflowed).toBe(true);
+  });
+
+  test("rejects a node-count flood", () => {
+    const budget = { ...DEFAULT_STORAGE_PARSE_BUDGET, maxNodes: 1000 };
+    const storage = "<p>x</p>".repeat(2000);
+    const err = expectParseError(() => storageToBlocks(storage, { parseBudget: budget }), "too-many-nodes");
+    expect(err.message).toContain("1000");
+  });
+
+  test("rejects a node flood against the REAL default budget", () => {
+    // 250 000 empty elements = 250 000 nodes, past the 400 000-node default once
+    // the interleaved text nodes are counted too.
+    const storage = "<br/>a".repeat(250_000);
+    expectParseError(() => storageToBlocks(storage), "too-many-nodes");
+  });
+
+  test("rejects an over-long text payload", () => {
+    const budget = { ...DEFAULT_STORAGE_PARSE_BUDGET, maxTextLength: 100 };
+    expectParseError(
+      () => storageToBlocks(`<p>${"x".repeat(500)}</p>`, { parseBudget: budget }),
+      "text-too-long"
+    );
+  });
+
+  test("counts text length across nodes, not per node", () => {
+    const budget = { ...DEFAULT_STORAGE_PARSE_BUDGET, maxTextLength: 100 };
+    const storage = `<p>${"x".repeat(60)}</p><p>${"y".repeat(60)}</p>`;
+    expectParseError(() => storageToBlocks(storage, { parseBudget: budget }), "text-too-long");
+  });
+
+  test("the error is typed and catchable, so one bad page need not kill an export", () => {
+    const pages = ["<p>fine</p>", "<div>".repeat(50_000), "<p>also fine</p>"];
+    const results: string[] = [];
+    for (const page of pages) {
+      try {
+        results.push(storageToBlocks(page).blocks.length ? "ok" : "empty");
+      } catch (err) {
+        results.push(err instanceof StorageParseError ? `degraded:${err.kind}` : "fatal");
+      }
+    }
+    expect(results).toEqual(["ok", "degraded:too-deep", "ok"]);
+  });
+
+  test("POSITIVE CONTROL: a large but realistic page parses fine", () => {
+    // 2000 paragraphs plus a 30-level nested list — far more than a real page,
+    // comfortably inside every default limit.
+    const nested = "<ul><li>".repeat(30) + "deep" + "</li></ul>".repeat(30);
+    const storage = "<p>Hello <strong>world</strong></p>".repeat(2000) + nested;
+    const out = storageToBlocks(storage);
+    expect(out.blocks.length).toBeGreaterThan(2000);
+  });
+
+  test("POSITIVE CONTROL: nesting exactly at the depth limit still parses", () => {
+    const depth = DEFAULT_STORAGE_PARSE_BUDGET.maxDepth;
+    const storage = "<div>".repeat(depth) + "edge" + "</div>".repeat(depth);
+    expect(() => parseXml(storage)).not.toThrow();
+  });
+});
+
+describe("parseXml — XML-illegal control characters (spec 011)", () => {
+  test("strips control characters that would corrupt a .docx", () => {
+    // U+0001 is illegal in XML 1.0 but survives Confluence storage as a
+    // numeric charref; emitted verbatim into a <w:t> run it produces a file
+    // Word refuses to open with "unreadable content".
+    const out = storageToBlocks("<p>be&#x1;fore&#x8;after</p>");
+    const para = out.blocks[0] as Extract<ExportBlock, { type: "paragraph" }>;
+    const text = (para.content[0] as Extract<InlineNode, { type: "text" }>).text;
+    expect(text).toBe("beforeafter");
+    expect(/[\u0000-\u0008]/.test(text)).toBe(false);
+  });
+
+  test("strips control characters from attribute values too", () => {
+    const out = storageToBlocks('<p><a href="https://ex&#x1;ample.com/x">t</a></p>');
+    const para = out.blocks[0] as Extract<ExportBlock, { type: "paragraph" }>;
+    const link = para.content[0] as Extract<InlineNode, { type: "link" }>;
+    expect(link.target).toEqual({ kind: "external", href: "https://example.com/x" });
+  });
+
+  test("POSITIVE CONTROL: tab, newline and carriage return are preserved", () => {
+    const out = storageToBlocks("<p>a&#x9;b&#xA;c</p>");
+    const para = out.blocks[0] as Extract<ExportBlock, { type: "paragraph" }>;
+    const text = (para.content[0] as Extract<InlineNode, { type: "text" }>).text;
+    expect(text).toContain("\t");
+    expect(text).toContain("\n");
   });
 });
