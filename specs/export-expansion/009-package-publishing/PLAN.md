@@ -921,14 +921,16 @@ model); note it as the designated fallback.
       with profile `mayflower` to DOCX (and PDF once T3.2 exists) into
       `~/wikisynctest/docs`; assert non-empty valid output; **clean up** any
       test pages/files created, per the cleanup rule.
-      → DONE (2026-07-19): all 8 tarballs packed (prepack font/vendor guards
-      ran), scratch `apps/cli` copy installed them via `file:` + overrides
-      (no `workspace:` leakage), `wiki export 1117356071 --engine ts`
-      against DOCSY/mayflower produced a valid DOCX (zip magic, 40 kB
-      `word/document.xml` containing the page title); PDF-via-CLI deferred
-      until spec 008/T3.2 exists (PDF path proven by the consumer smokes
-      instead). Local artifacts cleaned up; the DOCSY fixture page stays
-      (deliberate, reused across E2E runs).
+      → DONE (2026-07-19, re-run 2026-07-20 post specs 002/003/004/007/008):
+      all 11 tarballs packed (prepack font/vendor guards ran), scratch
+      `apps/cli` copy installed them via `file:` + overrides (no
+      `workspace:` leakage), `wiki export 1117356071` against
+      DOCSY/mayflower produced BOTH a valid DOCX (`--engine ts`; zip magic,
+      42 kB `word/document.xml` containing the page title) AND a valid PDF
+      (`--format pdf` from spec 008; PDF 1.7, 8 pages, title extractable
+      via pdftotext) — the PDF pipeline ran entirely from the tarball
+      artifacts (vendored wasm + shipped fonts). The DOCSY fixture page
+      stays (deliberate, reused across E2E runs).
 
 ## Definition of Done
 
