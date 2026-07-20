@@ -155,7 +155,7 @@ export interface BenchEnvironment {
   cpuModel: string;
   cpuCount: number;
   totalMemBytes: number;
-  /** CI runner label when set (`RUNNER_NAME`/`RUNNER_OS`), else the hostname. */
+  /** Runner CLASS label (see {@link benchRunnerLabel}) — never an instance name. */
   runner: string;
   ci: boolean;
   /** sha256 of the pinned Typst wasm — a compiler bump must invalidate a trend. */
@@ -168,6 +168,38 @@ export interface BenchEnvironment {
 
 function sha256File(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+/**
+ * The runner label used as part of the trend COMPARABILITY key.
+ *
+ * This must identify a runner *class*, never a runner *instance*. GitHub-hosted
+ * runners set `RUNNER_NAME` to an instance-specific value ("GitHub Actions 2",
+ * "GitHub Actions 14", …) that changes between runs — and it is always set, so
+ * a naive `RUNNER_NAME ?? RUNNER_OS` never reaches the stable variable. Keying
+ * on it would make every nightly non-comparable with every other nightly: the
+ * trend would report "no comparable history yet" forever and never warn, which
+ * behind `continue-on-error: true` is a silent, permanent failure.
+ *
+ * So in CI the label is built from the runner class — environment
+ * (github-hosted vs self-hosted, a real performance difference), OS, and arch.
+ * Locally the hostname is right: a dev machine IS its own class.
+ * `ATLCLI_BENCH_RUNNER` overrides both, for a self-hosted fleet that wants to
+ * declare its own stable class label.
+ */
+export function benchRunnerLabel(
+  env: Record<string, string | undefined>,
+  hostnameFn: () => string,
+): string {
+  const override = env.ATLCLI_BENCH_RUNNER?.trim();
+  if (override) return override;
+  if (env.CI === "true") {
+    const environment = env.RUNNER_ENVIRONMENT ?? "unknown";
+    const os = env.RUNNER_OS ?? "unknown";
+    const architecture = env.RUNNER_ARCH ?? "unknown";
+    return `ci:${environment}:${os}:${architecture}`;
+  }
+  return hostnameFn();
 }
 
 function safeDigest(fn: () => string): string {
@@ -213,7 +245,7 @@ export async function collectEnvironment(): Promise<BenchEnvironment> {
     cpuModel: cpus()[0]?.model ?? "unknown",
     cpuCount: cpus().length,
     totalMemBytes: totalmem(),
-    runner: process.env.RUNNER_NAME ?? process.env.RUNNER_OS ?? hostname(),
+    runner: benchRunnerLabel(process.env, hostname),
     ci: process.env.CI === "true",
     compilerWasmDigest: wasmDigest,
     fontSetDigest: fontDigest,

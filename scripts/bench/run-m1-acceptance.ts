@@ -187,6 +187,12 @@ interface HarnessM1Result {
  * container bytes are not the cross-host contract (PizZip deflates via
  * `node:zlib` here and via pako in the browser; identical documents, a few
  * different compressed bytes). The decompressed parts are what must match.
+ *
+ * SCOPE: this compares the SET of part names and each part's decompressed
+ * bytes. Because the names are sorted, part ORDER within the archive and
+ * per-entry zip metadata (timestamps, compression method/flags, external
+ * attributes) are deliberately OUTSIDE the contract — they are encoding, not
+ * document content. A missing or extra part, or any content change, IS caught.
  */
 function docxPartDigests(bytes: Uint8Array): Record<string, string> {
   const zip = unzipDocx(bytes);
@@ -325,7 +331,23 @@ async function main(): Promise<void> {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(record, null, 2));
 
-  // A measured cross-host MISMATCH is a hard failure; "not measured" is not.
+  // `--require-cross-host` turns "not measured" into a failure too. CI passes
+  // it: in a job that has just run the browser harness, a null `digestsMatch`
+  // means the harness stopped publishing the `m1` case, and silently degrading
+  // to "not measured" would hide exactly the regression this leg exists to
+  // catch. Locally the flag is off, so the runner still works offline.
+  const requireCrossHost = process.argv.includes("--require-cross-host");
+  if (requireCrossHost && digestsMatch === null) {
+    process.stderr.write(
+      "run-m1-acceptance: --require-cross-host was set but no comparable harness digests were found.\n" +
+        `Expected the browser harness to have published case \`m1\` to ${HARNESS_DIGESTS}.\n` +
+        "Run \`bun run test:browser-export-harness\` in the same job first.\n",
+    );
+    process.exit(1);
+  }
+
+  // A measured cross-host MISMATCH is a hard failure; "not measured" is not
+  // (unless --require-cross-host says otherwise).
   const ok = docxDeterministic && pdfDeterministic && digestsMatch !== false;
   const crossHost =
     digestsMatch === null

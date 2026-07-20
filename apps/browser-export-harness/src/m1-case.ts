@@ -85,6 +85,12 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * if those match, the two hosts produced the same document. This is the DOCX
  * analogue of the raster-content strategy the media parity check uses: compare
  * the thing that carries meaning, not the encoding around it.
+ *
+ * SCOPE: the part-name SET and each part's decompressed bytes. Names are
+ * sorted, so part ORDER within the archive and per-entry zip metadata
+ * (timestamps, compression flags, external attributes) are deliberately outside
+ * the contract. Nothing is excluded from the digest itself — every key in
+ * `zip.files` is digested, so a missing or extra part still diverges.
  */
 async function docxPartDigests(bytes: Uint8Array): Promise<Record<string, string>> {
   const zip = unzipDocx(bytes);

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  benchRunnerLabel,
   detectTimeFlavour,
   emitPhaseResult,
   maxOrNull,
@@ -27,11 +28,16 @@ const GNU_TIME_STDERR = `\tCommand being timed: "bun script.ts"
 \tMaximum resident set size (kbytes): 431256
 \tExit status: 0`;
 
-/** Verbatim BSD `/usr/bin/time -l` stderr (macOS flavour, bytes not kbytes). */
+/**
+ * Verbatim BSD `/usr/bin/time -l` stderr (macOS flavour, bytes not kbytes).
+ * The `peak memory footprint` figure is deliberately REALISTIC — on real macOS
+ * output it sits within a few percent of the RSS line, which is exactly what
+ * makes confusing the two dangerous: the wrong number looks entirely plausible.
+ */
 const BSD_TIME_STDERR = `        0.13 real         0.09 user         0.03 sys
            444751872  maximum resident set size
                    0  average shared memory size
-              123456  peak memory footprint`;
+           431245312  peak memory footprint`;
 
 describe("parsePeakRss", () => {
   it("reads GNU kbytes and converts to bytes", () => {
@@ -43,9 +49,12 @@ describe("parsePeakRss", () => {
   });
 
   it("does not mistake BSD 'peak memory footprint' for the RSS line", () => {
-    // The BSD block contains a second, different memory figure. Reading it
-    // would silently understate peak RSS by ~3500x on macOS.
-    expect(parsePeakRss(BSD_TIME_STDERR, "bsd-time-l")).not.toBe(123456);
+    // The BSD block carries a SECOND memory figure that is close to the RSS
+    // one (~3% apart here, as on real macOS output). Reading it would report a
+    // different metric under the peak-RSS name — plausible enough to survive
+    // review, and wrong in the direction that hides memory growth.
+    expect(parsePeakRss(BSD_TIME_STDERR, "bsd-time-l")).toBe(444751872);
+    expect(parsePeakRss(BSD_TIME_STDERR, "bsd-time-l")).not.toBe(431245312);
   });
 
   it("never cross-parses one flavour with the other's pattern", () => {
@@ -56,6 +65,48 @@ describe("parsePeakRss", () => {
   it("returns null rather than a fabricated number when time is unavailable", () => {
     expect(parsePeakRss(GNU_TIME_STDERR, "unavailable")).toBeNull();
     expect(parsePeakRss("", "gnu-time-v")).toBeNull();
+  });
+});
+
+describe("benchRunnerLabel", () => {
+  const host = () => "dev-laptop.local";
+
+  it("uses the hostname locally — a dev machine is its own class", () => {
+    expect(benchRunnerLabel({}, host)).toBe("dev-laptop.local");
+  });
+
+  it("IGNORES the instance-specific RUNNER_NAME in CI", () => {
+    // THE regression this whole function exists for. GitHub-hosted runners set
+    // RUNNER_NAME to a per-instance value that changes between runs, and it is
+    // ALWAYS set. Keying the trend on it made every nightly non-comparable with
+    // every other one — so the workflow silently never warned, invisibly,
+    // behind `continue-on-error: true`.
+    const runOne = benchRunnerLabel(
+      { CI: "true", RUNNER_NAME: "GitHub Actions 2", RUNNER_ENVIRONMENT: "github-hosted", RUNNER_OS: "Linux", RUNNER_ARCH: "X64" },
+      host,
+    );
+    const runTwo = benchRunnerLabel(
+      { CI: "true", RUNNER_NAME: "GitHub Actions 14", RUNNER_ENVIRONMENT: "github-hosted", RUNNER_OS: "Linux", RUNNER_ARCH: "X64" },
+      host,
+    );
+    expect(runOne).toBe(runTwo);
+    expect(runOne).not.toContain("GitHub Actions");
+  });
+
+  it("separates genuinely different runner classes", () => {
+    const linux = benchRunnerLabel({ CI: "true", RUNNER_ENVIRONMENT: "github-hosted", RUNNER_OS: "Linux", RUNNER_ARCH: "X64" }, host);
+    const macos = benchRunnerLabel({ CI: "true", RUNNER_ENVIRONMENT: "github-hosted", RUNNER_OS: "macOS", RUNNER_ARCH: "ARM64" }, host);
+    const selfHosted = benchRunnerLabel({ CI: "true", RUNNER_ENVIRONMENT: "self-hosted", RUNNER_OS: "Linux", RUNNER_ARCH: "X64" }, host);
+    expect(new Set([linux, macos, selfHosted]).size).toBe(3);
+  });
+
+  it("does not use the hostname in CI (CI hostnames are per-instance too)", () => {
+    expect(benchRunnerLabel({ CI: "true", RUNNER_OS: "Linux" }, host)).not.toContain("dev-laptop");
+  });
+
+  it("lets an explicit override win, for a self-hosted fleet declaring its class", () => {
+    expect(benchRunnerLabel({ CI: "true", RUNNER_OS: "Linux", ATLCLI_BENCH_RUNNER: "bench-rig-a" }, host)).toBe("bench-rig-a");
+    expect(benchRunnerLabel({ ATLCLI_BENCH_RUNNER: "  " }, host)).toBe("dev-laptop.local");
   });
 });
 

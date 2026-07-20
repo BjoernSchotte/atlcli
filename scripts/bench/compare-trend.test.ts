@@ -7,11 +7,13 @@
  * here over pure functions — no CI, no files.
  */
 import { describe, expect, it } from "bun:test";
+import { benchRunnerLabel } from "./bench-env.js";
 import {
   appendHistory,
   comparableHistory,
   compareTrend,
   HISTORY_LIMIT,
+  isValidTrendRecord,
   phaseMs,
   RSS_REGRESSION_RATIO,
   TIME_REGRESSION_RATIO,
@@ -86,6 +88,39 @@ describe("comparableHistory", () => {
     expect(comparableHistory(current, [record({ commit: "a", datasetDigest: "other" })])).toHaveLength(0);
     expect(comparableHistory(current, [record({ commit: "b", pages: 50 })])).toHaveLength(0);
     expect(comparableHistory(current, [record({ commit: "c", tier: "end-to-end" })])).toHaveLength(0);
+  });
+
+  it("KEEPS two CI runs that differ only in the per-instance RUNNER_NAME", () => {
+    // The end-to-end form of the bench-env regression: on GitHub-hosted runners
+    // RUNNER_NAME changes every run. If the runner label leaked that value, the
+    // nightly would find zero comparable records forever and never warn — a
+    // silent failure hidden by `continue-on-error: true`. These two records
+    // MUST compare.
+    const ciEnv = (runnerName: string) => ({
+      CI: "true",
+      RUNNER_NAME: runnerName,
+      RUNNER_ENVIRONMENT: "github-hosted",
+      RUNNER_OS: "Linux",
+      RUNNER_ARCH: "X64",
+    });
+    const hostname = () => "fv-az1234-567";
+    const nightlyOne = record({
+      commit: "night-1",
+      environment: { ...ENV, runner: benchRunnerLabel(ciEnv("GitHub Actions 2"), hostname) },
+    });
+    const nightlyTwo = record({
+      commit: "night-2",
+      environment: { ...ENV, runner: benchRunnerLabel(ciEnv("GitHub Actions 14"), hostname) },
+    });
+    expect(comparableHistory(nightlyTwo, [nightlyOne])).toHaveLength(1);
+    // …and a regression between them is actually detected.
+    const regressed = record({
+      commit: "night-3",
+      environment: { ...ENV, runner: benchRunnerLabel(ciEnv("GitHub Actions 9"), hostname) },
+      phases: [{ phase: "pdf", ms: 1500, peakRssBytes: 1_000_000_000 }],
+    });
+    const finding = compareTrend(regressed, [nightlyOne, nightlyTwo]).find((f) => f.metric === "time");
+    expect(finding?.regressed).toBe(true);
   });
 
   it("excludes a different runner or RSS measurement method", () => {
@@ -198,6 +233,44 @@ describe("compareTrend", () => {
     );
     expect(finding?.baseline).toBe(1000);
     expect(finding?.regressed).toBe(true);
+  });
+});
+
+describe("isValidTrendRecord", () => {
+  it("accepts a well-formed record", () => {
+    expect(isValidTrendRecord(record())).toBe(true);
+  });
+
+  it("rejects a record that parses as JSON but has no `environment`", () => {
+    // The poisoned-cache case: comparableHistory would throw reading
+    // `record.environment.os`, and because the throw precedes `--append` the
+    // bad entry is never rewritten — restore-keys would resurrect it forever.
+    const { environment: _dropped, ...withoutEnvironment } = record();
+    expect(isValidTrendRecord(withoutEnvironment)).toBe(false);
+  });
+
+  it("rejects records missing phases, wholeRun, or a digest field", () => {
+    const { phases: _p, ...noPhases } = record();
+    const { wholeRun: _w, ...noWholeRun } = record();
+    expect(isValidTrendRecord(noPhases)).toBe(false);
+    expect(isValidTrendRecord(noWholeRun)).toBe(false);
+    expect(isValidTrendRecord({ ...record(), datasetDigest: 42 })).toBe(false);
+    expect(isValidTrendRecord({ ...record(), environment: { ...ENV, rssMethod: undefined } })).toBe(false);
+  });
+
+  it("rejects non-objects outright", () => {
+    for (const value of [null, undefined, 7, "record", []]) expect(isValidTrendRecord(value)).toBe(false);
+  });
+
+  it("allows a null whole-run peak (RSS genuinely unmeasured)", () => {
+    expect(isValidTrendRecord(record({ wholeRun: { wholeProcessPeakRssBytes: null } }))).toBe(true);
+  });
+
+  it("a surviving good record still compares after a bad one is dropped", () => {
+    const history = [record({ commit: "good" }), { tier: "engine", commit: "poison" }].filter(isValidTrendRecord);
+    expect(history).toHaveLength(1);
+    expect(() => comparableHistory(record({ commit: "new" }), history)).not.toThrow();
+    expect(comparableHistory(record({ commit: "new" }), history)).toHaveLength(1);
   });
 });
 

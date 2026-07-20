@@ -166,16 +166,55 @@ export function appendHistory(history: readonly TrendRecord[], current: TrendRec
   return [...history, current].slice(-HISTORY_LIMIT);
 }
 
+/**
+ * Structural validity of one history entry.
+ *
+ * Valid JSON is not enough. A record that parses but lacks `environment` or
+ * `phases` throws inside {@link comparableHistory} — and because that throw
+ * happens BEFORE `--append` runs, the poisoned entry is never replaced, while
+ * `restore-keys` faithfully restores it on every subsequent run. One malformed
+ * record would kill the trend permanently and invisibly. Dropping bad entries
+ * is the only failure mode that self-heals.
+ */
+export function isValidTrendRecord(value: unknown): value is TrendRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Partial<TrendRecord>;
+  if (typeof record.tier !== "string" || typeof record.commit !== "string") return false;
+  if (typeof record.pages !== "number" || typeof record.datasetDigest !== "string") return false;
+  if (!Array.isArray(record.phases)) return false;
+  const environment = record.environment;
+  if (typeof environment !== "object" || environment === null) return false;
+  for (const key of ["os", "arch", "runner", "compilerWasmDigest", "fontSetDigest", "rssMethod"] as const) {
+    if (typeof environment[key] !== "string") return false;
+  }
+  const wholeRun = record.wholeRun;
+  if (typeof wholeRun !== "object" || wholeRun === null) return false;
+  const peak = wholeRun.wholeProcessPeakRssBytes;
+  return peak === null || typeof peak === "number";
+}
+
 function loadHistory(path: string): TrendRecord[] {
   if (!existsSync(path)) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return Array.isArray(parsed) ? (parsed as TrendRecord[]) : [];
+    parsed = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     // A corrupt cache entry must not fail the job; start a fresh trend instead.
     process.stdout.write(`compare-trend: history at ${path} is unreadable — starting a new trend\n`);
     return [];
   }
+  if (!Array.isArray(parsed)) {
+    process.stdout.write(`compare-trend: history at ${path} is not an array — starting a new trend\n`);
+    return [];
+  }
+  const valid = parsed.filter(isValidTrendRecord);
+  if (valid.length !== parsed.length) {
+    process.stdout.write(
+      `compare-trend: dropped ${parsed.length - valid.length} malformed history record(s) — ` +
+        "they are rewritten out of the cache on --append\n",
+    );
+  }
+  return valid;
 }
 
 function fmt(metric: "time" | "rss", value: number): string {

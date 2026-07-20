@@ -53,8 +53,16 @@ and font loading, template loading) sits outside every reported `ms`. Reported v
 the **median of 3 runs**, each in a fresh process.
 
 The end-to-end tier additionally reports **cold** and **warm**: the same work run twice
-inside one process. Cold includes first-compile costs (wasm instantiation, JIT warm-up);
-warm does not.
+inside one process.
+
+:::danger[The warm column is not throughput — do not quote it as an export time]
+Warm runs the **byte-identical** input a second time, so it is dominated by Typst's
+incremental compilation cache hitting almost completely. It also does *not* mean "cold
+minus setup": wasm and font loading already sit outside every measured `ms`, in both
+columns. Read warm as *"how much of the cold number is one-time work that a second run of
+the very same document can skip"* — nothing more. Exporting a genuinely different document
+will not be the warm number. See [What the numbers mean](#what-the-numbers-mean).
+:::
 
 ### Peak RSS
 
@@ -73,8 +81,17 @@ So the runners do this instead:
 
 A per-phase number therefore **includes** the runtime baseline, the fixture, and (for the
 PDF phase) the wasm and font bytes. The `baseline` phase — load everything, do no work —
-is always measured so you can subtract that floor rather than guess at it. No number on
-this page is derived from in-process heap sampling.
+is measured so that floor is visible rather than guessed at. No number on this page is
+derived from in-process heap sampling.
+
+:::caution[`baseline` is the PDF phase's floor, not every phase's]
+The `baseline` child loads the Typst wasm and the font set, because the PDF phase needs
+them. The `compose` and `docx` phases do not, so their floor is **lower** — which is why
+the tables below show `baseline` (183 MB) *above* `compose` (152 MB). Subtracting
+`baseline` from `compose` is meaningless and would produce a negative number. Use it as
+the floor under `pdf`; for the lighter phases, their own peak is already close to their
+floor, since the work they do is small.
+:::
 
 `/usr/bin/time` comes in two incompatible flavours: GNU (`-v`, kbytes) on Linux/CI and BSD
 (`-l`, bytes) on macOS. Every record carries which one produced it as `rssMethod`, and the
@@ -104,7 +121,10 @@ Adds `scroll-title`/`scroll-pagebreak` macros (every 8th page), a resolvable Jir
 
 **Machine:** identical to above. Median of 3.
 
-| Phase | Cold | Warm | Peak RSS (whole process) | Output |
+Read the **Cold** column as the export cost. **Warm†** is a cache-hit repeat of identical
+input, not throughput — see the warning under [Wall clock](#wall-clock).
+
+| Phase | Cold | Warm† | Peak RSS (whole process) | Output |
 |---|---:|---:|---:|---:|
 | `baseline` (load only, no work) | — | — | 187 MB | — |
 | `fetch` (tree walk + `storageToBlocks`) | 33 ms | 26 ms | 197 MB | 5.1 MB |
@@ -113,6 +133,9 @@ Adds `scroll-title`/`scroll-pagebreak` macros (every 8th page), a resolvable Jir
 | `docx` (serialize + zip) | 236 ms | 126 ms | 441 MB | 546 KB |
 | `pdf` (serialize + Typst compile) | 7,677 ms | 577 ms | 3,351 MB | 17.1 MB |
 | **whole run** (all phases, one process) | **8,127 ms** | — | **3,400 MB** | — |
+
+† **Warm re-runs byte-identical input**, so Typst's incremental cache absorbs most of the
+work. It is a lower bound on one-time setup cost, never a steady-state export time.
 
 ## What the numbers mean
 
@@ -189,6 +212,15 @@ resets the baseline instead of firing a false alarm — and a warning names the 
 tier, and the machine, so a regression localizes rather than showing up as an unexplained
 total.
 
+The `runner` field identifies a runner **class**, never an instance. In CI it is built from
+`RUNNER_ENVIRONMENT`, `RUNNER_OS` and `RUNNER_ARCH` (e.g. `ci:github-hosted:Linux:X64`);
+locally it is the hostname. This matters more than it looks: GitHub-hosted runners set
+`RUNNER_NAME` to a per-instance value (`GitHub Actions 2`, `GitHub Actions 14`, …) that
+changes between runs, so keying on it would make every nightly non-comparable with every
+other nightly — the trend would report "no comparable history yet" forever and never warn,
+silently, behind `continue-on-error: true`. Set `ATLCLI_BENCH_RUNNER` to declare your own
+class label on a self-hosted bench rig.
+
 Absolute budgets stay unfrozen until roughly two weeks of trend data exist. Only then
 should `scripts/bench/budgets.json` be written and the workflow flipped to failing.
 
@@ -213,6 +245,12 @@ environment fingerprint on each record exists to prevent.
 It should not: a changed `compilerWasmDigest` or `fontSetDigest` makes prior records
 non-comparable, so the trend restarts. If a warning does appear across such a bump, the
 digest was not recorded — check the `environment` block of the record.
+
+**The nightly always says "no comparable history yet".**
+Every run is being treated as a new environment. Compare the `environment` blocks of two
+consecutive records and find the field that moved — most likely `runner`, if something
+reintroduced an instance-specific value there (see above), or `datasetDigest`, if the
+fixture generator stopped being deterministic.
 
 ## Related topics
 

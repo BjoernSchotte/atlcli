@@ -424,7 +424,11 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       committed corpus through the browser engines (real module Worker + Typst
       WASM) and publishes its digests; `run-m1-acceptance.ts` reads them and
       reports `digestsMatch`. Measured result: **PDF matches byte-for-byte
-      across hosts** (417,487 B, same sha256), and all 12 DOCX parts match.
+      across hosts** (417,487 B, same sha256), and all **6** DOCX parts match
+      (`[Content_Types].xml`, `_rels/.rels`, `word/_rels/document.xml.rels`,
+      `word/document.xml`, `word/settings.xml`, `word/styles.xml` — the count is
+      recorded as `docx.partCount` in the record, so it is checkable rather
+      than asserted).
       One real finding: the DOCX **container** bytes differ across hosts at
       IDENTICAL length (5,257 B both) because PizZip deflates through
       `node:zlib` under Bun and pako in the browser. That is an encoding
@@ -432,7 +436,15 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       part-by-part on DECOMPRESSED content — the same reasoning the media parity
       check already uses for rasterizer-divergent PNGs. The record now carries
       `docx.partsMatch` (the contract, true), `docx.containerBytesMatch`
-      (recorded for transparency, expected false) and `firstDivergentPart`. This
+      (recorded for transparency, expected false) and `firstDivergentPart`.
+      SCOPE OF THE DOCX CONTRACT, stated explicitly because `docxPartDigests`
+      sorts part names: what is compared is the SET of part names and each
+      part's decompressed bytes. Part ORDER within the archive and per-entry zip
+      metadata (timestamps, compression method/flags, external attributes) sit
+      OUTSIDE the contract — they are encoding, and Word does not read meaning
+      from them. A divergence in either would not be caught here; a missing or
+      extra part, or any content change, would be (`firstPartDivergence`
+      compares the union of names on both sides). This
       is also why `m1` is deliberately NOT in `check-parity.ts`'s case list —
       that gate only compares whole bytes and would fail permanently and
       meaninglessly on the zip container. `digestsMatch` stays `null` (never
@@ -440,6 +452,22 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       measured mismatch is a hard failure. Still pending: `includepage` (case
       005's territory, as noted), the diagram's PNG embedding, and the LIVE
       DOCSY run.)*
+      *(Round 3 review fix — the cross-host leg could never have run in CI.* The
+      harness manifest is gitignored and job-local: `bench.yml` ran
+      `run-m1-acceptance.ts` with no harness step, so `digestsMatch` would have
+      been `null` forever, while `ci.yml` ran the harness but never the
+      acceptance script — the two halves never met. The `true` observed locally
+      came from a leftover artifact of an earlier local harness run, which is
+      exactly the "formally green M1 that never ran the integrated story" this
+      task exists to prevent. FIXED: the `bench` job now builds the harness,
+      installs Chromium, runs the Playwright harness (publishing the `m1`
+      digests), and only then runs the acceptance script — in ONE job. A new
+      `--require-cross-host` flag, which CI passes, turns "not measured" into a
+      hard failure, so a harness that silently stops publishing `m1` fails the
+      step instead of degrading to `null`. **The job that now produces a
+      non-null `digestsMatch` is `bench.yml` → job `bench`.** Verified by
+      reproducing the exact CI step order locally: exit 1 with the manifest
+      removed, exit 0 and `digestsMatch true` after the harness step.)*
 - [x] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
       wall-clock ms: blocks→compose (002), DOCX serialize+zip, PDF
       serialize+compile (real Typst WASM via the T3.1 Bun port). **RSS
@@ -524,6 +552,21 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       baseline instead of firing a false alarm, and a warning names the phase,
       tier and machine. Verified end to end locally (a synthetic +50% time /
       +30% RSS record fires exactly the expected three warnings).
+      *(Round 3 review fix — the workflow was inert in CI.* `runner` was derived
+      from `RUNNER_NAME`, which on GitHub-hosted runners is instance-specific
+      ("GitHub Actions 2"/"…14") and ALWAYS set, so the `RUNNER_OS` fallback was
+      unreachable. Every nightly would have found zero comparable records and
+      never warned — invisible behind `continue-on-error: true`. It only passed
+      locally because a dev machine has a stable hostname. `benchRunnerLabel`
+      now emits a runner CLASS (`ci:<environment>:<os>:<arch>` in CI, hostname
+      locally, `ATLCLI_BENCH_RUNNER` override), pinned by tests in
+      `bench-env.test.ts` and, end to end, by a `compare-trend.test.ts` case
+      asserting two nightlies differing ONLY in `RUNNER_NAME` are comparable and
+      that a regression between them is detected. Also hardened `loadHistory`:
+      it previously guarded unparseable JSON but not structurally-invalid
+      records, so one valid-JSON record missing `environment` would throw before
+      `--append` ran, leaving the poisoned entry in the cache for `restore-keys`
+      to resurrect forever. Bad entries are now dropped and rewritten out.)*
       STILL OPEN, by design: `scripts/bench/budgets.json` is NOT written and the
       workflow is NOT failing — that needs the ~2 weeks of trend data this
       workflow has yet to collect. Note the measured 3.0–3.4 GB peak RSS

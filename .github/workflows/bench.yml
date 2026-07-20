@@ -98,10 +98,31 @@ jobs:
             --pages "${{ github.event.inputs.pages || '500' }}" \
             --repeat "${{ github.event.inputs.repeat || '3' }}"
 
-      # M1 acceptance corpus: not a benchmark, but the same nightly cadence is
-      # the cheapest place to keep proving the integrated story still exports.
-      - name: M1 acceptance corpus
-        run: bun --conditions=development scripts/bench/run-m1-acceptance.ts
+      # ---- M1 acceptance corpus (cross-host) ----
+      #
+      # NOT a benchmark, but the nightly is the cheapest place to keep proving
+      # the integrated product story still exports on BOTH hosts.
+      #
+      # The two halves must run in the SAME job. The browser harness writes
+      # `apps/browser-export-harness/test-results/digests.json` (gitignored, and
+      # not an artifact any other workflow hands over), and
+      # `run-m1-acceptance.ts` reads it to compute `digestsMatch`. Split across
+      # jobs, the manifest is simply absent and the cross-host verdict is `null`
+      # forever — a formally green M1 that never actually ran the integrated
+      # story on two hosts, which is precisely the failure mode spec 011 says
+      # this corpus exists to close. `--require-cross-host` makes that
+      # impossible to reintroduce silently: a missing manifest fails the step.
+      - name: Install Playwright Chromium
+        run: bunx playwright@1.55.0 install --with-deps chromium
+
+      - name: Build browser export harness
+        run: bun run build:browser-export-harness
+
+      - name: Run browser export harness (publishes the m1 digests)
+        run: bun run test:browser-export-harness
+
+      - name: M1 acceptance corpus (asserts browser/CLI cross-host equality)
+        run: bun --conditions=development scripts/bench/run-m1-acceptance.ts --require-cross-host
 
       - name: Compare engine tier against trend
         run: |

@@ -33,7 +33,7 @@
     "check:browser-export-harness": "bun run --cwd apps/browser-export-harness check:output",
     "assert:conformance-cases": "bun run --cwd apps/browser-export-harness assert:cases",
     "check:parity": "bun run --cwd apps/browser-export-harness check:parity",
-    "bench:m1": "bun scripts/bench/run-m1-acceptance.ts",
+    "bench:m1": "bun --conditions=development scripts/bench/run-m1-acceptance.ts",
     "bench:engine": "bun --conditions=development scripts/bench/run-bench.ts",
     "bench:e2e": "bun --conditions=development scripts/bench/run-e2e-bench.ts",
     "test:browser-export-harness": "bun run --cwd apps/browser-export-harness test:e2e",
