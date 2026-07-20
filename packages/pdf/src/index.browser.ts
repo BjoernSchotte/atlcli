@@ -21,6 +21,10 @@ export type {
   RunPdfExportInput,
 } from "./run-export.js";
 
+// --- Compiled-byte handle (bytes-handle.ts, spec 010 T5.6) ---
+export { pdfBytesFromUint8Array, pdfBytesFromBlob, isPdfBytesHandle } from "./bytes-handle.js";
+export type { PdfBytesHandle } from "./bytes-handle.js";
+
 // --- Compile port contract (compiler.ts) ---
 export { formatPdfCompilerDiagnostics } from "./compiler.js";
 export type { PdfCompilePort, PdfCompileResult, PdfCompileContext } from "./compiler.js";

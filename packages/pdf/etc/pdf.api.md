@@ -151,6 +151,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -217,6 +220,26 @@ export interface PdfAssetResolver {
     resolve(ref: PdfAssetRef, context?: {
         signal?: AbortSignal;
     }): Promise<PdfResolvedAsset>;
+}
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
 }
 
 // export: PdfCompileContext
@@ -328,7 +351,7 @@ export interface PdfOutputInspection {
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
@@ -783,6 +806,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -849,6 +875,26 @@ export interface PdfAssetResolver {
     resolve(ref: PdfAssetRef, context?: {
         signal?: AbortSignal;
     }): Promise<PdfResolvedAsset>;
+}
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
 }
 
 // export: PdfCompileContext
@@ -960,7 +1006,7 @@ export interface PdfOutputInspection {
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
@@ -1415,6 +1461,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isPdfBytesHandle
+export declare function isPdfBytesHandle(value: unknown): value is PdfBytesHandle;
+
 // export: LinkTarget
 export type LinkTarget = {
     kind: "external";
@@ -1481,6 +1530,26 @@ export interface PdfAssetResolver {
     resolve(ref: PdfAssetRef, context?: {
         signal?: AbortSignal;
     }): Promise<PdfResolvedAsset>;
+}
+
+// export: pdfBytesFromBlob
+export declare function pdfBytesFromBlob(source: Blob, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: pdfBytesFromUint8Array
+export declare function pdfBytesFromUint8Array(source: Uint8Array, options?: {
+    mimeType?: string;
+}): PdfBytesHandle;
+
+// export: PdfBytesHandle
+export interface PdfBytesHandle {
+    readonly size: number;
+    readonly mimeType: string;
+    asBlob(): Promise<Blob>;
+    asUint8Array(): Promise<Uint8Array>;
+    objectUrl(): Promise<string>;
+    release(): void;
 }
 
 // export: PdfCompileContext
@@ -1592,7 +1661,7 @@ export interface PdfOutputInspection {
 
 // export: PdfOutputSink
 export interface PdfOutputSink {
-    emit(name: string, bytes: Uint8Array, context?: {
+    emit(name: string, bytes: PdfBytesHandle, context?: {
         signal?: AbortSignal;
     }): Promise<void>;
 }
@@ -1981,6 +2050,9 @@ export declare const PDF_MAX_ASSET_BYTES: number;
 
 // export: PDF_MAX_TOTAL_ASSET_BYTES
 export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
+
+// export: PDF_SCAN_CHUNK_BYTES
+export declare const PDF_SCAN_CHUNK_BYTES: number;
 
 // export: pdfColorContrast
 export declare function pdfColorContrast(first: string, second: string): number;

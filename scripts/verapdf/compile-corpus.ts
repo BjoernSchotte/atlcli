@@ -21,6 +21,7 @@ import {
   type PdfAssetResolver,
   type PdfCompilePort,
   type PdfExportMetadata,
+  type PdfBytesHandle,
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import {
@@ -115,8 +116,9 @@ export async function buildCompiler(): Promise<PdfCompilePort> {
 
 class MemorySink {
   bytes: Uint8Array | null = null;
-  async emit(_name: string, bytes: Uint8Array): Promise<void> {
-    this.bytes = bytes.slice();
+  // `bytes` is a PdfBytesHandle since spec 010 T5.6; this harness wants the array.
+  async emit(_name: string, bytes: PdfBytesHandle): Promise<void> {
+    this.bytes = (await bytes.asUint8Array()).slice();
   }
 }
 

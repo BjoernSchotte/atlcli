@@ -117,7 +117,9 @@ export function dirPdfOutputSink(outDir: string): PdfOutputSink {
       const dir = resolve(outDir);
       const target = join(dir, basename(name));
       await mkdir(dir, { recursive: true });
-      await writeFile(target, bytes);
+      // `bytes` is a PdfBytesHandle since spec 010 T5.6. For the default
+      // array-backed handle this hands back the compiler's own buffer.
+      await writeFile(target, await bytes.asUint8Array());
     },
   };
 }
