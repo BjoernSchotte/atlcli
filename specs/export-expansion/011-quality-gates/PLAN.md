@@ -620,7 +620,7 @@ budget).**
       the gate asserts each is rejected with the EXACT typed kind — a case that
       unpacks, or trips a different guard, fails. The corpus is kept OFF the
       package barrel so its large buffers never load in the browser bundle.)*
-- [ ] Raw `.docx` template upload archive budget (unclaimed by any feature
+- [x] Raw `.docx` template upload archive budget (unclaimed by any feature
       lane — `unzipDocx` in `packages/docx/src/scan.ts` today validates
       only the **compressed** input size against `MAX_TEMPLATE_BYTES`,
       never decompressed size, entry count, or entry names): add a shared
@@ -633,14 +633,25 @@ budget).**
       Regression tests with hand-built PizZip archives (declared/actual
       size mismatch, path traversal, 100k-entry archive) in
       `packages/docx/src/scan.test.ts`.
-      *(Round 2: NOT done — enforcing the budget means editing
-      `packages/docx/src/scan.ts` (`unzipDocx`), a feature-package SOURCE change
-      outside the 011 harness/scripts/fixtures lane. Confirmed `unzipDocx` still
-      checks only the compressed input length against `MAX_TEMPLATE_BYTES` — no
-      entry-name / entry-count / decompressed-size guard. The adversarial
-      technique is proven reusable in the archive-corpus gate above; hand the
-      `scan.ts` change to the docx feature lane, then 011 adds the corpus.)*
-- [ ] Active-content policy for imported `.docx` templates: reject-on-import
+      *(Round 3: DONE — `packages/docx/src/scan.ts`. `DOCX_ARCHIVE_BUDGET`
+      (`maxEntryCount` 2048, `maxUncompressedBytes` 128 MiB,
+      `maxSingleEntryUncompressedBytes` 64 MiB) is enforced by
+      `assertArchiveBudget` from each entry's DECLARED central-directory size
+      BEFORE any inflation, and `assertSafeDocxEntryName` mirrors 007's
+      `assertSafePath` rule (`..`, absolute, backslash, drive prefix, ASCII
+      control chars) with docx-local `path-traversal` / `invalid-path` kinds — a
+      deliberate mirror, not an import, so `@atlcli/docx` takes no dependency on
+      the PDF container format. Numbers are sized against the 20 MB compressed
+      cap (~6.4x expansion headroom); rationale is in the constant's doc comment.
+      Adversarial tests in `scan.test.ts` build REAL PizZip archives: a 70 MiB
+      single-member bomb and a 3x50 MiB cumulative bomb (both well under
+      `MAX_TEMPLATE_BYTES`, so only the new guard catches them), a
+      `maxEntryCount + 1` flood, five traversal/absolute/backslash names, and
+      newline + NUL names — each asserting the EXACT typed kind, plus positive
+      controls (a real media-bearing template, an archive exactly at the entry
+      cap, ordinary Word part names) and an assertion that the bomb is refused
+      WITHOUT inflating it.)*
+- [x] Active-content policy for imported `.docx` templates: reject-on-import
       (a new `DocxError` kind, never a silent strip) when the archive
       contains `word/vbaProject.bin`, an `word/activeX/*` OLE/ActiveX
       control part, or an `<w:altChunk>` reference in `document.xml`.
@@ -654,10 +665,24 @@ budget).**
       Word. Real hand-crafted fixture templates (VBA-bearing, altChunk,
       DDEAUTO field) in `packages/docx/src/scan.test.ts` and
       `packages/docx/src/export.test.ts`.
-      *(Round 2: NOT done — the new `DocxError` kind + reject/audit logic lives
-      in `packages/docx/src/{scan,export}.ts`, feature-package SOURCE outside the
-      011 lane. Hand to the docx feature lane.)*
-- [ ] Confluence storage parse budget (**cross-plan coordination note**:
+      *(Round 3: DONE — a new `active-content` `DocxError` kind, thrown by
+      `assertNoActiveContent` inside `unzipDocx`: REJECT, never strip (a silent
+      strip would return a document that looks like the user's template but is
+      not, and would make the control invisible). Covers `word/vbaProject.bin`
+      and `word/vbaData.xml` (case-insensitive — `word/VBAProject.BIN` is the
+      same part to Word), `word/activeX/*`, and `<w:altChunk>` in `document.xml`
+      AND in header/footer parts (the spec named only `document.xml`; headers
+      accept the element too, so leaving them out was a bypass). The field-
+      instruction audit is `collectRiskyFieldInstructions` (reusing
+      `collectStylerefFields`' run-split reassembly, so a `DDEA` + `UTO` split
+      across `w:instrText` runs still matches); hits land on
+      `ScanResult.riskyFieldInstructions` and `exportDocx` turns them into a
+      `template-field-instruction-risk` warning. Fixtures: a real CFB/OLE2-
+      signature `vbaProject.bin`, an ActiveX part with a real CLSID, altChunk in
+      body and header, a run-split `DDEAUTO cmd.exe` field and an `INCLUDETEXT`
+      UNC `fldSimple`; positive controls prove `activex-logo.png`, the literal
+      text "w:altChunk", and ordinary `PAGE`/`STYLEREF`/`TOC` fields all pass.)*
+- [x] Confluence storage parse budget (**cross-plan coordination note**:
       touches `packages/confluence/src/export-blocks.ts`, the hot file
       UMSETZUNGSPLAN sequences T0.1→T1.4→T1.8 — land as a small additive PR
       after T0.1 merges, coordinated with folder 001, not a solo 011
@@ -672,12 +697,26 @@ budget).**
       (hand-authored) in `packages/confluence/src/export-blocks.test.ts`,
       run through both engines via a new harness/parity negative-fixture
       case owned by this folder.
-      *(Round 2: NOT done — the budget enforcement is a SOURCE change in
-      `packages/confluence/src/export-blocks.ts` (`parseXml`/walkers),
-      cross-plan with folder 001 and outside the 011 harness/scripts/fixtures
-      lane. 011 owns only the negative-fixture harness case, which lands once the
-      budget exists.)*
-- [ ] Link-target scheme policy (**same cross-plan coordination note** —
+      *(Round 3: DONE — the cross-plan sequencing constraint is SATISFIED and
+      verified: 001 (#49), 003 (#54) and 004 (#55) are all merged into
+      origin/main, so `export-blocks.ts` is no longer a contended hot file and
+      this landed as the small additive PR the note asked for.
+      `StorageParseBudget` (`maxNodes` 400 000, `maxDepth` 256, `maxTextLength`
+      16 MiB, overridable via `StorageToBlocksOptions.parseBudget`) is enforced
+      in `parseXml`, throwing the typed, catchable `StorageParseError`
+      (`too-many-nodes` / `too-deep` / `text-too-long`). Capping DEPTH at the
+      parse boundary is what makes the walkers safe — they recurse strictly along
+      the tree `parseXml` produced, so `walkBlocks`/`handleBlockElement`/
+      `walkInline` need no counter of their own. The control-character fixture
+      the task asked for found a REAL bug: `&#x1;` survives storage and
+      `encodeXmlText` does not escape it, so it reached `<w:t>` verbatim and
+      produced a `.docx` Word refuses to open ("unreadable content"). Text nodes
+      and attribute values are now stripped of XML-1.0-illegal characters at the
+      same single boundary. Tests include a control proving the 50 000-deep
+      nesting bomb IS a real `RangeError` once the depth cap is lifted, so the
+      guard is demonstrably load-bearing, plus a test showing one bad page
+      degrades while its neighbours still export.)*
+- [x] Link-target scheme policy (**same cross-plan coordination note** —
       lands with folder 001/003, specified and gated here): `<a href>`/
       `ac:link` targets flow verbatim from Confluence storage into DOCX
       hyperlink fields (`packages/docx/src/serialize.ts`) and PDF
@@ -689,12 +728,28 @@ budget).**
       consumed by both serializers. Malformed-URI fixtures run through both
       engines via the same negative-fixture case as the storage budget
       above.
-      *(Round 2: NOT done — `sanitizeLinkHref` + the serializer wiring are SOURCE
-      changes in `packages/{confluence,docx,pdf}/src`, cross-plan with 001/003
-      and outside the 011 lane. 011 owns only the shared negative-fixture case,
-      which lands once the sanitizer exists. Note: an `isSafeLinkScheme(href)`
-      predicate already exists in `packages/confluence/src/html-to-blocks.ts` —
-      the sanitizer can build on it.)*
+      *(Round 3: DONE, and UNIFIED rather than added as a third implementation.
+      The repo carried THREE answers to "is this href safe?": `isSafeLinkScheme`
+      (confluence/html-to-blocks.ts, 004), `isSafeHyperlinkUrl`
+      (docx/ooxml.ts, 004 — a hand-copied duplicate), and an inline
+      `/^(https?:|mailto:)/i` in pdf/serialize.ts's `resolveLink` that silently
+      DISAGREED with both (no control-character stripping; rejected the relative
+      URLs the other two allowed). New canonical module
+      `packages/confluence/src/link-safety.ts` (`isSafeLinkScheme`,
+      `sanitizeLinkHref`, `normalizeLinkHref`, `UNSAFE_LINK_NOTE_CODE`) is now
+      the single source of truth; all three delegate to it and the old names
+      survive as thin wrappers so the published API is unchanged. The DEGRADATION
+      moved up to the walkers (`export-blocks.ts` for storage `<a href>`,
+      `html-to-blocks.ts` for export_view HTML), so both engines inherit it and
+      the user sees an `unsafe-link-skipped` warning; the DOCX `hyperlinkField`
+      and PDF `resolveLink` re-checks stay as defense in depth. PDF now
+      distinguishes a blocked scheme (warning, `unsafe-link-skipped`) from a
+      merely unrepresentable target (info, `pdf-link-unresolved`).
+      `link-safety.test.ts` carries a 21-entry blocked corpus (javascript,
+      vbscript, data, file, jar, ms-msdt, search-ms, plus tab/newline/CR/NUL/
+      vertical-tab smuggling and case variants), an 11-entry allowed corpus as
+      positive control, and a DRIFT GUARD asserting both walkers reach the
+      identical verdict for every entry.)*
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
       *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
       `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock
@@ -719,7 +774,16 @@ budget).**
       (`check-parity.ts`, `compile-corpus.ts`, `run-bench.ts`,
       `run-m1-acceptance.ts`) so a pathological fixture never hangs CI. A
       stable `compile-timeout` error code, never a silent hang.
-- [ ] `/security-review` before releases: add a "Security review completed
+- [x] `/security-review` before releases *(Round 3: DONE — a "Security Review
+      Before Every Release" section in `src/content/docs/contributing.md` with a
+      surface/what-to-check/where table covering the raw `.docx` upload,
+      `.wiki-pdf-template`, embedded SVG, storage parse budget, link schemes,
+      font intake and any new network code, referenced from the Prerequisites
+      list; and a pre-release checklist in `showDryRunPlan`
+      (`scripts/release.ts`). The reminder is ADVISORY — the script does not
+      block — so its only force is being printed, which is exactly why
+      `release.test.ts` now regression-tests that the line and the named
+      surfaces are present.)*: add a "Security review completed
       for this release" line to the release runbook section in
       `src/content/docs/contributing.md`, and make
       `scripts/release.ts --dry-run` print a reminder checklist item; the

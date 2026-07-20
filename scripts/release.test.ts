@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rollback, type ReleaseState } from "./release";
+import { rollback, showDryRunPlan, type ReleaseState } from "./release";
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {
@@ -108,5 +108,43 @@ describe("release rollback", () => {
 
     expect(await git(cwd, "rev-parse", "HEAD")).toBe(releaseCommit);
     expect(await git(cwd, "tag", "-l", "v0.17.1")).toBe("v0.17.1");
+  });
+});
+
+describe("release dry-run pre-release checklist (spec 011)", () => {
+  /** Capture what `showDryRunPlan` writes to stdout. */
+  function planOutput(): string {
+    const original = console.log;
+    let out = "";
+    console.log = (...parts: unknown[]) => {
+      out += parts.join(" ") + "\n";
+    };
+    try {
+      showDryRunPlan("0.17.0", "0.18.0", false);
+    } finally {
+      console.log = original;
+    }
+    return out;
+  }
+
+  test("reminds the releaser to complete a security review", () => {
+    // The gate is advisory, so its ONLY force is being printed. If this line
+    // ever disappears, the release runbook silently loses its security step.
+    const out = planOutput();
+    expect(out).toContain("Security review completed for this release");
+    expect(out).toContain("/security-review");
+  });
+
+  test("names the untrusted-input surfaces the review must cover", () => {
+    const out = planOutput();
+    for (const surface of [".docx", ".wiki-pdf-template", "SVG", "storage", "link-target", "font"]) {
+      expect(out).toContain(surface);
+    }
+  });
+
+  test("still prints the release plan itself", () => {
+    const out = planOutput();
+    expect(out).toContain("0.17.0 \u2192 0.18.0");
+    expect(out).toContain("--dry-run");
   });
 });

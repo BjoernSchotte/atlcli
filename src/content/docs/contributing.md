@@ -151,6 +151,33 @@ bun scripts/release.ts major    # 0.16.0 → 1.0.0
 
 - GitHub CLI authenticated (`gh auth login`)
 - On main branch with clean working directory
+- **Security review completed for this release** — see below
+
+### Security Review Before Every Release
+
+Run `/security-review` over the diff since the previous tag and confirm it is
+clean before you cut a release. `bun scripts/release.ts <type> --dry-run` prints
+this as a reminder checklist item; the script does not block on it, so the
+confirmation is yours to make.
+
+The review covers the untrusted-input surfaces plus anything new that talks to
+the network:
+
+| Surface | What to check | Where it lives |
+|---------|---------------|----------------|
+| Raw `.docx` template upload | Archive budget (entry count, declared uncompressed size), entry-name policy, active-content rejection | `packages/docx/src/scan.ts` |
+| `.wiki-pdf-template` container | Path traversal, symlinks, per-file and cumulative size caps | `packages/template-pack/src/unpack.ts` |
+| Embedded SVG | Script/`foreignObject`/`on*`/external-reference rejection | `packages/confluence/src/svg-safety.ts` |
+| Confluence storage parsing | Node-count, nesting-depth and text-length budget | `packages/confluence/src/export-blocks.ts` |
+| Link targets | Scheme allowlist (`http`, `https`, `mailto`, relative only) | `packages/confluence/src/link-safety.ts` |
+| Fonts intake | sha256 manifest, sfnt magic bytes, per-font size cap | `packages/pdf/scripts/ensure-fonts.ts` |
+| New network code | Any `fetch` added since the last tag: is the target host derived from user input? | anywhere |
+
+:::caution
+A guard that is present but untested is not a guard. If the review finds a new
+input surface, add an adversarial test that proves it rejects **and** a positive
+control that proves legitimate input still passes, in the same PR.
+:::
 
 ### Example: Preview a Release
 
