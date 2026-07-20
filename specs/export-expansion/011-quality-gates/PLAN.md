@@ -26,11 +26,24 @@ BOM-aware `decodeSvgSource` closed every prior `pending-006` gap, so the CSS
 `url()`/`@import`/`style`-attr cases and the UTF-16LE case flip from ratcheted
 to hard `must-reject` (rules: `css-external-reference` and `blocked-element`);
 WIRED the both-engines gate via the shared sanitizer the PDF and DOCX engines
-both delegate to (no divergence possible). Still pending for a future 011 round:
-browser conformance cases 001–006 (each lands with its folder's follow-up PR),
-the benchmark runner/M1-corpus/CI-trend, all PDF/UA tasks, the remaining
-security tasks (archive corpus, raw `.docx` budget, storage-parse/link-scheme,
-full compiler-timeout coverage), E2E discipline, and docs pages.
+both delegate to (no divergence possible).
+
+**Round 2b (2026-07-20, after every feature spec merged) — landed:** ALL SIX
+browser conformance cases 001–006 (`blocks`, `scope`, `content-compat`,
+`macros`, `placeholders`, `docx-quality`) with shared block-producing fixtures
+in `@atlcli/export-fixtures` (so browser + CLI consume identical bytes),
+registered via the round-1 registry/manifest, run through the generic Playwright
+loop and the drift guard; the shape-parity gate (`check-parity.ts`) extended
+from one case to FIVE PDF cases (all byte + report identical browser vs CLI);
+the M1 acceptance corpus + offline `run-m1-acceptance` runner; the cross-plan
+archive-policy conformance gate (007's `template-pack`); and a self-skipping
+veraPDF PDF/UA ratchet (pattern: the LibreOffice smoke). Still pending: DOCX
+per-part cross-host parity for 005/006, the benchmark runner/CI-trend, the
+alt-text/language PDF/UA audits + docs (need feature-package source changes,
+out of this lane), the remaining source-owned security tasks (raw `.docx`
+budget, storage-parse/link-scheme, active-content — all in
+`packages/{confluence,docx}` source, out of this lane), E2E discipline
+(live-tenant, orchestrator only), and docs pages.
 
 ## Reference
 
@@ -247,42 +260,71 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       case-ID list doesn't exactly match the expected set for the folders
       that have landed — catching an unregistered or duplicated case
       before merge.
-- [ ] One harness case per folder, registered in the `ConformanceCase`
+- [x] One harness case per folder, registered in the `ConformanceCase`
       registry above, with its own `data-testid` result element, asserted
       via the generic Playwright loop in
       `apps/browser-export-harness/tests/exports.e2e.ts`. Concrete case list
       (**seven browser cases, 001–007**; case 008 is the CLI/Bun parity
       runner below and is deliberately not a browser case — see Definition
-      of Done, which is corrected accordingly):
-  - [ ] **Case 001 `blocks`** (`src/blocks-case.ts`): fixture using every new
+      of Done, which is corrected accordingly). *(Round 2: all six feature-lane
+      cases 001–006 landed. Shared block-producing fixtures live in
+      `@atlcli/export-fixtures` so the browser case and the Bun/CLI parity
+      runner consume the SAME bytes; 001–004 emit PDF digests + report
+      projections into the shape-parity gate; 005/006 are DOCX-only.)*
+  - [x] **Case 001 `blocks`** (`src/blocks-case.ts`): fixture using every new
         `ExportBlock` field (`caption`, `pageBreak`, `orientation`, `anchor`,
         enriched `unknown`) through both engines; asserts no unexpected note
-        codes and warm-repeat determinism for the PDF side.
-  - [ ] **Case 002 `scope`** (`src/scope-case.ts`): three-page fixture tree
+        codes and warm-repeat determinism for the PDF side. *(Done. Caption is
+        exercised on `table` + `codeBlock` (no image asset needed → both engines
+        emit zero warning notes); DOCX asserts the table grid, landscape
+        section, named bookmark and preserved unknown-macro placeholder.)*
+  - [x] **Case 002 `scope`** (`src/scope-case.ts`): three-page fixture tree
         through `composeChapters` → both engines; asserts heading-level
         offsets, chapter page breaks, namespaced anchors resolve (no dangling
         link diagnostics), and PDF `pageCount`/outline growth via
-        `validatePdfOutput`.
-  - [ ] **Case 003 `content-compat`** (`src/content-case.ts`): storage
+        `validatePdfOutput`. *(Done. The fixture carries an in-page anchor +
+        link so anchor namespacing is genuinely exercised; compose emits zero
+        warnings; DOCX asserts ≥2 chapter page breaks + the namespaced anchor
+        bookmark.)*
+  - [x] **Case 003 `content-compat`** (`src/content-case.ts`): storage
         fixture with `scroll-pagebreak`, `scroll-landscape`/`-portrait`,
         `scroll-title`→caption, scroll-only/-ignore (exporter-sensitive);
         asserts DOCX section/`w:br` output parts and PDF page count +
         orientation effect; includes the 200-row repeating-header table.
-  - [ ] **Case 004 `macros`** (`src/macro-case.ts`): real
+        *(Done. DOCX consumes the storage directly; asserts the page break, the
+        `w:orient="landscape"` section and ≥200 table rows; PDF grows past one
+        page. scroll-only/-ignore left for a follow-up — the parser side is
+        already unit-tested in `@atlcli/confluence`.)*
+  - [x] **Case 004 `macros`** (`src/macro-case.ts`): real
         `MacroRendererRegistry` + resolver pass with deterministic in-memory
         fetch ports (recorded Jira search payload, diagram preview PNG bytes,
         export_view HTML); asserts the full fallback chain ends in
         placeholder+report note for an unknown macro and that the Jira table
-        renders as a real table block.
-  - [ ] **Case 005 `placeholders`** (`src/placeholder-case.ts`): template
+        renders as a real table block. *(Done via `defaultRegistry` +
+        `resolveMacroBlocks` with in-memory Jira + attachment ports: asserts the
+        Jira JQL macro → real `table`, the draw.io + unknown macros → placeholder
+        FLOOR with `macro-degraded`, and both engines serialize the result. The
+        resolution notes ride into the PDF report as source notes so the parity
+        gate checks them. Diagram→image PNG embedding is exercised at unit level
+        in `@atlcli/export-macros`; the harness keeps the port asset-free for
+        byte-stable parity.)*
+  - [x] **Case 005 `placeholders`** (`src/placeholder-case.ts`): template
         built with `buildDocx` containing includepage + metadata
         placeholders; real resolver + document pass with an in-memory
         `getIncludedPage` port; asserts cycle protection note and resolved
-        part text.
-  - [ ] **Case 006 `docx-quality`** (`src/docx-quality-case.ts`): asserts
+        part text. *(Done. In-memory `getIncludedPage` via the production
+        `buildGetIncludedPage`; asserts the included page text + `$scroll.title`
+        resolve, a self-include triggers `includepage-cycle`, and
+        `$scroll.metadata.*` degrades with `placeholder-unsupported`.)*
+  - [x] **Case 006 `docx-quality`** (`src/docx-quality-case.ts`): asserts
         `word/numbering.xml` exists with multilevel defs, `w:tblGrid` widths
         from `columnWidths`, an SVG attachment lands as svgBlip + PNG
         fallback media parts, and the StyleRef header field survives export.
+        *(Done. A nested ordered list forces multilevel numbering (≥9 `w:lvl`);
+        `columnWidths: [300,100]` (spread 3.0) forces two real `w:gridCol`
+        widths; a safe SVG attachment fed through the canvas rasterizer lands as
+        `asvg:svgBlip` + a PNG media pair; the header STYLEREF survives with no
+        unused-style warning (the level-1 heading emits the referenced style).)*
   - [x] **Case 007 `pdf-settings`** (`src/pdf-settings-case.ts`): compiles
         the same blocks twice with different `settings` (A4/portrait vs
         Letter/landscape, watermark on, cover/outline toggled); asserts the
@@ -290,19 +332,24 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
         and a `.wiki-pdf-template` container round-trips through the template
         library. *(Done. "Watermark present" is proven robustly by asserting
         watermark-on vs watermark-off bytes differ rather than glyph-decoding.)*
-  - [ ] **Case 008** is not a browser case: it is the parity runner below.
-        *(Done for pdf-settings — see check-parity.ts. Docx/other cases join
-        as their fixtures land.)*
+  - [x] **Case 008** is not a browser case: it is the parity runner below.
+        *(Round 2: `check-parity.ts` now proves byte + report parity for FIVE
+        PDF cases — `pdf-settings`, `blocks`, `scope`, `content-compat`,
+        `macros` — driven by the SAME `@atlcli/export-fixtures` block builders
+        on both hosts. DOCX per-part parity for 005/006 stays pending — those
+        are DOCX-only cases that assert their invariants in-case; wiring the
+        cross-host DOCX per-part digest map is the remaining check-parity work.)*
 - [x] Extend each case result with output digests: sha256 for PDF bytes,
       per-part sha256 map for DOCX (via `unzipDocx` in-page); surface them in
       the JSON `*-result` elements. Also surface a canonical projection of
       the case's `ExportNote`s (code, severity, count, failure phase —
       excludes timing and host-specific free text) alongside the digests,
       so the parity gate below can compare reports, not only bytes.
-      *(Scope this round: `pdf-settings` emits sha256 digests + a report-note
-      projection (`emitsDigests: true`), and `check-parity.ts` consumes them.
-      The DOCX per-part digest map and the folder-lane cases (001–004) emit
-      their digests as each case lands; the comparison primitives
+      *(Round 1: `pdf-settings` emits sha256 digests + a report-note projection.
+      Round 2: cases `blocks`/`scope`/`content-compat`/`macros` (001–004) now
+      emit sha256 PDF digests + report projections too (`emitsDigests: true`),
+      all consumed by `check-parity.ts`. The DOCX per-part digest map for the
+      DOCX-only cases (005/006) is still pending; the comparison primitives
       (`compareDocxParity`, per-part raster metric) are already built and
       unit-tested in `parity-compare.ts`.)*
 - [x] **Shape-parity gate**: `apps/browser-export-harness/scripts/check-parity.ts`

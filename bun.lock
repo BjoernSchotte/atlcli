@@ -137,7 +137,9 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@atlcli/pdf": "workspace:*",
+        "@atlcli/template-pack": "workspace:*",
       },
     },
     "packages/export-macros": {

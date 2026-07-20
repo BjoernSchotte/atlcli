@@ -11,6 +11,11 @@
  * report-projection equivalence. A divergence names the case and the first
  * divergent digest or report code.
  *
+ * PDF parity covers every emits-digests case: `pdf-settings` (007) plus the
+ * feature-lane cases `blocks` (001), `scope` (002), `content-compat` (003) and
+ * `macros` (004). Each runs the SAME fixture block-builders from
+ * `@atlcli/export-fixtures` on both hosts, so byte-identity is the contract.
+ *
  * Everything is real: no mocks, real Typst compile, real fonts. Every compile is
  * wrapped in a wall-clock deadline (`compile-timeout`) so a pathological fixture
  * can never hang CI (spec 011 compiler-execution-budget, CI-script scope).
@@ -21,15 +26,26 @@ import { fileURLToPath } from "node:url";
 import {
   PDF_RUNTIME_ASSETS,
   runPdfExport,
+  type ExportBlock,
+  type ExportNote,
   type PdfAssetResolver,
   type PdfCompilePort,
+  type PdfExportMetadata,
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import {
+  BLOCKS_ALL_FIELDS,
+  BLOCKS_METADATA,
+  composeScopeDocument,
+  contentCompatBlocks,
+  CONTENT_COMPAT_METADATA,
+  MACRO_METADATA,
   PDF_SETTINGS_A,
   PDF_SETTINGS_B,
   PDF_SETTINGS_BLOCKS,
   PDF_SETTINGS_METADATA,
+  resolveMacroFixtureBlocks,
+  SCOPE_METADATA,
 } from "@atlcli/export-fixtures";
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 import { MemoryOutputSink } from "../src/memory-output.js";
@@ -89,47 +105,108 @@ async function buildBunCompiler(): Promise<PdfCompilePort> {
   return deadlineCompiler(compiler);
 }
 
-interface PdfSettingsCliResult {
+interface CliCaseResult {
   compilerVersion: string;
   digests: Record<string, string>;
   notes: Array<{ code: string; level: string }>;
 }
 
-async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<PdfSettingsCliResult> {
-  async function compileWith(settings: typeof PDF_SETTINGS_A): Promise<{ bytes: Uint8Array; version: string; notes: Array<{ code: string; level: string }> }> {
-    const output = new MemoryOutputSink();
-    const report = await runPdfExport(
-      {
-        blocks: PDF_SETTINGS_BLOCKS,
-        metadata: PDF_SETTINGS_METADATA,
-        settings,
-        profile: "tagged",
-        filename: "PDF Settings Conformance.pdf",
-      },
-      { assets: noAssets, compiler, output, now: deterministicClock() },
-    );
-    return {
-      bytes: output.single.bytes,
-      version: report.compilerVersion,
-      notes: report.notes.map((n) => ({ code: n.code, level: n.level })),
-    };
-  }
-  const a = await compileWith(PDF_SETTINGS_A);
-  const b = await compileWith(PDF_SETTINGS_B);
+/** The canonical (parity-shared) PDF export request — identical to the harness. */
+async function cliCompile(
+  compiler: PdfCompilePort,
+  blocks: ExportBlock[],
+  metadata: PdfExportMetadata,
+  filename: string,
+  sourceNotes: ExportNote[] = [],
+): Promise<{ bytes: Uint8Array; version: string; notes: Array<{ code: string; level: string }> }> {
+  const output = new MemoryOutputSink();
+  const report = await runPdfExport(
+    { blocks, metadata, profile: "tagged", filename, sourceNotes },
+    { assets: noAssets, compiler, output, now: deterministicClock() },
+  );
   return {
-    compilerVersion: a.version,
-    digests: { "variant-a.pdf": sha256Hex(a.bytes), "variant-b.pdf": sha256Hex(b.bytes) },
-    notes: a.notes,
+    bytes: output.single.bytes,
+    version: report.compilerVersion,
+    notes: report.notes.map((n) => ({ code: n.code, level: n.level })),
   };
 }
 
-interface BrowserPdfSettingsResult {
-  compilerVersion: string;
-  digests: Record<string, string>;
-  reportNotes: Array<{ code: string; severity: string }>;
+async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const a = await cliCompile(compiler, PDF_SETTINGS_BLOCKS, PDF_SETTINGS_METADATA, "PDF Settings Conformance.pdf");
+  // Variant B uses different settings; thread them through the same request shape.
+  const outputB = new MemoryOutputSink();
+  const reportB = await runPdfExport(
+    {
+      blocks: PDF_SETTINGS_BLOCKS,
+      metadata: PDF_SETTINGS_METADATA,
+      settings: PDF_SETTINGS_B,
+      profile: "tagged",
+      filename: "PDF Settings Conformance.pdf",
+    },
+    { assets: noAssets, compiler, output: outputB, now: deterministicClock() },
+  );
+  // Variant A carries its own settings too.
+  const outputA = new MemoryOutputSink();
+  const reportA = await runPdfExport(
+    {
+      blocks: PDF_SETTINGS_BLOCKS,
+      metadata: PDF_SETTINGS_METADATA,
+      settings: PDF_SETTINGS_A,
+      profile: "tagged",
+      filename: "PDF Settings Conformance.pdf",
+    },
+    { assets: noAssets, compiler, output: outputA, now: deterministicClock() },
+  );
+  void a;
+  return {
+    compilerVersion: reportA.compilerVersion,
+    digests: {
+      "variant-a.pdf": sha256Hex(outputA.single.bytes),
+      "variant-b.pdf": sha256Hex(outputB.single.bytes),
+    },
+    notes: reportA.notes.map((n) => ({ code: n.code, level: n.level })),
+  };
 }
 
-function loadBrowserManifest(): Record<string, BrowserPdfSettingsResult> | null {
+async function runBlocksCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const r = await cliCompile(compiler, BLOCKS_ALL_FIELDS, BLOCKS_METADATA, "Block Model Coverage.pdf");
+  return { compilerVersion: r.version, digests: { "blocks.pdf": sha256Hex(r.bytes) }, notes: r.notes };
+}
+
+async function runScopeCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const composed = composeScopeDocument();
+  const r = await cliCompile(compiler, composed.blocks, SCOPE_METADATA, "Handbook.pdf");
+  return { compilerVersion: r.version, digests: { "scope.pdf": sha256Hex(r.bytes) }, notes: r.notes };
+}
+
+async function runContentCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const parsed = contentCompatBlocks("pdf");
+  const r = await cliCompile(compiler, parsed.blocks, CONTENT_COMPAT_METADATA, "Content Compatibility.pdf");
+  return { compilerVersion: r.version, digests: { "content-compat.pdf": sha256Hex(r.bytes) }, notes: r.notes };
+}
+
+async function runMacroCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const resolved = await resolveMacroFixtureBlocks("pdf");
+  const r = await cliCompile(compiler, resolved.blocks, MACRO_METADATA, "Macro Coverage.pdf", resolved.notes);
+  return { compilerVersion: r.version, digests: { "macros.pdf": sha256Hex(r.bytes) }, notes: r.notes };
+}
+
+/** Every PDF parity case: id → CLI-side runner producing the same digests as the browser. */
+const PARITY_CASES: Record<string, (compiler: PdfCompilePort) => Promise<CliCaseResult>> = {
+  "pdf-settings": runPdfSettingsCli,
+  blocks: runBlocksCli,
+  scope: runScopeCli,
+  "content-compat": runContentCli,
+  macros: runMacroCli,
+};
+
+interface BrowserCaseResult {
+  compilerVersion: string;
+  digests: Record<string, string>;
+  reportNotes: Array<{ code: string; severity?: string; level?: string }>;
+}
+
+function loadBrowserManifest(): Record<string, BrowserCaseResult> | null {
   try {
     return JSON.parse(readFileSync(DIGEST_MANIFEST, "utf8"));
   } catch {
@@ -142,47 +219,61 @@ function fail(lines: string[]): never {
   process.exit(1);
 }
 
+function compareCase(id: string, browser: BrowserCaseResult | undefined, cli: CliCaseResult): string[] {
+  const failures: string[] = [];
+  if (!browser) {
+    failures.push(`case ${id}: missing from the browser digest manifest`);
+    return failures;
+  }
+  if (browser.compilerVersion !== cli.compilerVersion) {
+    failures.push(
+      `case ${id}: compiler version mismatch (browser ${browser.compilerVersion} vs cli ${cli.compilerVersion}) — refusing to diff bytes`,
+    );
+    return failures;
+  }
+  for (const key of Object.keys(cli.digests)) {
+    const b = browser.digests?.[key];
+    const c = cli.digests[key];
+    if (b !== c) {
+      failures.push(`case ${id}: "${key}" digest differs (browser ${String(b).slice(0, 16)} vs cli ${c.slice(0, 16)})`);
+    }
+  }
+  for (const detail of compareReportProjection(
+    projectNotes(browser.reportNotes ?? []),
+    projectNotes(cli.notes),
+  )) {
+    failures.push(`case ${id}: ${detail}`);
+  }
+  return failures;
+}
+
 async function main(): Promise<void> {
   const compiler = await buildBunCompiler();
-  const cli = await runPdfSettingsCli(compiler);
+  const cliResults: Record<string, CliCaseResult> = {};
+  for (const [id, run] of Object.entries(PARITY_CASES)) cliResults[id] = await run(compiler);
 
   const manifest = loadBrowserManifest();
   if (!manifest) {
     process.stdout.write(
       "check-parity: browser digest manifest not found at test-results/digests.json.\n" +
         "Run the Playwright harness first (`bun run test:browser-export-harness`).\n" +
-        `CLI-side pdf-settings digests: ${JSON.stringify(cli.digests)}\n`,
+        `CLI-side digests: ${JSON.stringify(
+          Object.fromEntries(Object.entries(cliResults).map(([id, r]) => [id, r.digests])),
+        )}\n`,
     );
     process.exit(1);
   }
 
   const failures: string[] = [];
-  const browser = manifest["pdf-settings"];
-  if (!browser) {
-    failures.push("case pdf-settings: missing from the browser digest manifest");
-  } else {
-    if (browser.compilerVersion !== cli.compilerVersion) {
-      failures.push(
-        `case pdf-settings: compiler version mismatch (browser ${browser.compilerVersion} vs cli ${cli.compilerVersion}) — refusing to diff bytes`,
-      );
-    } else {
-      for (const key of Object.keys(cli.digests)) {
-        const b = browser.digests?.[key];
-        const c = cli.digests[key];
-        if (b !== c) {
-          failures.push(`case pdf-settings: "${key}" digest differs (browser ${String(b).slice(0, 16)} vs cli ${c.slice(0, 16)})`);
-        }
-      }
-      const reportFailures = compareReportProjection(
-        projectNotes(browser.reportNotes ?? []),
-        projectNotes(cli.notes),
-      );
-      for (const detail of reportFailures) failures.push(`case pdf-settings: ${detail}`);
-    }
+  for (const [id, cli] of Object.entries(cliResults)) {
+    failures.push(...compareCase(id, manifest[id], cli));
   }
 
   if (failures.length > 0) fail(failures);
-  process.stdout.write(`check-parity: OK — pdf-settings byte + report parity holds (${cli.compilerVersion})\n`);
+  const ids = Object.keys(cliResults).join(", ");
+  process.stdout.write(
+    `check-parity: OK — byte + report parity holds for [${ids}] (${cliResults.blocks.compilerVersion})\n`,
+  );
 }
 
 await main();

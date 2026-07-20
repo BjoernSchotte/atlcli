@@ -10,6 +10,8 @@
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
-    "@atlcli/pdf": "workspace:*"
+    "@atlcli/export-macros": "workspace:*",
+    "@atlcli/pdf": "workspace:*",
+    "@atlcli/template-pack": "workspace:*"
   }
 }
