@@ -6,7 +6,7 @@ Planned at: `63b02ac` (`feat(publishing): packaging readiness & API guards (spec
 
 Priority: **P1**
 
-Estimated effort: **L / 6–9 implementation weeks plus access-dependent Data Center certification**
+Estimated effort: **L / 6–9 implementation weeks plus optional community-operated Data Center validation**
 
 Risk: **HIGH** — untrusted ZIP/XML input, two Confluence body models, multi-step publication, annotations, attachment identity, and a young parser dependency
 
@@ -44,7 +44,7 @@ The MVP is successful only when all of the following are true:
 10. DOCX comment attribution survives the fact that Confluence creates every imported comment as the authenticated AtlCLI actor. The platform actor and original document attribution remain distinct, and the existing DOCX exporter can reconstruct Word authors, anchors, threads, dates, and resolution without treating literal names as Confluence identities.
 11. Users may explicitly retain the byte-identical input DOCX as a page attachment. Visible reference is a separate exclusive choice: `none` by default, a link section at the page footer, or a page-level comment linking the attachment. The choice is previewed, digest-bound, read back, and never silently degraded.
 12. The built CLI passes an automated live E2E against profile `mayflower`, space `DOCSY`, reads the page back, exports it to DOCX with comments, reimports that DOCX, proves the semantic/comment roundtrip, source-attachment behavior, and removes every created resource in `finally` cleanup.
-13. Data Center is not claimed complete until its separate live E2E passes against an actual DC profile. Transport-contract tests alone do not certify a platform.
+13. Data Center ships as **implemented · contract-tested · not project-live-certified**: exact REST v1/Storage/auth/context-path/attachment/comment/readback/rollback contracts are automated, while the reusable live harness remains optional for community-operated DC environments and does not block release.
 
 The feature is **create-only** in this MVP. Updating, merging, or replacing an existing page is out of scope because it adds content-diff, comment-reanchoring, attachment-collision, and rollback semantics that deserve a separate plan.
 
@@ -52,9 +52,19 @@ The feature is **create-only** in this MVP. Updating, merging, or replacing an e
 
 ## 2. Product and platform decisions
 
-### 2.1 Supported Confluence editions
+### 2.1 Supported Confluence editions and evidence levels
 
-The supported target matrix for this plan is **Cloud and Data Center**.
+The supported target matrix for this plan is **Cloud and Data Center**, with deliberately different evidence levels:
+
+| Edition | Product status | Required evidence for release | Runtime behavior |
+|---|---|---|---|
+| Cloud | implemented, live-certified | local/unit/contract/browser gates plus built-CLI live E2E in `mayflower`/`DOCSY` | enabled for Cloud profiles |
+| Data Center | implemented · contract-tested · not project-live-certified | exact local HTTP/Storage/auth/context-path/roundtrip/error/rollback contracts; optional community live E2E | enabled for Data Center profiles with documented evidence level; no forced Cloud fallback |
+| Server | unsupported | none | no distinct deployment type or support claim |
+
+`contract-tested` is a support/evidence statement, not a synonym for experimental or unimplemented. Data Center users receive the complete planned Storage/v1 path; AtlCLI simply does not claim that the maintainers ran it against a first-party DC tenant. Documentation, preview/report metadata, release notes, and evidence must say **implemented and contract-tested; live validation not maintained by the project** rather than “certified”, “live-tested”, “experimental”, or “pending implementation”.
+
+The repository’s existing Data Center authentication path is retained and regression-tested. That existing user-contributed behavior is useful compatibility evidence, but it does not by itself prove the new page/import flows; those flows require the deterministic contract suite in Task 13. A self-contained optional live harness lets DC operators contribute sanitized version/build/context-path results later without making credentials or tenant access a project prerequisite.
 
 Repository evidence:
 
@@ -63,7 +73,7 @@ Repository evidence:
 - `apps/cli/src/commands/auth.ts:89-96` accepts only those two values and rejects `--deployment server`.
 - Some older/current user docs use the phrase “Server/Data Center” for bearer/PAT authentication. That is compatibility wording, not a third typed or certified deployment target.
 
-Confluence Server therefore receives **no separate support promise** in this plan. A legacy Server instance may happen to work through the Data Center/storage path, but that is best-effort compatibility and must not appear as a tested edition in CLI output or documentation. Atlassian ended Server support in 2024; restoring a distinct AtlCLI Server contract would require a separate support decision, version matrix, profiles, and live E2E.
+Confluence Server therefore receives **no separate support promise** in this plan. A legacy Server instance may happen to work through the Data Center/storage path, but that is best-effort compatibility and must not appear as a tested edition in CLI output or documentation. Atlassian ended Server support in 2024; restoring a distinct AtlCLI Server contract would require a separate support decision, version matrix, profiles, and independently operated validation.
 
 ### 2.2 Body representation is selected by capability, not by a global converter
 
@@ -277,7 +287,7 @@ STOP and update this plan if another merged change has already introduced an imp
 - Transactional create/upload/finalize/comment/readback/rollback orchestration.
 - `atlcli wiki import <file>` CLI command with human and stable JSON output.
 - Offline unit, fixture, property/invariant, security, packaging, Node/Bun, and neutral browser Worker tests.
-- Live CLI E2E in Cloud `DOCSY` and separately gated Data Center live E2E.
+- Mandatory live CLI E2E in Cloud `DOCSY`, deterministic Data Center contract/roundtrip suite, and an optional community-operated DC live harness.
 - Existing Confluence→DOCX export extended with opt-in `--comments`, standard OOXML comment parts, and import→Confluence→DOCX→reimport comment proof.
 - Documentation, troubleshooting, examples, feature matrix, maintenance instructions, and evidence ledger.
 
@@ -315,7 +325,7 @@ STOP and update this plan if another merged change has already introduced an imp
 12. **Strict mode is pre-publication whenever possible.** Known warnings stop before creating a page. Post-publication strict failures trigger rollback.
 13. **DC context paths survive.** Never concatenate `/wiki` manually; use existing `buildConfluenceUrl`/client routing.
 14. **Browser portability is measured, not inferred.** Browser-target compilation alone is insufficient; the real package runs in a production Worker E2E.
-15. **No support claim without live proof.** Cloud and DC status are tracked independently in the report/docs.
+15. **Evidence labels are exact.** Only Cloud may be labeled `live-certified` after its built-CLI E2E. Data Center is labeled `contract-tested` from its mandatory deterministic suite; optional operator evidence may be recorded as `community-live-validated` metadata but does not silently change the project-maintained support label. Both statuses are tracked independently in preview/report/docs.
 16. **Preview and publish share one plan.** The preview projection and target body come from the same encoder result and carry the same semantic digest; no UI/CLI renderer remaps the source independently.
 17. **Approval is explicit and bounded.** Interactive approval or `--confirm` may accept non-blocking degradation only. Neither can bypass input safety, hard validation, strict-mode, capability, or plan-integrity failures.
 18. **Saved plans are replay guards, not payloads.** Applying `--from-plan` regenerates from the original DOCX and revalidates every digest before any network call.
@@ -823,6 +833,7 @@ approval-required
 ```ts
 export interface ConfluenceImportCapabilities {
   deployment: "cloud" | "data-center";
+  supportEvidence: "live-certified" | "contract-tested";
   pageApi: "cloud-v2" | "content-v1";
   bodyRepresentation: "atlas_doc_format" | "storage";
   attachments: "cloud-file-id" | "storage-filename";
@@ -836,7 +847,7 @@ export interface ConfluenceImportCapabilities {
 }
 ```
 
-Capability selection is deterministic from the profile’s `DeploymentType`. HTTP 404 probing must not silently switch Cloud to DC or vice versa. A narrowly documented capability probe may refine a version-dependent DC feature, but the resulting decision and server version must appear in the report.
+Capability selection is deterministic from the profile’s `DeploymentType`. Cloud releases set `live-certified` only after Task 12 evidence; Data Center sets `contract-tested` after Task 13 and never upgrades itself based on an arbitrary successful user request. HTTP 404 probing must not silently switch Cloud to DC or vice versa. A narrowly documented capability probe may refine a version-dependent DC feature, but the resulting decision and server version, when observable, must appear in the report.
 
 ### 7.6 Target-semantic preview projection
 
@@ -990,6 +1001,7 @@ export interface DocxImportReportV1 {
   source: { path?: string; sha256: string; byteLength: number };
   target: {
     deployment: "cloud" | "data-center";
+    supportEvidence: "live-certified" | "contract-tested";
     representation: "atlas_doc_format" | "storage";
     profile?: string;
     spaceKey: string;
@@ -1086,7 +1098,7 @@ Legend: **N** native, **A** approximation, **R** report/omit, **G** gated by pro
 | Comment replies/resolved state | G/N | G/N | G/A | Supplement extension XML; preserve thread/resolution in property/manifest/custom part or named fallback. |
 | DOCX author/initials/date | N | A | A | Remote actor stays authenticated user; document attribution uses property → page manifest → visible marker. |
 | Confluence→DOCX comment export | `ExportCommentThread` | N | N/A | Imported author uses source attribution; native comment uses resolved platform actor; standard OOXML fields are baseline. |
-| Comment import→export→reimport | N digest | G | G/A | Cloud DOCSY mandatory; DC capability/fallback independently certified. |
+| Comment import→export→reimport | N digest | G | G/A | Cloud DOCSY live proof mandatory; DC capability/fallback independently contract-proven. |
 | Tracked insert/delete | N | policy | policy | `accept` default; `reject` and `markup` tested. Metadata remains in report. |
 | Move/property revisions | N/R | A/R | A/R | Preserve/report; no false native claim. |
 | `HYPERLINK`, `REF`, `PAGEREF` fields | N | N/A | N/A | Prefer semantic target when resolvable; otherwise visible field result + issue. |
@@ -1351,7 +1363,7 @@ A test installs a fetch function that throws on any call and proves dry-run stil
 
 ### 10.4 Terminal and HTML preview
 
-Terminal output shows destination, target edition/body model, feature counts, outcome percentages, content-attachment/comment/revision decisions, original-source retention/reference, ordered warnings/errors, and the plan digest. Issue rows include stable code plus source block/style/node context when available.
+Terminal output shows destination, target edition/body model/evidence level, feature counts, outcome percentages, content-attachment/comment/revision decisions, original-source retention/reference, ordered warnings/errors, and the plan digest. Issue rows include stable code plus source block/style/node context when available. Data Center displays `contract-tested · not project-live-certified` without turning every run into an interactive warning or requiring an override.
 
 Example before approval:
 
@@ -1360,7 +1372,7 @@ DOCX import preview — no remote changes
 
 Source       handbook.docx
 Destination  DOCSY / Engineering
-Target       Confluence Cloud / ADF
+Target       Confluence Cloud / ADF · live-certified
 Title        Engineering Handbook
 Plan         7b91…e14c
 
@@ -1587,9 +1599,9 @@ Synthetic malformed fixtures are generated deterministically by a small test bui
 | CLI PTY/non-TTY | default-no prompt behavior, approval gate, decline/direct/dry-run modes, stdout/stderr integrity | live target mutation |
 | Source/dist/binary smoke | release packaging reads and dry-runs a real DOCX | live auth/API |
 | Node/Bun/browser Worker | isomorphic runtime behavior | Extension/Forge host certification |
-| Local HTTP transport contract | exact Cloud/DC paths/payloads/version handling | live tenant behavior |
+| Local HTTP transport/roundtrip contract | exact Cloud/DC paths, auth headers, payloads, context paths, documented response variants, failure/rollback, Storage semantic readback | live tenant/editor behavior |
 | Live Cloud DOCSY E2E | actual CLI, Cloud v2 ADF, attachments, comments, readback, cleanup | Data Center |
-| Live DC E2E | actual Storage/client/context path/readback/cleanup | Cloud editor behavior |
+| Optional community DC E2E | operator-owned actual Storage/client/context path/readback/cleanup evidence | project-maintained certification or a release gate |
 | User-assisted visual review | target editor/page rendering and UX | automation/regression coverage |
 
 ### 13.3 Evidence ledger
@@ -1602,7 +1614,7 @@ Create `specs/import-docx-mvp/EVIDENCE.md` during implementation with:
 - exact commands and pass/fail counts;
 - Node/Bun/Chromium versions;
 - browser artifact sizes and forbidden-token scan;
-- Cloud/DC platform probe results;
+- Cloud live platform-probe results; DC contract-matrix results and any optional sanitized community run;
 - E2E generated page titles and deletion confirmation, but no credentials/tokens;
 - semantic coverage table generated from the E2E report;
 - known supported/approximated/deferred features;
@@ -1630,26 +1642,26 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 - [ ] Prove comment start/end ranges, reply parent IDs, and resolved state. If the parser omits thread data, document exact required parts (`commentsExtended.xml` and relationships) and a minimal supplemental parser contract.
 - [ ] In `mayflower`/`DOCSY`, prove Cloud ADF page creation via REST v2 and read back `atlas_doc_format`.
 - [ ] Prove Cloud image identity end-to-end: create shell, upload a known image, fetch attachment `fileId`, finalize an ADF `mediaSingle/media`, read back, and verify rendered/export view. Determine the required collection value from authoritative response/readback, not guesswork.
-- [ ] Prove a byte-identical DOCX attachment upload/download on Cloud and the Data Center certification target, including returned attachment/content identity, safe download URL/reference construction, filename normalization, target size-limit behavior, and SHA-256 readback. Prove both a target-native body link and a page-level comment link to the returned attachment without guessing URL shapes.
+- [ ] Prove byte-identical DOCX attachment upload/download live on Cloud. For Data Center, derive returned attachment/content identity, context-path-safe download/reference construction, filename normalization, size/error handling, and body/comment links from documented REST v1 contracts and lock them into deterministic local HTTP fixtures; do not invent URL shapes or require a maintainer-owned tenant.
 - [ ] Prove one TOC macro path: create a known TOC through Storage or UI, fetch its ADF, sanitize instance IDs, create a second ADF page from the derived typed intent, and read it back. If this is not reproducible through public APIs, mark Cloud TOC intent deferred.
 - [ ] Verify Cloud inline comment creation on a unique and duplicate text selection, including match count/index and a reply.
 - [ ] Prove Cloud `/api/v2/comments/{comment-id}/properties` create/read/update/delete for inline and footer comments, including returned value/version semantics and scopes. Prove the page-property recovery manifest separately.
-- [ ] Prove the fixed visible attribution paragraph survives Cloud and Data Center comment create/read/render without destructive normalization; revise the escaped storage shape if either target strips or rewrites it beyond shared-parser recognition.
-- [ ] Against the Data Center certification profile, prove whether `/rest/api/content/{comment-id}/property` works for comment content and record the exact supported versions; otherwise select page-manifest + visible-marker fallback without inventing an endpoint.
+- [ ] Prove the fixed visible attribution paragraph live through Cloud comment create/read/render and structurally through the DC Storage/comment transport plus parser/readback fixtures. An optional community DC run may strengthen this evidence but is not a release prerequisite.
+- [ ] Research supported Data Center comment-content-property endpoints/version floors from authoritative documentation and response contracts. If the intended DC range lacks one explicit portable contract, set `commentProperties: "unsupported"` and use the documented page-manifest + visible-marker fallback; do not depend on tenant probing or invent an endpoint.
 - [ ] Create a minimal standard OOXML comment/reply/resolved fixture plus `customXml/atlcli-comment-provenance.xml`; prove Word/LibreOffice-produced variants parse, the current exporter package can preserve/add required parts, and custom-part removal still leaves author/body/range readable.
-- [ ] Delete every probe page/attachment/comment in `finally` and record cleanup.
+- [ ] Delete every Cloud probe page/attachment/comment in `finally` and record cleanup. Optional community DC probes use the same ownership/cleanup contract.
 
 **Acceptance:**
 
 - [ ] Parser recommendation remains `@office-open/docx`; otherwise stop and revise Sections 2/6/7 before implementation.
 - [ ] Cloud ADF text/table page creation and readback pass.
 - [ ] Cloud media mapping is either proven with exact fields or explicitly blocks image support/implementation pending a decision.
-- [ ] Original-DOCX upload/download and `footer`/`comment` link contracts are proven for each claimed edition; otherwise `--attach-source` remains gated for that edition rather than silently omitting the requested artifact/reference.
+- [ ] Original-DOCX upload/download and `footer`/`comment` links have live Cloud proof and exact DC contract fixtures; otherwise gate only the unsupported edition/capability rather than silently omitting the requested artifact/reference.
 - [ ] TOC macro is labeled proven or deferred; no invented ADF extension payload.
 - [ ] Comment thread/range gaps have a precise supplemental OOXML solution or a documented MVP degradation.
-- [ ] Cloud comment-property and page-manifest contracts are proven; Data Center provenance capability is proven/version-gated or explicitly falls back.
+- [ ] Cloud comment-property and page-manifest contracts are live-proven; Data Center provenance uses an authoritative documented/version-gated contract or the explicit page-manifest + visible-marker fallback, backed by transport/readback tests.
 - [ ] Standard Word comment parts are the roundtrip baseline; any custom provenance part is inert/optional and its loss has a tested degradation.
-- [ ] The visible attribution marker round-trips through each certified target’s API/view and remains recognizable without hiding or executing content.
+- [ ] The visible attribution marker round-trips live through Cloud and structurally through the complete DC Storage transport/readback contract; optional community evidence is recorded separately.
 - [ ] `EVIDENCE.md` contains commands, exact dependency evidence, versions, outcomes, and cleanup confirmation.
 
 **Proof command examples:**
@@ -2015,34 +2027,42 @@ bun test apps/cli/src/commands/import-docx.e2e.test.ts
 
 Expected: exit 0; all live cases pass; cleanup assertions pass. If auth/network is unavailable, record environment limitation but do not check the task or claim Cloud completion.
 
-### Task 13 — Prove Data Center separately
+### Task 13 — Prove Data Center contracts and provide optional community validation
 
-**Depends on:** Tasks 7–12.
+**Depends on:** Tasks 0–11. Task 12 Cloud live certification is independent and may run in parallel.
 
-**Files:** DC live E2E path (shared harness with edition parameter), docs, evidence.
+**Files:** `packages/confluence/src/import-dc-contract.test.ts`, CLI DC contract/build-mode tests, shared optional live E2E path, sanitized community-evidence schema/inspector, docs, `EVIDENCE.md`.
 
-Environment:
+Mandatory project-owned contract suite:
+
+- [ ] Build a deterministic local HTTP test server from the Task 0 documented DC REST v1/Storage contract. It records method/path/query/headers/body and returns realistic success, pagination, version-conflict, auth/permission, not-found, size-limit, malformed-response, and server-error variants without tenant credentials.
+- [ ] Run source, built-dist, and compiled-CLI cases against root base URLs and at least two non-root context paths. Assert the existing Data Center auth/profile selection emits the expected auth/TLS request shape without logging secrets and that no Cloud v2 route is called.
+- [ ] Exercise the full create-only transaction: dry-run/save/replay, page shell, Storage finalize, labels, content attachments, footer comments/replies, page-property provenance fallback, semantic readback, version conflict, every injected post-shell failure, and rollback.
+- [ ] Parse generated Storage/readback fixtures structurally and prove headings, tables/spans, nested lists, links, notes, macros, comment fallback/provenance, and issue policy; do not accept request snapshots alone as roundtrip evidence.
+- [ ] Prove DC default-off, attach+none, attach+footer, and attach+comment source retention against the contract server. Re-download/hash exact source bytes, verify context-path-safe links and source-reference role, and prove DOCX export excludes only the provenance-tagged generated thread.
+- [ ] Prove the conservative comment capability selected in Task 0: supported documented comment property or page-manifest + visible-marker fallback. Compare normalized two-author import→simulated-DC→DOCX-export→reimport semantics for body/author/thread/range fallback.
+- [ ] Assert `--comments inline` fails before page creation; `auto` demotes and reports. Unknown/unsupported DC response shapes fail explicitly and never switch to Cloud or silently omit requested behavior.
+- [ ] Record the exact documented API assumptions and fixture variants in `EVIDENCE.md`; do not list a DC version as live-verified merely because its public contract informed a fixture.
+
+Optional community live harness (shipped, not a release gate):
 
 ```text
+ATLCLI_E2E=1
 ATLCLI_E2E_DC_PROFILE=<configured DC profile>
 ATLCLI_E2E_DC_SPACE=<dedicated test space>
 ATLCLI_E2E_DC_PARENT_ID=<optional>
 ```
 
-- [ ] Run source/dist contract tests with a root DC URL and a non-root context path.
-- [ ] Dry-run/preview/save a DC plan locally, then import it with source + `--from-plan ... --confirm` through the built CLI.
-- [ ] Read back storage/view, attachments, footer comments/replies, macros, tables/spans, lists, links, and notes.
-- [ ] Prove DC default-off, attach+none, attach+footer, and attach+comment source-retention behavior; download/hash the original bytes, verify context-path-safe links and source-reference role, and prove DOCX export excludes only the provenance-tagged generated comment.
-- [ ] Prove DC comment provenance uses the Task 0-supported comment property or page-manifest fallback plus visible marker, then export/reimport a two-author comment fixture and compare normalized author/body/thread/range-fallback semantics.
-- [ ] Assert `--comments inline` fails before page creation; `auto` demotes and reports.
-- [ ] Prove rollback/version-conflict behavior and cleanup.
-- [ ] Record exact Confluence DC version/build and context path shape in evidence.
+- [ ] Reuse the built-CLI create/readback/export/reimport/source-retention cases rather than maintaining a divergent community script. Every created ID is tracked immediately and removed in `finally`; unique-prefix search proves no orphan remains.
+- [ ] Emit optional `atlcli.dc-community-evidence/1` containing AtlCLI commit/version, DC version/build when returned, root-versus-context-path classification, feature/result codes, semantic digests, and cleanup status. Redact base URL, space/page titles, user identity, credentials, raw responses, and document content.
+- [ ] With no DC environment variables, the community test skips with an explicit message and exit 0; default CI and release readiness do not require secrets or a DC tenant. A submitted failure becomes a compatibility bug/evidence update, not an automatic Cloud fallback.
 
 **Acceptance:**
 
-- [ ] Live DC test exits 0 and cleanup passes.
-- [ ] No `/wiki` segment is injected unless it is literally part of the configured context path.
-- [ ] Docs mark DC supported only after this task is green. Without an available DC tenant, ship Cloud as proven and mark DC import experimental/pending certification rather than inferring support from v1 payload tests.
+- [ ] Mandatory DC contract, Storage structural roundtrip, auth/context-path, source-artifact, comment-provenance, error, and rollback tests all exit 0 across source/dist/compiled CLI where applicable.
+- [ ] No `/wiki` segment is injected unless it is literally part of the configured context path; hostile/encoded paths cannot escape the configured base.
+- [ ] Preview/report/docs identify DC as `implemented · contract-tested · not project-live-certified`; they do not call it experimental, pending implementation, certified, or live-tested.
+- [ ] The optional community harness is documented and cleanup-safe but its absence does not block DC implementation status or release.
 
 ### Task 14 — Performance, documentation, operational readiness, and final evidence
 
@@ -2052,7 +2072,7 @@ ATLCLI_E2E_DC_PARENT_ID=<optional>
 
 - [ ] Add `src/content/docs/confluence/import-docx.md` using repo docs template: intro, prerequisites, minimal steps, advanced/config path, options, examples, troubleshooting, related topics, feedback/edit link.
 - [ ] Update Confluence index, CLI reference, authentication/platform wording, comments page, and relevant troubleshooting.
-- [ ] Publish feature/edition matrix with native/approximated/deferred outcomes and exact comment/revision behavior.
+- [ ] Publish feature/edition matrix with native/approximated/deferred outcomes, exact comment/revision behavior, and separate evidence badges: Cloud `live-certified`; DC `implemented · contract-tested · not project-live-certified`; Server unsupported.
 - [ ] Document comment actor versus document attribution, visible marker/property/page-manifest evidence order, privacy limits, modified-body behavior, `wiki export --format docx --comments`, unanchored/thread fallbacks, and the no-name-to-account-resolution rule.
 - [ ] Document original-source retention and threat/privacy implications, `--attach-source`, stdin filename handling, `--source-reference none|footer|comment`, default-off/default-none behavior, exact-byte/readback guarantee, rollback semantics, page permissions, exporter exclusion, and browser-extension control mapping.
 - [ ] Document review-first TTY behavior, non-TTY contract, `--confirm`, `--dry-run`, terminal/HTML preview, `--plan-out`/`--from-plan`, and why `--confirm` cannot bypass blockers.
@@ -2060,16 +2080,16 @@ ATLCLI_E2E_DC_PARENT_ID=<optional>
 - [ ] Document security budgets, no remote fetch/execution, preview HTML safety, exact dependency pins/upgrades, rollback, strict mode, and original comment-author limitation.
 - [ ] Add a large synthetic fixture benchmark and record parse/normalize/encode p50/p95 and peak RSS where measurable. Performance numbers are evidence, not brittle unit thresholds; only broad regression budgets fail CI.
 - [ ] Run full verification matrix and record results in `EVIDENCE.md`.
-- [ ] Perform one user-assisted visual review in Confluence Cloud and DC when available: headings/lists/tables/images/panels/code/comments/macros. Record screenshots/checklist; automated readback remains the authoritative regression gate.
+- [ ] Perform one user-assisted visual review in Confluence Cloud: headings/lists/tables/images/panels/code/comments/macros. Record screenshots/checklist; automated readback remains the authoritative regression gate. Accept sanitized optional DC community review evidence, but do not block release on its absence.
 
 **Acceptance:**
 
 - [ ] Docs check/build pass.
 - [ ] All current and new tests/typecheck/build/browser gates pass.
 - [ ] Cloud DOCSY live E2E passes and cleans up.
-- [ ] DC support label matches Task 13 evidence.
+- [ ] DC support label is exactly `implemented · contract-tested · not project-live-certified`, backed by Task 13; optional community evidence is additive and separately dated.
 - [ ] Feature matrix and report issue codes agree.
-- [ ] Cloud comment import→export→reimport digest passes; DC status and fallback match Task 13 evidence.
+- [ ] Cloud comment import→export→reimport live digest passes; DC contract-server import→export→reimport digest and fallback match Task 13 evidence.
 - [ ] No private fixture/customer content, absolute paths, credentials, or tenant response dumps are committed.
 
 ---
@@ -2083,6 +2103,7 @@ bun install --frozen-lockfile
 bun run check:import-dependency-pins
 bun test packages/import-docx
 bun test packages/confluence/src/client.test.ts packages/confluence/src/comments.test.ts packages/confluence/src/comment-provenance.test.ts
+bun test packages/confluence/src/import-dc-contract.test.ts apps/cli/src/commands/import-docx.dc-contract.test.ts
 bun test packages/docx/src/comments.test.ts packages/docx/src/export.test.ts
 bun test apps/cli/src/commands/export*.test.ts
 bun test apps/cli/src/commands/import-docx-build-modes.test.ts
@@ -2108,7 +2129,7 @@ ATLCLI_E2E=1 ATLCLI_E2E_PROFILE=mayflower ATLCLI_E2E_SPACE=DOCSY \
   bun test apps/cli/src/commands/import-docx.e2e.test.ts
 ```
 
-Live DC gate when a profile is available:
+Optional community DC validation (never a project release gate):
 
 ```bash
 ATLCLI_E2E=1 \
@@ -2117,17 +2138,17 @@ ATLCLI_E2E_DC_SPACE=<space> \
   bun test apps/cli/src/commands/import-docx.e2e.test.ts
 ```
 
-Expected for every gate: exit 0, zero failed tests, no orphan E2E resources. Exact passing counts and runtime versions go into `EVIDENCE.md`; do not copy planned counts into evidence.
+Expected for every mandatory gate and every invoked optional community run: exit 0, zero failed tests, no orphan E2E resources. Exact passing counts and runtime versions go into `EVIDENCE.md`; do not copy planned counts into evidence. Absence of DC credentials is an explicit skip, not a missing mandatory result.
 
 ### CI additions
 
-- Default Linux job: frozen install, exact import-dependency pin check, import package/unit/security/fixture/plan/override/preview tests, Confluence provenance + DOCX comment roundtrip tests, browser build scan, full build.
+- Default Linux job: frozen install, exact import-dependency pin check, import package/unit/security/fixture/plan/override/preview tests, Confluence provenance + DOCX comment roundtrip tests, mandatory DC HTTP/Storage/auth/context-path/rollback contracts, browser build scan, full build.
 - Existing browser-conformance job: production Vite build, manifest/registry drift assertion, output scan, semantic parity, and pinned Playwright Chromium E2E including `docx-import`.
 - Consumer-smoke job: real pack/file-link installs, `skipLibCheck: false`, and import semantic digest through Bun, plain Node, and vanilla Vite without workspace-source resolution.
 - Node matrix: Node 22 and 24 ESM parser/encoder smoke from built/packed exports.
 - macOS import packaging smoke mirroring release platform coverage.
 - Windows compiled-binary dry-run smoke if the release continues to ship Windows binaries.
-- Live Cloud/DC tests remain credential-gated and are not run on untrusted PRs. A release cannot claim the corresponding edition without recent recorded live evidence.
+- Live Cloud tests remain credential-gated and are not run on untrusted PRs; Cloud `live-certified` requires recent recorded evidence. Optional community DC runs are manual/credential-gated and never required for release; DC `contract-tested` requires the mandatory project-owned suite, while `live-certified` is never claimed by default.
 
 ---
 
@@ -2138,7 +2159,7 @@ Expected for every gate: exit 0, zero failed tests, no orphan E2E resources. Exa
   - `feat(import-docx): add safe semantic parser core`
   - `feat(confluence): add edition-aware page body publisher`
   - `feat(cli): import docx pages`
-  - `test(import-docx): prove Cloud and Data Center readback`
+  - `test(import-docx): prove Cloud live and DC contract readback`
   - `docs: document DOCX import`
 - Never push or release unless explicitly instructed.
 - Never release automatically; any eventual release follows the repository dry-run release workflow.
@@ -2164,9 +2185,9 @@ All boxes must be backed by evidence:
 - [ ] Original comment author/initials/date/range/thread/resolution and revision metadata remain observable even though Confluence authorship cannot be impersonated.
 - [ ] Confluence comment `actor` and document `attribution` are independently typed/read back; display-name equality never merges them and no document name is resolved to an account.
 - [ ] Built CLI DOCX export with `--comments` writes standard Word comment fields from source attribution for imported comments and platform display name for native comments; custom provenance loss has the tested standard-field fallback.
-- [ ] Cloud DOCSY import→DOCX export→reimport preserves the normalized comment digest and cleans both pages/resources; DC behavior is independently proven or labeled pending.
+- [ ] Cloud DOCSY import→DOCX export→reimport preserves the normalized comment digest and cleans both pages/resources; the DC contract server proves the corresponding Storage/fallback digest and failure semantics without a live-certification claim.
 - [ ] Publisher rollback/readback/version-conflict tests pass at every transition.
-- [ ] Original-source retention defaults off; attach+none, attach+footer, and attach+comment are plan-digest-bound, byte/readback-proven, edition-tested, and roll back rather than silently degrading. The original remains a distinct immutable source artifact and is never overwritten by export.
+- [ ] Original-source retention defaults off; attach+none, attach+footer, and attach+comment are plan-digest-bound, Cloud-live-proven, DC-contract-proven, and roll back rather than silently degrading. The original remains a distinct immutable source artifact and is never overwritten by export.
 - [ ] A provenance-tagged source-reference comment is excluded from document-comment counts/DOCX export, while lookalike or provenance-lost user comments are never suppressed heuristically.
 - [ ] Preview body/projection, plan JSON, terminal summary, static HTML, and publisher share one semantic digest and issue/override provenance; no second mapping path exists.
 - [ ] `wiki import` help, review-first TTY flow, `--confirm`, dry-run, strict, HTML preview, plan-out/replay, overrides, JSON/report, progress, stdin, title/space/parent, comments, revisions, source attachment/reference, and labels behave as specified.
@@ -2176,7 +2197,7 @@ All boxes must be backed by evidence:
 - [ ] Node 22, Node 24, Bun, and neutral browser Worker produce matching semantic digests.
 - [ ] `bun run typecheck`, full `bun test`, browser checks, build, harness E2E, docs check/build all pass.
 - [ ] Built CLI live Cloud E2E passes against `mayflower`/`DOCSY`, proves semantic readback, and deletes every resource.
-- [ ] Data Center support status is backed by a live DC E2E or explicitly marked pending/experimental.
+- [ ] Data Center’s full import path passes Task 13 and is labeled `implemented · contract-tested · not project-live-certified`; optional community live evidence is additive, sanitized, dated, and never required for release.
 - [ ] Browser extension, native remote draft preview, Tauri desktop app, Forge, PDF import, existing-page update, batch import, and Server certification remain explicitly deferred.
 - [ ] `specs/import-docx-mvp/EVIDENCE.md` contains actual, current evidence rather than planned assertions.
 
@@ -2199,11 +2220,11 @@ Stop and revise the plan if:
 - a browser Worker requires `eval`/`new Function`, DOM globals, Node polyfills, or remote executable code;
 - preview generation requires a separate semantic mapping path, active/remote content, or cannot prove the same digest/issue decisions as publication;
 - `--from-plan` cannot reliably detect changed source, overrides, target capabilities, destination, or serialized plan before network mutation;
-- no human-readable attribution marker shape survives certified Cloud/DC comment create/read/view closely enough for deterministic recognition;
+- no human-readable attribution marker shape survives Cloud live create/read/view or the complete DC Storage transport/readback contract closely enough for deterministic recognition;
 - the exporter cannot inject schema-valid standard Word comments/ranges without losing or reordering existing document content, or comment roundtrip would depend on the optional custom part;
 - existing page mutation becomes necessary for the MVP;
 - semantic readback cannot distinguish loss of core text/list/table content;
-- E2E cannot reliably delete only resources created by its run;
+- mandatory Cloud E2E or an invoked optional community DC run cannot reliably delete only resources created by its run;
 - implementation needs to add a third `server` deployment type. That is a separate product/support decision.
 
 Do not paper over a STOP condition with a warning code.
@@ -2222,7 +2243,7 @@ The intended browser-extension shape is session-adjacent, not profile-driven. It
 - current space/page context and permitted destination choices;
 - capability digest used by `DocxImportPlanV1`.
 
-The review header displays this as a read-only target badge. There is **no Cloud/DC toggle** and no arbitrary profile picker in the extension. Missing, unsupported, cross-tab-conflicting, or changed host detection blocks planning/publication and invalidates an open preview before mutation.
+The review header displays this as a read-only target badge including `live-certified` (Cloud) or `contract-tested · not project-live-certified` (DC). There is **no Cloud/DC toggle** and no arbitrary profile picker in the extension. Missing, unsupported, cross-tab-conflicting, or changed host detection blocks planning/publication and invalidates an open preview before mutation.
 
 The intended UI flow is:
 
@@ -2321,7 +2342,7 @@ No distinct target in this plan. If product policy later restores Server certifi
 | User text mimics or edits attribution marker | wrong author/body on export | property/manifest evidence precedence, strict marker grammar, evidence label, malformed text retained, conflict issue |
 | Comment property/custom OOXML part is unavailable or stripped | identity kind/thread metadata degrades | page manifest + visible marker + standard Word fields; removal/reimport regression fixture |
 | Imported comment body changes in Confluence | source author appears to own later edits | retain actor separately, body digest mismatch issue, never infer editor identity |
-| DC gets Cloud v2 call | 404/405 under on-prem | capability dispatch once, exact transport tests, live DC E2E |
+| DC gets Cloud v2 call | 404/405 under on-prem | capability dispatch once, exact root/context-path transport suite, optional community validation |
 | Storage/ADF encoders drift | one edition loses feature | shared corpus + cross-target semantic digest + separate goldens |
 | New import/comment API bypasses current package guarantees | source works but packed/consumer builds drift or frozen DOCX surface breaks | 0.x classification for import core, smallest additive DOCX seam, reviewed API report/closure, pack/file-link/Node/Vite gates |
 | Style heuristics surprise users | colored paragraph becomes macro | semantic/style-ID mapping only; explicit versioned style map |
@@ -2368,7 +2389,8 @@ There are no product choices required before starting Task 0. The remaining unce
 3. Completeness of comment reply/resolved metadata from the selected parser plus OOXML extension parts.
 4. Exact Cloud comment-property value/version behavior and Data Center comment-content-property support/version floor; page manifest + marker remains the defined fallback.
 5. Preservation behavior of the optional AtlCLI custom comment-provenance part after Word and LibreOffice save; standard Word comment fields remain the fallback contract.
-6. Availability and version of a live Data Center test tenant/profile for certification.
-7. Whether Cloud accepts nested tables/task nodes produced by the chosen ADF subset without destructive normalization.
+6. Whether Cloud accepts nested tables/task nodes produced by the chosen ADF subset without destructive normalization.
+
+Maintainer access to a live Data Center tenant is explicitly **not** an unresolved prerequisite. Any later community-operated live result is optional additive evidence under Task 13.
 
 If a gate fails, stop at the owning task and update this plan with the observed contract and revised scope.
