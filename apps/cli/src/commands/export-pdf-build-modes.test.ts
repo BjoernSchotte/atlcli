@@ -34,7 +34,11 @@ async function run(cmd: string[], cwd?: string): Promise<{ code: number; stdout:
 
 describe("PDF compile port survives every build mode (T3.1)", () => {
   it("source run compiles to %PDF- bytes", async () => {
-    const { code, stdout } = await run(["bun", "run", ENTRY]);
+    // Run from live `src/` — under spec 009's dist-exports model the workspace
+    // packages this entry imports (`@atlcli/pdf`, …) only resolve to source
+    // under the `development` export condition; without it they demand `dist/`,
+    // which CI's pdf job never builds.
+    const { code, stdout } = await run(["bun", "--conditions=development", "run", ENTRY]);
     expect(stdout).toContain("PDF_OK");
     expect(code).toBe(0);
   }, 60_000);

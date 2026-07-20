@@ -18,8 +18,13 @@ import { buildDocx, headingStyle, para, stylesXml } from "@atlcli/docx/fixtures"
  * — no binary asset shipped, no font/branding licensing questions): a title
  * heading, an export-date line, and the `$scroll.content` body anchor, plus
  * the Scroll heading styles the serializer maps `ExportBlock` headings onto.
- * Deterministic: same bytes on every call.
+ * Deterministic: same bytes on every call, in every process. The bundled
+ * default is a fixed asset, so its zip entry timestamps are pinned to a fixed
+ * epoch (a reproducible build) rather than the wall clock — otherwise two
+ * independent builds could differ by a few bytes across a 2-second boundary.
  */
+const BUNDLED_TEMPLATE_EPOCH = new Date("2020-01-01T00:00:00.000Z");
+
 export function bundledDefaultTemplate(): Uint8Array {
   const headingStyles = [1, 2, 3, 4, 5, 6]
     .map((level) => headingStyle(`SH${level}`, `Scroll Heading ${level}`))
@@ -30,6 +35,7 @@ export function bundledDefaultTemplate(): Uint8Array {
       para("Exported $scroll.exportdate") +
       para("$scroll.content"),
     styles: stylesXml(headingStyles),
+    date: BUNDLED_TEMPLATE_EPOCH,
   });
 }
 

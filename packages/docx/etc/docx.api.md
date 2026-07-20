@@ -788,6 +788,7 @@ export interface BuildDocxOptions {
     footer?: string;
     settings?: string | null;
     extraParts?: Record<string, string>;
+    date?: Date;
 }
 
 // export: chartTitlePart
