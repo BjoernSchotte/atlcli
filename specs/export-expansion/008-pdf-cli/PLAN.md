@@ -896,6 +896,22 @@ real wasm; E2E tests use the real Confluence (profile `mayflower`, space
   (risk): verified for `--compile` binaries by the rasterizer precedent, but
   the plain `--target bun` dist bundle must be re-verified for a multi-MB
   wasm; fallback is `import.meta.resolve` + `readFile` for the dist path.
+- **Font materialization is a BUILD-time precondition everywhere, not a
+  Windows runtime gap** (investigated after a Windows CI failure, resolved):
+  `packages/pdf/.fonts/` is gitignored and only materialized by
+  `fonts:ensure`. When absent, Bun fails at module-resolution/bundle time with
+  `Cannot find module '@atlcli/pdf/fonts/…'` — reproduced identically on
+  macOS, so it is NOT Windows-specific. Consequences and fixes:
+  (a) tests that transitively import `export-pdf-assets.ts` need fonts
+  provisioned first — the sink/path logic was therefore split into the
+  dependency-free `export-pdf-sink.ts` (enforced by a static-import scan) so
+  the Windows CI sink job runs without fonts; (b) `release.yml` gained a
+  `fonts:ensure` step — without it every target's `bun build --compile` fails
+  LOUDLY at bundle time (verified: full CLI compile errors with
+  `Could not resolve` sans fonts, succeeds and embeds with them), so a
+  silently font-broken shipped binary is impossible; (c) shipped binaries
+  (incl. windows-x64, cross-compiled from Ubuntu per `release.yml:17-22`)
+  embed the assets at build time and never resolve fonts at runtime.
 - **Memory/time budget for space-scope exports** (open): one compiler
   instance across hundreds of pages is unmeasured; the spike measures a
   single page, T4.3 (benchmark suite, Phase 4) owns the large-scale numbers.
