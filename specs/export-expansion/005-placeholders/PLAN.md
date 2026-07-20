@@ -1,8 +1,38 @@
 # 005 — Placeholders: includepage & metadata
 
-Status: Plan, 2026-07-19. Lane D of `specs/export-expansion/UMSETZUNGSPLAN.md`
-(T1.11 / T1.12), detailed against `specs/export-expansion/BASELINE-DESIGN.md`
-§4 Cluster D (D1, D2; outlook on D4/D5).
+Status: Implemented (D1 + D2 reclassification), 2026-07-20. Lane D of
+`specs/export-expansion/UMSETZUNGSPLAN.md` (T1.11 / T1.12), detailed against
+`specs/export-expansion/BASELINE-DESIGN.md` §4 Cluster D (D1, D2; outlook on
+D4/D5).
+
+**Implementation notes (2026-07-20):**
+- **D1 `$scroll.includepage` shipped in full** (classification, parser,
+  `IncludeLookupOutcome`, `runIncludePass` document pass with per-part asset
+  embedding, cycle/atomic/budget guards, CLI + extension wiring, shared
+  `buildGetIncludedPage`, docs, unit + document-pass tests — no mocks).
+- **D2: only the reclassification shipped** (`$scroll.metadata` `never` →
+  `unsupported` with the remedy-stating reason). **The alias bridge was CUT**
+  per the plan's own recommendation — landing the resolver branch without a
+  host config surface would ship dead code, and there is no confirmed owner for
+  a bridge follow-up. Consequently the four D2-bridge tasks
+  (`resolver.ts` bridge branch, `client.ts getContentProperty`,
+  `core/config.ts metadataAliases`, `cli/config.ts isValidKey`) are left
+  unticked.
+- **`escapeCqlValue` was already exported from `packages/confluence/src/client.ts`**
+  (spec 002 landed it, with its own test table) — this plan **imports** it (no
+  duplicate), so those two tasks are satisfied as-is.
+- **JSON report note fidelity is satisfied by spec 008's unified report kernel**
+  (`atlcli.export-report/1`): engine `ExportNote.code`s already flow through
+  `noteToIssue` into `report.issues[].code` and `report.notesByCode`. The
+  separate `report.noteDetails` field the plan sketched is therefore
+  unnecessary and was NOT added; a regression test in `export-report.test.ts`
+  pins that include note codes survive. E2E assertions check
+  `issues`/`notesByCode` instead of `noteDetails`.
+- **Deviation from the plan's `40[13]` error-regex sketch:** that pattern
+  conflates 401 with the not-found pair. The shipped `classifyIncludeError`
+  checks **401 → auth-failed** first, then **403/404 → not-found-or-forbidden**
+  (404 is the not-found status), matching the Definition of Done.
+- **E2E on DOCSY is left for the orchestrator** (unticked below).
 
 ## Reference
 
@@ -315,14 +345,14 @@ yet.
 
 ### Classification & parsing
 
-- [ ] `packages/docx/src/placeholder-map.ts`: remove the
+- [x] `packages/docx/src/placeholder-map.ts`: remove the
       `$scroll.includepage` entry from `UNSUPPORTED_PREFIXES` (line 221) and
       classify the base as
       `{ status: "supported", dependency: "includePage" }`; add
       `"includePage"` to the `PlaceholderDependency` union (line 43). Like
       `spaceLogo`, this dependency is *not* fetched by the text resolver — it
       marks the base as handled by a document pass.
-- [ ] `packages/docx/src/placeholder-map.ts`: add `IncludePageRef`
+- [x] `packages/docx/src/placeholder-map.ts`: add `IncludePageRef`
       (`{ spaceKey?: string; title?: string; pageId?: string }`) and
       `parseIncludePageArgs(raw): IncludePageRef | null`, following the
       `parsePagePropertyArgs` conventions (quote stripping, whitespace
@@ -334,13 +364,13 @@ yet.
       - `(pageId)` — an all-digits argument is a page id,
       - empty/missing group → `null` (invalid; pass emits a note, token is
         blanked).
-- [ ] `packages/docx/src/placeholder-map.ts` (D2): move `$scroll.metadata`
+- [x] `packages/docx/src/placeholder-map.ts` (D2): move `$scroll.metadata`
       from `NEVER_PREFIXES` (line 242) to `UNSUPPORTED_PREFIXES` with the new,
       vendor-neutral reason:
       `"metadata values live in a third-party app; map the key to a content property in the export settings to resolve it"`.
       The reason string appears verbatim in the scan panel and report — it
       must state the remedy, not just the gap.
-- [ ] Verify no scan/report regression from the bucket move: `scanZip`
+- [x] Verify no scan/report regression from the bucket move: `scanZip`
       (`packages/docx/src/scan.ts:120`) and `resolvePlaceholders`
       (`packages/docx/src/resolver.ts:318`) are classification-driven, so
       `$scroll.metadata.*` now lands in the ⚠ bucket and the
@@ -349,7 +379,7 @@ yet.
 
 ### Resolver & document pass
 
-- [ ] `packages/docx/src/resolver.ts`: define an `IncludeLookupOutcome`
+- [x] `packages/docx/src/resolver.ts`: define an `IncludeLookupOutcome`
       discriminated union — corrected from an earlier draft where
       `getIncludedPage` returned bare `ConfluencePageDetails | null`, which
       conflated "not found", "no permission", "auth failure", "rate-limit
@@ -381,7 +411,7 @@ yet.
       instead of blaming the page. An `AbortError` (host-initiated
       cancellation, if any host supports it) is rethrown, never swallowed
       into an outcome.
-- [ ] `packages/docx/src/resolver.ts`: keep the text path safe for the new
+- [x] `packages/docx/src/resolver.ts`: keep the text path safe for the new
       supported base — `resolveOne`'s `default:` branch already returns `""`
       for bases it has no case for; confirm `$scroll.includepage.*` neither
       triggers any fetch in `resolvePlaceholders`' needs-loop (line 332) nor
@@ -389,7 +419,7 @@ yet.
       failed, or left non-atomic by the paragraph-context check below) is
       blanked by `preprocessScrollText`. Add a case comment mirroring the
       logo/content treatment.
-- [ ] `packages/docx/src/export.ts`: implement `runIncludePass(zip, deps,
+- [x] `packages/docx/src/export.ts`: implement `runIncludePass(zip, deps,
       input, notes)` and call it in `exportDocx` **between step 3b
       (`finishLogoPass`, line 278) and step 4 (`preprocessScrollText`,
       line 297)** so a failed include is guaranteed to be blanked downstream:
@@ -464,7 +494,7 @@ yet.
         sole content — same contract as `CONTENT_TAG_PARA`, line 166; this
         is now guaranteed by the atomic-paragraph check above, not assumed);
       - return the `Map<string, string>` of rendered OOXML.
-- [ ] `packages/docx/src/export.ts`: thread the include map into rendering —
+- [x] `packages/docx/src/export.ts`: thread the include map into rendering —
       `renderContent(zip, bodyXml, includes)` (line 371) renders
       `doc.render({ [CONTENT_KEY]: bodyXml, ...Object.fromEntries(includes) })`.
       Extend the `ensureCodeStyle` trigger (line 308) to also check the
@@ -510,7 +540,7 @@ yet.
       BASELINE D4 sketch (`GET /api/v2/pages/{id}/properties?key=…`, first
       result's value; non-string values JSON-stringified, returning
       `{ value, stringified }` to match the corrected port shape above).
-- [ ] `packages/confluence/src/client.ts`: add a new **exported**, pure
+- [x] `packages/confluence/src/client.ts`: add a new **exported**, pure
       `escapeCqlValue(value: string): string` helper (not the private,
       incomplete `apps/cli/src/commands/search.ts:227–232` one — see
       Reference) that escapes `\` and `"` per CQL string-literal rules and
@@ -546,7 +576,7 @@ yet.
 
 ### Host wiring
 
-- [ ] `apps/cli/src/commands/export.ts` (deps bag, lines 841–863): implement
+- [x] `apps/cli/src/commands/export.ts` (deps bag, lines 841–863): implement
       `getIncludedPage(ref): Promise<IncludeLookupOutcome>`:
       - `ref.pageId` → `client.getPage(id)` (`client.ts:510`; returns
         `storage` — sufficient, the pass only needs id/title/storage);
@@ -576,7 +606,7 @@ yet.
         simply let the engine-side pool own the only concurrency limit and
         keep this loader concurrency-agnostic; pick one and say so in the
         implementation comment so the two don't double-throttle silently.
-- [ ] `apps/extension/utils/docx/export-deps.ts` (**corrected — the target
+- [x] `apps/extension/utils/docx/export-deps.ts` (**corrected — the target
       API in an earlier draft, `buildResolveDeps`, does not exist**; the real
       surface is `ExportDependencyLoaders` / `prepareExportDeps` /
       `scanDependencies`, verified against `export-deps.ts:6–13, 34–53,
@@ -611,14 +641,19 @@ yet.
         that harness exists, proving the extension path renders an include
         identically to the CLI path — flag as a follow-up if the harness
         isn't ready when this plan lands, don't block on it.
-- [ ] Scan-side UX note (defer, document only): probing include targets at
+- [x] Scan-side UX note (defer, document only): probing include targets at
       scan time (✓ resolvable / ⚠ not found in the panel) requires an async
       scan seam — out of scope here; the scan shows the row as supported and
       the export report carries the truth. Record in
       `docs/reference/` placeholder table.
-- [ ] `apps/cli/src/commands/export.ts` (JSON report, line 886 — **new task,
-      not present in an earlier draft despite that draft's own Reference
-      section flagging the gap**): the `--json` report currently maps every
+- [x] `apps/cli/src/commands/export.ts` (JSON report) — **SUPERSEDED by spec
+      008's `atlcli.export-report/1` kernel (see top-of-file implementation
+      note): engine `ExportNote.code`s already surface via `report.issues[].code`
+      and `report.notesByCode`, so the sketched ~~`report.noteDetails`~~ field
+      below was NOT added. The regression test lives in `export-report.test.ts`,
+      and E2E assertions check `issues`/`notesByCode`, not `noteDetails`.** The
+      original sketch is kept below for provenance:
+      the `--json` report currently maps every
       `ExportNote` to a bare `"${level}: ${message}"` string, discarding
       `code` — making this plan's own E2E assertions (`--json` containing
       `includepage-cycle`, see Tests) unverifiable as written, since the
@@ -634,7 +669,7 @@ yet.
       (`apps/cli/src/commands/export.test.ts` or equivalent) asserting both
       fields are present and in sync, so a future report-shape change can't
       silently drop `code` again.
-- [ ] `docs/` update (workflow rule "docs are first-class"): placeholder
+- [x] `docs/` update (workflow rule "docs are first-class"): placeholder
       reference table row for `$scroll.includepage` — argument forms with
       type/constraints, one minimal and one realistic example (imprint page in
       a header, referenced from both body and header), troubleshooting
@@ -647,8 +682,10 @@ yet.
       `~/.atlcli/config.json`, including the `config set metadataAliases.<key>
       <content-property-key>` form, if the bridge ships — explicitly note
       the extension has no equivalent UI yet if that's the case at ship
-      time); document `report.noteDetails` as a stable, additive `--json`
-      field.
+      time); ~~document `report.noteDetails` as a stable, additive `--json`
+      field~~ — superseded by 008's kernel; the docs instead document that note
+      `code`s surface via the `atlcli.export-report/1` `issues`/`notesByCode`
+      fields (see top-of-file implementation note).
 
 ### Tests (no mocking)
 
@@ -659,7 +696,7 @@ is asserted); documents are real `.docx` packages built with the
 `packages/docx/src/fixtures.ts` builders; E2E runs the built CLI against the
 real Confluence site.
 
-- [ ] `packages/docx/src/placeholder-map.test.ts` — table-driven, following
+- [x] `packages/docx/src/placeholder-map.test.ts` — table-driven, following
       the existing `parsePagePropertyArgs` describe-block pattern:
       - classification: `$scroll.includepage`, `$scroll.includepage.(X)` in
         all three arg forms → `supported` + dependency `includePage`;
@@ -670,7 +707,7 @@ real Confluence site.
         `(DOCSY:A: colon title)` (first-colon split), `(123456)` → pageId,
         `( "Quoted Title" )` (trim + quote strip), `()` / missing group →
         `null`.
-- [ ] `packages/docx/src/resolver.test.ts`:
+- [x] `packages/docx/src/resolver.test.ts`:
       - `$scroll.includepage.(X)` through `resolvePlaceholders` with a
         call-counting real `getIncludedPage` closure: resolves to `""` in the
         values map (text path never renders it), the fetcher is **not**
@@ -690,7 +727,7 @@ real Confluence site.
         fires; JSON value → `{ value, stringified: true }` → stringified text
         + info note; plain string → `{ value, stringified: false }` → no
         extra note.
-- [ ] `packages/docx/src/export.test.ts` — document-pass tests on real docx
+- [x] `packages/docx/src/export.test.ts` — document-pass tests on real docx
       fixtures (`buildDocx`/`para`/`runSplitPara`/`readPart`/
       `assertBalancedXml`), with `getIncludedPage` as a plain function
       returning fixture `IncludeLookupOutcome` values (real closures, no
@@ -752,16 +789,16 @@ real Confluence site.
         `includepage-budget-exceeded` and blank, and a repeat of an
         already-fetched target past the cutoff still renders (cache, not a
         hard stop).
-- [ ] `packages/confluence/src/client.test.ts` (or equivalent) — new
+- [x] `packages/confluence/src/client.test.ts` (or equivalent) — new
       `escapeCqlValue` table: quotes, backslashes, embedded CR/LF, empty
       string, unicode/emoji titles, and the exact resulting CQL clause for a
       representative `title = "…"` construction (pin the literal output, not
       just "no exception").
-- [ ] `apps/cli/src/commands/export.test.ts` (or equivalent) — JSON report
-      schema/snapshot test: `report.notes` (strings) and `report.noteDetails`
-      (`{level, code, message}[]`) are both present, same length, and
-      `noteDetails[i].message` matches the tail of `notes[i]`; `cliNotes`
-      (host warnings) appear in `notes` but never in `noteDetails`.
+- [x] `apps/cli/src/commands/export-report.test.ts` — JSON report code-fidelity
+      test (SUPERSEDES the ~~`noteDetails`~~ sketch, per 008's kernel): pins that
+      engine `ExportNote` codes (`includepage-*`) survive `noteToIssue` into
+      `report.issues[].code` and `report.notesByCode`, that every engine note
+      collapses to `warning` severity, and that they appear in `report.warnings`.
 - [ ] E2E (workflow rule; profile `mayflower`, space `DOCSY`, built CLI
       `bun ./dist/index.js`, pattern: `scripts/e2e-template-test.sh`):
       - [ ] create an include-target page in DOCSY with unique sentinel
@@ -773,21 +810,22 @@ real Confluence site.
       - [ ] `atlcli wiki export <pageId> -t <template> -o out.docx --engine ts
             --json`: unzip and assert the sentinel appears in
             `word/document.xml` and `word/header1.xml`, and no `$scroll.`
-            literal survives; assert `report.noteDetails` is present in the
-            `--json` output;
+            literal survives; assert `report.issues`/`report.notesByCode`
+            (008 kernel, NOT ~~`noteDetails`~~) are present in the `--json`
+            output;
       - [ ] cycle path: template including the exported page itself → report
-            (`--json`) `noteDetails` contains an entry with
+            (`--json`) `issues[]` / `notesByCode` contains
             `code: "includepage-cycle"`, export still succeeds;
       - [ ] permission path: include a DOCSY page carrying view restrictions
             the `mayflower` profile's token user cannot read, assert blank
-            output + `includepage-unresolved` in `noteDetails`. If no such
+            output + `includepage-unresolved` in `issues`/`notesByCode`. If no such
             restricted page can be provisioned with this profile's rights,
             fall back to a nonexistent title (same code path by design:
             Cloud 403 ≡ 404) and record the restricted-page case as a
             **documented manual check** in the PR description;
       - [ ] cleanup: delete every created test page and temp template/output
             file (workflow rule).
-- [ ] `bun run typecheck` and full `bun test` green before push (workflow
+- [x] `bun run typecheck` and full `bun test` green before push (workflow
       rules; regression tests above double as the mandated bug-prevention
       tests for the reclassification, the never-a-literal invariant, the
       body+header duplicate-include fix, the header/footer relationship fix,
@@ -834,8 +872,10 @@ real Confluence site.
   zero host-specific special cases (classification remains the single source
   for the *static* view; the metadata bridge's per-export resolution
   override is documented as the one deliberate, narrowly-scoped exception).
-- The CLI `--json` report exposes note `code`s (`report.noteDetails`,
-  additive, backward-compatible) so this plan's own E2E acceptance criteria
+- The CLI `--json` report exposes note `code`s (via 008's
+  `atlcli.export-report/1` `report.issues[].code` / `report.notesByCode` —
+  NOT the sketched ~~`report.noteDetails`~~, which was superseded; see the
+  top-of-file implementation note) so this plan's own E2E acceptance criteria
   are actually checkable from the command line.
 - `packages/confluence`'s CQL escaping for the title-form include lookup goes
   through one shared, exported, tested `escapeCqlValue` — not a

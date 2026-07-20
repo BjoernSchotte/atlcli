@@ -1116,7 +1116,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // on the page storage below.
   const { readFile, stat } = await import("node:fs/promises");
   const [
-    { runExport, fileOutputSink },
+    { runExport, fileOutputSink, buildGetIncludedPage },
     { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
@@ -1250,6 +1250,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
             filename: m ? decodeURIComponent(m[2]) : undefined,
           };
         },
+        // Cross-page include (spec 005 D1): the shared, isomorphic loader owns
+        // id-sorted determinism, ambiguity, and per-class error mapping —
+        // identical to the extension path. Title lookups go through the DIRECT
+        // content endpoint (findPagesByTitle), NOT CQL, so a page created moments
+        // before the export is findable immediately (the search index lags).
+        // Concurrency lives ONLY in the engine's include pool, so this loader
+        // stays throttle-agnostic; the pool de-duplicates repeated refs.
+        getIncludedPage: buildGetIncludedPage({
+          getPage: (id) => client.getPage(id),
+          findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
+          defaultSpaceKey: page.spaceKey,
+        }),
       },
     },
     {

@@ -25,6 +25,7 @@ import {
   classifyError,
   diagnosticToIssue,
   extractStatus,
+  noteToIssue,
   pdfReportContributions,
 } from "./export-report.js";
 
@@ -210,6 +211,31 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     expect(classifyError(abort).exitCode).toBe(EXPORT_EXIT.CANCELLED);
     // Non-Error throw still classifies (TOTAL mapping, single-document contract).
     expect(classifyError("catastrophe").exitCode).toBe(EXPORT_EXIT.REMOTE);
+  });
+
+  it("preserves engine ExportNote codes through noteToIssue into issues + notesByCode (spec 005)", () => {
+    // The DOCX ts path maps every engine ExportNote to an Issue via noteToIssue;
+    // spec 005's include note codes must survive verbatim so `--json` consumers
+    // (and this plan's own E2E acceptance) can assert on `code` — the report
+    // kernel from 008 already carries it, this pins that it does not regress.
+    const notes = [
+      { level: "warning" as const, code: "includepage-cycle", message: "a page cannot include itself" },
+      { level: "info" as const, code: "includepage-ambiguous-title", message: "matched 3 pages" },
+    ];
+    const issues = notes.map((n) => noteToIssue(n, "prepare"));
+    expect(issues.map((i) => i.code)).toEqual(["includepage-cycle", "includepage-ambiguous-title"]);
+    // Every engine note collapses to `warning` severity (008 contract), so
+    // `--strict` CI sees include problems too.
+    expect(issues.every((i) => i.severity === "warning")).toBe(true);
+    const report = buildReport({
+      format: "docx",
+      engine: "ts",
+      sourcePages: [{ id: "1", title: "Root", notes: [] }],
+      outputDetails: [{ output: "/tmp/out.docx", embeddedImages: 0, renderedDiagrams: 0, skippedAssets: 0 }],
+      issues,
+    });
+    expect(report.notesByCode).toEqual({ "includepage-cycle": 1, "includepage-ambiguous-title": 1 });
+    expect(report.warnings.map((w) => w.code)).toContain("includepage-cycle");
   });
 
   it("folds a compiler warning into issues and trips exit 2 under --strict", () => {

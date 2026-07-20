@@ -9,7 +9,12 @@
  * ever contradicts real Scroll behaviour, these tests are where it surfaces.
  */
 import { describe, expect, it } from "bun:test";
-import { classifyPlaceholder, parseLogoArgs, parsePagePropertyArgs } from "./placeholder-map.js";
+import {
+  classifyPlaceholder,
+  parseIncludePageArgs,
+  parseLogoArgs,
+  parsePagePropertyArgs,
+} from "./placeholder-map.js";
 
 describe("parsePagePropertyArgs — documented forms", () => {
   it("(key)", () => {
@@ -126,6 +131,64 @@ describe("parseLogoArgs — the .(H,W) size grammar (height first)", () => {
       heightPx: undefined,
       widthPx: undefined,
     });
+  });
+});
+
+describe("classifyPlaceholder — includepage is supported (spec 005 D1)", () => {
+  it("classifies the base and every argument form as supported/includePage", () => {
+    for (const raw of [
+      "$scroll.includepage",
+      "$scroll.includepage.(Imprint)",
+      "$scroll.includepage.(ENG:Imprint)",
+      "$scroll.includepage.(123456)",
+    ]) {
+      const cls = classifyPlaceholder(raw);
+      expect(cls.status).toBe("supported");
+      expect(cls.dependency).toBe("includePage");
+      expect(cls.base).toBe("$scroll.includepage");
+    }
+  });
+});
+
+describe("classifyPlaceholder — metadata reclassified never → unsupported (spec 005 D2)", () => {
+  it("is unsupported with the remedy-stating reason", () => {
+    for (const raw of ["$scroll.metadata", "$scroll.metadata.(docNumber)"]) {
+      const cls = classifyPlaceholder(raw);
+      expect(cls.status).toBe("unsupported");
+      expect(cls.reason).toContain("content property");
+    }
+  });
+
+  it("keeps the Scroll Documents neighbor $scroll.custom.* as never (pin)", () => {
+    expect(classifyPlaceholder("$scroll.custom.field").status).toBe("never");
+  });
+});
+
+describe("parseIncludePageArgs — the include grammar", () => {
+  it("parses each documented argument form", () => {
+    expect(parseIncludePageArgs("$scroll.includepage.(Imprint)")).toEqual({ title: "Imprint" });
+    expect(parseIncludePageArgs("$scroll.includepage.(ENG:Imprint)")).toEqual({
+      spaceKey: "ENG",
+      title: "Imprint",
+    });
+    // First-colon split: the title itself may contain colons.
+    expect(parseIncludePageArgs("$scroll.includepage.(DOCSY:A: colon title)")).toEqual({
+      spaceKey: "DOCSY",
+      title: "A: colon title",
+    });
+    expect(parseIncludePageArgs("$scroll.includepage.(123456)")).toEqual({ pageId: "123456" });
+    // Quote-wrapped title is colon-safe (never split into space:title).
+    expect(parseIncludePageArgs('$scroll.includepage.( "Quoted: Title" )')).toEqual({
+      title: "Quoted: Title",
+    });
+  });
+
+  it("returns null for an empty, missing, or half-blank argument group", () => {
+    expect(parseIncludePageArgs("$scroll.includepage")).toBeNull();
+    expect(parseIncludePageArgs("$scroll.includepage.()")).toBeNull();
+    expect(parseIncludePageArgs("$scroll.includepage.(  )")).toBeNull();
+    expect(parseIncludePageArgs("$scroll.includepage.(ENG:)")).toBeNull();
+    expect(parseIncludePageArgs("$scroll.includepage.(:Imprint)")).toBeNull();
   });
 });
 

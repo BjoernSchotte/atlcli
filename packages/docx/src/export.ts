@@ -61,7 +61,8 @@ import {
 } from "./serialize.js";
 import { ImageEmbedder, ImageEmbedError } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
-import { parseLogoArgs } from "./placeholder-map.js";
+import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
+import type { IncludeLookupOutcome } from "./resolver.js";
 import type { AssetFetcher, AssetRef, HostCallContext, SvgRasterizer } from "./env.js";
 import {
   CAPTION_STYLE_ID,
@@ -70,6 +71,7 @@ import {
   codeStyleXml,
   parseStyleNames,
   resolveCaptionLang,
+  type CaptionLang,
 } from "./ooxml.js";
 import {
   encodeXmlText,
@@ -89,6 +91,8 @@ export interface ExportTimings {
   resolveMs: number;
   bodyMs: number;
   logoFetchMs: number;
+  /** Wall clock of the cross-page include pass (fetch + walk + serialize). */
+  includeFetchMs: number;
   renderMs: number;
   imageFetchMs: number;
   imageFetches: number;
@@ -277,6 +281,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     resolveMs: 0,
     bodyMs: 0,
     logoFetchMs: 0,
+    includeFetchMs: 0,
     renderMs: 0,
     imageFetchMs: 0,
     imageFetches: 0,
@@ -410,6 +415,28 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     notes: flowNotes,
   });
 
+  // 3c. Include pass (spec 005 D1): swap each atomic `$scroll.includepage.(…)`
+  //     paragraph — across body AND headers/footers — for a rawxml tag whose
+  //     value is the referenced page's serialized OOXML body. Runs after the
+  //     logo pass (shares the one ImageEmbedder so relationship/drawing ids
+  //     never collide) and before preprocessScrollText, so any token the pass
+  //     leaves in place (invalid args, fetch failure, non-atomic paragraph) is
+  //     blanked there — never a literal on any path.
+  const includes = await runIncludePass({
+    zip,
+    input,
+    embedder,
+    wantImages,
+    assets: input.assets,
+    rasterizer: input.rasterizer,
+    diagramTheme: input.diagramTheme,
+    budget,
+    styleNames,
+    captionLang: captionLocale.lang,
+    timings,
+    notes: flowNotes,
+  });
+
   if (!contentFound) {
     injectContentTagAtEnd(zip);
     flowNotes.push({
@@ -431,7 +458,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //    literal braces / $scroll text in the page pass through unchanged. PUA
   //    delimiters guarantee the customer's own `{…}` is never a tag.
   const renderStart = Date.now();
-  const rendered = renderContent(zip, body.xml);
+  const rendered = renderContent(zip, body.xml, includes);
 
   // 5b. A page body ENDING in an orientation region leaves its region-closing
   //     sectPr paragraph directly before the template's body-level sectPr —
@@ -440,9 +467,13 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //     document simply ends with the region (spec 003 C6 review fix).
   mergeTrailingRegionSectPr(rendered);
 
-  // 6. Synthesize the code style if the body referenced it; force TOC refresh.
-  if (body.xml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
-  if (body.xml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
+  // 6. Synthesize the code/caption styles if the body OR any included page
+  //    referenced them; force TOC refresh. An included page can be the only
+  //    thing carrying a code macro or a captioned figure (spec 005 D1).
+  const includeXml = [...includes.values()].join("");
+  const styledXml = body.xml + includeXml;
+  if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
+  if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
@@ -520,6 +551,7 @@ function timingNote(t: ExportTimings, totalMs: number): ExportNote {
       (t.imageFetches ? ` (${t.imageFetches} image fetch(es): ${t.imageFetchMs} ms)` : ""),
     `placeholders ${t.resolveMs} ms`,
     ...(t.logoFetchMs ? [`logo fetch ${t.logoFetchMs} ms`] : []),
+    ...(t.includeFetchMs ? [`includes ${t.includeFetchMs} ms`] : []),
     `render+zip ${t.renderMs} ms`,
   ];
   return {
@@ -540,7 +572,7 @@ function timingNote(t: ExportTimings, totalMs: number): ExportNote {
  * re-thrown as a {@link DocxRenderError} carrying the engine's structured
  * explanation, so the caller never sees a generic "Export failed".
  */
-function renderContent(zip: PizZip, bodyXml: string): PizZip {
+function renderContent(zip: PizZip, bodyXml: string, includes?: Map<string, string>): PizZip {
   let doc: Docxtemplater<PizZip>;
   try {
     doc = new Docxtemplater<PizZip>(zip, {
@@ -552,7 +584,11 @@ function renderContent(zip: PizZip, bodyXml: string): PizZip {
       // notes the cosmetic console noise).
       errorLogging: false,
     });
-    doc.render({ [CONTENT_KEY]: bodyXml });
+    // Each `@scrollInclude<i>` rawxml tag (spec 005 D1) expands to its included
+    // page's serialized OOXML body, inserted VERBATIM alongside the page body —
+    // never re-parsed for tags, so literal braces / `$scroll.*` examples inside
+    // an included page survive.
+    doc.render({ [CONTENT_KEY]: bodyXml, ...(includes ? Object.fromEntries(includes) : {}) });
   } catch (err) {
     throw new DocxRenderError(
       "The Word template could not be rendered.",
@@ -825,7 +861,14 @@ function imageSeam(
   assets: AssetFetcher,
   pageId: string,
   timings: ExportTimings,
-  seamOpts: ImageSeamOptions
+  seamOpts: ImageSeamOptions,
+  // Which document part the serialized output lands in (spec 005 D1). Threaded
+  // straight into `embed`'s `partPath` so an image embedded for an included page
+  // in a header/footer writes its `r:embed` relationship into THAT part's rels
+  // (`word/header1.xml.rels`, …), not the default `word/document.xml.rels` — the
+  // dangling-relationship failure mode the 004-F3 invariant exists to prevent.
+  // Omitted for the main body → defaults to `word/document.xml` (unchanged).
+  partPath?: string
 ): ImageEmbedSeam {
   const { budget, signal, onProgress, total } = seamOpts;
   const context: HostCallContext = { signal };
@@ -894,6 +937,7 @@ function imageSeam(
           name,
           widthPx: block.width,
           heightPx: block.height,
+          ...(partPath ? { partPath } : {}),
         });
         reportDone(name);
         return { ok: true as const, xml };
@@ -924,7 +968,10 @@ function diagramSeam(
   rasterizer: SvgRasterizer,
   theme: DiagramTheme | undefined,
   timings: ExportTimings,
-  budget: AssetBudget
+  budget: AssetBudget,
+  // Target part for the embedded svgBlip/PNG relationships (spec 005 D1) — same
+  // rationale as {@link imageSeam}'s `partPath`. Omitted → `word/document.xml`.
+  partPath?: string
 ): DiagramEmbedSeam {
   let count = 0;
   // Render + rasterize results, keyed by exact source: the serializer's prefetch
@@ -1014,6 +1061,7 @@ function diagramSeam(
           alt: block.code,
           widthPx: prep.widthPx,
           heightPx: prep.heightPx,
+          ...(partPath ? { partPath } : {}),
         });
         return { ok: true as const, xml };
       } catch (err) {
@@ -1025,6 +1073,260 @@ function diagramSeam(
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Include pass (spec 005 D1)
+// ---------------------------------------------------------------------------
+
+/** One include token, matching the shared placeholder grammar for its base. */
+const INCLUDE_TOKEN_RE = /\$scroll\.includepage(?:\.?\([^)]*\))?/;
+
+/**
+ * Deliberate v1 guess (spec 005 Risks): at most 25 unique included target
+ * pages, at most 2 MiB of cumulative included storage per export. Chosen for
+ * parity with `ASSET_FETCH_CONCURRENCY`, not measured — revisit on a real
+ * large-template report. Exceeding either degrades deterministically
+ * (`includepage-budget-exceeded`), never an unbounded fan-out.
+ */
+const INCLUDE_BUDGET_MAX_PAGES = 25;
+const INCLUDE_BUDGET_MAX_STORAGE_BYTES = 2 * 1024 * 1024;
+
+interface IncludeOccurrence {
+  /** Stable index → rawxml key `scrollInclude<index>` (one per occurrence). */
+  index: number;
+  part: string;
+  paragraph: string;
+  /** The raw token (carries the `.(…)` argument group). */
+  raw: string;
+}
+
+interface IncludePassDeps {
+  zip: PizZip;
+  input: ExportInput;
+  embedder?: ImageEmbedder;
+  wantImages: boolean;
+  assets?: AssetFetcher;
+  rasterizer?: SvgRasterizer;
+  diagramTheme?: DiagramTheme;
+  budget: AssetBudget;
+  styleNames: Map<string, string>;
+  captionLang: CaptionLang;
+  timings: ExportTimings;
+  /** Sink for the pass's report notes (part of the export's flow notes). */
+  notes: ExportNote[];
+}
+
+/**
+ * The cross-page include pass (spec 005 D1). Returns a `Map<rawxmlKey, OOXML>`
+ * to hand docxtemplater; every entry corresponds to one atomic include
+ * occurrence whose paragraph has been swapped for its `@scrollInclude<i>` tag.
+ *
+ * Invariants:
+ *  - **Never a literal.** Any occurrence not swapped (invalid args, fetch
+ *    failure, non-atomic paragraph, budget, self-include) is left in place for
+ *    `preprocessScrollText` to blank.
+ *  - **Self-include only is a cycle.** A page including ITSELF would double its
+ *    own body inline — blocked with `includepage-cycle`. Every other repeat
+ *    (the same target in body + header, or twice in one part) renders normally;
+ *    true multi-hop cycles are structurally impossible (included content is
+ *    never re-scanned for further tokens).
+ *  - **One fetch + one walk per unique target.** Fetches de-duplicate by
+ *    canonical ref key through a bounded pool; `storageToBlocks` caches per
+ *    resolved pageId. `serializeBlocks` still runs per OCCURRENCE so each
+ *    occurrence's images/diagrams embed into ITS OWN target part's rels.
+ */
+async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string>> {
+  const { zip, input, notes } = pass;
+  const includes = new Map<string, string>();
+
+  // 1. Occurrence scan across body + headers/footers (+ chart/diagram parts).
+  const occurrences: IncludeOccurrence[] = [];
+  for (const part of documentPartNames(zip)) {
+    const xml = zip.file(part)?.asText() ?? "";
+    if (!xml.includes("$scroll.includepage")) continue;
+    for (const para of splitParagraphs(xml)) {
+      const text = paragraphText(para);
+      const m = text.match(INCLUDE_TOKEN_RE);
+      if (!m) continue;
+      // Atomic-paragraph check: the token must be the paragraph's SOLE visible
+      // content. Otherwise a whole-paragraph OOXML swap would silently delete
+      // the surrounding prose (docxtemplater's free-tier rawxml requires the tag
+      // to own its paragraph). Not atomic ⇒ note + leave in place (blanks in
+      // step 4), no fetch, no swap.
+      if (m[0].trim() !== text.trim()) {
+        notes.push({
+          level: "warning",
+          code: "includepage-invalid-context",
+          message: `${m[0]} shares a paragraph with other text; only a paragraph whose sole content is the include token is expanded — leave it on its own line. Rendered empty.`,
+        });
+        continue;
+      }
+      occurrences.push({ index: occurrences.length, part, paragraph: para, raw: m[0] });
+    }
+  }
+  if (occurrences.length === 0) return includes;
+
+  const startFetch = Date.now();
+  const getIncludedPage = input.deps?.getIncludedPage;
+
+  // 2. Fetch leg: de-duplicated by canonical ref key, bounded pool (one
+  //    round-trip per unique target however many times it is referenced).
+  const limit = pLimit(ASSET_FETCH_CONCURRENCY);
+  const fetchCache = new Map<string, Promise<IncludeLookupOutcome>>();
+  const canonicalKey = (ref: IncludePageRef): string =>
+    ref.pageId ? `id:${ref.pageId}` : `title:${ref.spaceKey ?? ""}:${ref.title ?? ""}`;
+  const fetchRef = (ref: IncludePageRef): Promise<IncludeLookupOutcome> => {
+    const key = canonicalKey(ref);
+    let p = fetchCache.get(key);
+    if (!p) {
+      // Missing dep ⇒ transient-error (nothing to fetch with).
+      p = getIncludedPage
+        ? limit(() => getIncludedPage(ref))
+        : Promise.resolve<IncludeLookupOutcome>({
+            kind: "transient-error",
+            message: "no include fetcher is available",
+          });
+      p.catch(() => {});
+      fetchCache.set(key, p);
+    }
+    return p;
+  };
+
+  // 3. Render + budget state, keyed by the resolved pageId.
+  const blocksCache = new Map<string, ReturnType<typeof storageToBlocks>>();
+  const acceptedPages = new Set<string>();
+  let cumulativeStorageBytes = 0;
+  let budgetNoted = false;
+
+  const note = (code: string, message: string, level: "info" | "warning" = "warning"): void => {
+    notes.push({ level, code, message });
+  };
+
+  for (const occ of occurrences) {
+    const ref = parseIncludePageArgs(occ.raw);
+    if (!ref) {
+      note("includepage-unresolved", `${occ.raw} names no page; rendered empty.`);
+      continue;
+    }
+
+    // Self-include (pageId form): a page cannot include itself (would double its
+    // body inline). Caught before the fetch when the id is explicit.
+    if (ref.pageId && ref.pageId === input.details.id) {
+      note("includepage-cycle", `${occ.raw}: a page cannot include itself; rendered empty.`);
+      continue;
+    }
+
+    const outcome = await fetchRef(ref);
+    let page: ConfluencePageDetails;
+    switch (outcome.kind) {
+      case "resolved":
+        page = outcome.page;
+        break;
+      case "ambiguous":
+        page = outcome.page;
+        note(
+          "includepage-ambiguous-title",
+          `${occ.raw} matched ${outcome.count} pages; used the first (id-sorted). Disambiguate with a SPACE:Title or (pageId) form.`,
+          "info"
+        );
+        break;
+      case "not-found-or-forbidden":
+        note("includepage-unresolved", `${occ.raw} was not found or is not readable; rendered empty.`);
+        continue;
+      case "auth-failed":
+        note(
+          "includepage-auth-failed",
+          `${occ.raw}: authentication failed while fetching the included page; check the export credentials. Rendered empty.`
+        );
+        continue;
+      case "rate-limited":
+        note(
+          "includepage-rate-limited",
+          `${occ.raw}: Confluence rate-limited the include fetch; rendered empty — retry the export.`
+        );
+        continue;
+      case "transient-error":
+        note(
+          "includepage-transient-error",
+          `${occ.raw} could not be fetched (${outcome.message}); rendered empty.`
+        );
+        continue;
+    }
+
+    // Self-include (title/space form): only knowable after the ref resolves.
+    if (page.id === input.details.id) {
+      note("includepage-cycle", `${occ.raw}: a page cannot include itself; rendered empty.`);
+      continue;
+    }
+
+    // Budget: gate only NEW unique targets; already-accepted ones keep rendering.
+    if (!acceptedPages.has(page.id)) {
+      const size = (page.storage ?? "").length;
+      if (
+        acceptedPages.size >= INCLUDE_BUDGET_MAX_PAGES ||
+        cumulativeStorageBytes + size > INCLUDE_BUDGET_MAX_STORAGE_BYTES
+      ) {
+        if (!budgetNoted) {
+          note(
+            "includepage-budget-exceeded",
+            `Include budget exceeded (>${INCLUDE_BUDGET_MAX_PAGES} unique pages or >${INCLUDE_BUDGET_MAX_STORAGE_BYTES} bytes); further new includes rendered empty.`
+          );
+          budgetNoted = true;
+        }
+        continue;
+      }
+      acceptedPages.add(page.id);
+      cumulativeStorageBytes += size;
+    }
+
+    // Walk once per unique pageId (cached); collect walk notes only once.
+    let walked = blocksCache.get(page.id);
+    if (!walked) {
+      walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+      blocksCache.set(page.id, walked);
+      notes.push(...walked.notes);
+    }
+
+    // Serialize PER OCCURRENCE with part-bound seams: an included page's image
+    // or diagram embeds its relationship into THIS occurrence's target part.
+    const images =
+      pass.embedder && pass.wantImages && pass.assets
+        ? imageSeam(
+            pass.embedder,
+            pass.assets,
+            page.id,
+            pass.timings,
+            { budget: pass.budget, ...(input.signal ? { signal: input.signal } : {}), total: 0 },
+            occ.part
+          )
+        : undefined;
+    const diagrams =
+      pass.embedder && pass.rasterizer
+        ? diagramSeam(pass.embedder, pass.rasterizer, pass.diagramTheme, pass.timings, pass.budget, occ.part)
+        : undefined;
+    const serialized = await serializeBlocks(walked.blocks, {
+      styleNames: pass.styleNames,
+      ...(images ? { images } : {}),
+      ...(diagrams ? { diagrams } : {}),
+      captionLang: pass.captionLang,
+    });
+    notes.push(...serialized.notes);
+
+    const key = `scrollInclude${occ.index}`;
+    includes.set(key, serialized.xml);
+
+    // Swap the occurrence paragraph for the rawxml tag (sole content — atomic
+    // check above guarantees the free-tier rawxml contract).
+    const xml = zip.file(occ.part)?.asText() ?? "";
+    if (xml.includes(occ.paragraph)) {
+      const tagPara = `<w:p><w:r><w:t xml:space="preserve">${DELIM_START}@${key}${DELIM_END}</w:t></w:r></w:p>`;
+      zip.file(occ.part, xml.replace(occ.paragraph, tagPara));
+    }
+  }
+
+  pass.timings.includeFetchMs = Date.now() - startFetch;
+  return includes;
 }
 
 /**
