@@ -8,9 +8,9 @@
  * load-bearing `true` return is unit-tested.
  */
 import { handleOffscreenMessage } from "../../utils/listeners.js";
-import { PdfCompilerHost } from "../../utils/pdf/compiler-host.js";
+import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
 
-const pdfHost = new PdfCompilerHost({
+const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
     new Worker(new URL("../../workers/pdf-compiler.ts", import.meta.url), {
       type: "module",

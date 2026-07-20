@@ -22,16 +22,22 @@
     "@atlcli/docx": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.25.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/chrome": "^0.2.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@wxt-dev/module-react": "^1.2.2",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.0.2",
+    "tailwindcss": "^4.3.3",
     "wxt": "^0.20.27"
   }
 }
