@@ -385,12 +385,17 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // decode failures which stay warnings.
   const budget = new AssetBudget();
   const imageBlockCount = wantImages ? countImageBlocks(blocks) : 0;
+  // Accessibility-audit notes (spec 011). Collected out-of-band from the
+  // serializer's per-image outcome channel so they survive a failed embed;
+  // folded into the report's notes below.
+  const imageAuditNotes: ExportNote[] = [];
   const images = embedder && wantImages
     ? imageSeam(embedder, input.assets!, input.details.id, timings, {
         budget,
         signal: input.signal,
         onProgress: input.onProgress,
         total: imageBlockCount,
+        auditNotes: imageAuditNotes,
         ...(input.rasterizer ? { rasterizer: input.rasterizer } : {}),
       })
     : undefined;
@@ -559,6 +564,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     ...resolved.notes,
     ...walkNotes,
     ...body.notes,
+    ...imageAuditNotes,
     ...flowNotes,
     timingNote(timings, Date.now() - start),
   ];
@@ -1002,6 +1008,17 @@ interface ImageSeamOptions {
    * absent, an SVG attachment degrades with `image-svg-no-rasterizer`.
    */
   rasterizer?: SvgRasterizer;
+  /**
+   * Sink for accessibility-audit notes (spec 011 alt-text audit).
+   *
+   * Deliberately NOT the seam's per-image outcome `notes` channel: the
+   * serializer reads that only on the success branch, so routing the audit
+   * through it would silence the warning for exactly the images that failed to
+   * embed — and a broken image with no alt text is still a source page that
+   * needs alt text. The PDF engine audits before the fetch for the same
+   * reason; this sink is what lets the DOCX side match it.
+   */
+  auditNotes?: ExportNote[];
 }
 
 /** The default display size for an SVG whose intrinsic size is undeterminable. */
@@ -1021,7 +1038,7 @@ function imageSeam(
   // Omitted for the main body → defaults to `word/document.xml` (unchanged).
   partPath?: string
 ): ImageEmbedSeam {
-  const { budget, signal, onProgress, total, rasterizer } = seamOpts;
+  const { budget, signal, onProgress, total, rasterizer, auditNotes } = seamOpts;
   const context: HostCallContext = { signal };
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
   let done = 0;
@@ -1058,17 +1075,22 @@ function imageSeam(
     return { filename, ...(owningPage ? { pageId: owningPage } : {}) };
   };
   /**
-   * Alt-text audit for one embedded image (spec 011). Reuses `budgetMeta`'s
-   * identity resolution so the note names the same page the asset budget would
-   * blame — one notion of "which page is this image from", not two.
+   * Alt-text audit for one image (spec 011), run BEFORE the fetch so a source
+   * page with a broken image and no alt text is still reported — matching the
+   * PDF engine, which audits the source block for the same reason. Reuses
+   * `budgetMeta`'s identity resolution so the note names the same page the
+   * asset budget would blame: one notion of "which page is this image from",
+   * not two.
    */
-  const auditAlt = (block: ImageBlock): ExportNote | null => {
+  const auditAlt = (block: ImageBlock): void => {
+    if (!auditNotes) return;
     const meta = budgetMeta(block);
-    return auditImageAltText({
+    const note = auditImageAltText({
       ...(block.alt !== undefined ? { alt: block.alt } : {}),
       name: meta.filename,
       ...(meta.pageId ? { pageId: meta.pageId } : {}),
     });
+    if (note) auditNotes.push(note);
   };
   // One progress event per SETTLED image — success or per-image failure alike
   // (matching the PDF engine's per-asset reporting) — so `done` reaches `total`
@@ -1084,6 +1106,9 @@ function imageSeam(
     },
     async embed(block: ImageBlock) {
       const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+      // Audit the SOURCE block first: the defect belongs to the page, not to
+      // the embed attempt, so it is reported whether or not the bytes resolve.
+      auditAlt(block);
       let bytes: Uint8Array;
       try {
         bytes = await fetchBytes(block);
@@ -1112,11 +1137,7 @@ function imageSeam(
           ...(partPath ? { partPath } : {}),
         });
         reportDone(name);
-        // Alt-text audit (spec 011, PDF/UA lane): the image IS in the document
-        // now, with a filename substituted into `descr`. Nothing downstream can
-        // still notice that, so the note is emitted here.
-        const altNote = auditAlt(block);
-        return { ok: true as const, xml, ...(altNote ? { notes: [altNote] } : {}) };
+        return { ok: true as const, xml };
       } catch (err) {
         reportDone(name);
         return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
@@ -1158,8 +1179,6 @@ function imageSeam(
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
     }
     const sideNotes: ExportNote[] = [];
-    const altNote = auditAlt(block);
-    if (altNote) sideNotes.push(altNote);
     const parsed = parseSvgSize(source);
     const intrinsic = parsed ?? SVG_FALLBACK_SIZE;
     if (!parsed) {
@@ -1573,7 +1592,12 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
             pass.assets,
             page.id,
             pass.timings,
-            { budget: pass.budget, ...(input.signal ? { signal: input.signal } : {}), total: 0 },
+            {
+              budget: pass.budget,
+              ...(input.signal ? { signal: input.signal } : {}),
+              total: 0,
+              auditNotes: notes,
+            },
             occ.part
           )
         : undefined;

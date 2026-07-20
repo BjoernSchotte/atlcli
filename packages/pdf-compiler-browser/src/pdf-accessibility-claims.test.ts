@@ -20,6 +20,7 @@
  * must not claim more than "alt-text pass-through".
  */
 import { beforeAll, describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import { deflateSync, inflateSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import {
@@ -28,6 +29,7 @@ import {
   validatePdfOutput,
   type ExportBlock,
   type PdfExportMetadata,
+  type PdfProfile,
 } from "@atlcli/pdf/browser";
 import { serializePdfDocument } from "@atlcli/pdf/internal";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
@@ -86,15 +88,37 @@ async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>>
 
 let compiler: BrowserPdfCompiler;
 
-async function compile(blocks: ExportBlock[], settings: object = {}): Promise<Uint8Array> {
+async function compile(
+  blocks: ExportBlock[],
+  settings: object = {},
+  profile?: PdfProfile
+): Promise<Uint8Array> {
   const prepared = await preparePdfDocument(blocks, {
     resolve: async () => ({ bytes: tinyPng(), mediaType: "image/png" }),
   });
-  const bundle = serializePdfDocument(prepared, { metadata: METADATA, settings });
+  const bundle = serializePdfDocument(prepared, {
+    metadata: METADATA,
+    settings,
+    ...(profile ? { profile } : {}),
+  });
   const result = await compiler.compile(bundle);
   const errors = result.diagnostics.filter((d) => d.severity === "error");
   if (errors.length) throw new Error(`fixture failed to compile: ${JSON.stringify(errors)}`);
   return result.pdf!;
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Split the document into indirect objects, so an assertion can be scoped to
+ * the object that owns a key rather than to the file as a whole. Several
+ * claims below are only meaningful per-object (does THIS figure carry an
+ * `/Alt`, does THIS font descriptor carry a font programme).
+ */
+function objectsOf(text: string): string[] {
+  return [...text.matchAll(/\d+\s+\d+\s+obj\b([\s\S]*?)endobj/g)].map((match) => match[1]!);
 }
 
 /**
@@ -151,6 +175,9 @@ describe("PDF accessibility claims (spec 011 — pins the reference page)", () =
   it('CLAIM "Tagged PDF": the file carries a structure tree and is marked', () => {
     expect(text).toContain("/StructTreeRoot");
     expect(text).toContain("/MarkInfo");
+    // `/MarkInfo` alone proves nothing — the dictionary can exist with
+    // `/Marked false`. The page claims the content IS marked, so assert it.
+    expect(/\/Marked\s+true/.test(text)).toBe(true);
     // Typst asserts its own tagging is not guesswork; a `/Suspects true` file
     // would mean the structure is present but untrustworthy.
     expect(text).toContain("/Suspects false");
@@ -173,14 +200,39 @@ describe("PDF accessibility claims (spec 011 — pins the reference page)", () =
     expect(/\/Type\s*\/Outlines/.test(withoutContentsPage)).toBe(true);
   }, 120_000);
 
-  it('CLAIM "embedded fonts": every font is embedded in the file', () => {
-    expect(validatePdfOutput(pdf).embeddedFontFiles).toBeGreaterThan(0);
+  it('CLAIM "embedded fonts": EVERY font descriptor carries a font programme', () => {
+    // `embeddedFontFiles > 0` (all validatePdfOutput enforces) would also pass
+    // for a document with nine embedded fonts and one referenced-but-absent
+    // one — which is exactly the case that breaks a reader without the font
+    // installed. The page says "every font used is embedded", so check every
+    // descriptor: a non-embedded font is a /FontDescriptor with no /FontFile*.
+    const descriptors = objectsOf(text).filter((object) => /\/Type\s*\/FontDescriptor/.test(object));
+    expect(descriptors.length).toBeGreaterThan(0);
+    const unembedded = descriptors.filter((object) => !/\/FontFile(?:2|3)?\b/.test(object));
+    expect(unembedded, `${unembedded.length} font descriptor(s) reference a non-embedded font`).toEqual([]);
+    expect(validatePdfOutput(pdf).embeddedFontFiles).toBe(descriptors.length);
   });
 
-  it('CLAIM "alt-text pass-through": author alt text reaches /Alt on a /Figure', () => {
-    expect(text).toContain("/Figure");
-    expect(text).toContain("/Alt (A distinctive alt sentence");
+  it('CLAIM "alt-text pass-through": author alt text reaches /Alt ON the /Figure element', () => {
+    // Asserting `/Figure` and `/Alt (…)` both appear SOMEWHERE would pass even
+    // if the alt text were attached to an unrelated element, so find the
+    // figure's own structure-element object and read the /Alt out of it.
+    const figures = objectsOf(text).filter((object) => /\/S\s*\/Figure\b/.test(object));
+    expect(figures).toHaveLength(1);
+    expect(figures[0]).toMatch(/\/Alt\s*\(A distinctive alt sentence\)/);
   });
+
+  it("CLAIM: an export requested as pdf-ua-1 is byte-identical to a tagged one", async () => {
+    // The page states this identity as a fact — that `profile` records what a
+    // host asked for, never what was achieved. A future partial `pdf-ua-1`
+    // implementation would silently falsify that sentence without this test.
+    const [tagged, ua] = await Promise.all([
+      compile(DOCUMENT, {}, "tagged"),
+      compile(DOCUMENT, {}, "pdf-ua-1"),
+    ]);
+    expect(sha256Hex(ua)).toBe(sha256Hex(tagged));
+    expect(inspectable(ua)).not.toContain("pdfuaid");
+  }, 180_000);
 
   it("LIMIT of that claim: a missing alt becomes a filename, not an absent /Alt", async () => {
     // This is why `pdf-image-missing-alt` exists. The file looks conformant —

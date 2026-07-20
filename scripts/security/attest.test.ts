@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildAttestation,
+  checkBaselineDocsSync,
   checkVeraPdfDigest,
   diffBaselines,
   hasDeterminedFailure,
@@ -172,11 +173,61 @@ describe("attestation document", () => {
     // to be able to tell "checked and passed" from "could not check".
     const attestation = buildAttestation();
     const fields = attestation.checks.map((check) => check.field);
-    expect(fields).toEqual(["veraPdfDigestOk", "veraPdfBaselineDelta", "m1AcceptanceOk"]);
+    expect(fields).toEqual([
+      "veraPdfDigestOk",
+      "veraPdfBaselineDelta",
+      "veraPdfBaselineDocsSync",
+      "m1AcceptanceOk",
+    ]);
     for (const check of attestation.checks) {
       expect(["ok", "failed", "indeterminate"]).toContain(check.status);
       expect(check.detail.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The 011 plan says "update the page in the same PR whenever the baseline
+ * changes". That was a rule with no enforcement — a reviewer had to remember
+ * it. These pin the enforcement, including the direction that must NOT fail
+ * (an unchanged baseline owes no docs update, or the job would be red forever).
+ */
+describe("baseline / docs synchronisation", () => {
+  const DOCS = "src/content/docs/reference/pdf-accessibility.md";
+  const moved = { added: ["blocks::7.1-1"], removed: [], changed: [] };
+  const still = { added: [], removed: [], changed: [] };
+
+  it("passes when the baseline did not move", () => {
+    expect(checkBaselineDocsSync({ delta: still, changedFiles: [] }).status).toBe("ok");
+  });
+
+  it("passes when the baseline moved and the page moved with it", () => {
+    expect(checkBaselineDocsSync({ delta: moved, changedFiles: ["scripts/verapdf/baseline.json", DOCS] }).status)
+      .toBe("ok");
+  });
+
+  it("FAILS when the baseline moved but the page did not", () => {
+    const result = checkBaselineDocsSync({ delta: moved, changedFiles: ["scripts/verapdf/baseline.json"] });
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("was not updated");
+  });
+
+  it("fails on a SHRINKING baseline too, not just a growing one", () => {
+    // A rule that started passing changes what the page's gap list should say
+    // just as much as a new failure does.
+    expect(
+      checkBaselineDocsSync({
+        delta: { added: [], removed: ["blocks::7.1-1"], changed: [] },
+        changedFiles: ["scripts/verapdf/baseline.json"],
+      }).status
+    ).toBe("failed");
+  });
+
+  it("is indeterminate when the changed-file list is unavailable", () => {
+    // A shallow clone cannot answer the question; that is not evidence of a
+    // missing docs update.
+    expect(checkBaselineDocsSync({ delta: moved, changedFiles: null }).status).toBe("indeterminate");
+    expect(checkBaselineDocsSync({ delta: null, changedFiles: [] }).status).toBe("indeterminate");
   });
 });
 

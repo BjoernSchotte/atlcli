@@ -43,7 +43,7 @@ and inspecting its bytes.
 | **Tagged PDF** | A `/StructTreeRoot` structure tree, `/MarkInfo` with `/Marked true`, and `/Suspects false` — the compiler asserting its own tagging is derived, not guessed. | `validatePdfOutput` **refuses to emit** an untagged document; claims test |
 | **Document language** | A `/Lang` entry in the document catalog, e.g. `/Lang (de-DE)`. A screen reader uses it to choose pronunciation. | `pdf-lang-catalog.test.ts` (real compiler, four locales) |
 | **Bookmark outline** | A `/Outlines` tree generated from the document's headings. | Claims test |
-| **Embedded fonts** | Every font used is embedded (`/FontFile2` / `/FontFile3`). Nothing depends on a font being installed on the reader's machine. | `validatePdfOutput` **refuses to emit** a document with zero embedded fonts |
+| **Embedded fonts** | Every font used is embedded (`/FontFile2` / `/FontFile3`). Nothing depends on a font being installed on the reader's machine. | Claims test asserts **every** `/FontDescriptor` carries a font programme; `validatePdfOutput` separately **refuses to emit** a document with zero |
 | **Alt-text pass-through** | Author-written alt text on an image reaches `/Alt` on a `/Figure` structure element. | Claims test |
 
 Two details that commonly surprise people:
@@ -77,8 +77,10 @@ them the hard way:
   `profile: "pdf-ua-1"`, and the report echoes it — but it does **not** change
   the produced bytes and does **not** add a conformance identifier. An export
   requested with `pdf-ua-1` is byte-identical to one requested with `tagged`.
-  It records what a host *asked for*, never what was *achieved*. (The CLI does
-  not expose this field at all; every CLI export is `tagged`.)
+  It records what a host *asked for*, never what was *achieved*. (This is the
+  PDF `profile` field in the export API — unrelated to the CLI's `--profile`
+  flag, which selects an authentication profile. The CLI does not expose the
+  PDF profile at all; every CLI export is `tagged`.)
 - **No veraPDF verdict yet.** See [Known veraPDF rule gaps](#known-verapdf-rule-gaps).
 - **No semantic review of tag order.** Tags reflect the exported block
   structure. Whether that reading order matches the *intended* reading order of
@@ -142,7 +144,8 @@ To make missing alt text or a missing document language **fail** a pipeline, add
 atlcli wiki export 123456 --format pdf --output ./report.pdf --report json --strict
 ```
 
-The same audit runs on the DOCX export, reported as `image-missing-alt`.
+The same audit runs on the DOCX export, reported as `image-missing-alt`. It is
+**not identical**: see the note table below for the one difference that remains.
 
 ## Note codes
 
@@ -151,10 +154,24 @@ The same audit runs on the DOCX export, reported as `image-missing-alt`.
 | `pdf-image-missing-alt` | warning | An image block on a source page has no author-written alt text. Carries `source.pageId` / `source.blockPath` / `source.assetName`. Also fires for images that failed to embed — the source defect is real either way. |
 | `pdf-image-alt-fallback` | warning | The renderer substituted the technical filename into `alt:`. The render-stage counterpart of the note above; both describe one defect from different ends of the pipeline. |
 | `pdf-language-missing` | warning | No usable language was supplied for the export (the PDF then declares `en` regardless), **or** the compiled file's catalog carries no `/Lang` at all. The second is read from the produced bytes, so it can catch a custom template dropping the entry. |
-| `image-missing-alt` | warning | The DOCX equivalent of `pdf-image-missing-alt`. Word writes the filename into `descr`, so Word's own accessibility checker stays silent — this note is the only signal. |
+| `image-missing-alt` | warning | The DOCX counterpart of `pdf-image-missing-alt`. Word writes the filename into `descr`, so Word's own accessibility checker stays silent — this note is the only signal. Fires for failed embeds too, like the PDF audit. **Difference:** it carries `source.pageId` and `source.assetName` but **no `blockPath`** — the DOCX serializer does not track block paths, so a DOCX note identifies the page and the image, not the position in the page. |
 | `pdf-table-cell-contrast-low` | warning | A table cell's source colours fall below the configured contrast target. |
 
 Whitespace-only alt text (`alt=" "`) counts as missing in both engines.
+
+:::caution[There is currently no way to mark an image as decorative]
+`alt=""` does **not** silence the warning, and there is no suppression flag —
+Confluence storage collapses an empty `alt` to an absent one, so the two are
+indistinguishable by the time the exporter sees them.
+
+This is deliberate rather than an oversight: the renderer substitutes the
+**filename** when alt text is absent, so an image you intended as decorative
+would still be announced as `chart-final-v2.png` by a screen reader. Marking it
+decorative would require emitting an artifact/`/Artifact`-tagged image instead,
+which the exporter does not currently do. Until it does, the warning is
+accurate and unsilenceable — so treat it as a to-do list, and do not go looking
+for a flag that does not exist.
+:::
 
 ## Related topics
 

@@ -39,9 +39,17 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
 
-const VERAPDF_BASELINE = resolve(REPO_ROOT, "scripts/verapdf/baseline.json");
+const VERAPDF_BASELINE = "scripts/verapdf/baseline.json";
 const VERAPDF_LOCK = resolve(REPO_ROOT, "scripts/verapdf/verapdf.lock.json");
 const M1_ACCEPTANCE = resolve(REPO_ROOT, "scripts/bench/out/m1-acceptance.json");
+
+/**
+ * The conformance page whose "known rule gaps" section describes the baseline.
+ * The 011 plan requires the two to move together ("update the page in the same
+ * PR whenever the baseline changes"); {@link checkBaselineDocsSync} is the
+ * enforcement that rule otherwise lacks.
+ */
+const ACCESSIBILITY_DOCS = "src/content/docs/reference/pdf-accessibility.md";
 
 /** Default `securityReviewNote` when the caller supplies none. */
 export const DEFAULT_REVIEW_NOTE =
@@ -197,11 +205,41 @@ export function readM1Acceptance(path = M1_ACCEPTANCE): { ok: boolean | null; de
   };
 }
 
+/**
+ * Enforce the plan's "update the page in the same PR whenever the baseline
+ * changes" rule (spec 011). Pure over the two facts, so the policy is testable
+ * without a repository.
+ *
+ * Only a MOVED baseline can fail this: an unchanged baseline says nothing about
+ * whether the docs needed touching, so it stays `ok`.
+ */
+export function checkBaselineDocsSync(input: {
+  delta: VeraPdfBaselineDelta | null;
+  /** Repo-relative paths changed by the commit under attestation. */
+  changedFiles: string[] | null;
+}): { status: AttestationCheck["status"]; detail: string } {
+  if (!input.delta) return { status: "indeterminate", detail: "no baseline delta to check against" };
+  const moved =
+    input.delta.added.length + input.delta.removed.length + input.delta.changed.length;
+  if (moved === 0) return { status: "ok", detail: "veraPDF baseline unchanged — no docs update owed" };
+  if (!input.changedFiles) {
+    return { status: "indeterminate", detail: "could not list this commit's changed files" };
+  }
+  return input.changedFiles.includes(ACCESSIBILITY_DOCS)
+    ? { status: "ok", detail: `baseline moved and ${ACCESSIBILITY_DOCS} was updated with it` }
+    : {
+        status: "failed",
+        detail:
+          `the veraPDF baseline moved (${moved} key(s)) but ${ACCESSIBILITY_DOCS} was not updated — ` +
+          "its 'Known veraPDF rule gaps' section now describes a baseline that no longer exists",
+      };
+}
+
 /** Baseline delta between HEAD and its first parent. */
 export function veraPdfBaselineDeltaForHead(): { delta: VeraPdfBaselineDelta | null; detail: string } {
-  const head = readJson(VERAPDF_BASELINE) as Record<string, never> | null;
+  const head = readJson(resolve(REPO_ROOT, VERAPDF_BASELINE)) as Record<string, never> | null;
   if (!head) return { delta: null, detail: "scripts/verapdf/baseline.json is absent or unparseable" };
-  const parentRaw = git(["show", "HEAD~1:scripts/verapdf/baseline.json"]);
+  const parentRaw = git(["show", `HEAD~1:${VERAPDF_BASELINE}`]);
   if (parentRaw === null) {
     // A root commit, a shallow clone, or the file not existing at HEAD~1.
     return {
@@ -247,6 +285,15 @@ export function buildAttestation(options: { reviewNote?: string } = {}): Securit
     status: baseline.delta === null ? "indeterminate" : "ok",
     detail: baseline.detail,
   });
+
+  // The plan's own rule that otherwise had no enforcement: a moved baseline
+  // must be accompanied by a docs update, or the conformance page silently
+  // describes rule gaps that no longer match reality.
+  const docsSync = checkBaselineDocsSync({
+    delta: baseline.delta,
+    changedFiles: git(["diff", "--name-only", "HEAD~1", "HEAD"])?.split("\n").filter(Boolean) ?? null,
+  });
+  checks.push({ field: "veraPdfBaselineDocsSync", status: docsSync.status, detail: docsSync.detail });
 
   const m1 = readM1Acceptance();
   checks.push({

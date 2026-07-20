@@ -540,7 +540,9 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       metadata has no language.
       *(Round 3: DONE, and the Round-2 note above was STALE on one point:
       `template.ts` ALREADY threads `lang: meta.at("language", …)` /
-      `region:` — spec 012 landed it. So NO template change was needed and
+      `region:` — `git log -S` attributes that to f8b1340 (#42, browser-native
+      Typst export), NOT to spec 012 as an earlier draft of this note claimed.
+      So NO template change was needed and
       **both pinned digests stay untouched** (`PRE_MIGRATION_DIGEST`,
       `ONE_PER_PAGE_PRE_REFINEMENT_DIGEST` both pass unchanged); no
       re-baselining. That the threading actually produces a catalog `/Lang` is

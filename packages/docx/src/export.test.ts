@@ -2138,10 +2138,12 @@ describe("exportDocx — alt-text audit (spec 011)", () => {
     expect(altNotes(report)[0]).toMatchObject({ source: { assetName: "arch.svg" } });
   });
 
-  it("does not audit an image that never made it into the document", async () => {
-    // A failed embed already reports `image-embed-failed`; adding an alt
-    // warning for a picture that is not in the file would be noise about a
-    // defect the reader cannot see.
+  it("audits an image that FAILED to embed, matching the PDF engine", async () => {
+    // The defect belongs to the source page, not to the embed attempt: a
+    // broken image with no alt text still needs alt text once the attachment
+    // is fixed. Routing this through the serializer's per-image outcome
+    // channel would silence it (the serializer reads outcome notes only on
+    // success), which is why the seam has a separate audit sink.
     const { report } = await exportDocx({
       templateBytes: imageTemplate(),
       details: { ...details, storage: '<ac:image><ri:attachment ri:filename="gone.png"/></ac:image>' },
@@ -2154,6 +2156,27 @@ describe("exportDocx — alt-text audit (spec 011)", () => {
       },
     });
     expect(report.embeddedImages).toBe(0);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(report.notes.some((n) => n.code === "image-embed-failed")).toBe(true);
+  });
+
+  it("does not audit a failed image that DID carry alt text", async () => {
+    // Guards the guard: the audit must key on the alt text, not merely fire
+    // for every image that reaches the seam.
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image ac:alt="described"><ri:attachment ri:filename="gone.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        fetch: async () => {
+          throw new Error("404");
+        },
+      },
+    });
     expect(altNotes(report)).toEqual([]);
     expect(report.notes.some((n) => n.code === "image-embed-failed")).toBe(true);
   });
