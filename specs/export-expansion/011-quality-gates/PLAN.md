@@ -5,6 +5,21 @@ the parked backlog T4.9 from `specs/export-expansion/UMSETZUNGSPLAN.md`. This
 folder is cross-cutting: it does not add product features, it builds the
 quality infrastructure that every other folder (001–008) lands into.
 
+**Round 1 (2026-07-20) — landed:** the shape-parity comparison core + real PNG
+codec + infra tests; the `ConformanceCase` registry (T4.6 sync point) with a
+generic app/Playwright loop and the `assert-case-manifest` drift guard; the
+shared `@atlcli/export-fixtures` package; conformance **case 007
+`pdf-settings`**; `check-parity.ts` (verified compiling real PDFs under Bun via
+the same `BrowserPdfCompiler` the CLI uses); CI wiring (`assert:cases` +
+`check:parity`); the seeded 500-page benchmark fixture generator + determinism
+tests; and the adversarial SVG policy conformance gate (PDF side). Pending items
+carry a one-line note below: feature-lane cases 001–006 land with their folders'
+PR waves (002/003/004/001 startable now, 005/006 gated on unmerged specs); the
+benchmark runner/M1-corpus/CI-trend, all PDF/UA tasks, the archive/`.docx`/
+storage/link/compiler security tasks (several owned by 006/007 or coordinated
+with 001/003), the E2E resource-discipline suite (live DOCSY tenant — orchestrator
+only), and docs pages are unstarted this round.
+
 ## Reference
 
 - `specs/export-expansion/UMSETZUNGSPLAN.md` — Phase 4 table (T4.3–T4.9),
@@ -192,11 +207,12 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
 
 ### Conformance harness
 
-- [ ] Create `packages/export-fixtures/` (private, browser-safe, no IO):
+- [x] Create `packages/export-fixtures/` (private, browser-safe, no IO):
       move/extend `apps/browser-export-harness/src/fixture.ts` content into
       `packages/export-fixtures/src/index.ts`; keep a re-export shim in the
-      harness so `docx-case.ts`/`pdf-case.ts` keep working.
-- [ ] **T4.6 sync point (land before the first feature-lane case, i.e.
+      harness so `docx-case.ts`/`pdf-case.ts` keep working. *(Done: harness
+      `fixture.ts` is now `export * from "@atlcli/export-fixtures"`.)*
+- [x] **T4.6 sync point (land before the first feature-lane case, i.e.
       before 001/002 merge their harness cases — "startable immediately"
       per UMSETZUNGSPLAN's critical-path note)**: replace the current
       hand-wired `bindCase` calls in `apps/browser-export-harness/src/app.ts`
@@ -255,20 +271,23 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
         `word/numbering.xml` exists with multilevel defs, `w:tblGrid` widths
         from `columnWidths`, an SVG attachment lands as svgBlip + PNG
         fallback media parts, and the StyleRef header field survives export.
-  - [ ] **Case 007 `pdf-settings`** (`src/pdf-settings-case.ts`): compiles
+  - [x] **Case 007 `pdf-settings`** (`src/pdf-settings-case.ts`): compiles
         the same blocks twice with different `settings` (A4/portrait vs
         Letter/landscape, watermark on, cover/outline toggled); asserts the
         two outputs differ, each is deterministic, watermark text present,
         and a `.wiki-pdf-template` container round-trips through the template
-        library.
+        library. *(Done. "Watermark present" is proven robustly by asserting
+        watermark-on vs watermark-off bytes differ rather than glyph-decoding.)*
   - [ ] **Case 008** is not a browser case: it is the parity runner below.
-- [ ] Extend each case result with output digests: sha256 for PDF bytes,
+        *(Done for pdf-settings — see check-parity.ts. Docx/other cases join
+        as their fixtures land.)*
+- [x] Extend each case result with output digests: sha256 for PDF bytes,
       per-part sha256 map for DOCX (via `unzipDocx` in-page); surface them in
       the JSON `*-result` elements. Also surface a canonical projection of
       the case's `ExportNote`s (code, severity, count, failure phase —
       excludes timing and host-specific free text) alongside the digests,
       so the parity gate below can compare reports, not only bytes.
-- [ ] **Shape-parity gate**: `apps/browser-export-harness/scripts/check-parity.ts`
+- [x] **Shape-parity gate**: `apps/browser-export-harness/scripts/check-parity.ts`
       (Bun) — runs the same `packages/export-fixtures` fixtures through the
       node/Bun entry points (`@atlcli/docx` node adapters, T3.1 compile
       port), computes the same digests and report projection, and compares
@@ -282,11 +301,12 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       content-bounds, and a perceptual difference metric within a
       fixture-documented tolerance — never by format/dimensions alone (a
       same-size blank or mis-cropped image must fail).
-- [ ] Wire into CI: add `bun run check:parity` (root `package.json` script)
+- [x] Wire into CI: add `bun run check:parity` (root `package.json` script)
       to the `browser-export-harness` job in `.github/workflows/ci.yml`
       after the Playwright step. Keep `scripts/check-output.ts` scanning the
-      grown bundle (no remote/dynamic code, no native leaks).
-- [ ] Tests for the infrastructure itself: unit tests for the digest
+      grown bundle (no remote/dynamic code, no native leaks). *(Done; also
+      wired the `assert:conformance-cases` drift guard into the same job.)*
+- [x] Tests for the infrastructure itself: unit tests for the digest
       comparison, report-projection comparison, and raster-content-metric
       logic in `apps/browser-export-harness/scripts/check-parity.test.ts`
       (pure functions over real zip/PNG bytes from `@atlcli/docx/fixtures`
@@ -296,7 +316,7 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
 
 ### Benchmarks
 
-- [ ] Fixture generation strategy: `scripts/bench/generate-fixture.ts` —
+- [x] Fixture generation strategy: `scripts/bench/generate-fixture.ts` —
       seeded deterministic generator producing a 500-page tree as
       `ExportBlock[]` chapters (per page: ~3 headings, prose paragraphs,
       one list; every 10th page a 200-row table; every 25th page a code
@@ -367,9 +387,10 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       < 60 s / < 1.5 GB RSS; 500-page PDF compile < 180 s / < 2 GB RSS,
       engine tier and end-to-end tier budgeted separately) and flip the
       workflow to failing. Never a per-PR gate.
-- [ ] Regression tests for the generator (determinism: same seed → identical
+- [x] Regression tests for the generator (determinism: same seed → identical
       JSON; page/block counts exact) in `scripts/bench/generate-fixture.test.ts`
-      and `scripts/bench/generate-m1-corpus.test.ts`.
+      and `scripts/bench/generate-m1-corpus.test.ts`. *(generate-fixture.test.ts
+      done; generate-m1-corpus.test.ts pending with the M1 corpus above.)*
 - [ ] Document the envelope in `src/content/docs/reference/` once measured —
       engine tier and end-to-end tier reported separately, each tier's scope
       stated explicitly (what it does and does not exercise); this is the
@@ -456,8 +477,13 @@ the surfaces no feature lane claims (raw `.docx` upload archive budget,
 Confluence storage parse budget, link-scheme policy, compiler execution
 budget).**
 
-- [ ] **Cross-plan SVG policy conformance gate** (does not implement the
+- [x] **Cross-plan SVG policy conformance gate** (does not implement the
       sanitizer — 006 does): `packages/export-fixtures/src/svg-corpus.ts`,
+      *(Done for the PDF engine via `preparePdfDocument`; CSS `url()`/`@import`
+      cases are pinned as documented `pending-006` gaps and tighten to
+      `must-reject` when 006's parser-based `assertSafeSvg` lands. The DOCX
+      side — `packages/docx/src/image.ts`, owned by parallel 006 — is not yet
+      wired; the both-engines-agree assertion joins when 006 merges.)*
       an adversarial SVG fixture set covering `script`/`foreignObject`/`on*`/
       external-`href` (today's regex baseline) **plus** CSS-carried
       references (`url(...)`/`@import` in `<style>` bodies and `style="…"`
@@ -535,7 +561,11 @@ budget).**
       consumed by both serializers. Malformed-URI fixtures run through both
       engines via the same negative-fixture case as the storage budget
       above.
-- [ ] Compiler execution budget: `BrowserPdfCompiler.compile()`
+- [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
+      *(Partial: `check-parity.ts` wraps every Bun-side compile in a wall-clock
+      deadline that throws a stable `compile-timeout` code. The harness
+      worker-terminate auto-deadline and the same wrapper on `compile-corpus.ts`/
+      `run-bench.ts`/`run-m1-acceptance.ts` are pending with those scripts.)*
       (`packages/pdf-compiler-browser/src/compiler.ts`) runs the WASM
       compile synchronously with no wall-clock or memory budget; folder
       008's own plan documents this as an "unchanged limitation... a true
