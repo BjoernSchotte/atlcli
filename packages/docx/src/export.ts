@@ -38,6 +38,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
   AssetBudget,
+  assertSafeSvg,
   storageToBlocks,
   type ConfluencePageDetails,
   type ExportBlock,
@@ -57,9 +58,18 @@ import {
   type CodeBlock,
   type DiagramEmbedSeam,
   type ImageBlock,
+  type ImageEmbedOutcome,
   type ImageEmbedSeam,
 } from "./serialize.js";
-import { ImageEmbedder, ImageEmbedError } from "./image.js";
+import {
+  boundRasterTarget,
+  ImageEmbedder,
+  ImageEmbedError,
+  isSvg,
+  MAX_CONTENT_WIDTH_PX,
+  parseSvgSize,
+  resolveTargetSize,
+} from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
 import type { IncludeLookupOutcome } from "./resolver.js";
@@ -359,6 +369,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
         signal: input.signal,
         onProgress: input.onProgress,
         total: imageBlockCount,
+        ...(input.rasterizer ? { rasterizer: input.rasterizer } : {}),
       })
     : undefined;
   const diagrams =
@@ -635,6 +646,9 @@ const IMAGE_SKIP_CODES = new Set([
   "inline-image-skipped",
   "logo-skipped",
   "logo-embed-failed",
+  // spec 006 G4: an SVG attachment that could not be rasterized/embedded.
+  "image-svg-no-rasterizer",
+  "image-svg-oversized",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -854,7 +868,16 @@ interface ImageSeamOptions {
   signal?: AbortSignal;
   onProgress?: ExportProgressCallback;
   total: number;
+  /**
+   * SVG → PNG rasterizer (spec 006 G4). When present, an SVG page attachment
+   * embeds through the dual-part svgBlip path (SVG + 2× PNG fallback); when
+   * absent, an SVG attachment degrades with `image-svg-no-rasterizer`.
+   */
+  rasterizer?: SvgRasterizer;
 }
+
+/** The default display size for an SVG whose intrinsic size is undeterminable. */
+const SVG_FALLBACK_SIZE = { widthPx: 600, heightPx: 400 };
 
 function imageSeam(
   embedder: ImageEmbedder,
@@ -870,7 +893,7 @@ function imageSeam(
   // Omitted for the main body → defaults to `word/document.xml` (unchanged).
   partPath?: string
 ): ImageEmbedSeam {
-  const { budget, signal, onProgress, total } = seamOpts;
+  const { budget, signal, onProgress, total, rasterizer } = seamOpts;
   const context: HostCallContext = { signal };
   const limit = pLimit(ASSET_FETCH_CONCURRENCY);
   let done = 0;
@@ -931,6 +954,14 @@ function imageSeam(
       // abort the whole export (never a per-image warning), so it is NOT caught
       // by the per-image failure branch below — it propagates out of the seam.
       budget.account(bytes, budgetMeta(block));
+      // SVG attachment path (spec 006 G4): embed vector-sharp via svgBlip with a
+      // 2× PNG fallback. Detected here before the raster embedder is reached, so
+      // the deferral throw in ImageEmbedder.embed is never hit for this path.
+      if (isSvg(bytes)) {
+        const outcome = await embedSvgAttachment(block, bytes, name);
+        reportDone(name);
+        return outcome;
+      }
       try {
         const xml = embedder.embed(bytes, {
           alt: block.alt,
@@ -947,6 +978,91 @@ function imageSeam(
       }
     },
   };
+
+  /**
+   * Embed one SVG page attachment (spec 006 G4). Validates the SAME decoded
+   * UTF-8 string it embeds (`assertSafeSvg`), sizes it via `parseSvgSize` (with
+   * a default + info note), guards the rasterizer target
+   * (`resolveTargetSize` → `boundRasterTarget`), rasterizes the PNG fallback at
+   * 2×, and embeds both parts through `embedSvg({ origin: "image" })` so it
+   * tallies as an image, not a diagram. Missing rasterizer or an oversized
+   * target degrades with a precise note code instead of embedding.
+   */
+  async function embedSvgAttachment(
+    block: ImageBlock,
+    bytes: Uint8Array,
+    name: string | undefined
+  ): Promise<ImageEmbedOutcome> {
+    if (!rasterizer) {
+      return {
+        ok: false as const,
+        code: "image-svg-no-rasterizer",
+        level: "warning" as const,
+        reason: "no SVG rasterizer is available in this export; the SVG was skipped",
+      };
+    }
+    // Embed exactly the string that was validated (re-encode for embedSvg), not
+    // the pre-decode bytes — a BOM / non-UTF-8 declaration must not let a
+    // different byte sequence slip past the safety check.
+    const source = new TextDecoder().decode(bytes);
+    try {
+      assertSafeSvg(source);
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    const sideNotes: ExportNote[] = [];
+    const parsed = parseSvgSize(source);
+    const intrinsic = parsed ?? SVG_FALLBACK_SIZE;
+    if (!parsed) {
+      sideNotes.push({
+        level: "info",
+        code: "image-svg-default-size",
+        message: `SVG ${describeImageBlock(block)} has no intrinsic size; using a ${SVG_FALLBACK_SIZE.widthPx}×${SVG_FALLBACK_SIZE.heightPx} default.`,
+      });
+    }
+    const display = resolveTargetSize(
+      { width: intrinsic.widthPx, height: intrinsic.heightPx },
+      { widthPx: block.width, heightPx: block.height },
+      MAX_CONTENT_WIDTH_PX
+    );
+    const raster = boundRasterTarget({ widthPx: display.widthPx * 2, heightPx: display.heightPx * 2 });
+    if (!raster) {
+      return {
+        ok: false as const,
+        code: "image-svg-oversized",
+        level: "warning" as const,
+        reason: "the SVG's resolved dimensions exceed the rasterization budget",
+      };
+    }
+    let png: Uint8Array;
+    try {
+      png = await rasterizer.rasterize(source, raster);
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    // Account the PNG against the shared budget (the SVG bytes were already
+    // accounted above). A breach is fatal — propagate out of the seam.
+    budget.account(png, { filename: (name ?? "image") + ".png" });
+    try {
+      const xml = embedder.embedSvg(source, png, {
+        origin: "image",
+        alt: block.alt ?? name,
+        name,
+        widthPx: display.widthPx,
+        heightPx: display.heightPx,
+      });
+      return { ok: true as const, xml, ...(sideNotes.length ? { notes: sideNotes } : {}) };
+    } catch (err) {
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+}
+
+/** Human label for an image block in a note (attachment filename or URL). */
+function describeImageBlock(block: ImageBlock): string {
+  return block.source.kind === "attachment"
+    ? `"${block.source.filename}"`
+    : `"${block.source.url}"`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,12 +1124,23 @@ function diagramSeam(
           return { kind: "unsupported", diagramType: rendered.diagramType };
         }
         if (rendered.kind === "failed") return { kind: "failed", reason: rendered.reason };
+        // Shared raster budget (spec 006 G4): guard the 2× target before it
+        // reaches the rasterizer's canvas allocation — the same guard the SVG-
+        // attachment path uses, applied here since author dimensions can widen
+        // a diagram too.
+        const target = boundRasterTarget({
+          widthPx: rendered.widthPx * 2,
+          heightPx: rendered.heightPx * 2,
+        });
+        if (!target) {
+          return {
+            kind: "failed",
+            reason: "the diagram's rasterization target exceeds the size budget",
+          };
+        }
         try {
           const rasterStart = Date.now();
-          const png = await rasterizer.rasterize(rendered.svg, {
-            widthPx: rendered.widthPx * 2,
-            heightPx: rendered.heightPx * 2,
-          });
+          const png = await rasterizer.rasterize(rendered.svg, target);
           timings.diagramRasterMs += Date.now() - rasterStart;
           return {
             kind: "ready",

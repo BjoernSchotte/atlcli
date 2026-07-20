@@ -1117,7 +1117,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const { readFile, stat } = await import("node:fs/promises");
   const [
     { runExport, fileOutputSink, buildGetIncludedPage },
-    { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
+    { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
   ] = await Promise.all([
@@ -1179,11 +1179,16 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     getSpaceHomepageStorage: spaceHomepage,
   });
 
-  // Mermaid diagrams render via resvg-wasm (spec 005a). A missing rasterizer
-  // is not an error: the engine degrades those blocks to readable source
-  // code and reports each one — the note here names the reason once.
+  // Mermaid diagrams render via resvg-wasm (spec 005a), and SVG page
+  // attachments rasterize their PNG fallback through the same rasterizer
+  // (spec 006 G4). A missing rasterizer is not an error: the engine degrades
+  // those blocks to readable source / a report note. Build the rasterizer when
+  // EITHER a mermaid macro OR any image/attachment reference is present, so an
+  // SVG-only page (no mermaid macro) still gets a rasterizer instead of
+  // degrading with `image-svg-no-rasterizer`.
   const rasterizerPromise = pagePromise.then(async (details) => {
-    if (!mightContainMermaid(details.storage ?? "")) {
+    const storage = details.storage ?? "";
+    if (!mightContainMermaid(storage) && !mightReferenceImage(storage)) {
       return { needed: false as const, rasterizer: null };
     }
     try {
@@ -1360,13 +1365,21 @@ function makeProgressReporter(opts: OutputOptions): {
   return { report, clear };
 }
 
-/** True when any composed block is a mermaid code block (needs a rasterizer). */
+/**
+ * True when any composed block needs a rasterizer: a mermaid code block
+ * (spec 005a) or an image block that could be an SVG attachment (spec 006 G4).
+ * The block model does not always know an attachment's bytes ahead of the
+ * fetch, so any attachment image conservatively triggers the build — matching
+ * the single-page CLI gate's over-triggering-by-design stance.
+ */
 function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
   for (const block of blocks) {
     switch (block.type) {
       case "codeBlock":
         if ((block.language ?? "").toLowerCase() === "mermaid") return true;
         break;
+      case "image":
+        return true;
       case "callout":
       case "blockquote":
       case "orientation":

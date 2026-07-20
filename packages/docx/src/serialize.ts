@@ -59,8 +59,16 @@ export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
 /** The `codeBlock` variant of {@link ExportBlock} (carries mermaid source). */
 export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
 
-/** Result of one image-embed attempt (spec 005). */
-export type ImageEmbedOutcome = { ok: true; xml: string } | { ok: false; reason: string };
+/**
+ * Result of one image-embed attempt (spec 005). A success may carry side
+ * notes (spec 006 G4: an SVG that used its default size emits an info note yet
+ * still embeds); a failure may name a specific note code + level (spec 006 G4:
+ * `image-svg-no-rasterizer` / `image-svg-oversized`) so the report can
+ * distinguish them from the generic `image-embed-failed`.
+ */
+export type ImageEmbedOutcome =
+  | { ok: true; xml: string; notes?: ExportNote[] }
+  | { ok: false; reason: string; code?: string; level?: "info" | "warning" };
 
 /**
  * The serializer's image seam (spec 005): turns an `image` block into an
@@ -485,12 +493,16 @@ async function serializeBlock(
         return fallback();
       }
       const outcome = await ctx.images.embed(block);
-      if (outcome.ok) return outcome.xml + cap;
+      if (outcome.ok) {
+        if (outcome.notes) notes.push(...outcome.notes);
+        return outcome.xml + cap;
+      }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
-      // but keep a numbered fallback when a caption is present.
+      // but keep a numbered fallback when a caption is present. The seam may name
+      // a specific code (spec 006 G4 SVG codes) — else the generic one.
       notes.push({
-        level: "warning",
-        code: "image-embed-failed",
+        level: outcome.level ?? "warning",
+        code: outcome.code ?? "image-embed-failed",
         message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
       return fallback();

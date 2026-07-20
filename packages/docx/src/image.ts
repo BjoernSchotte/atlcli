@@ -190,6 +190,76 @@ export function pxToEmu(px: number): number {
   return Math.round(px * EMU_PER_PX);
 }
 
+/**
+ * Parse an SVG's intrinsic pixel size from its opening `<svg>` tag (spec 006
+ * G4). Prefers explicit `width`/`height` (px or unitless — `%`/`em`/other
+ * units are treated as undeterminable), falling back to the `viewBox`'s width
+ * and height. Returns `null` when neither yields a usable positive size, so the
+ * caller can apply a default. Pure over the decoded SVG string.
+ */
+export function parseSvgSize(source: string): TargetSize | null {
+  const open = source.replace(/^﻿/, "").match(/<svg\b[^>]*>/i);
+  if (!open) return null;
+  const tag = open[0];
+  const num = (attr: string): number | null => {
+    const m = tag.match(new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
+    if (!m) return null;
+    const raw = (m[1] ?? m[2] ?? "").trim();
+    // Accept a bare number or an explicit px length; reject %, em, and friends.
+    const px = raw.match(/^([0-9]+(?:\.[0-9]+)?)(px)?$/i);
+    if (!px) return null;
+    const v = Number.parseFloat(px[1]);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const w = num("width");
+  const h = num("height");
+  if (w !== null && h !== null) return { widthPx: Math.round(w), heightPx: Math.round(h) };
+  const vb = tag.match(/\bviewBox\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  if (vb) {
+    const parts = (vb[1] ?? vb[2] ?? "").trim().split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      const vw = parts[2];
+      const vh = parts[3];
+      if (vw > 0 && vh > 0) return { widthPx: Math.round(vw), heightPx: Math.round(vh) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Symmetric per-axis raster cap (spec 006 G4). `resolveTargetSize` caps only
+ * `widthPx`; an SVG's own `viewBox`/`width`/`height` and Confluence's
+ * `ac:width`/`ac:height` are unbounded author input, so an extreme aspect
+ * ratio can leave `heightPx` (or the total pixel count) enormous even after
+ * width-capping. Chosen well above any plausible authored figure so normal
+ * content (including tall flowcharts) is never rejected — the guard exists to
+ * catch malformed/pathological dimensions before they reach a canvas
+ * allocation, not to constrain real usage.
+ */
+export const MAX_RASTER_AXIS_PX = 10000;
+/** Total-pixel raster budget (spec 006 G4): ~40 megapixels. */
+export const MAX_RASTER_PIXELS = 40_000_000;
+
+/**
+ * Budget guard for a rasterizer target (spec 006 G4): reject non-finite /
+ * non-safe-integer / non-positive axes, either axis above
+ * {@link MAX_RASTER_AXIS_PX}, or a total pixel count above
+ * {@link MAX_RASTER_PIXELS}. Returns the same size when within budget, or
+ * `null` when it is exceeded (the caller degrades with a note instead of
+ * invoking the rasterizer). Applied to BOTH the mermaid diagram and the new
+ * SVG-attachment paths, since author-supplied `ac:width`/`ac:height` already
+ * flow into the mermaid `resolveTargetSize` call too.
+ */
+export function boundRasterTarget(size: TargetSize): TargetSize | null {
+  const { widthPx, heightPx } = size;
+  for (const axis of [widthPx, heightPx]) {
+    if (!Number.isFinite(axis) || !Number.isSafeInteger(axis) || axis < 1) return null;
+    if (axis > MAX_RASTER_AXIS_PX) return null;
+  }
+  if (widthPx * heightPx > MAX_RASTER_PIXELS) return null;
+  return size;
+}
+
 // ---------------------------------------------------------------------------
 // Drawing fragment
 // ---------------------------------------------------------------------------
@@ -320,6 +390,13 @@ export interface EmbedSvgOptions {
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph. */
   pPrXml?: string;
+  /**
+   * What the embed counts as (spec 006 G4). `"diagram"` (default, mermaid's
+   * existing call) increments `diagramCount`; `"image"` (an SVG page
+   * attachment) increments `embeddedCount` — an attachment SVG is an image,
+   * not a rendered diagram, so the report tallies it as `embeddedImages`.
+   */
+  origin?: "image" | "diagram";
 }
 
 interface MediaEntry {
@@ -445,7 +522,8 @@ export class ImageEmbedder {
       this.maxWidthPx
     );
     const docPrId = this.nextDocPrId++;
-    this.diagramsEmbedded += 1;
+    if ((opts.origin ?? "diagram") === "image") this.embedded += 1;
+    else this.diagramsEmbedded += 1;
     return inlineImageParagraph({
       relId: pngRelId,
       svgRelId,

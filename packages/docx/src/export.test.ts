@@ -610,7 +610,7 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
   });
 
-  it("degrades undecodable bytes (SVG) to a report line, export still succeeds", async () => {
+  it("degrades an SVG attachment with no rasterizer to image-svg-no-rasterizer (spec 006 G4)", async () => {
     const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>');
     const { report } = await exportDocx({
       templateBytes: imageTemplate(),
@@ -621,10 +621,13 @@ describe("exportDocx — image embedding (spec 005)", () => {
       template,
       deps,
       assets: { fetch: async () => svg },
+      // No rasterizer: the SVG cannot be rasterized, so it degrades with the
+      // precise code instead of the generic image-embed-failed.
     });
-    const note = report.notes.find((n) => n.code === "image-embed-failed");
-    expect(note?.message).toContain("SVG");
+    const note = report.notes.find((n) => n.code === "image-svg-no-rasterizer");
+    expect(note?.level).toBe("warning");
     expect(report.skippedImages).toBe(1);
+    expect(report.embeddedImages).toBe(0);
   });
 
   it("embedImages: false skips embedding without touching the fetcher", async () => {
@@ -1793,5 +1796,172 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     expect(report.notes.filter((n) => n.code === "includepage-budget-exceeded")).toHaveLength(1);
     // The repeat of P1 renders → P1 sentinel appears twice.
     expect(doc.match(new RegExp(`${SENTINEL} P1\\b`, "g"))?.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SVG attachment embedding (spec 006 G4)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — SVG attachment embedding (spec 006 G4)", () => {
+  const svgTemplate = () =>
+    buildDocx({
+      body: para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+
+  const svgStorage = (filename = "arch.svg") =>
+    `<ac:image><ri:attachment ri:filename="${filename}"/></ac:image>`;
+
+  /** A rasterizer recording calls, serving real PNG fixture bytes at the target size. */
+  function recordingRasterizer() {
+    const calls: { svg: string; widthPx: number; heightPx: number }[] = [];
+    return {
+      calls,
+      rasterizer: {
+        async rasterize(svg: string, target: { widthPx: number; heightPx: number }) {
+          calls.push({ svg, ...target });
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    };
+  }
+
+  const CLEAN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60"/></svg>';
+
+  it("embeds a clean SVG attachment as svgBlip + PNG@2x, counting as an image not a diagram", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(CLEAN_SVG) },
+      rasterizer,
+    });
+
+    // Rasterized once at 2× the intrinsic display size.
+    expect(calls).toHaveLength(1);
+    expect(calls[0].widthPx).toBe(240);
+    expect(calls[0].heightPx).toBe(120);
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("<w:drawing>");
+    expect(doc).toContain("<asvg:svgBlip");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(rels).toContain('Target="media/atlcli-image1.svg"');
+    expect(rels).toContain('Target="media/atlcli-image2.png"');
+
+    // Counters: an SVG attachment is an image, not a rendered diagram.
+    expect(report.embeddedImages).toBe(1);
+    expect(report.renderedDiagrams).toBe(0);
+    expect(report.skippedImages).toBe(0);
+  });
+
+  it("uses the 600×400 default with an info note when the SVG has no intrinsic size", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const noSize = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(noSize) },
+      rasterizer,
+    });
+    // Width capped to 600 → 2× = 1200; height 400 → 2× = 800.
+    expect(calls[0].widthPx).toBe(1200);
+    expect(calls[0].heightPx).toBe(800);
+    expect(report.notes.some((n) => n.code === "image-svg-default-size")).toBe(true);
+    expect(report.embeddedImages).toBe(1);
+  });
+
+  it("rejects a hostile <script> SVG with a note and leaves the archive untouched", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+    const { bytes, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(hostile) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0); // never rasterized
+    const note = report.notes.find((n) => n.message.includes("active or externally loaded"));
+    expect(note).toBeDefined();
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("rejects a CSS-carried external reference SVG", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const cssHostile =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><style>.a{background:url(https://evil/x)}</style></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(cssHostile) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0);
+    expect(report.notes.some((n) => n.message.includes("active or externally loaded"))).toBe(true);
+    expect(report.skippedImages).toBe(1);
+  });
+
+  it("degrades an oversized SVG with image-svg-oversized, never invoking the rasterizer", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    // Author dimensions force a pathological target: width capped to 600, but an
+    // extreme aspect ratio via viewBox pushes the height past the axis budget.
+    const huge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000000"><rect/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(huge) },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0);
+    expect(report.notes.some((n) => n.code === "image-svg-oversized")).toBe(true);
+    expect(report.skippedImages).toBe(1);
+    expect(report.embeddedImages).toBe(0);
+  });
+
+  it("counters: one diagram + one successful SVG + one skipped SVG → (1,1,1)", async () => {
+    // The rasterizer is export-wide, so a single export cannot mix a "no
+    // rasterizer" SVG with a successfully-rasterized diagram. The DoD's exact
+    // (renderedDiagrams=1, embeddedImages=1, skippedImages=1) triple is achieved
+    // with a rasterizer present and the third asset degrading for a different
+    // reason (an oversized SVG) — the reporting semantics are identical, and the
+    // no-rasterizer path is asserted separately above.
+    const { rasterizer } = recordingRasterizer();
+    const assets = {
+      async fetch(ref: { url: string; filename?: string }) {
+        const huge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000000"><rect/></svg>';
+        const isHuge = (ref.filename ?? ref.url).includes("huge");
+        return new TextEncoder().encode(isHuge ? huge : CLEAN_SVG);
+      },
+    };
+    const storage =
+      `<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>` +
+      `<ac:plain-text-body><![CDATA[graph TD\n A --> B]]></ac:plain-text-body></ac:structured-macro>` +
+      svgStorage("clean.svg") +
+      svgStorage("huge.svg");
+    const { report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage },
+      template,
+      deps,
+      assets,
+      rasterizer,
+    });
+    expect(report.renderedDiagrams).toBe(1);
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(1);
   });
 });

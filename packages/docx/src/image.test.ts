@@ -10,10 +10,14 @@ import {
   ImageEmbedder,
   ImageEmbedError,
   MAX_CONTENT_WIDTH_PX,
+  MAX_RASTER_AXIS_PX,
+  MAX_RASTER_PIXELS,
+  boundRasterTarget,
   decodeImageInfo,
   ensureContentTypeDefault,
   inlineImageParagraph,
   isSvg,
+  parseSvgSize,
   pxToEmu,
   resolveTargetSize,
 } from "./image.js";
@@ -479,5 +483,70 @@ describe("ImageEmbedder.embedSvg", () => {
     expect(zip.file("[Content_Types].xml")!.asText()).toBe(ctBefore);
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
     expect(embedder.diagramCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SVG sizing + raster budget (spec 006 G4)
+// ---------------------------------------------------------------------------
+
+describe("parseSvgSize (spec 006 G4)", () => {
+  it("reads explicit px width/height", () => {
+    expect(parseSvgSize(`<svg width="120px" height="60px"><rect/></svg>`)).toEqual({
+      widthPx: 120,
+      heightPx: 60,
+    });
+  });
+
+  it("reads unitless width/height", () => {
+    expect(parseSvgSize(`<svg width="200" height="100"/>`)).toEqual({ widthPx: 200, heightPx: 100 });
+  });
+
+  it("falls back to viewBox when width/height are absent", () => {
+    expect(parseSvgSize(`<svg viewBox="0 0 640 480"><g/></svg>`)).toEqual({
+      widthPx: 640,
+      heightPx: 480,
+    });
+  });
+
+  it("falls back to viewBox when width/height use unsupported units (%, em)", () => {
+    expect(parseSvgSize(`<svg width="100%" height="50%" viewBox="0 0 300 150"/>`)).toEqual({
+      widthPx: 300,
+      heightPx: 150,
+    });
+  });
+
+  it("returns null when neither is determinable", () => {
+    expect(parseSvgSize(`<svg width="100%" height="auto"><rect/></svg>`)).toBeNull();
+    expect(parseSvgSize(`not an svg`)).toBeNull();
+  });
+
+  it("tolerates a leading BOM", () => {
+    expect(parseSvgSize(`﻿<svg width="10" height="20"/>`)).toEqual({ widthPx: 10, heightPx: 20 });
+  });
+});
+
+describe("boundRasterTarget (spec 006 G4)", () => {
+  it("passes a normal target through unchanged", () => {
+    expect(boundRasterTarget({ widthPx: 800, heightPx: 600 })).toEqual({ widthPx: 800, heightPx: 600 });
+  });
+
+  it("rejects non-finite / non-safe-integer / non-positive axes", () => {
+    expect(boundRasterTarget({ widthPx: Number.POSITIVE_INFINITY, heightPx: 10 })).toBeNull();
+    expect(boundRasterTarget({ widthPx: 10.5, heightPx: 10 })).toBeNull();
+    expect(boundRasterTarget({ widthPx: -1, heightPx: 10 })).toBeNull();
+    expect(boundRasterTarget({ widthPx: 0, heightPx: 10 })).toBeNull();
+    expect(boundRasterTarget({ widthPx: Number.NaN, heightPx: 10 })).toBeNull();
+  });
+
+  it("rejects an axis above the symmetric cap (huge height, small width)", () => {
+    expect(boundRasterTarget({ widthPx: 10, heightPx: MAX_RASTER_AXIS_PX + 1 })).toBeNull();
+  });
+
+  it("rejects a target above the total-pixel cap", () => {
+    // Both axes within the per-axis cap but the product exceeds the budget.
+    const axis = MAX_RASTER_AXIS_PX;
+    expect(axis * axis).toBeGreaterThan(MAX_RASTER_PIXELS);
+    expect(boundRasterTarget({ widthPx: axis, heightPx: axis })).toBeNull();
   });
 });
