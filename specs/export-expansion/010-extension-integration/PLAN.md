@@ -1,7 +1,7 @@
 # 010 — Extension integration (scope UI, template library, preview)
 
 Status: Plan, 2026-07-19. Track 1 of `specs/export-expansion/UMSETZUNGSPLAN.md`
-(T5.1–T5.5). Design details for the underlying engine capabilities live in
+(T5.1–T5.5, **plus T5.6 added here**). Design details for the underlying engine capabilities live in
 `specs/export-expansion/BASELINE-DESIGN.md` (clusters A, B, E — host-wiring
 notes referenced per task below).
 
@@ -42,8 +42,23 @@ notes referenced per task below).
     `apps/extension/utils/docx/session-cache.ts` (TTL cache)
   - Shell: `apps/extension/wxt.config.ts` (MV3, host permissions
     `*://*.atlassian.net/*` + `https://api.media.atlassian.com/*`, CSP
-    `wasm-unsafe-eval`), `apps/extension/entrypoints/background.ts`
-    (offscreen idle timer), `apps/extension/entrypoints/offscreen/main.ts`
+    `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`),
+    `apps/extension/entrypoints/background.ts` (offscreen idle timer),
+    `apps/extension/entrypoints/offscreen/main.ts`
+  - Build gates **this folder modifies** (not just consumes):
+    `apps/extension/scripts/check-output-build.ts` — post-build text scan over
+    `.output/chrome-mv3` asserting zero `node:`/`bun:` specifiers, zero remote
+    script origins, zero node globals, **zero string-to-code constructors**
+    (`DYNAMIC_CODE_RES`, `check-output-build.ts:48-52`), and a complete set of
+    sha256-pinned local PDF artifacts (`REQUIRED_PDF_ARTIFACTS`,
+    `check-output-build.ts:61`). T5.3 touches both of the last two — see
+    Architecture point 8. `apps/extension/wxt.config.ts` is touched only if the
+    new viewer page needs a WXT entrypoint declaration (no new permissions, no
+    CSP relaxation — asserted by `tests/manifest.test.ts`).
+- New vendored runtime dependency (T5.3): `pdfjs-dist` (Mozilla PDF.js,
+  Apache-2.0 — compatible with this repo's Apache-2.0 licensing). Bundled
+  locally, never from a CDN: MV3 forbids remotely hosted extension code, and
+  `check-output-build.ts`'s remote-origin scan enforces it mechanically.
 - Docs: `src/content/docs/` (docs standards in `CLAUDE.md`). Release:
   `scripts/release.ts` (`--dry-run` first), `CHANGELOG.md`.
 
@@ -62,16 +77,51 @@ baseline, because the panel is where non-CI users live:
   global vs. space scope with the same `resolveTemplate` precedence the CLI
   uses, and a settings form generated from the template manifest — instead of
   today's single anonymous `"current"` slot.
-- **See the PDF before downloading it** (T5.3): an instant, debounced preview
-  of the first pages right in the panel, powered by the already-warm compiler
-  worker. For DOCX the honest story stays the scan report — we do not fake a
+- **See the PDF before downloading it** (T5.3): a debounced preview rendered by
+  a locally bundled PDF.js viewer over the *same* bytes the download produces,
+  powered by the already-warm compiler worker — full document for single-page
+  scope, budget-truncated for tree/space. Hybrid UX: a compact page preview in
+  the 400 px panel plus a "Open large preview" full viewer in its own extension
+  page. For DOCX the honest story stays the scan report — we do not fake a
   Word rendering we cannot produce.
+
+  **Motivation and honest product boundary.** The user-facing problem is
+  [CONFCLOUD-84742](https://jira.atlassian.com/browse/CONFCLOUD-84742): users
+  export the same report 5–10 times, tweaking spacing and tables each round,
+  because Confluence Cloud offers no PDF preview. This folder removes the
+  *export-and-open* half of that loop, not all of it: the extension's read path
+  is `getPageDetails()` (`apps/extension/utils/read-path.ts:148`), which returns
+  the **last published version — never the open editor draft**. The iteration
+  loop therefore becomes `edit → publish → preview` instead of
+  `edit → publish → export → open file`. That is a large win over the status
+  quo and must be stated in the panel copy and the docs, not discovered by the
+  user. A true draft preview would depend on undocumented Confluence-internal
+  APIs or unstable editor DOM and is explicitly **not** in this folder (see
+  Open questions).
 - **Pages with live macros export like the page looks** (T5.4): Jira issue
   tables and third-party macro output rendered through the user's own browser
   session — no tokens to configure, which is precisely the extension's edge
   over the CLI.
+- **A long export survives navigating away** (T5.6): exports become durable
+  background jobs the panel re-attaches to, with status surfaced in the panel
+  and a toolbar badge when one finishes while the panel is closed — instead of
+  today's silent abort on page navigation
+  (`PdfSection.tsx:30-37`). Motivation:
+  [CONFCLOUD-83694](https://jira.atlassian.com/browse/CONFCLOUD-83694), where
+  Confluence Cloud's own space export fails if the user leaves the export page.
+  Includes the byte-handling and memory prerequisites this makes unavoidable
+  (Architecture points 9 and 10).
 - **Documented and released as one product** (T5.5): docs/ updated in the same
   release, CHANGELOG, release checklist.
+
+**Task-numbering divergence (crossPlanImpact).** `UMSETZUNGSPLAN.md` lists this
+track as T5.1–T5.5. **T5.6 is introduced by this folder** in response to
+CONFCLOUD-83694 and the byte-flow findings in Architecture point 9, and must be
+reflected back into `UMSETZUNGSPLAN.md`'s Track 1 table when this plan is
+accepted — otherwise the plan of record and this folder disagree on scope. T5.6
+also deliberately takes on a bounded set of `packages/pdf` changes, which
+stretches this folder past pure host integration; the reasoning and the limits
+are in Architecture point 9 ("Scope honesty").
 
 ## Dependencies (M1 folders 002–004, 007–008)
 
@@ -153,6 +203,61 @@ wiring stays in thin components and entrypoints.
    on the `sendMessage` response reaching it, and reconnecting after a SW
    restart resumes watching an already-running or already-finished job
    instead of erroring or silently re-queuing a duplicate compile.
+
+   **Two concrete defects this point previously under-stated** (both are
+   [CONFCLOUD-83694](https://jira.atlassian.com/browse/CONFCLOUD-83694)
+   reproduced in our own code, not hypothetical):
+
+   **(a) The panel aborts its own export on navigation.**
+   `PdfSection.tsx:30-37` holds `identity = pageUrl|id|version` and aborts the
+   active export whenever that identity changes. Navigating to another
+   Confluence page therefore **kills a running export** — precisely the
+   behavior the ticket complains about, by design, in our panel. It is
+   invisible today because single-page exports take seconds; T5.1's tree/space
+   exports make it the normal case. The Chrome side panel survives tab
+   navigation on its own, so this is our decision, not a platform limit. Fix:
+   identity change stops *watching* a job, never aborts it — abort stays bound
+   to the explicit Cancel button.
+
+   **(b) The idle timer can tear down an offscreen document that is still
+   compiling.** `runPdfCompile` correctly does `activePdfJobs += 1;
+   offscreenIdle.stop()` (`background.ts:74-75`), but `activePdfJobs` is a
+   volatile `let` (`background.ts:49`). After a SW restart it reads `0` while a
+   job is still running in the offscreen document. A *second* job started
+   afterwards then completes, its `finally` runs `activePdfJobs` 1 → 0 →
+   `offscreenIdle.reset()` (`background.ts:87-88`), and five minutes later
+   `closeOffscreen()` fires — **killing the first, still-running compile**. The
+   record is left `compiling` forever and the panel never sees a result. The
+   same volatile-counter path also arms the timer via `runWasmSmoke`
+   (`background.ts:58`). Fix: derive in-flight state from the durable job
+   records (`status: "queued" | "compiling"` in `atlcli-pdf`), not from an
+   in-memory counter, before arming the idle timer.
+
+   **Cleanup ownership must move out of the panel.** `deletePdfJob` runs from
+   `compile-port.ts:90`'s `finally` — in the *panel*, i.e. exactly the context
+   that disappears in a background job. `cancelPdfJob` (`job-store.ts:244-250`)
+   only sets a status and deletes nothing. Together these leave orphan records
+   carrying a **full bundle** (up to `PDF_JOB_MAX_BYTES`, 64 MiB) until the 24 h
+   `cleanupPdfJobs` sweep. For background jobs that is the normal path, not an
+   edge case, and it competes directly with `PDF_STORE_MAX_BYTES`. Terminal-state
+   cleanup therefore belongs to the SW/offscreen side, which outlives the panel;
+   the panel may only delete a job it is actively watching *and* has consumed.
+
+   **What "background" does and does not mean.** In an MV3 extension a
+   background export survives page navigation, panel close, and service-worker
+   restart. It does **not** survive closing the browser. CONFCLOUD-83694 asks
+   Atlassian for server-side durability; we cannot match that and must not
+   imply it. The workflow the ticket actually describes — "navigate away, come
+   back, find the export" — is fully coverable, and that is what the panel copy
+   and docs promise. Nothing more.
+
+   The good news is that the expensive half already works: bytes travel through
+   IndexedDB, never through `sendMessage` (verified: `compile-port.ts:64`,
+   `background.ts:78`, `compiler-host.ts:89` all carry `{ kind, jobId }` only,
+   `messages.ts:44-45,72-78`). If the panel closes mid-compile, the offscreen
+   worker keeps running and `completePdfJob` still writes the PDF to
+   `atlcli-pdf`. **The result already survives.** What is missing is
+   re-attachment, cleanup ownership, and surfacing — not persistence.
 4. **Template library (T5.2) — DOCX template swapping + PDF settings-on-built-in,
    not PDF template swapping.** `utils/docx/template-store.ts` migrates
    IndexedDB `atlcli-docx` v1 → v2 (multi-slot records + indexes, migration
@@ -215,28 +320,81 @@ wiring stays in thin components and entrypoints.
    an unfinished one) and are cooperatively abandoned (result discarded, no
    `destroyWorker()`) rather than cancelled through the worker-killing path
    when superseded by a settings change or an export click; an export request
-   always takes the front of the queue ahead of any queued preview. Preview
-   cost is bounded by compiling a truncated composition (first N **chapters**
-   of the composed block list — see the honesty note below), not by
-   post-processing the PDF — no new PDF-slicing dependency. Output goes to a
-   capture sink (bytes, not a download) and is shown via a `blob:` URL in
-   Chrome's built-in PDF viewer (`<embed type="application/pdf">` is
-   CSP-clean under the existing `script-src 'self' 'wasm-unsafe-eval'`).
+   always takes the front of the queue ahead of any queued preview.
+
+   **Renderer: locally bundled PDF.js, not `<embed>`.** Output goes to a
+   capture sink (bytes, not a download) and is handed to PDF.js as a
+   `Uint8Array` via `getDocument({ data })` — no intermediate `blob:` URL.
+   A prior draft of this plan specified `<embed type="application/pdf">` over a
+   `blob:` URL and justified it as "CSP-clean under the existing `script-src
+   'self' 'wasm-unsafe-eval'`". **That justification cites the wrong
+   directive**: `<embed>`/`<object>` are governed by `object-src`, which this
+   extension sets to `'self'` (`apps/extension/wxt.config.ts`), and `'self'`
+   does not match `blob:` URLs — a `blob:`-sourced `<embed>` is therefore
+   expected to be blocked outright rather than merely "flaky across Chrome
+   versions" as the old Risks entry assumed. *(Verification note: this is read
+   off the CSP spec and the manifest, not yet reproduced in a running build.
+   The first T5.3 task is to confirm it empirically — if `<embed>` does render,
+   PDF.js is still the choice for the reasons below, but this paragraph must be
+   corrected rather than left as an unverified claim.)* PDF.js renders into a
+   `<canvas>` under `script-src 'self'`, which the existing CSP already allows,
+   so the viewer sidesteps the `object-src` question entirely. It also buys
+   what the built-in viewer cannot: a reduced, controllable surface, page
+   navigation, zoom and fit-width, later text selection/search/thumbnails/
+   outline, and identical behavior across Chrome and Firefox.
+
+   **Truncation is scope-dependent.** For `scope: page` — the case
+   CONFCLOUD-84742 actually describes — the preview compiles the **whole**
+   document: a partial preview of a single page would not answer "does my
+   report look right?", which is the entire point. For `tree`/`space` scope the
+   cost ceiling from T5.1 still applies: compile a truncated composition (first
+   N **chapters** of the composed block list), not a post-processed PDF — no
+   new PDF-slicing dependency. **Honesty note (tree/space branch only)**:
+   "first N pages" is only true when every source page compiles to roughly one
+   PDF page. `RunPdfExportInput.blocks` only carries block-level structure;
+   actual `pageCount` is known only after compile + `validatePdfOutput`
+   (`packages/pdf/src/run-export.ts:161,178` — `inspection.pageCount` is read
+   post-compile). A single dense chapter (large table, many images) can compile
+   to far more than N PDF pages on its own. The panel therefore labels the
+   truncated case "Preview — first N chapters" (never "pages"), and the
+   truncation carries a block-count/asset-byte backstop so one pathological
+   chapter still bounds preview compile time (see T5.3 task).
+
+   **Preview bytes are cached and reused by Download — conditionally.** A
+   successful preview stores its bytes keyed on `sourceIdentity` (the
+   scope+filter discriminator T5.1 defines) **plus a hash of the resolved
+   settings**, so a settings tweak that did not yet trigger a recompile can
+   never serve stale bytes as "what you previewed". Clicking Download on a
+   cache hit emits exactly those bytes — no second compile, and
+   "what you preview is what you download" is then literally true. **The cache
+   record carries a `truncated: boolean` flag and Download must refuse to reuse
+   a truncated entry**: for tree/space previews the cached bytes are a *prefix
+   of the document, not the document*, and silently downloading them would ship
+   a cut-off PDF that looks complete. Truncated entries serve the viewer only;
+   Download falls through to a full compile. Cache entries follow the existing
+   job lifecycle (deleted in `finally`, subject to the same store budget) so
+   preview traffic cannot grow the IndexedDB footprint unboundedly.
+
    Settings/scope changes are debounced; each new preview supersedes the
    previous one per the coalescing rule above, not via `pdf:cancel` when a
    compile is still active. The background idle timer
    (`entrypoints/background.ts#offscreenIdle`) must treat preview traffic as
    activity so the offscreen document (and with it the warm worker) survives a
-   debounce pause. **Honesty note**: "first N pages" is only true when every
-   source page compiles to roughly one PDF page. `RunPdfExportInput.blocks`
-   only carries block-level structure; actual `pageCount` is known only after
-   compile + `validatePdfOutput` (`packages/pdf/src/run-export.ts:161,178` —
-   `inspection.pageCount` is read post-compile). A single dense chapter (large
-   table, many images) can compile to far more than N PDF pages on its own.
-   The panel therefore labels this "Preview — first N chapters" (not
-   "pages"), and the truncation additionally carries a block-count/asset-byte
-   backstop so a single pathological chapter still bounds preview compile
-   time (see T5.3 task).
+   debounce pause.
+
+   **Hybrid layout for a 400 px panel — expressed through Phase 0's screen
+   model, not as a special case.** The panel is constrained to `maxWidth: 400`
+   (`entrypoints/sidepanel/App.tsx:171`), enough for a scaled page plus controls
+   but not for reading a dense report. Preview is therefore **one screen mounted
+   by two host shells** (Phase 0): the sidebar shell renders it compactly
+   (current page, forward/back, fit-width) with an "Open large preview" action;
+   a dedicated WXT extension page mounts the same screen full-size in a tab over
+   the same cached bytes. One viewer component, no second compile path. The same
+   mechanism is what lets a Forge host mount the export screen in a
+   content-action modal without a sidebar at all — the shell varies, the screen
+   does not. If preview ends up needing shell-specific forks, that is a defect
+   in the Phase 0 screen model, to be fixed there rather than worked around
+   here.
 6. **Macro renderers (T5.4).** New `utils/macros/session-ports.ts` implements
    the folder-004 ports by **adapting the existing session-capable clients**,
    not a fresh raw-`fetch` reimplementation: `JiraClient`
@@ -307,8 +465,264 @@ wiring stays in thin components and entrypoints.
    (label filters, depth, dynamic-macro toggle) sit behind progressive
    disclosure (`<details>`), defaults stay "current page, no filters" — the
    panel must not get harder for the 90 % single-page case.
+8. **Vendored viewer & the build gate (T5.3) — a security gate is deliberately
+   loosened here.** This point exists as its own architecture item, not as a
+   footnote to the preview task, because it is the one place in this folder
+   where a hard build gate is relaxed and therefore needs explicit review
+   attention.
+
+   `apps/extension/scripts/check-output-build.ts` scans the **built bundle as
+   text** for string-to-code constructors — `new Function(`, `Function("`,
+   `eval(` (`DYNAMIC_CODE_RES`, `check-output-build.ts:48-52`) — and exits
+   non-zero on a hit, because MV3's extension-page CSP forbids them. PDF.js
+   ships those tokens (its PostScript function evaluator constructs compiled
+   functions). PDF.js's own `isEvalSupported: false` option prevents them from
+   ever *executing*, but that is a **runtime** flag and this gate is a
+   **static text scan** — the flag does not and cannot satisfy it. The two
+   facts must not be conflated when implementing.
+
+   Contract:
+   - **Path-scoped exemption only.** `DYNAMIC_CODE_RES` gains an exemption
+     keyed on the vendored PDF.js chunk's emitted path pattern — never a
+     global suppression, never a per-token allowlist that other bundle files
+     could also match. Every other file in `.output/chrome-mv3` stays under
+     the unchanged rule.
+   - **Runtime assertion, not just a comment.** The viewer constructs PDF.js
+     with `isEvalSupported: false` and a unit test asserts that option is set
+     at the single construction site, so the exemption never silently becomes
+     "PDF.js may eval in production".
+   - **The exemption is itself tested.** A gate test fails if the exemption
+     matches any path outside the PDF.js chunk (see Tests) — the mechanism
+     that keeps this from becoming a precedent for the next dependency that
+     trips the scan.
+   - **Rationale is documented in the module.** `check-output-build.ts`'s
+     docstring records *why* one dependency is exempt and what compensates
+     for it, so a future reader does not read the exemption as "this gate is
+     advisory".
+
+   Conversely the gate also *helps* here: `REQUIRED_PDF_ARTIFACTS`
+   (`check-output-build.ts:61`) pins required local artifacts by path pattern
+   and sha256. The PDF.js viewer and worker chunks are added to that list, which
+   turns "PDF.js must be bundled locally, never a CDN" from a convention into a
+   mechanically enforced build assertion — the same guarantee the Typst WASM
+   and the ten fonts already get. Both viewer and worker are **lazy-loaded**
+   (dynamic `import()`, mirroring `PdfSection.tsx:49`'s existing lazy
+   `run-export` import) so a panel that never opens the preview never pays the
+   parse cost — relevant because the bundle already carries a ≥ 20 MB Typst
+   WASM artifact.
+9. **Byte handling & memory (T5.6) — measure first, then change.** Three
+   features in this folder multiply how many PDF/asset byte copies are alive at
+   once: tree/space bundles (T5.1), a preview cache (T5.3), and retained
+   background-job records (T5.6). A code-level trace of the byte path found the
+   following. **None of it is measured** — there is no memory benchmark for the
+   PDF path in this repo — so the *first* task under T5.6 is a heap snapshot of
+   a real image-heavy DOCSY export. Nothing below gets optimized on suspicion.
+
+   **The transport is already right and must stay that way**: zero bytes cross
+   `chrome.runtime.sendMessage`; IndexedDB is the byte channel (verified —
+   `compile-port.ts:64`, `background.ts:78`, `compiler-host.ts:89` carry
+   `{ kind, jobId }` only, typed in `messages.ts:44-45,72-78`). Any future
+   change that puts bytes in a message is a regression, not a shortcut.
+
+   Findings, worst first:
+   - **`store.getAll()` as a quota check.** `putPdfJob` (`job-store.ts:118`) and
+     `completePdfJob` (`job-store.ts:200`) deserialize the **entire store** —
+     every bundle, every asset, every finished PDF — to compute a sum against
+     `PDF_STORE_MAX_BYTES`, when `storedJobBytes` (`job-store.ts:50-52`) needs
+     two numbers. The guard meant to protect memory is the largest allocator in
+     the store. Fix: maintain size metadata separately (index or a small meta
+     record) and never materialize records to add numbers. This is a
+     **prerequisite** for T5.6, not an optimization: background jobs retain more
+     records for longer by design, so the feature makes this path worse.
+   - **`validatePdfOutput` decodes the whole PDF to a string**
+     (`packages/pdf/src/validate.ts:48`, `TextDecoder("latin1").decode(bytes)`).
+     JS strings are UTF-16, so a 64 MiB PDF — the maximum `job-store.ts:194`
+     permits — produces a ~128 MiB string on top of the original bytes, followed
+     by `.match(/…/g)` arrays materializing every hit. Fix: chunked scanning
+     with overlap at chunk boundaries.
+   - **A status update rewrites the whole bundle.** `claimPdfJob` →
+     `updateExisting` (`job-store.ts:152-181`) reads the record and `put()`s it
+     back — all asset bytes re-serialized to disk — to set
+     `status: "compiling"`. `completePdfJob` does it a third time. Fix: split
+     the volatile status/progress record from the immutable payload record.
+   - **Panel-side retention.** `prepared` and `bundle`
+     (`packages/pdf/src/run-export.ts:241-242`) stay in scope through compile,
+     validate *and* download, though they are dead after `putPdfJob`. Fix:
+     release explicitly once the job is stored.
+   - Minor: the FNV-1a byte scan runs twice per asset (`prepare.ts:177` and
+     again inside `budget.account` → `asset-budget.ts:83-91`); `download.ts:19`
+     copies the PDF once more into the Blob store.
+
+   **Seam: `PdfBytesHandle` instead of raw `Uint8Array`.** The cross-layer
+   contract stops passing byte arrays and passes a handle (`size`, `asBlob()`,
+   `asUint8Array()`, `objectUrl()`). Chrome stores IndexedDB `Blob` values
+   out-of-line rather than structured-cloning them into the JS heap, so a
+   handle-shaped cache costs almost no heap, survives a panel close, and makes
+   `URL.createObjectURL()` O(1) — exactly what both the preview cache (T5.3)
+   and retained background jobs (T5.6) need, and it removes the extra copy
+   `download.ts:19` makes today. **Two assumptions here are unverified and gate
+   the design**: (i) that Chrome IDB Blobs really behave out-of-heap under this
+   access pattern, and (ii) that PDF.js range-/chunk-loads from a `blob:` URL
+   rather than buffering it whole. Both are measured in T5.6's first task; if
+   either fails, the handle seam still stands but the storage format decision
+   reverts to `Uint8Array` and is recorded as such.
+
+   **Scope honesty:** several of these live in `packages/pdf`, not
+   `apps/extension/`. That stretches this folder beyond pure host integration.
+   It is deliberate — the fixes are prerequisites for T5.3/T5.6 in this same
+   folder, and splitting them out would put the seam and its only consumer on
+   separate review cycles. The folder's standing rule is unchanged and still
+   binding: **no extension-only engine logic** — every change here is made in
+   the shared engine so the CLI benefits too, never as a panel-local
+   workaround.
+10. **Track 2 / Forge constraints on the seam (informative, not implemented
+    here).** The `PdfBytesHandle` seam is designed against a second host that
+    does not exist yet, so its limits belong on record now. Published Forge
+    limits: frontend→backend invocation payload **500 KB**, backend→frontend
+    response **5 MB**, KVS value **240 KiB** with the docs explicitly advising
+    against storing files, function memory 1024 MB (legacy runtime 128 MB),
+    sync timeout 25 s / async 900 s. **Consequence: a PDF cannot flow through a
+    Forge backend resolver at all** — not "slowly", but structurally: the 5 MB
+    response ceiling and the absent blob store rule it out. A Forge app must
+    therefore compile in the user's browser (Custom UI), exactly as the
+    extension does — which is precisely why the shared engine and this seam are
+    the right investment. Two questions gate that and should be answered
+    **before** any Track 2 architecture is planned, not after: (i) does the
+    Forge Custom UI CSP permit `wasm-unsafe-eval`, and (ii) does a ≥ 20 MB
+    Typst WASM artifact fit the Custom UI static-resource bundle limits? If
+    either is no, the only remaining path is Forge Remote (an operated backend)
+    with entirely different cost and data-protection implications. Note also
+    that the Chrome side panel survives Confluence navigation whereas a Custom
+    UI iframe does not — CONFCLOUD-83694 is *harder* on Forge than in the
+    extension, and T5.6's solution does not port. Nothing here is implemented
+    in this folder.
 
 ## Tasks
+
+### Phase 0 — App-layer extraction & UI foundation (blocks T5.1–T5.6)
+
+**Landing order is normative.** T5.1–T5.6 add five new components
+(`ScopeSection`, `SettingsForm`, `PdfPreview`, `JobsSection`, plus the
+`TemplateSection` rebuild). Written before Phase 0 they land in the panel shape
+and are rewritten afterwards. Phase 0 therefore ships first, on its own PR.
+
+**Goal:** the side panel stops being a dev PoC and becomes an application whose
+logic is host-neutral — the same layer a Forge app can host without Chrome APIs.
+
+**What the code already gives us.** The `utils/` layer is effectively
+chrome-free already: of 13 files matching `chrome.`, all but one are comments
+or doc strings; the single runtime call
+(`utils/pdf/compile-port.ts:35` `sendMessage`) is already an injectable
+default. The contamination is concentrated in `entrypoints/sidepanel/App.tsx`,
+which calls `chrome.runtime.getManifest()` at **module scope** (`App.tsx:33`) —
+making the module unimportable outside an extension. That is why no test
+imports `App`, `PdfSection` or `TemplateSection`, while the presentational
+sub-components (`PdfReportView`, `ScanView`, `ReportView`) *are* tested. The
+portable/non-portable line already exists empirically; Phase 0 makes it
+explicit and moves it up.
+
+**Seams are adopted, not invented.** `~/code/rovo-skills/forge-export-app/SPIKE.md`
+already names them: `ConfluenceExportReader` (`getPage`, `getAttachment`,
+optional `getSpace`/`getCurrentUser`/`getPageOwner`), a `compile(bundle, signal)`
+compiler contract, and `ExportRequestV1`/`ExportJobV1`/`JobState`/`JobStage`.
+`@atlcli/docx` already exposes `TemplateSource`/`AssetFetcher`/`SvgRasterizer`/
+`OutputSink`. **Caveat: none of that research was ever spiked** ("kein
+implementierter Nachweis") — the seams are adopted as naming and shape, not as
+proven contracts.
+
+**Acceptance criterion** (= SPIKE.md hypothesis H4, operationalized): the whole
+app renders and completes an export in a happy-dom test **with `chrome`
+undefined**. If that is green, the Forge port is mechanical; if it is not, no
+amount of abstraction helps.
+
+- [ ] **UI foundation.** Tailwind in the WXT/Vite build, shadcn/ui
+      (`components.json`, path aliases, `globals.css` with the CSS-variable
+      theme), `lucide-react`. Dark mode comes from shadcn's variable theming —
+      it closes the PoC gap at no extra cost. Components live in
+      `apps/extension/` and are **host code**: per `PRODUCT-SHAPE.md` the Forge
+      app's surfaces are content action / byline modal / global page, never a
+      sidebar, so there is **no shared UI package** — sharing happens at the
+      contract layer. Verify Radix/Tailwind output does not trip
+      `check-output-build.ts`'s `DYNAMIC_CODE_RES`; if it does, question the
+      dependency before widening the exemption (Architecture point 8).
+- [ ] **i18n from the first component**, DE + EN. A typed message dictionary
+      plus React context — deliberately **not** `chrome.i18n`, which would not
+      port. Retrofitting i18n later would touch every component; the design's
+      settings screen has a language selector, so it is a requirement, not a
+      nice-to-have.
+- [ ] `PageContextSource` port (new): "which page am I on?" — the one genuinely
+      new seam. The extension implements it over `tab-observer.ts` /
+      `detection-pull.ts` / `chrome.windows.getCurrent`; a Forge host would
+      receive the page from the platform instead of discovering it. This is
+      what removes detection logic from the view layer.
+- [ ] `ConfluenceExportReader` port (adopt SPIKE.md's shape): the portable read
+      seam. The extension implements it over `ConfluenceClient`; a Forge host
+      would implement it over its own transport. **`packages/confluence/src/client.ts`
+      is explicitly "nicht direkt verwenden" for Forge** (profile + session
+      cookies), so the portable cut must sit *above* the client — note that
+      T5.4 wires macro ports directly onto `ConfluenceClient`/`JiraClient`,
+      which is correct for the extension but does not port.
+- [ ] **Naming collision to resolve:** `PdfCompilerHost` already exists as the
+      Chrome worker FIFO class (`utils/pdf/compiler-host.ts:30`), while
+      SPIKE.md uses the same name for the abstract `compile(bundle, signal)`
+      contract. These are different things at different layers. Decide once:
+      either rename the existing class to its adapter role
+      (e.g. `ChromeWorkerCompilerHost`) and let the seam take the generic name,
+      or give the seam a distinct name. Do not ship both meanings.
+- [ ] **Keep DOCX and PDF independently swappable.** SPIKE.md documents a
+      conditional GO where PDF-WASM fails in Forge while DOCX works, leaving
+      "Browserbasis nur DOCX". The port boundary must therefore not force a
+      shared path between the two engines.
+- [ ] `App.tsx` split: a portable `<ExportApp ports={…} />` plus a thin
+      sidepanel shell that wires the Chrome adapters. `getManifest()` moves out
+      of module scope and becomes an injected value.
+- [ ] `PdfSection.tsx` / `TemplateSection.tsx`: from effect owners to port
+      consumers. Their presentational parts are already separated and tested —
+      keep those tests green through the move.
+- [ ] **Screen registry — the actual Phase 0 deliverable.** The design
+      screenshots are **orientation, not specification**. What must be right is
+      the *shell model*: adding a screen is a registry entry, never an edit to
+      the shell. Each screen declares `id`, label key (i18n), icon
+      (lucide), component, and its **requirements** — does it need a loaded
+      page? does it need a host capability (e.g. durable jobs)? The nav renders
+      from the registry; screens whose requirements are unmet are hidden or
+      disabled with a reason, not silently broken.
+
+      This is also the portability seam that matters most: **screens are
+      portable units, the shell that arranges them is host code.** The
+      extension arranges them as a sidebar with BEREICHE navigation; a Forge
+      host mounts a subset — likely only Export — inside a content-action
+      modal or global page, with no nav at all. Same screens, different shell.
+      It is what makes `PRODUCT-SHAPE.md`'s "no sidebar in Forge" a
+      non-event instead of a rewrite.
+
+      It also gives T5.3's preview a home without special-casing: the inline
+      preview is a screen, and the "large preview" tab page
+      (`entrypoints/preview/`) is the *same screen* mounted by a different host
+      shell — not a second implementation.
+- [ ] **Screens shipped in Phase 0:** **Export** (today's functionality,
+      rebuilt) and **Einstellungen**. Registered-but-empty routes for
+      Template-Sets, Aktivitäten, Über so the registry is exercised by more
+      than one real screen. **Chat is out of scope** — it is not planned for
+      the extension sidebar for now; the registry must simply not make it
+      awkward to add later. Preview joins as a screen in T5.3.
+- [ ] **Debug UI leaves the main surface.** `DebugSection`
+      (`App.tsx:390-448`, Ping / WASM smoke) and the "Markdown preview (debug)"
+      dump (`App.tsx:311-329`) are removed from the export surface. The Ping and
+      WASM round-trips are already covered by `tests/wasm-smoke.test.ts`,
+      `tests/router.test.ts` and `tests/listeners.test.ts`, so the buttons are
+      redundant with automated coverage rather than load-bearing. A later Labs
+      screen (the design reveals developer flags after five clicks on the
+      version) is the eventual home for anything that must come back — it is
+      **not** a Phase 0 screen, so nothing here depends on it existing.
+- [ ] **The gate test:** `apps/extension/tests/app-portability.test.tsx` (new)
+      — render the app and drive an export to completion under happy-dom with
+      `globalThis.chrome` deleted, using fake ports. This is the Definition of
+      Done for Phase 0 and the standing regression against re-coupling.
+
+**Open in Phase 0:** Tailwind v3 vs v4 — the design preview will be integrated
+later and should decide it; v4 (CSS-first config) is the working assumption and
+is a single-file change if the preview turns out to be v3.
 
 ### Scope UI (T5.1)
 
@@ -467,11 +881,22 @@ wiring stays in thin components and entrypoints.
       (`workers/pdf-compiler.ts`) survives every debounced preview and the
       export that follows it stays warm. Test: rapid preview→preview→export
       sequence creates exactly one worker instance.
+- [ ] **First task, blocking the viewer choice — verify the CSP claim
+      empirically.** Architecture point 5 asserts that a `blob:`-sourced
+      `<embed type="application/pdf">` is blocked by this extension's
+      `object-src 'self'`; that is read off the spec and the manifest, not
+      reproduced. Load an unpacked build, render a PDF both ways, record the
+      outcome in this PLAN (correcting Architecture point 5 if `<embed>` in
+      fact works). PDF.js remains the choice either way — for zoom/fit-width,
+      cross-browser parity and a controllable surface — but the plan must not
+      carry an unverified factual claim as its stated rationale.
 - [ ] `apps/extension/utils/pdf/preview.ts` (new): `runPdfPreview(input, deps)`
-      — same pipeline as `runPdfExport` but (a) blocks truncated to a
-      first-N-**chapters** budget (slice of the composed chapter list, N
-      default 5, labelled honestly in the UI as "Preview — first N chapters"
-      — not "pages": a single source page can compile to many PDF pages, and
+      — same pipeline as `runPdfExport` but (a) **scope-dependent truncation**:
+      `scope: page` compiles the full document (the CONFCLOUD-84742 case — a
+      partial preview of one page defeats the purpose); `tree`/`space` truncate
+      to a first-N-**chapters** budget (slice of the composed chapter list, N
+      default 5, labelled honestly in the UI as "Preview — first N chapters" —
+      not "pages": a single source page can compile to many PDF pages, and
       `pageCount` is only known post-compile via `validatePdfOutput`
       (`packages/pdf/src/run-export.ts:161,178`), so the panel cannot promise
       an actual page count before compiling), with an additional block-count
@@ -480,12 +905,46 @@ wiring stays in thin components and entrypoints.
       even though it counts as "1" against the chapter budget; (b) `output`
       is a capture sink returning bytes instead of `downloadBytes`, (c)
       reuses `extensionPdfCompilePort`/`kind: "preview"` so the compile rides
-      the warm worker per the coalescing contract above.
-- [ ] `apps/extension/entrypoints/sidepanel/PdfPreview.tsx` (new): renders the
-      captured bytes as `<embed type="application/pdf">` over a `blob:` URL
-      (revoke the previous URL on replace/unmount); shows compile diagnostics
-      inline on failure; collapsed by default behind a "Preview" toggle so the
-      common export click never pays a preview compile.
+      the warm worker per the coalescing contract above; (d) the result
+      carries `truncated: boolean` so the cache and Download can act on it.
+- [ ] `apps/extension/utils/pdf/preview-cache.ts` (new): stores the most recent
+      successful preview's bytes keyed on `sourceIdentity` + a hash of the
+      resolved settings, with the `truncated` flag alongside. `getReusableBytes`
+      returns bytes **only** for a non-truncated entry whose key matches the
+      current export request exactly — a truncated entry is viewer-only and
+      Download must fall through to a full compile (Architecture point 5).
+      Entries follow the existing job lifecycle (`finally` deletion, same store
+      budget) so preview traffic cannot grow the IndexedDB footprint.
+- [ ] **Preview is a screen, registered in Phase 0's screen registry** — not a
+      panel-local component and not two implementations. `utils/pdf/viewer.ts`
+      (new) holds the PDF.js viewer over the captured `Uint8Array` via
+      `getDocument({ data })` — no `blob:` URL. Constructed **once** with
+      `isEvalSupported: false` (asserted by test, Architecture point 8) and a
+      locally bundled `GlobalWorkerOptions.workerSrc`; both viewer and worker
+      behind a dynamic `import()` so a session that never opens the preview
+      never parses them. Renders only visible pages and caps canvas resolution
+      (device-pixel-ratio ceiling) so a dense page cannot blow up memory.
+      Compile diagnostics render inline on failure. The screen declares its
+      requirement (a compiled or cached preview result) so the registry can
+      surface it correctly when unmet.
+- [ ] The **same** preview screen is mounted by two host shells: the sidebar
+      shell renders it compactly (current page, forward/back, fit-width, zoom)
+      behind a "Preview" toggle so the common export click never pays a preview
+      compile; a new `apps/extension/entrypoints/preview/` WXT page mounts it
+      full-size in a tab as the "Open large preview" target, over the same
+      cached bytes (`preview-cache.ts`). **No second compile path, no second
+      viewer implementation, no new host permission** (asserted by
+      `tests/manifest.test.ts`). If this task needs to fork the component per
+      shell, the Phase 0 screen model is wrong and should be fixed there
+      instead.
+- [ ] `apps/extension/scripts/check-output-build.ts` (build gate, Architecture
+      point 8): add a **path-scoped** exemption to `DYNAMIC_CODE_RES` for the
+      vendored PDF.js chunk only — never a global suppression — and add the
+      PDF.js viewer + worker chunks to `REQUIRED_PDF_ARTIFACTS` so local
+      bundling is mechanically enforced. Document in the module docstring why
+      exactly one dependency is exempt and what compensates for it
+      (`isEvalSupported: false` + the exemption-scope test), so the exemption
+      does not read as precedent for the next dependency that trips the scan.
 - [ ] Debounce + coalescing: settings-form and scope changes trigger a
       preview recompile after ~400 ms of quiet; each new trigger supersedes
       the in-flight preview per the `kind: "preview"` coalescing rule above
@@ -587,6 +1046,85 @@ wiring stays in thin components and entrypoints.
       permissions expected, fail the task if one becomes necessary (that is a
       review-worthy scope change).
 
+### Durable background jobs & byte handling (T5.6)
+
+Ordered: the measurement gates the storage decision, the two defect fixes are
+independent of it, and the size-metadata split blocks the retention UI.
+
+- [ ] **Measurement first (blocks the rest of T5.6).** Heap snapshot of a real
+      image-heavy DOCSY tree export in the panel and the offscreen worker at
+      the four suspected peaks (`job-store.ts:118` / `:200` `getAll`,
+      `validate.ts:48` decode, `compiler.ts:60-63` VFS handoff,
+      `download.ts:19` blob copy). Record actual numbers in this PLAN.
+      Additionally verify the two assumptions Architecture point 9 flags: does
+      a Chrome IDB `Blob` stay out-of-heap on `get()`, and does PDF.js
+      chunk-load from a `blob:` URL? **If the numbers do not justify a change,
+      write that down and drop the corresponding fix** — this task exists to
+      prevent optimizing on suspicion.
+- [ ] `apps/extension/entrypoints/sidepanel/PdfSection.tsx`: identity change
+      **stops watching**, never aborts (defect (a), Architecture point 3).
+      `AbortController` stays bound to the explicit Cancel button only.
+      Regression test: a simulated page navigation mid-export leaves the job
+      `compiling` and the record intact.
+- [ ] `apps/extension/entrypoints/background.ts`: derive in-flight state from
+      durable job records (`status: "queued" | "compiling"`), not from the
+      volatile `activePdfJobs` counter (`background.ts:49`), before arming
+      `offscreenIdle` — at both call sites (`:58` `runWasmSmoke`, `:87-88`
+      `runPdfCompile`'s `finally`). Fixes defect (b): an offscreen document
+      torn down while a compile from before a SW restart is still running.
+- [ ] Cleanup ownership moves out of the panel: terminal-state deletion is
+      driven by the SW/offscreen side, which outlives the panel;
+      `compile-port.ts:90`'s `finally` may only delete a job this panel is
+      actively watching *and* has consumed. `cancelPdfJob`
+      (`job-store.ts:244-250`) must release the bundle, not only set a status.
+      Regression test: closing the panel mid-export leaves no orphan record
+      holding a full bundle.
+- [ ] `apps/extension/utils/pdf/job-store.ts`: size metadata split out of the
+      payload so `PDF_STORE_MAX_BYTES` is enforced **without** `getAll()`
+      (Architecture point 9). Also split the volatile status/progress record
+      from the immutable payload record so `claimPdfJob`/`completePdfJob` stop
+      rewriting every asset byte for a status field
+      (`job-store.ts:152-181`). Keep the cap *values*; change only how they are
+      computed and stored.
+- [ ] `packages/pdf/src/validate.ts`: chunked scanning with boundary overlap
+      instead of `TextDecoder("latin1").decode(bytes)` over the whole PDF
+      (`validate.ts:48`). Shared-engine change — the CLI gets the same benefit.
+      Test: identical verdicts to the current implementation across the
+      existing fixtures, including a marker deliberately straddling a chunk
+      boundary.
+- [ ] `packages/pdf/src/run-export.ts`: release `prepared`/`bundle`
+      (`:241-242`) once the job is stored, so they are not retained through
+      compile, validate and download.
+- [ ] `PdfBytesHandle` seam (`packages/pdf`): replace raw `Uint8Array` in the
+      cross-layer output contract with a handle (`size`, `asBlob()`,
+      `asUint8Array()`, `objectUrl()`). Storage format for the extension host
+      is decided by the measurement task, not assumed. `PdfOutputSink`
+      (`packages/pdf/src/run-export.ts:25`) and the preview cache (T5.3) both
+      consume the handle; `download.ts` uses `asBlob()` and drops its own copy.
+      **Do not** land this before the measurement task reports.
+- [ ] `apps/extension/entrypoints/sidepanel/JobsSection.tsx` (new): the
+      re-attach UI — running/finished jobs for this site with scope, progress
+      ("Page 37/210"), age, and actions (show result / download / cancel /
+      dismiss). On panel mount it reads `atlcli-pdf` and re-attaches to
+      anything still `queued`/`compiling`; a finished job offers its download.
+      Collapsed when there are no jobs, so the 90 % single-page case sees no
+      new UI.
+- [ ] Notification: in-panel status plus `chrome.action.setBadgeText` when a
+      job finishes while the panel is closed. **Deliberately not**
+      `chrome.notifications` — that needs a new manifest permission, and this
+      folder's rule is no new permissions (asserted by
+      `tests/manifest.test.ts`). Badge clears when the panel is opened.
+- [ ] Shared store budget: the preview cache (T5.3) and retained background
+      jobs (T5.6) compete for the same `PDF_STORE_MAX_BYTES`. Design one
+      eviction policy over both — previews are evictable at any time, a
+      finished-but-unconsumed export job is not — rather than two features
+      independently filling one store. Document the policy in the job-store
+      module comment.
+- [ ] Copy + docs honesty: the panel states that a background export survives
+      navigation, panel close and extension restart, but **not** closing the
+      browser (Architecture point 3). No wording implies server-side
+      durability.
+
 ### Docs & release (T5.5)
 
 Docs are first-class (CLAUDE.md): same PR as the features, per-page template
@@ -615,7 +1153,16 @@ labelled, ≥ 1 minimal + 1 advanced example per feature.
 - [ ] `src/content/docs/extension/` (new section): `index.md` (install/load,
       what the panel can do) and `export.md` (scope UI, template library,
       preview walkthrough with captioned screenshots per docs media standard);
-      cross-link with the Confluence guides ("Related topics").
+      cross-link with the Confluence guides ("Related topics"). The preview
+      section states plainly, in a callout, that the preview renders the last
+      **published** version — not unpublished editor changes — and describes
+      the `edit → publish → preview` loop as the supported workflow; the
+      troubleshooting block covers "my change isn't in the preview" with that
+      as the first cause. A **background exports** section documents that a
+      long export keeps running when you navigate away or close the panel, how
+      to find it again, and — stated plainly, not buried — that closing the
+      browser ends it. Troubleshooting covers "my export disappeared" with
+      browser-close and the retention window (Open question 11) as the causes.
 - [ ] `src/content/docs/recipes/ci-cd-docs.md`: update with the scope/label
       flags and `--report json` recipes (kept in lockstep with folder 008's
       CLI work — one product, one docs release).
@@ -702,13 +1249,40 @@ Component/unit (new):
       manifest, invalid number/color rejection, values round-trip to
       `template-prefs`; PDF-only for v1 — assert the form never attempts to
       write a `settings` field onto a DOCX `ExportInput`.
-- [ ] `apps/extension/tests/pdf/preview.test.ts`: truncation budget is
+- [ ] `apps/extension/tests/pdf/preview.test.ts`: **scope-dependent**
+      truncation — `scope: page` is never truncated; `tree`/`space` is
       chapter-count **and** block/asset-byte bounded (a single oversized
       chapter is still capped, not just counted as "1 of N"); capture sink
       returns bytes without invoking download; a superseded preview resolves
       as discarded **without** the worker being terminated (assert
       `destroyWorker`/`terminate` is not called on preview supersession,
-      only on an explicit export cancel); blob URL revocation on replace.
+      only on an explicit export cancel).
+- [ ] `apps/extension/tests/pdf/preview-cache.test.ts` (new, fake-indexeddb):
+      a cache hit on identical `sourceIdentity` + settings hash returns bytes
+      and suppresses a second compile; **changing one setting value invalidates
+      the entry** (no stale-bytes download); a `truncated: true` entry is
+      **never** returned to Download (regression for the silently-cut-off-PDF
+      trap, Architecture point 5) while still serving the viewer; entries are
+      deleted on the normal job-lifecycle path so preview churn does not grow
+      the store.
+- [ ] `apps/extension/tests/pdf/viewer-config.test.ts` (new): the single PDF.js
+      construction site passes `isEvalSupported: false` and a local
+      `workerSrc` — the runtime half of Architecture point 8's contract, which
+      the static build scan cannot check.
+- [ ] `apps/extension/tests/output-scan.test.ts` (extend): the new
+      `DYNAMIC_CODE_RES` exemption is **path-scoped** — a fixture file placed
+      outside the PDF.js chunk path containing `new Function(` still fails the
+      scan. This is the test that keeps the exemption from silently widening
+      into a general suppression.
+- [ ] **Real-browser render coverage belongs in Playwright, not happy-dom.**
+      PDF.js rendering is `<canvas>` + a real Worker; happy-dom cannot
+      meaningfully execute it, so the unit tests above deliberately cover the
+      *pure* parts (scheduling, truncation, cache keys, config) and assert no
+      pixels. Add the actual "compiled bytes render to a non-blank canvas with
+      the expected page count" assertion to the existing Playwright harness in
+      `apps/browser-export-harness` (which already runs a real browser for
+      engine parity). Do not simulate a canvas in a unit test and call it
+      render coverage.
 - [ ] `apps/extension/tests/pdf/compiler-host.test.ts` (extend): `kind:
       "preview" | "export"` scheduling — an export queued behind an
       in-flight preview jumps ahead; rapid preview→preview→export creates
@@ -742,7 +1316,36 @@ Component/unit (new):
       `atlcli-pdf` job record) and assert the panel can still find the job's
       eventual `status` in the store; a job whose worker never responds
       within its timeout ends up `failed`, not stuck `queued`/`compiling`
-      forever.
+      forever. **Extend for T5.6**: after a simulated SW restart that resets
+      `activePdfJobs` to `0`, a *second* job completing must **not** arm
+      `offscreenIdle` while the first is still `compiling` — the regression for
+      Architecture point 3 defect (b), the torn-down-mid-compile offscreen
+      document.
+- [ ] `apps/extension/tests/pdf/section-navigation.test.tsx` (new): changing
+      `loadedPage`/`pageUrl` mid-export **stops watching** but does not abort —
+      the `AbortController` is not signalled and the job record stays
+      `compiling`; only the explicit Cancel button aborts. Direct regression
+      for `PdfSection.tsx:30-37` (Architecture point 3 defect (a)) and the
+      in-repo reproduction of CONFCLOUD-83694.
+- [ ] `apps/extension/tests/pdf/job-store.test.ts` (extend, T5.6): enforcing
+      `PDF_STORE_MAX_BYTES` performs **no** `getAll()` over payload records
+      (assert via a spy or a store seeded with records whose payload access
+      would throw); a status transition does not rewrite the payload record
+      (byte-identical payload row, changed status row); `cancelPdfJob`
+      releases the bundle rather than only setting a status; closing the panel
+      mid-export leaves no orphan record holding a full bundle.
+- [ ] `packages/pdf/src/validate.test.ts` (extend): chunked scanning yields
+      verdicts identical to the current whole-buffer implementation across the
+      existing fixtures, **including a marker deliberately straddling a chunk
+      boundary** — the failure mode a naive chunking introduces.
+- [ ] `apps/extension/tests/pdf/jobs-section.test.tsx` (new): re-attach UI —
+      mounting with a `compiling` record in `atlcli-pdf` re-attaches and shows
+      progress; a finished record offers its download; a job from another site
+      origin is not listed; no jobs → no UI (the 90 % case sees nothing new).
+- [ ] Shared-budget test (T5.3 + T5.6): with the store near
+      `PDF_STORE_MAX_BYTES`, a new export evicts preview-cache entries but
+      **never** a finished-but-unconsumed export job — the eviction policy from
+      the T5.6 task, asserted rather than left to two features racing.
 
 E2E — primary path via CLI against DOCSY (engine behavior is owned and covered
 by folders 002/008; CLAUDE.md workflow: profile `mayflower`, space `DOCSY`,
@@ -793,6 +1396,19 @@ site):
       completes without waiting for a queued preview to finish and without a
       visible cold-init pause (job-kind priority + no worker termination on
       supersession, T5.3).
+- [ ] Preview viewer: page forward/back, fit-width and zoom work in the 400 px
+      panel; "Open large preview" opens the tab viewer showing the **same**
+      document; the panel stays usable while the tab is open.
+- [ ] Preview→download identity: on a **single page**, preview, then Download
+      — the download completes without a second compile (no visible compile
+      phase) and the file matches what the viewer showed. Then on a **tree**
+      scope: preview (truncated), Download — a full compile *does* run and the
+      downloaded PDF contains the whole tree, not the truncated preview. This
+      is the manual check for the cut-off-PDF trap.
+- [ ] Iteration loop end to end (the CONFCLOUD-84742 scenario): change page
+      content in Confluence, publish, refresh the panel, preview — the change
+      appears. Confirm the panel copy makes clear that unpublished edits are
+      not previewed.
 - [ ] Macro wiring: DOCSY page with jira macro renders a real issue table in
       the PDF; toggle "Resolve dynamic macros" off → placeholder +
       `skipped-by-config` note. A jira/`export_view` macro on a **child page**
@@ -807,6 +1423,18 @@ site):
       (`chrome://extensions` → reload, simulating a service-worker restart)
       mid-export — reopening the panel finds the job's eventual result
       (or a clear failure) instead of a silent hang (T5.1 durable-job task).
+- [ ] **The CONFCLOUD-83694 scenario itself** (T5.6): start a space/tree
+      export, then navigate to a different Confluence page while it runs — the
+      export **continues**, the panel shows it as a running job, and returning
+      to the original page still offers the result. Then repeat while closing
+      the side panel entirely: reopening finds the finished job and its
+      download, and the toolbar badge indicated completion while the panel was
+      closed. Finally confirm the honest limit — closing the browser does end
+      the job, and the panel says so rather than pretending otherwise.
+- [ ] Memory sanity (T5.6 measurement task): with DevTools attached to the
+      panel and the offscreen document, run an image-heavy tree export and
+      record peak heap. Compare against the pre-T5.6 build. If the fixes did
+      not move the number, say so in the PLAN rather than claiming a win.
 - [ ] Verify the downloaded multi-page PDF: cover, outline with chapters,
       chapter page breaks, working cross-page links.
 - [ ] **Delete the DOCSY pages/templates created during the protocol.**
@@ -860,11 +1488,45 @@ site):
   priority and completes without paying a cold wasm+font re-init (job-kind
   scheduling, not worker termination, resolves preview/export contention);
   the preview budget is labelled "first N chapters", never "pages".
+- The preview renders through a **locally bundled** PDF.js (viewer + worker in
+  `REQUIRED_PDF_ARTIFACTS`, sha256-pinned, no CDN, no remotely hosted code),
+  lazy-loaded so a panel that never opens the preview never parses it.
+- Download reuses cached preview bytes **only** for a non-truncated entry whose
+  `sourceIdentity` + settings hash match exactly; a truncated preview can never
+  be downloaded as if it were the full document.
+- The `DYNAMIC_CODE_RES` exemption in `check-output-build.ts` is path-scoped to
+  the PDF.js chunk, compensated by an asserted `isEvalSupported: false` at the
+  single construction site, and guarded by a test that fails if the exemption
+  matches anything outside that path. No other gate is relaxed.
+- Actual PDF.js render coverage lives in the real-browser Playwright harness;
+  no unit test simulates a canvas and claims render coverage.
+- The panel and docs state plainly that the preview shows the last published
+  version, not the open editor draft.
 - Job-store budgets enforced pre-flight with actionable errors; no code path
   can store an over-budget bundle.
 - A PDF job's status is recoverable from `atlcli-pdf` after a service-worker
   restart mid-compile; no job is left permanently `queued`/`compiling` with
   no path to resolution.
+- Navigating to another Confluence page never aborts a running export
+  (`PdfSection.tsx:30-37` no longer signals the `AbortController` on identity
+  change); only the explicit Cancel button does. The panel re-attaches to
+  running and finished jobs on mount, and a badge reports completion that
+  happened while the panel was closed — with **no new manifest permission**.
+- The offscreen document is never torn down while a compile is in flight, including
+  after a service-worker restart has reset the in-memory job counter; in-flight
+  state is derived from durable job records, not from `activePdfJobs`.
+- No terminal-state cleanup depends on the panel being alive; closing the panel
+  mid-export leaves no orphan record holding a full bundle.
+- `PDF_STORE_MAX_BYTES` is enforced without deserializing payload records
+  (no `getAll()` over bundles), and a status transition does not rewrite the
+  payload. Preview cache and background jobs share one documented eviction
+  policy over one budget.
+- Every byte-handling change in T5.6 is backed by a recorded measurement; a fix
+  whose measurement did not justify it is documented as dropped rather than
+  landed anyway. Bytes still never cross `chrome.runtime.sendMessage`.
+- The panel and docs state the honest durability limit: a background export
+  survives navigation, panel close and extension restart, but not closing the
+  browser. No wording implies server-side durability.
 - Session-fetch macro ports (`JiraIssuePort`, `ExportViewPort`) reuse
   `JiraClient`/`ConfluenceClient`'s existing login-redirect and 429-backoff
   handling; an expired session degrades the live-macro pass with one clear
@@ -891,10 +1553,27 @@ site):
   (verified in `template-store.ts` / `job-store.ts` `finally db.close()`);
   keep it that way and add an `onblocked` timeout error rather than a hang.
 - **Preview compile cost on tables/diagram-heavy pages.** Even warm compiles
-  of pathological pages can take seconds; the debounce plus first-N truncation
-  bounds it, but the UI must show a spinner state, never a frozen embed.
-  Fallback if `<embed>` proves flaky across Chrome versions: render pages to
-  canvas via the compiler's SVG output (bigger task — only on evidence).
+  of pathological pages can take seconds; the debounce bounds the *rate*, and
+  for tree/space the first-N truncation bounds the *size*. **Single-page scope
+  no longer truncates** (Architecture point 5), so a single pathological page —
+  a large test report with many tables and images, precisely the
+  CONFCLOUD-84742 user — compiles in full on every debounced change. The UI
+  must show a spinner state, never a frozen viewer, and the timing note in the
+  report is the signal for whether a per-page cost ceiling is needed after all
+  (revisit with the T4.3 benchmark suite, not by guessing now).
+- **Vendored viewer: maintenance and bundle weight.** PDF.js is a large,
+  actively-moving dependency added next to an already ≥ 20 MB Typst WASM
+  artifact. Lazy loading keeps it off the critical path for users who never
+  preview, and the sha256 pins in `REQUIRED_PDF_ARTIFACTS` make version bumps a
+  visible, reviewed event rather than a silent drift — but it is still a new
+  upstream to track for security advisories.
+- **A relaxed dynamic-code gate is a standing risk, not a solved problem.**
+  The path-scoped exemption (Architecture point 8) is the smallest change that
+  unblocks PDF.js, but it does mean one bundle path is no longer covered by a
+  gate that exists to enforce an MV3 CSP invariant. Compensating controls
+  (runtime `isEvalSupported: false`, exemption-scope test, documented
+  rationale) are specified — if any of them is dropped during implementation,
+  the exemption should be reconsidered rather than kept unguarded.
 - **`export_view` markup drift** (BASELINE-DESIGN E1 risk): the HTML fallback
   is unversioned upstream; the DOCSY E2E in folders 002/008 is the canary, the
   extension inherits whatever the shared converter does — no extension-side
@@ -923,6 +1602,26 @@ site):
   `kind`, Architecture point 5) must never route preview supersession through
   this path, or every debounced settings tweak would pay a full cold
   wasm+font re-init and periodically starve the export click behind FIFO.
+- **T5.6 widens this folder's blast radius.** Background jobs plus the byte
+  handling behind them touch `packages/pdf` (`validate.ts`, `run-export.ts`,
+  the output contract) on top of the host adapters — a host-integration folder
+  now carrying engine changes. Mitigation: the set is enumerated and bounded in
+  Architecture point 9, every change lands in the shared engine (CLI benefits
+  too), and the measurement task can *remove* items from the set. Risk remains
+  that review attention spreads thin across a folder that is now noticeably
+  larger; splitting T5.6 into its own folder stays the fallback if review or
+  landing order becomes unwieldy.
+- **The `PdfBytesHandle` storage decision rests on two unverified assumptions**
+  (Chrome IDB Blob out-of-heap behavior; PDF.js chunk-loading from `blob:`).
+  Both are measured in T5.6's first task, but if both fail the preview cache
+  and job retention keep their current heap cost and the "cache is nearly free"
+  premise behind T5.3's download-reuse weakens. The seam itself survives either
+  outcome; the storage format is what is at stake.
+- **"Background job" invites an expectation we cannot meet.** Users who read
+  CONFCLOUD-83694 will expect Confluence-style server-side durability. An MV3
+  extension cannot survive browser close. The mitigation is copy discipline
+  (Definition of Done), but a mismatch between expectation and behavior is a
+  support-load risk, not only a wording risk — worth watching in early feedback.
 - **Session-port response taxonomy has real-world edge cases beyond the
   fixture set.** Confluence/Jira Cloud auth-redirect and rate-limit responses
   can vary by tenant configuration (SSO providers, custom rate-limit
@@ -933,10 +1632,11 @@ site):
 
 **Open questions**
 
-1. Preview budget N: fixed 5 chapters, or user-adjustable? Proposal: fixed 5
-   for v1, revisit with telemetry-free feedback (report timing note). Note
-   this is a chapter/block budget, not a guaranteed PDF page count (see
-   Architecture point 5).
+1. Preview budget N for **tree/space** scope: fixed 5 chapters, or
+   user-adjustable? Proposal: fixed 5 for v1, revisit with telemetry-free
+   feedback (report timing note). Note this is a chapter/block budget, not a
+   guaranteed PDF page count (see Architecture point 5). Single-page scope is
+   settled: no truncation.
 2. Where does the *active template selection* live for a user who uses both
    CLI and extension on the same site — is per-host selection acceptable for
    v1 (proposal: yes; the folder-007 site-library attachment adapter is the
@@ -971,3 +1671,56 @@ site):
    BASELINE-DESIGN B3), or is raw `.docx` upload permanent for the extension?
    Proposal: raw upload stays for v1; container adoption is a follow-up once
    007's container package matures and is proven for the PDF side.
+8. **Manual page-break authoring — own spec folder, not a task in this one.**
+   (T5.6 is now taken by durable background jobs; page-break authoring is a
+   separate, still-unopened folder.)
+   CONFCLOUD-84742's second ask ("insert manual page breaks to control content
+   placement") is *not* delivered by this folder. The **render** side already
+   exists: `scroll-pagebreak` → `{ type: "pageBreak" }`
+   (`packages/confluence/src/export-blocks.ts:1494`) → `#pagebreak(weak: true)`
+   (`packages/pdf/src/serialize.ts:1129`). What is missing is **authoring** in
+   Confluence Cloud, which Atlassian does not offer natively. A follow-up
+   folder should own the whole contract — an `ExportBlock` transformation
+   applied before compilation ("break before this heading", "keep heading with
+   next paragraph", "do not split this table row"), plus the persistence
+   decision. That decision is the open question and must not be defaulted:
+   **page/version-scoped local storage silently discards the user's break
+   configuration on every page edit**, which for the "tweak 5–10 times" user is
+   arguably worse than no feature. Alternatives: content-property storage
+   (team-wide, survives edits, needs an explicit Confluence contract) or a
+   Confluence macro (authored in-page, portable to the CLI, highest
+   integration cost). Recorded here as a crossPlanImpact so 010 links to it;
+   scoping, ownership and the persistence choice belong to that folder's own
+   review cycle, not to a host-integration folder.
+9. **Editor-draft preview** — explicitly out of scope for 010 (see Goal). A
+   later proof would have to establish a supported way to read unpublished
+   content; it must not be built on undocumented Confluence-internal APIs or
+   editor DOM scraping, both of which would drift silently. Open: is there a
+   supported draft-content API at all, and is the `edit → publish → preview`
+   loop good enough in practice that this never becomes worth the risk?
+10. **Preview cost ceiling for pathological single pages** (see Risks): if the
+    full single-page preview turns out to be too slow on real test reports,
+    what is the fallback — a per-page byte/block ceiling with a "preview
+    simplified" note, a manual "Refresh preview" button instead of debounced
+    auto-recompile, or accepting the latency? Proposal: decide on evidence from
+    the T4.3 benchmark suite, ship debounced auto-recompile for v1.
+11. **Retention of finished background jobs.** `cleanupPdfJobs` sweeps at 24 h
+    (`job-store.ts:265-290`, `PDF_JOB_MAX_AGE_MS`). Is that right once a
+    finished job is a thing the user comes back to? A finished-but-undownloaded
+    export holding 64 MiB for 24 h is expensive; deleting it after an hour may
+    lose work the user meant to fetch. Proposal: keep 24 h for the record and
+    its status, but drop the *payload* earlier (e.g. 2 h) with the UI offering
+    "re-run" instead of "download" afterwards — decide with the T5.6
+    measurement in hand.
+12. **Concurrent background exports.** `PdfCompilerHost` is a single-worker
+    FIFO (`compiler-host.ts:83`) and T5.3 adds preview/export priority on top.
+    Should the panel allow queuing several tree/space exports, or refuse a
+    second while one runs? Proposal: allow queuing but cap at a small number
+    (2–3) with the queue visible in `JobsSection.tsx` — unbounded queuing plus
+    64 MiB payloads collides with `PDF_STORE_MAX_BYTES` immediately.
+13. **The two Forge gating questions** (Architecture point 10): does the Forge
+    Custom UI CSP permit `wasm-unsafe-eval`, and does a ≥ 20 MB Typst WASM
+    artifact fit its static-resource bundle limits? Not this folder's work, but
+    the answers determine whether Track 2 can reuse this engine at all, and
+    they should be established before Track 2 architecture is planned rather
+    than discovered during it. Owner: whoever opens the Forge folder.
