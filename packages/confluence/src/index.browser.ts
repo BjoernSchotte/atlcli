@@ -27,3 +27,4 @@ export * from "./pagination.js";
 export * from "./tree-fetch.js";
 export * from "./resolve-mentions.js";
 export * from "./page-properties.js";
+export * from "./svg-safety.js";

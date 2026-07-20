@@ -8,7 +8,7 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
-import { findSvgSafetyViolation } from "./svg-safety.js";
+import { assertSafeSvg } from "./svg-safety.js";
 import type {
   PdfAssetResolver,
   PdfResolvedAsset,
@@ -66,11 +66,10 @@ function validateResolvedAsset(asset: PdfResolvedAsset): PdfResolvedAsset {
     throw new Error(`image content does not match its declared media type (${declared})`);
   }
   if (sniffed === "image/svg+xml") {
-    // Shared blocklist with logo-settings validation — see svg-safety.ts.
-    const violation = findSvgSafetyViolation(new TextDecoder().decode(asset.bytes));
-    if (violation) {
-      throw new Error(`SVG contains active or externally loaded content (${violation.rule})`);
-    }
+    // Shared blocklist with the DOCX engine and logo-settings validation —
+    // see @atlcli/confluence svg-safety.ts. Validate the SAME decoded string
+    // that gets embedded (no separately-decoded copy).
+    assertSafeSvg(new TextDecoder().decode(asset.bytes));
   }
   return { ...asset, mediaType: sniffed };
 }
