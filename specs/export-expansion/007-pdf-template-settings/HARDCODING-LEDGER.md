@@ -213,3 +213,17 @@ one-line structural justification:
 
 Presentation values (colors, sizes, fonts, labels) must never be added to this
 allowlist; migrate them into the manifest instead (spec 012 STOP condition).
+
+### Accepted limits of the lint
+
+The lint is a heuristic review aid, not a Typst/TypeScript parser. These
+bypasses are known and accepted — all are contrived, and the byte-parity gate
+(`template-migration-parity.test.ts`) plus code review are the real backstop:
+
+- a literal hidden inside its own `${…}` interpolation (the blanking step
+  removes the span, so the literal inside it is not scanned);
+- non-6-digit hex (`#abc`, `#aabbccdd`) and non-`pt`/`mm`/`em` units
+  (`cm`, `in`, `%`);
+- multi-family font stacks and `font:` values built by concatenation.
+
+Tightening any of these is cheap follow-up work if a real case appears; none has.

@@ -213,11 +213,17 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 - [x] `packages/template-pack/src/manifest.ts`: `bindings:
       WikiPdfTemplateSettingBindingV1[]` — `{ setting, targets, transform?
       }`; `targets` validated against a versioned allowlist of design
-      paths (start with the Level-A set 007 already exposes: accent,
-      page size, cover/outline enabled, outline depth, header/footer
-      text, organization name, logo asset + alt); `transform` is
-      `identity` or an explicit `choice-map` — reject anything else at
-      validation time, not at render time.
+      paths; `transform` is `identity` or an explicit `choice-map` —
+      reject anything else at validation time, not at render time.
+      **Shipped scope (narrowed deliberately):** the allowlist covers
+      accent, page size, orientation, cover/outline enabled, outline
+      depth, header/footer *enabled*, and organization name.
+      Header/footer **text** and the **logo asset + alt** are NOT
+      bindable design targets: they are per-export *content and assets*,
+      not presentation tokens, so they stay Level-A settings the template
+      reads directly (`settings.at("header-text" | "logo" | …)`). The DoD
+      requirement — retire 007's direct `.at()` reads "for every field
+      covered by a binding" — therefore holds as written.
 - [x] `packages/template-pack/src/manifest.ts`: `localization:
       WikiPdfTemplateLocalizationV1` — `defaultLocale`, `fallbackLocale`,
       `locales` map (`template`, `document`, `settingGroups`, `settings`
@@ -280,10 +286,16 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 - [x] `packages/pdf/src/template.ts`: replace each ledgered hardcoded
       literal with a read from `settings.design.*`/`settings.labels.*`,
       grouped by ledger category (typography, then tokens, then
-      semantic palettes, then components) as separate, reviewable commits
-      rather than one large diff — each commit keeps the built-in
+      semantic palettes, then components) — each step keeps the built-in
       template's manifest defaults equal to the literal it replaces, so
       output does not change mid-migration.
+      **Deviation:** this landed as ONE commit, not the per-category
+      series the task asked for. The categories are interdependent (the
+      template stops compiling until the whole design object is threaded)
+      and the lint could not go green until every category had moved, so
+      an intermediate commit would have been red. Reviewability is
+      instead carried by the byte-parity proof (T6.4) plus the ledger's
+      per-category destination table.
 - [x] `packages/pdf/src/serialize.ts`: any presentation literal owned by
       the serializer (not `template.ts`) moves the same way; semantic
       content emission (meta, blocks) is unaffected.
@@ -330,6 +342,15 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       one-off script reusing its digesting/comparison functions) — reuse
       011's existing digest/report-projection machinery rather than
       building a second comparator.
+      **Deviation:** `check-parity.ts` was NOT edited. Spec 011 round 2
+      owns `apps/browser-export-harness` in this same wave, so touching it
+      would have collided. The parity gate instead reuses 011's *approach*
+      (the identical `BrowserPdfCompiler` + pinned wasm/fonts path, sha256
+      digest equality) as a package-level real-compiler test in
+      `packages/pdf-compiler-browser/src/template-migration-parity.test.ts`,
+      with `node:crypto` for the digest rather than importing the harness's
+      `sha256Hex`. No second *comparator* was built — only a second call
+      site for the same technique.
 - [x] Tests: a fixture-based regression test asserting the comparison
       script itself rejects a deliberately altered raster (mirrors 011's
       own infrastructure-test pattern for its parity checker).
@@ -370,6 +391,67 @@ mocked HTTP, no stubbed compiler.
       time only if a cross-cutting suite (e.g. one file testing the full
       resolver pipeline end-to-end against both built-in manifests) proves
       more maintainable than task-scoped test files.
+
+## Implementation record — deviations & decisions (2026-07-20)
+
+**Parity method: digest equality (the preferred option), not raster.**
+`packages/pdf-compiler-browser/src/template-migration-parity.test.ts` pins the
+sha256 of the built-in template's default output over a fixture exercising every
+migrated role, both semantic palettes, and the component set. The digest was
+captured from the pre-migration engine (007 state) with the pinned compiler
+`typst.ts 0.7.0 / Typst 0.14.2` **before** any literal moved, and is unchanged
+after the migration: `351fd2d4f0a178368d642ef939f2de2736ddc506f196cd70b47e455cad376975`
+(73050 bytes). Byte-identity was achievable because the rewrite preserves the
+Typst *document model* exactly, so the raster fallback was never needed. The
+test refuses to compare across compiler versions, and a tamper case proves the
+gate would actually catch a regression.
+
+**How the design reaches the engine (two mechanisms, deliberately).** Static
+design (typography roles, color tokens, semantic palettes, component
+spacing/layout, page margins) is interpolated when
+`createAtlcliTypstTemplate(design, labels)` generates the Typst string — the
+template helpers (`callout`, `status-badge`, `task-item`, …) are called from the
+document body at main.typ top level and cannot see `atlcli-doc`'s `settings`, so
+generation-time interpolation is the only way to make them data-driven. The
+settings-driven subset (accent, page size/orientation, cover/outline,
+organization name) plus the localized labels travel in the emitted
+`settings.design` / `settings.labels` dictionary and are read at Typst runtime,
+which is what retires 007's direct `settings.at("accent-color", …)` reads. Every
+runtime read falls back to a generation-time default drawn from the same
+manifest, so `settings: (:)` still compiles (007's backward-compatibility
+contract).
+
+**Colors are `#RRGGBB` only.** The Architecture section allows "canonical
+`#RRGGBB` or token references"; token references were not implemented — neither
+curated template needs them and omitting them keeps the resolver free of a
+reference-resolution pass. Accepting a strict subset is forward-compatible.
+
+**Serializer presentation is design-parameterized.** `serialize.ts` originally
+bound the built-in design at module scope, which made a second template's
+`tableStroke`/`tableHeaderBackground`/`mention`/`placeholder` dead data. The
+active design is now threaded through the `Writer` (block scope) and
+`RenderContext` (inline scope), so those tokens genuinely apply. The Confluence
+status palette moved with it (`semanticPalettes.statuses` is per-template).
+
+**Security: manifest localization is an injection surface.** A document-label
+KEY is interpolated into generated Typst as a dictionary key (unquoted), where
+`typstString` cannot help. An unvalidated key (`x: panic("…"), y`) escaped the
+key position and was evaluated as code by the real compiler. Closed in three
+layers: (1) `validateLocalization` asserts label keys are safe identifiers and
+runs label values through the design model's "no Typst metacharacters" check;
+(2) `resolveTemplateLabels` resolves only the declared
+`WIKI_PDF_V1_DOCUMENT_LABELS` vocabulary, so an unknown key never reaches
+emission; (3) `typstSettingsDict` hard-fails on any key that is not a safe
+identifier. Regression tests cover all three layers plus a real-compiler proof
+that a gate-bypassing manifest cannot execute code. UI-only copy
+(`template`/`settingGroups`/`settings`) is bounded and control-char-free but may
+contain punctuation, since it never reaches Typst.
+
+**Hardcoding-lint accepted limits.** The lint is a heuristic review aid, not a
+parser. Known bypasses (a literal wrapped in its own `${…}`, 3-/4-/8-digit hex,
+`cm`/`in`/`%` units, multi-family font stacks) are accepted: all are contrived,
+and the byte-parity gate plus review are the real backstop. Tightening it is
+cheap follow-up work if a real case appears.
 
 ## Definition of Done
 
