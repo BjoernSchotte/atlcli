@@ -14,6 +14,7 @@ import {
   type PdfCompilePort,
   type PdfCompilerDiagnostic,
   type PdfExportMetadata,
+  type PdfBytesHandle,
   type PdfOutputSink,
 } from "@atlcli/pdf";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
@@ -45,8 +46,9 @@ const METADATA: PdfExportMetadata = {
 
 class MemorySink implements PdfOutputSink {
   bytes: Uint8Array | null = null;
-  async emit(_name: string, bytes: Uint8Array): Promise<void> {
-    this.bytes = bytes;
+  // `bytes` is a PdfBytesHandle since spec 010 T5.6; assertions want the array.
+  async emit(_name: string, bytes: PdfBytesHandle): Promise<void> {
+    this.bytes = await bytes.asUint8Array();
   }
 }
 
