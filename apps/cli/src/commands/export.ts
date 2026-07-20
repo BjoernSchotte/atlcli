@@ -39,11 +39,13 @@ import {
 import {
   ExportRequestError,
   buildExportScope,
+  buildScopeReportFields,
   parseExportRequest,
   type ParsedExportRequest,
 } from "./export-request.js";
 import {
   buildReport,
+  buildTreeExportReport,
   classifyError,
   emitReportOutcome,
   noteToIssue,
@@ -1322,6 +1324,12 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
           })),
         ],
         timings: { totalMs: report.durationMs },
+        // Completeness contract (spec 002): present on EVERY successful export,
+        // not just tree/space, so `jq -r '.complete'` is never null on success.
+        // Single-page exports are always complete. Scope traceability
+        // (requestedScope/resolvedScope) stays tree/space-only by design — and
+        // is absent on the PDF single-page path too (symmetric).
+        complete: report.complete,
         placeholders: { resolved: report.resolvedCount, unsupported: report.unsupportedNames },
         strict,
       }),
@@ -1603,7 +1611,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     emitReportOutcome(
       {
         ok: true,
-        report: buildReport({
+        report: buildTreeExportReport({
           format: "docx",
           engine: "ts",
           sourcePages,
@@ -1626,17 +1634,11 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
             })),
           ],
           timings: { durationMs: docxReport.durationMs, ...docxReport.timings },
-          requestedScope: {
-            kind: request.scopeKind,
-            ...(request.pageRef ? { pageRef: request.pageRef } : {}),
-            ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
-            ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
-            ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
-            ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
-            ...(request.labels ? { labels: request.labels } : {}),
-            completeness: request.completenessMode,
-          },
-          resolvedScope: scope as unknown as Record<string, unknown>,
+          // Scope traceability (spec 002 A5) from the ONE shared builder the PDF
+          // path also uses — both formats emit an identical field set here.
+          // `scope` + `complete` are REQUIRED by buildTreeExportReport, so a tree
+          // path can no longer drop them and still compile.
+          scope: buildScopeReportFields(request, scope),
           complete: docxReport.complete,
           placeholders: {
             resolved: docxReport.resolvedCount,

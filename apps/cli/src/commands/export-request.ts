@@ -343,3 +343,43 @@ export function buildExportScope(
       };
   }
 }
+
+/** The report's scope-traceability pair (spec 002 A5), as emitted under `--json`. */
+export interface ScopeReportFields {
+  requestedScope: Record<string, unknown>;
+  resolvedScope: Record<string, unknown>;
+}
+
+/**
+ * The ONE construction site for the report's `requestedScope`/`resolvedScope`
+ * traceability pair (spec 002 A5), shared by the DOCX (`export.ts`) and PDF
+ * (`export-pdf.ts`) tree/space paths so both formats emit an IDENTICAL field set
+ * for the same logical request.
+ *
+ * `requestedScope` mirrors the flags as given (a `--scope space --space DOCSY`
+ * request stays visible as `kind: "space"`); `resolvedScope` is the
+ * {@link buildExportScope} output, so the space→tree-at-homepage resolution is
+ * traceable in the `--json` report rather than being silently collapsed.
+ *
+ * Pure: no IO, no network. Both fields are plain JSON-serializable records that
+ * validate against `export-report.schema.json`'s open `requestedScope`/
+ * `resolvedScope` objects.
+ */
+export function buildScopeReportFields(
+  request: ParsedExportRequest,
+  resolvedScope: ExportScope
+): ScopeReportFields {
+  return {
+    requestedScope: {
+      kind: request.scopeKind,
+      ...(request.pageRef ? { pageRef: request.pageRef } : {}),
+      ...(request.spaceKey ? { spaceKey: request.spaceKey } : {}),
+      ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+      ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
+      ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+      ...(request.labels ? { labels: request.labels } : {}),
+      completeness: request.completenessMode,
+    },
+    resolvedScope: { ...resolvedScope },
+  };
+}

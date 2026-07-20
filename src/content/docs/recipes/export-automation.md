@@ -66,6 +66,13 @@ jobs:
       - name: Summarize
         run: |
           jq -r '"Exported \(.outputs[0]) — \(.outputDetails[0].pageCount) pages, \(.warnings | length) warnings"' report.json
+      - name: Fail on an incomplete export
+        run: |
+          # `complete` is emitted for --format pdf and --format docx alike, so
+          # this gate is identical whichever format the job produces.
+          [ "$(jq -r '.complete' report.json)" = "true" ] || {
+            echo "Export incomplete:" >&2; jq '.notesByCode' report.json >&2; exit 1;
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: handbook-pdf
