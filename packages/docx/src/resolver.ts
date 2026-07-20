@@ -29,7 +29,11 @@ import {
   type ExportNote,
   type PagePropertiesMacro,
 } from "@atlcli/confluence";
-import { classifyPlaceholder, parsePagePropertyArgs } from "./placeholder-map.js";
+import {
+  classifyPlaceholder,
+  parsePagePropertyArgs,
+  type IncludePageRef,
+} from "./placeholder-map.js";
 import { formatDatePlaceholder } from "./dateformat.js";
 import type { AssetRef } from "./env.js";
 
@@ -52,6 +56,35 @@ export interface ResolveContext {
   template: TemplateMeta;
   exportDate: Date;
 }
+
+/**
+ * The result of a `$scroll.includepage.(…)` lookup (spec 005 D1). A
+ * discriminated union rather than a bare `ConfluencePageDetails | null` so the
+ * export report can give ACTIONABLE guidance instead of collapsing every
+ * failure into one indistinguishable "not found". The host loader classifies
+ * the Confluence client's thrown errors (`client.ts`'s `request()` carries no
+ * typed status field, but the messages ARE textually distinguishable):
+ *
+ *  - `resolved` — the page was fetched (its body renders at the token position);
+ *  - `ambiguous` — a title matched more than one page; the first (id-sorted) hit
+ *    is still returned as the `page`, and `count` drives an informational note;
+ *  - `not-found-or-forbidden` — genuine 403/404 (Cloud makes these
+ *    indistinguishable, so no false precision is invented for this pair);
+ *  - `auth-failed` — 401 (bad/expired credentials);
+ *  - `rate-limited` — 429 after the client's retries were exhausted;
+ *  - `transient-error` — a 5xx-after-retries or a raw network failure, carrying
+ *    the underlying message.
+ *
+ * An `AbortError` (host cancellation) is rethrown by the loader, never swallowed
+ * into an outcome.
+ */
+export type IncludeLookupOutcome =
+  | { kind: "resolved"; page: ConfluencePageDetails }
+  | { kind: "ambiguous"; count: number; page: ConfluencePageDetails }
+  | { kind: "not-found-or-forbidden" }
+  | { kind: "auth-failed" }
+  | { kind: "rate-limited" }
+  | { kind: "transient-error"; message: string };
 
 /** A page's owner (G1) — Cloud ownership is transferable, so ≠ `createdBy`. */
 export interface PageOwner {
@@ -76,6 +109,15 @@ export interface ResolveDeps {
    * hosts wire every per-site round-trip through one `deps` bag.
    */
   getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+  /**
+   * Fetch a page referenced by `$scroll.includepage.(…)` (spec 005 D1). Like
+   * {@link getSpaceLogo}, it is consumed by the export orchestrator's INCLUDE
+   * pass (`runIncludePass`), NOT by the text resolver — it lives here so hosts
+   * wire every per-site round-trip through one deps bag. Returns a discriminated
+   * {@link IncludeLookupOutcome} so each failure class keeps its own report
+   * note; a host builds it with {@link import("./include-lookup.js").buildGetIncludedPage}.
+   */
+  getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 }
 
 /**
@@ -209,6 +251,14 @@ export function resolveOne(
       return emailOrNote(currentUser?.email, raw, notes);
     case "$scroll.exporter.name":
       return resolveDcName(currentUser?.displayName, raw, notes);
+
+    // $scroll.includepage is `supported` but resolves to OOXML, not text — the
+    // export orchestrator's INCLUDE pass swaps its paragraph for the included
+    // page's body (mirroring $scroll.content / the logo pass). It falls through
+    // to the `default:` branch below, returning "" for the text path: any
+    // occurrence the include pass leaves in place (invalid args, fetch failure,
+    // or a non-atomic paragraph) is then blanked by preprocessScrollText, so no
+    // literal survives.
 
     case "$scroll.template.name":
       return template.name;

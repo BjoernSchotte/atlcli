@@ -425,3 +425,35 @@ describe("resolvePlaceholders — concurrent dep fetching (perf regression)", ()
     ]);
   });
 });
+
+describe("$scroll.includepage — text path is inert (spec 005 D1)", () => {
+  it("resolves to '' via the text path without ever calling getIncludedPage", async () => {
+    let includeCalls = 0;
+    const getIncludedPage = async () => {
+      includeCalls += 1;
+      return { kind: "not-found-or-forbidden" as const };
+    };
+    const res = await resolvePlaceholders(
+      ["$scroll.includepage.(ENG:Imprint)", "$scroll.title"],
+      ctx,
+      { getIncludedPage }
+    );
+    // The include token blanks in the values map (the document pass owns the
+    // real rendering), the fetcher is NOT called by the text resolver, and the
+    // supported base never appears in unsupportedNames.
+    expect(res.values.get("$scroll.includepage.(ENG:Imprint)")).toBe("");
+    expect(includeCalls).toBe(0);
+    expect(res.unsupportedNames).not.toContain("$scroll.includepage");
+  });
+});
+
+describe("$scroll.metadata — unsupported note carries the remedy (spec 005 D2)", () => {
+  it("emits placeholder-unsupported with the content-property remedy text", async () => {
+    const res = await resolvePlaceholders(["$scroll.metadata.(docNumber)"], ctx, {});
+    expect(res.values.get("$scroll.metadata.(docNumber)")).toBe("");
+    const note = res.notes.find((n) => n.code === "placeholder-unsupported");
+    expect(note).toBeDefined();
+    expect(note?.message).toContain("content property");
+    expect(res.unsupportedNames).toContain("$scroll.metadata");
+  });
+});

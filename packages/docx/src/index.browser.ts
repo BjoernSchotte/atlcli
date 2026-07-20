@@ -15,6 +15,7 @@ export * from "./placeholder-map.js";
 export * from "./dateformat.js";
 export * from "./scan.js";
 export * from "./resolver.js";
+export * from "./include-lookup.js";
 export * from "./serialize.js";
 // The mermaid renderer is the format-agnostic `@atlcli/diagram` adapter
 // (shared with the PDF path, spec 007); re-exported here so DOCX consumers
