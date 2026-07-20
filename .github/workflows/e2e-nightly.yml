@@ -1,0 +1,104 @@
+# Nightly live-tenant E2E (spec 011 "E2E resource discipline").
+#
+# WHY NIGHTLY AND NEVER PER-PR
+# ----------------------------
+# Everything in this workflow talks to the real Atlassian Cloud tenant:
+#
+#   * Rate limits — every case spends real REST budget shared with human users
+#     of the tenant. A per-PR trigger would multiply that by the PR rate.
+#   * Space history — created and deleted pages leave permanent entries in the
+#     DOCSY page history and in activity feeds. Cheap once a night, noise if it
+#     runs on every push.
+#   * Credentials — the tenant token is a repository secret. Fork PRs must
+#     never see it, which per-PR triggers cannot guarantee (`pull_request_target`
+#     would leak it). So: `schedule` and `workflow_dispatch` only, main only,
+#     and an explicit repository guard so forks running this file get nothing.
+#
+# RESOURCE DISCIPLINE
+# -------------------
+# Each E2E case cleans up after itself in a `finally` block
+# (`apps/cli/src/e2e/resources.ts`), so the tenant is already clean when the
+# test step ends. The sweeper below is RECOVERY ONLY, for what a crashed
+# process or a cancelled job could not delete — which is why it runs with
+# `if: always()`.
+#
+# The sweeper only ever deletes resources carrying the `atlcli-e2e-run-id`
+# ownership marker, following the `atlcli-e2e-<feature>-<timestamp>` naming
+# convention, older than 24 h, in space DOCSY / project ATLCLI, and it aborts
+# fail-closed if it ever selects more than 50 resources. Deliberately retained
+# DOCSY fixtures carry no marker and are therefore unreachable.
+#
+# See: src/content/docs/contributing.md — "E2E resources"
+
+name: E2E Nightly
+
+on:
+  schedule:
+    # 03:17 UTC — off the hour to avoid the GitHub-wide cron stampede.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+# Live tenant writes must never overlap: two concurrent sweeps or two concurrent
+# E2E runs would race for the same DOCSY fixtures.
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Live E2E + recovery sweep
+    runs-on: ubuntu-latest
+    # Never on forks (they have no secrets and must not be handed any), and
+    # never off main.
+    if: github.repository == 'BjoernSchotte/atlcli' && github.ref == 'refs/heads/main'
+    timeout-minutes: 45
+
+    env:
+      ATLCLI_E2E: "1"
+      ATLCLI_E2E_PROFILE: mayflower
+      ATLCLI_BASE_URL: ${{ secrets.ATLCLI_E2E_BASE_URL }}
+      ATLCLI_EMAIL: ${{ secrets.ATLCLI_E2E_EMAIL }}
+      ATLCLI_API_TOKEN: ${{ secrets.ATLCLI_E2E_API_TOKEN }}
+      ATLCLI_E2E_PAGE_ID: ${{ vars.ATLCLI_E2E_PAGE_ID }}
+      ATLCLI_E2E_TREE_ROOT_ID: ${{ vars.ATLCLI_E2E_TREE_ROOT_ID }}
+      ATLCLI_DISABLE_UPDATE_CHECK: "1"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify tenant credentials are present
+        run: |
+          if [ -z "$ATLCLI_BASE_URL" ] || [ -z "$ATLCLI_API_TOKEN" ]; then
+            echo "::error::ATLCLI_E2E_BASE_URL / ATLCLI_E2E_API_TOKEN secrets are not configured."
+            exit 1
+          fi
+
+      # The E2E suites are gated behind ATLCLI_E2E=1 and skip themselves
+      # otherwise, so this step is a no-op for anyone running it without a tenant.
+      - name: Run live E2E cases
+        id: e2e
+        run: bun --conditions=development test apps/cli/src/commands/*.e2e.test.ts
+
+      # RECOVERY ONLY. Runs even when the E2E step failed or was cancelled —
+      # that is exactly the case where per-test `finally` cleanup did not get to
+      # run and residue is left behind.
+      - name: Recovery sweep of E2E residue
+        if: always()
+        run: bun apps/cli/src/e2e/cleanup.ts --force --profile mayflower
+
+      # A dry run of the same query, published as a log, so an operator can see
+      # what the sweeper considered protected and why.
+      - name: Report remaining E2E residue
+        if: always()
+        run: bun apps/cli/src/e2e/cleanup.ts --profile mayflower
