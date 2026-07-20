@@ -189,6 +189,12 @@ function page(
  * and a paragraph plus an in-page anchor + a link to a sibling's anchor, so the
  * compose step must offset heading levels, insert chapter page breaks, and keep
  * cross-page anchors resolvable (no dangling-link diagnostics).
+ *
+ * Forward-provisioned for conformance **case 002 `scope`**
+ * (`apps/browser-export-harness/src/scope-case.ts`, not yet written): that case
+ * will drive these nodes through `composeChapters` → both engines. Committed
+ * ahead of the case so the fixture contract lives in one place when 002's
+ * harness case lands.
  */
 export const SCOPE_TREE_NODES: readonly ExportNode[] = [
   page("root", "Handbook", 0, 0, null, [

@@ -8,7 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import { unzipDocx } from "@atlcli/docx/browser";
 import { buildDocx, para, stylesXml } from "@atlcli/docx/fixtures";
-import { decodePng, encodeRgbaPng } from "./png-codec.js";
+import { decodePng, encodeRgbaPng, encodeRgbaPngWithFilter, type PngFilterType } from "./png-codec.js";
 import {
   compareDocxParity,
   comparePdfParity,
@@ -48,6 +48,25 @@ function rgbaImage(
   return rgba;
 }
 
+/** Seeded PRNG so the random-image fixtures are deterministic across runs. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A busy RGBA image (varied per-channel + non-trivial alpha) at width x height. */
+function randomRgba(width: number, height: number, seed: number): Uint8Array {
+  const rand = mulberry32(seed);
+  const rgba = new Uint8Array(width * height * 4);
+  for (let i = 0; i < rgba.length; i++) rgba[i] = Math.floor(rand() * 256);
+  return rgba;
+}
+
 describe("png codec round-trip", () => {
   it("decodes what it encodes (filter 0 + zlib)", () => {
     const rgba = rgbaImage(16, 16, { x0: 4, y0: 4, x1: 12, y1: 12 });
@@ -57,6 +76,34 @@ describe("png codec round-trip", () => {
     expect(decoded.height).toBe(16);
     expect(decoded.hasAlpha).toBe(true);
     expect(Array.from(decoded.rgba)).toEqual(Array.from(rgba));
+  });
+
+  // Exercise EVERY decode filter branch (Sub/Up/Average/Paeth) — real canvas /
+  // resvg PNGs use these, so an unverified branch could silently corrupt RGBA
+  // and produce false parity verdicts. Non-square 23x17 dims catch stride bugs;
+  // the busy random image (with alpha) makes each filter's prediction non-trivial.
+  const filters: PngFilterType[] = [0, 1, 2, 3, 4];
+  for (const filter of filters) {
+    it(`round-trips a 23x17 random RGBA image through filter ${filter}`, () => {
+      const width = 23;
+      const height = 17;
+      const rgba = randomRgba(width, height, 0x1234 + filter);
+      const png = encodeRgbaPngWithFilter(width, height, rgba, filter);
+      const decoded = decodePng(png);
+      expect(decoded.width).toBe(width);
+      expect(decoded.height).toBe(height);
+      expect(decoded.hasAlpha).toBe(true);
+      expect(Array.from(decoded.rgba)).toEqual(Array.from(rgba));
+    });
+  }
+
+  it("all five filters decode a shared image to identical pixels", () => {
+    const rgba = randomRgba(23, 17, 0xabcdef);
+    const reference = Array.from(decodePng(encodeRgbaPngWithFilter(23, 17, rgba, 0)).rgba);
+    for (const filter of [1, 2, 3, 4] as PngFilterType[]) {
+      const decoded = decodePng(encodeRgbaPngWithFilter(23, 17, rgba, filter));
+      expect(Array.from(decoded.rgba)).toEqual(reference);
+    }
   });
 });
 

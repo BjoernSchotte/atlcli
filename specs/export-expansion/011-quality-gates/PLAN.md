@@ -287,6 +287,12 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       the case's `ExportNote`s (code, severity, count, failure phase —
       excludes timing and host-specific free text) alongside the digests,
       so the parity gate below can compare reports, not only bytes.
+      *(Scope this round: `pdf-settings` emits sha256 digests + a report-note
+      projection (`emitsDigests: true`), and `check-parity.ts` consumes them.
+      The DOCX per-part digest map and the folder-lane cases (001–004) emit
+      their digests as each case lands; the comparison primitives
+      (`compareDocxParity`, per-part raster metric) are already built and
+      unit-tested in `parity-compare.ts`.)*
 - [x] **Shape-parity gate**: `apps/browser-export-harness/scripts/check-parity.ts`
       (Bun) — runs the same `packages/export-fixtures` fixtures through the
       node/Bun entry points (`@atlcli/docx` node adapters, T3.1 compile
@@ -479,11 +485,21 @@ budget).**
 
 - [x] **Cross-plan SVG policy conformance gate** (does not implement the
       sanitizer — 006 does): `packages/export-fixtures/src/svg-corpus.ts`,
-      *(Done for the PDF engine via `preparePdfDocument`; CSS `url()`/`@import`
-      cases are pinned as documented `pending-006` gaps and tighten to
-      `must-reject` when 006's parser-based `assertSafeSvg` lands. The DOCX
-      side — `packages/docx/src/image.ts`, owned by parallel 006 — is not yet
-      wired; the both-engines-agree assertion joins when 006 merges.)*
+      *(Done for the PDF engine via `preparePdfDocument`. Full corpus coverage
+      per this section: `script`/`foreignObject`/`on*`/external-`href`+`xlink`/
+      `javascript:`/`vbscript:`/external-DTD-entity → asserted `must-reject`
+      today. `utf8-bom-script` → `must-reject` (decoder strips the BOM, the
+      sanitizer catches it). `utf16le-bom-script` → asserted `must-reject`, but
+      **the defense today is the media-type sniff, NOT `findSvgSafetyViolation`,
+      which is blind to UTF-16 payloads** — NAMED GAP for 006 to close by
+      decoding-by-BOM before scanning (if the sniff becomes encoding-aware
+      first, the test flips to embedded and fails, catching the regression).
+      Remaining `pending-006` gaps the current regex sanitizer accepts, each
+      pinned by a passing test that flips when closed: CSS `url()` in a
+      `<style>` body, CSS `@import` in a `<style>` body, and CSS `url()` in a
+      `style="…"` attribute. The DOCX side — `packages/docx/src/image.ts`,
+      owned by parallel 006 — is not yet wired; the both-engines-agree
+      assertion joins when 006 merges.)*
       an adversarial SVG fixture set covering `script`/`foreignObject`/`on*`/
       external-`href` (today's regex baseline) **plus** CSS-carried
       references (`url(...)`/`@import` in `<style>` bodies and `style="…"`

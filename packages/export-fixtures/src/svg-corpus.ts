@@ -18,10 +18,30 @@ export interface SvgCase {
   id: string;
   category: SvgCaseCategory;
   note: string;
+  /** The SVG source, UTF-8 encoded by consumers unless `bytes` is provided. */
   svg: string;
+  /**
+   * Raw bytes to feed instead of `new TextEncoder().encode(svg)` — for
+   * encoding-variant cases (UTF-16/BOM) that a string field cannot represent.
+   */
+  bytes?: Uint8Array;
 }
 
 const NS = 'xmlns="http://www.w3.org/2000/svg"';
+
+/** UTF-16LE bytes with a BOM (0xFF 0xFE) — for the encoding-variant case. */
+function utf16leWithBom(source: string): Uint8Array {
+  const out = new Uint8Array(2 + source.length * 2);
+  out[0] = 0xff;
+  out[1] = 0xfe;
+  for (let i = 0; i < source.length; i++) {
+    out[2 + i * 2] = source.charCodeAt(i) & 0xff;
+    out[2 + i * 2 + 1] = (source.charCodeAt(i) >> 8) & 0xff;
+  }
+  return out;
+}
+
+const SCRIPT_PAYLOAD = `<svg ${NS}><script>alert(1)</script><rect/></svg>`;
 
 export const SVG_CORPUS: readonly SvgCase[] = [
   {
@@ -67,10 +87,34 @@ export const SVG_CORPUS: readonly SvgCase[] = [
     svg: `<svg ${NS}><a href="javascript:alert(1)"><rect/></a></svg>`,
   },
   {
+    id: "vbscript-scheme",
+    category: "must-reject",
+    note: "vbscript: URI scheme in an anchor",
+    svg: `<svg ${NS}><a href="vbscript:msgbox(1)"><rect/></a></svg>`,
+  },
+  {
     id: "external-dtd-entity",
     category: "must-reject",
     note: "external DTD / SYSTEM entity (XXE)",
     svg: `<!DOCTYPE svg [<!ENTITY x SYSTEM "http://evil.example/x">]><svg ${NS}/>`,
+  },
+  {
+    id: "utf8-bom-script",
+    category: "must-reject",
+    note: "UTF-8 BOM prefix + <script> — decoder strips the BOM, sanitizer catches it",
+    svg: `﻿${SCRIPT_PAYLOAD}`,
+  },
+  {
+    id: "utf16le-bom-script",
+    category: "must-reject",
+    note:
+      "UTF-16LE+BOM <script> — rejected TODAY by the media-type sniff (bytes " +
+      "don't decode to `<svg` as UTF-8), NOT by findSvgSafetyViolation, which " +
+      "is blind to UTF-16 (named gap: 006's assertSafeSvg must decode by BOM " +
+      "before scanning; if the sniff ever becomes encoding-aware first, this " +
+      "case flips to embedded and the test fails, catching the regression)",
+    svg: SCRIPT_PAYLOAD,
+    bytes: utf16leWithBom(SCRIPT_PAYLOAD),
   },
   {
     id: "css-url-in-style",

@@ -56,6 +56,79 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
 
 // --- encode -----------------------------------------------------------------
 
+/** PNG scanline filter types (0=None, 1=Sub, 2=Up, 3=Average, 4=Paeth). */
+export type PngFilterType = 0 | 1 | 2 | 3 | 4;
+
+const RGBA_BPP = 4;
+
+/**
+ * Apply a single PNG scanline filter to one row (encode direction). `prev` is
+ * the RAW (unfiltered) previous scanline. This is the exact inverse of the
+ * reconstruction in `decodePng`, so a filtered→decoded round-trip proves BOTH
+ * directions of every filter branch.
+ */
+function applyFilter(
+  filter: PngFilterType,
+  cur: Uint8Array,
+  prev: Uint8Array,
+  out: Uint8Array,
+): void {
+  for (let x = 0; x < cur.length; x++) {
+    const a = x >= RGBA_BPP ? cur[x - RGBA_BPP] : 0;
+    const b = prev[x];
+    const c = x >= RGBA_BPP ? prev[x - RGBA_BPP] : 0;
+    let value: number;
+    switch (filter) {
+      case 0:
+        value = cur[x];
+        break;
+      case 1:
+        value = cur[x] - a;
+        break;
+      case 2:
+        value = cur[x] - b;
+        break;
+      case 3:
+        value = cur[x] - ((a + b) >> 1);
+        break;
+      case 4:
+        value = cur[x] - paeth(a, b, c);
+        break;
+    }
+    out[x] = value & 0xff;
+  }
+}
+
+/**
+ * Encode packed RGBA into a real colour-type-6 PNG, forcing `filter` on every
+ * scanline. `encodeRgbaPng` is the filter-0 shorthand. The forced-filter form
+ * exists so tests can drive the Sub/Up/Average/Paeth decode branches that real
+ * canvas/resvg output uses — otherwise those branches would be dead-tested.
+ */
+export function encodeRgbaPngWithFilter(
+  width: number,
+  height: number,
+  rgba: Uint8Array,
+  filter: PngFilterType,
+): Uint8Array {
+  if (rgba.length !== width * height * 4) {
+    throw new Error(`encodeRgbaPngWithFilter: expected ${width * height * 4} RGBA bytes, got ${rgba.length}.`);
+  }
+  const stride = width * 4;
+  const raw = new Uint8Array(height * (stride + 1));
+  const prev = new Uint8Array(stride); // raw previous scanline (zero for row 0)
+  for (let y = 0; y < height; y++) {
+    const cur = rgba.subarray(y * stride, y * stride + stride);
+    raw[y * (stride + 1)] = filter;
+    const filtered = raw.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
+    applyFilter(filter, cur, prev, filtered);
+    prev.set(cur);
+  }
+  const idat = new Uint8Array(deflateSync(raw));
+
+  return assemblePng(width, height, idat);
+}
+
 /** Encode packed RGBA pixels (4 bytes/pixel) into a real colour-type-6 PNG. */
 export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Uint8Array {
   if (rgba.length !== width * height * 4) {
@@ -69,6 +142,11 @@ export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): 
     raw.set(rgba.subarray(y * stride, y * stride + stride), y * (stride + 1) + 1);
   }
   const idat = new Uint8Array(deflateSync(raw));
+
+  return assemblePng(width, height, idat);
+}
+
+function assemblePng(width: number, height: number, idat: Uint8Array): Uint8Array {
 
   const ihdr = new Uint8Array(13);
   const ihdrView = new DataView(ihdr.buffer);
@@ -103,7 +181,14 @@ function paeth(a: number, b: number, c: number): number {
   return c;
 }
 
-/** Decode a colour-type 2/6, 8-bit, non-interlaced PNG into packed RGBA. */
+/**
+ * Decode a colour-type 2/6, 8-bit, non-interlaced PNG into packed RGBA.
+ *
+ * Chunk CRC-32s are intentionally NOT validated on decode: this codec only ever
+ * decodes bytes produced by our own engines / pinned rasterizers (trusted
+ * input), so a CRC check would add cost without catching a real failure mode —
+ * a corrupt IDAT surfaces as an inflate error instead.
+ */
 export function decodePng(bytes: Uint8Array): DecodedImage {
   for (let i = 0; i < PNG_SIGNATURE.length; i++) {
     if (bytes[i] !== PNG_SIGNATURE[i]) throw new Error("decodePng: not a PNG (bad signature).");

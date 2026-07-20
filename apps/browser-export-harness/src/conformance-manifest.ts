@@ -62,13 +62,17 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
 ];
 
 /**
- * The exact set of case ids expected to be registered given the feature folders
- * that have LANDED (001, 002, 003, 004, 007, 008). The drift check
+ * The exact set of conformance-CASE ids registered so far. The drift check
  * (`assert-case-manifest.ts`) fails if the manifest's id set diverges — an
- * unregistered or duplicated case is caught before merge. When a pending
- * folder's case lands (002 `scope`, 003 `content-compat`, 004 `macros`, 001
- * `blocks`, plus the parallel 005 `placeholders` / 006 `docx-quality`), add its
- * id here in the same PR.
+ * unregistered or duplicated case is caught before merge.
+ *
+ * As of this round only the general `docx`/`pdf`/`pdf-abort` contracts and the
+ * `pdf-settings` (007) feature case have landed. The feature folders 001–004
+ * are MERGED but their harness cases are not written yet — each lands with its
+ * folder's follow-up PR: 002 `scope`, 003 `content-compat`, 004 `macros`, 001
+ * `blocks` (startable now), plus the parallel 005 `placeholders` / 006
+ * `docx-quality` (gated on those unmerged specs). Add each id here in the same
+ * PR that adds its case + registry entry.
  */
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-abort",
