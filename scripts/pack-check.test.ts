@@ -112,6 +112,18 @@ describe("pack-check (spec 009)", () => {
       if (build.exitCode !== 0) {
         throw new Error(`turbo build failed:\n${build.stdout}\n${build.stderr}`);
       }
+
+      // We pack with `--ignore-scripts` (see the pack test below) to make the
+      // manifest snapshot deterministic, so the non-strip prepack side effects
+      // — pinned PDF fonts (`@atlcli/pdf`) and the vendored typst glue/wasm
+      // (`@atlcli/pdf-compiler-browser`) — must already be on disk. Both scripts
+      // are idempotent verify-or-produce, so this is a no-op when present.
+      for (const script of ["fonts:ensure", "vendor:typst"]) {
+        const res = run(["bun", "run", script], repoRoot);
+        if (res.exitCode !== 0) {
+          throw new Error(`bun run ${script} failed:\n${res.stdout}\n${res.stderr}`);
+        }
+      }
     },
     180000,
   );
@@ -133,15 +145,30 @@ describe("pack-check (spec 009)", () => {
         const dest = join(scratch, pkg.name.replace(/[^a-z0-9-]/gi, "_"));
         mkdirSync(dest, { recursive: true });
 
+        // We strip the development condition IN-PROCESS and pack with
+        // `--ignore-scripts`, rather than letting the package's own
+        // prepack/postpack do it. Reason: `bun pm pack` runs prepack/postpack as
+        // spawned subprocesses, and their strip (prepack) / restore (postpack)
+        // timing relative to bun's own manifest snapshot is not deterministic
+        // across platforms — on Linux CI the snapshot could capture the manifest
+        // before the spawned strip landed (or after an early restore), leaving
+        // the `development` condition in the tarball (observed for
+        // @atlcli/confluence, the first package packed). Doing the strip here —
+        // a synchronous, atomic write in this single process — makes the
+        // snapshot deterministic. The real prepack/postpack scripts (unit-tested
+        // in strip-dev-condition.test.ts and used by the release/publish path)
+        // are unchanged; the non-strip prepack artifacts (fonts, vendored glue)
+        // are provisioned in the build step above.
         try {
-          const res = run(["bun", "pm", "pack", "--destination", dest], pkg.dir);
+          runStripDevCondition("strip", pkg.dir, () => {});
+          const res = run(["bun", "pm", "pack", "--ignore-scripts", "--destination", dest], pkg.dir);
           expect(
             res.exitCode,
             `bun pm pack failed for ${pkg.name}:\n${res.stdout}\n${res.stderr}`,
           ).toBe(0);
         } finally {
-          // Safety net for a pack that failed between prepack and postpack:
-          // restore is an idempotent no-op when postpack already ran.
+          // Restore the workspace manifest. Idempotent: a no-backup no-op if a
+          // failure between strip and here already restored it.
           runStripDevCondition("restore", pkg.dir, () => {});
         }
 
@@ -149,7 +176,7 @@ describe("pack-check (spec 009)", () => {
         expect(tarballs.length, `${pkg.name}: expected exactly one tarball in ${dest}`).toBe(1);
         const tarball = join(dest, tarballs[0]!);
 
-        // postpack must have restored the workspace manifest (tree clean):
+        // The restore must have put the workspace manifest back (tree clean):
         // the on-disk manifest still carries the development DX condition and
         // no prepack backup file is left behind.
         const onDisk = readFileSync(join(pkg.dir, "package.json"), "utf8");

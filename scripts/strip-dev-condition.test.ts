@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -119,6 +119,41 @@ describe("strip-dev-condition (spec 009)", () => {
     runStripDevCondition("restore", dir, () => {});
     expect(readFileSync(manifestPath, "utf8")).toBe(original);
     expect(existsSync(join(dir, BACKUP_BASENAME))).toBe(false);
+  });
+
+  it("strip writes atomically: a reader always sees complete, valid JSON and no temp file leaks", () => {
+    // Regression for the pack-check race (the tarball snapshot capturing a
+    // torn/unstripped manifest): every strip/restore must land as a single
+    // atomic rename so a concurrent reader (bun's pack snapshot) never observes
+    // a truncated manifest, and no `.tmp-*` scratch file is ever left behind.
+    const dir = mkdtempSync(join(tmpdir(), "atlcli-strip-dev-atomic-"));
+    const manifestPath = join(dir, "package.json");
+    const original = `${JSON.stringify(
+      {
+        name: "@atlcli/example",
+        exports: { ".": { development: "./src/index.ts", default: "./dist/index.js" } },
+      },
+      null,
+      2,
+    )}\n`;
+    writeFileSync(manifestPath, original);
+
+    const leaked = (): string[] => readdirSync(dir).filter((f) => f.includes(".tmp-"));
+
+    for (let i = 0; i < 25; i++) {
+      runStripDevCondition("strip", dir, () => {});
+      // "Reader" observing between strip and restore: must be complete, valid,
+      // and actually stripped — never a half-written or original manifest.
+      const seen = readFileSync(manifestPath, "utf8");
+      expect(() => JSON.parse(seen)).not.toThrow();
+      expect(seen).not.toContain("development");
+      expect(leaked(), "atomic write leaked a temp file").toEqual([]);
+
+      runStripDevCondition("restore", dir, () => {});
+      expect(readFileSync(manifestPath, "utf8")).toBe(original);
+      expect(existsSync(join(dir, BACKUP_BASENAME))).toBe(false);
+      expect(leaked(), "atomic restore leaked a temp file").toEqual([]);
+    }
   });
 
   it("every publishable package's real manifest strips to a src-free exports map", async () => {

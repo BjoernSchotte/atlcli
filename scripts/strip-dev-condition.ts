@@ -18,10 +18,27 @@
  * `restore` puts the byte-identical original back and removes the backup, so
  * the working tree ends clean after a successful pack.
  */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const BACKUP_BASENAME = ".package.json.prepack-backup";
+
+/**
+ * Write `contents` to `path` atomically: write a uniquely-named temp file in
+ * the same directory, then `rename` it over the target. `rename` within a
+ * filesystem is atomic, so a concurrent reader (e.g. `bun pm pack` snapshotting
+ * the manifest) always sees either the old or the new complete file — never a
+ * truncated or half-written one. The backup basename stays stable (prepack and
+ * postpack run as SEPARATE processes and must agree on it), so the atomicity —
+ * not a per-pid name — is what prevents torn reads.
+ */
+function writeFileAtomic(path: string, contents: string): void {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  writeFileSync(tmp, contents);
+  renameSync(tmp, path);
+}
 
 /**
  * Recursively remove every `development` condition from an `exports`-shaped
@@ -75,9 +92,9 @@ export function runStripDevCondition(
       );
     }
     const original = readFileSync(manifestPath, "utf8");
-    writeFileSync(backupPath, original);
+    writeFileAtomic(backupPath, original);
     const stripped = stripManifest(JSON.parse(original) as Record<string, unknown>);
-    writeFileSync(manifestPath, `${JSON.stringify(stripped, null, 2)}\n`);
+    writeFileAtomic(manifestPath, `${JSON.stringify(stripped, null, 2)}\n`);
     log(`strip-dev-condition: stripped development conditions from ${manifestPath}`);
     return { action: "stripped", staleBackupReplaced };
   }
@@ -88,7 +105,7 @@ export function runStripDevCondition(
     );
     return { action: "no-backup" };
   }
-  writeFileSync(manifestPath, readFileSync(backupPath, "utf8"));
+  writeFileAtomic(manifestPath, readFileSync(backupPath, "utf8"));
   rmSync(backupPath);
   log(`strip-dev-condition: restored ${manifestPath}`);
   return { action: "restored" };
