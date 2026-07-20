@@ -292,7 +292,7 @@ export declare class TemplatePackError extends Error {
 }
 
 // export: TemplatePackErrorKind
-export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "missing-manifest" | "bad-manifest" | "missing-entry";
+export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "missing-manifest" | "bad-manifest" | "missing-entry";
 
 // export: TemplateProvenance
 export interface TemplateProvenance {
@@ -708,7 +708,7 @@ export declare class TemplatePackError extends Error {
 }
 
 // export: TemplatePackErrorKind
-export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "missing-manifest" | "bad-manifest" | "missing-entry";
+export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "missing-manifest" | "bad-manifest" | "missing-entry";
 
 // export: TemplateProvenance
 export interface TemplateProvenance {
@@ -1124,7 +1124,7 @@ export declare class TemplatePackError extends Error {
 }
 
 // export: TemplatePackErrorKind
-export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "missing-manifest" | "bad-manifest" | "missing-entry";
+export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "missing-manifest" | "bad-manifest" | "missing-entry";
 
 // export: TemplateProvenance
 export interface TemplateProvenance {
@@ -1540,7 +1540,7 @@ export declare class TemplatePackError extends Error {
 }
 
 // export: TemplatePackErrorKind
-export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "missing-manifest" | "bad-manifest" | "missing-entry";
+export type TemplatePackErrorKind = "too-large-archive" | "not-zip" | "too-many-entries" | "path-traversal" | "invalid-path" | "symlink" | "file-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "missing-manifest" | "bad-manifest" | "missing-entry";
 
 // export: TemplateProvenance
 export interface TemplateProvenance {
