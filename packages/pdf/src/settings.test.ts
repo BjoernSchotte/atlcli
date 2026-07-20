@@ -321,6 +321,33 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
     expect(resolvePdfSettings({}, { locale: "de" }).labels.contents).toBe("Inhalt");
     expect(resolvePdfSettings({}, { locale: "en" }).labels.contents).toBe("Contents");
   });
+
+  // Layer 2 of the label-injection defence: even a manifest object that never
+  // went through validateManifest (constructed directly, or from a future
+  // schema) can only contribute the DECLARED v1 label vocabulary. An unknown
+  // key — hostile or merely unexpected — never reaches emission.
+  it("resolves only the declared document-label vocabulary, dropping unknown keys", () => {
+    const hostile = 'x: panic("pwned"), y';
+    const forged = {
+      ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+      localization: {
+        defaultLocale: "en",
+        fallbackLocale: "en",
+        locales: {
+          en: {
+            template: { name: "T", description: "D" },
+            document: { contents: "Contents", [hostile]: "boom", unexpectedButSafe: "x" },
+          },
+        },
+      },
+    };
+    const labels = resolveTemplateLabels(forged, "en", undefined);
+    expect(labels[hostile]).toBeUndefined();
+    expect(labels.unexpectedButSafe).toBeUndefined();
+    expect(labels.contents).toBe("Contents");
+    // …and what survives is emittable.
+    expect(() => typstSettingsDict({ ...resolvePdfSettings(), labels })).not.toThrow();
+  });
 });
 
 describe("typstSettingsDict", () => {
@@ -395,5 +422,17 @@ describe("typstSettingsDict", () => {
     const dict = typstSettingsDict(resolved);
     expect(dict).toContain('contents: "X\\" #{sys.exit()} \\\\ end"');
     expect(dict).not.toContain('contents: "X" #{sys.exit()}');
+  });
+
+  // Layer 3 of the label-injection defence: a dictionary KEY is emitted
+  // unquoted, so `typstString` cannot protect it. Even if a hostile key somehow
+  // reached the resolved labels (bypassing the manifest import gate AND the
+  // vocabulary filter), emission must hard-fail rather than write it out.
+  it("refuses to emit a label dictionary key that is not a safe identifier", () => {
+    for (const key of ['x: panic("pwned"), y', "#let evil = 1", "a`b", "has space"]) {
+      const resolved = resolvePdfSettings();
+      resolved.labels = { ...resolved.labels, [key]: "boom" };
+      expect(() => typstSettingsDict(resolved)).toThrow(/safe identifier/);
+    }
   });
 });

@@ -167,6 +167,81 @@ describe("validateLocalization", () => {
   });
 });
 
+describe("localization injection hardening (spec 012 security regression)", () => {
+  function withDocument(document: Record<string, string>): Record<string, unknown> {
+    return {
+      defaultLocale: "en",
+      fallbackLocale: "en",
+      locales: { en: { template: { name: "T", description: "D" }, document } },
+    };
+  }
+  function completeDocument(): Record<string, string> {
+    const document: Record<string, string> = {};
+    for (const key of WIKI_PDF_V1_DOCUMENT_LABELS) document[key] = key;
+    return document;
+  }
+
+  // A document-label KEY is interpolated into generated Typst source as a
+  // dictionary key (unquoted), so an unvalidated key escapes the key position
+  // and is evaluated as code. Proven end-to-end before this gate existed:
+  // `x: panic("INJECTED-CODE-RAN"), y` made the real compiler panic.
+  const HOSTILE_KEYS = [
+    'x: panic("INJECTED-CODE-RAN"), y',
+    "#let evil = 1",
+    "a`b",
+    "$x$",
+    "with space",
+    "kebab-case",
+  ];
+
+  for (const key of HOSTILE_KEYS) {
+    it(`rejects the hostile document-label key ${JSON.stringify(key)}`, () => {
+      const document = completeDocument();
+      document[key] = "boom";
+      expect(() =>
+        validateLocalization(withDocument(document), {
+          requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+        })
+      ).toThrow(/key must be a safe identifier/);
+    });
+  }
+
+  it("rejects a hostile document-label VALUE (it reaches Typst source too)", () => {
+    const document = completeDocument();
+    document.contents = 'X" #{sys.exit()}';
+    expect(() =>
+      validateLocalization(withDocument(document), {
+        requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS,
+      })
+    ).toThrow(/metacharacters/);
+  });
+
+  it("rejects a hostile key at the full manifest import gate", () => {
+    const document = completeDocument();
+    document['x: panic("pwned"), y'] = "boom";
+    expect(() =>
+      validateManifest({
+        schemaVersion: 1,
+        id: "builtin.evil",
+        name: "Evil",
+        version: "1.0.0",
+        engine: { kind: "typst", api: "wiki.pdf-template/v1", entry: "atlcli.typ" },
+        localization: withDocument(document),
+      })
+    ).toThrow(/key must be a safe identifier/);
+  });
+
+  it("still accepts legitimate UI copy containing punctuation (host-side only)", () => {
+    const value = withDocument(completeDocument()) as {
+      locales: { en: Record<string, unknown> };
+    };
+    value.locales.en.settingGroups = { branding: 'Branding & "identity"' };
+    expect(() =>
+      validateLocalization(value, { requiredDocumentLabels: WIKI_PDF_V1_DOCUMENT_LABELS })
+    ).not.toThrow();
+  });
+});
+
 describe("validateManifest with design/bindings/localization", () => {
   function base(): Record<string, unknown> {
     const document: Record<string, string> = {};

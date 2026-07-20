@@ -16,6 +16,7 @@
  * Browser-safe: no `node:`/`bun:` imports.
  */
 
+import { assertSafeIdentifier, validateSafeString } from "./design.js";
 import { ManifestValidationError } from "./manifest-error.js";
 
 /** The document-label vocabulary the `wiki.pdf-template/v1` contract defines. */
@@ -87,14 +88,51 @@ function requireString(obj: Record<string, unknown>, key: string, path: string):
   return v;
 }
 
-function validateStringMap(value: unknown, path: string): Record<string, string> {
+/** Max length for UI-only copy (never reaches generated Typst source). */
+const UI_STRING_MAX = 500;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f]/;
+
+/**
+ * A string map whose keys AND values reach generated Typst source (the
+ * `document` labels). Keys are asserted to be safe identifiers — they become
+ * Typst dictionary keys — and values run through the same "no Typst
+ * metacharacters" discipline the design model uses. This is the import gate
+ * that stops a third-party `.wiki-pdf-template` from smuggling code through a
+ * localization entry.
+ */
+function validateCodegenStringMap(value: unknown, path: string): Record<string, string> {
   if (!isObject(value)) fail(path, "must be an object");
   const out: Record<string, string> = {};
   for (const [key, raw] of Object.entries(value)) {
+    assertSafeIdentifier(key, `${path}.${key}`);
     if (typeof raw !== "string") fail(`${path}.${key}`, "must be a string");
+    validateSafeString(raw, `${path}.${key}`);
     out[key] = raw;
   }
   return out;
+}
+
+/**
+ * A string map that stays host-side (UI copy: group/setting/option labels).
+ * These never reach Typst, so punctuation is allowed — but keys are still
+ * bounded and values reject control characters and unbounded length.
+ */
+function validateUiStringMap(value: unknown, path: string): Record<string, string> {
+  if (!isObject(value)) fail(path, "must be an object");
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key.length === 0 || key.length > UI_STRING_MAX) fail(`${path}.${key}`, "invalid key");
+    out[key] = validateUiString(raw, `${path}.${key}`);
+  }
+  return out;
+}
+
+function validateUiString(raw: unknown, path: string): string {
+  if (typeof raw !== "string") fail(path, "must be a string");
+  if (raw.length > UI_STRING_MAX) fail(path, `must be at most ${UI_STRING_MAX} characters`);
+  if (CONTROL_CHAR_RE.test(raw)) fail(path, "must not contain control characters");
+  return raw;
 }
 
 function validateBundle(value: unknown, path: string): LocaleBundle {
@@ -103,13 +141,23 @@ function validateBundle(value: unknown, path: string): LocaleBundle {
   if (value.template !== undefined) {
     if (!isObject(value.template)) fail(`${path}.template`, "must be an object");
     bundle.template = {
-      name: requireString(value.template, "name", `${path}.template`),
-      description: requireString(value.template, "description", `${path}.template`),
+      name: validateUiString(
+        requireString(value.template, "name", `${path}.template`),
+        `${path}.template.name`
+      ),
+      description: validateUiString(
+        requireString(value.template, "description", `${path}.template`),
+        `${path}.template.description`
+      ),
     };
   }
-  if (value.document !== undefined) bundle.document = validateStringMap(value.document, `${path}.document`);
+  // `document` labels reach generated Typst source — hardened keys AND values.
+  if (value.document !== undefined) {
+    bundle.document = validateCodegenStringMap(value.document, `${path}.document`);
+  }
+  // UI copy stays host-side.
   if (value.settingGroups !== undefined) {
-    bundle.settingGroups = validateStringMap(value.settingGroups, `${path}.settingGroups`);
+    bundle.settingGroups = validateUiStringMap(value.settingGroups, `${path}.settingGroups`);
   }
   if (value.settings !== undefined) {
     if (!isObject(value.settings)) fail(`${path}.settings`, "must be an object");
@@ -118,15 +166,13 @@ function validateBundle(value: unknown, path: string): LocaleBundle {
       if (!isObject(raw)) fail(`${path}.settings.${key}`, "must be an object");
       const copy: LocaleSettingCopy = {};
       if (raw.label !== undefined) {
-        if (typeof raw.label !== "string") fail(`${path}.settings.${key}.label`, "must be a string");
-        copy.label = raw.label;
+        copy.label = validateUiString(raw.label, `${path}.settings.${key}.label`);
       }
       if (raw.help !== undefined) {
-        if (typeof raw.help !== "string") fail(`${path}.settings.${key}.help`, "must be a string");
-        copy.help = raw.help;
+        copy.help = validateUiString(raw.help, `${path}.settings.${key}.help`);
       }
       if (raw.options !== undefined) {
-        copy.options = validateStringMap(raw.options, `${path}.settings.${key}.options`);
+        copy.options = validateUiStringMap(raw.options, `${path}.settings.${key}.options`);
       }
       settings[key] = copy;
     }

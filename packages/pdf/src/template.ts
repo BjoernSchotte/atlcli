@@ -35,6 +35,7 @@ import {
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
 import type { WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import { typstString } from "./escape.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
@@ -112,7 +113,7 @@ export function createAtlcliTypstTemplate(
   let current = values.last()
   let pattern = if values.len() == 1 { "1." } else if values.len() == 2 { "a)" } else { "i." }
   text(
-    font: "${F("heading")}",
+    font: ${typstString(F("heading"))},
     size: ${rsize("numbering")},
     weight: "${rweight("numbering")}",
     fill: rgb("${C("muted")}"),
@@ -128,7 +129,7 @@ export function createAtlcliTypstTemplate(
   place(center + horizon, rotate(
     wm.angle * 1deg,
     text(
-      font: "${F("heading")}",
+      font: ${typstString(F("heading"))},
       weight: "bold",
       size: wm.size * 1pt,
       fill: rgb(wm.color)
@@ -150,14 +151,14 @@ export function createAtlcliTypstTemplate(
   let cover-config = features.at("cover", default: (:))
   let outline-config = features.at("outline", default: (:))
 
-  let version-label = labels.at("version", default: "${label("version")}")
-  let exported-label = labels.at("exported", default: "${label("exported")}")
-  let exporter-label = labels.at("exporter", default: "${label("exporter")}")
-  let contents-label = labels.at("contents", default: "${label("contents")}")
-  let end-label = labels.at("endOfDocument", default: "${label("endOfDocument")}")
-  let pages-label = labels.at("pages", default: "${label("pages")}")
-  let space-prefix = labels.at("spacePrefix", default: "${label("spacePrefix")}")
-  let generated-with = labels.at("generatedWith", default: "${label("generatedWith")}")
+  let version-label = labels.at("version", default: ${typstString(label("version"))})
+  let exported-label = labels.at("exported", default: ${typstString(label("exported"))})
+  let exporter-label = labels.at("exporter", default: ${typstString(label("exporter"))})
+  let contents-label = labels.at("contents", default: ${typstString(label("contents"))})
+  let end-label = labels.at("endOfDocument", default: ${typstString(label("endOfDocument"))})
+  let pages-label = labels.at("pages", default: ${typstString(label("pages"))})
+  let space-prefix = labels.at("spacePrefix", default: ${typstString(label("spacePrefix"))})
+  let generated-with = labels.at("generatedWith", default: ${typstString(label("generatedWith"))})
 
   let indigo = rgb(brand.at("accent", default: "${accentDefault}"))
   let org-name = brand.at("organization-name", default: none)
@@ -181,7 +182,7 @@ export function createAtlcliTypstTemplate(
     date: meta.exported-at,
   )
   set text(
-    font: "${F("body")}",
+    font: ${typstString(F("body"))},
     size: ${rsize("body")},
     fill: rgb("${C("ink")}"),
     lang: meta.at("language", default: "en"),
@@ -190,9 +191,9 @@ export function createAtlcliTypstTemplate(
   set par(leading: ${L("paragraphLeading")}, spacing: ${L("paragraphSpacing")}, justify: false)
   set list(
     marker: (
-      [#text(font: "${F("heading")}", fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
-      [#text(font: "${F("heading")}", fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
-      [#text(font: "${F("heading")}", fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
     ),
     body-indent: ${L("listBodyIndent")},
     spacing: ${L("listSpacing")},
@@ -212,7 +213,7 @@ export function createAtlcliTypstTemplate(
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
-        set text(font: "${F("heading")}", size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let header-text = settings.at("header-text", default: none)
         if header-text == none {
           grid(columns: (1fr, auto), meta.title, meta.space)
@@ -224,7 +225,7 @@ export function createAtlcliTypstTemplate(
     },
     footer: context {
       if counter(page).get().first() > 1 {
-        set text(font: "${F("heading")}", size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let footer-text = settings.at("footer-text", default: none)
         if footer-text == none and org-name == none {
           align(center)[#counter(page).display("1")]
@@ -241,15 +242,15 @@ export function createAtlcliTypstTemplate(
   )
 
   show heading.where(level: 1): it => {
-    set text(font: "${F("heading")}", size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
     block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, it)
   }
   show heading.where(level: 2): it => {
-    set text(font: "${F("heading")}", size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
     block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, it)
   }
   show heading.where(level: 3): it => {
-    set text(font: "${F("heading")}", size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
     block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, it)
   }
   show raw.where(block: true): it => block(
@@ -257,10 +258,10 @@ export function createAtlcliTypstTemplate(
     inset: ${L("codeInset")},
     radius: ${L("codeRadius")},
     width: 100%,
-    text(font: "${F("mono")}", size: ${rsize("code")}, it),
+    text(font: ${typstString(F("mono"))}, size: ${rsize("code")}, it),
   )
   show table.cell: it => {
-    set text(font: "${F("heading")}", size: ${rsize("tableCell")}, hyphenate: true)
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: true)
     set par(linebreaks: "optimized")
     it
   }
@@ -268,7 +269,7 @@ export function createAtlcliTypstTemplate(
   if cover-config.at("enabled", default: ${coverDefault}) {
     v(${L("coverTopPad")})
     block(width: ${RN("coverBlockWidth")}%)[
-      #set text(font: "${F("heading")}")
+      #set text(font: ${typstString(F("heading"))})
       #if logo-path != none [
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
@@ -276,7 +277,7 @@ export function createAtlcliTypstTemplate(
       #v(${L("coverEyebrowGap")})
       #block(width: 100%)[
         #set par(leading: ${L("coverTitleLeading")})
-        #text(font: "${roleFont("coverTitle")}", size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
+        #text(font: ${typstString(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
       ]
       #v(${L("coverTitleGap")})
       #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
@@ -305,12 +306,12 @@ export function createAtlcliTypstTemplate(
   set page(fill: cover-paper)
   v(${L("closingTopPad")})
   block(width: ${RN("closingBlockWidth")}%)[
-    #set text(font: "${F("heading")}")
+    #set text(font: ${typstString(F("heading"))})
     #text(size: ${rsize("closingEyebrow")}, weight: "${rweight("closingEyebrow")}", tracking: ${rtrack("closingEyebrow")}, fill: indigo)[#end-label]
     #v(${L("closingEyebrowGap")})
     #block(width: 100%)[
       #set par(leading: ${L("closingTitleLeading")})
-      #text(font: "${roleFont("closingTitle")}", size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
+      #text(font: ${typstString(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
     ]
     #v(${L("closingTitleGap")})
     #line(length: ${L("closingRuleLength")}, stroke: ${L("closingRuleStroke")} + indigo)
@@ -352,7 +353,7 @@ export function createAtlcliTypstTemplate(
     above: ${L("calloutAbove")},
     below: ${L("calloutBelow")},
   )[
-    #set text(font: "${F("heading")}")
+    #set text(font: ${typstString(F("heading"))})
     #if title != none { text(weight: "semibold", fill: colors.last(), title); linebreak() }
     #body
   ]
@@ -362,7 +363,7 @@ export function createAtlcliTypstTemplate(
   fill: rgb(color).lighten(${RN("statusBadgeLighten")}%),
   inset: (x: inset-x, y: ${L("statusBadgeInsetY")}),
   radius: ${L("statusBadgeRadius")},
-  text(font: "${F("mono")}", size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
+  text(font: ${typstString(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
 )
 
 // Every table paragraph receives its real content width. Narrow cells switch
@@ -409,7 +410,7 @@ export function createAtlcliTypstTemplate(
       radius: ${L("denseBadgeRadius")},
     )[
       #set text(
-        font: "${F("mono")}",
+        font: ${typstString(F("mono"))},
         size: ${rsize("statusBadge")},
         weight: "${rweight("statusBadge")}",
         fill: rgb(color),
@@ -426,7 +427,7 @@ export function createAtlcliTypstTemplate(
   column-gutter: ${L("taskGridGutter")},
   align: top,
   text(
-    font: "${F("heading")}",
+    font: ${typstString(F("heading"))},
     size: ${rsize("taskMarker")},
     weight: "${rweight("taskMarker")}",
     fill: rgb(if checked { "${C("taskChecked")}" } else { "${C("taskUnchecked")}" }),

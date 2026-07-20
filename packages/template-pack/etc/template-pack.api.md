@@ -7,6 +7,9 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
 
@@ -410,6 +413,9 @@ export interface WikiPdfTemplateSettingBindingV1 {
 ### Entry point `. (default)`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
 
@@ -813,6 +819,9 @@ export interface WikiPdfTemplateSettingBindingV1 {
 ### Entry point `./browser`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
 
@@ -1216,6 +1225,9 @@ export interface WikiPdfTemplateSettingBindingV1 {
 ### Entry point `./node`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
 

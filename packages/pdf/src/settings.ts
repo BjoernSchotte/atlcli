@@ -423,8 +423,14 @@ export function resolveTemplateLabels(
   const requested = [locale, region].filter(Boolean).join("-") || locale;
   // Walk lowest → highest priority so higher-priority copy wins on merge.
   const chain = localeChain(localization, requested).reverse();
+  // Only the DECLARED v1 document-label vocabulary is resolved. A manifest key
+  // outside it never reaches Typst emission — defence in depth behind the
+  // manifest import gate, so an unexpected key can never become a dictionary
+  // key in generated source.
+  const vocabulary = new Set<string>(WIKI_PDF_V1_DOCUMENT_LABELS);
   for (const bundle of chain) {
     for (const [key, value] of Object.entries(bundle.document ?? {})) {
+      if (!vocabulary.has(key)) continue;
       labels[key] = value;
     }
   }
@@ -437,6 +443,25 @@ export function resolveTemplateLabels(
 function numberLiteral(value: number): string {
   // Validated finite; avoid exponential/`Infinity` forms in Typst source.
   return Object.is(value, -0) ? "0" : String(value);
+}
+
+/** Typst dictionary keys we are willing to interpolate unquoted into source. */
+const EMITTABLE_KEY_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+
+/**
+ * Assert a dictionary key is safe to interpolate into Typst source unquoted.
+ * Keys are the one place `typstString` cannot help: a key is emitted bare, so
+ * an unvalidated key (`x: panic("pwned"), y`) would escape the key position and
+ * be evaluated as code.
+ */
+function assertEmittableKey(key: string, namespace: string): void {
+  if (!EMITTABLE_KEY_RE.test(key)) {
+    throw new PdfSettingsError({
+      path: `${namespace}.${key}`,
+      value: key,
+      constraint: "dictionary key must be a safe identifier ([A-Za-z][A-Za-z0-9]*)",
+    });
+  }
 }
 
 /**
@@ -485,6 +510,11 @@ export function typstSettingsDict(
 
   const labelLines: string[] = ["  labels: ("];
   for (const [key, value] of Object.entries(resolved.labels)) {
+    // Emission guard (defence in depth): a dictionary KEY is interpolated into
+    // Typst source unquoted, so only a safe identifier may pass. An unsafe key
+    // that somehow slipped past the manifest import gate and the vocabulary
+    // filter is a hard failure here, never silently emitted.
+    assertEmittableKey(key, "labels");
     labelLines.push(`    ${key}: ${typstString(value)},`);
   }
   labelLines.push("  ),");

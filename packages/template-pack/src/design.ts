@@ -173,6 +173,22 @@ function validateBoolean(value: unknown, path: string): boolean {
   return value;
 }
 
+/**
+ * Assert a map KEY is a safe, Typst-identifier-shaped string.
+ *
+ * Keys matter as much as values: a manifest key is interpolated into generated
+ * Typst source as a dictionary key, so an unvalidated key like
+ * `x: panic("pwned"), y` would escape the key position and execute as code.
+ * Every manifest map that can reach code generation must run its keys through
+ * this guard.
+ */
+export function assertSafeIdentifier(key: string, path: string): string {
+  if (typeof key !== "string" || !IDENTIFIER_RE.test(key)) {
+    fail(path, "key must be a safe identifier ([A-Za-z][A-Za-z0-9]*)");
+  }
+  return key;
+}
+
 function validateIdentifierMap<T>(
   value: unknown,
   path: string,
@@ -181,7 +197,7 @@ function validateIdentifierMap<T>(
   if (!isObject(value)) fail(path, "must be an object");
   const out: Record<string, T> = {};
   for (const [key, raw] of Object.entries(value)) {
-    if (!IDENTIFIER_RE.test(key)) fail(`${path}.${key}`, "key must be a safe identifier");
+    assertSafeIdentifier(key, `${path}.${key}`);
     out[key] = each(raw, `${path}.${key}`);
   }
   return out;
