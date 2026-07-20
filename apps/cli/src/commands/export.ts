@@ -58,8 +58,21 @@ const __dirname = dirname(__filename);
 export async function handleExport(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
-  opts: OutputOptions
+  rawOpts: OutputOptions
 ): Promise<void> {
+  // `--report json` is a synonym for `--json`: both emit exactly the
+  // `atlcli.export-report/1` schema as the sole stdout document (T3.4), for
+  // every format the help documents it under ("PDF and ts-engine exports").
+  // Normalize ONCE here, above the format branch — this used to live inside
+  // handlePdfExport, so every DOCX path read the un-normalized opts and
+  // `--engine ts --report json` printed the human summary instead of the
+  // report. A malformed `--report <other>` is a usage error.
+  const reportFlag = getFlag(flags, "report");
+  if (reportFlag !== undefined && reportFlag !== "json") {
+    fail(rawOpts, 1, ERROR_CODES.USAGE, `Unknown --report "${reportFlag}". Only "json" is supported.`);
+  }
+  const opts: OutputOptions = { ...rawOpts, json: rawOpts.json || reportFlag === "json" };
+
   // Show help if --help or -h flag is set
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
     output(exportHelp(), opts);
@@ -483,16 +496,10 @@ export async function handleExport(
 async function handlePdfExport(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
-  rawOpts: OutputOptions
+  opts: OutputOptions
 ): Promise<void> {
-  // `--report json` is a synonym for `--json` for the export command: both emit
-  // exactly the `atlcli.export-report/1` schema as the sole stdout document
-  // (T3.4). A malformed `--report <other>` is a usage error.
-  const reportFlag = getFlag(flags, "report");
-  if (reportFlag !== undefined && reportFlag !== "json") {
-    fail(rawOpts, 1, ERROR_CODES.USAGE, `Unknown --report "${reportFlag}". Only "json" is supported.`);
-  }
-  const opts: OutputOptions = { json: rawOpts.json || reportFlag === "json" };
+  // `--report json` is already folded into `opts.json` by handleExport, which
+  // normalizes it for every format.
 
   // Usage errors are reported through the SAME report shape, so `--json` always
   // emits exactly the versioned report — never a second ad hoc error shape.
@@ -1792,6 +1799,8 @@ Options:
                       mermaid diagram rendering, no Python needed; required for
                       tree/space/label export)
   --profile <name>    Use a specific auth profile
+  --report json       Synonym for --json (emit the report to stdout); applies to
+                      PDF and ts-engine DOCX exports alike
 
 PDF Options (--format pdf):
   --out-dir <dir>           Write to a directory with a derived <pageId>-<slug>.pdf
@@ -1801,7 +1810,6 @@ PDF Options (--format pdf):
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
                             honors the SOURCE_DATE_EPOCH env var)
-  --report json             Synonym for --json (emit the report to stdout)
   (--template and --engine are not valid with --format pdf.)
 
 Profile-free auth (CI, any format):
