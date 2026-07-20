@@ -646,9 +646,14 @@ yet.
       scan seam — out of scope here; the scan shows the row as supported and
       the export report carries the truth. Record in
       `docs/reference/` placeholder table.
-- [x] `apps/cli/src/commands/export.ts` (JSON report, line 886 — **new task,
-      not present in an earlier draft despite that draft's own Reference
-      section flagging the gap**): the `--json` report currently maps every
+- [x] `apps/cli/src/commands/export.ts` (JSON report) — **SUPERSEDED by spec
+      008's `atlcli.export-report/1` kernel (see top-of-file implementation
+      note): engine `ExportNote.code`s already surface via `report.issues[].code`
+      and `report.notesByCode`, so the sketched ~~`report.noteDetails`~~ field
+      below was NOT added. The regression test lives in `export-report.test.ts`,
+      and E2E assertions check `issues`/`notesByCode`, not `noteDetails`.** The
+      original sketch is kept below for provenance:
+      the `--json` report currently maps every
       `ExportNote` to a bare `"${level}: ${message}"` string, discarding
       `code` — making this plan's own E2E assertions (`--json` containing
       `includepage-cycle`, see Tests) unverifiable as written, since the
@@ -677,8 +682,10 @@ yet.
       `~/.atlcli/config.json`, including the `config set metadataAliases.<key>
       <content-property-key>` form, if the bridge ships — explicitly note
       the extension has no equivalent UI yet if that's the case at ship
-      time); document `report.noteDetails` as a stable, additive `--json`
-      field.
+      time); ~~document `report.noteDetails` as a stable, additive `--json`
+      field~~ — superseded by 008's kernel; the docs instead document that note
+      `code`s surface via the `atlcli.export-report/1` `issues`/`notesByCode`
+      fields (see top-of-file implementation note).
 
 ### Tests (no mocking)
 
@@ -787,11 +794,11 @@ real Confluence site.
       string, unicode/emoji titles, and the exact resulting CQL clause for a
       representative `title = "…"` construction (pin the literal output, not
       just "no exception").
-- [x] `apps/cli/src/commands/export.test.ts` (or equivalent) — JSON report
-      schema/snapshot test: `report.notes` (strings) and `report.noteDetails`
-      (`{level, code, message}[]`) are both present, same length, and
-      `noteDetails[i].message` matches the tail of `notes[i]`; `cliNotes`
-      (host warnings) appear in `notes` but never in `noteDetails`.
+- [x] `apps/cli/src/commands/export-report.test.ts` — JSON report code-fidelity
+      test (SUPERSEDES the ~~`noteDetails`~~ sketch, per 008's kernel): pins that
+      engine `ExportNote` codes (`includepage-*`) survive `noteToIssue` into
+      `report.issues[].code` and `report.notesByCode`, that every engine note
+      collapses to `warning` severity, and that they appear in `report.warnings`.
 - [ ] E2E (workflow rule; profile `mayflower`, space `DOCSY`, built CLI
       `bun ./dist/index.js`, pattern: `scripts/e2e-template-test.sh`):
       - [ ] create an include-target page in DOCSY with unique sentinel
@@ -803,14 +810,15 @@ real Confluence site.
       - [ ] `atlcli wiki export <pageId> -t <template> -o out.docx --engine ts
             --json`: unzip and assert the sentinel appears in
             `word/document.xml` and `word/header1.xml`, and no `$scroll.`
-            literal survives; assert `report.noteDetails` is present in the
-            `--json` output;
+            literal survives; assert `report.issues`/`report.notesByCode`
+            (008 kernel, NOT ~~`noteDetails`~~) are present in the `--json`
+            output;
       - [ ] cycle path: template including the exported page itself → report
-            (`--json`) `noteDetails` contains an entry with
+            (`--json`) `issues[]` / `notesByCode` contains
             `code: "includepage-cycle"`, export still succeeds;
       - [ ] permission path: include a DOCSY page carrying view restrictions
             the `mayflower` profile's token user cannot read, assert blank
-            output + `includepage-unresolved` in `noteDetails`. If no such
+            output + `includepage-unresolved` in `issues`/`notesByCode`. If no such
             restricted page can be provisioned with this profile's rights,
             fall back to a nonexistent title (same code path by design:
             Cloud 403 ≡ 404) and record the restricted-page case as a
@@ -864,8 +872,10 @@ real Confluence site.
   zero host-specific special cases (classification remains the single source
   for the *static* view; the metadata bridge's per-export resolution
   override is documented as the one deliberate, narrowly-scoped exception).
-- The CLI `--json` report exposes note `code`s (`report.noteDetails`,
-  additive, backward-compatible) so this plan's own E2E acceptance criteria
+- The CLI `--json` report exposes note `code`s (via 008's
+  `atlcli.export-report/1` `report.issues[].code` / `report.notesByCode` —
+  NOT the sketched ~~`report.noteDetails`~~, which was superseded; see the
+  top-of-file implementation note) so this plan's own E2E acceptance criteria
   are actually checkable from the command line.
 - `packages/confluence`'s CQL escaping for the title-form include lookup goes
   through one shared, exported, tested `escapeCqlValue` — not a

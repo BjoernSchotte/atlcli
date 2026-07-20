@@ -1711,6 +1711,43 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     expect(fetchedRefs.some((r) => r.url.includes("/attachments/Imprint/inc.png"))).toBe(true);
   });
 
+  it("embeds an included FOOTER page's Mermaid diagram into footer1.xml.rels, not document.xml.rels", async () => {
+    // The included footer page's ONLY content is a mermaid diagram; the diagram
+    // seam must thread the occurrence's part so the svgBlip/PNG relationships
+    // land in the footer's rels (dangling-relationship regression for diagrams).
+    const diagramPage: ConfluencePageDetails = {
+      id: "Imprint",
+      title: "Imprint",
+      spaceKey: "ENG",
+      storage:
+        '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[graph TD\n  A --> B]]></ac:plain-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content"),
+        footer: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: { ...details, storage: "<p>own body, no diagram</p>" },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: diagramPage }).getIncludedPage },
+      rasterizer: {
+        async rasterize(_svg: string, target: { widthPx: number; heightPx: number }) {
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+    expect(report.renderedDiagrams).toBe(1);
+    const footer = readPart(bytes, "word/footer1.xml");
+    expect(footer).toContain("<w:drawing>");
+    assertBalancedXml(footer);
+    // The diagram's svgBlip/PNG relationships live in the FOOTER's rels…
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain("relationships/image");
+    // …and NOT in the document part (whose own body carries no diagram).
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).not.toContain("relationships/image");
+    expect(readPart(bytes, "word/document.xml")).not.toContain("<w:drawing>");
+  });
+
   it("synthesizes the code style when only an included page carries a code macro", async () => {
     const codePage: ConfluencePageDetails = {
       id: "Imprint",
