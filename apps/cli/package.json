@@ -13,12 +13,17 @@
     "@atlcli/pdf": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/jira": "workspace:*",
+    "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "@resvg/resvg-wasm": "2.6.2"
   },
   "scripts": {
     "start": "bun run src/index.ts",
     "build": "bun run build.ts",
     "build:minify": "bun run build.ts --minify"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
   }
 }

@@ -22,6 +22,13 @@ export interface PdfAssetRef {
    * page-author path.
    */
   trust?: "page" | "export-view";
+  /**
+   * The id of the page the attachment lives on (spec 008 T3.3). Threaded so a
+   * host resolver can disambiguate identically named attachments on different
+   * pages in a tree/space export, instead of colliding on filename alone.
+   * Undefined for external refs and single-page exports without page context.
+   */
+  pageId?: string;
 }
 
 export interface PdfResolvedAsset {
@@ -31,7 +38,12 @@ export interface PdfResolvedAsset {
 }
 
 export interface PdfAssetResolver {
-  resolve(ref: PdfAssetRef): Promise<PdfResolvedAsset>;
+  /**
+   * Resolve an asset. `context.signal` (spec 008 T3.2) lets a Ctrl-C abort an
+   * in-flight image fetch instead of it running to completion and being
+   * downgraded to a soft skip note.
+   */
+  resolve(ref: PdfAssetRef, context?: { signal?: AbortSignal }): Promise<PdfResolvedAsset>;
 }
 
 export interface PreparedPdfAsset {
@@ -205,6 +217,14 @@ export interface PdfExportReport {
    * pages, spec 002). Single-page/normal exports are `true`.
    */
   complete: boolean;
+  /**
+   * Compiler diagnostics from a SUCCESSFUL compile (spec 008 T3.4). Previously
+   * dropped unless the compile failed, which made `--strict` a no-op for real
+   * Typst warnings on an otherwise-valid document; surfaced here so a host can
+   * fold them into its report's issues. Always set by `runPdfExport` (empty for
+   * a clean compile); optional so hand-built report literals stay additive.
+   */
+  compilerDiagnostics?: PdfCompilerDiagnostic[];
   timings: PdfExportTimings;
 }
 

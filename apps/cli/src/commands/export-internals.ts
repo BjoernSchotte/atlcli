@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AttachmentInfo } from "@atlcli/confluence";
+import type { AttachmentInfo, ExportMentionLookup } from "@atlcli/confluence";
 
 const ASSET_CACHE_MAGIC = "atlcli-asset-v1";
 const ASSET_CACHE_HEADER_RE = /^atlcli-asset-v1 ([0-9a-f]{64}) (\d+)$/;
@@ -162,6 +162,26 @@ export function tokenAssetFetcher(client: AssetClient, cache: AssetByteCache): {
       }
       return download(ref, true, signal);
     },
+  };
+}
+
+interface MentionClient {
+  getUsersBulk(accountIds: string[]): Promise<Map<string, { displayName: string | null } | null>>;
+}
+
+/**
+ * Token-auth {@link ExportMentionLookup} backed by the client's bulk user fetch
+ * (spec 008 T3.2). Shared by the PDF and both ts DOCX paths so `@mention`s
+ * resolve to display names identically to the extension pipeline. Dedup across a
+ * tree/space document happens upstream in `resolveExportMentions` (one bulk call
+ * per unique id set).
+ */
+export function tokenMentionLookup(client: MentionClient): ExportMentionLookup {
+  return async (accountIds) => {
+    const users = await client.getUsersBulk(accountIds);
+    const out = new Map<string, string | null>();
+    for (const id of accountIds) out.set(id, users.get(id)?.displayName ?? null);
+    return out;
   };
 }
 
