@@ -26,6 +26,9 @@ function loaders() {
     getCurrentUser: mock(async () => ({ accountId: "u", displayName: "User" })),
     getPageOwner: mock(async () => ({ accountId: "o", displayName: "Owner" })),
     getSpaceHomepageStorage: mock(async () => "<p>home</p>"),
+    // Plain in-memory closure (spec 005 D1): a document-pass loader, never
+    // pre-started, so a real closure — not a spy — is enough here.
+    getIncludedPage: async () => ({ kind: "not-found-or-forbidden" as const }),
   };
 }
 
@@ -45,6 +48,11 @@ describe("scanDependencies", () => {
     expect([...deps].sort().join(",")).toBe(
       ["currentUser", "owner", "space", "spaceHomepage", "spaceLogo"].sort().join(",")
     );
+  });
+
+  it("does NOT add a dependency for $scroll.includepage (it is a document pass, spec 005 D1)", () => {
+    const deps = scanDependencies(scan("$scroll.includepage.(ENG:Imprint)", "$scroll.title"));
+    expect(deps.size).toBe(0);
   });
 });
 
@@ -84,6 +92,28 @@ describe("prepareExportDeps", () => {
     await expect(deps.getCurrentUser!()).rejects.toThrow("logged out");
     expect(await deps.getSpaceHomepageStorage!("DOCSY")).toBe("<p>home</p>");
     expect(host.getSpaceHomepageStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it("wires getIncludedPage straight through, lazy (never pre-started)", async () => {
+    let includeCalls = 0;
+    const host = {
+      ...loaders(),
+      getIncludedPage: async () => {
+        includeCalls += 1;
+        return { kind: "not-found-or-forbidden" as const };
+      },
+    };
+    const deps = prepareExportDeps(
+      scan("$scroll.includepage.(ENG:Imprint)"),
+      { id: "42", spaceKey: "DOCSY" },
+      host
+    );
+    // Not called during prepare (unlike the pre-started resolver loaders).
+    expect(includeCalls).toBe(0);
+    // Present on the ResolveDeps bag and callable on demand.
+    const outcome = await deps.getIncludedPage!({ title: "Imprint" });
+    expect(outcome.kind).toBe("not-found-or-forbidden");
+    expect(includeCalls).toBe(1);
   });
 
   it("does not retain auth/content-sensitive values across exports", async () => {

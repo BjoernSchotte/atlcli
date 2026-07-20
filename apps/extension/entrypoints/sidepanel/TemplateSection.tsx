@@ -10,7 +10,7 @@
  * DOM/IDB/`chrome`-adjacent wiring.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { ConfluenceClient } from "@atlcli/confluence/browser";
+import { ConfluenceClient, escapeCqlValue } from "@atlcli/confluence/browser";
 import { getConfluenceBaseUrl } from "@atlcli/core";
 import { profileFromTabUrl } from "../../utils/profile.js";
 import type { LoadedPage } from "../../utils/read-path.js";
@@ -248,6 +248,20 @@ export function TemplateSection({
             getCurrentUser: () => client.getCurrentUser(),
             getPageOwner: (id) => client.getPageOwner(id),
             getSpaceHomepageStorage: (key) => client.getSpaceHomepageStorage(key),
+            // Cross-page include (spec 005 D1): lazy — the include pass calls it
+            // per occurrence, so `buildGetIncludedPage` (isomorphic, in the docx
+            // engine chunk that `loadExport()` already fetches for this export)
+            // is imported on first use, never pulling the heavy barrel into the
+            // panel's static graph. Same title→CQL + error mapping as the CLI.
+            getIncludedPage: async (ref) => {
+              const { buildGetIncludedPage } = await loadExport();
+              return buildGetIncludedPage({
+                getPage: (id) => client.getPage(id),
+                searchPages: (cql) => client.searchPages(cql),
+                escapeCqlValue,
+                defaultSpaceKey: loadedPage.details.spaceKey,
+              })(ref);
+            },
           })
         : {};
       const [{ runExport }, env] = await Promise.all([loadExport(), loadEnv()]);

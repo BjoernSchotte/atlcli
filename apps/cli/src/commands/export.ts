@@ -25,6 +25,7 @@ import {
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  escapeCqlValue,
   fetchExportTree,
   resolveExportMentions,
   storageToBlocks,
@@ -1116,7 +1117,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // on the page storage below.
   const { readFile, stat } = await import("node:fs/promises");
   const [
-    { runExport, fileOutputSink },
+    { runExport, fileOutputSink, buildGetIncludedPage },
     { createAssetByteCache, mightContainMermaid, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     templateBytesRaw,
     templateStat,
@@ -1250,6 +1251,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
             filename: m ? decodeURIComponent(m[2]) : undefined,
           };
         },
+        // Cross-page include (spec 005 D1): the shared, isomorphic loader owns
+        // the title→CQL construction (via the shared escapeCqlValue), id-sorted
+        // determinism, ambiguity, and per-class error mapping — identical to the
+        // extension path. Concurrency lives ONLY in the engine's include pool,
+        // so this loader stays throttle-agnostic; the pool de-duplicates repeated
+        // refs, so rebuilding the stateless loader per call is free.
+        getIncludedPage: buildGetIncludedPage({
+          getPage: (id) => client.getPage(id),
+          searchPages: (cql) => client.searchPages(cql),
+          escapeCqlValue,
+          defaultSpaceKey: page.spaceKey,
+        }),
       },
     },
     {
