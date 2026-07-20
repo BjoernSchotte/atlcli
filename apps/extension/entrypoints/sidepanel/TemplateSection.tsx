@@ -122,6 +122,33 @@ function exportErrorMessage(err: unknown): string {
   return `Export failed: ${(err as Error).message}`;
 }
 
+/**
+ * Turn a `DocxError` into an upload-panel message.
+ *
+ * The three original kinds get purpose-written copy. Everything else — the
+ * spec 011 archive-budget and active-content rejections — carries an
+ * end-user-readable message on the error itself ("Templates with macros or
+ * ActiveX/OLE controls cannot be imported; re-save the file as a plain .docx"),
+ * so it is surfaced verbatim rather than mapped.
+ *
+ * The previous nested ternary fell through to "That template is too large." for
+ * ANY unrecognised kind, which told a user uploading a macro-bearing template
+ * exactly the wrong thing. A `default` that guesses is worse than one that
+ * repeats what the guard already said.
+ */
+function templateRejectionMessage(err: { kind: string; message: string }): string {
+  switch (err.kind) {
+    case "not-zip":
+      return "That file isn't a valid .docx (not a zip).";
+    case "not-docx":
+      return "That zip isn't a Word document.";
+    case "too-large":
+      return "That template is too large.";
+    default:
+      return err.message;
+  }
+}
+
 export function TemplateSection({
   loadedPage,
   pageUrl,
@@ -198,11 +225,7 @@ export function TemplateSection({
       } catch (err) {
         setError(
           err instanceof DocxError
-            ? err.kind === "not-zip"
-              ? "That file isn't a valid .docx (not a zip)."
-              : err.kind === "not-docx"
-                ? "That zip isn't a Word document."
-                : "That template is too large."
+            ? templateRejectionMessage(err)
             : `Could not read the template: ${(err as Error).message}`
         );
         return;

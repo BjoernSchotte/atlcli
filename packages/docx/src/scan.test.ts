@@ -252,10 +252,11 @@ function buildArchive(members: Record<string, string | Uint8Array>, opts?: { doc
 
 describe("unzipDocx — archive budget (spec 011)", () => {
   it("POSITIVE CONTROL: a legitimate template with real media still opens", () => {
-    // 4 MiB of incompressible-ish media across two entries: comfortably inside
-    // every cap, so the guards must be invisible to real templates.
+    // 4 MiB of genuinely incompressible media across two entries — what a real
+    // PNG/JPEG looks like to DEFLATE. Comfortably inside every cap, so the
+    // guards must be invisible to real templates.
     const media = new Uint8Array(2 * MB);
-    for (let i = 0; i < media.length; i++) media[i] = (i * 2654435761) & 0xff;
+    crypto.getRandomValues(media);
     const bytes = buildArchive({
       "word/media/image1.png": media,
       "word/media/image2.png": media,
@@ -282,7 +283,14 @@ describe("unzipDocx — archive budget (spec 011)", () => {
     // Every member is individually legal (50 MiB < 64 MiB); only the running
     // total (150 MiB > 128 MiB) is not — proving cumulative accounting, not
     // just a per-entry check.
+    // Each member compresses ~50:1 — under MAX_DECLARED_COMPRESSION_RATIO, so
+    // the ratio guard stays out of the way and the CUMULATIVE cap is provably
+    // what fires (a zeros-filled buffer would trip the ratio guard first and
+    // this test would pass for the wrong reason).
     const chunk = new Uint8Array(50 * MB);
+    for (let i = 0; i < chunk.length; i += 64) {
+      crypto.getRandomValues(chunk.subarray(i, Math.min(i + 2, chunk.length)));
+    }
     const bytes = buildArchive({
       "word/media/a.bin": chunk,
       "word/media/b.bin": chunk,
@@ -429,26 +437,27 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
     expect(err.path).toBe("word/header1.xml");
   });
 
-  it("ADVERSARIAL: catches an altChunk whose element hides behind a non-w: prefix", () => {
+  it("ADVERSARIAL: rejects an altChunk under ANY namespace prefix, both halves", () => {
     // XML binds namespaces by URI, not by prefix. With `x` bound to
     // wordprocessingml, `<x:altChunk>` IS `<w:altChunk>` as far as Word is
-    // concerned — but the element regex matches literal `<w:altChunk` text and
-    // sees nothing at all. The aFChunk relationship is what gives it away.
+    // concerned. The original `<w:altChunk` literal regex saw nothing at all —
+    // a measured bypass. Both halves of the import must now be refused
+    // independently, because either alone is enough to identify the template.
     const obfuscatedDocument =
       `<x:document xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
       `<x:body><x:altChunk r:id="rId99"/></x:body></x:document>`;
 
-    // First: prove the gap is real. Without its relationship part, the same
-    // hostile document sails straight past the element scan.
-    expect(() => unzipDocx(buildArchive({ "word/document.xml": obfuscatedDocument }))).not.toThrow();
+    // Half 1 — the ELEMENT alone, with no relationship part anywhere.
+    expectDocxError(
+      () => unzipDocx(buildArchive({ "word/document.xml": obfuscatedDocument })),
+      "active-content"
+    );
 
-    // Now the complete, functional payload — element plus the relationship it
-    // needs to actually resolve — is refused by the relationship sweep.
-    const err = expectDocxError(
+    // Half 2 — the RELATIONSHIP alone, with a document that names no altChunk.
+    expectDocxError(
       () =>
         unzipDocx(
           buildArchive({
-            "word/document.xml": obfuscatedDocument,
             "word/_rels/document.xml.rels":
               `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
               `<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="evil.html"/></Relationships>`,
@@ -456,8 +465,6 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
         ),
       "active-content"
     );
-    expect(err.path).toBe("word/_rels/document.xml.rels");
-    expect(err.message).toContain("aFChunk");
   });
 
   it("ADVERSARIAL: catches an aFChunk Type obfuscated with a character reference", () => {
@@ -533,14 +540,27 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
 });
 
 describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", () => {
-  it("detects DDEAUTO in a run-split complex field instruction", () => {
-    // The classic DDE payload, split across runs exactly as Word writes it.
-    const xml =
-      `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-      `<w:r><w:instrText xml:space="preserve"> DDEA</w:instrText></w:r>` +
-      `<w:r><w:instrText xml:space="preserve">UTO c:\\\\windows\\\\system32\\\\cmd.exe "/k calc.exe"</w:instrText></w:r>` +
-      `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
-    expect(collectRiskyFieldInstructions(xml)).toEqual(["DDEAUTO"]);
+  it("REJECTS a run-split DDEAUTO field at import (not merely audited)", () => {
+    // The classic DDE RCE payload, split across runs exactly as Word writes it.
+    // DDE has no legitimate use in an export template, and `ensureUpdateFields`
+    // makes every exported document refresh fields on open — so the exporter
+    // itself would arm this. It must be refused, not reported.
+    const bytes = buildDocx({
+      body:
+        `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+        `<w:r><w:instrText xml:space="preserve"> DDEA</w:instrText></w:r>` +
+        `<w:r><w:instrText xml:space="preserve">UTO cmd.exe "/k calc.exe"</w:instrText></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`,
+    });
+    const err = expectDocxError(() => unzipDocx(bytes), "active-content");
+    expect(err.message).toContain("DDEAUTO");
+  });
+
+  it("REJECTS a bare DDE field too", () => {
+    const bytes = buildDocx({
+      body: `<w:p><w:fldSimple w:instr=" DDE Excel Sheet1 R1C1 "/></w:p>`,
+    });
+    expectDocxError(() => unzipDocx(bytes), "active-content");
   });
 
   it("detects INCLUDETEXT in a w:fldSimple instruction attribute", () => {
@@ -570,5 +590,163 @@ describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", ()
   it("reports nothing for a clean template", () => {
     const scan = scanTemplate(buildDocx({ body: para("$scroll.title") }));
     expect(scan.riskyFieldInstructions).toEqual([]);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// spec 011 round 3 — forged central directory + relationship-based bypasses
+// ---------------------------------------------------------------------------
+
+/**
+ * Overwrite the uncompressed-size field in an entry's central-directory record
+ * AND its local header, producing an archive that LIES about how much it
+ * inflates to. This is the shape a real attacker ships: the zip is structurally
+ * valid, only the size metadata is false.
+ */
+function forgeDeclaredSize(zipBytes: Uint8Array, entryName: string, lie: number): Uint8Array {
+  const out = new Uint8Array(zipBytes);
+  const view = new DataView(out.buffer);
+  const name = new TextEncoder().encode(entryName);
+  const nameAt = (off: number): boolean => {
+    for (let i = 0; i < name.length; i++) if (out[off + i] !== name[i]) return false;
+    return true;
+  };
+  for (let i = 0; i + 4 <= out.length; i++) {
+    const sig = view.getUint32(i, true);
+    if (sig === 0x02014b50 && view.getUint16(i + 28, true) === name.length && nameAt(i + 46)) {
+      view.setUint32(i + 24, lie, true);
+    }
+    if (sig === 0x04034b50 && view.getUint16(i + 26, true) === name.length && nameAt(i + 30)) {
+      view.setUint32(i + 22, lie, true);
+    }
+  }
+  return out;
+}
+
+describe("unzipDocx — forged central directory (spec 011 round 3)", () => {
+  it("refuses a member that under-declares its size, BEFORE inflating it", () => {
+    // 200 MiB of spaces compresses to a couple of hundred KiB. Declaring 1 KiB
+    // slips under every absolute cap; without the ratio guard PizZip inflates
+    // the full payload and only then throws an untyped size-mismatch error.
+    const payload = "<w:document>" + " ".repeat(200 * MB) + "</w:document>";
+    const zip = new PizZip();
+    zip.file("word/document.xml", payload);
+    const honest = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+    const liar = forgeDeclaredSize(honest, "word/document.xml", 1024);
+    expect(liar.byteLength).toBeLessThan(MAX_TEMPLATE_BYTES);
+
+    const before = process.memoryUsage().rss;
+    const err = expectDocxError(() => unzipDocx(liar), "suspicious-compression");
+    const grew = (process.memoryUsage().rss - before) / MB;
+
+    expect(err.path).toBe("word/document.xml");
+    expect(err.message).toContain("DEFLATE never expands");
+    // The proof that nothing inflated: 200 MiB of payload would dwarf this.
+    expect(grew).toBeLessThan(64);
+  });
+
+  it("still refuses the HONEST form of the same bomb (via the absolute cap)", () => {
+    const payload = "<w:document>" + " ".repeat(200 * MB) + "</w:document>";
+    const zip = new PizZip();
+    zip.file("word/document.xml", payload);
+    const honest = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+    expectDocxError(() => unzipDocx(honest), "entry-too-large");
+  });
+
+  it("refuses an implausibly high declared ratio that stays under the absolute caps", () => {
+    // 60 MiB declared (< the 64 MiB per-entry cap) from a tiny stream.
+    const zip = new PizZip();
+    zip.file("word/document.xml", "<w:document/>");
+    (zip.file as (n: string, d: Uint8Array) => unknown)("word/media/x.bin", new Uint8Array(60 * MB));
+    const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+    expectDocxError(() => unzipDocx(bytes), "suspicious-compression");
+  });
+
+  it("POSITIVE CONTROL: a highly repetitive but legitimate template still opens", () => {
+    // 20 000 identical paragraphs compress ~305:1 — the shape that made an
+    // earlier 100:1 cap reject real templates. Must pass at 500:1.
+    const bytes = buildDocx({ body: `<w:p><w:r><w:t>identical</w:t></w:r></w:p>`.repeat(20000) });
+    expect(() => unzipDocx(bytes)).not.toThrow();
+  });
+
+  it("POSITIVE CONTROL: ordinary small parts are not tripped by the ratio floor", () => {
+    // [Content_Types].xml and friends are tiny, where zip framing dominates and
+    // the ratio is meaningless.
+    expect(() => unzipDocx(buildDocx({ body: para("hi") }))).not.toThrow();
+  });
+});
+
+describe("assertNoActiveContent — bypass matrix (spec 011 round 3)", () => {
+  const W = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"`;
+  const R = `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
+  const RELNS = `xmlns="http://schemas.openxmlformats.org/package/2006/relationships"`;
+
+  const rels = (type: string, target: string): string =>
+    `<Relationships ${RELNS}><Relationship Id="r9" Type="${type}" Target="${target}"/></Relationships>`;
+
+  // Every one of these was ACCEPTED before the relationship-based rewrite.
+  const BYPASSES: Array<[string, Record<string, string>]> = [
+    ["altChunk in word/footnotes.xml", { "word/footnotes.xml": `<w:footnotes ${W} ${R}><w:altChunk r:id="r1"/></w:footnotes>` }],
+    ["altChunk in word/endnotes.xml", { "word/endnotes.xml": `<w:endnotes ${W} ${R}><w:altChunk r:id="r1"/></w:endnotes>` }],
+    ["altChunk in word/comments.xml", { "word/comments.xml": `<w:comments ${W} ${R}><w:altChunk r:id="r1"/></w:comments>` }],
+    ["altChunk in word/glossary/document.xml", { "word/glossary/document.xml": `<w:document ${W} ${R}><w:altChunk r:id="r1"/></w:document>` }],
+    ["VBA at word/macros/vbaProject.bin", { "word/macros/vbaProject.bin": "MZ" }],
+    ["VBA at customXml/vbaProject.bin", { "customXml/vbaProject.bin": "MZ" }],
+    ["ActiveX at word/controls/activeX1.xml", { "word/controls/activeX1.xml": "<ax:ocx/>" }],
+    ["VBA declared only by relationship type", {
+      "word/thing.bin": "MZ",
+      "word/_rels/document.xml.rels": rels("http://schemas.microsoft.com/office/2006/relationships/vbaProject", "thing.bin"),
+    }],
+    ["ActiveX declared only by relationship type", {
+      "word/thing.xml": "<ax:ocx/>",
+      "word/_rels/document.xml.rels": rels("http://schemas.openxmlformats.org/officeDocument/2006/relationships/control", "thing.xml"),
+    }],
+  ];
+
+  for (const [label, members] of BYPASSES) {
+    it(`rejects: ${label}`, () => {
+      expectDocxError(() => unzipDocx(buildArchive(members)), "active-content");
+    });
+  }
+
+  it("rejects an <x:altChunk> hiding behind a non-w namespace prefix", () => {
+    const zip = new PizZip();
+    zip.file(
+      "word/document.xml",
+      `<x:document xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ${R}>` +
+        `<x:body><x:altChunk r:id="r1"/></x:body></x:document>`
+    );
+    const bytes = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+    expectDocxError(() => unzipDocx(bytes), "active-content");
+  });
+
+  it("POSITIVE CONTROL: ordinary relationship types and part names still pass", () => {
+    expect(() =>
+      unzipDocx(
+        buildArchive({
+          "word/media/image1.png": "x",
+          "word/_rels/document.xml.rels": rels(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+            "media/image1.png"
+          ),
+        })
+      )
+    ).not.toThrow();
+    // An embedded OLE object is a deliberate ALLOW (legitimate in corporate
+    // templates); if that product call is ever revisited, this test states it.
+    expect(() =>
+      unzipDocx(
+        buildArchive({
+          "word/embeddings/sheet.xlsx": "x",
+          "word/_rels/document.xml.rels": rels(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
+            "embeddings/sheet.xlsx"
+          ),
+        })
+      )
+    ).not.toThrow();
+    // A part merely NAMED like a control is fine when it is not one.
+    expect(() => unzipDocx(buildArchive({ "word/media/activex-logo.png": "x" }))).not.toThrow();
   });
 });

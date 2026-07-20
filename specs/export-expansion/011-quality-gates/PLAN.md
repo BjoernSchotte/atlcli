@@ -651,6 +651,27 @@ budget).**
       controls (a real media-bearing template, an archive exactly at the entry
       cap, ordinary Word part names) and an assertion that the bomb is refused
       WITHOUT inflating it.)*
+      *(Round 4, after review: the round-3 budget was DEFEATED BY A LYING CENTRAL
+      DIRECTORY and the doc comment claiming "a bomb can never be inflated" was
+      false. Declared sizes are attacker-controlled: an archive whose
+      `word/document.xml` declared 1 KiB while its DEFLATE stream expanded to
+      400 MiB passed every cap and was inflated (measured RSS +819 MiB in 227 ms),
+      then failed with an UNTYPED `Error: Bug : uncompressed data size mismatch`.
+      Fixed with `assertPlausibleCompression`, which bounds the declared:compressed
+      ratio in BOTH directions from central-directory metadata only: an
+      under-declaring member is provably lying (DEFLATE never expands its input,
+      so `declared < compressed x 0.9` is impossible), and an over-declaring one
+      is a sub-cap bomb. Re-probed: the same liar is now refused in 0 ms with
+      +1 MiB RSS. The upper bound is 500:1, NOT the 100:1 first chosen —
+      measurement showed a legitimate 20 000-identical-paragraph template
+      compresses 304.9:1, so 100:1 rejected real templates; 4000-paragraph prose
+      is 26.6:1 and incompressible media ~1:1. PizZip's inflate errors are now
+      translated to a typed `corrupt-entry` `DocxError` via `readPartText`.
+      Residual risk stated honestly in the source: an entry whose declared size is
+      CONSISTENT with its compressed stream but whose data decodes to something
+      else still inflates before PizZip's post-hoc length check; PizZip exposes no
+      bounded inflate, so that spike is bounded by `MAX_TEMPLATE_BYTES` rather
+      than eliminated.)*
 - [x] Active-content policy for imported `.docx` templates: reject-on-import
       (a new `DocxError` kind, never a silent strip) when the archive
       contains `word/vbaProject.bin`, an `word/activeX/*` OLE/ActiveX
@@ -682,6 +703,35 @@ budget).**
       body and header, a run-split `DDEAUTO cmd.exe` field and an `INCLUDETEXT`
       UNC `fldSimple`; positive controls prove `activex-logo.png`, the literal
       text "w:altChunk", and ordinary `PAGE`/`STYLEREF`/`TOC` fields all pass.)*
+      *(Round 4, after review: the round-3 path-based checks were BYPASSABLE, and
+      all ten bypasses were reproduced against the built output before fixing.
+      altChunk was accepted in `word/footnotes.xml`, `word/endnotes.xml`,
+      `word/comments.xml` and `word/glossary/document.xml` (`CT_AltChunk` is in
+      `EG_BlockLevelElts`, so it is valid in all of them — the same argument that
+      justified adding headers applied verbatim and had been under-applied);
+      `<x:altChunk>` under a non-`w` namespace prefix was accepted (XML binds
+      namespaces by URI, not prefix); VBA was accepted at `word/macros/` and
+      `customXml/`, ActiveX at `word/controls/`. Rewritten around OPC
+      RELATIONSHIP TYPES, which is how Word actually resolves these parts and the
+      only channel that cannot be evaded by relocating a file or renaming a
+      prefix: `findActiveContentRelationship` matches `/aFChunk`, `/vbaProject`
+      and `/control` in any `.rels` part. The element scan now covers every
+      WordprocessingML part under ANY namespace prefix, and the path scan matches
+      on basename/segment rather than exact location. `/oleObject` is a deliberate
+      ALLOW (embedded charts and spreadsheets are legitimate in corporate
+      templates) recorded in code and pinned by a test. Re-probed after the fix:
+      all ten bypasses REJECTED, both positive controls still ACCEPTED.
+      Additionally `DDE`/`DDEAUTO` moved from AUDIT to HARD REJECT — they have no
+      legitimate use in an export template and `ensureUpdateFields` makes the
+      exporter itself arm the trigger — while `INCLUDETEXT`/`INCLUDEPICTURE` stay
+      audited. The rejection lives in `assertNoActiveContent` inside `unzipDocx`,
+      so the guarantee no longer depends on which entry point a host uses.
+      API: `ScanResult.riskyFieldInstructions` was made OPTIONAL to keep spec
+      009's additive-only freeze; `DocxErrorKind` widening 3 -> 11 is a DELIBERATE
+      break, safe because both consumers (`template-pack/validate.ts`, the
+      extension upload panel) read `kind` non-exhaustively — the extension's
+      fallback was fixed, as it told a user with a macro template "That template
+      is too large.")*
 - [x] Confluence storage parse budget (**cross-plan coordination note**:
       touches `packages/confluence/src/export-blocks.ts`, the hot file
       UMSETZUNGSPLAN sequences T0.1→T1.4→T1.8 — land as a small additive PR
@@ -716,6 +766,26 @@ budget).**
       nesting bomb IS a real `RangeError` once the depth cap is lifted, so the
       guard is demonstrably load-bearing, plus a test showing one bad page
       degrades while its neighbours still export.)*
+      *(Round 4, after review: the round-3 budget REJECTED ORDINARY PAGES and
+      nothing caught the error, so a normal page killed an entire tree export —
+      an availability regression on real input, the opposite of the intent.
+      Measured node density per storage shape: colour-span prose 56 375/MiB, rich
+      text 74 415, nested lists 109 553, tables 126 333, dense 4-column tables
+      177 029. Confluence Cloud accepts ~5 MB bodies, so the worst realistic page
+      is 177 029 x 5 = 885 145 nodes — and `maxNodes: 400_000` sat BELOW the
+      platform limit, measurably rejecting a 4 MiB table page. Raised to
+      2 000 000 (~2.3x the worst realistic 5 MB page) with the derivation table in
+      the constant's doc comment. Second half: `StorageParseError` was caught
+      NOWHERE in production — in `tree-fetch.ts` it became a rejected
+      `allSettled` entry that was re-thrown — so the "one bad page degrades"
+      claim was true only of a hand-rolled loop in a test. `fetchExportTree` now
+      catches it narrowly and routes it through the EXISTING completeness path:
+      strict mode aborts with a typed `ExportCompletenessError`, partial mode
+      renders a placeholder chapter and keeps going, and the note carries a
+      `detail` so "page-unreadable" does not hide "exceeded the parse budget:
+      too-deep". Reusing `page-unreadable` avoided widening `CompletenessCode`.
+      Tests pin all three behaviours plus a control proving an unrelated error
+      still propagates untouched.)*
 - [x] Link-target scheme policy (**same cross-plan coordination note** —
       lands with folder 001/003, specified and gated here): `<a href>`/
       `ac:link` targets flow verbatim from Confluence storage into DOCX
@@ -750,6 +820,17 @@ budget).**
       vertical-tab smuggling and case variants), an 11-entry allowed corpus as
       positive control, and a DRIFT GUARD asserting both walkers reach the
       identical verdict for every entry.)*
+      *(Round 4, after review: `sanitizeLinkHref` validated the NORMALIZED href
+      but returned the RAW one, so a caller could act on bytes the policy never
+      examined. It now returns the control-character-stripped form (case and
+      spaces preserved — only controls are removed). `normalizeLinkHref`'s
+      character class was rewritten in explicit `\u0020` form instead of using a
+      literal space as a range endpoint. `tel:` was added to the allowlist as a
+      deliberate product call: contact and directory pages legitimately carry
+      phone links and the scheme is inert (it hands a number to a dialler, it
+      cannot execute or fetch). `sms:`/`callto:`/`skype:` stay blocked — rarer in
+      enterprise wikis, no demonstrated need — and degrade to visible text with a
+      note. Both decisions are pinned by tests.)*
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
       *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
       `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock

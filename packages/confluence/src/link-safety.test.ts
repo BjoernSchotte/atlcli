@@ -103,8 +103,35 @@ describe("link-safety — the canonical policy", () => {
 
   test("is an ALLOWLIST: an unknown future scheme is refused, not permitted", () => {
     expect(isSafeLinkScheme("wss://example.com")).toBe(false);
-    expect(isSafeLinkScheme("tel:+4915112345678")).toBe(false);
     expect(isSafeLinkScheme("some-scheme-invented-in-2030:x")).toBe(false);
+  });
+
+  test("tel: is allowed; the adjacent dial schemes are not (deliberate product call)", () => {
+    // Contact and directory pages legitimately carry phone links, and tel: is
+    // inert — it hands a number to a dialler, it cannot execute or fetch.
+    expect(isSafeLinkScheme("tel:+4915112345678")).toBe(true);
+    expect(isSafeLinkScheme("TEL:+49%20151%2012345678")).toBe(true);
+    // The rarer dial schemes stay out until someone shows they are needed.
+    expect(isSafeLinkScheme("sms:+4915112345678")).toBe(false);
+    expect(isSafeLinkScheme("callto:someone")).toBe(false);
+    expect(isSafeLinkScheme("skype:someone?call")).toBe(false);
+  });
+
+  test("returns the STRIPPED href, never the raw input", () => {
+    // The verdict is reached on the control-character-free form, so handing the
+    // raw string back would let a caller act on bytes the policy never saw.
+    const smuggled = "https://ok.example/x\u0000javascript:alert(1)";
+    const verdict = sanitizeLinkHref(smuggled);
+    expect(verdict.safe).toBe(true);
+    const href = (verdict as { safe: true; href: string }).href;
+    expect(href).toBe("https://ok.example/xjavascript:alert(1)");
+    // eslint-disable-next-line no-control-regex
+    expect(/[\u0000-\u001f\u007f]/.test(href)).toBe(false);
+  });
+
+  test("stripping preserves case and spaces (only controls are removed)", () => {
+    const verdict = sanitizeLinkHref("/wiki/spaces/DOCSY/My Page");
+    expect(verdict).toEqual({ safe: true, href: "/wiki/spaces/DOCSY/My Page" });
   });
 });
 

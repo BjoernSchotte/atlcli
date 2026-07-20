@@ -1119,7 +1119,8 @@ export declare function resolveExportMentions(blocks: ExportBlock[], lookup: Exp
 export declare const SAFE_LINK_SCHEMES: readonly [
     "http:",
     "https:",
-    "mailto:"
+    "mailto:",
+    "tel:"
 ];
 
 // export: sanitizeAnchorId
@@ -2527,7 +2528,8 @@ export declare function resolveExportMentions(blocks: ExportBlock[], lookup: Exp
 export declare const SAFE_LINK_SCHEMES: readonly [
     "http:",
     "https:",
-    "mailto:"
+    "mailto:",
+    "tel:"
 ];
 
 // export: sanitizeAnchorId
@@ -3935,7 +3937,8 @@ export declare function resolveExportMentions(blocks: ExportBlock[], lookup: Exp
 export declare const SAFE_LINK_SCHEMES: readonly [
     "http:",
     "https:",
-    "mailto:"
+    "mailto:",
+    "tel:"
 ];
 
 // export: sanitizeAnchorId
@@ -7790,7 +7793,8 @@ export declare function resolveExportMentions(blocks: ExportBlock[], lookup: Exp
 export declare const SAFE_LINK_SCHEMES: readonly [
     "http:",
     "https:",
-    "mailto:"
+    "mailto:",
+    "tel:"
 ];
 
 // export: sanitizeAnchorId

@@ -494,19 +494,46 @@ export interface StorageParseBudget {
 /**
  * Default {@link StorageParseBudget}.
  *
- * Sized so that any page Confluence itself accepts parses without complaint —
- * Cloud caps a page body at roughly 5 MB — while bounding the cost of one page:
- *  - `maxNodes: 400_000` — a 5 MB body at realistic storage density is tens of
- *    thousands of nodes; 400k is an order of magnitude above that and holds the
- *    materialized tree to the low hundreds of MB.
- *  - `maxDepth: 256` — the deepest real storage seen is a layout > table > cell
- *    > list > list chain around 20 levels. 256 is far beyond any authored page
- *    and keeps walker recursion in the low thousands of frames.
+ * The budget MUST clear anything Confluence itself accepts. A limit below the
+ * platform's own is not a security control, it is an availability bug: an
+ * ordinary page that exported yesterday starts throwing, and in a tree export
+ * one such page can take the whole run with it.
+ *
+ * `maxNodes` is therefore DERIVED from measured density rather than guessed.
+ * Node counts for 1 MiB of each realistic storage shape, counting exactly what
+ * {@link parseXml} materializes (elements + non-empty text nodes):
+ *
+ * | Shape                              | nodes / MiB |
+ * |------------------------------------|-------------|
+ * | Colour-span-heavy prose            |      56 375 |
+ * | Rich text (marks + links)          |      74 415 |
+ * | Nested lists                       |     109 553 |
+ * | Tables (3 columns)                 |     126 333 |
+ * | Dense tables (4 narrow columns)    |     177 029 |
+ *
+ * Confluence Cloud accepts a page body of roughly 5 MB. At the densest measured
+ * shape that is 177 029 x 5 = 885 145 nodes, so:
+ *
+ *   maxNodes = 2 000 000  (~2.3x the worst realistic 5 MB page)
+ *
+ * The previous value of 400 000 sat BELOW the platform limit and rejected a
+ * 4 MiB table-heavy page outright — measured, not theorised.
+ *
+ * The other two:
+ *  - `maxDepth: 256` — the deepest real storage is a layout > table > cell >
+ *    list > list chain around 20 levels. 256 is far beyond any authored page and
+ *    keeps walker recursion in the low thousands of frames. This is the limit
+ *    that actually prevents the stack overflow; `maxNodes` only bounds memory.
  *  - `maxTextLength: 16 MiB` — above the platform body limit, so it only fires
  *    on input that was never a real page.
+ *
+ * At 2 000 000 nodes the materialized tree can reach a few hundred MB, which is
+ * the honest cost of accepting every page the platform accepts. Callers that
+ * want a tighter bound pass their own budget via
+ * {@link StorageToBlocksOptions.parseBudget}.
  */
 export const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget = {
-  maxNodes: 400_000,
+  maxNodes: 2_000_000,
   maxDepth: 256,
   maxTextLength: 16 * 1024 * 1024,
 };

@@ -219,7 +219,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: SvgRasterizer
@@ -476,7 +476,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: SvgRasterizer
@@ -717,7 +717,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: SvgRasterizer
@@ -859,6 +859,14 @@ export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget)
 // export: assertNoActiveContent
 export declare function assertNoActiveContent(zip: PizZip): void;
 
+// export: assertPlausibleCompression
+export declare function assertPlausibleCompression(entry: {
+    name: string;
+    _data?: {
+        compressedSize?: number;
+    };
+}, declared: number): void;
+
 // export: assertSafeDocxEntryName
 export declare function assertSafeDocxEntryName(name: string): void;
 
@@ -920,6 +928,9 @@ export declare function codeLineParagraph(tokens: {
 
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
+
+// export: collectFieldInstructions
+export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
@@ -992,7 +1003,7 @@ export declare class DocxError extends Error {
 }
 
 // export: DocxErrorKind
-export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "active-content";
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
@@ -1132,6 +1143,9 @@ export interface Fetched {
     owner?: PageOwner;
     homepageProperties?: PagePropertiesMacro[];
 }
+
+// export: findActiveContentRelationship
+export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
 // export: formatDatePlaceholder
 export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
@@ -1406,6 +1420,9 @@ export declare function pxToEmu(px: number): number;
 // export: readBodySectPr
 export declare function readBodySectPr(zip: PizZip): string | undefined;
 
+// export: readPartText
+export declare function readPartText(zip: PizZip, part: string): string;
+
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
 
@@ -1496,7 +1513,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: scanTemplate
@@ -1812,7 +1829,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: SvgRasterizer
@@ -1854,8 +1871,19 @@ export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget)
 // export: assertNoActiveContent
 export declare function assertNoActiveContent(zip: PizZip): void;
 
+// export: assertPlausibleCompression
+export declare function assertPlausibleCompression(entry: {
+    name: string;
+    _data?: {
+        compressedSize?: number;
+    };
+}, declared: number): void;
+
 // export: assertSafeDocxEntryName
 export declare function assertSafeDocxEntryName(name: string): void;
+
+// export: collectFieldInstructions
+export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
@@ -1877,7 +1905,10 @@ export declare class DocxError extends Error {
 }
 
 // export: DocxErrorKind
-export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "active-content";
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+
+// export: findActiveContentRelationship
+export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
 // export: hasAltChunkRelationship
 export declare function hasAltChunkRelationship(relsXml: string): boolean;
@@ -1887,6 +1918,9 @@ export declare const MAX_TEMPLATE_BYTES: number;
 
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
+
+// export: readPartText
+export declare function readPartText(zip: PizZip, part: string): string;
 
 // export: ScanHit
 export interface ScanHit {
@@ -1905,7 +1939,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
-    riskyFieldInstructions: string[];
+    riskyFieldInstructions?: string[];
 }
 
 // export: scanTemplate

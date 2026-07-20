@@ -19,12 +19,21 @@
  *
  * ## The policy
  *
- * ALLOW: `http:`, `https:`, `mailto:`, and scheme-less URLs (relative paths and
- * in-document `#anchor` fragments, which are same-origin by construction).
+ * ALLOW: `http:`, `https:`, `mailto:`, `tel:`, and scheme-less URLs (relative
+ * paths and in-document `#anchor` fragments, which are same-origin by
+ * construction).
  *
  * DENY: everything else — `javascript:`, `vbscript:`, `data:`, `file:`, plus
  * any unknown scheme. An allowlist, never a blocklist: a new dangerous scheme
  * must not become safe merely because nobody thought of it.
+ *
+ * `tel:` is a deliberate product call, not an oversight. Contact and directory
+ * pages legitimately carry phone links; the scheme is inert (it hands a number
+ * to a dialler, it cannot execute or fetch), and both Word and PDF render it as
+ * an ordinary hyperlink. `sms:`, `callto:` and `skype:` are NOT allowed — they
+ * are rarer in enterprise wikis and would widen the surface for no clear gain;
+ * they degrade to visible text with a note, which is the correct default for
+ * anything whose value is unproven.
  *
  * ## Why control characters are stripped before the scheme is read
  *
@@ -37,7 +46,7 @@
  */
 
 /** The schemes a link target may carry. Scheme-less URLs are also allowed. */
-export const SAFE_LINK_SCHEMES = ["http:", "https:", "mailto:"] as const;
+export const SAFE_LINK_SCHEMES = ["http:", "https:", "mailto:", "tel:"] as const;
 
 /**
  * Normalize an href the way a URL parser would before the scheme is inspected:
@@ -46,7 +55,7 @@ export const SAFE_LINK_SCHEMES = ["http:", "https:", "mailto:"] as const;
  */
 export function normalizeLinkHref(href: string): string {
   // eslint-disable-next-line no-control-regex
-  return href.replace(/[\u0000- \u007f]/g, "").toLowerCase();
+  return href.replace(/[\u0000-\u0020\u007f]/g, "").toLowerCase();
 }
 
 /**
@@ -81,9 +90,29 @@ export type LinkSanitizeResult =
 export function sanitizeLinkHref(href: string): LinkSanitizeResult {
   const normalized = normalizeLinkHref(href);
   if (normalized === "") return { safe: false, reason: "empty" };
-  if (isSafeLinkScheme(href)) return { safe: true, href };
+  if (isSafeLinkScheme(href)) {
+    // Return the STRIPPED href, never the raw input. The verdict is reached on
+    // the control-character-free form, so handing the raw string back would let
+    // a caller act on bytes the policy never examined — e.g.
+    // `"https://ok.example\u0000javascript:alert(1)"` validates as safe and
+    // would be emitted with the NUL intact. Callers upstream happen to strip
+    // control characters first today, but the canonical policy module must not
+    // depend on that.
+    return { safe: true, href: stripControlCharacters(href) };
+  }
   const scheme = normalized.match(/^([a-z][a-z0-9+.-]*):/)?.[1];
   return { safe: false, reason: "blocked-scheme", ...(scheme ? { scheme } : {}) };
+}
+
+/**
+ * Remove ASCII control characters and spaces WITHOUT lowercasing — the form a
+ * caller may safely emit. {@link normalizeLinkHref} additionally lowercases,
+ * which is right for scheme comparison but destroys case-sensitive paths and
+ * query strings.
+ */
+function stripControlCharacters(href: string): string {
+  // eslint-disable-next-line no-control-regex
+  return href.replace(/[\u0000-\u001f\u007f]/g, "");
 }
 
 /** The report note emitted when a link target is dropped by this policy. */

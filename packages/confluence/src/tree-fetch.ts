@@ -13,9 +13,11 @@
  * shared limiter/scope helpers.
  */
 import {
+  StorageParseError,
   storageToBlocks,
   type ExportBlock,
   type ExportNote,
+  type StorageToBlocksResult,
 } from "./export-blocks.js";
 import {
   normalizeLabelFilter,
@@ -727,6 +729,12 @@ export async function fetchExportTree(
   type BodyFailure = {
     code: CompletenessCode;
     affected: ReadonlyArray<{ id: string; title: string }>;
+    /**
+     * Why the page failed, when the bare {@link CompletenessCode} is too coarse
+     * to be actionable (spec 011). Appended to the partial-mode note so
+     * "page-unreadable" does not hide "this page is too big to parse".
+     */
+    detail?: string;
   };
   type BodyResult =
     | { ok: false; node: ExportPageNode; failure: BodyFailure }
@@ -773,13 +781,35 @@ export async function fetchExportTree(
         };
       }
 
-      const walked = storageToBlocks(page.storage, {
-        pageContext: {
-          id: node.pageId,
-          ...(page.version !== undefined ? { version: page.version } : {}),
-          ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
-        },
-      });
+      let walked: StorageToBlocksResult;
+      try {
+        walked = storageToBlocks(page.storage, {
+          pageContext: {
+            id: node.pageId,
+            ...(page.version !== undefined ? { version: page.version } : {}),
+            ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
+          },
+        });
+      } catch (error) {
+        // A page whose storage blows the parse budget is UNREADABLE, not fatal
+        // to the run (spec 011). Left uncaught this rejected the job, and the
+        // rejection scan below re-throws it — so one pathological page aborted
+        // the entire tree export. Routing it through the existing completeness
+        // path means strict mode still aborts (the user asked for completeness)
+        // while partial mode renders a placeholder chapter and keeps going,
+        // which is exactly what the budget's own docs promise.
+        if (!(error instanceof StorageParseError)) throw error;
+        throwIfAborted(signal);
+        return {
+          ok: false,
+          node,
+          failure: {
+            code: "page-unreadable",
+            affected: [{ id: node.pageId, title: node.title }],
+            detail: `storage exceeded the parse budget: ${error.kind}`,
+          },
+        };
+      }
       return { ok: true, node, page, blocks: walked.blocks, notes: walked.notes };
     })
   );
@@ -798,13 +828,19 @@ export async function fetchExportTree(
     slot: number;
     code: CompletenessCode;
     affected: ReadonlyArray<{ id: string; title: string }>;
+    detail?: string;
   }> = [];
 
   settled.forEach((result, slot) => {
     if (result.status !== "fulfilled") return;
     const value = result.value;
     if (!value.ok) {
-      strictFailures.push({ slot, code: value.failure.code, affected: value.failure.affected });
+      strictFailures.push({
+        slot,
+        code: value.failure.code,
+        affected: value.failure.affected,
+        ...(value.failure.detail !== undefined ? { detail: value.failure.detail } : {}),
+      });
       return;
     }
     fetched += 1;
@@ -841,7 +877,9 @@ export async function fetchExportTree(
       treeNotes.push({
         level: "warning",
         code: failure.code,
-        message: `${failure.affected.map((a) => `${a.title} (${a.id})`).join(", ")} could not be exported (${failure.code}); a placeholder chapter was rendered.`,
+        message:
+          `${failure.affected.map((a) => `${a.title} (${a.id})`).join(", ")} could not be exported ` +
+          `(${failure.code}${failure.detail ? `: ${failure.detail}` : ""}); a placeholder chapter was rendered.`,
       });
     }
     partialComplete();

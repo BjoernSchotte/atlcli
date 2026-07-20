@@ -33,6 +33,8 @@ export type DocxErrorKind =
   | "invalid-path"
   | "entry-too-large"
   | "uncompressed-too-large"
+  | "suspicious-compression"
+  | "corrupt-entry"
   | "active-content";
 
 /** Thrown when uploaded bytes are not a readable/acceptable `.docx` package. */
@@ -127,14 +129,21 @@ export interface ScanResult {
    */
   stylerefStyleNames: string[];
   /**
-   * Risky field-instruction keywords found anywhere in the template (spec 011
-   * active-content audit): `INCLUDETEXT`, `INCLUDEPICTURE`, `DDEAUTO`, `DDE`.
-   * Inventory ONLY — `exportDocx` turns a non-empty list into a
-   * `template-field-instruction-risk` report note. Never a rejection: these
-   * instructions have legitimate uses, unlike VBA/ActiveX/altChunk, which
-   * {@link unzipDocx} refuses outright.
+   * Audited field-instruction keywords found anywhere in the template (spec 011):
+   * `INCLUDETEXT` and `INCLUDEPICTURE`. Inventory ONLY — `exportDocx` turns a
+   * non-empty list into a `template-field-instruction-risk` report note. These
+   * two have legitimate uses in corporate templates, so they are surfaced rather
+   * than refused.
+   *
+   * `DDE`/`DDEAUTO` are deliberately NOT here: they have no legitimate use in an
+   * export template and are a documented remote-code-execution chain, so
+   * {@link unzipDocx} rejects them outright via {@link assertNoActiveContent}.
+   *
+   * OPTIONAL because spec 009 froze this package's public API as additive-only —
+   * a required field would break every existing `ScanResult` literal. Always
+   * populated by {@link scanZip}; read it as `?? []`.
    */
-  riskyFieldInstructions: string[];
+  riskyFieldInstructions?: string[];
 }
 
 /**
@@ -202,8 +211,68 @@ export function documentPartNames(zip: PizZip): string[] {
 interface ReadEntry {
   name: string;
   dir: boolean;
-  _data?: { uncompressedSize?: number };
+  _data?: { uncompressedSize?: number; compressedSize?: number };
 }
+
+/**
+ * Plausibility bounds on an entry's DECLARED uncompressed size, relative to its
+ * compressed size (spec 011 round 3).
+ *
+ * The declared size lives in the zip central directory, which is entirely
+ * attacker-controlled. Budgeting on it alone was defeated by simply lying:
+ * an archive whose `word/document.xml` declared 1 KiB while its DEFLATE stream
+ * expanded to 400 MiB sailed past every cap and was inflated (measured: RSS
+ * +819 MiB in 227 ms) before PizZip noticed the mismatch. These two ratios make
+ * the declared size self-checking against a quantity the attacker cannot forge
+ * without also shrinking the payload — the compressed byte count.
+ */
+
+/**
+ * Maximum plausible declared:compressed ratio.
+ *
+ * DEFLATE tops out near 1032:1. Measured ratios for real `.docx` parts built by
+ * this package's own fixtures:
+ *
+ * | Part                              | ratio   |
+ * |-----------------------------------|---------|
+ * | Incompressible media (JPEG/PNG)    |   ~1:1  |
+ * | 4000-paragraph `document.xml`      |  26.6:1 |
+ * | 20 000 IDENTICAL paragraphs        | 304.9:1 |
+ *
+ * The third row is why this is 500 and not the 100 first chosen: a highly
+ * repetitive but entirely legitimate template (a long form of identical empty
+ * rows) compresses far better than typical prose, and a 100:1 cap rejected it.
+ * A limit that refuses real templates is an availability bug, not a control.
+ *
+ * 500:1 sits above every legitimate shape measured and below DEFLATE's ceiling,
+ * so it still catches a bomb that stays UNDER the absolute caps — e.g. 60 MiB
+ * declared from 60 KiB compressed passes {@link ArchiveBudget} but is refused
+ * here. The absolute caps remain the primary defence against honest bombs; this
+ * is the secondary one that narrows the sub-cap window.
+ */
+const MAX_DECLARED_COMPRESSION_RATIO = 500;
+
+/**
+ * Minimum plausible declared:compressed ratio.
+ *
+ * DEFLATE never meaningfully expands its input: worst case is ~1.0003x plus a
+ * few bytes of framing. A member declaring FEWER bytes than its own compressed
+ * stream is therefore provably lying about its size, which is exactly the shape
+ * of the inflation bypass above. 0.9 tolerates the framing overhead on tiny
+ * entries while still catching a lie by orders of magnitude.
+ */
+const MIN_DECLARED_COMPRESSION_RATIO = 0.9;
+
+/**
+ * Below this compressed size the ratio checks are skipped.
+ *
+ * Zip framing dominates tiny members (a 4-byte part can carry a 92-byte
+ * compressed record), which makes both ratios meaningless and would reject
+ * ordinary small parts like `[Content_Types].xml`. A member this small cannot
+ * inflate to anything dangerous even at the theoretical maximum ratio
+ * (512 B x 1032 = 528 KiB), so skipping it costs nothing.
+ */
+const COMPRESSION_RATIO_FLOOR_BYTES = 512;
 
 /**
  * Reject any member path that could escape the archive root.
@@ -248,12 +317,61 @@ export function assertSafeDocxEntryName(name: string): void {
 }
 
 /**
+ * Reject an entry whose declared uncompressed size is implausible for its own
+ * compressed stream (see {@link MAX_DECLARED_COMPRESSION_RATIO} /
+ * {@link MIN_DECLARED_COMPRESSION_RATIO}).
+ *
+ * Exported so `@atlcli/template-pack`'s `.wiki-pdf-template` reader — which
+ * budgets on declared sizes the same way and has the same blind spot — can
+ * adopt the identical rule without re-deriving the constants.
+ *
+ * @throws {DocxError} `suspicious-compression`.
+ */
+export function assertPlausibleCompression(
+  entry: { name: string; _data?: { compressedSize?: number } },
+  declared: number
+): void {
+  const compressed = entry._data?.compressedSize;
+  if (typeof compressed !== "number" || !Number.isFinite(compressed)) return;
+  if (compressed < COMPRESSION_RATIO_FLOOR_BYTES) return;
+  if (declared > compressed * MAX_DECLARED_COMPRESSION_RATIO) {
+    throw new DocxError(
+      "suspicious-compression",
+      `Archive member "${entry.name}" declares ${declared} bytes from ${compressed} compressed (ratio ${(declared / compressed).toFixed(1)}:1, limit ${MAX_DECLARED_COMPRESSION_RATIO}:1).`,
+      entry.name
+    );
+  }
+  if (declared < compressed * MIN_DECLARED_COMPRESSION_RATIO) {
+    throw new DocxError(
+      "suspicious-compression",
+      `Archive member "${entry.name}" declares only ${declared} uncompressed bytes for a ${compressed}-byte compressed stream. DEFLATE never expands its input, so the declared size is false — refusing before inflation.`,
+      entry.name
+    );
+  }
+}
+
+/**
  * Enforce {@link ArchiveBudget} + entry-name policy over a loaded archive.
  *
- * Runs entirely on the central-directory metadata PizZip parsed at load time:
- * every size compared here is the entry's DECLARED uncompressed size, so a zip
- * bomb is refused before a single byte is inflated. Exported for tests and for
- * hosts that hold a `PizZip` from elsewhere.
+ * Runs entirely on the central-directory metadata PizZip parsed at load time,
+ * so nothing here inflates a byte. Two independent families of check, because
+ * the declared size is attacker-controlled and one family alone is bypassable:
+ *
+ *  - ABSOLUTE caps ({@link ArchiveBudget}) refuse an HONEST bomb — one that
+ *    truthfully declares a huge payload.
+ *  - RATIO plausibility ({@link assertPlausibleCompression}) refuses a LYING
+ *    central directory — one that under-declares to slip past those caps and
+ *    detonate at inflation time.
+ *
+ * Residual risk, stated plainly: an entry that declares a size consistent with
+ * its compressed stream but whose DEFLATE data decodes to something else still
+ * inflates before PizZip's own post-hoc size comparison fires. PizZip exposes no
+ * bounded/streaming inflate, so that spike cannot be prevented here; it is
+ * bounded by {@link MAX_TEMPLATE_BYTES} and surfaces as a typed
+ * `corrupt-entry` {@link DocxError} rather than an untyped crash (see
+ * {@link readPartText}).
+ *
+ * Exported for tests and for hosts that hold a `PizZip` from elsewhere.
  */
 export function assertArchiveBudget(
   zip: PizZip,
@@ -287,6 +405,7 @@ export function assertArchiveBudget(
         entry.name
       );
     }
+    assertPlausibleCompression(entry, declared);
     cumulative += declared;
     if (cumulative > budget.maxUncompressedBytes) {
       throw new DocxError(
@@ -299,36 +418,73 @@ export function assertArchiveBudget(
 }
 
 /**
- * Archive members that carry executable / externally-linked Word payloads
- * (spec 011 active-content policy).
+ * Archive members that carry executable / externally-linked Word payloads,
+ * matched by PATH (spec 011 active-content policy).
  *
- *  - `word/vbaProject.bin` — the VBA macro storage of a `.docm`-style template.
- *    Renaming a `.docm` to `.docx` leaves this part in place; Word will happily
- *    honour it once the content type says so.
- *  - `word/vbaData.xml` — the companion VBA part; present only alongside macros.
- *  - `word/activeX/…` — ActiveX / OLE control parts (`activeX1.xml` plus its
- *    `activeX1.bin` control state), which instantiate a COM object on open.
+ * A path check alone is NOT sufficient and is not relied on as such — see
+ * {@link findActiveContentRelationship}, which is the authoritative half. OPC
+ * resolves a part by the relationship that points at it, never by its location,
+ * so `word/macros/vbaProject.bin` or `customXml/vbaProject.bin` is just as live
+ * as the canonical path. This function is the belt to that pair of braces: it
+ * catches a payload dropped in without any relationship at all, and it names
+ * the part in terms an author recognises.
  *
- * Matching is case-insensitive because zip member names are not normalized and
- * `word/VBAProject.bin` is the same part to Word.
+ * Matching is case-insensitive (zip member names are not normalized, and
+ * `word/VBAProject.bin` is the same part to Word) and matches on the BASENAME
+ * or an `activeX`/`macros` path segment, so relocating the payload does not
+ * evade it.
  */
 function classifyActiveContentPart(name: string): string | undefined {
   const lower = name.toLowerCase();
-  if (lower === "word/vbaproject.bin") return "a VBA macro project (word/vbaProject.bin)";
-  if (lower === "word/vbadata.xml") return "a VBA macro data part (word/vbaData.xml)";
-  if (lower.startsWith("word/activex/")) return `an ActiveX/OLE control part (${name})`;
+  const base = lower.slice(lower.lastIndexOf("/") + 1);
+  if (base === "vbaproject.bin") return `a VBA macro project (${name})`;
+  if (base === "vbadata.xml") return `a VBA macro data part (${name})`;
+  // Any `activeX/` folder anywhere, plus the conventional `activeXN.xml|bin`
+  // basenames wherever they were relocated to.
+  if (lower.split("/").includes("activex")) return `an ActiveX/OLE control part (${name})`;
+  if (/^activex\d*\.(xml|bin)$/.test(base)) return `an ActiveX/OLE control part (${name})`;
   return undefined;
 }
 
 /**
- * Parts whose XML is inspected for `<w:altChunk>` — the main story plus every
- * header/footer. The spec names `document.xml`; headers and footers accept the
- * same element, so they are covered too rather than left as a bypass.
+ * Parts whose XML is inspected for an `altChunk` element.
+ *
+ * `CT_AltChunk` is a member of `EG_BlockLevelElts`, so it is valid anywhere
+ * block-level content is — not just the main story. Probing the earlier
+ * document/header/footer-only list found it accepted in `word/footnotes.xml`,
+ * `word/endnotes.xml`, `word/comments.xml` and `word/glossary/document.xml`.
+ * Every WordprocessingML part in the package is therefore scanned; the cost is
+ * one regex over parts already being read.
  */
 function altChunkScanParts(zip: PizZip): string[] {
-  return Object.keys(zip.files).filter((n) =>
-    /^word\/(document\.xml|header\d*\.xml|footer\d*\.xml)$/.test(n)
+  return Object.keys(zip.files).filter(
+    (n) => /^word\/.*\.xml$/i.test(n) && !/^word\/_rels\//i.test(n)
   );
+}
+
+/**
+ * Inflate one part to text, translating a decompression failure into a typed
+ * {@link DocxError}.
+ *
+ * PizZip throws a bare `Error("Bug : uncompressed data size mismatch")` when a
+ * member's real inflated length disagrees with its declared size — precisely
+ * what a forged central directory produces. Left untranslated that reaches every
+ * caller as an unhandled exception with no `kind` to switch on, so a host that
+ * carefully handles `DocxError` still crashes. Every read of a template part
+ * inside this module goes through here.
+ *
+ * @throws {DocxError} `corrupt-entry` when the member cannot be decompressed.
+ */
+export function readPartText(zip: PizZip, part: string): string {
+  try {
+    return zip.file(part)?.asText() ?? "";
+  } catch (err) {
+    throw new DocxError(
+      "corrupt-entry",
+      `Archive member "${part}" could not be decompressed (${(err as Error).message}); the archive is corrupt or its central directory is falsified.`,
+      part
+    );
+  }
 }
 
 /**
@@ -359,23 +515,51 @@ function decodeXmlEntities(value: string): string {
 }
 
 /**
- * True when a `.rels` part declares an altChunk relationship — a `Type` ending
- * in `/aFChunk` (`…/officeDocument/2006/relationships/aFChunk`).
+ * Relationship types that make a part live active content.
  *
- * This is the companion half of the `<w:altChunk>` element scan, and the more
- * reliable of the two. The element scan matches a literal `w:` prefix, but XML
- * binds namespaces by URI, not by prefix: a template that declares
- * `xmlns:x="…/wordprocessingml/2006/main"` and writes `<x:altChunk r:id="…"/>`
- * carries the very same element as far as Word is concerned, while matching no
- * `<w:altChunk` text. A relationship `Type`, by contrast, is a plain attribute
- * *value* that has to equal the aFChunk URI for Word to resolve the import at
- * all — there is no prefix indirection to hide behind.
+ * OPC binds a part to its role through the relationship `Type` URI, which is a
+ * plain attribute VALUE — there is no namespace-prefix indirection to hide
+ * behind and no path to relocate. This is why the relationship sweep, not the
+ * path list, is the authoritative check.
  *
- * Both halves are required for the import to fire (an element with no matching
- * relationship is an inert dangling `r:id`, and vice versa), so scanning each
- * one closes the gap the other leaves. Matching is case-insensitive and runs on
- * the entity-decoded value: neither variation would function in Word, so a hit
- * on one can only mean an obfuscation attempt.
+ *  - `/aFChunk` — `<w:altChunk>` import-by-reference (HTML/RTF/DOCX pulled in
+ *    and rendered at open time).
+ *  - `/vbaProject` — the VBA macro storage of a `.docm`-style template.
+ *  - `/control` — an ActiveX control, which instantiates a COM object on open.
+ *
+ * `/oleObject` is deliberately NOT listed: embedded OLE objects (a chart, a
+ * linked spreadsheet) appear in legitimate corporate templates, so rejecting
+ * them would break real documents. That is a product judgement, recorded here
+ * rather than left implicit.
+ */
+const ACTIVE_CONTENT_RELATIONSHIP_TYPES: ReadonlyArray<{ suffix: string; what: string }> = [
+  { suffix: "aFChunk", what: "an altChunk (aFChunk) import-by-reference relationship" },
+  { suffix: "vbaProject", what: "a VBA macro project relationship" },
+  { suffix: "control", what: "an ActiveX control relationship" },
+];
+
+/**
+ * The first active-content relationship declared in a `.rels` part, if any.
+ *
+ * Matching is case-insensitive and runs on the entity-decoded `Type` value:
+ * neither a case variant nor a charref-obfuscated URI would function in Word,
+ * so a hit on one can only be an evasion attempt.
+ */
+export function findActiveContentRelationship(relsXml: string): string | undefined {
+  for (const m of relsXml.matchAll(/\bType\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    const type = decodeXmlEntities(m[1] ?? m[2] ?? "").trim();
+    for (const { suffix, what } of ACTIVE_CONTENT_RELATIONSHIP_TYPES) {
+      if (new RegExp(`/${suffix}$`, "i").test(type)) return what;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True when a `.rels` part declares an altChunk relationship.
+ *
+ * Retained as a named export for API stability; {@link findActiveContentRelationship}
+ * is the general form and is what {@link assertNoActiveContent} calls.
  */
 export function hasAltChunkRelationship(relsXml: string): boolean {
   for (const m of relsXml.matchAll(/\bType\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
@@ -392,11 +576,23 @@ export function hasAltChunkRelationship(relsXml: string): boolean {
  * the user cannot see; a typed `active-content` {@link DocxError} makes the
  * refusal explicit at the upload boundary.
  *
- * `<w:altChunk>` is included because it is an *import by reference*: the element
- * names a relationship whose target (HTML, RTF, another Word document) Word
- * pulls in and renders at open time. Combined with `ensureUpdateFields`, which
- * this exporter sets on every rendered document, an altChunk-bearing template is
- * a live external-content channel through the export.
+ * Four independent sweeps, because each covers a gap the others leave:
+ *  1. PATH — a payload dropped in with no relationship at all.
+ *  2. ELEMENT — an `altChunk` element in any WordprocessingML part, matched
+ *     under ANY namespace prefix (XML binds namespaces by URI, so `<x:altChunk>`
+ *     is the same element as `<w:altChunk>` and a `w:`-only regex missed it).
+ *  3. RELATIONSHIP — the authoritative one: an `aFChunk`/`vbaProject`/`control`
+ *     relationship type in any `.rels` part, which is how OPC actually resolves
+ *     these parts and the only channel that cannot be evaded by relocating a
+ *     file or renaming a prefix.
+ *  4. FIELD INSTRUCTION — `DDE`/`DDEAUTO`, a documented remote-code-execution
+ *     chain with no legitimate use in an export template. Rejected here rather
+ *     than merely audited because `ensureUpdateFields` writes
+ *     `<w:updateFields w:val="true"/>` into every exported document, so the
+ *     exporter itself arms the trigger.
+ *
+ * Runs inside {@link unzipDocx}, so the guarantee does not depend on which entry
+ * point a host uses.
  *
  * @throws {DocxError} `active-content` naming the offending part.
  */
@@ -412,24 +608,32 @@ export function assertNoActiveContent(zip: PizZip): void {
     }
   }
   for (const part of altChunkScanParts(zip)) {
-    const xml = zip.file(part)?.asText() ?? "";
-    if (/<w:altChunk[\s/>]/.test(xml)) {
+    const xml = readPartText(zip, part);
+    // Any namespace prefix, or none: `<w:altChunk`, `<x:altChunk`, `<altChunk`.
+    if (/<(?:[A-Za-z_][\w.-]*:)?altChunk[\s/>]/.test(xml)) {
       throw new DocxError(
         "active-content",
-        `Template part "${part}" embeds external content via <w:altChunk>. Templates that import content by reference cannot be used; inline the content and re-save.`,
+        `Template part "${part}" embeds external content via <altChunk>. Templates that import content by reference cannot be used; inline the content and re-save.`,
         part
       );
     }
   }
-  // Runs AFTER the element scan so a template carrying both halves is still
-  // reported against the part the author would recognise (document.xml), with
-  // the relationship sweep catching only what the element regex missed.
   for (const part of relationshipPartNames(zip)) {
-    const xml = zip.file(part)?.asText() ?? "";
-    if (hasAltChunkRelationship(xml)) {
+    const what = findActiveContentRelationship(readPartText(zip, part));
+    if (what) {
       throw new DocxError(
         "active-content",
-        `Template part "${part}" declares an altChunk (aFChunk) relationship, the import-by-reference channel behind <w:altChunk>. Templates that import content by reference cannot be used; inline the content and re-save.`,
+        `Template part "${part}" declares ${what}. Templates carrying macros, ActiveX controls or import-by-reference content cannot be used; re-save the file without them.`,
+        part
+      );
+    }
+  }
+  for (const part of documentPartNames(zip)) {
+    const hits = collectFieldInstructions(readPartText(zip, part), REJECTED_FIELD_INSTRUCTIONS);
+    if (hits.length > 0) {
+      throw new DocxError(
+        "active-content",
+        `Template part "${part}" contains a ${hits.join("/")} field instruction, a remote-code-execution channel that Word runs when it refreshes fields. Exported documents refresh fields on open, so such templates cannot be used.`,
         part
       );
     }
@@ -441,13 +645,23 @@ export function assertNoActiveContent(zip: PizZip): void {
  *
  * `preprocessScrollText` deliberately leaves field instructions untouched, and
  * `ensureUpdateFields` writes `<w:updateFields w:val="true"/>` into every
- * exported document — so Word refreshes the template's own fields on open. That
- * combination is what turns a hostile `INCLUDETEXT`/`DDEAUTO` instruction into
- * an action. These are AUDITED, not rejected: unlike VBA/ActiveX they have
- * legitimate uses in real templates, so the export surfaces a report note
- * (`template-field-instruction-risk`) rather than refusing the upload.
+ * exported document — so Word refreshes the template's own fields on open. The
+ * exporter therefore ARMS whatever instruction the template carries, which is
+ * why the two lists are graded differently.
+ *
+ * REJECTED: `DDE`/`DDEAUTO` execute an arbitrary command through Dynamic Data
+ * Exchange. This is a documented remote-code-execution chain with no legitimate
+ * use in an export template, so it is refused at import rather than audited.
  */
-const RISKY_FIELD_INSTRUCTIONS = ["INCLUDETEXT", "INCLUDEPICTURE", "DDEAUTO", "DDE"] as const;
+const REJECTED_FIELD_INSTRUCTIONS = ["DDEAUTO", "DDE"] as const;
+
+/**
+ * AUDITED: `INCLUDETEXT`/`INCLUDEPICTURE` pull in external content but have
+ * genuine uses in corporate templates (a shared boilerplate clause, a logo on a
+ * network share). Refusing them would break real documents, so they surface as a
+ * `template-field-instruction-risk` note instead.
+ */
+const AUDITED_FIELD_INSTRUCTIONS = ["INCLUDETEXT", "INCLUDEPICTURE"] as const;
 
 /**
  * Collect the risky field-instruction keywords present anywhere in the template
@@ -458,7 +672,10 @@ const RISKY_FIELD_INSTRUCTIONS = ["INCLUDETEXT", "INCLUDEPICTURE", "DDEAUTO", "D
  * concatenated before matching and ` INCLUDE` + `TEXT "…"` still matches.
  * Returns the distinct keywords found, uppercased, in declaration order.
  */
-export function collectRiskyFieldInstructions(xml: string): string[] {
+export function collectFieldInstructions(
+  xml: string,
+  keywords: ReadonlyArray<string> = AUDITED_FIELD_INSTRUCTIONS
+): string[] {
   const decode = (s: string): string =>
     s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
   let haystack = "";
@@ -467,7 +684,7 @@ export function collectRiskyFieldInstructions(xml: string): string[] {
     [...xml.matchAll(/<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g)].map((m) => m[1]).join("")
   )}`;
   const found: string[] = [];
-  for (const keyword of RISKY_FIELD_INSTRUCTIONS) {
+  for (const keyword of keywords) {
     // Word-boundary match so DDEAUTO is not also reported as a bare DDE hit.
     if (new RegExp(`\\b${keyword}\\b`, "i").test(haystack) && !found.includes(keyword)) {
       found.push(keyword);
@@ -477,20 +694,40 @@ export function collectRiskyFieldInstructions(xml: string): string[] {
 }
 
 /**
+ * Backwards-compatible alias for {@link collectFieldInstructions} over the
+ * audited keyword list. Retained as a named export for API stability.
+ */
+export function collectRiskyFieldInstructions(xml: string): string[] {
+  return collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS);
+}
+
+/**
  * Unzip uploaded `.docx` bytes into a PizZip archive, validating that it is a
  * zip, fits the decompression budget, carries no hostile entry names, looks
  * like a Word document (`word/document.xml` present), and carries no active
  * content.
  *
- * Order matters: the budget and entry-name checks run on central-directory
- * metadata only, BEFORE `assertNoActiveContent` reads (and therefore inflates)
- * `word/document.xml`. A bomb can never be inflated to prove it is a bomb.
+ * Order matters: every budget, entry-name and compression-plausibility check
+ * runs on central-directory metadata ONLY, before `assertNoActiveContent` reads
+ * (and therefore inflates) any part.
+ *
+ * That ordering refuses both bomb shapes without inflating them — the honest one
+ * via the absolute caps, the under-declaring one via
+ * {@link assertPlausibleCompression}. It is NOT an absolute guarantee, and an
+ * earlier revision of this comment wrongly claimed it was: an entry whose
+ * declared size is consistent with its compressed stream but whose DEFLATE data
+ * decodes to something else still inflates before PizZip's own post-hoc length
+ * check fires. PizZip exposes no bounded inflate, so that residual spike is
+ * bounded by {@link MAX_TEMPLATE_BYTES} rather than eliminated, and surfaces as
+ * a typed `corrupt-entry` error via {@link readPartText}.
  *
  * @throws {DocxError} `too-large` past the compressed cap; `not-zip` on a
  *   non-zip buffer; `too-many-entries` / `entry-too-large` /
  *   `uncompressed-too-large` past {@link DOCX_ARCHIVE_BUDGET};
+ *   `suspicious-compression` on an implausible declared:compressed ratio;
  *   `path-traversal` / `invalid-path` on a hostile entry name; `not-docx` when
- *   the zip lacks `word/document.xml`; `active-content` on VBA/ActiveX/altChunk.
+ *   the zip lacks `word/document.xml`; `active-content` on
+ *   VBA/ActiveX/altChunk/DDE; `corrupt-entry` when a part cannot be inflated.
  */
 export function unzipDocx(bytes: Uint8Array, budget: ArchiveBudget = DOCX_ARCHIVE_BUDGET): PizZip {
   if (bytes.byteLength > MAX_TEMPLATE_BYTES) {
@@ -522,11 +759,11 @@ export function scanZip(zip: PizZip): ScanResult {
   const riskyFieldInstructions: string[] = [];
 
   for (const part of parts) {
-    const xml = zip.file(part)?.asText() ?? "";
+    const xml = readPartText(zip, part);
     for (const name of collectStylerefFields(xml)) {
       if (!stylerefStyleNames.includes(name)) stylerefStyleNames.push(name);
     }
-    for (const keyword of collectRiskyFieldInstructions(xml)) {
+    for (const keyword of collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS)) {
       if (!riskyFieldInstructions.includes(keyword)) riskyFieldInstructions.push(keyword);
     }
     // Walk every paragraph the replacement will touch — including text-box

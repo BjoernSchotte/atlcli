@@ -1320,10 +1320,10 @@ describe("parseXml — storage parse budget (spec 011)", () => {
   });
 
   test("rejects a node flood against the REAL default budget", () => {
-    // 250 000 empty elements = 250 000 nodes, past the 400 000-node default once
-    // the interleaved text nodes are counted too.
-    const storage = "<br/>a".repeat(250_000);
-    expectParseError(() => storageToBlocks(storage), "too-many-nodes");
+    // Derived from the budget rather than hardcoded, so raising the limit does
+    // not silently turn this into a test that proves nothing.
+    const pairs = Math.ceil(DEFAULT_STORAGE_PARSE_BUDGET.maxNodes / 2) + 1000;
+    expectParseError(() => storageToBlocks("<br/>a".repeat(pairs)), "too-many-nodes");
   });
 
   test("rejects an over-long text payload", () => {
@@ -1394,5 +1394,47 @@ describe("parseXml — XML-illegal control characters (spec 011)", () => {
     const text = (para.content[0] as Extract<InlineNode, { type: "text" }>).text;
     expect(text).toContain("\t");
     expect(text).toContain("\n");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// spec 011 round 3 — the budget must clear what the PLATFORM accepts
+// ---------------------------------------------------------------------------
+
+describe("storage parse budget — realistic pages are NOT rejected", () => {
+  const MiB = 1024 * 1024;
+
+  /** Densest realistic shape measured: 4-column tables of short cells. */
+  function denseTable(bytes: number): string {
+    const row = `<tr><td><p>a</p></td><td><p>b</p></td><td><p>c</p></td><td><p>d</p></td></tr>`;
+    return `<table><tbody>${row.repeat(Math.ceil(bytes / row.length))}</tbody></table>`;
+  }
+
+  function richText(bytes: number): string {
+    const u =
+      `<p>Some ordinary sentence with <strong>bold</strong> and <em>italic</em> text, ` +
+      `plus <a href="https://example.com/page">a link</a> and a bit more prose.</p>`;
+    return u.repeat(Math.ceil(bytes / u.length));
+  }
+
+  // Confluence Cloud accepts page bodies around 5 MB. A budget below that is an
+  // availability bug, not a control: the FIRST version of this budget rejected
+  // a 4 MiB table page outright, which would have aborted whole tree exports on
+  // ordinary customer content.
+  for (const mib of [1, 3, 5]) {
+    test(`accepts a ${mib} MiB dense-table page (platform-legal)`, () => {
+      expect(() => storageToBlocks(denseTable(mib * MiB))).not.toThrow();
+    });
+
+    test(`accepts a ${mib} MiB rich-text page (platform-legal)`, () => {
+      expect(() => storageToBlocks(richText(mib * MiB))).not.toThrow();
+    });
+  }
+
+  test("the default budget clears the worst measured density at the platform limit", () => {
+    // 177 029 nodes/MiB x 5 MiB = 885 145 worst-case nodes. The budget must sit
+    // above that with margin, or ordinary pages start failing.
+    expect(DEFAULT_STORAGE_PARSE_BUDGET.maxNodes).toBeGreaterThan(177_029 * 5);
   });
 });

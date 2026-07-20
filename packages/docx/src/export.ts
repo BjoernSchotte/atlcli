@@ -452,11 +452,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // instructions untouched and `ensureUpdateFields` (step 6) tells Word to
   // refresh every field on open, so this note is the ONLY place the user learns
   // the exported document will re-run them.
-  if (scan.riskyFieldInstructions.length > 0) {
+  const riskyFields = scan.riskyFieldInstructions ?? [];
+  if (riskyFields.length > 0) {
     flowNotes.push({
       level: "warning",
       code: "template-field-instruction-risk",
-      message: `The template contains field instructions that fetch content when Word refreshes fields (${scan.riskyFieldInstructions.join(", ")}); the exported document refreshes fields on open, so review the template if you did not author it.`,
+      message: `The template contains field instructions that fetch content when Word refreshes fields (${riskyFields.join(", ")}); the exported document refreshes fields on open, so review the template if you did not author it.`,
     });
   }
 
