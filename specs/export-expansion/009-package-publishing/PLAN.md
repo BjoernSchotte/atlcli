@@ -720,6 +720,10 @@ model); note it as the designated fallback.
       included Node consumer): `bundledDefaultTemplate()` and wire it into
       `fileTemplateSource`'s default id resolution; `pack-check` asserts it
       produces a valid DOCX via a real `runExport` call, not just presence.
+      (Delivered: the real-`runExport` valid-DOCX assertion lives in
+      `packages/export-node/src/default-template.test.ts` and the
+      tarball-installed consumer smoke — strictly stronger than a pack-check
+      hook; `pack-check` covers the generic tarball structure.)
 - [x] Add `packages/export-node` to the Node-LTS and Bun consumer-smoke
       suites (Consumer smoke, below): the BASELINE-DESIGN A5 six-line
       snippet, run verbatim against the installed tarballs, must produce a
