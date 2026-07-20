@@ -10,7 +10,9 @@ import { runBlocksCase } from "./blocks-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
 import { runDocxQualityCase } from "./docx-quality-case.js";
+import { runM1Case } from "./m1-case.js";
 import { runMacroCase } from "./macro-case.js";
+import { runManuscriptCase } from "./manuscript-case.js";
 import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
@@ -31,6 +33,8 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   macros: runMacroCase,
   placeholders: runPlaceholderCase,
   "docx-quality": runDocxQualityCase,
+  m1: runM1Case,
+  manuscript: runManuscriptCase,
 };
 
 export const CONFORMANCE_CASES: readonly ConformanceCase[] = CONFORMANCE_MANIFEST.map((meta) => {

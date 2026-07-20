@@ -107,6 +107,22 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     mediaPolicy: "raster",
     emitsDigests: false,
   },
+  {
+    id: "m1",
+    title: "M1 acceptance corpus (50-page integrated story)",
+    folderTaskIds: ["011/bench-m1"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
+  {
+    id: "manuscript",
+    title: "Second curated PDF template: Manuscript (012)",
+    folderTaskIds: ["012/T6.5"],
+    engines: ["pdf"],
+    mediaPolicy: "none",
+    emitsDigests: true,
+  },
 ];
 
 /**
@@ -117,7 +133,9 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * The general `docx`/`pdf`/`pdf-abort` contracts, the `pdf-settings` (007)
  * feature case, and all six feature-lane cases 001–006 (`blocks`, `scope`,
  * `content-compat`, `macros`, `placeholders`, `docx-quality`) have landed now
- * that every feature spec is merged. Cases 001–004 emit PDF digests consumed by
+ * that every feature spec is merged. `manuscript` (012) landed once the second
+ * curated template merged; `m1` is the browser leg of the spec 011 M1
+ * acceptance corpus. Cases 001–004, 007, `m1` and 012 emit digests consumed by
  * the shape-parity gate; 005/006 are DOCX-only and assert their invariants
  * in-case. Add each new id here in the same PR that adds its case + registry
  * entry.
@@ -133,4 +151,6 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "macros",
   "placeholders",
   "docx-quality",
+  "m1",
+  "manuscript",
 ];

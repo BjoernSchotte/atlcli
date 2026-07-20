@@ -13,17 +13,23 @@
  * repo because they depend on the pinned Typst wasm + font versions (PLAN
  * Risks); the corpus's structural digest IS pinned (see generate-m1-corpus.test).
  *
- * The browser-harness leg (Playwright) and `digestsMatch` (browser vs CLI) are
- * left `null` here — wiring the harness M1 run is the remaining M1 work; the
- * LIVE DOCSY acceptance run is orchestrator territory. Every compile is wrapped
- * in a wall-clock deadline (`compile-timeout`) so a pathological corpus can
- * never hang CI (spec 011 compiler-execution-budget, CI-script scope).
+ * The browser leg now exists too: conformance case `m1`
+ * (`apps/browser-export-harness/src/m1-case.ts`) runs the SAME corpus through
+ * the browser engines and publishes its digests to
+ * `apps/browser-export-harness/test-results/digests.json`. This runner reads
+ * that manifest when present and fills `docx.harness` / `pdf.harness` /
+ * `digestsMatch`. When the manifest is absent (the harness has not been run in
+ * this checkout) the harness fields stay `null` and `digestsMatch` stays `null`
+ * — "not measured" is reported as `null`, never as `true`. The LIVE DOCSY
+ * acceptance run remains orchestrator territory. Every compile is wrapped in a
+ * wall-clock deadline (`compile-timeout`) so a pathological corpus can never
+ * hang CI (spec 011 compiler-execution-budget, CI-script scope).
  *
  * Run: `bun scripts/bench/run-m1-acceptance.ts`
  * Emits `scripts/bench/out/m1-acceptance.json` (gitignored).
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -36,6 +42,7 @@ import {
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { runExport, type OutputSink } from "@atlcli/docx";
+import { unzipDocx } from "@atlcli/docx/scan";
 import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
 import {
   buildM1Corpus,
@@ -166,6 +173,60 @@ function corpusDigest(corpus: M1Corpus): string {
   return createHash("sha256").update(JSON.stringify(corpus.nodes)).digest("hex");
 }
 
+const HARNESS_DIGESTS = resolve(HERE, "../../apps/browser-export-harness/test-results/digests.json");
+
+interface HarnessM1Result {
+  compilerVersion?: string;
+  digests?: Record<string, string>;
+  docx?: { byteLength: number; deterministic: boolean; partDigests?: Record<string, string> };
+  pdf?: { byteLength: number; deterministic: boolean };
+}
+
+/**
+ * sha256 per DECOMPRESSED DOCX part — see `m1-case.ts` for why the zip
+ * container bytes are not the cross-host contract (PizZip deflates via
+ * `node:zlib` here and via pako in the browser; identical documents, a few
+ * different compressed bytes). The decompressed parts are what must match.
+ */
+function docxPartDigests(bytes: Uint8Array): Record<string, string> {
+  const zip = unzipDocx(bytes);
+  const out: Record<string, string> = {};
+  for (const name of Object.keys(zip.files).sort()) {
+    const file = zip.file(name);
+    if (!file) continue;
+    out[name] = sha256Hex(file.asUint8Array());
+  }
+  return out;
+}
+
+/** First differing part name (or a missing/extra part), else `null`. */
+export function firstPartDivergence(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): string | null {
+  const names = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+  for (const name of names) {
+    if (left[name] === undefined) return `${name} (missing on the CLI side)`;
+    if (right[name] === undefined) return `${name} (missing on the harness side)`;
+    if (left[name] !== right[name]) return name;
+  }
+  return null;
+}
+
+/**
+ * Read the browser harness's published `m1` case result, if it ran in this
+ * checkout. Absent → `null`; the caller reports "not measured" rather than
+ * asserting cross-host equality it never checked.
+ */
+function loadHarnessM1(): HarnessM1Result | null {
+  try {
+    const manifest = JSON.parse(readFileSync(HARNESS_DIGESTS, "utf8")) as Record<string, HarnessM1Result>;
+    return manifest.m1 ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const corpus = await buildM1Corpus();
   const composed = composeM1Document(corpus);
@@ -180,6 +241,26 @@ async function main(): Promise<void> {
   const pdf2 = await exportPdf(compiler, blocks);
   const pdfDeterministic = sha256Hex(pdf1.bytes) === sha256Hex(pdf2.bytes);
 
+  const harness = loadHarnessM1();
+  const docxDigest = sha256Hex(docx1.bytes);
+  const pdfDigest = sha256Hex(pdf1.bytes);
+  const cliParts = docxPartDigests(docx1.bytes);
+  // Compare only when the harness ran AND compiled with the same compiler —
+  // diffing bytes across compiler versions would report a false divergence.
+  const comparable = harness !== null && harness.compilerVersion === pdf1.version;
+  // PDF is compared as whole bytes (the Typst compiler is byte-deterministic
+  // across hosts). DOCX is compared PART BY PART on decompressed content: the
+  // zip container is not byte-comparable across hosts because PizZip's deflate
+  // backend differs (node:zlib vs pako), which is an encoding difference, not a
+  // document difference. Comparing containers here would report a permanent,
+  // meaningless failure; comparing parts catches every real divergence.
+  const harnessParts = harness?.docx?.partDigests;
+  const docxPartDivergence = comparable && harnessParts ? firstPartDivergence(cliParts, harnessParts) : null;
+  const pdfMatches = comparable ? harness!.digests?.["m1.pdf"] === pdfDigest : null;
+  const docxPartsMatch = comparable && harnessParts ? docxPartDivergence === null : null;
+  const digestsMatch = pdfMatches === null || docxPartsMatch === null ? null : pdfMatches && docxPartsMatch;
+  const docxContainerBytesMatch = comparable ? harness!.digests?.["m1.docx"] === docxDigest : null;
+
   const record = {
     version: M1_CORPUS_VERSION,
     corpusDigest: corpusDigest(corpus),
@@ -189,23 +270,50 @@ async function main(): Promise<void> {
     composedBlocks: blocks.length,
     docx: {
       cli: {
-        digest: sha256Hex(docx1.bytes),
+        digest: docxDigest,
         byteLength: docx1.bytes.byteLength,
         deterministic: docxDeterministic,
       },
-      harness: null,
+      harness: harness
+        ? {
+            digest: harness.digests?.["m1.docx"] ?? null,
+            byteLength: harness.docx?.byteLength ?? null,
+            deterministic: harness.docx?.deterministic ?? null,
+          }
+        : null,
+      /**
+       * DOCX cross-host verdict. `partsMatch` is the contract (decompressed
+       * parts); `containerBytesMatch` is recorded for transparency and is
+       * EXPECTED to be false — PizZip's deflate backend differs by host.
+       */
+      partsMatch: docxPartsMatch,
+      containerBytesMatch: docxContainerBytesMatch,
+      firstDivergentPart: docxPartDivergence,
+      partCount: Object.keys(cliParts).length,
     },
     pdf: {
       cli: {
-        digest: sha256Hex(pdf1.bytes),
+        digest: pdfDigest,
         byteLength: pdf1.bytes.byteLength,
         deterministic: pdfDeterministic,
         compilerVersion: pdf1.version,
       },
-      harness: null,
+      harness: harness
+        ? {
+            digest: harness.digests?.["m1.pdf"] ?? null,
+            byteLength: harness.pdf?.byteLength ?? null,
+            deterministic: harness.pdf?.deterministic ?? null,
+            compilerVersion: harness.compilerVersion ?? null,
+          }
+        : null,
     },
-    // Cross-host (browser vs CLI) equality is pending the harness M1 leg.
-    digestsMatch: null,
+    /**
+     * Cross-host (browser vs CLI) equality: PDF whole-byte AND DOCX
+     * decompressed-part equality. `null` = not measured in this checkout (no
+     * harness digest manifest, or a compiler-version mismatch that makes a byte
+     * diff meaningless) — never silently `true`.
+     */
+    digestsMatch,
     notes: {
       macro: corpus.macroNotes.map((n) => n.code),
       compose: composed.notes.map((n) => n.code),
@@ -217,10 +325,17 @@ async function main(): Promise<void> {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(record, null, 2));
 
-  const ok = docxDeterministic && pdfDeterministic;
+  // A measured cross-host MISMATCH is a hard failure; "not measured" is not.
+  const ok = docxDeterministic && pdfDeterministic && digestsMatch !== false;
+  const crossHost =
+    digestsMatch === null
+      ? "cross-host not measured (no harness digests)"
+      : `cross-host digestsMatch ${digestsMatch} (pdf bytes ${pdfMatches}, docx parts ${docxPartsMatch}` +
+        `${docxPartDivergence ? `, first divergent part ${docxPartDivergence}` : ""})`;
   process.stdout.write(
     `run-m1-acceptance: ${ok ? "OK" : "FAILED"} — ${record.pages} pages, ${record.composedBlocks} composed blocks; ` +
-      `DOCX ${record.docx.cli.byteLength}B (det ${docxDeterministic}), PDF ${record.pdf.cli.byteLength}B (det ${pdfDeterministic}, ${pdf1.version}) → ${OUT}\n`,
+      `DOCX ${record.docx.cli.byteLength}B (det ${docxDeterministic}), PDF ${record.pdf.cli.byteLength}B (det ${pdfDeterministic}, ${pdf1.version}); ` +
+      `${crossHost} → ${OUT}\n`,
   );
   if (!ok) process.exit(1);
 }
