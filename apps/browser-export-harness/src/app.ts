@@ -1,6 +1,5 @@
 import "./style.css";
-import { runDocxCase } from "./docx-case.js";
-import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
+import { CONFORMANCE_CASES } from "./conformance-registry.js";
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -13,28 +12,46 @@ function message(error: unknown): string {
 }
 
 function bindCase(
-  buttonTestId: string,
-  stateTestId: string,
-  resultTestId: string | undefined,
+  container: HTMLElement,
+  meta: { id: string; title: string; folderTaskIds: string[] },
   run: () => Promise<unknown>,
 ): void {
-  const button = required<HTMLButtonElement>(`[data-testid="${buttonTestId}"]`);
-  const state = required<HTMLOutputElement>(`[data-testid="${stateTestId}"]`);
-  const result = resultTestId
-    ? required<HTMLElement>(`[data-testid="${resultTestId}"]`)
-    : undefined;
+  // One section/button/state/result element per registered case — generated,
+  // never hand-authored, so parallel feature lanes don't collide in index.html.
+  const section = document.createElement("section");
+  section.setAttribute("aria-labelledby", `${meta.id}-heading`);
+
+  const heading = document.createElement("h2");
+  heading.id = `${meta.id}-heading`;
+  heading.textContent = `${meta.title} (${meta.folderTaskIds.join(", ")})`;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.testid = `run-${meta.id}`;
+  button.textContent = `Run ${meta.id} case`;
+
+  const state = document.createElement("output");
+  state.dataset.testid = `${meta.id}-state`;
+  state.textContent = "idle";
+
+  const result = document.createElement("pre");
+  result.dataset.testid = `${meta.id}-result`;
+
+  section.append(heading, button, state, result);
+  container.append(section);
+
   button.addEventListener("click", () => {
     button.disabled = true;
     state.textContent = "running";
-    if (result) result.textContent = "";
+    result.textContent = "";
     void run()
       .then((value) => {
         state.textContent = "passed";
-        if (result) result.textContent = JSON.stringify(value, null, 2);
+        result.textContent = JSON.stringify(value, null, 2);
       })
       .catch((error) => {
         state.textContent = "failed";
-        if (result) result.textContent = message(error);
+        result.textContent = message(error);
       })
       .finally(() => {
         button.disabled = false;
@@ -42,9 +59,10 @@ function bindCase(
   });
 }
 
-required<HTMLOutputElement>("[data-testid=\"buffer-state\"]").textContent =
+required<HTMLOutputElement>('[data-testid="buffer-state"]').textContent =
   (globalThis as { Buffer?: unknown }).Buffer === undefined ? "absent" : "present";
 
-bindCase("run-docx", "docx-state", "docx-result", runDocxCase);
-bindCase("run-pdf-abort", "pdf-abort-state", undefined, runPdfAbortCase);
-bindCase("run-pdf", "pdf-state", "pdf-result", runPdfCase);
+const cases = required<HTMLElement>('[data-testid="cases"]');
+for (const conformanceCase of CONFORMANCE_CASES) {
+  bindCase(cases, conformanceCase, conformanceCase.run);
+}

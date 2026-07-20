@@ -1,6 +1,15 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { CONFORMANCE_MANIFEST } from "../src/conformance-manifest.js";
 
-test("public DOCX and PDF browser contracts pass from nested production output", async ({ page }) => {
+const DIGEST_MANIFEST = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../test-results/digests.json",
+);
+
+test("every registered conformance case passes from nested production output", async ({ page }) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
@@ -18,24 +27,44 @@ test("public DOCX and PDF browser contracts pass from nested production output",
   expect(response?.headers()["content-security-policy"]).toContain("wasm-unsafe-eval");
   await expect(page.getByTestId("buffer-state")).toHaveText("absent");
 
-  await page.getByTestId("run-pdf-abort").click();
-  await expect(page.getByTestId("pdf-abort-state")).toHaveText("passed");
+  // Digest manifest the Bun/CLI shape-parity runner (check-parity.ts) compares
+  // its own output against. Only cases that emit digests contribute.
+  const digestManifest: Record<string, unknown> = {};
 
-  await page.getByTestId("run-docx").click();
-  await expect(page.getByTestId("docx-state")).toHaveText("passed");
-  const docx = JSON.parse(await page.getByTestId("docx-result").textContent() ?? "null");
+  for (const meta of CONFORMANCE_MANIFEST) {
+    await test.step(`case ${meta.id}`, async () => {
+      await page.getByTestId(`run-${meta.id}`).click();
+      // PDF compiles can be slow (real Typst WASM); give them room.
+      await expect(page.getByTestId(`${meta.id}-state`)).toHaveText("passed", { timeout: 90_000 });
+      const raw = await page.getByTestId(`${meta.id}-result`).textContent();
+      const result = raw ? JSON.parse(raw) : null;
+
+      if (meta.emitsDigests) {
+        expect(result).not.toBeNull();
+        expect(result.digests, `case ${meta.id} must expose digests`).toBeTruthy();
+        expect(result.compilerVersion, `case ${meta.id} must expose compilerVersion`).toBeTruthy();
+        digestManifest[meta.id] = result;
+      }
+    });
+  }
+
+  // Preserve the case-specific structural invariants the DOCX/PDF cases proved
+  // historically (they still throw on their own invariants; these re-assert the
+  // externally visible numbers).
+  const docx = JSON.parse((await page.getByTestId("docx-result").textContent()) ?? "null");
   expect(docx.renderedDiagrams).toBe(1);
   expect(docx.byteLength).toBeGreaterThan(1_000);
   expect(docx.mediaParts.length).toBeGreaterThan(0);
 
-  await page.getByTestId("run-pdf").click();
-  await expect(page.getByTestId("pdf-state")).toHaveText("passed", { timeout: 90_000 });
-  const pdf = JSON.parse(await page.getByTestId("pdf-result").textContent() ?? "null");
+  const pdf = JSON.parse((await page.getByTestId("pdf-result").textContent()) ?? "null");
   expect(pdf.byteIdenticalWarmRepeat).toBe(true);
   expect(pdf.tagged).toBe(true);
   expect(pdf.hasOutline).toBe(true);
   expect(pdf.embeddedFontFiles).toBeGreaterThan(0);
   expect(pdf.diagnosticCount).toBeGreaterThan(0);
+
+  mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
+  writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));
 
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);

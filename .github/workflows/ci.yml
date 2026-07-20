@@ -190,5 +190,11 @@ jobs:
       - name: Check browser export harness artifact
         run: bun run check:browser-export-harness
 
+      - name: Assert conformance-case registry (spec 011 T4.6 drift guard)
+        run: bun run assert:conformance-cases
+
       - name: Run browser export harness E2E
         run: bun run test:browser-export-harness
+
+      - name: Shape-parity gate (harness vs CLI digests + report projection)
+        run: bun run check:parity
