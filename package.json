@@ -23,7 +23,7 @@
     "build:cli": "bun run --cwd apps/cli build",
     "lint": "echo 'no lint configured'",
     "test": "bun --conditions=development test",
-    "typecheck": "bunx tsc --noEmit && bunx tsc -p tsconfig.scripts.json --noEmit && bun run typecheck:extension && bun run typecheck:pdf-compiler-browser && bun run typecheck:browser-export-harness",
+    "typecheck": "bunx tsc --noEmit && bun run typecheck:extension && bun run typecheck:pdf-compiler-browser && bun run typecheck:browser-export-harness",
     "check:browser": "bun scripts/check-browser-build.ts",
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "typecheck:pdf-compiler-browser": "turbo run typecheck --filter=@atlcli/pdf-compiler-browser",
@@ -58,7 +58,6 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@atlcli/confluence": "workspace:*",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "25.0.5",
     "@types/turndown": "^5.0.6",

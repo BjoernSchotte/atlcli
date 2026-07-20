@@ -16,7 +16,6 @@
       },
       "devDependencies": {
         "@astrojs/check": "^0.9.9",
-        "@atlcli/confluence": "workspace:*",
         "@types/markdown-it": "^14.1.2",
         "@types/node": "25.0.5",
         "@types/turndown": "^5.0.6",
