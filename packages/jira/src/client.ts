@@ -1,3 +1,4 @@
+import { parseRetryAfterMs } from "./retry-after.js";
 import { Profile, getLogger, generateRequestId, redactSensitive, buildAuthHeader, buildTlsOptions, TlsOptions } from "@atlcli/core";
 import type {
   JiraProject,
@@ -150,10 +151,9 @@ export class JiraClient {
 
       // Handle rate limiting (429)
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs);
@@ -1580,8 +1580,9 @@ export class JiraClient {
         }));
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          const delay =
+            parseRetryAfterMs(res.headers.get("Retry-After")) ??
+            this.baseDelayMs * Math.pow(2, attempt);
           logger.api("rate-limited", { requestId, retryAfter: delay });
           await this.sleep(delay);
           continue;
@@ -1657,8 +1658,9 @@ export class JiraClient {
         }));
 
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After");
-          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.baseDelayMs * Math.pow(2, attempt);
+          const delay =
+            parseRetryAfterMs(res.headers.get("Retry-After")) ??
+            this.baseDelayMs * Math.pow(2, attempt);
           logger.api("rate-limited", { requestId, retryAfter: delay });
           await this.sleep(delay);
           continue;

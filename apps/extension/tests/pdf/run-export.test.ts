@@ -52,7 +52,8 @@ describe("extension PDF page adapter", () => {
           return { pdf: validPdf, diagnostics: [], compilerVersion: "test" };
         },
       }),
-      output: { emit: async (name, bytes) => { emitted.push({ name, bytes }); } },
+      // `bytes` is a PdfBytesHandle since spec 010 T5.6; assertions want the array.
+      output: { emit: async (name, bytes) => { emitted.push({ name, bytes: await bytes.asUint8Array() }); } },
     });
 
     expect(compiledBundle?.template).toContain('let cover-paper = rgb("#FFFDF5")');

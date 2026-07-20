@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { PdfCompilerHost, type PdfWorkerLike } from "../../utils/pdf/compiler-host.js";
+import { ChromeWorkerCompilerHost, type PdfWorkerLike } from "../../utils/pdf/compiler-host.js";
 import type { PdfWorkerRequest, PdfWorkerResponse } from "../../utils/pdf/worker-protocol.js";
 
 class FakeWorker implements PdfWorkerLike {
@@ -12,10 +12,10 @@ class FakeWorker implements PdfWorkerLike {
   reply(response: PdfWorkerResponse): void { this.onmessage?.({ data: response } as MessageEvent); }
 }
 
-describe("PdfCompilerHost", () => {
+describe("ChromeWorkerCompilerHost", () => {
   it("runs jobs FIFO on one worker", async () => {
     const worker = new FakeWorker();
-    const host = new PdfCompilerHost({ createWorker: () => worker, timeoutMs: 1_000 });
+    const host = new ChromeWorkerCompilerHost({ createWorker: () => worker, timeoutMs: 1_000 });
     const first = host.compile("a");
     const second = host.compile("b");
     expect(worker.posted).toEqual([{ kind: "pdf-worker:compile", jobId: "a" }]);
@@ -30,7 +30,7 @@ describe("PdfCompilerHost", () => {
     const workers: FakeWorker[] = [];
     let timeout: (() => void) | undefined;
     const failed: string[] = [];
-    const host = new PdfCompilerHost({
+    const host = new ChromeWorkerCompilerHost({
       createWorker: () => { const worker = new FakeWorker(); workers.push(worker); return worker; },
       schedule: (fn) => { timeout = fn; return 1 as unknown as ReturnType<typeof setTimeout>; },
       clear: () => undefined,
@@ -50,7 +50,7 @@ describe("PdfCompilerHost", () => {
   it("cancels active and queued jobs without running stale work", async () => {
     const workers: FakeWorker[] = [];
     const cancelled: string[] = [];
-    const host = new PdfCompilerHost({
+    const host = new ChromeWorkerCompilerHost({
       createWorker: () => { const worker = new FakeWorker(); workers.push(worker); return worker; },
       cancelJob: async (jobId) => { cancelled.push(jobId); },
     });
@@ -66,7 +66,7 @@ describe("PdfCompilerHost", () => {
 
   it("recovers with a fresh worker after a fatal job between two successful jobs", async () => {
     const workers: FakeWorker[] = [];
-    const host = new PdfCompilerHost({
+    const host = new ChromeWorkerCompilerHost({
       createWorker: () => {
         const worker = new FakeWorker();
         workers.push(worker);
@@ -97,7 +97,7 @@ describe("PdfCompilerHost", () => {
 
   it("detaches a terminated worker so late events cannot fail the next job", async () => {
     const workers: FakeWorker[] = [];
-    const host = new PdfCompilerHost({
+    const host = new ChromeWorkerCompilerHost({
       createWorker: () => {
         const worker = new FakeWorker();
         workers.push(worker);

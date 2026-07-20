@@ -19,7 +19,7 @@ describe("extensionPdfCompilePort", () => {
         cleanupJobs: async () => { events.push("cleanup"); return 0; },
         createJob: async (input) => {
           events.push("store");
-          stored = { ...input, createdAt: 1, status: "prepared", inputBytes: 1 };
+          stored = { ...input, createdAt: 1, status: "prepared", inputBytes: 1, outputBytes: 0 };
           return stored;
         },
         sendMessage: async (message) => {
@@ -39,7 +39,7 @@ describe("extensionPdfCompilePort", () => {
   it("returns normalized diagnostics for a compiler failure", async () => {
     const diagnostic = { severity: "error" as const, message: "bad source", blockPath: "blocks[0]" };
     const failed: StoredPdfJob = {
-      id: jobId, sourceIdentity: "page:1", createdAt: 1, status: "failed", inputBytes: 1,
+      id: jobId, sourceIdentity: "page:1", createdAt: 1, status: "failed", inputBytes: 1, outputBytes: 0,
       bundle, diagnostics: [diagnostic], error: "bad source",
     };
     const port = extensionPdfCompilePort({
@@ -62,7 +62,7 @@ describe("extensionPdfCompilePort", () => {
     let cancels = 0;
     let deleted = 0;
     const prepared: StoredPdfJob = {
-      id: jobId, sourceIdentity: "page:1", createdAt: 1, status: "prepared", inputBytes: 1, bundle,
+      id: jobId, sourceIdentity: "page:1", createdAt: 1, status: "prepared", inputBytes: 1, outputBytes: 0, bundle,
     };
     const port = extensionPdfCompilePort({
       sourceIdentity: "page:1",

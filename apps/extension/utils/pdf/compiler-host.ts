@@ -12,7 +12,7 @@ export interface PdfWorkerLike {
   onerror: ((event: ErrorEvent) => void) | null;
 }
 
-export interface PdfCompilerHostOptions {
+export interface ChromeWorkerCompilerHostOptions {
   createWorker: () => PdfWorkerLike;
   timeoutMs?: number;
   schedule?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -26,17 +26,28 @@ interface QueueItem {
   resolve: (value: PdfWorkerResponse) => void;
 }
 
-/** Single-worker FIFO with hard timeout and cancellation. */
-export class PdfCompilerHost {
+/**
+ * Single-worker FIFO with hard timeout and cancellation — the **Chrome
+ * offscreen-document adapter**, not an abstract compiler contract.
+ *
+ * Renamed from `PdfCompilerHost` in spec 010 Phase 0 to settle a name
+ * collision: `forge-export-app/SPIKE.md` uses `PdfCompilerHost` for the
+ * abstract `compile(bundle, signal)` seam, while this class is one host's
+ * implementation of a job queue around a dedicated `Worker`. Two different
+ * things at two different layers must not share a name. The generic name is
+ * left free for the seam; the abstract contract this class ultimately serves is
+ * already `PdfCompilePort` (`@atlcli/pdf`).
+ */
+export class ChromeWorkerCompilerHost {
   private readonly queue: QueueItem[] = [];
   private worker: PdfWorkerLike | null = null;
   private active: QueueItem | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly timeoutMs: number;
-  private readonly schedule: NonNullable<PdfCompilerHostOptions["schedule"]>;
-  private readonly clear: NonNullable<PdfCompilerHostOptions["clear"]>;
+  private readonly schedule: NonNullable<ChromeWorkerCompilerHostOptions["schedule"]>;
+  private readonly clear: NonNullable<ChromeWorkerCompilerHostOptions["clear"]>;
 
-  constructor(private readonly options: PdfCompilerHostOptions) {
+  constructor(private readonly options: ChromeWorkerCompilerHostOptions) {
     this.timeoutMs = options.timeoutMs ?? 60_000;
     this.schedule = options.schedule ?? ((fn, ms) => setTimeout(fn, ms));
     this.clear = options.clear ?? ((id) => clearTimeout(id));

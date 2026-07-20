@@ -18,23 +18,80 @@ import {
   resetRasterizerStats,
   sessionAssetFetcher,
 } from "../../utils/docx/env.js";
-import { putTemplate } from "../../utils/docx/template-store.js";
+import { idbTemplateLibrary } from "../../utils/templates/library.js";
+
+const SITE = "https://mayflower.atlassian.net";
+
+function docxBuffer(body = "$scroll.title"): { docx: Uint8Array; buffer: ArrayBuffer } {
+  const docx = buildDocx({ body: para(body) });
+  return {
+    docx,
+    buffer: docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer,
+  };
+}
 
 describe("idbTemplateSource", () => {
-  it("returns the stored template bytes for the requested slot", async () => {
+  it("returns the bytes of the template requested by its logical templateId", async () => {
     const factory = new IDBFactory();
-    const docx = buildDocx({ body: para("$scroll.title") });
-    const buf = docx.buffer.slice(docx.byteOffset, docx.byteOffset + docx.byteLength) as ArrayBuffer;
-    await putTemplate({ id: "current", name: "t.docx", bytes: buf, uploadedAt: 1 }, factory);
+    const { docx, buffer } = docxBuffer();
+    const entry = await idbTemplateLibrary({ factory, siteOrigin: SITE }).add({
+      name: "t.docx",
+      bytes: buffer,
+    });
 
-    const bytes = await idbTemplateSource(factory).getBytes("current");
+    const bytes = await idbTemplateSource(factory, { siteOrigin: SITE }).getBytes(entry.id);
     expect(bytes).toEqual(docx);
   });
 
-  it("rejects when no template is stored under the id", async () => {
+  it("resolves the active selection when no explicit id is given", async () => {
     const factory = new IDBFactory();
-    expect(idbTemplateSource(factory).getBytes("current")).rejects.toThrow(
-      'No template stored under id "current"'
+    const library = idbTemplateLibrary({ factory, siteOrigin: SITE });
+    const other = await library.add({ name: "other.docx", bytes: docxBuffer("$scroll.title").buffer });
+    const { docx, buffer } = docxBuffer("$scroll.content");
+    const active = await library.add({ name: "active.docx", bytes: buffer });
+    await library.setActiveTemplateId("docx", "DOCSY", active.id);
+    expect(other.id).not.toBe(active.id);
+
+    const source = idbTemplateSource(factory, { siteOrigin: SITE, spaceKey: "DOCSY" });
+    expect(await source.getBytes("")).toEqual(docx);
+  });
+
+  it("lets a space-scoped override beat the global entry of the same templateId", async () => {
+    const factory = new IDBFactory();
+    const library = idbTemplateLibrary({ factory, siteOrigin: SITE });
+    const global = await library.add({
+      name: "handbook.docx",
+      bytes: docxBuffer("$scroll.title").buffer,
+    });
+    const { docx: spaceDocx, buffer: spaceBuffer } = docxBuffer("$scroll.content");
+    // Same logical templateId, space scope — a distinct row, not a replacement.
+    await library.add({
+      name: "handbook-docsy.docx",
+      bytes: spaceBuffer,
+      templateId: global.id,
+      scope: "space",
+      spaceKey: "DOCSY",
+    });
+
+    const inSpace = idbTemplateSource(factory, { siteOrigin: SITE, spaceKey: "DOCSY" });
+    expect(await inSpace.getBytes(global.id)).toEqual(spaceDocx);
+  });
+
+  it("rejects when nothing is stored", async () => {
+    const factory = new IDBFactory();
+    expect(idbTemplateSource(factory, { siteOrigin: SITE }).getBytes("")).rejects.toThrow(
+      "No template selected"
+    );
+  });
+
+  it("rejects when the requested templateId is not in the library", async () => {
+    const factory = new IDBFactory();
+    await idbTemplateLibrary({ factory, siteOrigin: SITE }).add({
+      name: "t.docx",
+      bytes: docxBuffer().buffer,
+    });
+    expect(idbTemplateSource(factory, { siteOrigin: SITE }).getBytes("missing")).rejects.toThrow(
+      'No docx template "missing" in the library'
     );
   });
 });

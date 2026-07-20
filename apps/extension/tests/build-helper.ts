@@ -20,6 +20,12 @@ export const MANIFEST_PATH = join(OUTPUT_DIR, "manifest.json");
 export const BUILD_INPUTS = [
   "wxt.config.ts",
   "package.json",
+  // Spec 010 Phase 0 added a components tree and a Tailwind stylesheet. Without
+  // them here, editing only a component would leave a stale `.output` for every
+  // build-output assertion to pass against.
+  "postcss.config.mjs",
+  "components",
+  "assets",
   "entrypoints",
   "utils",
   "workers",
