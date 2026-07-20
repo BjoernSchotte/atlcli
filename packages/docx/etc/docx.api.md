@@ -260,6 +260,25 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: ConfluencePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: ConfluencePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -300,9 +319,50 @@ export declare const MAX_RASTER_PIXELS = 40000000;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private readonly decimalAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedNumIds;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private decimalAbstractNum;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
 // export: OutputSink
 export interface OutputSink {
     emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
 }
 
 // export: PagePropertyArgs
@@ -357,6 +417,16 @@ export declare function relsPathFor(partPath: string): string;
 // export: renderDiagram
 export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
 // export: resolveTargetSize
 export declare function resolveTargetSize(intrinsic: {
     width: number;
@@ -374,6 +444,25 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
     templateId?: string;
 }
 
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+}
+
 // export: SvgRasterizer
 export interface SvgRasterizer {
     rasterize(svg: string, target: {
@@ -386,6 +475,12 @@ export interface SvgRasterizer {
 export interface TargetSize {
     widthPx: number;
     heightPx: number;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
 }
 
 // export: TemplateSource
@@ -665,6 +760,25 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: ConfluencePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: ConfluencePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -705,9 +819,50 @@ export declare const MAX_RASTER_PIXELS = 40000000;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private readonly decimalAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedNumIds;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private decimalAbstractNum;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
 // export: OutputSink
 export interface OutputSink {
     emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
 }
 
 // export: PagePropertyArgs
@@ -762,6 +917,16 @@ export declare function relsPathFor(partPath: string): string;
 // export: renderDiagram
 export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
 // export: resolveTargetSize
 export declare function resolveTargetSize(intrinsic: {
     width: number;
@@ -789,6 +954,25 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
     templateId?: string;
 }
 
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+}
+
 // export: SvgRasterizer
 export interface SvgRasterizer {
     rasterize(svg: string, target: {
@@ -801,6 +985,12 @@ export interface SvgRasterizer {
 export interface TargetSize {
     widthPx: number;
     heightPx: number;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
 }
 
 // export: TemplateSource
@@ -1074,6 +1264,25 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: ConfluencePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: ConfluencePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -1114,9 +1323,50 @@ export declare const MAX_RASTER_PIXELS = 40000000;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private readonly decimalAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedNumIds;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private decimalAbstractNum;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
 // export: OutputSink
 export interface OutputSink {
     emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
 }
 
 // export: PagePropertyArgs
@@ -1171,6 +1421,16 @@ export declare function relsPathFor(partPath: string): string;
 // export: renderDiagram
 export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
 // export: resolveTargetSize
 export declare function resolveTargetSize(intrinsic: {
     width: number;
@@ -1188,6 +1448,25 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
     templateId?: string;
 }
 
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+}
+
 // export: SvgRasterizer
 export interface SvgRasterizer {
     rasterize(svg: string, target: {
@@ -1200,6 +1479,12 @@ export interface SvgRasterizer {
 export interface TargetSize {
     widthPx: number;
     heightPx: number;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
 }
 
 // export: TemplateSource
@@ -1952,6 +2237,25 @@ export interface ImageInfo {
     height: number;
 }
 
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: ConfluencePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: ConfluencePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -1992,9 +2296,50 @@ export declare const MAX_RASTER_PIXELS = 40000000;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private readonly decimalAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedNumIds;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private decimalAbstractNum;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
 // export: OutputSink
 export interface OutputSink {
     emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
 }
 
 // export: PagePropertyArgs
@@ -2049,6 +2394,16 @@ export declare function relsPathFor(partPath: string): string;
 // export: renderDiagram
 export declare function renderDiagram(source: string, theme?: DiagramTheme): Promise<DiagramRenderResult>;
 
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
 // export: resolveTargetSize
 export declare function resolveTargetSize(intrinsic: {
     width: number;
@@ -2076,6 +2431,25 @@ export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
     templateId?: string;
 }
 
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+}
+
 // export: SvgRasterizer
 export interface SvgRasterizer {
     rasterize(svg: string, target: {
@@ -2088,6 +2462,12 @@ export interface SvgRasterizer {
 export interface TargetSize {
     widthPx: number;
     heightPx: number;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
 }
 
 // export: TemplateSource

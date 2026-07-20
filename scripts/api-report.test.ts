@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPackages } from "./consumer-smoke.js";
 import { generateAllReports, reportForDts } from "./api-report.js";
+import { generateAllClosures } from "./api-closure.js";
 
 /**
  * API report guard (spec 009, API freeze & guards).
@@ -41,6 +42,33 @@ describe("api-report guard (spec 009)", () => {
         offenders.length
           ? `Public API surface changed without a reviewed report update:\n  ${offenders.join("\n  ")}\n` +
             `Run \`bun scripts/api-report.ts --update\` and have the diff reviewed.`
+          : undefined,
+      ).toEqual([]);
+    },
+    120000,
+  );
+
+  it(
+    "every committed closure classification matches the built surface, with zero reachable-but-unexported gaps",
+    () => {
+      const offenders: string[] = [];
+      for (const closure of generateAllClosures()) {
+        if (closure.committed === null) {
+          offenders.push(`${closure.name}: no committed classification at ${closure.path}`);
+        } else if (closure.committed !== closure.generated) {
+          offenders.push(`${closure.name}: ${closure.path} is stale`);
+        }
+        if (closure.generated.includes("reachable-but-unexported gaps (")) {
+          offenders.push(
+            `${closure.name}: a stable entrypoint reaches unexported types — export them or reclassify`,
+          );
+        }
+      }
+      expect(
+        offenders,
+        offenders.length
+          ? `Closure classification out of date:\n  ${offenders.join("\n  ")}\n` +
+            `Run \`bun scripts/api-closure.ts --update\` and have the diff reviewed.`
           : undefined,
       ).toEqual([]);
     },

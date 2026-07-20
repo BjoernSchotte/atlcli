@@ -318,4 +318,9 @@ export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
 
 // export: tocRenderer
 export declare function tocRenderer(): MacroRenderer;
+
+// export: UnknownBlock
+export type UnknownBlock = Extract<ExportBlock, {
+    type: "unknown";
+}>;
 ```

@@ -23,3 +23,13 @@ export * from "./image.js";
 // Implementation-detail modules (scan/resolver/serialize/ooxml) are NOT part
 // of this barrel (spec 009 barrel trim): they stay reachable via the explicit
 // `./scan` subpath and the non-frozen `./internal` subpath.
+//
+// The TYPES below are transitively required by the frozen v1 surface
+// (RunExportInput reaches TemplateMeta/ResolveDeps; ExportReport reaches
+// ScanResult; the numbering seam reaches NumberingAllocator) — the closure
+// classification (spec 009 T4.2) flags any reachable-but-unexported type, so
+// they are exported type-only here without re-adding the implementation
+// modules to the barrel.
+export type { IncludeLookupOutcome, PageOwner, ResolveDeps, TemplateMeta } from "./resolver.js";
+export type { ScanHit, ScanResult } from "./scan.js";
+export type { NumberingAllocator, NumberingBase, NumberingXml } from "./numbering.js";
