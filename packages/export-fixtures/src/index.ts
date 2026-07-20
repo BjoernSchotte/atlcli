@@ -197,16 +197,17 @@ function page(
 }
 
 /**
- * A three-page tree: a root page and two children. Each page carries a heading
- * and a paragraph plus an in-page anchor + a link to a sibling's anchor, so the
- * compose step must offset heading levels, insert chapter page breaks, and keep
- * cross-page anchors resolvable (no dangling-link diagnostics).
+ * A three-page tree: a root page and two children. Chapter A carries its own
+ * in-page anchor (`alpha`) AND a genuine CROSS-page link to Chapter B's anchor
+ * (`beta`), so the compose step must offset heading levels, insert chapter page
+ * breaks, namespace every anchor to `p<pageId>-<name>`, and rewrite the
+ * cross-page link to Chapter B's namespaced destination — all with no
+ * dangling-link diagnostic.
  *
- * Forward-provisioned for conformance **case 002 `scope`**
- * (`apps/browser-export-harness/src/scope-case.ts`, not yet written): that case
- * will drive these nodes through `composeChapters` → both engines. Committed
- * ahead of the case so the fixture contract lives in one place when 002's
- * harness case lands.
+ * Drives conformance **case 002 `scope`**
+ * (`apps/browser-export-harness/src/scope-case.ts`) through `composeChapters` →
+ * both engines. The SAME nodes run browser-side and CLI-side, so a digest
+ * divergence is a real engine divergence, never a fixture drift.
  */
 export const SCOPE_TREE_NODES: readonly ExportNode[] = [
   page("root", "Handbook", 0, 0, null, [
@@ -217,22 +218,24 @@ export const SCOPE_TREE_NODES: readonly ExportNode[] = [
     { type: "heading", level: 1, content: [{ type: "text", text: "Chapter A" }] },
     { type: "anchor", name: "alpha" },
     { type: "paragraph", content: [{ type: "text", text: "Alpha content." }] },
-    // An in-page link back to this page's own anchor — composeChapters must
-    // namespace both the anchor block and the link target to `p<pageId>-alpha`
-    // and rewrite the link so it resolves (no dangling-link diagnostic).
+    // A CROSS-page link to Chapter B's `beta` anchor — composeChapters resolves
+    // the page (by contentId, in scope), namespaces both pages' anchors, and
+    // rewrites this link to Chapter B's `p<pageId>-beta` destination so it
+    // resolves (no dangling-link diagnostic).
     {
       type: "paragraph",
       content: [
         {
           type: "link",
-          target: { kind: "anchor", anchor: "alpha" },
-          content: [{ type: "text", text: "Back to Alpha" }],
+          target: { kind: "page", contentId: "chapter-b", contentTitle: "Chapter B", anchor: "beta" },
+          content: [{ type: "text", text: "See Chapter B" }],
         },
       ],
     },
   ]),
   page("chapter-b", "Chapter B", 1, 1, "root", [
     { type: "heading", level: 1, content: [{ type: "text", text: "Chapter B" }] },
+    { type: "anchor", name: "beta" },
     { type: "paragraph", content: [{ type: "text", text: "Beta content." }] },
   ]),
 ];

@@ -132,39 +132,25 @@ async function cliCompile(
 }
 
 async function runPdfSettingsCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
-  const a = await cliCompile(compiler, PDF_SETTINGS_BLOCKS, PDF_SETTINGS_METADATA, "PDF Settings Conformance.pdf");
-  // Variant B uses different settings; thread them through the same request shape.
-  const outputB = new MemoryOutputSink();
-  const reportB = await runPdfExport(
-    {
-      blocks: PDF_SETTINGS_BLOCKS,
-      metadata: PDF_SETTINGS_METADATA,
-      settings: PDF_SETTINGS_B,
-      profile: "tagged",
-      filename: "PDF Settings Conformance.pdf",
-    },
-    { assets: noAssets, compiler, output: outputB, now: deterministicClock() },
-  );
-  // Variant A carries its own settings too.
-  const outputA = new MemoryOutputSink();
-  const reportA = await runPdfExport(
-    {
-      blocks: PDF_SETTINGS_BLOCKS,
-      metadata: PDF_SETTINGS_METADATA,
-      settings: PDF_SETTINGS_A,
-      profile: "tagged",
-      filename: "PDF Settings Conformance.pdf",
-    },
-    { assets: noAssets, compiler, output: outputA, now: deterministicClock() },
-  );
-  void a;
+  // Two settings variants (A/B) — the same pair the browser case emits digests
+  // for. Each threads its own `settings` through the shared request shape.
+  const compileVariant = async (settings: typeof PDF_SETTINGS_A) => {
+    const output = new MemoryOutputSink();
+    const report = await runPdfExport(
+      { blocks: PDF_SETTINGS_BLOCKS, metadata: PDF_SETTINGS_METADATA, settings, profile: "tagged", filename: "PDF Settings Conformance.pdf" },
+      { assets: noAssets, compiler, output, now: deterministicClock() },
+    );
+    return { bytes: output.single.bytes, report };
+  };
+  const a = await compileVariant(PDF_SETTINGS_A);
+  const b = await compileVariant(PDF_SETTINGS_B);
   return {
-    compilerVersion: reportA.compilerVersion,
+    compilerVersion: a.report.compilerVersion,
     digests: {
-      "variant-a.pdf": sha256Hex(outputA.single.bytes),
-      "variant-b.pdf": sha256Hex(outputB.single.bytes),
+      "variant-a.pdf": sha256Hex(a.bytes),
+      "variant-b.pdf": sha256Hex(b.bytes),
     },
-    notes: reportA.notes.map((n) => ({ code: n.code, level: n.level })),
+    notes: a.report.notes.map((n) => ({ code: n.code, level: n.level })),
   };
 }
 

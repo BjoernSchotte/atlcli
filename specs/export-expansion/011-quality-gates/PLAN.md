@@ -692,8 +692,9 @@ budget).**
       *(Round 2: NOT done — `sanitizeLinkHref` + the serializer wiring are SOURCE
       changes in `packages/{confluence,docx,pdf}/src`, cross-plan with 001/003
       and outside the 011 lane. 011 owns only the shared negative-fixture case,
-      which lands once the sanitizer exists. Note: `@atlcli/confluence` already
-      exports `isSafeLinkScheme` — the sanitizer can build on it.)*
+      which lands once the sanitizer exists. Note: an `isSafeLinkScheme(href)`
+      predicate already exists in `packages/confluence/src/html-to-blocks.ts` —
+      the sanitizer can build on it.)*
 - [~] Compiler execution budget: `BrowserPdfCompiler.compile()`
       *(Partial: `check-parity.ts`, `run-m1-acceptance.ts`, and
       `compile-corpus.ts` now all wrap every Bun-side compile in a wall-clock

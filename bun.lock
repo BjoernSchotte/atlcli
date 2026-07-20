@@ -6,6 +6,7 @@
       "name": "atlcli",
       "dependencies": {
         "@astrojs/starlight": "^0.41.3",
+        "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-fixtures": "workspace:*",
         "@atlcli/pdf": "workspace:*",
