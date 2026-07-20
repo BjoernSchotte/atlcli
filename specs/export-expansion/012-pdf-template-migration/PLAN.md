@@ -453,6 +453,81 @@ parser. Known bypasses (a literal wrapped in its own `${…}`, 3-/4-/8-digit hex
 and the byte-parity gate plus review are the real backstop. Tightening it is
 cheap follow-up work if a real case appears.
 
+## Documented extension — chapter running head (2026-07-20)
+
+**Not in any spec's original task list.** It came out of the M1 acceptance run:
+on a 57-page tree export every page's running head read "M1 Abnahme Root" — the
+root page title. That is correct per the shipped design (the head had exactly
+two behaviours, document title + space key, or the fixed `headerText` string),
+but useless for a book-like document. DOCX already had the equivalent capability
+(a user template can carry a `STYLEREF "Heading 1"` field; spec 006 G1 built the
+STYLEREF inventory/validation), so PDF was asymmetric. Recorded here because
+this folder owns the design model the field lives in.
+
+**Where the field went, and why.** `design.features.header.mode`, a bounded enum
+`"title" | "chapter" | "custom"` validated by `validateDesign` —
+*not* a new top-level `header` section. `features` already owns the header as a
+named section, and `features.outline` already carries bounded configuration
+beyond `enabled` (`depth`), so "a feature section holds its own bounded options"
+was the established convention rather than a new one. The field is **optional**:
+an absent `mode` stays `undefined` (the `branding.organizationName` /
+`TypographyRole.font` precedent — reject invalid, never coerce absent) and
+consumers resolve it through the exported `DEFAULT_DESIGN_HEADER_MODE`
+(`"title"`). That is what makes the addition non-breaking for every manifest
+written before it existed.
+
+**No binding, deliberately.** `features.header.mode` was NOT added to
+`BINDING_TARGET_ALLOWLIST`. A binding needs a Level-A source, and
+`bindingSourceValue` in `packages/pdf/src/settings.ts` is a closed switch over
+the six existing Level-A keys — an allowlisted target with no source would be
+permanently unreachable configuration in a *versioned* allowlist. Adding a
+target later is non-breaking (same additive rule the contract states for
+settings keys), so the honest order is: add a Level-A `headerMode` setting +
+its CLI/extension surface first, then the binding. Until then the mode is what
+it should be anyway — a template-design choice an author makes in the manifest,
+like `page.margin` or a typography role.
+
+**The Typst construct, verified against the real compiler** (`typst.ts 0.7.0 /
+Typst 0.14.2`), not assumed:
+
+```typst
+query(heading.where(level: 1))
+  .filter(h => h.outlined and h.location().page() <= here().page())
+```
+
+The obvious `heading.where(level: 1).before(here()).last()` was rejected on
+evidence: inside a page header `here()` resolves to the **top** of the page, so
+`.before(here())` excludes a chapter that opens on that very page, and the head
+lags one page behind at every chapter opening (probed per page with `panic`
+diagnostics against the pinned compiler: the page where "Beta Chapter" opened
+still read "Alpha Chapter"). The `h.outlined` filter is equally load-bearing —
+`outline()` emits its own level-1 heading for the "Contents" title, the only
+heading with `outlined: false`; without the filter every page of every document
+was headed *Contents*. Pages with no preceding chapter fall back to `meta.title`,
+never to an empty head.
+
+**Default parity preserved.** The mode is resolved at template-*generation* time
+(it is static design, not settings-driven), so the chapter branch is only ever
+emitted for a chapter-mode design. The generated Typst for the default design is
+character-identical to the pre-feature template, and
+`template-migration-parity.test.ts` still pins
+`351fd2d4f0a178368d642ef939f2de2736ddc506f196cd70b47e455cad376975` unchanged.
+
+**Manuscript opted in** (`features.header.mode: "chapter"`) — it is the
+book-like curated template, and it has no pinned digest, so its output changing
+is intended. Editorial Indigo stays on `"title"`, which is what keeps the
+digest fixed.
+
+**Tests** (no mocks; real compiler, real fonts, real import gate). Header text is
+not recoverable from a compiled PDF — Typst subsets fonts and emits glyph ids,
+and the running head reaches neither the outline nor the structure tree — so
+`chapter-running-head.test.ts` asserts through **byte-equality between two real
+renders constructed to agree only if the head resolves to a specific string**
+(e.g. a single chapter whose heading equals the document title renders
+byte-identically in both modes; a document with no chapter heading does too,
+which is simultaneously the fallback proof and the ToC-exclusion regression
+guard). That is a stronger claim than a substring match, not a weaker one.
+
 ## Definition of Done
 
 - The built-in template's default output is proven parity-identical

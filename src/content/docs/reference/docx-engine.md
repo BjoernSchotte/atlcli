@@ -333,6 +333,13 @@ minutes later.
 Templates commonly put the current chapter heading into the running header via a `STYLEREF`
 field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this working:
 
+> **PDF equivalent.** The PDF engine offers the same capability as a declared template
+> design field, `design.features.header.mode: "chapter"` — see
+> [Running-head modes](pdf-template-contract.md#running-head-modes). Same result (each page
+> headed by the last H1 that began on or before it), different declaration point: DOCX
+> inherits the field from the user's `.docx`, PDF validates a manifest enum.
+
+
 - Field **instructions survive byte-exactly** — the preprocessor and docxtemplater never touch
   them (only a field's cached *result* runs are rewritten).
 - Headings carry the **exact `w:pStyle` id** whose style *name* the field references

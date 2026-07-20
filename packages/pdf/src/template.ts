@@ -34,7 +34,7 @@ import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
-import type { WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import { DEFAULT_DESIGN_HEADER_MODE, type WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
 import { typstString } from "./escape.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
@@ -100,6 +100,37 @@ export function createAtlcliTypstTemplate(
   const coverDefault = design.features.cover.enabled ? "true" : "false";
   const outlineDefault = design.features.outline.enabled ? "true" : "false";
   const outlineDepthDefault = design.features.outline.depth;
+
+  // Running-head mode. This is static design (not settings-driven), so it is
+  // resolved and interpolated when the template string is generated: the
+  // `chapter` branch is EMITTED ONLY for a chapter-mode design, which is what
+  // keeps the default (`title`) path character-identical to the pre-feature
+  // template and therefore byte-identical in the compiled PDF.
+  //
+  // `title` and `custom` generate the same source on purpose: an explicit
+  // `header-text` setting wins in every mode (007 behavior, unchanged), so
+  // `custom` declares the template's intent and falls back to the title when no
+  // `headerText` is supplied.
+  const headerMode = design.features.header.mode ?? DEFAULT_DESIGN_HEADER_MODE;
+  const headerResolution =
+    headerMode === "chapter"
+      ? String.raw`          // Chapter running head ("Kolumnentitel"): the level-1 heading that owns
+          // this page. Two behaviours were verified against the pinned compiler
+          // and both matter:
+          //   1. here() inside a page header resolves to the TOP of the page, so
+          //      a before-here selector EXCLUDES a chapter that opens on this
+          //      very page and lags one page behind at every chapter opening.
+          //      Comparing page indices picks the chapter that owns the page.
+          //   2. the table of contents renders its own level-1 heading, so an
+          //      unfiltered query names the whole document "Contents". That
+          //      heading is the only one with outlined: false, and "appears in
+          //      the table of contents" is exactly what a chapter is.
+          // Front matter (no chapter heading yet) falls back to the document
+          // title, never to an empty head.
+          let started = query(heading.where(level: 1)).filter(h => h.outlined and h.location().page() <= here().page())
+          let chapter-head = if started.len() > 0 { started.last().body } else { meta.title }
+          grid(columns: (1fr, auto), chapter-head, meta.space)`
+      : String.raw`          grid(columns: (1fr, auto), meta.title, meta.space)`;
 
   const info = callout("info");
   const note = callout("note");
@@ -216,7 +247,7 @@ export function createAtlcliTypstTemplate(
         set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let header-text = settings.at("header-text", default: none)
         if header-text == none {
-          grid(columns: (1fr, auto), meta.title, meta.space)
+${headerResolution}
         } else {
           header-text
         }

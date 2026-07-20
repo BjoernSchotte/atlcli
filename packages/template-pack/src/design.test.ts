@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  DEFAULT_DESIGN_HEADER_MODE,
+  DESIGN_HEADER_MODES,
   validateDesign,
   type WikiPdfTemplateDesignV1,
 } from "./design.js";
@@ -90,6 +92,39 @@ describe("validateDesign", () => {
     const design = validDesign();
     (design.typography.roles.h1 as { weight: string }).weight = "ultrablack";
     expect(() => validateDesign(design)).toThrow(ManifestValidationError);
+  });
+
+  it("accepts every declared running-head mode", () => {
+    for (const mode of DESIGN_HEADER_MODES) {
+      const design = validDesign();
+      design.features.header.mode = mode;
+      expect(validateDesign(design).features.header.mode).toBe(mode);
+    }
+  });
+
+  it("treats an absent running-head mode as optional (back-compatible manifests)", () => {
+    const design = validDesign();
+    expect(design.features.header.mode).toBeUndefined();
+    // No coercion: an absent optional stays absent, exactly like
+    // `branding.organizationName`. Consumers resolve it with the default.
+    expect(validateDesign(design).features.header.mode).toBeUndefined();
+    expect(DEFAULT_DESIGN_HEADER_MODE).toBe("title");
+  });
+
+  it("rejects an unknown running-head mode", () => {
+    const design = validDesign();
+    (design.features.header as { mode: string }).mode = "kolumnentitel";
+    expect(() => validateDesign(design)).toThrow(ManifestValidationError);
+    expect(() => validateDesign(design)).toThrow(/features\.header\.mode/);
+    expect(() => validateDesign(design)).toThrow(/"title", "chapter", "custom"/);
+  });
+
+  it("rejects a non-string running-head mode", () => {
+    for (const bad of [1, true, null, {}, ["chapter"]]) {
+      const design = validDesign();
+      (design.features.header as { mode: unknown }).mode = bad;
+      expect(() => validateDesign(design)).toThrow(ManifestValidationError);
+    }
   });
 
   it("accepts boundary lengths, colors, and ratios", () => {
