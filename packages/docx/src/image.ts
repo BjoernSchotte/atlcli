@@ -20,7 +20,7 @@
  * {@link ImageEmbedError} leaves no dangling media part or relationship.
  */
 import type PizZip from "pizzip";
-import { ASSET_MAX_BYTES, decodeSvgSource } from "@atlcli/confluence";
+import { ASSET_MAX_BYTES, decodeSvgSource, type ExportNote } from "@atlcli/confluence";
 
 /** 914400 EMU/inch ÷ 96 dpi (research §2.5; matches Scroll/Word defaults). */
 export const EMU_PER_PX = 9525;
@@ -261,6 +261,55 @@ export function boundRasterTarget(size: TargetSize): TargetSize | null {
   }
   if (widthPx * heightPx > MAX_RASTER_PIXELS) return null;
   return size;
+}
+
+// ---------------------------------------------------------------------------
+// Accessibility audit (spec 011, PDF/UA lane — same audit, DOCX side)
+// ---------------------------------------------------------------------------
+
+/**
+ * True when an image carries no author-written alternative text.
+ *
+ * Mirrors `isMissingAltText` in `packages/pdf/src/prepare.ts` exactly, including
+ * the whitespace rule: `alt=" "` satisfies no assistive technology, and
+ * Confluence's editor produces it readily. The two engines must agree on what
+ * counts as "has alt text" or the same source page audits differently depending
+ * on which format an author exported.
+ */
+export function isMissingAltText(alt: string | undefined): boolean {
+  return (alt ?? "").trim().length === 0;
+}
+
+/**
+ * The alt-text audit note for one embedded image, or `null` when the image has
+ * alt text.
+ *
+ * Worth stating plainly, because the emitted XML looks fine either way:
+ * {@link inlineImageParagraph} always writes a non-empty `descr`, falling back
+ * to the filename (`opts.alt || opts.name || "image"`). Word therefore reports
+ * the picture as "has alt text" and its own accessibility checker stays silent,
+ * while a screen reader reads out `chart-final-v2.png`. This audit is the only
+ * signal an author gets that the fallback was taken.
+ */
+export function auditImageAltText(input: {
+  alt?: string;
+  /** Human label for the image — attachment filename or external URL. */
+  name: string;
+  /** Provenance for the note (spec 003): which page the image lives on. */
+  pageId?: string;
+}): ExportNote | null {
+  if (!isMissingAltText(input.alt)) return null;
+  return {
+    level: "warning",
+    code: "image-missing-alt",
+    message:
+      `The image "${input.name}" has no alternative text; Word falls back to the technical ` +
+      `filename, which assistive technology cannot use. Add alt text on the source page.`,
+    source: {
+      ...(input.pageId ? { pageId: input.pageId } : {}),
+      assetName: input.name,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

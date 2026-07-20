@@ -2045,3 +2045,116 @@ describe("exportDocx — table widths & style source (spec 006 G3/G3b)", () => {
     expect(report.notes.some((n) => n.code === "table-style-missing")).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Alt-text audit through the real export pipeline (spec 011, PDF/UA lane)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — alt-text audit (spec 011)", () => {
+  const imageTemplate = () =>
+    buildDocx({ body: para("$scroll.content"), styles: stylesXml(headingStyle("Heading1", "Heading 1")) });
+
+  const altNotes = (report: { notes: { code: string }[] }) =>
+    report.notes.filter((n) => n.code === "image-missing-alt");
+
+  it("warns for an embedded attachment image with no alt and names the asset", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image><ri:attachment ri:filename="chart-final-v2.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: { fetch: async () => pngFixtureBytes(120, 60) },
+    });
+    // The image really is embedded — this is an audit, not a rejection.
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(altNotes(report)[0]).toMatchObject({
+      level: "warning",
+      source: { assetName: "chart-final-v2.png" },
+    });
+    // …and the descr it is warning about is the filename fallback.
+    expect(readPart(bytes, "word/document.xml")).toContain('descr="chart-final-v2.png"');
+  });
+
+  it("stays silent when the author wrote alt text", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage: '<ac:image ac:alt="Quarterly revenue by region"><ri:attachment ri:filename="chart.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: { fetch: async () => pngFixtureBytes(120, 60) },
+    });
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toEqual([]);
+    expect(readPart(bytes, "word/document.xml")).toContain('descr="Quarterly revenue by region"');
+  });
+
+  it("audits each offending image once, leaving described ones alone", async () => {
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: {
+        ...details,
+        storage:
+          '<ac:image><ri:attachment ri:filename="a.png"/></ac:image>' +
+          '<ac:image ac:alt="described"><ri:attachment ri:filename="b.png"/></ac:image>' +
+          '<ac:image><ri:attachment ri:filename="c.png"/></ac:image>',
+      },
+      template,
+      deps,
+      assets: {
+        fetch: async (ref: { filename?: string }) =>
+          pngFixtureBytes(100 + (ref.filename?.charCodeAt(0) ?? 0), 50),
+      },
+    });
+    expect(report.embeddedImages).toBe(3);
+    expect(altNotes(report).map((n) => (n as { source?: { assetName?: string } }).source?.assetName)).toEqual([
+      "a.png",
+      "c.png",
+    ]);
+  });
+
+  it("audits an SVG attachment too — the vector path has the same fallback", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60"/></svg>';
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: { ...details, storage: '<ac:image><ri:attachment ri:filename="arch.svg"/></ac:image>' },
+      template,
+      deps,
+      assets: { fetch: async () => new TextEncoder().encode(svg) },
+      rasterizer: {
+        async rasterize(_svg: string, target: { widthPx: number; heightPx: number }) {
+          return pngFixtureBytes(target.widthPx, target.heightPx);
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(1);
+    expect(altNotes(report)).toHaveLength(1);
+    expect(altNotes(report)[0]).toMatchObject({ source: { assetName: "arch.svg" } });
+  });
+
+  it("does not audit an image that never made it into the document", async () => {
+    // A failed embed already reports `image-embed-failed`; adding an alt
+    // warning for a picture that is not in the file would be noise about a
+    // defect the reader cannot see.
+    const { report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details: { ...details, storage: '<ac:image><ri:attachment ri:filename="gone.png"/></ac:image>' },
+      template,
+      deps,
+      assets: {
+        fetch: async () => {
+          throw new Error("404");
+        },
+      },
+    });
+    expect(report.embeddedImages).toBe(0);
+    expect(altNotes(report)).toEqual([]);
+    expect(report.notes.some((n) => n.code === "image-embed-failed")).toBe(true);
+  });
+});

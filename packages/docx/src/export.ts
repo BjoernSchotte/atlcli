@@ -63,6 +63,7 @@ import {
   type ImageEmbedSeam,
 } from "./serialize.js";
 import {
+  auditImageAltText,
   boundRasterTarget,
   ImageEmbedder,
   ImageEmbedError,
@@ -1056,6 +1057,19 @@ function imageSeam(
     const owningPage = block.source.kind === "attachment" ? block.source.pageId ?? pageId : pageId;
     return { filename, ...(owningPage ? { pageId: owningPage } : {}) };
   };
+  /**
+   * Alt-text audit for one embedded image (spec 011). Reuses `budgetMeta`'s
+   * identity resolution so the note names the same page the asset budget would
+   * blame — one notion of "which page is this image from", not two.
+   */
+  const auditAlt = (block: ImageBlock): ExportNote | null => {
+    const meta = budgetMeta(block);
+    return auditImageAltText({
+      ...(block.alt !== undefined ? { alt: block.alt } : {}),
+      name: meta.filename,
+      ...(meta.pageId ? { pageId: meta.pageId } : {}),
+    });
+  };
   // One progress event per SETTLED image — success or per-image failure alike
   // (matching the PDF engine's per-asset reporting) — so `done` reaches `total`
   // even when some images degrade to report notes. A fatal budget breach aborts
@@ -1098,7 +1112,11 @@ function imageSeam(
           ...(partPath ? { partPath } : {}),
         });
         reportDone(name);
-        return { ok: true as const, xml };
+        // Alt-text audit (spec 011, PDF/UA lane): the image IS in the document
+        // now, with a filename substituted into `descr`. Nothing downstream can
+        // still notice that, so the note is emitted here.
+        const altNote = auditAlt(block);
+        return { ok: true as const, xml, ...(altNote ? { notes: [altNote] } : {}) };
       } catch (err) {
         reportDone(name);
         return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
@@ -1140,6 +1158,8 @@ function imageSeam(
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
     }
     const sideNotes: ExportNote[] = [];
+    const altNote = auditAlt(block);
+    if (altNote) sideNotes.push(altNote);
     const parsed = parseSvgSize(source);
     const intrinsic = parsed ?? SVG_FALLBACK_SIZE;
     if (!parsed) {
