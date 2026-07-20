@@ -42,8 +42,9 @@ The MVP is successful only when all of the following are true:
 8. Interactive CLI use is review-first: it renders a local, target-aware preview from the exact publication plan, exposes every degradation, and requires approval before the first Confluence write. `--confirm` is the explicit direct-import override; it never bypasses safety validation or hard blockers.
 9. The same deterministic override file and preview model work in Bun, Node, the CLI HTML preview, and the neutral browser harness, so a later browser UI can edit mappings without inventing another import path.
 10. DOCX comment attribution survives the fact that Confluence creates every imported comment as the authenticated AtlCLI actor. The platform actor and original document attribution remain distinct, and the existing DOCX exporter can reconstruct Word authors, anchors, threads, dates, and resolution without treating literal names as Confluence identities.
-11. The built CLI passes an automated live E2E against profile `mayflower`, space `DOCSY`, reads the page back, exports it to DOCX with comments, reimports that DOCX, proves the semantic/comment roundtrip, and removes every created resource in `finally` cleanup.
-12. Data Center is not claimed complete until its separate live E2E passes against an actual DC profile. Transport-contract tests alone do not certify a platform.
+11. Users may explicitly retain the byte-identical input DOCX as a page attachment. Visible reference is a separate exclusive choice: `none` by default, a link section at the page footer, or a page-level comment linking the attachment. The choice is previewed, digest-bound, read back, and never silently degraded.
+12. The built CLI passes an automated live E2E against profile `mayflower`, space `DOCSY`, reads the page back, exports it to DOCX with comments, reimports that DOCX, proves the semantic/comment roundtrip, source-attachment behavior, and removes every created resource in `finally` cleanup.
+13. Data Center is not claimed complete until its separate live E2E passes against an actual DC profile. Transport-contract tests alone do not certify a platform.
 
 The feature is **create-only** in this MVP. Updating, merging, or replacing an existing page is out of scope because it adds content-diff, comment-reanchoring, attachment-collision, and rollback semantics that deserve a separate plan.
 
@@ -131,7 +132,7 @@ For the deferred browser extension, target identity is not user-selectable. The 
 
 The default preview is a **local semantic Confluence preview**, not an attempted pixel-for-pixel Word renderer and not a temporary remote page. It must answer:
 
-- what page title, destination, body representation, attachments, comments, and labels will be created;
+- what page title, destination, body representation, content attachments, optional original-DOCX attachment/reference, document comments, and labels will be created;
 - which source features are native, approximated, attached, reported, or rejected for the selected target;
 - where every warning occurs in the future wiki page;
 - which global or node-specific override produced each decision;
@@ -191,6 +192,23 @@ The property/manifest is authoritative machine data; the visible marker keeps at
 Roundtrip provenance includes source document digest, source comment/person/parent IDs, display name, initials, source creation time, resolved state, original range/selected text and occurrence, normalized body digest, and marker version/digest. Email addresses are not copied by default. New Confluence replies without imported provenance use their real Confluence actor; imported replies retain their individual DOCX attribution.
 
 The Confluence→DOCX exporter must write standard OOXML comment author/initial/date/range fields and, where proven, threaded/resolved extension parts. It may add an AtlCLI-owned custom provenance part for higher-fidelity AtlCLI→AtlCLI replay, but standard Word fields and the Confluence-side provenance contract remain the compatibility baseline. An unknown custom part being stripped by Word/LibreOffice must degrade identity kind only, not lose the visible author name or comment body.
+
+### 2.11 Original source retention is explicit and independent from presentation
+
+The input DOCX may be valuable evidence in its own right: contracts, externally supplied specifications, and documents with revisions/comments can require an immutable baseline while the wiki page becomes the editable working representation. AtlCLI therefore offers explicit source retention, but never uploads the original implicitly.
+
+Two independent decisions are modeled:
+
+1. `attachSource: false | true` — whether to upload the byte-identical accepted input DOCX as a page attachment;
+2. `sourceReference: "none" | "footer" | "comment"` — whether and where to expose a visible link to that attachment.
+
+Defaults are `attachSource: false` and `sourceReference: "none"`. With `attachSource: true`, `none` means the original is discoverable only through Confluence’s page attachments. `footer` adds a target-native **Original document** link section at the end of the page. `comment` creates a page-level/footer comment, authored by the authenticated Confluence actor, containing a safe link to the attachment. These reference modes are mutually exclusive. A non-`none` reference requires `attachSource: true`; it never implies an upload because uploading the raw source must remain an explicit user choice.
+
+The source attachment is not an `ImportAsset`: it has the distinct role `original-docx`, retains the exact input bytes, and is never treated as embedded page content or overwritten by a later Confluence→DOCX export. Its provenance records original and remote filenames, SHA-256, byte length, media type, returned attachment identity, import-plan digest, and optional generated reference-comment ID. No local absolute path is stored remotely.
+
+If source retention or a selected visible reference cannot be completed, the requested import contract is unfulfilled: fail, roll back the newly created page by default, and never report a successful import without the requested source artifact/reference. Upload/readback must prove byte equality by downloading within configured budgets and comparing SHA-256. The review explicitly warns that the unchanged original can retain comments, tracked changes, metadata, external links, and safe-but-unsupported embedded content; page permissions govern who can download it. Source retention never bypasses macro/package/relationship safety rejection.
+
+A generated `comment` reference has provenance role `source-reference`, not `document-comment`. Its complete thread, including later replies, is excluded from Word-comment export and document-comment counts by authoritative page-manifest/comment-property identity, never by matching its visible text. If that provenance is missing or corrupt, the exporter must not suppress a user comment heuristically; it treats the root/replies according to normal native-comment policy and emits a provenance issue where detectable.
 
 ---
 
@@ -254,6 +272,7 @@ STOP and update this plan if another merged change has already introduced an imp
 - Rich text, headings, lists, tables, links/bookmarks, images, notes, comments, revisions, fields, content controls, text boxes, and safe fallbacks for drawings/equations/charts/embedded objects.
 - Typed, allowlisted style-to-semantic/macro mappings.
 - Layered DOCX comment provenance in visible body marker plus proven comment/page properties, with platform actor kept separate.
+- Optional byte-identical original-DOCX attachment with exclusive `none | footer | comment` visible-reference policy, provenance, download/digest verification, and rollback guarantees.
 - A generic page-body write contract and edition capability resolver in `@atlcli/confluence`.
 - Transactional create/upload/finalize/comment/readback/rollback orchestration.
 - `atlcli wiki import <file>` CLI command with human and stable JSON output.
@@ -301,6 +320,7 @@ STOP and update this plan if another merged change has already introduced an imp
 17. **Approval is explicit and bounded.** Interactive approval or `--confirm` may accept non-blocking degradation only. Neither can bypass input safety, hard validation, strict-mode, capability, or plan-integrity failures.
 18. **Saved plans are replay guards, not payloads.** Applying `--from-plan` regenerates from the original DOCX and revalidates every digest before any network call.
 19. **Overrides are portable data.** CLI and future browser shapes consume/export the same versioned semantic schema; raw target fragments and executable content are impossible by type and validation.
+20. **Original upload is explicit.** Source retention defaults off; a visible source reference defaults to `none`, requires an explicitly requested source attachment, participates in the plan digest, and cannot silently degrade. The raw original is never inserted into page content, exported as a Word comment, or substituted for a sanitized import representation.
 
 ---
 
@@ -344,8 +364,10 @@ Node DocxSource adapter -----> Uint8Array
                                   |
                                   v
                   CLI ConfluenceImportPublisher
-         create shell -> upload assets -> finalize body
-         -> create comments -> provenance properties/manifest
+         create shell -> optionally upload original -> upload assets
+         -> finalize body/optional footer reference
+         -> optional source-reference comment -> document comments
+         -> provenance properties/manifest
          -> semantic readback -> report
 
 roundtrip export:
@@ -576,6 +598,50 @@ export interface ImportAsset {
 - Identical bytes are uploaded once and may be referenced multiple times.
 - Unsupported embedded files are not uploaded by default; their existence and metadata are reported.
 
+### 7.2.1 Original source artifact
+
+```ts
+export type SourceReferenceMode = "none" | "footer" | "comment";
+
+export type SourceArtifactPlanV1 =
+  | {
+      attach: false;
+      reference: "none";
+    }
+  | {
+      attach: true;
+      role: "original-docx";
+      reference: SourceReferenceMode;
+      originalFilename: string;
+      uploadFilename: string;
+      mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      sha256: string;
+      byteLength: number;
+    };
+
+export interface SourceArtifactProvenanceV1 {
+  schema: "atlcli.docx-source-artifact/1";
+  role: "original-docx";
+  originalFilename: string;
+  remoteFilename: string;
+  mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  sha256: string;
+  byteLength: number;
+  attachmentId: string;
+  planDigest: string;
+  reference: {
+    mode: SourceReferenceMode;
+    commentId?: string;
+  };
+}
+```
+
+`SourceArtifactPlanV1` is metadata only and is serialized into `DocxImportPlanV1`; its bytes live only in `PreparedImport`. `attach: false` can only pair with `reference: "none"`. `footer` changes the target body/preview/semantic digest. `comment` does not change the body digest, but its exact planned comment intent and reference mode change the plan digest.
+
+The page property key is `atlcli.docx-source-artifact.v1`. Its value is schema/size validated and written only after the returned attachment identity and optional source-reference comment ID are known. The normalized upload result supplies the link target; filenames are escaped/encoded once at the target adapter and never interpolated as raw ADF/Storage/comment markup.
+
+The source attachment uses the accepted input bytes, not a parser reserialization. It is uploaded once, downloaded for bounded SHA-256 verification, and kept separate from deduplicated content assets. A future export may read it as a baseline but must never replace or version it implicitly.
+
 ### 7.3 Annotations and revisions
 
 ```ts
@@ -653,6 +719,7 @@ export type CommentAttribution =
 
 export interface ResolvedConfluenceComment {
   id: string;
+  role: "document-comment" | "source-reference";
   actor: ConfluenceCommentActor;
   attribution: CommentAttribution;
   bodyWithoutAttributionMarker: string;
@@ -668,6 +735,8 @@ export interface ResolvedConfluenceComment {
 Comment ranges must be reconstructed from start/end markers, not guessed from the comment reference position. Reply and resolved metadata must be supplemented from OOXML extension parts when the primary parser omits it.
 
 Property keys are fixed as `atlcli.docx-comment-provenance.v1` for per-comment data and `atlcli.docx-import-comments.v1` for the page fallback manifest. Values are size-bounded JSON conforming exactly to the schema above; unknown fields/versions are ignored with an issue, never trusted through casting.
+
+The `source-reference` role comes only from valid `atlcli.docx-source-artifact/1` provenance referencing the returned comment ID. It has normal `native-confluence` actor attribution but is filtered before document-comment export/counting. Visible text such as “Original document” is never sufficient evidence for this role.
 
 The visible marker serializer/parser is shared by Cloud, Data Center, export, and tests. It emits one leading attribution paragraph with escaped author and optional ISO timestamp. It normalizes control characters and length but the property retains the exact normalized source display name. A recognized marker is removed from `bodyWithoutAttributionMarker`; malformed marker-like text is retained.
 
@@ -726,6 +795,10 @@ comment-actor-unresolved
 imported-comment-body-modified
 comment-range-reanchored
 comment-range-export-fallback
+source-attachment-upload-failed
+source-attachment-readback-mismatch
+source-reference-create-failed
+source-reference-provenance-invalid
 revision-accepted
 revision-rejected
 revision-markup-approximated
@@ -866,6 +939,7 @@ export interface DocxImportPlanV1 {
   publication: {
     representation: "atlas_doc_format" | "storage";
     bodyDigest: string;
+    sourceArtifact: SourceArtifactPlanV1;
     assets: Array<{ id: string; filename: string; mediaType: string; sha256: string; byteLength: number }>;
     comments: Array<{ id: string; mode: "inline" | "footer" | "append" | "skip"; sourceBlockId?: string }>;
   };
@@ -884,8 +958,13 @@ export interface DocxImportPlanV1 {
 export interface PreparedImport {
   plan: DocxImportPlanV1;
   shellBody: ConfluencePageBodyWrite;
+  sourceArtifact?: {
+    plan: Extract<SourceArtifactPlanV1, { attach: true }>;
+    bytes: Uint8Array;
+  };
   assets: ImportAsset[];
-  finalize: (uploaded: readonly UploadedAsset[]) => ConfluencePageBodyWrite;
+  finalize: (uploaded: readonly UploadedAsset[], source?: UploadedSourceArtifact) => ConfluencePageBodyWrite;
+  sourceReferenceComment?: PlannedSourceReferenceComment;
   comments: PlannedComment[];
 }
 
@@ -919,6 +998,16 @@ export interface DocxImportReportV1 {
   };
   coverage: Record<string, { source: number; native: number; approximated: number; omitted: number }>;
   assets: { planned: number; uploaded: number; deduplicated: number; failed: number };
+  sourceArtifact: {
+    requested: boolean;
+    reference: SourceReferenceMode;
+    status: "not-requested" | "planned" | "uploaded" | "verified" | "failed";
+    originalFilename?: string;
+    remoteFilename?: string;
+    attachmentId?: string;
+    sha256?: string;
+    commentId?: string;
+  };
   comments: {
     source: number;
     inline: number;
@@ -957,6 +1046,8 @@ export interface DocxImportReportV1 {
 ```
 
 No absolute source path is emitted unless explicitly requested in JSON; default output uses the basename to avoid leaking local filesystem structure into CI logs.
+
+`comments.*` counts only document comments. The generated source-reference comment is represented solely under `sourceArtifact.commentId`/reference mode so UX, telemetry, and DOCX export cannot conflate it with imported or native discussion. Dry-run uses `sourceArtifact.status: "planned"` when requested and never fabricates attachment/comment IDs.
 
 ---
 
@@ -1184,6 +1275,9 @@ Import behavior:
   --revisions <mode>         accept|reject|markup (default accept)
   --page-breaks <mode>       omit|rule (default omit)
   --unsupported <mode>       report|attach|fail (default report)
+  --attach-source            Upload the byte-identical input DOCX as a page attachment
+  --source-reference <mode>  none|footer|comment (default none; footer/comment require --attach-source)
+  --source-filename <name>   Required source-attachment filename for stdin
   --strict                   Fail on warnings before publication when possible
 
 Review/approval:
@@ -1212,8 +1306,10 @@ Flag rules:
 - `--dry-run` and `--confirm` are mutually exclusive.
 - stdin (`-`) is non-replayable and consumes the confirmation input; it therefore requires `--dry-run` or `--confirm` and cannot be combined with `--plan-out`/`--from-plan`.
 - `--style-map` and `--overrides` are mutually exclusive and feed the same validator.
+- `--source-reference footer|comment` requires `--attach-source`; it never implies upload. `none` is the default and produces no page-body block or comment.
+- `--attach-source` with a local file preserves its basename as `originalFilename` and derives a target-safe `uploadFilename`. With stdin it requires `--source-filename <name.docx>`; the flag is otherwise invalid. The supplied name is untrusted metadata and follows the same sanitation, length, Unicode, and collision rules.
 - `--preview html` requires `--preview-output`; `--open-preview` requires both, a TTY, and explicit user invocation. AtlCLI never opens a browser merely because the command ran interactively.
-- `--from-plan` requires the original DOCX path and is incompatible with flags that change title, destination, mapping, comments, revisions, page breaks, unsupported policy, labels, or strictness. Auth/profile selection may differ only if the resolved capability/destination digests remain identical.
+- `--from-plan` requires the original DOCX path and is incompatible with flags that change title, destination, mapping, comments, revisions, page breaks, unsupported policy, source attachment/reference/filename, labels, or strictness. Auth/profile selection may differ only if the resolved capability/destination digests remain identical.
 - `--confirm` may be combined with `--plan-out`, `--report`, or an explicitly requested preview artifact for auditability; it skips only the prompt.
 - Do not add synonyms such as `--yes`, `--apply`, `--no-preview`, or `--force`.
 
@@ -1255,7 +1351,7 @@ A test installs a fetch function that throws on any call and proves dry-run stil
 
 ### 10.4 Terminal and HTML preview
 
-Terminal output shows destination, target edition/body model, feature counts, outcome percentages, attachment/comment/revision decisions, ordered warnings/errors, and the plan digest. Issue rows include stable code plus source block/style/node context when available.
+Terminal output shows destination, target edition/body model, feature counts, outcome percentages, content-attachment/comment/revision decisions, original-source retention/reference, ordered warnings/errors, and the plan digest. Issue rows include stable code plus source block/style/node context when available.
 
 Example before approval:
 
@@ -1272,6 +1368,7 @@ Content      42 paragraphs · 8 headings · 5 tables · 12 images
 Coverage     91% native · 6% approximated · 3% reported
 Comments     6 inline · 1 footer fallback
 Revisions    3 accepted
+Original     handbook.docx → attachment + page comment · 842 KB · SHA-256 4c8e…91af
 
 Warnings
   comment-anchor-ambiguous  Comment 7 → footer fallback  [paragraph-42]
@@ -1280,7 +1377,7 @@ Warnings
 Import this page? [y/N]
 ```
 
-The static HTML preview uses `ImportPreviewDocument`, visually marks outcomes, provides issue-to-node anchors, displays macro/attachment placeholders, and identifies itself as **Confluence semantic preview**, not Word fidelity. It embeds no source asset bytes unless they are explicitly safe image previews within configured output budgets; use sanitized object URLs or data only during generation and never preserve active SVG/script content. Tests load the final file with network disabled and require zero requests, console errors, or executable source content.
+The static HTML preview uses `ImportPreviewDocument`, visually marks outcomes, provides issue-to-node anchors, displays macro/attachment placeholders, and identifies itself as **Confluence semantic preview**, not Word fidelity. Original-source retention is a separate summary row showing filename, size, digest, and `none | footer | comment`; `none` reference must not fabricate a visible page node. It embeds no source DOCX bytes and no source asset bytes unless they are explicitly safe image previews within configured output budgets; use sanitized object URLs or data only during generation and never preserve active SVG/script content. Tests load the final file with network disabled and require zero requests, console errors, or executable source content.
 
 ### 10.5 Publish progress and final human output
 
@@ -1292,8 +1389,10 @@ Checking package safety
 Parsing document
 Mapping 187 blocks, 4 assets, 6 comments
 Creating Cloud page in DOCSY
+Uploading original document
 Uploading assets 1/4
 Finalizing ADF body
+Creating source-reference comment
 Creating comments 1/6
 Verifying readback
 Created “Imported handbook” — https://…
@@ -1328,10 +1427,12 @@ Never print raw XML, binary content, tokens, auth headers, or entire API bodies 
 ```text
 prepared
   -> shell-created
+  -> source-artifact-uploaded?       (--attach-source)
   -> assets-uploaded
   -> body-finalized
+  -> source-reference-comment-created? (--source-reference comment)
   -> comments-created
-  -> comment-provenance-written
+  -> provenance-written
   -> labels-applied
   -> readback-verified
   -> complete
@@ -1348,10 +1449,12 @@ Rules:
 - Interactive preview keeps one immutable `PreparedImport` in memory. Saved-plan replay regenerates it from the original source and revalidates all digests; neither flow trusts a separately rendered preview artifact.
 - All parse/normalize/known strict failures happen before `shell-created`.
 - The shell contains a short import-in-progress message and a machine-readable import marker owned by AtlCLI, but no secrets or local absolute path.
+- Requested source-artifact upload happens before content assets. The uploader sends the accepted original bytes unchanged, records returned identity immediately, downloads within configured limits, and requires the downloaded SHA-256 to equal the plan. A size/capability failure discovered before `shell-created` blocks early; any upload/reference/readback failure after it triggers normal rollback.
 - Asset uploads are sequential or bounded with deterministic result ordering; API mutation order is stable.
-- Final body update uses the latest shell version and cannot overwrite another actor’s update. A version conflict stops and leaves/rolls back according to safety policy; it never retries with an unexamined version.
+- Final body update uses the latest shell version and cannot overwrite another actor’s update. A version conflict stops and leaves/rolls back according to safety policy; it never retries with an unexamined version. `sourceReference: "footer"` is finalized here from a typed attachment-link intent; `none` adds no source block.
 - Comments are created only after body readback succeeds enough to compute anchors.
-- Each comment is tracked immediately by returned ID. Provenance properties/page manifest are written after all comment IDs exist and read back before completion; visible marker fallback is present in the create body from the start.
+- A requested `sourceReference: "comment"` is created first as a page-level/footer comment from a typed safe-link intent. It is tracked separately from document comments, contains no DOCX-author marker, and failure is fatal. Document comments then follow their normal parent/reply ordering.
+- Each comment is tracked immediately by returned ID. Comment and source-artifact provenance properties/page manifests are written after all required IDs exist and read back before completion; visible DOCX-author marker fallback is present only in document-comment create bodies from the start.
 - Labels are last nonessential mutations; their failure is reported and follows strict/non-strict policy.
 - Default rollback deletes only the page ID created in this run. It never searches/deletes by title.
 - If rollback fails, report status is `partial`, exit is non-zero, and page ID/URL are prominent.
@@ -1366,6 +1469,7 @@ Readback inspector produces a target-neutral digest over:
 - table row/cell/span structure;
 - link destinations;
 - image/attachment references and alt text;
+- original-source attachment role, filename, byte digest, and selected visible-reference mode; generated URLs/IDs are normalized;
 - native callout/expand/code/TOC intents;
 - comment selection and hierarchy where supported.
 
@@ -1407,6 +1511,7 @@ Initial defaults, adjustable only through the typed internal policy after tests:
 | Assets | 1,000 | reject |
 | Per asset | 25 MiB | report/reject according to strict policy; never partially buffer beyond limit |
 | Total upload assets | 100 MiB | reject before shell creation |
+| Original source attachment | same accepted input-byte limit plus target attachment limit | reject before shell creation when locally knowable; otherwise upload failure rolls back |
 | Comments/revisions | 50,000 each | reject |
 
 The executor may tune numbers after benchmark evidence, but every change requires a fixture/test and documentation. Do not offer `--no-limits`.
@@ -1417,6 +1522,8 @@ The executor may tune numbers after benchmark evidence, but every change require
 - Construct ADF objects with typed builders; serialize once. Never interpolate JSON strings.
 - Allow link schemes `https`, `http`, `mailto`, and target-relative Confluence anchors only. Other schemes become plain text + issue.
 - Sanitize attachment filenames for both Cloud/DC while preserving extensions and uniqueness.
+- Upload an explicitly retained original only after the entire input passes package/security validation. Preserve its bytes exactly, but disclose in preview/docs that this also preserves document metadata, comments, revisions, hyperlinks, and safe-but-unsupported embedded content. Never reinterpret source retention as permission to upload a rejected `.docm`, unsafe relationship/package, or executable payload.
+- Build `footer` and `comment` source references from a typed returned-attachment identity. Escape/encode the filename and URL through the target adapter; never accept raw reference markup or URL from the DOCX/override file.
 - Strip path components and control characters from titles, filenames, report paths, and provenance strings.
 - Use exclusive temp creation and atomic report writes; refuse symlink targets following existing sink patterns.
 - Parse override and saved-plan files as untrusted input with byte/depth/key-count limits, duplicate-key rejection where supported, exact schema versions, and no prototype-bearing object merge. Never spread parsed objects into defaults.
@@ -1451,6 +1558,7 @@ comments-ranges-replies-resolved.docx
 comments-duplicate-selection.docx
 preview-hostile-content.docx
 override-targets.docx
+source-retention.docx
 tracked-changes.docx
 fields-toc-bookmarks.docx
 content-controls-textboxes.docx
@@ -1522,6 +1630,7 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 - [ ] Prove comment start/end ranges, reply parent IDs, and resolved state. If the parser omits thread data, document exact required parts (`commentsExtended.xml` and relationships) and a minimal supplemental parser contract.
 - [ ] In `mayflower`/`DOCSY`, prove Cloud ADF page creation via REST v2 and read back `atlas_doc_format`.
 - [ ] Prove Cloud image identity end-to-end: create shell, upload a known image, fetch attachment `fileId`, finalize an ADF `mediaSingle/media`, read back, and verify rendered/export view. Determine the required collection value from authoritative response/readback, not guesswork.
+- [ ] Prove a byte-identical DOCX attachment upload/download on Cloud and the Data Center certification target, including returned attachment/content identity, safe download URL/reference construction, filename normalization, target size-limit behavior, and SHA-256 readback. Prove both a target-native body link and a page-level comment link to the returned attachment without guessing URL shapes.
 - [ ] Prove one TOC macro path: create a known TOC through Storage or UI, fetch its ADF, sanitize instance IDs, create a second ADF page from the derived typed intent, and read it back. If this is not reproducible through public APIs, mark Cloud TOC intent deferred.
 - [ ] Verify Cloud inline comment creation on a unique and duplicate text selection, including match count/index and a reply.
 - [ ] Prove Cloud `/api/v2/comments/{comment-id}/properties` create/read/update/delete for inline and footer comments, including returned value/version semantics and scopes. Prove the page-property recovery manifest separately.
@@ -1535,6 +1644,7 @@ The tasks are ordered dependency gates. A downstream task may not mark acceptanc
 - [ ] Parser recommendation remains `@office-open/docx`; otherwise stop and revise Sections 2/6/7 before implementation.
 - [ ] Cloud ADF text/table page creation and readback pass.
 - [ ] Cloud media mapping is either proven with exact fields or explicitly blocks image support/implementation pending a decision.
+- [ ] Original-DOCX upload/download and `footer`/`comment` link contracts are proven for each claimed edition; otherwise `--attach-source` remains gated for that edition rather than silently omitting the requested artifact/reference.
 - [ ] TOC macro is labeled proven or deferred; no invented ADF extension payload.
 - [ ] Comment thread/range gaps have a precise supplemental OOXML solution or a documented MVP degradation.
 - [ ] Cloud comment-property and page-manifest contracts are proven; Data Center provenance capability is proven/version-gated or explicitly falls back.
@@ -1681,6 +1791,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Resolve asset placeholders only from `UploadedAsset` results.
 - [ ] Produce target-aware issues for every approximation.
 - [ ] Emit `ImportPreviewDocument` and visible-text/semantic-digest projection from the same target encoding result for both targets.
+- [ ] Encode `sourceReference: "footer"` from one typed attachment-link intent in Cloud ADF/DC Storage and emit no body block for `none|comment`; the finalized target link is derived only from verified upload identity.
 - [ ] Implement compact terminal and self-contained offline HTML preview renderers. HTML nodes expose source IDs/outcomes/issue anchors without embedding executable source content or remote dependencies.
 
 **Acceptance/tests:**
@@ -1692,6 +1803,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Re-encoding the same IR is deterministic.
 - [ ] Cross-target semantic digests match for the shared-native subset; documented target differences have named allowlist entries.
 - [ ] Preview semantic digest equals the target body’s expected readback digest; mutation testing a mapping on only one side fails `preview-plan-mismatch`.
+- [ ] Source-reference encoder goldens prove none/comment add zero body nodes, footer adds exactly one final target-native link section, hostile filenames cannot inject ADF/Storage, and normalized remote IDs/URLs do not destabilize semantic digests.
 - [ ] `preview-hostile-content.docx` cannot inject markup/script/style, activate SVG, navigate, or cause a network request in the HTML preview browser test.
 
 ### Task 7 — Add edition-aware page, attachment, comment, and readback ports
@@ -1704,6 +1816,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Add Cloud v2 page create/get/update by space ID and `atlas_doc_format` body.
 - [ ] Reuse current v1 Storage create/update/upload for DC and preserve context paths.
 - [ ] Return Cloud attachment `fileId` and other proven identity fields through a normalized upload result.
+- [ ] Add normalized source-artifact upload/download verification and typed body/comment attachment-link builders for Cloud/DC. The core supplies intent plus returned attachment identity; target adapters alone own exact URLs/markup.
 - [ ] Split Cloud-v2 comment behavior from DC content-v1 footer comments. Mark DC inline unsupported unless Task 0/13 produces an official, versioned contract.
 - [ ] Add typed comment/page provenance-property read/write/delete ports according to Task 0 capabilities; property values are schema-validated and size-bounded before use.
 - [ ] Resolve Cloud `authorId` to an actual display name/account reference through the supported user API/cache and parse Data Center user identity fields without treating IDs as names. Permission-limited resolution yields explicit `comment-actor-unresolved`, never a fabricated DOCX author.
@@ -1718,6 +1831,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Cloud methods are never selected for DC profile and vice versa.
 - [ ] A simulated 409 version conflict does not retry/overwrite.
 - [ ] Attachment upload result preserves fileId/filename/content ID without conflation.
+- [ ] Source-artifact transport tests prove exact input bytes are uploaded, bounded download bytes hash identically, filenames/links are escaped once, and Cloud/DC path/context handling cannot cross-select.
 - [ ] Cloud comment property and page manifest transport tests assert exact endpoints/scopes/payload/version behavior; Data Center tests assert proven content-property path or explicit unsupported capability.
 - [ ] Actor tests distinguish Cloud account ID, resolved Cloud display name, Data Center display name/user key, imported document attribution, and same-display-name/different-identity cases.
 
@@ -1732,10 +1846,13 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Require a matching `ImportApproval` at the only publisher mutation entrypoint; reject missing approval, plan-digest mismatch, unaccepted warnings, strict warnings, and non-publishable plans before the first port call.
 - [ ] Implement atomic plan serialization and safe `--from-plan` regeneration/comparison. Saved target bodies/asset metadata are evidence only and are never trusted as upload/write input.
 - [ ] Upload assets deterministically and finalize the body with remote identities.
+- [ ] When requested, upload and SHA-256-verify the original DOCX before content assets; keep `original-docx` separate from `ImportAsset`, and finalize `footer` only from the verified returned attachment identity.
 - [ ] Compute Cloud comment occurrence mapping from finalized/readback visible text.
 - [ ] Create parents before replies; serialize the fixed visible marker, persist per-comment property/page-manifest provenance, and retain returned platform actor separately from source attribution.
+- [ ] For `sourceReference: "comment"`, create one page-level comment before document comments, link the verified source attachment, record role/comment ID in source-artifact provenance, and never apply a DOCX-author marker. `none` creates neither a body node nor a comment.
 - [ ] Implement DC footer/append demotion and strict inline failure.
 - [ ] Read back body/comments/attachments and compare semantic digest.
+- [ ] Treat every explicitly selected source upload/reference failure or digest mismatch as fatal and roll back by default; never downgrade to a successful import without the requested original/reference.
 - [ ] Roll back only the created page on every post-create failure by default.
 
 **Acceptance/tests:**
@@ -1745,6 +1862,8 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Rollback failure is prominent and never reported as success.
 - [ ] Duplicate selected text maps to correct match index; cross-block/changed text demotes/fails per mode.
 - [ ] Comment reply order and provenance are stable.
+- [ ] `none`, `footer`, and `comment` are mutually exclusive and deterministic: default/no flags create no source attachment/reference; attach+none uploads only; footer creates exactly one final body reference and no source comment; comment creates exactly one role-tagged page comment and no body reference.
+- [ ] Changing attach/reference/source filename invalidates approval/saved-plan before network; source attachment bytes are the exact approved input bytes.
 - [ ] Same display name for a DOCX author and Confluence user remains two distinct typed identities; no name-based account lookup occurs.
 - [ ] Property success, property unsupported, property write failure, page-manifest fallback, marker-only recovery, invalid/conflicting metadata, modified body, and new native Confluence reply all produce the specified attribution/evidence/report outcome.
 - [ ] Core text/table/list readback mismatch triggers rollback.
@@ -1769,6 +1888,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Write/read the optional inert `customXml/atlcli-comment-provenance.xml` manifest with exact schema, relationship, digests, and size limits. Standard comment parts remain usable when it is removed.
 - [ ] Wire `atlcli wiki export <page> --format docx --comments --output <file.docx>`; reject `--comments` for other formats until their own contract exists. Fetch comments/properties/actors before final DOCX rendering and include attribution issues in the existing export report/notes path.
 - [ ] Ensure imported DOCX comments export with `sourceAuthor`; Confluence-native comments/replies export with actual actor display name. Equal display strings do not collapse identity kinds.
+- [ ] Filter a valid `source-reference` root and its complete reply thread before building `ExportCommentThread`; never export/count them as Word comments and never use visible-text matching to identify them. Missing/invalid provenance follows normal native-comment export plus an issue where detectable rather than risking suppression of user content.
 
 **Acceptance/tests:**
 
@@ -1777,6 +1897,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] Removing the custom part from an exported fixture preserves author/body/range on reimport and yields only the documented identity-kind fidelity issue.
 - [ ] `DOCX fixture → ImportDocument → simulated Confluence actor+provenance → DOCX export → ImportDocument` preserves the semantic comment equality contract from Section 9.4.1 for multiple authors, same-name actor/source, duplicate text ranges, replies, resolution, non-ASCII/escaped names, modified body, and unanchored footer fallback.
 - [ ] A native Confluence comment plus native reply exports actual resolved Confluence names; an imported parent plus native reply exports source author for the parent and platform actor for the reply.
+- [ ] A valid source-reference comment and replies are absent from OOXML comments and document-comment counts; edited visible text remains excluded while its authoritative provenance is valid, and a lookalike user comment/thread is retained.
 - [ ] Existing DOCX golden/export tests and existing `.comments.json`/page comment consumers stay green.
 - [ ] `bun test packages/confluence/src/comments.test.ts packages/confluence/src/comment-provenance.test.ts packages/docx/src/comments.test.ts apps/cli/src/commands/export*.test.ts` exits 0.
 
@@ -1787,6 +1908,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 **Files:** CLI import handler/request/report/preview/plan-file, wiki dispatch/help, PTY/non-TTY tests, preview HTML browser tests, root/build inputs.
 
 - [ ] Parse command/flags exactly as Section 10 and reject ambiguous/missing values.
+- [ ] Implement `--attach-source`, exclusive `--source-reference none|footer|comment`, and stdin-only `--source-filename`; defaults produce no source upload or visible reference. Include all resolved values in options/plan digest and report.
 - [ ] Read a file or stdin through the CLI-owned `import-source.ts` adapter; convert immediately to `Uint8Array` and require `--format docx` for stdin.
 - [ ] Resolve profile/default space/title/parent without duplicating auth logic.
 - [ ] Implement TTY review-first flow with terminal preview and default-no prompt; keep one immutable `PreparedImport` through approval/publish.
@@ -1800,10 +1922,12 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 **Acceptance/tests:**
 
 - [ ] CLI parser table covers every flag, repeated label, valueless flags, stdin, wrong extension, incompatible modes, strict mode, target, preview, confirm, override, and saved-plan combinations.
+- [ ] Source-retention parser tests cover default-off, attach+none, attach+footer, attach+comment, reference-without-attach rejection, local-file/source-filename rejection, stdin missing/valid filename, hostile filenames, and saved-plan mismatch.
 - [ ] `--dry-run --json` snapshot matches `atlcli.docx-import-report/1` and performs no fetch.
 - [ ] Pseudo-TTY tests prove default preview → exact prompt → default no/no write; yes publishes; EOF/interrupt does not write; `--confirm` never prompts; non-TTY without an explicit mode fails without hanging or fetching.
 - [ ] `--strict --confirm` blocks on a known warning, while non-strict `--confirm` publishes and records accepted warnings. Neither mode bypasses an error issue.
 - [ ] Human preview contains title/destination/target/plan digest/coverage/comments/revisions/ordered warnings; no raw JSON dump unless requested.
+- [ ] Human/HTML/JSON preview distinguishes content assets, original source attachment, visible source-reference mode, and document comments; it warns that retained original bytes preserve metadata/comments/revisions and never renders a footer/comment preview for `none`.
 - [ ] HTML preview is atomically written, requires an explicit path, opens only on explicit TTY request, and passes offline CSP/injection/no-request browser tests.
 - [ ] Plan JSON is canonical and contains no asset bytes, function, credential, absolute path by default, remote ID, timestamp, or raw target response. Valid replay passes; every stale/tampered dimension fails before fetch.
 - [ ] CLI- and browser-generated override fixtures are byte-equivalent after canonicalization and produce the same plan/semantic digest.
@@ -1821,6 +1945,7 @@ Expected: probe assertions exit 0; cleanup GET returns not found; no probe title
 - [ ] The import case imports only `@atlcli/import-docx/browser` for engine behavior; fixtures and generic harness protocol remain explicit test-only inputs. It never reaches a CLI adapter or `./internal` entrypoint.
 - [ ] Parse `feature-zoo.docx` inside a module Worker with no `Buffer`, `process`, DOMParser, filesystem, network, extension API, or remote asset.
 - [ ] Set `emitsDigests: true`; extend the existing parity runner/protocol with an offline Node/Bun import oracle that produces IR summary, `DocxImportPlanV1`, target preview projection, Cloud ADF, and DC Storage semantic digests from the same fixture/options. Compare canonical results without tenant or wall-clock data.
+- [ ] Run browser/Node/Bun parity for source retention off, attach+none, attach+footer, and attach+comment using placeholder upload identities; choices and plan digests match, footer alone changes the body projection, and no host uploads during conformance planning.
 - [ ] Render the shared static HTML preview in production Chromium, exercise issue-to-node highlighting/filtering, and export a canonical override file using browser APIs only. Reimport that override in Node/Bun and prove identical plan digest.
 - [ ] Serve production output below a nested non-root path and scan artifacts for forbidden runtimes/eval/remote code.
 - [ ] Add source, `bun build --target bun`, and `bun build --compile` dry-run smoke using the same real fixture from a foreign CWD.
@@ -1866,9 +1991,12 @@ ATLCLI_E2E_PARENT_ID=<optional dedicated parent>
 - [ ] Parse JSON report; validate schema, target representation, counts, issue policy, and page URL.
 - [ ] Fetch page back as ADF and view/export representation; compare semantic digest.
 - [ ] Fetch attachments and verify filename/fileId/digest/count and displayed image references.
+- [ ] Prove the source-retention matrix through the built CLI: default import creates no original attachment/reference; `--attach-source` creates one `original-docx` attachment with no body/comment reference; `--attach-source --source-reference footer` adds exactly one final page link; `--attach-source --source-reference comment` adds exactly one role-tagged page comment and no footer block.
+- [ ] Download every retained original through the normalized Cloud attachment URL and compare exact byte length/SHA-256 to the input. Validate the source-artifact page property, plan digest, remote filename, reference mode/comment ID, and permission-safe page association.
 - [ ] Fetch inline/footer comments and verify unique/duplicate selection occurrence, parent/reply, provenance, and counts.
 - [ ] Resolve the authenticated Confluence actor; import at least two DOCX authors plus one source author whose display string equals that actor. Assert remote actor remains the real account while all three source attributions remain document identities with exact names/initials/dates.
 - [ ] Create an additional native Confluence comment/reply with no import provenance, then run the **built CLI** DOCX exporter with `--comments`. Inspect the ZIP structurally: imported comments use source authors, native comments use resolved platform display names, marker text is absent from logical Word bodies, ranges/thread/resolution/custom provenance match the contract.
+- [ ] In the `comment` source-reference case, prove built CLI export excludes the generated source-reference comment from OOXML/comments counts while retaining a same-text native user comment; corrupt provenance in a controlled case must not heuristically suppress that user-visible comment.
 - [ ] Reimport that exported DOCX into a second uniquely titled DOCSY page with `--confirm`; fetch its comments/provenance and compare the normalized comment roundtrip digest. Assert imported parent/native reply identity kinds remain distinct.
 - [ ] Run a strict fixture with a known unsupported feature; assert failure before page creation.
 - [ ] Modify a copy of the source, override file, destination option, and saved plan in four cases; each replay must fail stale before page creation.
@@ -1904,6 +2032,7 @@ ATLCLI_E2E_DC_PARENT_ID=<optional>
 - [ ] Run source/dist contract tests with a root DC URL and a non-root context path.
 - [ ] Dry-run/preview/save a DC plan locally, then import it with source + `--from-plan ... --confirm` through the built CLI.
 - [ ] Read back storage/view, attachments, footer comments/replies, macros, tables/spans, lists, links, and notes.
+- [ ] Prove DC default-off, attach+none, attach+footer, and attach+comment source-retention behavior; download/hash the original bytes, verify context-path-safe links and source-reference role, and prove DOCX export excludes only the provenance-tagged generated comment.
 - [ ] Prove DC comment provenance uses the Task 0-supported comment property or page-manifest fallback plus visible marker, then export/reimport a two-author comment fixture and compare normalized author/body/thread/range-fallback semantics.
 - [ ] Assert `--comments inline` fails before page creation; `auto` demotes and reports.
 - [ ] Prove rollback/version-conflict behavior and cleanup.
@@ -1925,6 +2054,7 @@ ATLCLI_E2E_DC_PARENT_ID=<optional>
 - [ ] Update Confluence index, CLI reference, authentication/platform wording, comments page, and relevant troubleshooting.
 - [ ] Publish feature/edition matrix with native/approximated/deferred outcomes and exact comment/revision behavior.
 - [ ] Document comment actor versus document attribution, visible marker/property/page-manifest evidence order, privacy limits, modified-body behavior, `wiki export --format docx --comments`, unanchored/thread fallbacks, and the no-name-to-account-resolution rule.
+- [ ] Document original-source retention and threat/privacy implications, `--attach-source`, stdin filename handling, `--source-reference none|footer|comment`, default-off/default-none behavior, exact-byte/readback guarantee, rollback semantics, page permissions, exporter exclusion, and browser-extension control mapping.
 - [ ] Document review-first TTY behavior, non-TTY contract, `--confirm`, `--dry-run`, terminal/HTML preview, `--plan-out`/`--from-plan`, and why `--confirm` cannot bypass blockers.
 - [ ] Document the unified override/style-map schema with precedence, deterministic node IDs, minimal/global/style/node examples, browser portability, stale-plan behavior, and forbidden raw target payloads.
 - [ ] Document security budgets, no remote fetch/execution, preview HTML safety, exact dependency pins/upgrades, rollback, strict mode, and original comment-author limitation.
@@ -2036,8 +2166,10 @@ All boxes must be backed by evidence:
 - [ ] Built CLI DOCX export with `--comments` writes standard Word comment fields from source attribution for imported comments and platform display name for native comments; custom provenance loss has the tested standard-field fallback.
 - [ ] Cloud DOCSY import→DOCX export→reimport preserves the normalized comment digest and cleans both pages/resources; DC behavior is independently proven or labeled pending.
 - [ ] Publisher rollback/readback/version-conflict tests pass at every transition.
+- [ ] Original-source retention defaults off; attach+none, attach+footer, and attach+comment are plan-digest-bound, byte/readback-proven, edition-tested, and roll back rather than silently degrading. The original remains a distinct immutable source artifact and is never overwritten by export.
+- [ ] A provenance-tagged source-reference comment is excluded from document-comment counts/DOCX export, while lookalike or provenance-lost user comments are never suppressed heuristically.
 - [ ] Preview body/projection, plan JSON, terminal summary, static HTML, and publisher share one semantic digest and issue/override provenance; no second mapping path exists.
-- [ ] `wiki import` help, review-first TTY flow, `--confirm`, dry-run, strict, HTML preview, plan-out/replay, overrides, JSON/report, progress, stdin, title/space/parent, comments, revisions, and labels behave as specified.
+- [ ] `wiki import` help, review-first TTY flow, `--confirm`, dry-run, strict, HTML preview, plan-out/replay, overrides, JSON/report, progress, stdin, title/space/parent, comments, revisions, source attachment/reference, and labels behave as specified.
 - [ ] Non-TTY cannot hang or mutate without `--confirm`; strict/hard safety/plan-integrity blockers cannot be overridden.
 - [ ] Saved-plan replay rejects changed source/options/overrides/capabilities/destination/plan before any network call.
 - [ ] Source, dist, and compiled binary dry-run the same real fixture with the same digest.
@@ -2059,6 +2191,7 @@ Stop and revise the plan if:
 - the parser’s license/transitive licenses, install scripts, vulnerability profile, or maintenance status are unacceptable;
 - a required new dependency cannot be exact-pinned to an auditable published artifact, requires an unpinned branch/URL, has unacceptable provenance/license/install behavior, or cannot pass the frozen-lockfile/browser gate;
 - Cloud attachment upload cannot yield a stable, public-API-backed ADF media reference;
+- original-DOCX upload/download cannot prove byte identity or target-safe body/comment attachment links for a claimed edition;
 - Cloud macro ADF requires undocumented tenant-specific payloads;
 - Cloud REST v2 rejects otherwise valid ADF structures that the planned validator considers native;
 - Data Center target behavior requires undocumented APIs or version-specific payloads with no capability gate;
@@ -2106,6 +2239,7 @@ Review layout should contain:
 - semantic future-wiki preview in the main pane, clearly labeled as Confluence preview rather than Word fidelity;
 - issue/decision inspector with outcome filters and click-to-highlight source/preview nodes;
 - global, style, and node override controls that rerun the pure plan and update its digest live;
+- an unchecked **Retain original DOCX as page attachment** checkbox; when selected, a subordinate exclusive choice **No visible reference** (default), **Link at page end**, or **Page comment with link**. Changing either control regenerates the plan/digest; reference choices never imply an upload;
 - fixed summary/CTA with page, attachment, comment, warning, and blocker counts;
 - primary review/import flow plus a secondary **Import directly** action. Direct import skips rendering the detailed review but still runs preflight/planning, blocks on hard errors, and requires a compact warning acceptance when degradations exist.
 
@@ -2118,6 +2252,7 @@ Separate future spec must additionally decide and prove:
 - parser/preview bundle splitting and startup latency;
 - durable jobs, cancellation, progress, navigation/restart recovery;
 - session-auth publisher, permissions, CSP, memory quotas, attachment upload;
+- exact source-attachment upload/download verification, raw-original metadata/privacy disclosure, target-safe footer/comment links, generated-comment provenance, and exporter exclusion;
 - active-tab/site changes while review is open;
 - extension-specific E2E in production MV3 output;
 - rollback/result UX and accessibility/keyboard/screen-reader behavior.
@@ -2177,6 +2312,9 @@ No distinct target in this plan. If product policy later restores Server certifi
 | ZIP bomb or malformed OOXML | memory/CPU spike before validation | central-directory preflight before parser, hard budgets, adversarial tests |
 | Cloud ADF accepted but normalized destructively | readback digest differs | live readback is required; core mismatch rolls back |
 | Attachment ID confused with media file ID | broken image after 2xx | Task 0 media probe and v2 attachment readback |
+| Original silently omitted or changed | legal/reference baseline is missing or unverifiable | explicit opt-in + digest-bound policy, exact-byte upload/download proof, fatal failure and rollback |
+| Raw original exposes hidden metadata/revisions | users upload more information than the wiki rendering shows | default off, prominent review disclosure, page-permission guidance, no unsafe-package bypass |
+| Source-reference comment becomes a Word comment or hides user content | polluted roundtrip or data loss | authoritative `source-reference` role/property, filter before export, never identify/suppress by visible text |
 | Word comment selects repeated text | wrong highlight | exact range→target occurrence algorithm and duplicate-selection E2E |
 | Original authors appear falsified | comments authored by token user | provenance prefix/report; docs state limitation |
 | DOCX author name is mistaken for tenant user | false identity/account association | separate actor/attribution types; never resolve literal names; same-name collision tests |
