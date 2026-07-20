@@ -130,7 +130,7 @@ manifest at `design.features.header.mode` — not a Level-A setting.
 | Mode | Running head shows | Use it for |
 |------|--------------------|------------|
 | `"title"` *(default)* | Document title (left) + space key (right) | Single-page and short exports. |
-| `"chapter"` | The level-1 heading that owns the page (left) + space key (right) | Book-like documents and page-tree exports. |
+| `"chapter"` | The level-1 heading that owns the page — the **first** chapter beginning on it, else the chapter still running (left) + space key (right) | Book-like documents and page-tree exports. |
 | `"custom"` | The `headerText` setting | A fixed legal or classification line. |
 
 The field is **optional**. A manifest that omits it — including every manifest
@@ -149,28 +149,52 @@ With `"title"`, a 57-page page-tree export repeats the root page's title on all
 the section instead:
 
 ```typst
-let started = query(heading.where(level: 1))
-  .filter(h => h.outlined and h.location().page() <= here().page())
-let chapter-head = if started.len() > 0 { started.last().body } else { meta.title }
+let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+let opening = chapters.filter(h => h.location().page() == here().page())
+let running = chapters.filter(h => h.location().page() < here().page())
+let chapter-head = if opening.len() > 0 {
+  opening.first().body
+} else if running.len() > 0 {
+  running.last().body
+} else {
+  meta.title
+}
 grid(columns: (1fr, auto), chapter-head, meta.space)
 ```
 
-Two details of that query are load-bearing and were verified against the pinned
-compiler (`typst.ts 0.7.0 / Typst 0.14.2`):
+In words: **the first chapter that begins on this page; if none begins here, the
+chapter still running.** Three details of that resolution are load-bearing, and
+all three were verified against the pinned compiler
+(`typst.ts 0.7.0 / Typst 0.14.2`):
 
-- **Page comparison, not `.before(here())`.** Inside a page header, `here()`
+- **A chapter opening on this page counts.** Inside a page header, `here()`
   resolves to the *top* of the page, so a `.before(here())` selector excludes a
   chapter that opens on that very page — the head would lag one page behind at
-  every chapter opening. Comparing page indices picks the chapter that actually
-  owns the page.
+  every chapter opening. Matching this page's own page index is what picks the
+  chapter that actually owns the page.
 - **`h.outlined` filter.** `outline()` renders its own level-1 heading for the
   "Contents" title. It is the only heading with `outlined: false`, and "appears
   in the table of contents" is precisely what makes a heading a chapter — without
   the filter, every page of every document would be headed *Contents*.
+- **First on the page, not last.** When several short chapters begin on one page,
+  the head names the **first** of them. The head sits at the top of the page and
+  the content directly beneath it starts with that first chapter, so naming a
+  later one would contradict what the reader sees; it is also the convention a
+  dictionary's guide words follow. This only ever applies to pages that open more
+  than one chapter — with at most one chapter per page, "first opening here" and
+  "last at or before here" are the same heading, which is why the refinement left
+  ordinary output byte-identical.
 
 Pages before the first chapter heading (a cover, the table of contents, front
 matter) fall back to the **document title**, never to an empty head. The space
 key on the right and the hairline rule below are identical in all three modes.
+
+:::note[Several chapters per page is not the usual layout]
+`composeChapters` inserts a page break per chapter by default, so a tree or space
+export puts exactly one chapter on each page and the first-on-page rule never
+fires. It matters for documents assembled without those breaks
+(`chapterBreak: "none"`) or with very short chapters.
+:::
 
 Of the two curated built-in templates, **Manuscript** ships `"chapter"` (it is a
 book-like design) and **Editorial Indigo** stays on the default `"title"`.
@@ -183,7 +207,10 @@ user template puts a `STYLEREF` field in its header
 — field instructions survive byte-exactly, headings carry the exact `w:pStyle`
 id the field names, and `updateFields` prompts Word to refresh on open. Word's
 own rule for that field is *the last H1 that began on or before this page*, which
-is the behavior the Typst query above reproduces.
+is what the Typst resolution above reproduces on every page that opens at most
+one chapter — that is, on every page of a normal chapterized export. The two
+rules part only where several chapters begin on the same page: Word names the
+last of them, PDF names the first, deliberately (see the third bullet above).
 
 The two engines differ in **where the decision lives**, not in what it does: PDF
 declares the mode in a validated manifest field, DOCX inherits it from whatever

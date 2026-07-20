@@ -115,20 +115,35 @@ export function createAtlcliTypstTemplate(
   const headerResolution =
     headerMode === "chapter"
       ? String.raw`          // Chapter running head ("Kolumnentitel"): the level-1 heading that owns
-          // this page. Two behaviours were verified against the pinned compiler
-          // and both matter:
-          //   1. here() inside a page header resolves to the TOP of the page, so
-          //      a before-here selector EXCLUDES a chapter that opens on this
-          //      very page and lags one page behind at every chapter opening.
-          //      Comparing page indices picks the chapter that owns the page.
-          //   2. the table of contents renders its own level-1 heading, so an
-          //      unfiltered query names the whole document "Contents". That
-          //      heading is the only one with outlined: false, and "appears in
-          //      the table of contents" is exactly what a chapter is.
+          // this page. Three decisions are load-bearing here; all three were
+          // verified against the pinned compiler, none is an assumption:
+          //   1. OPEN-ON-PAGE. here() inside a page header resolves to the TOP
+          //      of the page, so a before-here selector EXCLUDES a chapter that
+          //      opens on this very page and lags one page behind at every
+          //      chapter opening. Comparing page indices is what fixes that, so
+          //      the == branch below must keep matching this page's own page
+          //      index — never a strictly-before comparison.
+          //   2. OUTLINED FILTER. The table of contents renders its own level-1
+          //      heading, so an unfiltered query names the whole document
+          //      "Contents". That heading is the only one with outlined: false,
+          //      and "appears in the table of contents" is exactly what a
+          //      chapter is.
+          //   3. FIRST ON PAGE. When SEVERAL chapters begin on one page the head
+          //      names the FIRST of them, not the last. The head sits at the top
+          //      of the page and the content immediately below it starts with
+          //      that first chapter; naming a later one contradicts what the
+          //      reader sees, and the first-on-page reading is also the
+          //      dictionary/guide-word convention. For the normal case — at most
+          //      one chapter per page, which is what composeChapters produces
+          //      with its default per-chapter pageBreak — first and last are the
+          //      same heading, so this refinement is a no-op there (pinned as a
+          //      byte-equality test against a pre-refinement render).
           // Front matter (no chapter heading yet) falls back to the document
           // title, never to an empty head.
-          let started = query(heading.where(level: 1)).filter(h => h.outlined and h.location().page() <= here().page())
-          let chapter-head = if started.len() > 0 { started.last().body } else { meta.title }
+          let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
+          let opening = chapters.filter(h => h.location().page() == here().page())
+          let running = chapters.filter(h => h.location().page() < here().page())
+          let chapter-head = if opening.len() > 0 { opening.first().body } else if running.len() > 0 { running.last().body } else { meta.title }
           grid(columns: (1fr, auto), chapter-head, meta.space)`
       : String.raw`          grid(columns: (1fr, auto), meta.title, meta.space)`;
 
