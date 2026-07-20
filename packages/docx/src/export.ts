@@ -68,6 +68,7 @@ import {
   isSvg,
   MAX_CONTENT_WIDTH_PX,
   parseSvgSize,
+  relsPathFor,
   resolveTargetSize,
 } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
@@ -79,10 +80,14 @@ import {
   captionStyleXml,
   CODE_STYLE_ID,
   codeStyleXml,
+  LIST_PARAGRAPH_STYLE_ID,
+  listParagraphStyleXml,
   parseStyleNames,
   resolveCaptionLang,
   type CaptionLang,
+  type TableStyleSource,
 } from "./ooxml.js";
+import { NumberingAllocator } from "./numbering.js";
 import {
   encodeXmlText,
   paragraphText,
@@ -223,6 +228,15 @@ export interface ExportInput {
    * Absent → today's behavior byte-for-byte.
    */
   macros?: MacroResolutionOptions;
+  /**
+   * Table style source (spec 006 G3b / B9). `{ source: "template" }` defers
+   * table appearance to the template's own table style (default name
+   * `Scroll Table Normal`, or `styleId` to name another). When the named style
+   * is not defined in `word/styles.xml`, the export falls back to the built-in
+   * `"confluence"` grid with a report note. Absent / `{ source: "confluence" }`
+   * keeps today's behavior byte-identical.
+   */
+  tableStyle?: { source: "template" | "confluence"; styleId?: string };
 }
 
 /**
@@ -351,6 +365,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     walkNotes = resolved.notes;
   }
   const styleNames = parseStyleNames(zip.file("word/styles.xml")?.asText() ?? "");
+  // Numbering inventory (spec 006 G2): parse the template's existing
+  // word/numbering.xml maxima BEFORE body serialization so the allocator hands
+  // out ids above them — acquisition happens DURING serializeBlocks, so a
+  // post-render scan would be too late (see PLAN "Numbering inventory happens
+  // before serialization"). A malformed part degrades to a safe zero base.
+  const numbering = new NumberingAllocator(inspectNumberingPart(zip));
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
   // with page images"). Attachment images additionally need an asset fetcher;
@@ -398,13 +418,18 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // today (ExportInput has no host-locale field); unsupported tags fall back
   // to English with a warning note surfaced in the report.
   const captionLocale = resolveCaptionLang(input.captionLang);
+  // Table style source (spec 006 G3b): resolve the requested template style
+  // name to an id; a missing style falls back to the confluence grid + note.
+  const tableStyleResolution = resolveTableStyle(input.tableStyle, styleNames);
   const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, {
     styleNames,
+    numbering,
     images,
     diagrams,
     ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
+    tableStyle: tableStyleResolution.tableStyle,
   });
   timings.bodyMs = Date.now() - bodyStart;
 
@@ -413,6 +438,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const contentFound = injectContentTag(zip);
   const flowNotes: ExportNote[] = [];
   if (captionLocale.note) flowNotes.push(captionLocale.note);
+  if (tableStyleResolution.note) flowNotes.push(tableStyleResolution.note);
 
   // 3b. Logo pass, embed leg: replace each $scroll.spacelogo /
   //     $scroll.globallogo placeholder PARAGRAPH with an inline drawing of the
@@ -485,6 +511,22 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const styledXml = body.xml + includeXml;
   if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
   if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
+  // Native list numbering (spec 006 G2): write word/numbering.xml (+ content
+  // type + relationship) only when a list actually acquired an id, and
+  // synthesize the fallback ListParagraph style if the body OR an included
+  // page referenced it (an include can be the only content carrying a list).
+  if (numbering.isUsed) {
+    ensureNumberingPart(rendered, numbering);
+    if (styledXml.includes(`w:pStyle w:val="${LIST_PARAGRAPH_STYLE_ID}"`)) ensureListParagraphStyle(rendered);
+    if (numbering.capExceeded) {
+      flowNotes.push({
+        level: "warning",
+        code: "numbering-cap-reached",
+        message:
+          "This document has more ordered lists than Word's 2047-instance numbering limit; the excess lists reuse a numbering definition and may not all restart at 1.",
+      });
+    }
+  }
   ensureUpdateFields(rendered);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
@@ -519,6 +561,33 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       timings,
     },
   };
+}
+
+/**
+ * Resolve the requested table style source (spec 006 G3b / B9) against the
+ * template's styles. `"template"` mode looks up the style name (default
+ * `Scroll Table Normal`) and, when defined, hands the id to the serializer;
+ * when the style is absent it falls back to the built-in `"confluence"` grid
+ * with a report note. `"confluence"`/absent is a byte-identical no-op.
+ */
+function resolveTableStyle(
+  input: { source: "template" | "confluence"; styleId?: string } | undefined,
+  styleNames: Map<string, string>
+): { tableStyle: TableStyleSource; note?: ExportNote } {
+  if (!input || input.source !== "template") return { tableStyle: { source: "confluence" } };
+  const name = input.styleId ?? "Scroll Table Normal";
+  const id = styleNames.get(name.toLowerCase());
+  if (!id) {
+    return {
+      tableStyle: { source: "confluence" },
+      note: {
+        level: "warning",
+        code: "table-style-missing",
+        message: `The template does not define a "${name}" table style; tables use the built-in grid instead.`,
+      },
+    };
+  }
+  return { tableStyle: { source: "template", styleId: id } };
 }
 
 /** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
@@ -1548,6 +1617,104 @@ export function preprocessScrollText(zip: PizZip, values: Map<string, string>): 
 function replaceTokens(text: string, values: Map<string, string>): string {
   PLACEHOLDER_RE.lastIndex = 0;
   return text.replace(PLACEHOLDER_RE, (m) => values.get(m) ?? "");
+}
+
+/**
+ * Parse the template's existing `word/numbering.xml` maxima (spec 006 G2), so
+ * the {@link NumberingAllocator} allocates above them (the `maxExistingDrawingId`
+ * pattern). Runs BEFORE body serialization. A missing or malformed part
+ * degrades to a safe `{ 0, 0 }` base rather than throwing — a broken template
+ * numbering part must never fail the whole export.
+ */
+export function inspectNumberingPart(zip: PizZip): { abstractNumId: number; numId: number } {
+  const xml = zip.file("word/numbering.xml")?.asText();
+  if (!xml) return { abstractNumId: 0, numId: 0 };
+  let maxAbstract = 0;
+  let maxNum = 0;
+  try {
+    for (const m of xml.matchAll(/<w:abstractNum\b[^>]*\bw:abstractNumId="(\d+)"/g)) {
+      const id = Number(m[1]);
+      if (Number.isFinite(id) && id > maxAbstract) maxAbstract = id;
+    }
+    for (const m of xml.matchAll(/<w:num\b[^>]*\bw:numId="(\d+)"/g)) {
+      const id = Number(m[1]);
+      if (Number.isFinite(id) && id > maxNum) maxNum = id;
+    }
+  } catch {
+    return { abstractNumId: 0, numId: 0 };
+  }
+  return { abstractNumId: maxAbstract, numId: maxNum };
+}
+
+/**
+ * Write the synthesized numbering (spec 006 G2): create `word/numbering.xml`
+ * (or merge into an existing one), register the content-type override, and add
+ * the `numbering` relationship to the document's rels — all with the ids the
+ * allocator already handed out during serialization (no re-basing).
+ */
+export function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator): void {
+  const { abstractNums, nums } = allocator.toXml();
+  const path = "word/numbering.xml";
+  const existing = zip.file(path)?.asText();
+  if (existing && /<w:numbering\b/.test(existing)) {
+    // Merge: abstractNums must precede the first <w:num> (schema order); nums go
+    // at the end. Splice each piece into the right place.
+    let merged = existing;
+    const firstNum = merged.search(/<w:num\b/);
+    if (firstNum !== -1) {
+      merged = merged.slice(0, firstNum) + abstractNums + merged.slice(firstNum);
+    } else {
+      merged = merged.replace("</w:numbering>", `${abstractNums}</w:numbering>`);
+    }
+    merged = merged.replace("</w:numbering>", `${nums}</w:numbering>`);
+    zip.file(path, merged);
+  } else {
+    zip.file(
+      path,
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+        abstractNums +
+        nums +
+        `</w:numbering>`
+    );
+  }
+  // Content-type override (a specific part, not a default-by-extension).
+  const ctPath = "[Content_Types].xml";
+  const ct = zip.file(ctPath)?.asText();
+  if (ct && !ct.includes("word/numbering.xml")) {
+    zip.file(
+      ctPath,
+      ct.replace(
+        "</Types>",
+        `<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>`
+      )
+    );
+  }
+  // Relationship from the main document part (reuse the image module's helper).
+  const relsPath = relsPathFor("word/document.xml");
+  const rels =
+    zip.file(relsPath)?.asText() ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  if (!/relationships\/numbering/.test(rels)) {
+    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((m) => Number(m[1]));
+    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+    zip.file(
+      relsPath,
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`
+      )
+    );
+  }
+}
+
+/** Add the fallback ListParagraph style to styles.xml if absent (spec 006 G2). */
+export function ensureListParagraphStyle(zip: PizZip): void {
+  const path = "word/styles.xml";
+  const xml = zip.file(path)?.asText();
+  if (!xml) return;
+  if (xml.includes(`w:styleId="${LIST_PARAGRAPH_STYLE_ID}"`)) return;
+  zip.file(path, xml.replace("</w:styles>", `${listParagraphStyleXml()}</w:styles>`));
 }
 
 /** Add the synthesized code paragraph style to styles.xml if absent. */

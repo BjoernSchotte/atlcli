@@ -1965,3 +1965,54 @@ describe("exportDocx — SVG attachment embedding (spec 006 G4)", () => {
     expect(report.skippedImages).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Table column widths + table style source (spec 006 G3/G3b)
+// ---------------------------------------------------------------------------
+
+describe("exportDocx — table widths & style source (spec 006 G3/G3b)", () => {
+  const tableStorage =
+    '<table><colgroup><col style="width: 100px"/><col style="width: 300px"/></colgroup>' +
+    "<tbody><tr><th><p>H1</p></th><th><p>H2</p></th></tr>" +
+    "<tr><td><p>a</p></td><td><p>b</p></td></tr></tbody></table>";
+
+  const tmpl = (extraStyles = "") =>
+    buildDocx({ body: para("$scroll.content"), styles: stylesXml(headingStyle("Heading1", "Heading 1") + extraStyles) });
+
+  const detailsFor = (storage: string): ConfluencePageDetails => ({ ...details, storage });
+
+  it("honors colgroup widths as non-uniform w:gridGrid summing to 9000 (G3)", async () => {
+    const { bytes } = await exportDocx({ templateBytes: tmpl(), details: detailsFor(tableStorage), template, deps });
+    const doc = readPart(bytes, "word/document.xml");
+    const cols = [...doc.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].map((m) => Number(m[1]));
+    expect(cols).toEqual([2250, 6750]);
+    expect(cols.reduce((s, w) => s + w, 0)).toBe(9000);
+    expect(doc).toContain('<w:tblLayout w:type="fixed"/>');
+  });
+
+  it("source template resolves 'Scroll Table Normal' and omits inline borders (G3b)", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: tmpl(headingStyle("ScrollTableNormalId", "Scroll Table Normal")),
+      details: detailsFor(tableStorage),
+      template,
+      deps,
+      tableStyle: { source: "template" },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:tblStyle w:val="ScrollTableNormalId"/>');
+    expect(doc).not.toContain("<w:tblBorders>");
+  });
+
+  it("source template with an undefined style falls back to the grid + a note (G3b)", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: tmpl(),
+      details: detailsFor(tableStorage),
+      template,
+      deps,
+      tableStyle: { source: "template" },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain('<w:tblStyle w:val="TableGrid"/>');
+    expect(report.notes.some((n) => n.code === "table-style-missing")).toBe(true);
+  });
+});
