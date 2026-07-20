@@ -8,6 +8,8 @@
  * adventurous hosts can reach them here — but they are **not** part of the
  * frozen v1 API and may change without notice between versions.
  */
+export * from "./builtin-template.js";
+export * from "./curated-templates.js";
 export * from "./escape.js";
 export * from "./prepare.js";
 export * from "./serialize.js";

@@ -5,6 +5,7 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
+import type { TemplateManifest } from "@atlcli/template-pack";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
 import { resolvePdfSettings } from "./settings.js";
@@ -40,6 +41,8 @@ export interface RunPdfExportInput {
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
   settings?: PdfTemplateSettings;
+  /** Curated template manifest to render with (spec 012). Defaults to built-in. */
+  templateManifest?: TemplateManifest;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
@@ -166,7 +169,12 @@ export async function runPdfExport(
   input.onPhase?.("configuration");
   let settings;
   try {
-    settings = resolvePdfSettings(input.settings);
+    settings = resolvePdfSettings(input.settings, {
+      ...(input.metadata.language !== undefined ? { locale: input.metadata.language } : {}),
+      ...(input.metadata.region !== undefined ? { region: input.metadata.region } : {}),
+      ...(input.theme !== undefined ? { theme: input.theme } : {}),
+      ...(input.templateManifest !== undefined ? { manifest: input.templateManifest } : {}),
+    });
   } catch (error) {
     wrapFailure(error, "configuration");
   }
@@ -211,6 +219,7 @@ export async function runPdfExport(
       profile: input.profile,
       theme: input.theme,
       settings,
+      ...(input.templateManifest !== undefined ? { templateManifest: input.templateManifest } : {}),
     });
   } catch (error) {
     wrapFailure(error, "prepare");

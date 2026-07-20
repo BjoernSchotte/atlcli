@@ -1,7 +1,7 @@
 import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
 import { computeHeadingOffset, uniqueAnchorId } from "@atlcli/confluence";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
-import { resolvePdfSettings, typstSettingsDict } from "./settings.js";
+import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import {
   pdfColorContrast,
@@ -275,9 +275,19 @@ interface RenderContext {
    * against the landscape text area, not the portrait one. Undefined → portrait.
    */
   layoutWidthPt?: number;
+  /**
+   * The ACTIVE template design (spec 012). Serializer-emitted presentation
+   * (table stroke/header fill, mention ink, placeholder ink, cell insets, the
+   * status palette) reads from here, so a second curated template's tokens
+   * genuinely apply instead of silently rendering the built-in's.
+   */
+  design: ResolvedPdfDesign;
 }
 
-const NORMAL_RENDER_CONTEXT: RenderContext = { tableDensity: "normal" };
+/** The root render context for a document rendered with `design`. */
+function rootContext(design: ResolvedPdfDesign): RenderContext {
+  return { tableDensity: "normal", design };
+}
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 
 // ---- Wide-table layout classification (spec 003 T1.6) ---------------------
@@ -392,21 +402,17 @@ function typstFigureKind(kind: CaptionKind): string {
  * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
  */
 function captionFigureArgs(caption: Caption, writer: Writer): string {
-  const inline = serializeInline(caption.content, writer.labels, writer.notes);
+  const inline = serializeInline(caption.content, writer.labels, writer.notes, rootContext(writer.design));
   return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
 }
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
 const DENSE_ATOMIC_RUN_LENGTH = 4;
 const DENSE_STATUS_RUN_LENGTH = 2;
 
-const CONFLUENCE_STATUS_COLORS: Readonly<Record<string, string>> = {
-  grey: "#42526E",
-  gray: "#42526E",
-  red: "#DE350B",
-  yellow: "#FF991F",
-  green: "#00875A",
-  blue: "#0052CC",
-};
+// Serializer-emitted presentation values come from the ACTIVE template design
+// (spec 012) \u2014 no bare literals in this file, and no silent fallback to the
+// built-in: a second curated template's tokens genuinely apply. The design
+// travels on the writer (block scope) and the render context (inline scope).
 
 function denseAtomicToken(value: string, runLength = DENSE_ATOMIC_RUN_LENGTH): string {
   return value
@@ -424,9 +430,10 @@ function denseStatusLabel(value: string): string {
   return value.replace(/\S+/gu, (token) => denseAtomicToken(token, DENSE_STATUS_RUN_LENGTH));
 }
 
-function statusColor(value: string | undefined): string {
+function statusColor(value: string | undefined, design: ResolvedPdfDesign): string {
   const semantic = value?.trim().toLowerCase();
-  return (semantic && CONFLUENCE_STATUS_COLORS[semantic]) ?? safeColor(value);
+  // The Confluence status palette is per-template data (semanticPalettes.statuses).
+  return (semantic && design.semanticPalettes.statuses[semantic]) ?? safeColor(value);
 }
 
 function denseHostLabel(value: string): string {
@@ -528,7 +535,9 @@ function serializeMention(
   context: RenderContext
 ): string {
   const label = node.displayName ?? node.accountId;
-  const color = effectiveCellTextColor("#0747A6", context) ?? "#0747A6";
+  const color =
+    effectiveCellTextColor(context.design.tokens.colors.mention, context) ??
+    context.design.tokens.colors.mention;
   if (!context.availableWidth) {
     return `#text(fill: rgb(${typstString(color)}))[${literalText(`@${label}`)}]`;
   }
@@ -549,7 +558,7 @@ function serializeInline(
   nodes: InlineNode[],
   labels: Map<string, string>,
   notes: ExportNote[],
-  context: RenderContext = NORMAL_RENDER_CONTEXT
+  context: RenderContext
 ): string {
   return nodes
     .map((node) => {
@@ -564,7 +573,7 @@ function serializeInline(
         }
         case "status": {
           const label = node.text || node.color;
-          const color = statusColor(node.color);
+          const color = statusColor(node.color, context.design);
           if (context.availableWidth) {
             return `#dense-status-badge(${context.availableWidth}, ${typstString(label)}, ${typstString(denseStatusLabel(label))}, color: ${typstString(color)})`;
           }
@@ -708,6 +717,8 @@ interface Writer {
   headingCounts: Map<string, number>;
   theme: PdfTheme;
   contrastWarnings: Set<string>;
+  /** The ACTIVE template design driving serializer-emitted presentation. */
+  design: ResolvedPdfDesign;
 }
 
 function noteLowCellContrast(
@@ -751,7 +762,7 @@ function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = NORMAL_RENDER_CONTEXT
+  context: RenderContext = rootContext(writer.design)
 ): string {
   return blocks
     .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index}]`, context))
@@ -940,7 +951,7 @@ function serializeBlock(
         const checked = item.checked === true ? "true" : "false";
         return `[#task-item(${checked})[${content}]]`;
       });
-      const options = isTaskList ? "marker: none, body-indent: 0pt, " : "";
+      const options = isTaskList ? `marker: none, body-indent: ${writer.design.tokens.layout.taskListBodyIndent}, ` : "";
       value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
       break;
     }
@@ -976,11 +987,14 @@ function serializeBlock(
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
         container: "tableCell",
+        design: context.design,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
-          const backgroundColor = cell.backgroundColor ?? (cell.header ? "#F4F5F7" : undefined);
+          const backgroundColor =
+            cell.backgroundColor ??
+            (cell.header ? writer.design.tokens.colors.tableHeaderBackground : undefined);
           const foregroundColor = cell.backgroundColor
             ? pdfTableCellForeground(cell.backgroundColor, writer.theme)
             : undefined;
@@ -1032,7 +1046,7 @@ function serializeBlock(
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: 7pt), stroke: rgb(\"#DFE1E6\"),\n${rows.join(",\n")}\n)`;
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.design.tokens.layout.tableCellInsetY}), stroke: rgb(${typstString(writer.design.tokens.colors.tableStroke)}),\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -1049,12 +1063,12 @@ function serializeBlock(
       break;
     }
     case "divider":
-      value = `#line(length: 100%, stroke: rgb(\"#DFE1E6\"))`;
+      value = `#line(length: 100%, stroke: rgb(${typstString(writer.design.tokens.colors.tableStroke)}))`;
       break;
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
       // the preserved body/plainBody, instead of silently omitting content.
-      const placeholder = `#text(style: "italic", fill: rgb("#97A0AF"))[${escapeTypstContent(
+      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.placeholder)}))[${escapeTypstContent(
         `[${block.macroName} macro not rendered]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
@@ -1157,6 +1171,15 @@ export function serializePdfDocument(
   options: PdfSerializeOptions
 ): PdfSourceBundle {
   const theme = resolvePdfTheme(options.theme);
+  // Settings resolve BEFORE the writer: the resolved design drives both the
+  // generated template and the serializer's own emitted presentation, so the
+  // active (possibly non-built-in) template's tokens reach every emission site.
+  const settings = resolvePdfSettings(options.settings, {
+    ...(options.metadata.language !== undefined ? { locale: options.metadata.language } : {}),
+    ...(options.metadata.region !== undefined ? { region: options.metadata.region } : {}),
+    ...(options.theme !== undefined ? { theme: options.theme } : {}),
+    ...(options.templateManifest !== undefined ? { manifest: options.templateManifest } : {}),
+  });
   const collected = collectHeadingLabels(document.blocks);
   const writer: Writer = {
     sourceMap: [],
@@ -1167,9 +1190,9 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
+    design: settings.design,
   };
   const body = serializeBlocks(document.blocks, writer);
-  const settings = resolvePdfSettings(options.settings);
   // The validated logo travels as a virtual asset file the compiler maps into
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
@@ -1203,7 +1226,7 @@ ${body}
 
   return {
     main,
-    template: createAtlcliTypstTemplate(options.theme),
+    template: createAtlcliTypstTemplate(settings.design, settings.labels),
     assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,

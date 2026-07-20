@@ -6,33 +6,36 @@
  *
  * `atlcli-doc(meta, settings, body)` is the built-in implementation of the
  * versioned template surface `render(meta, body, settings)` (TEMPLATE-UX §7).
- * Renaming the symbol is not required — the contract names the *shape*, not the
- * symbol.
  *
- * Required `meta` keys a conforming template may rely on: `title`, `space`,
- * `version`, `author`, `language`, `exported-at` (plus the derived
- * `exporter`, `region`, `exported-label` this engine also supplies).
+ * ## Fully declarative presentation (spec 012)
  *
- * `settings` is a Typst dictionary read *defensively* — every access uses
- * `settings.at("<key>", default: ...)` so sparse dictionaries and older callers
- * that pass no `settings` keep compiling. `settings: (:)` is itself the
- * backward-compatible default. Adding a settings key is non-breaking; removing
- * or renaming one bumps the `engine.api` string.
+ * This file authors **no presentation literal** any more. `createAtlcliTypstTemplate`
+ * is a function of a validated `WikiPdfTemplateDesignV1`: static design
+ * (typography roles, color tokens, semantic palettes, component spacing) is
+ * interpolated into the generated Typst when the template string is built, and
+ * the settings-driven subset (accent, organization name, page size/orientation,
+ * cover/outline) plus the localized labels are read from the emitted
+ * `settings.design` / `settings.labels` dict at Typst runtime. The engine code
+ * here is a *consumer* of design values, never their author — so a second
+ * curated template is a different manifest, not a fork of this file.
+ *
+ * `settings` is still read defensively: every `settings.at("design"/"labels", …)`
+ * read falls back to the built-in's own values interpolated at generation time,
+ * so `settings: (:)` keeps compiling (the 007 backward-compatibility contract).
  *
  * ### Stable v1 import surface (the hook set)
  *
  * `serialize.ts` imports eight symbols from this generated `atlcli.typ`:
  * `atlcli-doc`, `callout`, `status-badge`, `table-par`, `dense-token`,
  * `dense-link`, `dense-status-badge`, `task-item`. All eight are the frozen v1
- * hook set a conforming template must export; generated content may depend on
- * these and no other, undocumented, template-local functions (TEMPLATE-UX §7).
- * Shrinking this set — relocating the five dense-table/table helpers into
- * engine-owned code so an external template overrides fewer hooks — is a
- * deliberate follow-up once a real Level-B template needs it, not part of this
- * contract's first cut.
+ * hook set a conforming template must export.
  */
-import { resolvePdfTheme } from "./theme.js";
-import type { PdfThemeOptions } from "./types.js";
+import {
+  BUILTIN_PDF_DESIGN,
+  BUILTIN_PDF_FALLBACK_LABELS,
+} from "./builtin-template.js";
+import type { WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import { typstString } from "./escape.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
@@ -40,34 +43,97 @@ const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
 
-export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string {
-  const theme = resolvePdfTheme(options);
+/**
+ * Generate the pinned Typst template for a design. All presentation values come
+ * from `design`; a missing key throws a clear error here rather than producing
+ * an `undefined` token that would fail the Typst compile.
+ */
+export function createAtlcliTypstTemplate(
+  design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
+  labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS
+): string {
+  const fonts = design.typography.fonts;
+  const roles = design.typography.roles;
+  const colors = design.tokens.colors;
+  const layout = design.tokens.layout;
+  const ratios = design.tokens.ratios;
+  const callouts = design.semanticPalettes.callouts;
+  const margin = design.page.margin;
+
+  const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
+    const value = map[key];
+    if (value === undefined) throw new Error(`PDF template design is missing ${kind} "${key}"`);
+    return value;
+  };
+  const L = (key: string): string => need(layout, key, "layout length");
+  const C = (key: string): string => need(colors, key, "color token");
+  const RN = (key: string): number => need(ratios, key, "ratio");
+  const F = (role: "body" | "heading" | "mono"): string => fonts[role];
+  const roleOf = (key: string) => need(roles, key, "typography role");
+  const rsize = (key: string): string => roleOf(key).size;
+  const rweight = (key: string): string => {
+    const weight = roleOf(key).weight;
+    if (weight === undefined) throw new Error(`PDF template role "${key}" is missing a weight`);
+    return weight;
+  };
+  const rtrack = (key: string): string => {
+    const tracking = roleOf(key).tracking;
+    if (tracking === undefined) throw new Error(`PDF template role "${key}" is missing tracking`);
+    return tracking;
+  };
+  const roleFont = (key: string): string => {
+    const font = roleOf(key).font;
+    if (font === undefined) throw new Error(`PDF template role "${key}" is missing a font`);
+    return F(font);
+  };
+  const callout = (kind: keyof typeof callouts): { bg: string; fg: string } => {
+    const palette = need(callouts, kind as string, "callout palette");
+    return { bg: palette.background, fg: palette.foreground };
+  };
+  const label = (key: string): string => labels[key] ?? "";
+
+  // Gen-time defaults for the settings-driven subset (backward-compat with
+  // `settings: (:)`); overridden at runtime by the emitted `settings.design`.
+  const accentDefault = design.branding.accent;
+  const pageDefault = design.page.size;
+  const orientDefault = design.page.orientation;
+  const coverDefault = design.features.cover.enabled ? "true" : "false";
+  const outlineDefault = design.features.outline.enabled ? "true" : "false";
+  const outlineDepthDefault = design.features.outline.depth;
+
+  const info = callout("info");
+  const note = callout("note");
+  const warning = callout("warning");
+  const tip = callout("tip");
+  const panel = callout("panel");
+
   return String.raw`
 #let editorial-numbering(..nums) = {
   let values = nums.pos()
   let current = values.last()
   let pattern = if values.len() == 1 { "1." } else if values.len() == 2 { "a)" } else { "i." }
   text(
-    font: "Source Sans 3",
-    size: 0.95em,
-    weight: "semibold",
-    fill: rgb("#6B778C"),
+    font: ${typstString(F("heading"))},
+    size: ${rsize("numbering")},
+    weight: "${rweight("numbering")}",
+    fill: rgb("${C("muted")}"),
     numbering(pattern, current),
   )
 }
 
 // Rotated text layer drawn under the content via set page(background: ...),
 // which makes it a page Artifact in the tagged PDF by Typst's own
-// page-background semantics.
+// page-background semantics. The watermark dictionary is always fully
+// populated by the resolver, so no per-field defaults are needed here.
 #let watermark-layer(wm) = if wm == none { none } else {
   place(center + horizon, rotate(
-    wm.at("angle", default: -54) * 1deg,
+    wm.angle * 1deg,
     text(
-      font: "Source Sans 3",
+      font: ${typstString(F("heading"))},
       weight: "bold",
-      size: wm.at("size", default: 96) * 1pt,
-      fill: rgb(wm.at("color", default: "#DE350B"))
-        .transparentize(100% - wm.at("opacity", default: 0.08) * 100%),
+      size: wm.size * 1pt,
+      fill: rgb(wm.color)
+        .transparentize(100% - wm.opacity * 100%),
       wm.text,
     ),
   ))
@@ -75,30 +141,40 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
 
 // wiki.pdf-template/v1 render surface: render(meta, body, settings).
 // settings: (:) keeps callers that pass no settings compiling; every settings
-// read below must use settings.at("key", default: ...).
+// read below falls back to a built-in default interpolated at generation time.
 #let atlcli-doc(meta: (:), settings: (:), body) = {
-  let is-german = meta.at("language", default: "en") == "de"
-  let version-label = [Version]
-  let exported-label = if is-german { [Exportiert] } else { [Exported] }
-  let exporter-label = if is-german { [Exportiert von] } else { [Exported by] }
-  let contents-label = if is-german { [Inhalt] } else { [Contents] }
-  let end-label = if is-german { [DOKUMENTENDE] } else { [END OF DOCUMENT] }
-  let pages-label = if is-german { [Seiten] } else { [Pages] }
-  let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))
-  let org-name = settings.at("organization-name", default: none)
+  let design = settings.at("design", default: (:))
+  let labels = settings.at("labels", default: (:))
+  let brand = design.at("branding", default: (:))
+  let page-config = design.at("page", default: (:))
+  let features = design.at("features", default: (:))
+  let cover-config = features.at("cover", default: (:))
+  let outline-config = features.at("outline", default: (:))
+
+  let version-label = labels.at("version", default: ${typstString(label("version"))})
+  let exported-label = labels.at("exported", default: ${typstString(label("exported"))})
+  let exporter-label = labels.at("exporter", default: ${typstString(label("exporter"))})
+  let contents-label = labels.at("contents", default: ${typstString(label("contents"))})
+  let end-label = labels.at("endOfDocument", default: ${typstString(label("endOfDocument"))})
+  let pages-label = labels.at("pages", default: ${typstString(label("pages"))})
+  let space-prefix = labels.at("spacePrefix", default: ${typstString(label("spacePrefix"))})
+  let generated-with = labels.at("generatedWith", default: ${typstString(label("generatedWith"))})
+
+  let indigo = rgb(brand.at("accent", default: "${accentDefault}"))
+  let org-name = brand.at("organization-name", default: none)
   let logo-path = settings.at("logo", default: none)
   let logo-alt = settings.at("logo-alt", default: "")
   let space-label = if org-name == none {
-    [CONFLUENCE SPACE / #meta.space]
+    [#space-prefix / #meta.space]
   } else {
-    [#upper(org-name) / CONFLUENCE SPACE / #meta.space]
+    [#upper(org-name) / #space-prefix / #meta.space]
   }
   // Public settings say "letter"; Typst's paper catalog names it "us-letter".
-  let page-size = settings.at("page", default: "a4")
+  let page-size = page-config.at("size", default: "${pageDefault}")
   let paper-name = if page-size == "letter" { "us-letter" } else { page-size }
-  let ink = rgb("#202A44")
-  let warm-slate = rgb("#74727A")
-  let cover-paper = rgb("${theme.colors.paper}")
+  let ink = rgb("${C("coverTitleInk")}")
+  let warm-slate = rgb("${C("warmSlate")}")
+  let cover-paper = rgb("${C("paper")}")
 
   set document(
     title: meta.title,
@@ -106,50 +182,50 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
     date: meta.exported-at,
   )
   set text(
-    font: "Source Serif 4",
-    size: 10pt,
-    fill: rgb("${theme.colors.ink}"),
+    font: ${typstString(F("body"))},
+    size: ${rsize("body")},
+    fill: rgb("${C("ink")}"),
     lang: meta.at("language", default: "en"),
     region: meta.at("region", default: none),
   )
-  set par(leading: 0.74em, spacing: 10pt, justify: false)
+  set par(leading: ${L("paragraphLeading")}, spacing: ${L("paragraphSpacing")}, justify: false)
   set list(
     marker: (
-      [#text(font: "Source Sans 3", fill: rgb("#6B778C"))[${EDITORIAL_DASH}]],
-      [#text(font: "Source Sans 3", fill: rgb("#6B778C"))[${EDITORIAL_BULLET}]],
-      [#text(font: "Source Sans 3", fill: rgb("#6B778C"))[${EDITORIAL_NESTED_BULLET}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
+      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
     ),
-    body-indent: 0.7em,
-    spacing: 8pt,
+    body-indent: ${L("listBodyIndent")},
+    spacing: ${L("listSpacing")},
   )
   set enum(
     numbering: editorial-numbering,
-    body-indent: 0.7em,
-    spacing: 8pt,
+    body-indent: ${L("enumBodyIndent")},
+    spacing: ${L("enumSpacing")},
   )
   set page(
     paper: paper-name,
-    flipped: settings.at("orientation", default: "portrait") == "landscape",
+    flipped: page-config.at("orientation", default: "${orientDefault}") == "landscape",
     fill: cover-paper,
-    margin: (top: 23mm, bottom: 20mm, left: 22mm, right: 22mm),
+    margin: (top: ${margin.top}, bottom: ${margin.bottom}, left: ${margin.left}, right: ${margin.right}),
     background: watermark-layer(settings.at("watermark", default: none)),
     header: context {
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
-        set text(font: "Source Sans 3", size: 8pt, fill: rgb("#6B778C"))
+        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let header-text = settings.at("header-text", default: none)
         if header-text == none {
           grid(columns: (1fr, auto), meta.title, meta.space)
         } else {
           header-text
         }
-        line(length: 100%, stroke: rgb("#DFE1E6"))
+        line(length: 100%, stroke: rgb("${C("hairline")}"))
       }
     },
     footer: context {
       if counter(page).get().first() > 1 {
-        set text(font: "Source Sans 3", size: 8pt, fill: rgb("#6B778C"))
+        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let footer-text = settings.at("footer-text", default: none)
         if footer-text == none and org-name == none {
           align(center)[#counter(page).display("1")]
@@ -166,94 +242,94 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
   )
 
   show heading.where(level: 1): it => {
-    set text(font: "Source Sans 3", size: 18pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
-    block(above: 28pt, below: 14pt, sticky: true, it)
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
+    block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, it)
   }
   show heading.where(level: 2): it => {
-    set text(font: "Source Sans 3", size: 14pt, weight: "semibold", fill: rgb("${theme.colors.ink}"))
-    block(above: 24pt, below: 12pt, sticky: true, it)
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
+    block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, it)
   }
   show heading.where(level: 3): it => {
-    set text(font: "Source Sans 3", size: 11.5pt, weight: "semibold", fill: rgb("#253858"))
-    block(above: 18pt, below: 8pt, sticky: true, it)
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
+    block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, it)
   }
   show raw.where(block: true): it => block(
-    fill: rgb("#F4F5F7"),
-    inset: 9pt,
-    radius: 4pt,
+    fill: rgb("${C("codeBackground")}"),
+    inset: ${L("codeInset")},
+    radius: ${L("codeRadius")},
     width: 100%,
-    text(font: "Source Code Pro", size: 8.5pt, it),
+    text(font: ${typstString(F("mono"))}, size: ${rsize("code")}, it),
   )
   show table.cell: it => {
-    set text(font: "Source Sans 3", size: 9pt, hyphenate: true)
+    set text(font: ${typstString(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: true)
     set par(linebreaks: "optimized")
     it
   }
 
-  if settings.at("cover", default: true) {
-    v(37mm)
-    block(width: 90%)[
-      #set text(font: "Source Sans 3")
+  if cover-config.at("enabled", default: ${coverDefault}) {
+    v(${L("coverTopPad")})
+    block(width: ${RN("coverBlockWidth")}%)[
+      #set text(font: ${typstString(F("heading"))})
       #if logo-path != none [
-        #block(below: 18pt)[#image(logo-path, height: 12mm, width: 45mm, fit: "contain", alt: logo-alt)]
+        #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
-      #text(size: 8pt, weight: "semibold", tracking: 0.12em, fill: indigo, space-label)
-      #v(17pt)
+      #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo, space-label)
+      #v(${L("coverEyebrowGap")})
       #block(width: 100%)[
-        #set par(leading: 0.98em)
-        #text(font: "Source Serif 4", size: 31pt, weight: "semibold", fill: ink)[#meta.title]
+        #set par(leading: ${L("coverTitleLeading")})
+        #text(font: ${typstString(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
       ]
-      #v(25pt)
-      #line(length: 52mm, stroke: 0.9pt + indigo)
-      #v(23pt)
+      #v(${L("coverTitleGap")})
+      #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
+      #v(${L("coverMetaGap")})
       #grid(
-        columns: (30mm, 1fr),
-        column-gutter: 12pt,
-        row-gutter: 8pt,
-        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(version-label)),
-        text(size: 9.5pt, fill: ink, meta.version),
-        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exported-label)),
-        text(size: 9.5pt, fill: ink, meta.exported-label),
-        text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exporter-label)),
-        text(size: 9.5pt, fill: ink, meta.exporter),
+        columns: (${L("coverMetaColLabel")}, 1fr),
+        column-gutter: ${L("coverMetaColGutter")},
+        row-gutter: ${L("coverMetaRowGutter")},
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(version-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.version),
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(exported-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.exported-label),
+        text(size: ${rsize("coverMetaLabel")}, weight: "${rweight("coverMetaLabel")}", tracking: ${rtrack("coverMetaLabel")}, fill: warm-slate, upper(exporter-label)),
+        text(size: ${rsize("coverMetaValue")}, fill: ink, meta.exporter),
       )
     ]
     pagebreak()
   }
   set page(fill: white)
-  if settings.at("outline", default: true) {
-    outline(title: contents-label, depth: 3)
+  if outline-config.at("enabled", default: ${outlineDefault}) {
+    outline(title: contents-label, depth: outline-config.at("depth", default: ${outlineDepthDefault}))
     pagebreak()
   }
   body
   pagebreak()
   set page(fill: cover-paper)
-  v(57mm)
-  block(width: 82%)[
-    #set text(font: "Source Sans 3")
-    #text(size: 8pt, weight: "semibold", tracking: 0.14em, fill: indigo)[#end-label]
-    #v(14pt)
+  v(${L("closingTopPad")})
+  block(width: ${RN("closingBlockWidth")}%)[
+    #set text(font: ${typstString(F("heading"))})
+    #text(size: ${rsize("closingEyebrow")}, weight: "${rweight("closingEyebrow")}", tracking: ${rtrack("closingEyebrow")}, fill: indigo)[#end-label]
+    #v(${L("closingEyebrowGap")})
     #block(width: 100%)[
-      #set par(leading: 1.02em)
-      #text(font: "Source Serif 4", size: 24pt, weight: "semibold", fill: ink)[#meta.title]
+      #set par(leading: ${L("closingTitleLeading")})
+      #text(font: ${typstString(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
     ]
-    #v(22pt)
-    #line(length: 52mm, stroke: 0.9pt + indigo)
-    #v(22pt)
+    #v(${L("closingTitleGap")})
+    #line(length: ${L("closingRuleLength")}, stroke: ${L("closingRuleStroke")} + indigo)
+    #v(${L("closingMetaGap")})
     #grid(
-      columns: (30mm, 1fr),
-      column-gutter: 12pt,
-      row-gutter: 8pt,
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(version-label)),
-      text(size: 9.5pt, fill: ink, meta.version),
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(exported-label)),
-      text(size: 9.5pt, fill: ink, meta.exported-label),
-      text(size: 7.5pt, weight: "semibold", tracking: 0.08em, fill: warm-slate, upper(pages-label)),
-      context text(size: 9.5pt, fill: ink, str(counter(page).final().first())),
+      columns: (${L("coverMetaColLabel")}, 1fr),
+      column-gutter: ${L("coverMetaColGutter")},
+      row-gutter: ${L("coverMetaRowGutter")},
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(version-label)),
+      text(size: ${rsize("closingMetaValue")}, fill: ink, meta.version),
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(exported-label)),
+      text(size: ${rsize("closingMetaValue")}, fill: ink, meta.exported-label),
+      text(size: ${rsize("closingMetaLabel")}, weight: "${rweight("closingMetaLabel")}", tracking: ${rtrack("closingMetaLabel")}, fill: warm-slate, upper(pages-label)),
+      context text(size: ${rsize("closingMetaValue")}, fill: ink, str(counter(page).final().first())),
     )
-    #v(24pt)
-    #text(size: 8.5pt, fill: warm-slate)[
-      #if is-german { [Erzeugt aus Confluence mit] } else { [Generated from Confluence with] }
+    #v(${L("closingColophonGap")})
+    #text(size: ${rsize("colophon")}, fill: warm-slate)[
+      #generated-with
       #link("https://atlcli.sh/")[#text(weight: "semibold", fill: indigo)[atlcli]]
     ]
   ]
@@ -261,41 +337,39 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
 
 #let callout(kind: "info", title: none, body) = {
   let palette = (
-    info: (rgb("#DEEBFF"), rgb("#0747A6")),
-    note: (rgb("#EAE6FF"), rgb("#403294")),
-    warning: (rgb("#FFFAE6"), rgb("#974F0C")),
-    tip: (rgb("#E3FCEF"), rgb("#006644")),
-    panel: (rgb("#F4F5F7"), rgb("#42526E")),
+    info: (rgb("${info.bg}"), rgb("${info.fg}")),
+    note: (rgb("${note.bg}"), rgb("${note.fg}")),
+    warning: (rgb("${warning.bg}"), rgb("${warning.fg}")),
+    tip: (rgb("${tip.bg}"), rgb("${tip.fg}")),
+    panel: (rgb("${panel.bg}"), rgb("${panel.fg}")),
   )
   let colors = palette.at(kind, default: palette.panel)
   block(
     width: 100%,
     fill: colors.first(),
-    stroke: (left: 3pt + colors.last()),
-    inset: (x: 11pt, y: 9pt),
-    radius: (right: 4pt),
-    above: 6pt,
-    below: 8pt,
+    stroke: (left: ${L("calloutStroke")} + colors.last()),
+    inset: (x: ${L("calloutInsetX")}, y: ${L("calloutInsetY")}),
+    radius: (right: ${L("calloutRadius")}),
+    above: ${L("calloutAbove")},
+    below: ${L("calloutBelow")},
   )[
-    #set text(font: "Source Sans 3")
+    #set text(font: ${typstString(F("heading"))})
     #if title != none { text(weight: "semibold", fill: colors.last(), title); linebreak() }
     #body
   ]
 }
 
-#let status-badge(label, color: "#42526E", inset-x: 5pt) = box(
-  fill: rgb(color).lighten(82%),
-  inset: (x: inset-x, y: 2pt),
-  radius: 3pt,
-  text(font: "Source Code Pro", size: 7.5pt, weight: "bold", fill: rgb(color), label),
+#let status-badge(label, color: "${C("neutral")}", inset-x: ${L("statusBadgeInsetX")}) = box(
+  fill: rgb(color).lighten(${RN("statusBadgeLighten")}%),
+  inset: (x: inset-x, y: ${L("statusBadgeInsetY")}),
+  radius: ${L("statusBadgeRadius")},
+  text(font: ${typstString(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
 )
 
 // Every table paragraph receives its real content width. Narrow cells switch
 // to the simple breaker; wider cells retain the document's optimized breaker.
-// 18mm approximates the usable width of one track at the existing nine-column
-// dense-table boundary after cell insets.
 #let table-par(body) = layout(size => {
-  if size.width <= 18mm { set par(linebreaks: "simple") }
+  if size.width <= ${L("denseTableThreshold")} { set par(linebreaks: "simple") }
   body(size.width)
 })
 
@@ -319,9 +393,9 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
   link(target, visible)
 }
 
-#let dense-status-badge(available-width, label, breakable-label, color: "#42526E") = {
+#let dense-status-badge(available-width, label, breakable-label, color: "${C("neutral")}") = {
   let normal = status-badge(label, color: color)
-  let compact = status-badge(label, color: color, inset-x: 2pt)
+  let compact = status-badge(label, color: color, inset-x: ${L("denseBadgeCompactInsetX")})
   if measure(normal).width <= available-width {
     normal
   } else if measure(compact).width <= available-width {
@@ -330,33 +404,33 @@ export function createAtlcliTypstTemplate(options: PdfThemeOptions = {}): string
     box(
       // Typst adds horizontal inset outside an explicit box width. Subtract it
       // so the fallback badge's painted bounds never exceed the table track.
-      width: available-width - 2pt,
-      fill: rgb(color).lighten(82%),
-      inset: (x: 1pt, y: 2pt),
-      radius: 3pt,
+      width: available-width - ${L("denseBadgeWidthAdjust")},
+      fill: rgb(color).lighten(${RN("statusBadgeLighten")}%),
+      inset: (x: ${L("denseBadgeInsetX")}, y: ${L("denseBadgeInsetY")}),
+      radius: ${L("denseBadgeRadius")},
     )[
       #set text(
-        font: "Source Code Pro",
-        size: 7.5pt,
-        weight: "bold",
+        font: ${typstString(F("mono"))},
+        size: ${rsize("statusBadge")},
+        weight: "${rweight("statusBadge")}",
         fill: rgb(color),
         hyphenate: true,
       )
-      #set par(linebreaks: "simple", leading: 0.72em)
+      #set par(linebreaks: "simple", leading: ${L("denseBadgeLeading")})
       #breakable-label
     ]
   }
 }
 
 #let task-item(checked, body) = grid(
-  columns: (1.05em, 1fr),
-  column-gutter: 0.45em,
+  columns: (${L("taskGridMarker")}, 1fr),
+  column-gutter: ${L("taskGridGutter")},
   align: top,
   text(
-    font: "Source Sans 3",
-    size: 8.5pt,
-    weight: "semibold",
-    fill: rgb(if checked { "#0052CC" } else { "#6B778C" }),
+    font: ${typstString(F("heading"))},
+    size: ${rsize("taskMarker")},
+    weight: "${rweight("taskMarker")}",
+    fill: rgb(if checked { "${C("taskChecked")}" } else { "${C("taskUnchecked")}" }),
     if checked { "${TASK_CHECKED}" } else { "${TASK_UNCHECKED}" },
   ),
   body,

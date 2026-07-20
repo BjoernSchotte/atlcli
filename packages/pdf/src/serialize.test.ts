@@ -82,11 +82,14 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.template).toContain('linebreaks: "optimized"');
     expect(bundle.main).toContain('region: "US"');
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
-    expect(bundle.template).toContain('let indigo = rgb(settings.at("accent-color", default: "#4B57A3"))');
+    expect(bundle.template).toContain('let indigo = rgb(brand.at("accent", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
     expect(bundle.template).toContain('text(font: "Source Serif 4", size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
-    expect(bundle.template).toContain("[DOKUMENTENDE]");
+    // Labels are now resolved at runtime; this en export threads the English
+    // end-label through settings.labels (asserted on bundle.main below).
+    expect(bundle.template).toContain("[#end-label]");
+    expect(bundle.main).toContain('endOfDocument: "END OF DOCUMENT"');
     expect(bundle.template).toContain('link("https://atlcli.sh/")');
     expect(bundle.template).toContain("counter(page).final().first()");
     expect(bundle.main).toContain('exported-label: "July 16, 2026"');
@@ -107,6 +110,9 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('language: "de"');
     expect(bundle.main).toContain('region: "DE"');
     expect(bundle.main).toContain('exported-label: "16. Juli 2026"');
+    // Document-facing labels resolve to the German locale bundle (spec 012).
+    expect(bundle.main).toContain('contents: "Inhalt"');
+    expect(bundle.main).toContain('endOfDocument: "DOKUMENTENDE"');
   });
 
   it("uses retained table proportions and equal-width fallback tracks", async () => {
@@ -924,11 +930,11 @@ describe("PDF settings threading into main.typ", () => {
   it("emits a defaulted settings dictionary when no settings are supplied", () => {
     const bundle = serializePdfDocument(emptyDoc, { metadata });
     expect(bundle.main).toContain("), settings: (");
-    expect(bundle.main).toContain('page: "a4"');
+    expect(bundle.main).toContain('accent: "#4B57A3"');
+    expect(bundle.main).toContain('size: "a4"');
     expect(bundle.main).toContain('orientation: "portrait"');
-    expect(bundle.main).toContain("cover: true");
-    expect(bundle.main).toContain("outline: true");
-    expect(bundle.main).toContain('accent-color: "#4B57A3"');
+    expect(bundle.main).toContain("cover: (enabled: true)");
+    expect(bundle.main).toContain("outline: (enabled: true, depth: 3)");
     expect(bundle.main).not.toContain("header-text");
     expect(bundle.main).not.toContain("watermark:");
   });
@@ -938,7 +944,7 @@ describe("PDF settings threading into main.typ", () => {
       metadata,
       settings: { page: "letter", orientation: "landscape", organizationName: "Acme" },
     });
-    expect(bundle.main).toContain('page: "letter"');
+    expect(bundle.main).toContain('size: "letter"');
     expect(bundle.main).toContain('orientation: "landscape"');
     expect(bundle.main).toContain('organization-name: "Acme"');
   });

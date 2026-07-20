@@ -199,7 +199,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Design model & manifest schema (T6.1)
 
-- [ ] `packages/template-pack/src/manifest.ts`: extend 007's manifest
+- [x] `packages/template-pack/src/manifest.ts`: extend 007's manifest
       schema with `design: WikiPdfTemplateDesignV1` (`page`, `features`,
       `branding`, `typography`, `tokens`, `semanticPalettes`,
       `components`, per the Architecture section's field list) and
@@ -210,15 +210,21 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       rejects out-of-bounds lengths/ratios, non-canonical colors, and any
       Typst-source-shaped string in a design field (same "settings are
       data, not code" rule as 007's T2.1, extended to the design model).
-- [ ] `packages/template-pack/src/manifest.ts`: `bindings:
+- [x] `packages/template-pack/src/manifest.ts`: `bindings:
       WikiPdfTemplateSettingBindingV1[]` — `{ setting, targets, transform?
       }`; `targets` validated against a versioned allowlist of design
-      paths (start with the Level-A set 007 already exposes: accent,
-      page size, cover/outline enabled, outline depth, header/footer
-      text, organization name, logo asset + alt); `transform` is
-      `identity` or an explicit `choice-map` — reject anything else at
-      validation time, not at render time.
-- [ ] `packages/template-pack/src/manifest.ts`: `localization:
+      paths; `transform` is `identity` or an explicit `choice-map` —
+      reject anything else at validation time, not at render time.
+      **Shipped scope (narrowed deliberately):** the allowlist covers
+      accent, page size, orientation, cover/outline enabled, outline
+      depth, header/footer *enabled*, and organization name.
+      Header/footer **text** and the **logo asset + alt** are NOT
+      bindable design targets: they are per-export *content and assets*,
+      not presentation tokens, so they stay Level-A settings the template
+      reads directly (`settings.at("header-text" | "logo" | …)`). The DoD
+      requirement — retire 007's direct `.at()` reads "for every field
+      covered by a binding" — therefore holds as written.
+- [x] `packages/template-pack/src/manifest.ts`: `localization:
       WikiPdfTemplateLocalizationV1` — `defaultLocale`, `fallbackLocale`,
       `locales` map (`template`, `document`, `settingGroups`, `settings`
       copy, per the Architecture section). `validateManifest` requires
@@ -226,7 +232,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       description, every document label, every declared setting/group/
       option label); other locales may be partial with a lint warning on
       a missing field, never a hard reject.
-- [ ] Tests: `packages/template-pack/src/manifest.test.ts` (extend) —
+- [x] Tests: `packages/template-pack/src/manifest.test.ts` (extend) —
       real fixture manifests covering every new field, boundary values
       for lengths/ratios/colors, an incomplete `fallbackLocale` (reject),
       a partial non-fallback locale (accept + warning), a `bindings`
@@ -235,7 +241,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Resolver: bindings, locale, labels (T6.2)
 
-- [ ] `packages/pdf/src/settings.ts`: extend `resolvePdfSettings` to the
+- [x] `packages/pdf/src/settings.ts`: extend `resolvePdfSettings` to the
       seven-step order documented in 007's Risks entry ("Built-in vs.
       manifest settings") — manifest defaults → persisted host values →
       per-export overrides → validation/normalization → **apply declared
@@ -244,23 +250,23 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       shape gains `design` (fully resolved, bound `WikiPdfTemplateDesignV1`)
       and `labels` (resolved document-facing strings) alongside the
       existing `values`/`assets`.
-- [ ] `packages/pdf/src/settings.ts`: `applyBindings(design, bindings,
+- [x] `packages/pdf/src/settings.ts`: `applyBindings(design, bindings,
       values)` — pure function, one allowlisted target write per binding,
       duplicate-target-write detection (two bindings writing the same
       path is a validation error, not last-write-wins).
-- [ ] `packages/template-pack/src/localize.ts` (new): `localizeTemplateUi
+- [x] `packages/template-pack/src/localize.ts` (new): `localizeTemplateUi
       (manifest, uiLocale)` — pure function resolving UI-facing copy
       (template name/description, setting/group/option labels) per the
       locale-fallback chain (exact locale incl. region → base language →
       `defaultLocale` → `fallbackLocale`); this is the function folder
       010 calls to render a generated settings form, not built here.
-- [ ] `packages/pdf/src/serialize.ts` / `template.ts`: `settings` dict
+- [x] `packages/pdf/src/serialize.ts` / `template.ts`: `settings` dict
       emitted to Typst gains `design` and `labels` namespaces alongside
       the existing `values`/`assets`; `typstSettingsDict` (007's emitter)
       extends to serialize the new namespaces with the same
       `typstString`-escaping discipline — no new emission path, one
       escaper for every settings namespace.
-- [ ] Tests: `packages/pdf/src/settings.test.ts` (extend) — bindings
+- [x] Tests: `packages/pdf/src/settings.test.ts` (extend) — bindings
       resolve to the correct design path; duplicate-target-write is
       rejected; locale resolution follows the four-step fallback chain
       exactly, including a region-specific locale (`de-CH`) falling back
@@ -269,7 +275,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Hardcoding migration: built-in template (T6.3)
 
-- [ ] Complete 007's T2.5 ledger: extend
+- [x] Complete 007's T2.5 ledger: extend
       `specs/export-expansion/007-pdf-template-settings/HARDCODING-LEDGER.md`
       (or the `template.ts` comment-block equivalent, whichever 007
       chose) with every remaining presentation literal — typography roles
@@ -277,30 +283,36 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       component's spacing/layout constants — as its own ledger row with a
       manifest destination path, before any migration edit lands. This is
       restatement of current behavior, not new design.
-- [ ] `packages/pdf/src/template.ts`: replace each ledgered hardcoded
+- [x] `packages/pdf/src/template.ts`: replace each ledgered hardcoded
       literal with a read from `settings.design.*`/`settings.labels.*`,
       grouped by ledger category (typography, then tokens, then
-      semantic palettes, then components) as separate, reviewable commits
-      rather than one large diff — each commit keeps the built-in
+      semantic palettes, then components) — each step keeps the built-in
       template's manifest defaults equal to the literal it replaces, so
       output does not change mid-migration.
-- [ ] `packages/pdf/src/serialize.ts`: any presentation literal owned by
+      **Deviation:** this landed as ONE commit, not the per-category
+      series the task asked for. The categories are interdependent (the
+      template stops compiling until the whole design object is threaded)
+      and the lint could not go green until every category had moved, so
+      an intermediate commit would have been red. Reviewability is
+      instead carried by the byte-parity proof (T6.4) plus the ledger's
+      per-category destination table.
+- [x] `packages/pdf/src/serialize.ts`: any presentation literal owned by
       the serializer (not `template.ts`) moves the same way; semantic
       content emission (meta, blocks) is unaffected.
-- [ ] Built-in manifest for the existing template (name/id per whatever
+- [x] Built-in manifest for the existing template (name/id per whatever
       007 shipped, e.g. `builtin.<name>`): fixed `schemaVersion`, full
       `design`/`typography`/`tokens`/`semanticPalettes`/`components`/
       `localization` populated from the completed ledger; default setting
       values reproduce today's output exactly — selecting the built-in
       template with no overrides and omitting template selection entirely
       must be equivalent.
-- [ ] `packages/pdf/scripts/check-hardcoding-ledger.ts` (007's lint stub,
+- [x] `packages/pdf/scripts/check-hardcoding-ledger.ts` (007's lint stub,
       extended here): once the ledger is complete, flip the check from
       "heuristic warning" to "CI-enforced" — any new bare hex color,
       length literal, or font-family string in `template.ts`/
       `serialize.ts` outside the ledger's recorded set and the engine-
       invariant allowlist fails the build.
-- [ ] Document the **engine-invariant allowlist**: a short, reviewed list
+- [x] Document the **engine-invariant allowlist**: a short, reviewed list
       (in the lint stub's header comment or a sibling
       `packages/pdf/ENGINE-INVARIANTS.md`) of literals that are
       structurally required by the engine and are not presentation
@@ -310,7 +322,7 @@ template.ts: reads settings.design.* / settings.labels.* — no more
 
 ### Default-output parity (T6.4)
 
-- [ ] Capture the pre-migration baseline: compile the built-in template's
+- [x] Capture the pre-migration baseline: compile the built-in template's
       default output (via 011's harness `pdf-settings` conformance case)
       before T6.3's literal-by-literal replacement starts; record the
       sha256 digest and, if the pinned compiler's output isn't perfectly
@@ -319,40 +331,49 @@ template.ts: reads settings.design.* / settings.labels.* — no more
       perceptual-difference tooling 011's DOCX media-parity check uses,
       adapted to compare full PDF page rasters within a documented
       tolerance.
-- [ ] After T6.3 completes, re-run the same fixture and assert digest
+- [x] After T6.3 completes, re-run the same fixture and assert digest
       equality (preferred) or raster equality within tolerance
       (fallback, only if byte-identity turns out to be infeasible —
       document which one applies and why). A default-output change of
       any kind is a **STOP**: review the exact cause before proceeding,
       never silently accept a new baseline.
-- [ ] Wire this comparison into `apps/browser-export-harness/scripts/
+- [x] Wire this comparison into `apps/browser-export-harness/scripts/
       check-parity.ts` as an explicit "pre/post migration" mode (or a
       one-off script reusing its digesting/comparison functions) — reuse
       011's existing digest/report-projection machinery rather than
       building a second comparator.
-- [ ] Tests: a fixture-based regression test asserting the comparison
+      **Deviation:** `check-parity.ts` was NOT edited. Spec 011 round 2
+      owns `apps/browser-export-harness` in this same wave, so touching it
+      would have collided. The parity gate instead reuses 011's *approach*
+      (the identical `BrowserPdfCompiler` + pinned wasm/fonts path, sha256
+      digest equality) as a package-level real-compiler test in
+      `packages/pdf-compiler-browser/src/template-migration-parity.test.ts`,
+      with `node:crypto` for the digest rather than importing the harness's
+      `sha256Hex`. No second *comparator* was built — only a second call
+      site for the same technique.
+- [x] Tests: a fixture-based regression test asserting the comparison
       script itself rejects a deliberately altered raster (mirrors 011's
       own infrastructure-test pattern for its parity checker).
 
 ### Second curated template (T6.5)
 
-- [ ] Design decision (open question, see Risks): the second template's
+- [x] Design decision (open question, see Risks): the second template's
       visual direction and name are a review decision before
       implementation starts — it must differ from the built-in in cover
       treatment, page master/header/footer, heading typography and
       rhythm, and accent usage; a superficial accent-color-only variant
       does not satisfy this task.
-- [ ] Author the second template's manifest (same schema as T6.1/T6.3's
+- [x] Author the second template's manifest (same schema as T6.1/T6.3's
       built-in, distinct `design`/`typography`/`tokens`/
       `semanticPalettes`/`components`/`localization` values) — no new
       `template.ts` branches, no `if (templateId === ...)` conditionals;
       the second template proves the manifest is sufficient by rendering
       through the identical engine code path as the built-in.
-- [ ] Package it through 007's `.wiki-pdf-template` container
+- [x] Package it through 007's `.wiki-pdf-template` container
       (`packages/template-pack/src/pack.ts`) and register it as a second
       built-in entry alongside the first in whatever catalog/registry
       structure 007 or this folder's T6.1 establishes for built-ins.
-- [ ] Tests: the second template compiles cleanly through the same
+- [x] Tests: the second template compiles cleanly through the same
       correctness fixture as the built-in (007's Level-A serialize
       goldens + compile smokes, re-run against the second template's
       manifest) and passes the same 011 conformance case and the same
@@ -366,10 +387,71 @@ Same rule as every folder in this series: pure functions get direct
 input/output tests; anything touching the compiler compiles for real; no
 mocked HTTP, no stubbed compiler.
 
-- [ ] Covered inline per task above; consolidate here at implementation
+- [x] Covered inline per task above; consolidate here at implementation
       time only if a cross-cutting suite (e.g. one file testing the full
       resolver pipeline end-to-end against both built-in manifests) proves
       more maintainable than task-scoped test files.
+
+## Implementation record — deviations & decisions (2026-07-20)
+
+**Parity method: digest equality (the preferred option), not raster.**
+`packages/pdf-compiler-browser/src/template-migration-parity.test.ts` pins the
+sha256 of the built-in template's default output over a fixture exercising every
+migrated role, both semantic palettes, and the component set. The digest was
+captured from the pre-migration engine (007 state) with the pinned compiler
+`typst.ts 0.7.0 / Typst 0.14.2` **before** any literal moved, and is unchanged
+after the migration: `351fd2d4f0a178368d642ef939f2de2736ddc506f196cd70b47e455cad376975`
+(73050 bytes). Byte-identity was achievable because the rewrite preserves the
+Typst *document model* exactly, so the raster fallback was never needed. The
+test refuses to compare across compiler versions, and a tamper case proves the
+gate would actually catch a regression.
+
+**How the design reaches the engine (two mechanisms, deliberately).** Static
+design (typography roles, color tokens, semantic palettes, component
+spacing/layout, page margins) is interpolated when
+`createAtlcliTypstTemplate(design, labels)` generates the Typst string — the
+template helpers (`callout`, `status-badge`, `task-item`, …) are called from the
+document body at main.typ top level and cannot see `atlcli-doc`'s `settings`, so
+generation-time interpolation is the only way to make them data-driven. The
+settings-driven subset (accent, page size/orientation, cover/outline,
+organization name) plus the localized labels travel in the emitted
+`settings.design` / `settings.labels` dictionary and are read at Typst runtime,
+which is what retires 007's direct `settings.at("accent-color", …)` reads. Every
+runtime read falls back to a generation-time default drawn from the same
+manifest, so `settings: (:)` still compiles (007's backward-compatibility
+contract).
+
+**Colors are `#RRGGBB` only.** The Architecture section allows "canonical
+`#RRGGBB` or token references"; token references were not implemented — neither
+curated template needs them and omitting them keeps the resolver free of a
+reference-resolution pass. Accepting a strict subset is forward-compatible.
+
+**Serializer presentation is design-parameterized.** `serialize.ts` originally
+bound the built-in design at module scope, which made a second template's
+`tableStroke`/`tableHeaderBackground`/`mention`/`placeholder` dead data. The
+active design is now threaded through the `Writer` (block scope) and
+`RenderContext` (inline scope), so those tokens genuinely apply. The Confluence
+status palette moved with it (`semanticPalettes.statuses` is per-template).
+
+**Security: manifest localization is an injection surface.** A document-label
+KEY is interpolated into generated Typst as a dictionary key (unquoted), where
+`typstString` cannot help. An unvalidated key (`x: panic("…"), y`) escaped the
+key position and was evaluated as code by the real compiler. Closed in three
+layers: (1) `validateLocalization` asserts label keys are safe identifiers and
+runs label values through the design model's "no Typst metacharacters" check;
+(2) `resolveTemplateLabels` resolves only the declared
+`WIKI_PDF_V1_DOCUMENT_LABELS` vocabulary, so an unknown key never reaches
+emission; (3) `typstSettingsDict` hard-fails on any key that is not a safe
+identifier. Regression tests cover all three layers plus a real-compiler proof
+that a gate-bypassing manifest cannot execute code. UI-only copy
+(`template`/`settingGroups`/`settings`) is bounded and control-char-free but may
+contain punctuation, since it never reaches Typst.
+
+**Hardcoding-lint accepted limits.** The lint is a heuristic review aid, not a
+parser. Known bypasses (a literal wrapped in its own `${…}`, 3-/4-/8-digit hex,
+`cm`/`in`/`%` units, multi-family font stacks) are accepted: all are contrived,
+and the byte-parity gate plus review are the real backstop. Tightening it is
+cheap follow-up work if a real case appears.
 
 ## Definition of Done
 

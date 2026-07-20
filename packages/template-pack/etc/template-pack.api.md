@@ -7,20 +7,169 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
+
+// export: BINDING_TARGET_ALLOWLIST
+export declare const BINDING_TARGET_ALLOWLIST: readonly [
+    "branding.accent",
+    "tokens.colors.accent",
+    "branding.organizationName",
+    "page.size",
+    "page.orientation",
+    "features.cover.enabled",
+    "features.outline.enabled",
+    "features.outline.depth",
+    "features.header.enabled",
+    "features.footer.enabled"
+];
+
+// export: BindingTargetPath
+export type BindingTargetPath = (typeof BINDING_TARGET_ALLOWLIST)[number];
+
+// export: BindingTransform
+export type BindingTransform = {
+    kind: "identity";
+} | {
+    kind: "choice-map";
+    map: Record<string, unknown>;
+};
+
+// export: CalloutPalette
+export interface CalloutPalette {
+    background: DesignColor;
+    foreground: DesignColor;
+}
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
+// export: DeclaredSettingsShape
+export interface DeclaredSettingsShape {
+    settings: Record<string, {
+        options?: string[];
+    }>;
+    groups: string[];
+}
+
+// export: DesignBranding
+export interface DesignBranding {
+    accent: DesignColor;
+    organizationName?: string;
+}
+
+// export: DesignColor
+export type DesignColor = string;
+
+// export: DesignFeatures
+export interface DesignFeatures {
+    cover: {
+        enabled: boolean;
+    };
+    outline: {
+        enabled: boolean;
+        depth: number;
+    };
+    header: {
+        enabled: boolean;
+    };
+    footer: {
+        enabled: boolean;
+    };
+    closingPage: {
+        enabled: boolean;
+    };
+}
+
+// export: DesignLength
+export type DesignLength = string;
+
+// export: DesignPage
+export interface DesignPage {
+    size: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    margin: {
+        top: DesignLength;
+        bottom: DesignLength;
+        left: DesignLength;
+        right: DesignLength;
+    };
+}
+
+// export: DesignSemanticPalettes
+export interface DesignSemanticPalettes {
+    callouts: Record<string, CalloutPalette>;
+    statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTokens
+export interface DesignTokens {
+    colors: Record<string, DesignColor>;
+    layout: Record<string, DesignLength>;
+    ratios: Record<string, number>;
+    contrast: {
+        minimum: number;
+    };
+}
+
+// export: DesignTypography
+export interface DesignTypography {
+    fonts: Record<FontRole, string>;
+    roles: Record<string, TypographyRole>;
+}
+
+// export: DesignWeight
+export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FontRole
+export type FontRole = "body" | "heading" | "mono";
 
 // export: KNOWN_ENGINE_API
 export declare const KNOWN_ENGINE_API: {
     readonly typst: "wiki.pdf-template/v1";
     readonly docx: "wiki.docx-template/v1";
 };
+
+// export: LocaleBundle
+export interface LocaleBundle {
+    template?: LocaleTemplateCopy;
+    document?: Record<string, string>;
+    settingGroups?: Record<string, string>;
+    settings?: Record<string, LocaleSettingCopy>;
+}
+
+// export: localeChain
+export declare function localeChain(localization: WikiPdfTemplateLocalizationV1, requested: string | undefined): LocaleBundle[];
+
+// export: LocaleSettingCopy
+export interface LocaleSettingCopy {
+    label?: string;
+    help?: string;
+    options?: Record<string, string>;
+}
+
+// export: LocaleTemplateCopy
+export interface LocaleTemplateCopy {
+    name: string;
+    description: string;
+}
+
+// export: LocalizedTemplateUi
+export interface LocalizedTemplateUi {
+    name: string;
+    description: string;
+    settingGroups: Record<string, string>;
+    settings: Record<string, LocaleSettingCopy>;
+}
+
+// export: localizeTemplateUi
+export declare function localizeTemplateUi(manifest: TemplateManifest, uiLocale: string | undefined): LocalizedTemplateUi;
 
 // export: ManifestErrorReason
 export type ManifestErrorReason = "unknown-schema-version" | "unknown-api" | "compiler-range-mismatch" | "shape-error";
@@ -114,6 +263,9 @@ export interface TemplateManifest {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
@@ -141,6 +293,14 @@ export interface TemplateProvenance {
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
 
+// export: TypographyRole
+export interface TypographyRole {
+    font?: FontRole;
+    size: DesignLength;
+    weight?: DesignWeight;
+    tracking?: DesignLength;
+}
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -150,12 +310,47 @@ export interface UnpackedTemplate {
 // export: unpackTemplate
 export declare function unpackTemplate(bytes: Uint8Array): UnpackedTemplate;
 
+// export: validateBindings
+export declare function validateBindings(value: unknown, path?: string): WikiPdfTemplateSettingBindingV1[];
+
+// export: validateBoundedNumber
+export declare function validateBoundedNumber(value: unknown, path: string, bounds: {
+    min: number;
+    max: number;
+    integer?: boolean;
+}): number;
+
+// export: validateDesign
+export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignColor
+export declare function validateDesignColor(value: unknown, path: string): DesignColor;
+
+// export: validateDesignLength
+export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateLocalization
+export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
+
+// export: ValidateLocalizationOptions
+export interface ValidateLocalizationOptions {
+    requiredDocumentLabels?: readonly string[];
+    declared?: DeclaredSettingsShape;
+    onWarning?: (warning: string) => void;
+}
+
 // export: validateManifest
 export declare function validateManifest(json: unknown, options?: ValidateManifestOptions): TemplateManifest;
 
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
+    availableFonts?: ReadonlyArray<{
+        family: string;
+        style: string;
+        weight: number;
+    }>;
+    collectWarnings?: (warning: string) => void;
 }
 
 // export: validatePack
@@ -170,26 +365,217 @@ export interface ValidatePackResult {
     manifest?: TemplateManifest;
     scanReport?: ScanResult;
     issues: PackIssue[];
+}
+
+// export: validateSafeString
+export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: WIKI_PDF_V1_DOCUMENT_LABELS
+export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix"
+];
+
+// export: WikiPdfDocumentLabelKey
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
+
+// export: WikiPdfTemplateLocalizationV1
+export interface WikiPdfTemplateLocalizationV1 {
+    defaultLocale: string;
+    fallbackLocale: string;
+    locales: Record<string, LocaleBundle>;
+}
+
+// export: WikiPdfTemplateSettingBindingV1
+export interface WikiPdfTemplateSettingBindingV1 {
+    setting: string;
+    targets: BindingTargetPath[];
+    transform?: BindingTransform;
 }
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
+
+// export: BINDING_TARGET_ALLOWLIST
+export declare const BINDING_TARGET_ALLOWLIST: readonly [
+    "branding.accent",
+    "tokens.colors.accent",
+    "branding.organizationName",
+    "page.size",
+    "page.orientation",
+    "features.cover.enabled",
+    "features.outline.enabled",
+    "features.outline.depth",
+    "features.header.enabled",
+    "features.footer.enabled"
+];
+
+// export: BindingTargetPath
+export type BindingTargetPath = (typeof BINDING_TARGET_ALLOWLIST)[number];
+
+// export: BindingTransform
+export type BindingTransform = {
+    kind: "identity";
+} | {
+    kind: "choice-map";
+    map: Record<string, unknown>;
+};
+
+// export: CalloutPalette
+export interface CalloutPalette {
+    background: DesignColor;
+    foreground: DesignColor;
+}
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
+// export: DeclaredSettingsShape
+export interface DeclaredSettingsShape {
+    settings: Record<string, {
+        options?: string[];
+    }>;
+    groups: string[];
+}
+
+// export: DesignBranding
+export interface DesignBranding {
+    accent: DesignColor;
+    organizationName?: string;
+}
+
+// export: DesignColor
+export type DesignColor = string;
+
+// export: DesignFeatures
+export interface DesignFeatures {
+    cover: {
+        enabled: boolean;
+    };
+    outline: {
+        enabled: boolean;
+        depth: number;
+    };
+    header: {
+        enabled: boolean;
+    };
+    footer: {
+        enabled: boolean;
+    };
+    closingPage: {
+        enabled: boolean;
+    };
+}
+
+// export: DesignLength
+export type DesignLength = string;
+
+// export: DesignPage
+export interface DesignPage {
+    size: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    margin: {
+        top: DesignLength;
+        bottom: DesignLength;
+        left: DesignLength;
+        right: DesignLength;
+    };
+}
+
+// export: DesignSemanticPalettes
+export interface DesignSemanticPalettes {
+    callouts: Record<string, CalloutPalette>;
+    statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTokens
+export interface DesignTokens {
+    colors: Record<string, DesignColor>;
+    layout: Record<string, DesignLength>;
+    ratios: Record<string, number>;
+    contrast: {
+        minimum: number;
+    };
+}
+
+// export: DesignTypography
+export interface DesignTypography {
+    fonts: Record<FontRole, string>;
+    roles: Record<string, TypographyRole>;
+}
+
+// export: DesignWeight
+export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FontRole
+export type FontRole = "body" | "heading" | "mono";
 
 // export: KNOWN_ENGINE_API
 export declare const KNOWN_ENGINE_API: {
     readonly typst: "wiki.pdf-template/v1";
     readonly docx: "wiki.docx-template/v1";
 };
+
+// export: LocaleBundle
+export interface LocaleBundle {
+    template?: LocaleTemplateCopy;
+    document?: Record<string, string>;
+    settingGroups?: Record<string, string>;
+    settings?: Record<string, LocaleSettingCopy>;
+}
+
+// export: localeChain
+export declare function localeChain(localization: WikiPdfTemplateLocalizationV1, requested: string | undefined): LocaleBundle[];
+
+// export: LocaleSettingCopy
+export interface LocaleSettingCopy {
+    label?: string;
+    help?: string;
+    options?: Record<string, string>;
+}
+
+// export: LocaleTemplateCopy
+export interface LocaleTemplateCopy {
+    name: string;
+    description: string;
+}
+
+// export: LocalizedTemplateUi
+export interface LocalizedTemplateUi {
+    name: string;
+    description: string;
+    settingGroups: Record<string, string>;
+    settings: Record<string, LocaleSettingCopy>;
+}
+
+// export: localizeTemplateUi
+export declare function localizeTemplateUi(manifest: TemplateManifest, uiLocale: string | undefined): LocalizedTemplateUi;
 
 // export: ManifestErrorReason
 export type ManifestErrorReason = "unknown-schema-version" | "unknown-api" | "compiler-range-mismatch" | "shape-error";
@@ -283,6 +669,9 @@ export interface TemplateManifest {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
@@ -310,6 +699,14 @@ export interface TemplateProvenance {
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
 
+// export: TypographyRole
+export interface TypographyRole {
+    font?: FontRole;
+    size: DesignLength;
+    weight?: DesignWeight;
+    tracking?: DesignLength;
+}
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -319,12 +716,47 @@ export interface UnpackedTemplate {
 // export: unpackTemplate
 export declare function unpackTemplate(bytes: Uint8Array): UnpackedTemplate;
 
+// export: validateBindings
+export declare function validateBindings(value: unknown, path?: string): WikiPdfTemplateSettingBindingV1[];
+
+// export: validateBoundedNumber
+export declare function validateBoundedNumber(value: unknown, path: string, bounds: {
+    min: number;
+    max: number;
+    integer?: boolean;
+}): number;
+
+// export: validateDesign
+export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignColor
+export declare function validateDesignColor(value: unknown, path: string): DesignColor;
+
+// export: validateDesignLength
+export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateLocalization
+export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
+
+// export: ValidateLocalizationOptions
+export interface ValidateLocalizationOptions {
+    requiredDocumentLabels?: readonly string[];
+    declared?: DeclaredSettingsShape;
+    onWarning?: (warning: string) => void;
+}
+
 // export: validateManifest
 export declare function validateManifest(json: unknown, options?: ValidateManifestOptions): TemplateManifest;
 
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
+    availableFonts?: ReadonlyArray<{
+        family: string;
+        style: string;
+        weight: number;
+    }>;
+    collectWarnings?: (warning: string) => void;
 }
 
 // export: validatePack
@@ -339,26 +771,217 @@ export interface ValidatePackResult {
     manifest?: TemplateManifest;
     scanReport?: ScanResult;
     issues: PackIssue[];
+}
+
+// export: validateSafeString
+export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: WIKI_PDF_V1_DOCUMENT_LABELS
+export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix"
+];
+
+// export: WikiPdfDocumentLabelKey
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
+
+// export: WikiPdfTemplateLocalizationV1
+export interface WikiPdfTemplateLocalizationV1 {
+    defaultLocale: string;
+    fallbackLocale: string;
+    locales: Record<string, LocaleBundle>;
+}
+
+// export: WikiPdfTemplateSettingBindingV1
+export interface WikiPdfTemplateSettingBindingV1 {
+    setting: string;
+    targets: BindingTargetPath[];
+    transform?: BindingTransform;
 }
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
+
+// export: BINDING_TARGET_ALLOWLIST
+export declare const BINDING_TARGET_ALLOWLIST: readonly [
+    "branding.accent",
+    "tokens.colors.accent",
+    "branding.organizationName",
+    "page.size",
+    "page.orientation",
+    "features.cover.enabled",
+    "features.outline.enabled",
+    "features.outline.depth",
+    "features.header.enabled",
+    "features.footer.enabled"
+];
+
+// export: BindingTargetPath
+export type BindingTargetPath = (typeof BINDING_TARGET_ALLOWLIST)[number];
+
+// export: BindingTransform
+export type BindingTransform = {
+    kind: "identity";
+} | {
+    kind: "choice-map";
+    map: Record<string, unknown>;
+};
+
+// export: CalloutPalette
+export interface CalloutPalette {
+    background: DesignColor;
+    foreground: DesignColor;
+}
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
+// export: DeclaredSettingsShape
+export interface DeclaredSettingsShape {
+    settings: Record<string, {
+        options?: string[];
+    }>;
+    groups: string[];
+}
+
+// export: DesignBranding
+export interface DesignBranding {
+    accent: DesignColor;
+    organizationName?: string;
+}
+
+// export: DesignColor
+export type DesignColor = string;
+
+// export: DesignFeatures
+export interface DesignFeatures {
+    cover: {
+        enabled: boolean;
+    };
+    outline: {
+        enabled: boolean;
+        depth: number;
+    };
+    header: {
+        enabled: boolean;
+    };
+    footer: {
+        enabled: boolean;
+    };
+    closingPage: {
+        enabled: boolean;
+    };
+}
+
+// export: DesignLength
+export type DesignLength = string;
+
+// export: DesignPage
+export interface DesignPage {
+    size: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    margin: {
+        top: DesignLength;
+        bottom: DesignLength;
+        left: DesignLength;
+        right: DesignLength;
+    };
+}
+
+// export: DesignSemanticPalettes
+export interface DesignSemanticPalettes {
+    callouts: Record<string, CalloutPalette>;
+    statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTokens
+export interface DesignTokens {
+    colors: Record<string, DesignColor>;
+    layout: Record<string, DesignLength>;
+    ratios: Record<string, number>;
+    contrast: {
+        minimum: number;
+    };
+}
+
+// export: DesignTypography
+export interface DesignTypography {
+    fonts: Record<FontRole, string>;
+    roles: Record<string, TypographyRole>;
+}
+
+// export: DesignWeight
+export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FontRole
+export type FontRole = "body" | "heading" | "mono";
 
 // export: KNOWN_ENGINE_API
 export declare const KNOWN_ENGINE_API: {
     readonly typst: "wiki.pdf-template/v1";
     readonly docx: "wiki.docx-template/v1";
 };
+
+// export: LocaleBundle
+export interface LocaleBundle {
+    template?: LocaleTemplateCopy;
+    document?: Record<string, string>;
+    settingGroups?: Record<string, string>;
+    settings?: Record<string, LocaleSettingCopy>;
+}
+
+// export: localeChain
+export declare function localeChain(localization: WikiPdfTemplateLocalizationV1, requested: string | undefined): LocaleBundle[];
+
+// export: LocaleSettingCopy
+export interface LocaleSettingCopy {
+    label?: string;
+    help?: string;
+    options?: Record<string, string>;
+}
+
+// export: LocaleTemplateCopy
+export interface LocaleTemplateCopy {
+    name: string;
+    description: string;
+}
+
+// export: LocalizedTemplateUi
+export interface LocalizedTemplateUi {
+    name: string;
+    description: string;
+    settingGroups: Record<string, string>;
+    settings: Record<string, LocaleSettingCopy>;
+}
+
+// export: localizeTemplateUi
+export declare function localizeTemplateUi(manifest: TemplateManifest, uiLocale: string | undefined): LocalizedTemplateUi;
 
 // export: ManifestErrorReason
 export type ManifestErrorReason = "unknown-schema-version" | "unknown-api" | "compiler-range-mismatch" | "shape-error";
@@ -452,6 +1075,9 @@ export interface TemplateManifest {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
@@ -479,6 +1105,14 @@ export interface TemplateProvenance {
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
 
+// export: TypographyRole
+export interface TypographyRole {
+    font?: FontRole;
+    size: DesignLength;
+    weight?: DesignWeight;
+    tracking?: DesignLength;
+}
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -488,12 +1122,47 @@ export interface UnpackedTemplate {
 // export: unpackTemplate
 export declare function unpackTemplate(bytes: Uint8Array): UnpackedTemplate;
 
+// export: validateBindings
+export declare function validateBindings(value: unknown, path?: string): WikiPdfTemplateSettingBindingV1[];
+
+// export: validateBoundedNumber
+export declare function validateBoundedNumber(value: unknown, path: string, bounds: {
+    min: number;
+    max: number;
+    integer?: boolean;
+}): number;
+
+// export: validateDesign
+export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignColor
+export declare function validateDesignColor(value: unknown, path: string): DesignColor;
+
+// export: validateDesignLength
+export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateLocalization
+export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
+
+// export: ValidateLocalizationOptions
+export interface ValidateLocalizationOptions {
+    requiredDocumentLabels?: readonly string[];
+    declared?: DeclaredSettingsShape;
+    onWarning?: (warning: string) => void;
+}
+
 // export: validateManifest
 export declare function validateManifest(json: unknown, options?: ValidateManifestOptions): TemplateManifest;
 
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
+    availableFonts?: ReadonlyArray<{
+        family: string;
+        style: string;
+        weight: number;
+    }>;
+    collectWarnings?: (warning: string) => void;
 }
 
 // export: validatePack
@@ -508,26 +1177,217 @@ export interface ValidatePackResult {
     manifest?: TemplateManifest;
     scanReport?: ScanResult;
     issues: PackIssue[];
+}
+
+// export: validateSafeString
+export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: WIKI_PDF_V1_DOCUMENT_LABELS
+export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix"
+];
+
+// export: WikiPdfDocumentLabelKey
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
+
+// export: WikiPdfTemplateLocalizationV1
+export interface WikiPdfTemplateLocalizationV1 {
+    defaultLocale: string;
+    fallbackLocale: string;
+    locales: Record<string, LocaleBundle>;
+}
+
+// export: WikiPdfTemplateSettingBindingV1
+export interface WikiPdfTemplateSettingBindingV1 {
+    setting: string;
+    targets: BindingTargetPath[];
+    transform?: BindingTransform;
 }
 ```
 
 ### Entry point `./node`
 
 ```ts
+// export: assertSafeIdentifier
+export declare function assertSafeIdentifier(key: string, path: string): string;
+
 // export: assertSafePath
 export declare function assertSafePath(name: string): void;
+
+// export: BINDING_TARGET_ALLOWLIST
+export declare const BINDING_TARGET_ALLOWLIST: readonly [
+    "branding.accent",
+    "tokens.colors.accent",
+    "branding.organizationName",
+    "page.size",
+    "page.orientation",
+    "features.cover.enabled",
+    "features.outline.enabled",
+    "features.outline.depth",
+    "features.header.enabled",
+    "features.footer.enabled"
+];
+
+// export: BindingTargetPath
+export type BindingTargetPath = (typeof BINDING_TARGET_ALLOWLIST)[number];
+
+// export: BindingTransform
+export type BindingTransform = {
+    kind: "identity";
+} | {
+    kind: "choice-map";
+    map: Record<string, unknown>;
+};
+
+// export: CalloutPalette
+export interface CalloutPalette {
+    background: DesignColor;
+    foreground: DesignColor;
+}
 
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
+// export: DeclaredSettingsShape
+export interface DeclaredSettingsShape {
+    settings: Record<string, {
+        options?: string[];
+    }>;
+    groups: string[];
+}
+
+// export: DesignBranding
+export interface DesignBranding {
+    accent: DesignColor;
+    organizationName?: string;
+}
+
+// export: DesignColor
+export type DesignColor = string;
+
+// export: DesignFeatures
+export interface DesignFeatures {
+    cover: {
+        enabled: boolean;
+    };
+    outline: {
+        enabled: boolean;
+        depth: number;
+    };
+    header: {
+        enabled: boolean;
+    };
+    footer: {
+        enabled: boolean;
+    };
+    closingPage: {
+        enabled: boolean;
+    };
+}
+
+// export: DesignLength
+export type DesignLength = string;
+
+// export: DesignPage
+export interface DesignPage {
+    size: "a4" | "letter";
+    orientation: "portrait" | "landscape";
+    margin: {
+        top: DesignLength;
+        bottom: DesignLength;
+        left: DesignLength;
+        right: DesignLength;
+    };
+}
+
+// export: DesignSemanticPalettes
+export interface DesignSemanticPalettes {
+    callouts: Record<string, CalloutPalette>;
+    statuses: Record<string, DesignColor>;
+}
+
+// export: DesignTokens
+export interface DesignTokens {
+    colors: Record<string, DesignColor>;
+    layout: Record<string, DesignLength>;
+    ratios: Record<string, number>;
+    contrast: {
+        minimum: number;
+    };
+}
+
+// export: DesignTypography
+export interface DesignTypography {
+    fonts: Record<FontRole, string>;
+    roles: Record<string, TypographyRole>;
+}
+
+// export: DesignWeight
+export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
+
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FontRole
+export type FontRole = "body" | "heading" | "mono";
 
 // export: KNOWN_ENGINE_API
 export declare const KNOWN_ENGINE_API: {
     readonly typst: "wiki.pdf-template/v1";
     readonly docx: "wiki.docx-template/v1";
 };
+
+// export: LocaleBundle
+export interface LocaleBundle {
+    template?: LocaleTemplateCopy;
+    document?: Record<string, string>;
+    settingGroups?: Record<string, string>;
+    settings?: Record<string, LocaleSettingCopy>;
+}
+
+// export: localeChain
+export declare function localeChain(localization: WikiPdfTemplateLocalizationV1, requested: string | undefined): LocaleBundle[];
+
+// export: LocaleSettingCopy
+export interface LocaleSettingCopy {
+    label?: string;
+    help?: string;
+    options?: Record<string, string>;
+}
+
+// export: LocaleTemplateCopy
+export interface LocaleTemplateCopy {
+    name: string;
+    description: string;
+}
+
+// export: LocalizedTemplateUi
+export interface LocalizedTemplateUi {
+    name: string;
+    description: string;
+    settingGroups: Record<string, string>;
+    settings: Record<string, LocaleSettingCopy>;
+}
+
+// export: localizeTemplateUi
+export declare function localizeTemplateUi(manifest: TemplateManifest, uiLocale: string | undefined): LocalizedTemplateUi;
 
 // export: ManifestErrorReason
 export type ManifestErrorReason = "unknown-schema-version" | "unknown-api" | "compiler-range-mismatch" | "shape-error";
@@ -621,6 +1481,9 @@ export interface TemplateManifest {
     requiredFonts?: RequiredFont[];
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
+    design?: WikiPdfTemplateDesignV1;
+    bindings?: WikiPdfTemplateSettingBindingV1[];
+    localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: TemplatePackContents
@@ -648,6 +1511,14 @@ export interface TemplateProvenance {
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
 
+// export: TypographyRole
+export interface TypographyRole {
+    font?: FontRole;
+    size: DesignLength;
+    weight?: DesignWeight;
+    tracking?: DesignLength;
+}
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -657,12 +1528,47 @@ export interface UnpackedTemplate {
 // export: unpackTemplate
 export declare function unpackTemplate(bytes: Uint8Array): UnpackedTemplate;
 
+// export: validateBindings
+export declare function validateBindings(value: unknown, path?: string): WikiPdfTemplateSettingBindingV1[];
+
+// export: validateBoundedNumber
+export declare function validateBoundedNumber(value: unknown, path: string, bounds: {
+    min: number;
+    max: number;
+    integer?: boolean;
+}): number;
+
+// export: validateDesign
+export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignColor
+export declare function validateDesignColor(value: unknown, path: string): DesignColor;
+
+// export: validateDesignLength
+export declare function validateDesignLength(value: unknown, path: string): DesignLength;
+
+// export: validateLocalization
+export declare function validateLocalization(value: unknown, options?: ValidateLocalizationOptions, path?: string): WikiPdfTemplateLocalizationV1;
+
+// export: ValidateLocalizationOptions
+export interface ValidateLocalizationOptions {
+    requiredDocumentLabels?: readonly string[];
+    declared?: DeclaredSettingsShape;
+    onWarning?: (warning: string) => void;
+}
+
 // export: validateManifest
 export declare function validateManifest(json: unknown, options?: ValidateManifestOptions): TemplateManifest;
 
 // export: ValidateManifestOptions
 export interface ValidateManifestOptions {
     pinnedTypstVersion?: string;
+    availableFonts?: ReadonlyArray<{
+        family: string;
+        style: string;
+        weight: number;
+    }>;
+    collectWarnings?: (warning: string) => void;
 }
 
 // export: validatePack
@@ -677,5 +1583,47 @@ export interface ValidatePackResult {
     manifest?: TemplateManifest;
     scanReport?: ScanResult;
     issues: PackIssue[];
+}
+
+// export: validateSafeString
+export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: WIKI_PDF_V1_DOCUMENT_LABELS
+export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
+    "version",
+    "exported",
+    "exporter",
+    "contents",
+    "endOfDocument",
+    "pages",
+    "generatedWith",
+    "spacePrefix"
+];
+
+// export: WikiPdfDocumentLabelKey
+export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
+
+// export: WikiPdfTemplateDesignV1
+export interface WikiPdfTemplateDesignV1 {
+    page: DesignPage;
+    features: DesignFeatures;
+    branding: DesignBranding;
+    typography: DesignTypography;
+    tokens: DesignTokens;
+    semanticPalettes: DesignSemanticPalettes;
+}
+
+// export: WikiPdfTemplateLocalizationV1
+export interface WikiPdfTemplateLocalizationV1 {
+    defaultLocale: string;
+    fallbackLocale: string;
+    locales: Record<string, LocaleBundle>;
+}
+
+// export: WikiPdfTemplateSettingBindingV1
+export interface WikiPdfTemplateSettingBindingV1 {
+    setting: string;
+    targets: BindingTargetPath[];
+    transform?: BindingTransform;
 }
 ```

@@ -1,4 +1,5 @@
 import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type { TemplateManifest } from "@atlcli/template-pack";
 
 export interface PdfExportMetadata {
   title: string;
@@ -194,6 +195,15 @@ export interface PdfSerializeOptions {
   profile?: PdfProfile;
   theme?: PdfThemeOptions;
   settings?: PdfTemplateSettings;
+  /**
+   * The curated template manifest to render with (spec 012). Its `design`,
+   * `bindings`, and `localization` drive the resolver and the generated Typst
+   * template. Defaults to the built-in "Editorial Indigo". A second curated
+   * template (e.g. "Manuscript") renders through the identical engine code path
+   * — only this manifest differs. Host UI for selecting a template is folder
+   * 010's job; this field is the data seam it drives.
+   */
+  templateManifest?: TemplateManifest;
 }
 
 export interface PdfExportTimings {
