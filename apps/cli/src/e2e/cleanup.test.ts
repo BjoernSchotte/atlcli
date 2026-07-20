@@ -19,7 +19,8 @@ import { MemoryConfluence, MemoryJira } from "./memory-ports.js";
 import {
   DEFAULT_MAX_DELETES,
   DEFAULT_PROFILE,
-  assertMarked,
+  MIN_TTL_HOURS,
+  assertSweepable,
   classifyCandidate,
   executeSweep,
   parseSweeperArgs,
@@ -74,7 +75,70 @@ describe("sweeper safety (a): the ownership marker is required", () => {
     // The types make this unreachable from `planSweep`; the runtime assertion
     // covers a caller casting their own SweepTarget together.
     const forged = { id: "p1", name: agedTitle("x", 48 * HOUR), scope: E2E_SPACE_KEY, runId: "" };
-    expect(() => assertMarked(forged)).toThrow(/no atlcli-e2e-run-id ownership marker/);
+    expect(() => assertSweepable(forged, pagePlanOptions)).toThrow(/no-marker/);
+  });
+});
+
+describe("the delete-site assertion re-runs every gate, not just the marker", () => {
+  // A marker check alone would let a forged runId on an off-convention name
+  // through — i.e. a retained fixture — which is what the module header claims
+  // is structurally impossible.
+  const gates: Array<[string, SweepCandidate & { runId: string }, string]> = [
+    [
+      "a retained fixture with a forged marker",
+      { id: "1117356071", name: "DOCX Feature Zoo E2E", scope: E2E_SPACE_KEY, runId: "gha-forged" },
+      "name-mismatch",
+    ],
+    [
+      "a marked, well-named page from another space",
+      { id: "p1", name: agedTitle("x", 48 * HOUR), scope: "ENGINEERING", runId: "gha-1" },
+      "wrong-scope",
+    ],
+    [
+      "a marked, well-named page still inside its TTL",
+      { id: "p2", name: agedTitle("x", HOUR), scope: E2E_SPACE_KEY, runId: "gha-1" },
+      "within-ttl",
+    ],
+  ];
+
+  for (const [label, target, reason] of gates) {
+    it(`refuses ${label}`, () => {
+      expect(() => assertSweepable(target, pagePlanOptions)).toThrow(new RegExp(reason));
+    });
+  }
+
+  it("lets a genuinely sweepable target through", () => {
+    expect(() => assertSweepable(sweepableCandidate() as never, pagePlanOptions)).not.toThrow();
+  });
+
+  it("blocks a hand-assembled plan aimed at a retained fixture", async () => {
+    // The reviewer's probe: build a plan by hand (bypassing planSweep) that
+    // targets retained page 1117356071 with a forged marker, and hand it to the
+    // executor. It must not delete.
+    const deleted: string[] = [];
+    const plan = {
+      kind: "page" as const,
+      scope: E2E_SPACE_KEY,
+      targets: [
+        { id: "1117356071", name: "DOCX Feature Zoo E2E", scope: E2E_SPACE_KEY, runId: "gha-forged" },
+      ],
+      skipped: [],
+      maxDeletes: DEFAULT_MAX_DELETES,
+      circuitBreakerTripped: false,
+      now: NOW,
+      ttlMs: E2E_TTL_MS,
+    };
+
+    await expect(
+      executeSweep({
+        plan,
+        force: true,
+        deleteResource: async (target) => {
+          deleted.push(target.id);
+        },
+      })
+    ).rejects.toThrow(/name-mismatch/);
+    expect(deleted).toEqual([]);
   });
 
   it("deletes nothing from a space made entirely of unmarked pages", async () => {
@@ -435,9 +499,73 @@ describe("sweeper argument parsing", () => {
   it("fails closed on typos and malformed values rather than guessing", () => {
     expect(() => parseSweeperArgs(["--forse"])).toThrow(/Unknown argument/);
     expect(() => parseSweeperArgs(["-f"])).toThrow(/Unknown argument/);
-    expect(() => parseSweeperArgs(["--ttl-hours", "soon"])).toThrow(/non-negative number/);
+    expect(() => parseSweeperArgs(["--ttl-hours", "soon"])).toThrow(/at least/);
     expect(() => parseSweeperArgs(["--max-deletes", "-1"])).toThrow(/non-negative integer/);
     expect(() => parseSweeperArgs(["--profile"])).toThrow(/requires a value/);
+  });
+
+  it("warns in the help text that --profile selects the tenant, which the name lock does not cover", () => {
+    expect(sweeperHelp()).toMatch(/--profile.*selects the TENANT/s);
+  });
+});
+
+describe("the TTL gate cannot be switched off from the command line", () => {
+  // `--ttl-hours 0 --force` used to delete a page a DIFFERENT run had created
+  // seconds earlier — defeating the gate's entire stated purpose.
+  it("rejects a zero or sub-hour TTL", () => {
+    expect(() => parseSweeperArgs(["--ttl-hours", "0"])).toThrow(/cannot be disabled/);
+    expect(() => parseSweeperArgs(["--ttl-hours=0"])).toThrow(/cannot be disabled/);
+    expect(() => parseSweeperArgs(["--ttl-hours", "0.5"])).toThrow(/cannot be disabled/);
+    expect(() => parseSweeperArgs(["--ttl-hours", "-5"])).toThrow(/cannot be disabled/);
+  });
+
+  it("allows the TTL to be raised — being more patient is always safe", () => {
+    expect(parseSweeperArgs(["--ttl-hours", "72"]).ttlMs).toBe(72 * HOUR);
+    expect(parseSweeperArgs([`--ttl-hours=${MIN_TTL_HOURS}`]).ttlMs).toBe(MIN_TTL_HOURS * HOUR);
+  });
+
+  it("still protects a freshly created page at the lowest permitted TTL", async () => {
+    const confluence = new MemoryConfluence();
+    confluence.seed({ title: agedTitle("other-run", 5_000), spaceKey: E2E_SPACE_KEY, runId: "gha-other" });
+
+    await runSweep({
+      confluence,
+      args: { force: true, ttlMs: MIN_TTL_HOURS * HOUR, maxDeletes: DEFAULT_MAX_DELETES },
+      now: NOW,
+      log: () => {},
+    });
+
+    expect(confluence.deleteLog).toEqual([]);
+  });
+});
+
+describe("the circuit breaker cannot be raised from the command line", () => {
+  // Raising the limit is the obvious reflex right after seeing an abort — i.e.
+  // exactly when a bad query is the likeliest explanation.
+  it("refuses a limit above the built-in ceiling", () => {
+    expect(() => parseSweeperArgs(["--max-deletes", "1000000"])).toThrow(/may not exceed/);
+    expect(() => parseSweeperArgs([`--max-deletes=${DEFAULT_MAX_DELETES + 1}`])).toThrow(/may not exceed/);
+  });
+
+  it("allows the limit to be lowered", () => {
+    expect(parseSweeperArgs(["--max-deletes", "5"]).maxDeletes).toBe(5);
+    expect(parseSweeperArgs(["--max-deletes", "0"]).maxDeletes).toBe(0);
+    expect(parseSweeperArgs([`--max-deletes=${DEFAULT_MAX_DELETES}`]).maxDeletes).toBe(DEFAULT_MAX_DELETES);
+  });
+
+  it("still aborts on a 500-page sweep, because the ceiling cannot be argued away", async () => {
+    const confluence = new MemoryConfluence();
+    for (let i = 0; i < 500; i++) {
+      confluence.seed({ title: agedTitle(`stale-${i}`, 48 * HOUR), spaceKey: E2E_SPACE_KEY, runId: "gha-1" });
+    }
+
+    // The largest limit the parser will hand back.
+    const args = parseSweeperArgs(["--force", `--max-deletes=${DEFAULT_MAX_DELETES}`]);
+    const code = await runSweep({ confluence, args, now: NOW, log: () => {} });
+
+    expect(code).toBe(2);
+    expect(confluence.deleteLog).toEqual([]);
+    expect(confluence.pages.size).toBe(500);
   });
 });
 

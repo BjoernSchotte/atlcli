@@ -37,6 +37,27 @@ describe("makeE2eTitle", () => {
     expect(() => makeE2eTitle("trailing-", AT)).toThrow();
     expect(() => makeE2eTitle("under_score", AT)).toThrow();
   });
+
+  it("rejects a clock that would mint a name parseE2eTitle cannot read back", () => {
+    // Validating the slug but not the timestamp left a hole: an epoch-0 clock
+    // produced `atlcli-e2e-probe-0`, which parses as null — permanently
+    // unsweepable residue, the very failure this function claims to prevent.
+    expect(() => makeE2eTitle("probe", new Date(0))).toThrow(/epoch seconds/);
+    expect(() => makeE2eTitle("probe", new Date(999_999_999_000))).toThrow(/epoch seconds/);
+    expect(() => makeE2eTitle("probe", new Date(Number.NaN))).toThrow(/epoch seconds/);
+  });
+
+  it("guarantees every name it mints parses back", () => {
+    for (const feature of ["a", "scope-tree", "scope-tree-labels-and-macros"]) {
+      for (const at of [AT, new Date(1_000_000_000_000), new Date()]) {
+        const title = makeE2eTitle(feature, at);
+        expect(parseE2eTitle(title)).toEqual({
+          feature,
+          timestampSeconds: Math.floor(at.getTime() / 1000),
+        });
+      }
+    }
+  });
 });
 
 describe("parseE2eTitle", () => {
@@ -219,40 +240,9 @@ describe("withE2eResources", () => {
   });
 });
 
-describe("module registry is intact for later test files", () => {
-  /**
-   * Regression: `auth.test.ts`, `helloworld.test.ts` and `session-guard.test.ts`
-   * all call `mock.module(...)`, which mutates the registry for the WHOLE
-   * process. Without an `afterAll` that puts the real barrels back, their stubs
-   * leaked into every file that runs after them — `getLogger()` came back with
-   * only an `auth` method, so any later test touching a real API client died on
-   * `logger.api is not a function`, and the real clients threw on construction.
-   *
-   * This file sorts after `src/commands/`, so it is exactly where such a leak
-   * shows up. Asserting it here keeps the restores honest.
-   */
-  it("hands later files the real @atlcli/core logger, not a test stub", async () => {
-    const { getLogger } = await import("@atlcli/core");
-    const logger = getLogger();
-    // `api` is the method the leaked stub omitted, which is what broke the
-    // Confluence/Jira clients for every file that ran after the mock.
-    expect(typeof logger.api).toBe("function");
-    expect(typeof logger.auth).toBe("function");
-  });
-
-  it("hands later files constructible API clients", async () => {
-    const { ConfluenceClient } = await import("@atlcli/confluence");
-    const { JiraClient } = await import("@atlcli/jira");
-    const profile: Profile = {
-      name: "registry-probe",
-      baseUrl: "https://probe.example.com",
-      deploymentType: "data-center",
-      auth: { type: "bearer", pat: "probe-token" },
-    };
-    expect(() => new ConfluenceClient(profile)).not.toThrow();
-    expect(() => new JiraClient(profile)).not.toThrow();
-  });
-});
+// Registry-integrity coverage lives in `registry-probe.test.ts`, pinned to a
+// deterministic file order by `registry-isolation.test.ts` — asserting it here
+// would depend on the same alphabetical luck that caused the original bug.
 
 // ---------------------------------------------------------------------------
 // REST adapter against a real local HTTP server

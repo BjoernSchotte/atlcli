@@ -941,13 +941,18 @@ budget).**
 
 ### E2E resource discipline
 
-- [x] Naming convention: every live test resource is named
+- [~] Naming convention: every live test resource is named
       `atlcli-e2e-<feature>-<timestamp>` (epoch seconds; e.g.
       `atlcli-e2e-scope-tree-1789000000`) — Confluence pages in space
       `DOCSY`, Jira issues in project `ATLCLI` (summary prefix). Helper
       `makeE2eTitle(feature)` in a new shared test helper
       `apps/cli/src/e2e/resources.ts` used by all live E2E scripts
       (including `scripts/e2e-template-test.sh` successors).
+      *(Helper landed and fully tested; ADOPTION still pending. Nothing
+      outside `apps/cli/src/e2e/` imports it yet — no live E2E script calls
+      `makeE2eTitle` today. Sequencing is intentional: folders 001/003/004
+      deferred converting their live cases until this helper existed, so the
+      call sites land with those folders' own E2E cases.)*
 - [x] **Machine-readable ownership marker, not name/timestamp alone**: at
       creation, every E2E-created page also gets a content property
       (`atlcli-e2e-run-id` → the CI run ID or a local UUID) and every
@@ -956,12 +961,17 @@ budget).**
       against a same-named user page or two E2E runs racing in the same
       window — the property is the actual ownership proof a deletion path
       checks before deleting.
-- [x] **Per-test cleanup first, sweeper as recovery only**: each E2E test
+- [~] **Per-test cleanup first, sweeper as recovery only**: each E2E test
       records the IDs it creates and deletes them itself in a `finally`
       block (`apps/cli/src/e2e/resources.ts`) — the tenant is clean after
       every single run, not just after the nightly sweep. This is on top
       of, not instead of, the existing "clean up test resources" workflow
       rule in `CLAUDE.md`.
+      *(`withE2eResources` + `E2eResourceTracker` landed, with tests proving
+      the `finally` path runs when the body throws. No live E2E case uses
+      them yet — the only existing one (`export-pdf.e2e.test.ts`) reads
+      env-provided fixture IDs and creates nothing. Adoption lands with
+      folders 001/003/004.)*
 - [x] Cleanup helper task in the CLI test suite:
       `apps/cli/src/e2e/cleanup.ts` — using `ConfluenceClient`/`JiraClient`
       with profile `mayflower`, list `DOCSY` pages / `ATLCLI` issues that
@@ -978,7 +988,7 @@ budget).**
       marker-match, circuit-breaker threshold) in
       `apps/cli/src/e2e/cleanup.test.ts`; the deletion path is exercised
       only against the live tenant.
-- [x] CI wiring, nightly only: `.github/workflows/e2e-nightly.yml`
+- [~] CI wiring, nightly only: `.github/workflows/e2e-nightly.yml`
       (`schedule` + `workflow_dispatch`, main branch only) runs the new
       scope/macro E2E cases (T4.8 scope) and then `cleanup.ts --force` as
       **recovery for whatever per-test cleanup missed** (a crashed run, a
@@ -988,6 +998,12 @@ budget).**
       history, credentials are repo secrets that must not be exposed to
       fork PRs — therefore **never** per-PR, never on forks; the sweeper
       also runs even when the E2E step fails (`if: always()`).
+      *(Workflow landed with the schedule/dispatch/main/fork guards and the
+      `if: always()` recovery sweep. The "new scope/macro E2E cases (T4.8
+      scope)" it is meant to run DO NOT EXIST yet — its
+      `apps/cli/src/commands/*.e2e.test.ts` glob currently matches only the
+      pre-existing `export-pdf.e2e.test.ts`. The workflow is the landing pad;
+      folders 001/003/004 add the cases.)*
 - [x] Documentation: add an "E2E resources" section to
       `src/content/docs/contributing.md` (naming convention, run-id marker
       property, 24 h TTL, per-test cleanup-in-`finally` expectation,

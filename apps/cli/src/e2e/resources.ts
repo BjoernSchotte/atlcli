@@ -64,6 +64,16 @@ export function makeE2eTitle(feature: string, now: Date = new Date()): string {
     );
   }
   const seconds = Math.floor(now.getTime() / 1000);
+  // The clock must produce a timestamp `parseE2eTitle` will accept. An injected
+  // epoch-0 or otherwise bogus `now` would otherwise mint a name that parses as
+  // null forever — a resource no sweeper can ever recover, which is the exact
+  // failure this validation exists to prevent.
+  if (!Number.isSafeInteger(seconds) || seconds < MIN_TIMESTAMP_SECONDS) {
+    throw new Error(
+      `E2E timestamp must be epoch seconds >= ${MIN_TIMESTAMP_SECONDS}, got ${seconds} (from epoch ms ${now.getTime()}). ` +
+        "A name outside the convention can never be swept."
+    );
+  }
   return `${E2E_NAME_PREFIX}-${feature}-${seconds}`;
 }
 

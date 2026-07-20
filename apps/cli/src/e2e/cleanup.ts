@@ -21,21 +21,29 @@
  *     {@link SweepTarget}s, whose `runId` is a required `string`, and
  *     {@link executeSweep} accepts nothing else — an unmarked
  *     {@link SweepCandidate} cannot be passed to the deleter without a type
- *     error, and {@link assertMarked} re-checks at runtime.
+ *     error, and {@link assertSweepable} re-runs every gate at the delete site.
  *  2. **TTL honored.** Resources younger than 24 h are never touched, so a
- *     currently-running E2E is never swept out from under itself.
+ *     currently-running E2E is never swept out from under itself. `--ttl-hours`
+ *     can raise this but never lower it below {@link MIN_TTL_HOURS}.
  *  3. **Dry-run by default.** Without `--force` the script only prints what it
  *     *would* delete and performs zero deletions.
  *  4. **Scope locked.** Only space `DOCSY` and project `ATLCLI`, hardcoded with
  *     no CLI override; records from any other scope are dropped by the planner.
  *
- * Plus a **max-delete circuit breaker** (default 50): if the plan selects more
- * than that, the whole sweep aborts fail-closed with a non-zero exit and *zero*
- * deletions, rather than letting a bad query quietly empty the space.
+ * Plus a **max-delete circuit breaker** ({@link DEFAULT_MAX_DELETES}): if the
+ * plan selects more than that, the whole sweep aborts fail-closed with a
+ * non-zero exit and *zero* deletions, rather than letting a bad query quietly
+ * empty the space. `--max-deletes` can lower it but never raise it.
  *
- * DOCSY holds deliberately retained fixtures (the DOCX feature zoo, the spec-005
- * logo/image page, the "M1 Abnahme …" set). None of them carries the marker, so
- * gate 1 alone makes them unreachable; gates 2 and 4 are belt and braces.
+ * What protects the deliberately retained DOCSY fixtures (the DOCX feature zoo,
+ * the spec-005 logo/image page, the "M1 Abnahme …" set) is the **naming gate**:
+ * their titles do not parse as `atlcli-e2e-<feature>-<timestamp>`, so they are
+ * rejected even if something stamps a valid-looking marker on them. That is a
+ * structural property of their names, not the contingent fact that they happen
+ * to be unmarked today.
+ *
+ * Note what is NOT covered: `--profile` selects the *tenant*. The DOCSY/ATLCLI
+ * lock constrains which space and project get swept, not which site.
  *
  * @example
  * ```bash
@@ -58,8 +66,15 @@ import {
   type E2ePageRecord,
 } from "./resources.js";
 
-/** Default max resources a single sweep may delete before it aborts fail-closed. */
+/**
+ * Max resources a single sweep may delete before it aborts fail-closed.
+ *
+ * Also the hard ceiling: `--max-deletes` may lower it, never raise it.
+ */
 export const DEFAULT_MAX_DELETES = 50;
+
+/** Floor for `--ttl-hours`. The TTL gate can be widened but never switched off. */
+export const MIN_TTL_HOURS = 1;
 
 /** Default profile the sweeper authenticates with. */
 export const DEFAULT_PROFILE = "mayflower";
@@ -102,6 +117,13 @@ export interface SweepPlan {
   maxDeletes: number;
   /** True when `targets` exceeded `maxDeletes`. The sweep must then delete nothing. */
   circuitBreakerTripped: boolean;
+  /**
+   * The gate inputs this plan was built with, carried so the executor can
+   * independently re-verify every target immediately before deleting it
+   * (see {@link assertSweepable}) instead of trusting the plan it was handed.
+   */
+  now: number;
+  ttlMs: number;
 }
 
 export interface PlanSweepOptions {
@@ -185,21 +207,35 @@ export function planSweep(
     skipped,
     maxDeletes,
     circuitBreakerTripped: targets.length > maxDeletes,
+    now: options.now,
+    ttlMs,
   };
 }
 
 /**
- * Runtime re-assertion of the marker gate.
+ * Re-run **every** gate against a target immediately before it is deleted.
  *
- * The type system already prevents an unmarked candidate from reaching the
- * deleter; this catches the cast-away case (a caller building a `SweepTarget`
- * by hand) before any DELETE goes out.
+ * The type system already stops an unmarked candidate from reaching the
+ * deleter, and in the shipped flow `runSweep` always builds its plan through
+ * {@link planSweep}. This is the last line of defence for the case neither
+ * covers: a caller hand-assembling a `SweepTarget` (or casting one together)
+ * and passing it to {@link executeSweep} directly.
+ *
+ * Deliberately a full re-classification rather than a marker check. Checking
+ * only the marker would let a forged `runId` on an off-convention name — a
+ * deliberately retained fixture, say — through the final gate, which is exactly
+ * the claim this module's header makes about being structurally incapable of
+ * deleting content it does not own.
  */
-export function assertMarked(target: SweepTarget): void {
-  if (typeof target.runId !== "string" || target.runId.trim() === "") {
+export function assertSweepable(
+  target: SweepTarget,
+  options: { scope: string; now: number; ttlMs: number }
+): void {
+  const reason = classifyCandidate(target, options);
+  if (reason) {
     throw new Error(
-      `Refusing to delete ${target.id}: no ${"atlcli-e2e-run-id"} ownership marker. ` +
-        "The sweeper only deletes resources it can prove it owns."
+      `Refusing to delete ${target.id} ("${target.name}"): ${reason}. ` +
+        "The sweeper only deletes resources that pass every gate at the moment of deletion."
     );
   }
 }
@@ -248,7 +284,7 @@ export async function executeSweep(input: {
   const deleted: string[] = [];
   const failures: Array<{ id: string; error: string }> = [];
   for (const target of plan.targets) {
-    assertMarked(target);
+    assertSweepable(target, { scope: plan.scope, now: plan.now, ttlMs: plan.ttlMs });
     try {
       await deleteResource(target);
       deleted.push(target.id);
@@ -304,12 +340,28 @@ export function parseSweeperArgs(argv: string[]): SweeperArgs {
     } else if (arg === "--ttl-hours" || arg.startsWith("--ttl-hours=")) {
       const raw = arg.startsWith("--ttl-hours=") ? arg.slice("--ttl-hours=".length) : argv[++i];
       const hours = Number(raw);
-      if (!Number.isFinite(hours) || hours < 0) throw new Error(`--ttl-hours requires a non-negative number, got: ${raw}`);
+      // Floored, not merely non-negative. `--ttl-hours 0` used to disable the
+      // TTL gate outright, which would delete a resource a *different*, still
+      // running E2E had created seconds earlier — the precise scenario the TTL
+      // exists to prevent. The flag may only ever make the sweep more patient.
+      if (!Number.isFinite(hours) || hours < MIN_TTL_HOURS) {
+        throw new Error(`--ttl-hours must be at least ${MIN_TTL_HOURS} (the TTL gate cannot be disabled), got: ${raw}`);
+      }
       args.ttlMs = hours * 60 * 60 * 1000;
     } else if (arg === "--max-deletes" || arg.startsWith("--max-deletes=")) {
       const raw = arg.startsWith("--max-deletes=") ? arg.slice("--max-deletes=".length) : argv[++i];
       const max = Number(raw);
       if (!Number.isInteger(max) || max < 0) throw new Error(`--max-deletes requires a non-negative integer, got: ${raw}`);
+      // Clamped in one direction only: lowering the breaker is a legitimate way
+      // to be extra careful, raising it defeats the point. Raising it is also
+      // the obvious reflex right after seeing an abort — i.e. exactly when the
+      // breaker is doing its job and a bad query is the likeliest explanation.
+      if (max > DEFAULT_MAX_DELETES) {
+        throw new Error(
+          `--max-deletes may not exceed the ${DEFAULT_MAX_DELETES}-resource circuit breaker (got ${max}). ` +
+            "If a sweep legitimately needs to remove more, run it repeatedly rather than raising the limit."
+        );
+      }
       args.maxDeletes = max;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -331,9 +383,16 @@ export function sweeperHelp(): string {
     "Options:",
     "  --force               Actually delete (default: dry run, deletes nothing)",
     `  --profile <name>      Profile to authenticate with (default: ${DEFAULT_PROFILE})`,
-    "  --ttl-hours <n>       Minimum resource age before sweeping (default: 24)",
-    `  --max-deletes <n>     Circuit breaker; abort if more are selected (default: ${DEFAULT_MAX_DELETES})`,
+    `  --ttl-hours <n>       Minimum resource age before sweeping (default: 24, minimum ${MIN_TTL_HOURS});`,
+    "                        may only be raised — the TTL gate cannot be disabled",
+    `  --max-deletes <n>     Circuit breaker; abort if more are selected (default and`,
+    `                        maximum ${DEFAULT_MAX_DELETES}); may only be lowered`,
     "  --help, -h            Show this help",
+    "",
+    `WARNING: --profile (and the ATLCLI_BASE_URL fallback) selects the TENANT. The`,
+    `${E2E_SPACE_KEY}/${E2E_PROJECT_KEY} name lock constrains which space and project are`,
+    "swept, NOT which site — point this at the wrong instance and it will happily",
+    `sweep that instance's ${E2E_SPACE_KEY}.`,
   ].join("\n");
 }
 
