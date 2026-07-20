@@ -510,34 +510,78 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       (keyed by `{fixture, ruleId, failureCount, locationsDigest}`, not id
       alone), and warns on a shrinking baseline. `baseline.json` starts empty;
       it is populated from the first real veraPDF run (a reviewed diff).)*
-- [ ] Alt-text audit task: emit a dedicated note code (e.g.
+- [x] Alt-text audit task: emit a dedicated note code (e.g.
       `pdf-image-missing-alt`) from `packages/pdf/src/prepare.ts` when an
       image block has no `alt`; surface it in `PdfExportReport` and the CLI
       `--report json` (T3.4) so authors can fix source pages. Same audit in
       the DOCX path (`packages/docx/src/image.ts`).
-      *(Round 2: NOT done — this is a feature-package SOURCE change
-      (`packages/pdf/src/prepare.ts` + `packages/docx/src/image.ts`), outside
-      the 011 harness/scripts/fixtures lane. Confirmed absent from the current
-      public API: no `pdf-image-missing-alt` note code exists. Hand to the pdf/
-      docx feature lane; 011 will add the conformance assertion once it ships.)*
-- [ ] Language audit task: thread `PdfExportMetadata.language` into the Typst
+      *(Round 3: DONE. `pdf-image-missing-alt` is emitted from
+      `preparePdfDocument` with spec 003 provenance (`source.pageId` /
+      `blockPath` / `assetName`) — `walk` now threads a block path using the
+      serializer's exact convention, so a note locates the offending image
+      inside nested containers. Emitted from the SOURCE block before the fetch,
+      so an image that fails to embed is audited too; whitespace-only alt counts
+      as missing. `PreparePdfOptions.pageContext` lets a host supply the page
+      identity external images/single-page exports don't carry, with the block's
+      own attachment pageId winning. Reaches `PdfExportReport.notes` via
+      prepare → serialize → report, hence `--report json`. DOCX equivalent
+      (`image-missing-alt`): `auditImageAltText`/`isMissingAltText` in
+      `packages/docx/src/image.ts` (identical whitespace rule, so the engines
+      cannot disagree), wired through the image seam's existing outcome-`notes`
+      channel in `export.ts` on BOTH the raster and svgBlip paths, reusing
+      `budgetMeta`'s page-identity resolution. Only successfully embedded images
+      are audited — a failed embed already reports `image-embed-failed`.
+      Registry: three codes added to `EXPORT_NOTE_CODES`.)*
+- [x] Language audit task: thread `PdfExportMetadata.language` into the Typst
       template (`packages/pdf/src/template.ts`, `set text(lang: ..)`) and
       verify a `/Lang` entry in the catalog; extend
       `packages/pdf/src/validate.ts` with a `hasLang` field and extend
       `packages/pdf/src/validate.test.ts` accordingly. Warn on export when
       metadata has no language.
-      *(Round 2: NOT done — `packages/pdf/src/template.ts` is owned by spec 012
-      (do-not-touch), and `validate.ts`/`prepare.ts` are feature-package source
-      outside the 011 lane. Confirmed `validatePdfOutput` has no `hasLang` and
-      the template threads no `/Lang` today. Hand to 012 / the pdf feature lane.)*
-- [ ] Honest conformance statement in docs: new page
+      *(Round 3: DONE, and the Round-2 note above was STALE on one point:
+      `template.ts` ALREADY threads `lang: meta.at("language", …)` /
+      `region:` — spec 012 landed it. So NO template change was needed and
+      **both pinned digests stay untouched** (`PRE_MIGRATION_DIGEST`,
+      `ONE_PER_PAGE_PRE_REFINEMENT_DIGEST` both pass unchanged); no
+      re-baselining. That the threading actually produces a catalog `/Lang` is
+      proven against the REAL pinned compiler in
+      `packages/pdf-compiler-browser/src/pdf-lang-catalog.test.ts` (de → `/Lang
+      (de)`, en+GB → `/Lang (en-GB)`, absent → `/Lang (en)`), inspecting
+      compiled bytes. `validatePdfOutput` gains `hasLang`, matched against the
+      CATALOG object specifically — a `/Lang` on a structure element or an XMP
+      `dc:language` packet is not the document-level declaration PDF/UA 7.2
+      requires, and `validate.test.ts` pins both negatives.
+      `auditPdfLanguage` in `run-export.ts` emits `pdf-language-missing` for
+      two independent defects: no usable language on the request (the template
+      then silently claims "en"), and no `/Lang` in the produced file — the
+      second read from the real output bytes, so a report can never attest to a
+      property the file lacks.)*
+- [x] Honest conformance statement in docs: new page
       `src/content/docs/reference/pdf-accessibility.md` stating exactly:
       output is **Tagged PDF** with document language, outline, embedded
       fonts, and alt-text pass-through; it is **not certified PDF/UA-1**;
       list the open veraPDF rule gaps from `baseline.json` and link the
       audit note codes. No marketing language; update the page in the same
       PR whenever the baseline changes.
-- [ ] HEAD-bound security attestation artifact: `scripts/security/
+      *(Round 3: DONE, page written + registered in the Astro sidebar. Because
+      it is a liability statement, every affirmative claim is PINNED against
+      real compiled PDF bytes in
+      `packages/pdf-compiler-browser/src/pdf-accessibility-claims.test.ts`
+      (tagged + `/Suspects false`, catalog `/Lang`, `/Outlines` from headings,
+      embedded `/FontFile*`, author alt → `/Alt` on a `/Figure`) — a template
+      change that falsifies a sentence turns that file red. Three findings
+      verified while writing and now documented, each a way an export can LOOK
+      accessible without being so: (1) a missing alt becomes the FILENAME in
+      `/Alt`, not an absent `/Alt`, so a presence-only checker passes while a
+      screen reader reads "chart-final-v2.png"; (2) the `outline` setting
+      controls the in-body Contents PAGE, not the PDF bookmark outline, which is
+      emitted from headings either way; (3) `profile: "pdf-ua-1"` produces
+      BYTE-IDENTICAL output to `"tagged"` and writes no `pdfuaid` identifier —
+      it records what a host asked for, never what was achieved. The veraPDF
+      gap list is honest about being EMPTY: `baseline.json` is `{}` because no
+      run has happened (binary pin + workflow still pending), and the page
+      states that this means "not yet measured", NOT "zero gaps".)*
+- [x] HEAD-bound security attestation artifact: `scripts/security/
       attest.ts` emits `security-attestation.json` (`{commit, date,
       veraPdfDigestOk, veraPdfBaselineDelta, securityReviewNote, m1
       AcceptanceOk}`, unchanged shape) as a CI artifact on every push to
@@ -563,6 +607,25 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       pre-publish gate only if/when that deferred work resumes; recorded as
       a cross-plan dependency, not built here (see Risks and
       crossPlanImpacts).
+      *(Round 3: DONE — `scripts/security/attest.ts` + `attest.test.ts` (19
+      tests) + `.github/workflows/security-attestation.yml` (push to `main`,
+      `v*` tags, `workflow_dispatch`; `fetch-depth: 2` so the baseline delta has
+      a parent to diff against; artifact uploaded even on failure). Design rule
+      enforced by tests: NEVER attest to something unverified — every field is
+      either an established fact or `null`, never collapsed to a
+      passing-looking value, and a `checks[]` entry records why each field holds
+      its value. That matters today, since the veraPDF binary is not yet pinned
+      or present on any runner: the honest output is `veraPdfDigestOk: null`
+      with a stated reason. Exit code follows the same line — a DETERMINED
+      failure (digest mismatch, failed M1 run) is red, an unperformable check is
+      not, because a permanently red job is one nobody reads. `date` is the
+      commit's own committer date, not wall-clock, so re-running on one commit
+      reproduces the same bytes. `veraPdfBaselineDelta` diffs
+      `scripts/verapdf/baseline.json` against HEAD~1 keyed by
+      `{fixture, ruleId}` with count/locations changes reported as `changed`.
+      `m1AcceptanceOk` READS the benchmark lane's `m1-acceptance.json` rather
+      than running the corpus — recording a result and producing one are
+      different jobs. Still NOT a publish gate, per this bullet's own decision.)*
 
 ### Security hardening
 
