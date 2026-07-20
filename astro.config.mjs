@@ -109,6 +109,7 @@ export default defineConfig({
             { label: 'PDF Template Contract', link: '/reference/pdf-template-contract/' },
             { label: 'PDF Accessibility & PDF/UA', link: '/reference/pdf-accessibility/' },
             { label: 'Template Pack Format', link: '/reference/template-pack-format/' },
+            { label: 'Export Performance Envelope', link: '/reference/export-performance/' },
             { label: 'Authentication', link: '/authentication/' },
             { label: 'Configuration', link: '/configuration/' },
             { label: 'Doctor', link: '/reference/doctor/' },

@@ -11,9 +11,10 @@
  * report-projection equivalence. A divergence names the case and the first
  * divergent digest or report code.
  *
- * PDF parity covers every emits-digests case: `pdf-settings` (007) plus the
+ * PDF parity covers every emits-digests case: `pdf-settings` (007), the
  * feature-lane cases `blocks` (001), `scope` (002), `content-compat` (003) and
- * `macros` (004). Each runs the SAME fixture block-builders from
+ * `macros` (004), and `manuscript` (012 — the second curated template, compiled
+ * under BOTH manifests). Each runs the SAME fixture block-builders from
  * `@atlcli/export-fixtures` on both hosts, so byte-identity is the contract.
  *
  * Everything is real: no mocks, real Typst compile, real fonts. Every compile is
@@ -32,6 +33,7 @@ import {
   type PdfCompilePort,
   type PdfExportMetadata,
 } from "@atlcli/pdf";
+import { MANUSCRIPT_PDF_TEMPLATE_MANIFEST } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import {
   BLOCKS_ALL_FIELDS,
@@ -40,6 +42,9 @@ import {
   contentCompatBlocks,
   CONTENT_COMPAT_METADATA,
   MACRO_METADATA,
+  MANUSCRIPT_BLOCKS,
+  MANUSCRIPT_FILENAME,
+  MANUSCRIPT_METADATA,
   PDF_SETTINGS_A,
   PDF_SETTINGS_B,
   PDF_SETTINGS_BLOCKS,
@@ -177,13 +182,59 @@ async function runMacroCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
   return { compilerVersion: r.version, digests: { "macros.pdf": sha256Hex(r.bytes) }, notes: r.notes };
 }
 
-/** Every PDF parity case: id → CLI-side runner producing the same digests as the browser. */
+/**
+ * Spec 012 T6.5 — the Manuscript curated template. Compiles the same fixture
+ * under BOTH manifests, exactly as the browser case does, so parity covers the
+ * second template's bytes and not just the default one's. A CLI/browser split
+ * here would mean the curated-template path diverges by host, which is the one
+ * thing a "second template needs zero new engine code" claim cannot survive.
+ */
+async function runManuscriptCli(compiler: PdfCompilePort): Promise<CliCaseResult> {
+  const compileWith = async (templateManifest?: typeof MANUSCRIPT_PDF_TEMPLATE_MANIFEST) => {
+    const output = new MemoryOutputSink();
+    const report = await runPdfExport(
+      {
+        blocks: MANUSCRIPT_BLOCKS,
+        metadata: MANUSCRIPT_METADATA,
+        profile: "tagged",
+        filename: MANUSCRIPT_FILENAME,
+        ...(templateManifest ? { templateManifest } : {}),
+      },
+      { assets: noAssets, compiler, output, now: deterministicClock() },
+    );
+    return { bytes: output.single.bytes, report };
+  };
+  const manuscript = await compileWith(MANUSCRIPT_PDF_TEMPLATE_MANIFEST);
+  const builtin = await compileWith();
+  return {
+    compilerVersion: manuscript.report.compilerVersion,
+    digests: {
+      "manuscript.pdf": sha256Hex(manuscript.bytes),
+      "manuscript-builtin.pdf": sha256Hex(builtin.bytes),
+    },
+    notes: manuscript.report.notes.map((n) => ({ code: n.code, level: n.level })),
+  };
+}
+
+/**
+ * Every PDF parity case: id → CLI-side runner producing the same digests as the
+ * browser.
+ *
+ * The `m1` case also emits digests but is deliberately NOT listed here: its
+ * consumer is `scripts/bench/run-m1-acceptance.ts`, which compares the DOCX
+ * side part-by-part on DECOMPRESSED content. A whole-container DOCX byte
+ * comparison would fail permanently and meaninglessly — PizZip deflates through
+ * `node:zlib` under Bun and pako in the browser, so identical documents yield a
+ * few different compressed bytes. This gate only ever compares whole bytes, so
+ * `m1` belongs to the runner that knows the right strategy.
+ */
 const PARITY_CASES: Record<string, (compiler: PdfCompilePort) => Promise<CliCaseResult>> = {
   "pdf-settings": runPdfSettingsCli,
   blocks: runBlocksCli,
   scope: runScopeCli,
   "content-compat": runContentCli,
   macros: runMacroCli,
+  manuscript: runManuscriptCli,
 };
 
 interface BrowserCaseResult {

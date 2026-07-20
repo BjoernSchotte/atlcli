@@ -135,6 +135,7 @@ writing only `002-scope-orchestration/` and `003-content-features/` exist.
 | 006 (Word quality, Lane G, T1.13–T1.16) | numbering.xml, tblGrid, SVG embedding | DOCX-quality case; SVG path is where the shared sanitizer (T4.7) plugs in |
 | 007 (PDF templates, Lane P, T2.1–T2.4) | `settings` threading, watermark, `.wiki-pdf-template` | PDF-settings case; container format is a T4.7 hardening target |
 | 008 (CLI, Lane K, T3.1–T3.5) | Bun compile port, `wiki export --format pdf`, scope flags | The other half of shape parity: CLI runs the same fixtures as the harness |
+| 012 (curated templates, T6.5) | Second built-in PDF template ("Manuscript") | `manuscript` conformance case: compiles one fixture under BOTH manifests, asserts determinism + that the two differ, and emits digests the parity gate compares. *(Round 3: DONE — byte parity across browser and CLI holds.)* |
 
 Hard sequencing: each conformance case merges **in the same PR wave as its
 feature folder** (it is that folder's acceptance test). The parity comparison
@@ -418,7 +419,56 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       is orchestrator territory. Absolute PDF/DOCX bytes are NOT pinned across
       the repo (they track the Typst wasm/font versions — see Risks); the
       corpus structural digest IS pinned in `generate-m1-corpus.test.ts`.)*
-- [ ] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
+      *(Round 3: the BROWSER LEG and `digestsMatch` are now DONE. Conformance
+      case `m1` (`apps/browser-export-harness/src/m1-case.ts`) runs the SAME
+      committed corpus through the browser engines (real module Worker + Typst
+      WASM) and publishes its digests; `run-m1-acceptance.ts` reads them and
+      reports `digestsMatch`. Measured result: **PDF matches byte-for-byte
+      across hosts** (417,487 B, same sha256), and all **6** DOCX parts match
+      (`[Content_Types].xml`, `_rels/.rels`, `word/_rels/document.xml.rels`,
+      `word/document.xml`, `word/settings.xml`, `word/styles.xml` — the count is
+      recorded as `docx.partCount` in the record, so it is checkable rather
+      than asserted).
+      One real finding: the DOCX **container** bytes differ across hosts at
+      IDENTICAL length (5,257 B both) because PizZip deflates through
+      `node:zlib` under Bun and pako in the browser. That is an encoding
+      difference, not a document difference, so the DOCX contract is compared
+      part-by-part on DECOMPRESSED content — the same reasoning the media parity
+      check already uses for rasterizer-divergent PNGs. The record now carries
+      `docx.partsMatch` (the contract, true), `docx.containerBytesMatch`
+      (recorded for transparency, expected false) and `firstDivergentPart`.
+      SCOPE OF THE DOCX CONTRACT, stated explicitly because `docxPartDigests`
+      sorts part names: what is compared is the SET of part names and each
+      part's decompressed bytes. Part ORDER within the archive and per-entry zip
+      metadata (timestamps, compression method/flags, external attributes) sit
+      OUTSIDE the contract — they are encoding, and Word does not read meaning
+      from them. A divergence in either would not be caught here; a missing or
+      extra part, or any content change, would be (`firstPartDivergence`
+      compares the union of names on both sides). This
+      is also why `m1` is deliberately NOT in `check-parity.ts`'s case list —
+      that gate only compares whole bytes and would fail permanently and
+      meaninglessly on the zip container. `digestsMatch` stays `null` (never
+      `true`) when the harness has not run or the compiler versions differ; a
+      measured mismatch is a hard failure. Still pending: `includepage` (case
+      005's territory, as noted), the diagram's PNG embedding, and the LIVE
+      DOCSY run.)*
+      *(Round 3 review fix — the cross-host leg could never have run in CI.* The
+      harness manifest is gitignored and job-local: `bench.yml` ran
+      `run-m1-acceptance.ts` with no harness step, so `digestsMatch` would have
+      been `null` forever, while `ci.yml` ran the harness but never the
+      acceptance script — the two halves never met. The `true` observed locally
+      came from a leftover artifact of an earlier local harness run, which is
+      exactly the "formally green M1 that never ran the integrated story" this
+      task exists to prevent. FIXED: the `bench` job now builds the harness,
+      installs Chromium, runs the Playwright harness (publishing the `m1`
+      digests), and only then runs the acceptance script — in ONE job. A new
+      `--require-cross-host` flag, which CI passes, turns "not measured" into a
+      hard failure, so a harness that silently stops publishing `m1` fails the
+      step instead of degrading to `null`. **The job that now produces a
+      non-null `digestsMatch` is `bench.yml` → job `bench`.** Verified by
+      reproducing the exact CI step order locally: exit 1 with the manifest
+      removed, exit 0 and `digestsMatch true` after the harness step.)*
+- [x] Runner: `scripts/bench/run-bench.ts` — phases measured separately with
       wall-clock ms: blocks→compose (002), DOCX serialize+zip, PDF
       serialize+compile (real Typst WASM via the T3.1 Bun port). **RSS
       methodology, made internally consistent**: `/usr/bin/time -v`
@@ -434,7 +484,20 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       Output: one JSON record per phase
       (`{commit, date, phase, ms, peakRssBytes, outputBytes, pages}`) plus
       one whole-run record.
-- [ ] **End-to-end tier** (extends the engine-only benchmark, addresses the
+      *(Round 3: DONE. Phases `baseline|compose|docx|pdf`, each in its own child
+      under `/usr/bin/time`; a `--phase all` child supplies
+      `wholeProcessPeakRssBytes`. A `baseline` phase (load fixture + wasm +
+      fonts + template, do no work) is measured too, so the runtime/asset floor
+      inside every phase-scoped RSS is subtractable rather than guessed at.
+      `bench-env.ts` parses BOTH `/usr/bin/time` flavours — GNU `-v` (kbytes,
+      Linux/CI) and BSD `-l` (bytes, macOS) — and records which one produced a
+      number as `rssMethod`; when neither exists it records `null`, never a
+      fabricated figure. Each phase also reports `noteCodes`, so a silently
+      skipped image shows up instead of quietly making a phase look faster.
+      Measured 500-page engine tier (M5 Max, Bun 1.3.8, Typst 0.14.2, median of
+      3): compose 9 ms / 152 MB · docx 222 ms / 336 MB / 523 KB · pdf 7,952 ms /
+      3,035 MB / 16.2 MB · whole run 8,142 ms / 3,114 MB.)*
+- [x] **End-to-end tier** (extends the engine-only benchmark, addresses the
       parsing/resolver/transfer gap): `scripts/bench/run-e2e-bench.ts` — the
       500-page corpus generated as **storage XHTML** (not pre-parsed
       blocks), run through the real pipeline
@@ -446,7 +509,27 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       is explicitly **out of scope for this task** — recorded as an open
       question below, not silently dropped, since it needs Playwright
       wiring this folder doesn't otherwise require for benchmarks.
-- [ ] CI thresholds as **non-blocking trend first**: new
+      *(Round 3: DONE. `generate-storage-fixture.ts` emits the 500-page corpus as
+      storage XHTML plus a real in-memory `TreeSource`; phases
+      `baseline|fetch|resolve|compose|docx|pdf` each run in their own child, and
+      each reports cold AND warm (the work run twice in-process), median of 3.
+      The resolver pass is the REAL `defaultRegistry` + `resolveMacroBlocks` —
+      the run confirms both outcomes fire (`macro-rendered-via` for the Jira
+      table, `macro-degraded` for the draw.io floor), so the resolver is
+      genuinely exercised rather than walked past. Measured 500-page e2e tier
+      (same machine): fetch 33 ms · resolve 6 ms · compose 13 ms · docx 236 ms ·
+      pdf 7,677 ms cold / 577 ms warm · whole run 8,127 ms / 3,400 MB.
+      Chromium variant remains out of scope as specified.
+      FINDINGS worth acting on: (a) PDF compile is ~94% of wall clock in both
+      tiers — nothing else moves the total; (b) the parse+resolve+compose gap
+      the engine tier cannot see is ~52 ms of ~8.1 s (<1%) for THIS corpus, but
+      it does not hold for memory (e2e peaks ~9% higher); (c) peak RSS of
+      3.0–3.4 GB EXCEEDS this task's own `< 2 GB` placeholder budget below —
+      the placeholder was a pre-measurement guess and must be re-derived from
+      these numbers before anything is frozen; (d) the warm PDF number is a
+      Typst incremental-cache hit on byte-identical input, so it is a lower
+      bound on setup cost, NOT a steady-state re-export cost.)*
+- [x] CI thresholds as **non-blocking trend first**: new
       `.github/workflows/bench.yml`, nightly `schedule` + manual dispatch,
       `continue-on-error: true`; uploads the JSON as an artifact, restores
       the previous record via `actions/cache`, and emits `::warning::` when
@@ -458,16 +541,54 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       < 60 s / < 1.5 GB RSS; 500-page PDF compile < 180 s / < 2 GB RSS,
       engine tier and end-to-end tier budgeted separately) and flip the
       workflow to failing. Never a per-PR gate.
+      *(Round 3: the WORKFLOW is DONE — `.github/workflows/bench.yml`, nightly
+      `schedule` + `workflow_dispatch`, `continue-on-error: true`, both tiers +
+      the M1 corpus, records uploaded as an artifact, history restored/updated
+      via `actions/cache`. `scripts/bench/compare-trend.ts` computes the rolling
+      median and emits `::warning::` past >20% time / >15% RSS. Comparison is
+      environment-scoped: a record is only comparable when tier, page count,
+      fixture digest, Typst wasm digest, font-set digest, OS, arch, runner AND
+      `rssMethod` all match, so a deliberate compiler/font bump resets the
+      baseline instead of firing a false alarm, and a warning names the phase,
+      tier and machine. Verified end to end locally (a synthetic +50% time /
+      +30% RSS record fires exactly the expected three warnings).
+      *(Round 3 review fix — the workflow was inert in CI.* `runner` was derived
+      from `RUNNER_NAME`, which on GitHub-hosted runners is instance-specific
+      ("GitHub Actions 2"/"…14") and ALWAYS set, so the `RUNNER_OS` fallback was
+      unreachable. Every nightly would have found zero comparable records and
+      never warned — invisible behind `continue-on-error: true`. It only passed
+      locally because a dev machine has a stable hostname. `benchRunnerLabel`
+      now emits a runner CLASS (`ci:<environment>:<os>:<arch>` in CI, hostname
+      locally, `ATLCLI_BENCH_RUNNER` override), pinned by tests in
+      `bench-env.test.ts` and, end to end, by a `compare-trend.test.ts` case
+      asserting two nightlies differing ONLY in `RUNNER_NAME` are comparable and
+      that a regression between them is detected. Also hardened `loadHistory`:
+      it previously guarded unparseable JSON but not structurally-invalid
+      records, so one valid-JSON record missing `environment` would throw before
+      `--append` ran, leaving the poisoned entry in the cache for `restore-keys`
+      to resurrect forever. Bad entries are now dropped and rewritten out.)*
+      STILL OPEN, by design: `scripts/bench/budgets.json` is NOT written and the
+      workflow is NOT failing — that needs the ~2 weeks of trend data this
+      workflow has yet to collect. Note the measured 3.0–3.4 GB peak RSS
+      contradicts the `< 2 GB` placeholder above; do not freeze that number.)*
 - [x] Regression tests for the generator (determinism: same seed → identical
       JSON; page/block counts exact) in `scripts/bench/generate-fixture.test.ts`
       and `scripts/bench/generate-m1-corpus.test.ts`. *(Both done:
       generate-m1-corpus.test.ts pins the corpus's page/block/label counts, a
       golden structural sha256, the integrated-story block coverage, and clean
       composition — all pure over the corpus JSON, no compile.)*
-- [ ] Document the envelope in `src/content/docs/reference/` once measured —
+- [x] Document the envelope in `src/content/docs/reference/` once measured —
       engine tier and end-to-end tier reported separately, each tier's scope
       stated explicitly (what it does and does not exercise); this is the
       precondition for any chapter-streaming work (parked, T4.9).
+      *(Round 3: `src/content/docs/reference/export-performance.md`, linked in
+      the Reference sidebar. Both tiers are tabled separately with the machine +
+      runtime + compiler + font context, each tier's scope AND anti-scope stated
+      explicitly, the RSS methodology explained (why per-phase RSS is still a
+      whole-process number), and the four findings above written up — including
+      the budget contradiction and the warm-number caveat, rather than only the
+      flattering figures. Reproduction commands, flag table, and troubleshooting
+      included per the docs standards.)*
 
 ### PDF/UA
 

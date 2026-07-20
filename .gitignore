@@ -29,6 +29,7 @@ packages/pdf-compiler-browser/vendor/
 coverage/
 .scannerwork/
 scripts/bench/out/
+scripts/bench/history/
 scripts/verapdf/out/
 
 # HEAD-bound security attestation (spec 011) — a CI artifact, never committed:
