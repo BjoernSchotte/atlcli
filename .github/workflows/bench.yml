@@ -1,0 +1,131 @@
+name: Bench
+
+# Spec 011, Benchmarks — "CI thresholds as NON-BLOCKING TREND first".
+#
+# Nightly + manual only. Never a per-PR gate: benchmark wall-clock on a shared
+# CI runner is noisy enough that gating merges on it would mostly teach people
+# to re-run the job. The purpose of this workflow for now is to accumulate a
+# trend line with enough environment provenance that a real regression is
+# attributable — to a phase, a tier, and a machine — rather than showing up as
+# an unexplained total.
+#
+# Both TIERS run and are reported SEPARATELY:
+#   - engine tier    (run-bench.ts)     — compose / DOCX serialize+zip / PDF compile
+#   - end-to-end tier(run-e2e-bench.ts) — + tree walk, storage parse, macro resolve
+# Conflating them would let a parser regression hide behind engine numbers.
+#
+# After ~2 weeks of trend data, freeze absolute budgets in
+# scripts/bench/budgets.json and flip this workflow to failing (PLAN).
+
+on:
+  schedule:
+    # 03:17 UTC nightly — off the hour to avoid the scheduler's busiest minute.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: "Fixture page count"
+        required: false
+        default: "500"
+      repeat:
+        description: "Runs per phase (median)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    # Non-blocking by design: a benchmark failure must never look like a
+    # product failure on the nightly dashboard.
+    continue-on-error: true
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The pinned fonts and the vendored Typst wasm are INPUTS to the
+      # measurement: their digests are recorded on every bench record so a bump
+      # resets the trend baseline instead of firing a false regression.
+      - name: Provision pinned PDF fonts
+        run: bun run fonts:ensure
+
+      - name: Vendor pinned Typst compiler
+        run: bun run vendor:typst
+
+      # GNU `/usr/bin/time -v` supplies the whole-process peak RSS. It is part
+      # of ubuntu-latest's image; verify it explicitly so a missing tool shows
+      # up as a clear message rather than as silently null RSS in the record.
+      - name: Verify /usr/bin/time (GNU) is available
+        run: |
+          if ! /usr/bin/time -v true 2>&1 | grep -q "Maximum resident set size"; then
+            echo "::warning::GNU /usr/bin/time -v unavailable — peak RSS will be recorded as null"
+          else
+            /usr/bin/time -v true 2>&1 | grep "Maximum resident set size"
+          fi
+
+      # Restore the rolling trend from the previous nightly. The restore-keys
+      # prefix means a new primary key (this run's id) still finds the most
+      # recent prior history; the job then writes an updated history under the
+      # new key. actions/cache is append-only per key, hence the run-id suffix.
+      - name: Restore bench history
+        uses: actions/cache@v4
+        with:
+          path: scripts/bench/history
+          key: bench-history-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            bench-history-${{ runner.os }}-
+
+      - name: Engine-tier benchmark
+        run: |
+          bun --conditions=development scripts/bench/run-bench.ts \
+            --pages "${{ github.event.inputs.pages || '500' }}" \
+            --repeat "${{ github.event.inputs.repeat || '3' }}"
+
+      - name: End-to-end-tier benchmark
+        run: |
+          bun --conditions=development scripts/bench/run-e2e-bench.ts \
+            --pages "${{ github.event.inputs.pages || '500' }}" \
+            --repeat "${{ github.event.inputs.repeat || '3' }}"
+
+      # M1 acceptance corpus: not a benchmark, but the same nightly cadence is
+      # the cheapest place to keep proving the integrated story still exports.
+      - name: M1 acceptance corpus
+        run: bun --conditions=development scripts/bench/run-m1-acceptance.ts
+
+      - name: Compare engine tier against trend
+        run: |
+          bun --conditions=development scripts/bench/compare-trend.ts \
+            --current scripts/bench/out/bench-engine.json \
+            --history scripts/bench/history/engine.json \
+            --append
+
+      - name: Compare end-to-end tier against trend
+        run: |
+          bun --conditions=development scripts/bench/compare-trend.ts \
+            --current scripts/bench/out/bench-e2e.json \
+            --history scripts/bench/history/e2e.json \
+            --append
+
+      - name: Upload bench records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-records-${{ github.run_id }}
+          path: |
+            scripts/bench/out/bench-engine.json
+            scripts/bench/out/bench-e2e.json
+            scripts/bench/out/m1-acceptance.json
+            scripts/bench/history/
+          if-no-files-found: warn
+          retention-days: 90
