@@ -1896,6 +1896,35 @@ describe("exportDocx — SVG attachment embedding (spec 006 G4)", () => {
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
   });
 
+  it("rejects a UTF-16LE + BOM <script> SVG end-to-end (spec 011 must-reject)", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const hostile = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+    // Encode UTF-16LE with a BOM — a naive UTF-8 decode would garble it and hide
+    // the <script>; the BOM-aware seam decodes it and the scanner rejects it.
+    const bytes = new Uint8Array(2 + hostile.length * 2);
+    bytes[0] = 0xff;
+    bytes[1] = 0xfe;
+    for (let i = 0; i < hostile.length; i++) {
+      const c = hostile.charCodeAt(i);
+      bytes[2 + i * 2] = c & 0xff;
+      bytes[3 + i * 2] = c >> 8;
+    }
+    const { bytes: out, report } = await exportDocx({
+      templateBytes: svgTemplate(),
+      details: { ...details, storage: svgStorage() },
+      template,
+      deps,
+      assets: { fetch: async () => bytes },
+      rasterizer,
+    });
+    expect(calls).toHaveLength(0); // never rasterized
+    expect(report.notes.some((n) => n.message.includes("active or externally loaded"))).toBe(true);
+    expect(report.embeddedImages).toBe(0);
+    expect(report.skippedImages).toBe(1);
+    const zip = new PizZip(out);
+    expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
   it("rejects a CSS-carried external reference SVG", async () => {
     const { calls, rasterizer } = recordingRasterizer();
     const cssHostile =

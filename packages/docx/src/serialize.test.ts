@@ -9,7 +9,7 @@ import {
   type DiagramEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
-import { parseStyleNames, resolveCaptionLang } from "./ooxml.js";
+import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 
 const noStyles = new Map<string, string>();
@@ -529,7 +529,7 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("raster exploded");
   });
 
-  it("renders nested lists with markers", async () => {
+  it("renders nested lists with native numbering (distinct numId per node)", async () => {
     const blocks: ExportBlock[] = [
       {
         type: "list",
@@ -1146,5 +1146,40 @@ describe("serializeBlocks — table widths + style (spec 006 G3/G3b)", () => {
     const { xml } = await serializeBlocks([table(undefined, [[cell("x")]])], { styleNames: noStyles });
     expect(xml).toContain('<w:tblStyle w:val="TableGrid"/>');
     expect(xml).toContain("<w:tblBorders>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dataTable tblPr child order (ECMA-376 §17.4.60 CT_TblPrBase)
+// ---------------------------------------------------------------------------
+
+describe("dataTable — tblPr schema child order (spec 006 G3)", () => {
+  const row = "<w:tr><w:tc><w:tcPr/><w:p/></w:tc></w:tr>";
+
+  it("confluence branch: tblBorders (seq 11) precedes tblLayout (seq 13) with fixed widths", () => {
+    const xml = dataTable(2, row, { widthsDxa: [3000, 6000] });
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    // Relative order, not mere presence — a strict CT_TblPrBase validator rejects
+    // tblLayout before tblBorders.
+    expect(xml.indexOf("<w:tblBorders>")).toBeGreaterThan(-1);
+    expect(xml.indexOf("<w:tblBorders>")).toBeLessThan(xml.indexOf("<w:tblLayout"));
+    // tblStyle (seq 1) and tblW (seq 7) still precede tblBorders (seq 11).
+    expect(xml.indexOf("<w:tblStyle")).toBeLessThan(xml.indexOf("<w:tblW"));
+    expect(xml.indexOf("<w:tblW")).toBeLessThan(xml.indexOf("<w:tblBorders>"));
+  });
+
+  it("template branch: tblStyle < tblW < tblLayout < tblLook (ascending seq)", () => {
+    const xml = dataTable(2, row, {
+      widthsDxa: [3000, 6000],
+      tableStyle: { source: "template", styleId: "ScrollTableNormal" },
+    });
+    const iStyle = xml.indexOf('<w:tblStyle w:val="ScrollTableNormal"/>');
+    const iW = xml.indexOf("<w:tblW");
+    const iLayout = xml.indexOf("<w:tblLayout");
+    const iLook = xml.indexOf("<w:tblLook");
+    expect(iStyle).toBeGreaterThan(-1);
+    expect(iStyle).toBeLessThan(iW);
+    expect(iW).toBeLessThan(iLayout);
+    expect(iLayout).toBeLessThan(iLook);
   });
 });

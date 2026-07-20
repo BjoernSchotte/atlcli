@@ -39,6 +39,7 @@ import Docxtemplater from "docxtemplater";
 import {
   AssetBudget,
   assertSafeSvg,
+  decodeSvgSource,
   storageToBlocks,
   type ConfluencePageDetails,
   type ExportBlock,
@@ -1114,8 +1115,10 @@ function imageSeam(
     }
     // Embed exactly the string that was validated (re-encode for embedSvg), not
     // the pre-decode bytes — a BOM / non-UTF-8 declaration must not let a
-    // different byte sequence slip past the safety check.
-    const source = new TextDecoder().decode(bytes);
+    // different byte sequence slip past the safety check. decodeSvgSource is
+    // BOM-aware, so a UTF-16LE/BE payload is decoded to its real characters and
+    // its `<script>` is caught by assertSafeSvg (spec 011 must-reject).
+    const source = decodeSvgSource(bytes);
     try {
       assertSafeSvg(source);
     } catch (err) {

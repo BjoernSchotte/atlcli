@@ -159,6 +159,10 @@ export class NumberingAllocator {
       nums += `<w:num w:numId="${this.bulletNumId}"><w:abstractNumId w:val="${this.bulletAbstractId}"/></w:num>`;
     }
     for (const id of this.orderedNumIds) {
+      // The lvlOverride/startOverride is belt-and-suspenders, not load-bearing:
+      // each ordered node already gets its OWN fresh numId → its own abstractNum
+      // counter → restart at 1 by construction. The explicit startOverride makes
+      // the restart intent unmistakable to Word and to a human reading the part.
       nums +=
         `<w:num w:numId="${id}"><w:abstractNumId w:val="${this.decimalAbstractId}"/>` +
         `<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`;

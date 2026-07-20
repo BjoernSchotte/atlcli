@@ -20,7 +20,7 @@
  * {@link ImageEmbedError} leaves no dangling media part or relationship.
  */
 import type PizZip from "pizzip";
-import { ASSET_MAX_BYTES } from "@atlcli/confluence";
+import { ASSET_MAX_BYTES, decodeSvgSource } from "@atlcli/confluence";
 
 /** 914400 EMU/inch ÷ 96 dpi (research §2.5; matches Scroll/Word defaults). */
 export const EMU_PER_PX = 9525;
@@ -136,13 +136,16 @@ function decodeJpeg(bytes: Uint8Array): ImageInfo | null {
 
 /**
  * True when the bytes look like an SVG document (optionally behind a BOM /
- * XML declaration / comments). Only the first 512 bytes are inspected.
+ * XML declaration / comments). Only the first 512 bytes are inspected, decoded
+ * with BOM/encoding awareness (spec 006 G4 + spec 011): a UTF-16LE/BE SVG must
+ * be RECOGNIZED so its content is scanned rather than silently mistaken for
+ * unrecognized bytes \u2014 otherwise a UTF-16-encoded `<script>` SVG would never
+ * reach the safety check.
  */
 export function isSvg(bytes: Uint8Array): boolean {
-  let head = "";
-  const limit = Math.min(bytes.length, 512);
-  for (let i = 0; i < limit; i++) head += String.fromCharCode(bytes[i]);
-  head = head.replace(/^(?:\uFEFF|\xEF\xBB\xBF)/, "").trimStart();
+  const head = decodeSvgSource(bytes.subarray(0, 512))
+    .replace(/^\uFEFF/, "")
+    .trimStart();
   if (!head.startsWith("<")) return false;
   return /<svg[\s>]/i.test(head);
 }
@@ -459,7 +462,12 @@ export class ImageEmbedder {
         `the image is too large to embed (${Math.round(bytes.length / (1024 * 1024))} MB > ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MB)`
       );
     }
-    if (isSvg(bytes)) throw new ImageEmbedError("SVG images are not embedded yet (spec 005 deferral)");
+    // The DOCX image seam (spec 006 G4) now routes SVG page attachments to the
+    // dual-part svgBlip path BEFORE reaching this raster embedder, so this throw
+    // is no longer the SVG-attachment path — it is now a defense-in-depth guard
+    // for OTHER `embed()` callers (e.g. the logo pass, which embeds raster
+    // formats only). Vector SVG has no place in the raster embedder.
+    if (isSvg(bytes)) throw new ImageEmbedError("SVG images cannot be embedded through the raster path");
     const info = decodeImageInfo(bytes);
     if (!info) throw new ImageEmbedError("unsupported image format (PNG, JPEG and GIF are supported)");
 

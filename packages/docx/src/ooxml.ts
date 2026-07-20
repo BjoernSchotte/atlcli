@@ -540,14 +540,16 @@ export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOpti
       fixedLayout +
       `<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>`;
   } else {
+    // Schema order matters (CT_TblPrBase, ECMA-376 §17.4.60): tblBorders (seq 11)
+    // MUST precede tblLayout (seq 13), so fixedLayout goes AFTER tblBorders here.
     tblPrInner =
       `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
-      fixedLayout +
       `<w:tblBorders>` +
       `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
       `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
       `<w:insideH w:val="single" w:sz="4" w:color="AAAAAA"/><w:insideV w:val="single" w:sz="4" w:color="AAAAAA"/>` +
-      `</w:tblBorders>`;
+      `</w:tblBorders>` +
+      fixedLayout;
   }
   return (
     `<w:tbl>` +

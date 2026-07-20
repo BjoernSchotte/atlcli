@@ -482,8 +482,10 @@ column-width work; … out of Lane P").
       see the typed-outcome task below). **Pass the validated `source`
       string, not the original pre-decode `bytes`** — `embedSvg` must embed
       exactly what `assertSafeSvg` checked (Architecture, "One SVG policy
-      for both engines"). Remove the deferral throw at `image.ts:380` for
-      this path.
+      for both engines"). The deferral throw at `image.ts:380` is BYPASSED
+      for this path (the seam routes SVG to `embedSvg` before the raster
+      `embed()` is reached) and RETAINED as a defense-in-depth guard for
+      other `embed()` callers (e.g. the logo pass), rather than deleted.
 - [x] Typed SVG outcome + accurate counters: `embedSvg` (`image.ts:412`)
       currently always increments `diagramsEmbedded` regardless of caller,
       so an attachment SVG embedded via this new path would silently count

@@ -101,6 +101,27 @@ export function findSvgSafetyViolation(source: string): SvgSafetyViolation | und
   return undefined;
 }
 
+/**
+ * Decode SVG bytes to a UTF-8 string with **BOM/encoding awareness** (spec 006
+ * G4 + spec 011 security corpus). A UTF-16LE/BE byte stream decoded blindly as
+ * UTF-8 produces garbage in which `<script>` and friends are invisible to the
+ * text scanner — a `<script>` SVG saved UTF-16LE-with-BOM could slip past a
+ * naive `new TextDecoder().decode(bytes)`. Detecting the byte-order mark and
+ * decoding with the matching encoding means {@link findSvgSafetyViolation} /
+ * {@link assertSafeSvg} scan the ACTUAL characters. Callers MUST validate and
+ * embed the SAME string this returns (re-encoded to UTF-8), never the original
+ * bytes, so a mismatched encoding cannot pass the check on one byte sequence
+ * and embed a different one.
+ */
+export function decodeSvgSource(bytes: Uint8Array): string {
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes);
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes);
+  }
+  // UTF-8 (TextDecoder strips a leading UTF-8 BOM automatically).
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 /** The single shared rejection message for a hostile SVG (both engines). */
 export const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
 

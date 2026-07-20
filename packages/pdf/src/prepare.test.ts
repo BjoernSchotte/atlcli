@@ -66,6 +66,25 @@ describe("PDF asset preparation", () => {
     }
   });
 
+  it("rejects a UTF-16LE + BOM <script> SVG through the shared BOM-aware policy (spec 011)", async () => {
+    const hostile = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`;
+    const bytes = new Uint8Array(2 + hostile.length * 2);
+    bytes[0] = 0xff;
+    bytes[1] = 0xfe;
+    for (let i = 0; i < hostile.length; i++) {
+      const c = hostile.charCodeAt(i);
+      bytes[2 + i * 2] = c & 0xff;
+      bytes[3 + i * 2] = c >> 8;
+    }
+    const prepared = await preparePdfDocument(images(1), {
+      resolve: async () => ({ bytes, mediaType: "image/svg+xml" }),
+    });
+    // Recognized as SVG (BOM-aware sniff) and rejected by the scanner, not
+    // silently dropped as "unrecognized bytes".
+    expect(prepared.assets).toEqual([]);
+    expect(prepared.notes[0]?.message).toContain("active");
+  });
+
   it("rejects a declared MIME type that disagrees with magic bytes", async () => {
     const prepared = await preparePdfDocument(images(1), {
       resolve: async () => ({ bytes: pngBytes(), mediaType: "image/jpeg" }),

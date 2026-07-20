@@ -139,25 +139,50 @@ describe("serializeBlocks — native numbering (spec 006 G2)", () => {
     expect(xml).toContain('<w:pStyle w:val="ListParagraph"/>');
   });
 
-  it.each([
-    [0, false, "SLB0"],
-    [1, false, "SLB2"],
-    [7, false, "SLB8"],
-    [0, true, "SLN0"],
-    [1, true, "SLN2"],
-  ] as const)("maps ilvl %i (ordered=%s) to the asymmetric Scroll style id", async (ilvl, ordered, expectedId) => {
-    const styleNames = new Map<string, string>([
-      ["scroll list bullet", "SLB0"],
-      ["scroll list bullet 2", "SLB2"],
-      ["scroll list bullet 8", "SLB8"],
-      ["scroll list number", "SLN0"],
-      ["scroll list number 2", "SLN2"],
-    ]);
-    // Build a list nested to the target ilvl.
-    let node: ExportBlock = list(ordered, [p("x")]);
-    for (let i = 0; i < ilvl; i++) node = list(ordered, [p(`w${i}`), node]);
-    const { xml } = await serializeBlocks([node], { styleNames });
-    expect(xml).toContain(`<w:pStyle w:val="${expectedId}"/>`);
+  // Full 9-level (ilvl 0-8) × {bullet, number} style-chain. The Scroll convention
+  // is asymmetric AND capped at "…8": level 1 (ilvl 0) is suffixless, levels 2-8
+  // (ilvl 1-7) carry suffix 2..8, and ilvl 8 (a 9th level Word allows but Scroll
+  // does not name) reuses the level-8 style. Names are keyed 0..7; the expected
+  // id clamps ilvl to 7.
+  const SCROLL_STYLES = new Map<string, string>();
+  for (const kind of ["bullet", "number"] as const) {
+    for (let level = 0; level <= 7; level++) {
+      const suffix = level === 0 ? "" : ` ${level + 1}`;
+      SCROLL_STYLES.set(`scroll list ${kind}${suffix}`, `S-${kind}-${level}`);
+    }
+  }
+  const expectedScrollId = (kind: "bullet" | "number", ilvl: number): string =>
+    `S-${kind}-${Math.min(ilvl, 7)}`;
+  const nineLevels = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+  it.each(
+    nineLevels.flatMap((ilvl) => [
+      [ilvl, false, expectedScrollId("bullet", ilvl)],
+      [ilvl, true, expectedScrollId("number", ilvl)],
+    ])
+  )(
+    "maps ilvl %i (ordered=%s) to the asymmetric Scroll style id %s",
+    async (ilvl, ordered, expectedId) => {
+      let node: ExportBlock = list(ordered as boolean, [p("x")]);
+      for (let i = 0; i < (ilvl as number); i++) node = list(ordered as boolean, [p(`w${i}`), node]);
+      const { xml } = await serializeBlocks([node], { styleNames: SCROLL_STYLES });
+      expect(xml).toContain(`<w:pStyle w:val="${expectedId}"/>`);
+    }
+  );
+
+  it("falls back to ListParagraph at every level when no Scroll/builtin list styles are defined", async () => {
+    let node: ExportBlock = list(true, [p("leaf")]);
+    for (let i = 0; i < 8; i++) node = list(true, [p(`w${i}`), node]);
+    const { xml } = await serializeBlocks([node], { styleNames: noStyles });
+    // Every emitted list paragraph uses ListParagraph (no Scroll/builtin match).
+    const pStyles = [...xml.matchAll(/<w:pStyle w:val="([^"]+)"\/>/g)].map((m) => m[1]);
+    expect(pStyles.length).toBeGreaterThanOrEqual(9);
+    expect(new Set(pStyles)).toEqual(new Set(["ListParagraph"]));
+  });
+
+  it("prefers the builtin List Number/List Bullet name over ListParagraph when present", async () => {
+    const styleNames = new Map<string, string>([["list number", "BuiltinLN"]]);
+    const { xml } = await serializeBlocks([list(true, [p("x")])], { styleNames });
+    expect(xml).toContain('<w:pStyle w:val="BuiltinLN"/>');
   });
 });
 
@@ -235,5 +260,55 @@ describe("exportDocx — numbering part (spec 006 G2)", () => {
     expect(numbering).toContain(`w:numId="${usedNumId}"`);
     // abstractNums precede the first num (schema order).
     expect(numbering.indexOf("<w:abstractNum")).toBeLessThan(numbering.indexOf("<w:num "));
+  });
+
+  /** A list template whose word/numbering.xml already occupies numId `maxNumId`. */
+  const templateWithNumbering = (maxNumId: number): Uint8Array => {
+    const existing =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      `<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum>` +
+      `<w:num w:numId="${maxNumId}"><w:abstractNumId w:val="0"/></w:num>` +
+      `</w:numbering>`;
+    const zip = new PizZip(listTemplate());
+    zip.file("word/numbering.xml", existing);
+    return zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
+  };
+
+  it("a near-2047-id template stays collision-free up to the cap, then degrades with a note", async () => {
+    // Existing max numId 2046 → our first ordered node gets 2047 (the cap), the
+    // second exceeds it and reuses, flagging numbering-cap-reached.
+    const { bytes, report } = await exportDocx({
+      templateBytes: templateWithNumbering(2046),
+      details: details("<ol><li><p>a</p></li></ol><ol><li><p>b</p></li></ol>"),
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    const ids = [...doc.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => Number(m[1]));
+    // First ordered node references 2047; none exceed Word's cap.
+    expect(ids).toContain(2047);
+    expect(Math.max(...ids)).toBeLessThanOrEqual(2047);
+    expect(report.notes.some((n) => n.code === "numbering-cap-reached")).toBe(true);
+    // The file is still valid: numbering.xml exists and every referenced numId
+    // has a matching <w:num> instance.
+    const numbering = readPart(bytes, "word/numbering.xml");
+    for (const id of new Set(ids)) expect(numbering).toContain(`<w:num w:numId="${id}"`);
+  });
+
+  it("a fully-occupied id space (max numId 2047) degrades on the first list without an invalid file", async () => {
+    const { bytes, report } = await exportDocx({
+      templateBytes: templateWithNumbering(2047),
+      details: details("<ol><li><p>only</p></li></ol>"),
+      template,
+      deps,
+    });
+    expect(report.notes.some((n) => n.code === "numbering-cap-reached")).toBe(true);
+    const doc = readPart(bytes, "word/document.xml");
+    const ids = [...doc.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => Number(m[1]));
+    expect(ids.length).toBeGreaterThan(0);
+    // Every referenced numId still resolves to a defined <w:num> (no dangling ref).
+    const numbering = readPart(bytes, "word/numbering.xml");
+    for (const id of new Set(ids)) expect(numbering).toContain(`<w:num w:numId="${id}"`);
   });
 });
