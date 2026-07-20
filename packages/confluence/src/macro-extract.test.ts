@@ -1,0 +1,125 @@
+import { describe, expect, test } from "bun:test";
+import { extractMacroBody } from "./macro-extract.js";
+import { storageToBlocks } from "./export-blocks.js";
+
+const DEFINITION = `<p>Before</p>
+<ac:structured-macro ac:name="multiexcerpt-macro" ac:macro-id="m1">
+  <ac:parameter ac:name="MultiExcerptName">intro</ac:parameter>
+  <ac:rich-text-body><p>Reusable <strong>intro</strong> text</p></ac:rich-text-body>
+</ac:structured-macro>
+<p>After</p>`;
+
+describe("walker: multiexcerpt definition renders transparently (spec 004 E4)", () => {
+  test("definition body surfaces like expand — no unknown block, no placeholder note", () => {
+    const { blocks, notes } = storageToBlocks(DEFINITION);
+    // Before / body / After — all paragraphs, no unknown block.
+    expect(blocks.every((b) => b.type !== "unknown")).toBe(true);
+    expect(JSON.stringify(blocks)).toContain("Reusable ");
+    expect(notes.some((n) => n.code === "unknown-macro" || n.code === "macro-not-rendered")).toBe(false);
+  });
+
+  test("legacy multiexcerpt spelling is transparent too", () => {
+    const { blocks } = storageToBlocks(
+      `<ac:structured-macro ac:name="multiexcerpt"><ac:parameter ac:name="name">x</ac:parameter><ac:rich-text-body><p>Body</p></ac:rich-text-body></ac:structured-macro>`
+    );
+    expect(blocks).toEqual([{ type: "paragraph", content: [{ type: "text", text: "Body" }] }]);
+  });
+});
+
+describe("walker: ac:link-wrapped page refs in macro parameters (e2e-observed)", () => {
+  // This is the REAL Cloud storage shape for include/excerpt-include: the page
+  // ref sits inside an <ac:link> wrapper under the unnamed parameter
+  // (e2e-observed on DOCSY — a direct-children-only scan degraded the macro to
+  // a "no resolvable page reference" placeholder).
+  const E2E_SHAPE = `<ac:structured-macro ac:name="excerpt-include" ac:macro-id="x1">
+    <ac:parameter ac:name=""><ac:link><ri:page ri:content-title="Source Page" ri:space-key="DOCSY"/></ac:link></ac:parameter>
+  </ac:structured-macro>`;
+
+  test("captures the ri:page ref through the ac:link wrapper", () => {
+    const { blocks } = storageToBlocks(E2E_SHAPE);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    expect(unknown?.type).toBe("unknown");
+    const unnamed = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "") : undefined;
+    expect(unnamed?.refs).toEqual([
+      { kind: "page", contentTitle: "Source Page", spaceKey: "DOCSY" },
+    ]);
+  });
+
+  test("captures an ri:attachment ref through an ac:image wrapper", () => {
+    const storage = `<ac:structured-macro ac:name="some-macro">
+      <ac:parameter ac:name="image"><ac:image><ri:attachment ri:filename="pic.png"/></ac:image></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const param = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "image") : undefined;
+    expect(param?.refs).toEqual([{ kind: "attachment", filename: "pic.png" }]);
+  });
+
+  test("an ri:page nested in a NON-wrapper element is still not captured", () => {
+    // Guard against a general deep scan: unrelated rich content inside a
+    // parameter must not be misread as a parameter ref.
+    const storage = `<ac:structured-macro ac:name="some-macro">
+      <ac:parameter ac:name="body"><div><ri:page ri:content-title="Not A Ref"/></div></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const param = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "body") : undefined;
+    expect(param?.refs).toBeUndefined();
+  });
+
+  test("direct ri:page children keep working unchanged", () => {
+    const storage = `<ac:structured-macro ac:name="include">
+      <ac:parameter ac:name=""><ri:page ri:content-id="123"/></ac:parameter>
+    </ac:structured-macro>`;
+    const { blocks } = storageToBlocks(storage);
+    const unknown = blocks.find((b) => b.type === "unknown");
+    const unnamed = unknown?.type === "unknown" ? unknown.params?.find((p) => p.name === "") : undefined;
+    expect(unnamed?.refs).toEqual([{ kind: "page", contentId: "123" }]);
+  });
+});
+
+describe("extractMacroBody (storage-based)", () => {
+  test("finds a named multiexcerpt and returns a walkable fragment", () => {
+    const fragment = extractMacroBody(DEFINITION, ["multiexcerpt-macro", "multiexcerpt"], "intro");
+    expect(fragment).toBeDefined();
+    const { blocks } = storageToBlocks(fragment!);
+    expect(JSON.stringify(blocks)).toContain("Reusable ");
+    // Marks survive the round trip.
+    expect(JSON.stringify(blocks)).toContain('"bold"');
+  });
+
+  test("name matching is case-insensitive; wrong name → undefined", () => {
+    expect(extractMacroBody(DEFINITION, ["multiexcerpt-macro"], "INTRO")).toBeDefined();
+    expect(extractMacroBody(DEFINITION, ["multiexcerpt-macro"], "other")).toBeUndefined();
+  });
+
+  test("empty name matches the first (unnamed excerpt macro)", () => {
+    const storage = `<ac:structured-macro ac:name="excerpt"><ac:rich-text-body><p>E</p></ac:rich-text-body></ac:structured-macro>`;
+    const fragment = extractMacroBody(storage, ["excerpt"], "");
+    expect(fragment).toBeDefined();
+    expect(storageToBlocks(fragment!).blocks[0]).toMatchObject({ type: "paragraph" });
+  });
+
+  test("nested macro bodies round-trip (no regex mis-slicing)", () => {
+    const storage = `<ac:structured-macro ac:name="multiexcerpt-macro">
+      <ac:parameter ac:name="MultiExcerptName">outer</ac:parameter>
+      <ac:rich-text-body>
+        <ac:structured-macro ac:name="info"><ac:rich-text-body><p>Nested</p></ac:rich-text-body></ac:structured-macro>
+      </ac:rich-text-body>
+    </ac:structured-macro>`;
+    const fragment = extractMacroBody(storage, ["multiexcerpt-macro"], "outer");
+    const { blocks } = storageToBlocks(fragment!);
+    expect(blocks[0]).toMatchObject({ type: "callout", kind: "info" });
+  });
+
+  test("no matching macro / no body → undefined", () => {
+    expect(extractMacroBody("<p>x</p>", ["multiexcerpt-macro"], "a")).toBeUndefined();
+    expect(
+      extractMacroBody(
+        `<ac:structured-macro ac:name="multiexcerpt-macro"><ac:parameter ac:name="name">a</ac:parameter></ac:structured-macro>`,
+        ["multiexcerpt-macro"],
+        "a"
+      )
+    ).toBeUndefined();
+  });
+});

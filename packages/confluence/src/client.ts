@@ -9,6 +9,7 @@ import {
   TlsOptions,
 } from "@atlcli/core";
 import { drainPaginated } from "./pagination.js";
+import { extractExportViewMacros as extractMacroFragments } from "./html-to-blocks.js";
 
 export type ConfluencePage = {
   id: string;
@@ -130,6 +131,10 @@ export interface AttachmentInfo {
   fileSize: number;
   /** Version number */
   version: number;
+  /** ISO timestamp of the attachment's last version (`version.when`), when the
+   *  Confluence response exposes it — used by the spec-004 diagram-preview
+   *  staleness note. Absent on responses that omit it. */
+  modified?: string;
   /** Page ID this attachment belongs to */
   pageId: string;
   /** Download URL relative to the resolved Confluence base */
@@ -315,6 +320,16 @@ export class ConfluenceClient {
       query?: Record<string, string | number | undefined>;
       body?: unknown;
       signal?: AbortSignal;
+      /**
+       * Response-body logging policy (spec 004). Default (`undefined`/`true`)
+       * keeps the existing full-body logging for all current callers. The
+       * export_view/macro-body methods pass `"meta-only"` (or `false`) so full
+       * page/macro CONTENT — potentially confidential and NOT redactable by
+       * key-based `redactSensitive` — never lands in the JSONL logs; only
+       * `{ byteLength, contentType, requestId }` is logged, in both the success
+       * and error paths.
+       */
+      logBody?: false | "meta-only" | true;
     } = {}
   ): Promise<unknown> {
     const url = new URL(`${this.confluenceBaseUrl}/rest/api${path}`);
@@ -329,6 +344,15 @@ export class ConfluenceClient {
     const requestId = generateRequestId();
     const method = options.method ?? "GET";
     const startTime = Date.now();
+    // spec 004: keep full page/macro content out of the JSONL logs when a caller
+    // opts out (`redactSensitive` only strips token-shaped KEYS, not arbitrary
+    // page text). Default behavior for every existing caller is unchanged.
+    const suppressBody = options.logBody === false || options.logBody === "meta-only";
+    const bodyMeta = (text: string, res: Response) => ({
+      byteLength: text.length,
+      contentType: res.headers.get("content-type") ?? undefined,
+      requestId,
+    });
 
     // Log request
     logger.api("request", {
@@ -341,7 +365,13 @@ export class ConfluenceClient {
         Accept: "application/json",
         "Content-Type": "application/json",
       }),
-      body: options.body ? redactSensitive(options.body) : undefined,
+      body: suppressBody
+        ? options.body
+          ? "[request body omitted: logBody policy]"
+          : undefined
+        : options.body
+          ? redactSensitive(options.body)
+          : undefined,
     });
 
     let lastError: Error | null = null;
@@ -398,7 +428,13 @@ export class ConfluenceClient {
       }
 
       if (!res.ok) {
-        const message = typeof data === "string" ? data : JSON.stringify(data);
+        // Under a logBody policy, keep the raw response text OUT of the thrown
+        // message too (it embeds full response bodies) — surface only status.
+        const message = suppressBody
+          ? `[response body omitted: logBody policy]`
+          : typeof data === "string"
+            ? data
+            : JSON.stringify(data);
         lastError = new Error(`Confluence API error (${res.status}): ${message}`);
 
         // Retry on server errors (5xx)
@@ -410,7 +446,7 @@ export class ConfluenceClient {
           requestId,
           status: res.status,
           statusText: res.statusText,
-          body: redactSensitive(data),
+          body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
           durationMs: Date.now() - startTime,
           error: lastError.message,
         });
@@ -426,7 +462,7 @@ export class ConfluenceClient {
         requestId,
         status: res.status,
         statusText: res.statusText,
-        body: redactSensitive(data),
+        body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
         durationMs: Date.now() - startTime,
       });
 
@@ -600,6 +636,73 @@ export class ConfluenceClient {
       ancestors,
       storage: data.body?.storage?.value ?? "",
     };
+  }
+
+  /**
+   * Fetch a single macro's server-side-rendered body via the v1 macro-body API
+   * (spec 004, T1.10). Confluence renders the macro (including third-party apps
+   * that declare an ADF export function) to HTML in the `export_view`
+   * representation. Response content is not logged verbatim (`logBody`).
+   *
+   * @returns the rendered HTML, or `undefined` when the macro id is unknown.
+   */
+  async getMacroBodyByMacroId(
+    pageId: string,
+    version: number,
+    macroId: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<string | undefined> {
+    const data = (await this.request(
+      `/content/${pageId}/history/${version}/macro/id/${encodeURIComponent(macroId)}`,
+      {
+        query: { expand: "body" },
+        logBody: "meta-only",
+        signal: options.signal,
+      }
+    )) as any;
+    // The v1 macro endpoint returns the macro's stored body; to obtain its
+    // export_view HTML we round-trip it through convertToExportView.
+    const body: string | undefined = data?.body ?? data?.value;
+    if (typeof body !== "string" || body === "") return undefined;
+    return this.convertToExportView(body, options);
+  }
+
+  /**
+   * Convert a storage-format fragment to the `export_view` representation
+   * (server-side rendered HTML) via the contentbody convert endpoint (spec 004,
+   * T1.10). Response content is not logged verbatim (`logBody`).
+   */
+  async convertToExportView(
+    storageFragment: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<string | undefined> {
+    const data = (await this.request(`/contentbody/convert/export_view`, {
+      method: "POST",
+      body: { value: storageFragment, representation: "storage" },
+      logBody: "meta-only",
+      signal: options.signal,
+    })) as any;
+    const html: unknown = data?.value;
+    return typeof html === "string" && html !== "" ? html : undefined;
+  }
+
+  /**
+   * Batch path (spec 004, T1.10): fetch the WHOLE page's `export_view` body
+   * once and return a `data-macro-id` → rendered-HTML map, so N macros on a page
+   * cost ONE request instead of N (rate-limit protection). Response content is
+   * not logged verbatim (`logBody`).
+   */
+  async getExportViewMacros(
+    pageId: string,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<Map<string, string>> {
+    const data = (await this.request(`/content/${pageId}`, {
+      query: { expand: "body.export_view,version" },
+      logBody: "meta-only",
+      signal: options.signal,
+    })) as any;
+    const html: string = data?.body?.export_view?.value ?? "";
+    return extractMacroFragments(html);
   }
 
   /**
@@ -1832,6 +1935,9 @@ export class ConfluenceClient {
       mediaType: item.metadata?.mediaType || item.extensions?.mediaType || "application/octet-stream",
       fileSize: item.extensions?.fileSize ?? 0,
       version: item.version?.number ?? 1,
+      // spec 004: keep the version timestamp for the diagram-preview staleness
+      // note (previously dropped). Absent on older responses → undefined.
+      modified: item.version?.when,
       pageId,
       downloadUrl: item._links?.download ?? "",
       url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,

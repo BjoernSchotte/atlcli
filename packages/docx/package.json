@@ -18,6 +18,7 @@
     "./fonts/*": "./fonts/*"
   },
   "dependencies": {
+    "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/diagram": "workspace:*",

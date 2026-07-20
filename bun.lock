@@ -46,7 +46,9 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@atlcli/jira": "workspace:*",
+        "@atlcli/pdf": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
       },
@@ -116,10 +118,18 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
         "shiki": "^4.3.1",
+      },
+    },
+    "packages/export-macros": {
+      "name": "@atlcli/export-macros",
+      "version": "0.6.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
       },
     },
     "packages/jira": {
@@ -135,6 +145,7 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-macros": "workspace:*",
       },
       "devDependencies": {
         "@atlcli/docx": "workspace:*",
@@ -227,6 +238,8 @@
     "@atlcli/diagram": ["@atlcli/diagram@workspace:packages/diagram"],
 
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
+
+    "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
 
     "@atlcli/extension": ["@atlcli/extension@workspace:apps/extension"],
 

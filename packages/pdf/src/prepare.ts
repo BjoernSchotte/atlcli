@@ -193,7 +193,14 @@ export async function preparePdfDocument(
                 resolver.resolve(
                   block.source.kind === "attachment"
                     ? { kind: "attachment", filename: block.source.filename }
-                    : { kind: "external", url: block.source.url }
+                    : {
+                        kind: "external",
+                        url: block.source.url,
+                        // Provenance marker (spec 004): export_view-derived URLs
+                        // are untrusted; the host resolver routes them through
+                        // its policy-checked external fetcher.
+                        ...(block.source.trust ? { trust: block.source.trust } : {}),
+                      }
                 )
               );
               const assetPath = addAsset(resolved, "image", {
@@ -249,10 +256,17 @@ export async function preparePdfDocument(
             });
             return block;
           }
+          case "unknown": {
+            // Placeholder floor (spec 004): prepare the preserved body so images
+            // /tables inside an unresolved macro still render; keep plainBody.
+            const prepared: PreparedPdfBlock = { type: "unknown", macroName: block.macroName };
+            if (block.body && block.body.length > 0) prepared.body = await walk(block.body);
+            if (block.plainBody !== undefined) prepared.plainBody = block.plainBody;
+            return prepared;
+          }
           case "heading":
           case "paragraph":
           case "divider":
-          case "unknown":
           case "pageBreak":
           case "anchor":
             return block;

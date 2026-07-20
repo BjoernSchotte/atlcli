@@ -104,7 +104,15 @@ export type ImageSource =
    * unset (set by `fetchExportTree` via {@link StorageToBlocksOptions.pageContext}).
    */
   | { kind: "attachment"; filename: string; pageId?: string }
-  | { kind: "external"; url: string };
+  /**
+   * An external image URL. `trust` marks provenance (spec 004): `"page"`
+   * (default/absent) is a page-author `<ac:image>` external ref on today's asset
+   * path; `"export-view"` is a URL rendered by a third-party app's macro HTML
+   * (untrusted) — the asset seam routes it through the stricter
+   * `ExternalAssetFetcher`/`ExternalAssetPolicy`. Set to `"export-view"` only by
+   * {@link htmlToExportBlocks}.
+   */
+  | { kind: "external"; url: string; trust?: "page" | "export-view" };
 
 /** Confluence callout kinds plus the generic titled panel. */
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
@@ -1150,6 +1158,15 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     return body ? walkBlocks(body.children, ctx) : [];
   }
 
+  // Multiexcerpt DEFINITION (`multiexcerpt-macro`/`multiexcerpt`, spec 004 E4):
+  // the macro that defines a named excerpt on its page renders its body
+  // transparently, same one-line treatment as `expand`. The *include*-side
+  // macros are resolved by the spec-004 renderer registry, not here.
+  if (macroName === "multiexcerpt-macro" || macroName === "multiexcerpt") {
+    const body = childByName(el, "ac:rich-text-body");
+    return body ? walkBlocks(body.children, ctx) : [];
+  }
+
   // Anchor macro (`<ac:structured-macro ac:name="anchor">`): the anchor name is
   // the macro's first (unnamed) parameter. Map it to the typed `anchor` block so
   // the composition anchor rewrite (spec 002) can register it as a jump target,
@@ -1486,6 +1503,16 @@ function captureMacroRef(el: XmlElement): MacroParamRef | undefined {
  * element-only parameter (e.g. `<ac:parameter><ri:page .../></ac:parameter>`),
  * which would drop the reference silently.
  */
+/**
+ * Wrapper elements whose `ri:*` children are still parameter references.
+ * Confluence's OWN storage for `include`/`excerpt-include` wraps the page ref
+ * in a link element — `<ac:parameter ac:name=""><ac:link><ri:page …/></ac:link>
+ * </ac:parameter>` (e2e-observed on Cloud, space DOCSY) — and image-shaped
+ * parameters analogously wrap `ri:attachment`/`ri:url` in `<ac:image>`. A
+ * direct-children-only scan misses both, silently dropping the reference.
+ */
+const PARAM_REF_WRAPPERS = new Set(["ac:link", "ac:image"]);
+
 function captureMacroParams(macro: XmlElement): MacroParameter[] {
   const params: MacroParameter[] = [];
   for (const p of childrenByName(macro, "ac:parameter")) {
@@ -1495,7 +1522,19 @@ function captureMacroParams(macro: XmlElement): MacroParameter[] {
     for (const child of p.children) {
       if (child.type !== "element") continue;
       const ref = captureMacroRef(child);
-      if (ref) refs.push(ref);
+      if (ref) {
+        refs.push(ref);
+        continue;
+      }
+      // One level into known wrappers only (never a general deep scan — an
+      // `ri:page` nested in unrelated rich content is not a parameter ref).
+      if (PARAM_REF_WRAPPERS.has(child.name)) {
+        for (const inner of child.children) {
+          if (inner.type !== "element") continue;
+          const wrapped = captureMacroRef(inner);
+          if (wrapped) refs.push(wrapped);
+        }
+      }
     }
     const param: MacroParameter = { name };
     if (text) param.text = text;

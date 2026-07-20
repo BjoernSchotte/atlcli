@@ -18,6 +18,7 @@
     "./licenses/*": "./licenses/*"
   },
   "dependencies": {
+    "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/diagram": "workspace:*"
   },

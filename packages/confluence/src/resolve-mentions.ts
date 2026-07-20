@@ -47,6 +47,12 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
         case "image":
           if (block.caption) visitInline(block.caption.content);
           break;
+        case "unknown":
+          // spec 004: the placeholder floor now renders `unknown.body`, so a
+          // mention inside an unresolved macro body IS visible — traverse it so
+          // it resolves to a display name instead of shipping a raw accountId.
+          if (block.body) visitBlocks(block.body);
+          break;
       }
     }
   };
@@ -110,11 +116,13 @@ function resolveBlockMentions(
       case "codeBlock":
       case "image":
         return block.caption ? { ...block, caption: resolveCaption(block.caption) } : block;
-      // NOTE: `unknown.body` is deliberately NOT traversed here. It is populated
-      // unconditionally by the walker but nothing renders it yet; resolving
-      // mentions inside it would make the extension's PDF path issue live user
-      // lookups for invisible content. Traversal belongs with Lane E (T1.7),
-      // once a macro renderer turns that body into visible output.
+      case "unknown":
+        // spec 004: `unknown.body` is now rendered by the placeholder floor, so
+        // its mentions must resolve too (previously skipped while the body was
+        // invisible — see collectUnresolvedMentionIds).
+        return block.body
+          ? { ...block, body: resolveBlockMentions(block.body, displayNames) }
+          : block;
       default:
         return block;
     }

@@ -11,6 +11,7 @@
  * `TokenResolver`/`LogSink` injection pattern.
  */
 import { exportDocx, type ExportInput, type ExportReport } from "./export.js";
+import type { MacroResolutionOptions } from "@atlcli/export-macros";
 
 /**
  * Optional per-call context threaded into the host seams (spec 002 cancellation).
@@ -40,6 +41,13 @@ export interface AssetRef {
   pageId?: string;
   /** Attachment filename, when known. */
   filename?: string;
+  /**
+   * Provenance (spec 004). `"page"` (default/absent) is a page-author ref on the
+   * trusted asset path; `"export-view"` is a URL from a third-party app's
+   * rendered macro HTML, which a host SHOULD route through its stricter
+   * `ExternalAssetFetcher`/policy rather than an unrestricted fetch.
+   */
+  trust?: "page" | "export-view";
 }
 
 /** How asset bytes are fetched (extension: session fetch · CLI: token client). */
@@ -78,6 +86,13 @@ export interface ExportEnv {
    * degrade to source code blocks with a report note.
    */
   rasterizer?: SvgRasterizer;
+  /**
+   * Dynamic-macro resolution options (spec 004), threaded into
+   * {@link ExportInput.macros} by {@link runExport} the same way
+   * `assets`/`rasterizer` are. A host with no live-macro support omits it —
+   * unresolved macros then stay placeholders (today's behavior).
+   */
+  macros?: MacroResolutionOptions;
   output: OutputSink;
 }
 
@@ -114,6 +129,7 @@ export async function runExport(input: RunExportInput, env: ExportEnv): Promise<
     templateBytes,
     assets: rest.assets ?? env.assets,
     rasterizer: rest.rasterizer ?? env.rasterizer,
+    macros: rest.macros ?? env.macros,
   });
   // Real cancellation: stop before committing output so an abort during the
   // asset-heavy phase leaves the destination untouched.
