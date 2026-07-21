@@ -38,10 +38,14 @@ import {
   ChevronRight,
   Eye,
   ExternalLink,
+  Maximize2,
   Minus,
+  Minimize2,
+  MoreHorizontal,
   MoveHorizontal,
   MoveVertical,
   Plus,
+  RefreshCw,
   X,
 } from "lucide-react";
 import type { PdfBytesHandle } from "@atlcli/pdf/browser";
@@ -61,6 +65,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent } from "../ui/card.js";
 import { FieldHelp, SectionHeading } from "../ui/field.js";
 import { cn } from "../ui/utils.js";
+import { useOptionalPublishingDraft } from "../app/publishing-draft.js";
 
 /** The capability a host must advertise for this screen to be usable. */
 export const PREVIEW_CAPABILITY: HostCapability = "pdf-preview";
@@ -118,6 +123,8 @@ export function usePreviewShell(): PreviewShellConfig {
 export interface PreviewCompileRequest {
   page: LoadedPage;
   pageUrl: string;
+  settings?: import("@atlcli/pdf/browser").PdfTemplateSettings;
+  resolveMacros?: boolean;
   signal?: AbortSignal;
 }
 
@@ -155,6 +162,10 @@ async function cacheParts(request: PreviewCompileRequest) {
     // label filter through, they belong here — `previewCacheParts` already
     // folds them into the identity.
     scope: { kind: "page", pageId: request.page.details.id },
+    settings: {
+      document: request.settings ?? null,
+      resolveMacros: request.resolveMacros !== false,
+    },
   });
 }
 
@@ -164,6 +175,8 @@ const defaultRuntime: PreviewRuntime = {
     const result = await runPagePdfPreview({
       page: request.page,
       pageUrl: request.pageUrl,
+      settings: request.settings,
+      ...(request.resolveMacros === false ? { macros: { live: false } } : {}),
       signal: request.signal,
     });
     if (result.status === "ready" && result.bytes) {
@@ -211,7 +224,10 @@ type PreviewPhase = "idle" | "compiling" | "ready" | "error";
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;
 
-export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
+export function PreviewScreen({
+  page,
+  embedded = false,
+}: ScreenProps & { embedded?: boolean }): React.JSX.Element {
   const { t } = useI18n();
   // `useI18n` deliberately provides a no-Provider fallback whose function
   // identity is not stable. The page-render effect writes link-layer state on
@@ -223,14 +239,36 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const shell = usePreviewShell();
   const full = shell.layout === "full";
   const runtime = useContext(PreviewRuntimeContext) ?? defaultRuntime;
+  const publishingDraft = useOptionalPublishingDraft();
 
   const loadedPage = page.status === "loaded" ? page.page : null;
   const pageUrl = page.status === "loaded" ? page.ref.url : null;
-
+  const draftSettings = publishingDraft?.pdfSettings;
+  const draftResolveMacros = publishingDraft?.resolveMacros;
+  const previewRequest = useMemo<PreviewCompileRequest | null>(
+    () =>
+      loadedPage && pageUrl
+        ? {
+            page: loadedPage,
+            pageUrl,
+            ...(draftSettings
+              ? {
+                  settings: draftSettings,
+                  resolveMacros: draftResolveMacros,
+                }
+              : {}),
+          }
+        : null,
+    [draftResolveMacros, draftSettings, loadedPage, pageUrl]
+  );
   const [phase, setPhase] = useState<PreviewPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PdfPreviewResult | null>(null);
   const [viewer, setViewer] = useState<PdfPreviewViewer | null>(null);
+  const [renderedRequest, setRenderedRequest] = useState<PreviewCompileRequest | null>(null);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [fitMode, setFitMode] = useState<PdfPreviewFit>(full ? "auto" : "width");
@@ -248,6 +286,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const [auto, setAuto] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fullscreenRootRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<PdfPreviewViewer | null>(null);
   viewerRef.current = viewer;
 
@@ -288,8 +327,39 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     []
   );
 
+  // Fullscreen belongs to the dedicated preview tab, not the side panel. The
+  // API requires a user gesture in the document that enters fullscreen, so the
+  // compact shell first opens this tab and the user promotes it from here.
+  useEffect(() => {
+    if (!full || typeof document === "undefined") return;
+    const root = fullscreenRootRef.current;
+    const supported = Boolean(
+      document.fullscreenEnabled &&
+        root &&
+        typeof root.requestFullscreen === "function" &&
+        typeof document.exitFullscreen === "function"
+    );
+    setFullscreenSupported(supported);
+    const sync = () => setIsFullscreen(document.fullscreenElement === root);
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [full]);
+
+  const toggleFullscreen = useCallback(async () => {
+    const root = fullscreenRootRef.current;
+    if (!root || typeof document === "undefined") return;
+    setFullscreenError(null);
+    try {
+      if (document.fullscreenElement === root) await document.exitFullscreen();
+      else await root.requestFullscreen({ navigationUI: "hide" });
+    } catch (cause) {
+      setFullscreenError(t("preview.fullscreenFailed", { message: messageOf(cause) }));
+    }
+  }, [t]);
+
   const show = useCallback(
-    async (next: PdfPreviewResult) => {
+    async (next: PdfPreviewResult, shownRequest: PreviewCompileRequest) => {
       if (!next.bytes) {
         setPhase("error");
         setError(t("preview.failed", { message: "no output" }));
@@ -299,6 +369,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
       const opened = await runtime.openViewer(next.bytes);
       setResult(next);
       setViewer(opened);
+      setRenderedRequest(shownRequest);
       setLinkLayer(null);
       setPageNumber(1);
       setZoom(1);
@@ -309,38 +380,41 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   );
 
   const compile = useCallback(async () => {
-    if (!loadedPage || !pageUrl) return;
+    if (!previewRequest) return;
     setPhase("compiling");
     setError(null);
     try {
-      const next = await runtime.compile({ page: loadedPage, pageUrl });
+      const next = await runtime.compile(previewRequest);
       // A superseded preview is not an error and not a result: a newer request
       // is already in flight, so the previous view simply stays on screen.
-      if (next.status === "superseded") return;
-      await show(next);
+      if (next.status === "superseded") {
+        setPhase(viewerRef.current ? "ready" : "idle");
+        return;
+      }
+      await show(next, previewRequest);
     } catch (cause) {
       setPhase("error");
       setError(t("preview.failed", { message: messageOf(cause) }));
     }
-  }, [loadedPage, pageUrl, runtime, show, t]);
+  }, [previewRequest, runtime, show, t]);
 
   // Open over the cached bytes when there are any. This is the entire reason
   // the large-preview tab is not a second compile: it mounts the same screen,
   // finds the entry the side panel wrote, and renders it.
   useEffect(() => {
-    if (!loadedPage || !pageUrl || phase !== "idle") return;
+    if (!previewRequest || phase !== "idle") return;
     let cancelled = false;
     void runtime
-      .readCached({ page: loadedPage, pageUrl })
+      .readCached(previewRequest)
       .then(async (cached) => {
         if (cancelled || !cached) return;
-        await show(cached);
+        await show(cached, previewRequest);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [loadedPage, pageUrl, phase, runtime, show]);
+  }, [phase, previewRequest, runtime, show]);
 
   // Auto-refresh: the CONFCLOUD-84742 loop is `edit → publish → preview`, and
   // publishing is exactly what changes the page version the panel already
@@ -348,11 +422,8 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   // (SPA navigation re-firing) collapses into one compile; superseding an
   // in-flight compile is the compiler host's coalescing rule, never
   // `pdf:cancel` — that path terminates the warm worker.
-  const versionKey = loadedPage
-    ? `${pageUrl}|${loadedPage.details.id}|${loadedPage.details.version ?? ""}`
-    : null;
   useEffect(() => {
-    if (!auto || !versionKey) return;
+    if (!auto || !previewRequest) return;
     let cancelled = false;
     let scheduler: { cancel(): void } | null = null;
     void import("../../utils/pdf/preview.js").then(({ createPreviewScheduler }) => {
@@ -365,7 +436,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
       cancelled = true;
       scheduler?.cancel();
     };
-  }, [auto, versionKey, compile]);
+  }, [auto, previewRequest, compile]);
 
   // Render the current page whenever it, the zoom, fit or frame size changes.
   // document changes. Only the visible page is rasterized — never the whole
@@ -434,12 +505,41 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
         total: result.totalChapters,
       })
     : t("preview.scope.full");
+  const hasPreview = result !== null && viewer !== null;
+  const stale = hasPreview && renderedRequest !== previewRequest;
+  const previewStatus =
+    phase === "compiling"
+      ? "compiling"
+      : phase === "error"
+        ? "error"
+        : hasPreview
+          ? stale
+            ? "stale"
+            : "current"
+          : "empty";
+  const statusLabel = t(`preview.status.${previewStatus}`);
+  const statusClass =
+    previewStatus === "current"
+      ? "bg-success/15 text-success"
+      : previewStatus === "stale"
+        ? "bg-warning/15 text-warning"
+        : previewStatus === "error"
+          ? "bg-destructive/10 text-destructive"
+          : previewStatus === "compiling"
+            ? "bg-primary/10 text-primary"
+            : "bg-muted text-muted-foreground";
 
   return (
     <div
-      className={cn("flex flex-col", full ? "h-full min-h-0" : "gap-4")}
+      ref={fullscreenRootRef}
+      className={cn(
+        "flex flex-col",
+        full ? "h-full min-h-0" : embedded ? "gap-2" : "gap-4",
+        isFullscreen && "bg-background"
+      )}
       data-testid="preview-screen"
       data-layout={shell.layout}
+      data-fullscreen={isFullscreen ? "true" : "false"}
     >
       {full ? (
         <header
@@ -449,29 +549,148 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
           <div className="text-sm font-semibold" data-testid="preview-scope">
             {scopeLabel}
           </div>
-          {shell.closePreview && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-11"
-              aria-label={t("preview.closeLarge")}
-              title={t("preview.closeLarge")}
-              onClick={shell.closePreview}
-              data-testid="preview-close"
-            >
-              <X aria-hidden="true" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {fullscreenSupported && hasPreview && (
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={isFullscreen ? t("preview.exitFullscreen") : t("preview.enterFullscreen")}
+                title={isFullscreen ? t("preview.exitFullscreen") : t("preview.enterFullscreen")}
+                onClick={() => void toggleFullscreen()}
+                data-testid="preview-fullscreen"
+              >
+                {isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+              </Button>
+            )}
+            {shell.closePreview && (
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t("preview.closeLarge")}
+                title={t("preview.closeLarge")}
+                onClick={shell.closePreview}
+                data-testid="preview-close"
+              >
+                <X aria-hidden="true" />
+              </Button>
+            )}
+          </div>
         </header>
-      ) : (
+      ) : !embedded ? (
         <SectionHeading>{t("preview.title")}</SectionHeading>
-      )}
+      ) : null}
 
       {!full && (
-        <Card>
-          <CardContent className="flex flex-col gap-2 p-3">
+        <Card className={cn(embedded && "border-0 bg-transparent shadow-none")}>
+          <CardContent className={cn("flex flex-col gap-2", embedded ? "p-0" : "p-3")}>
             {!loadedPage ? (
               <Alert data-testid="preview-needs-page">{t("preview.needsPage")}</Alert>
+            ) : embedded ? (
+              <div className="rounded-md border bg-card px-2 py-1.5" data-testid="preview-summary">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold">{t("preview.status.label")}</div>
+                    <div
+                      className="mt-0.5 truncate text-[10px] text-muted-foreground"
+                      title={t("preview.publishedOnly")}
+                      data-testid="preview-metadata"
+                    >
+                      {loadedPage.details.version !== undefined &&
+                        t("preview.meta.versionShort", {
+                          version: loadedPage.details.version,
+                        })}
+                      {loadedPage.details.version !== undefined && hasPreview && " · "}
+                      {hasPreview && t("preview.meta.pages", { count: pageCount })}
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                      statusClass
+                    )}
+                    data-testid="preview-status"
+                    data-status={previewStatus}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+
+                <div className="mt-1.5 flex items-center gap-1">
+                  {previewStatus === "current" && shell.openLargePreview && (
+                    <Button
+                      size="sm"
+                      onClick={shell.openLargePreview}
+                      data-testid="preview-open-large"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                      {t("preview.openLargeCompact")}
+                    </Button>
+                  )}
+                  <Button
+                    size={previewStatus === "current" && shell.openLargePreview ? "icon" : "sm"}
+                    variant={previewStatus === "current" && shell.openLargePreview ? "ghost" : "default"}
+                    className={cn(previewStatus === "current" && shell.openLargePreview && "size-7")}
+                    onClick={() => void compile()}
+                    disabled={phase === "compiling"}
+                    aria-label={
+                      previewStatus === "current" && shell.openLargePreview
+                        ? t("preview.refresh")
+                        : undefined
+                    }
+                    title={
+                      previewStatus === "current" && shell.openLargePreview
+                        ? t("preview.refresh")
+                        : undefined
+                    }
+                    data-testid="preview-generate"
+                  >
+                    {hasPreview ? <RefreshCw aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                    {!(previewStatus === "current" && shell.openLargePreview) &&
+                      (phase === "compiling"
+                        ? t("preview.status.compiling")
+                        : phase === "error"
+                          ? t("preview.retry")
+                          : hasPreview
+                            ? t("preview.refresh")
+                            : t("preview.generate"))}
+                  </Button>
+                  {previewStatus !== "current" && hasPreview && shell.openLargePreview && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="size-7"
+                      onClick={shell.openLargePreview}
+                      aria-label={t("preview.openLarge")}
+                      title={t("preview.openLarge")}
+                      data-testid="preview-open-large"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                    </Button>
+                  )}
+                  <details className="relative ml-auto text-xs" data-testid="preview-options">
+                    <summary
+                      className="flex size-7 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground [&::-webkit-details-marker]:hidden"
+                      aria-label={t("preview.options")}
+                      title={t("preview.options")}
+                    >
+                      <MoreHorizontal className="size-4" aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 top-8 z-20 flex w-64 flex-col gap-1.5 rounded-md border bg-popover p-2 text-popover-foreground shadow-md">
+                      <label className="flex items-center gap-2 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={auto}
+                          onChange={(event) => setAuto(event.target.checked)}
+                          data-testid="preview-auto"
+                        />
+                        {t("preview.auto")}
+                      </label>
+                      <FieldHelp>{t("preview.autoHelp")}</FieldHelp>
+                      <FieldHelp>{t("preview.publishedOnly")}</FieldHelp>
+                    </div>
+                  </details>
+                </div>
+              </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
@@ -503,7 +722,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
                   />
                   {t("preview.auto")}
                 </label>
-                <FieldHelp>{t("preview.autoHelp")}</FieldHelp>
+                {!embedded && <FieldHelp>{t("preview.autoHelp")}</FieldHelp>}
                 <FieldHelp>{t("preview.publishedOnly")}</FieldHelp>
               </>
             )}
@@ -511,7 +730,13 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
         </Card>
       )}
 
-      {phase === "compiling" && (
+      {fullscreenError && (
+        <Alert role="alert" tone="danger" data-testid="preview-fullscreen-error">
+          {fullscreenError}
+        </Alert>
+      )}
+
+      {!embedded && phase === "compiling" && (
         <Alert tone="info" data-testid="preview-compiling">
           {t("preview.compiling")}
         </Alert>
@@ -523,17 +748,26 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
         </Alert>
       )}
 
-      {phase === "idle" && loadedPage && (
+      {!embedded && phase === "idle" && loadedPage && (
         <Alert data-testid="preview-empty">{t("preview.empty")}</Alert>
       )}
 
-      {phase === "ready" && result && (
+      {hasPreview && result && (
         <Card
-          className={cn(full && "flex min-h-0 flex-1 flex-col rounded-none border-0")}
+          className={cn(
+            full && "flex min-h-0 flex-1 flex-col rounded-none border-0",
+            embedded && "rounded-lg"
+          )}
           data-testid="preview-document"
         >
-          <CardContent className={cn("flex flex-col gap-2 p-3", full && "min-h-0 flex-1")}>
-            {!full && (
+          <CardContent
+            className={cn(
+              "flex flex-col gap-2",
+              embedded ? "p-2" : "p-3",
+              full && "min-h-0 flex-1"
+            )}
+          >
+            {!full && (!embedded || result.truncated) && (
               <div className="text-xs text-muted-foreground" data-testid="preview-scope">
                 {scopeLabel}
               </div>
@@ -705,4 +939,5 @@ export const previewScreenDefinition: ScreenDefinition = {
   component: PreviewScreen,
   requirements: [{ kind: "loaded-page" }, { kind: "capability", capability: PREVIEW_CAPABILITY }],
   order: 15,
+  navigation: "hidden",
 };

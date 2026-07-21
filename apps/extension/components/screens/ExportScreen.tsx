@@ -23,19 +23,12 @@
  * field (`packages/docx`'s `ExportInput` has none), so nothing here can write
  * one — see `settings-schema.ts`.
  */
-import React, { useCallback, useEffect, useMemo, useReducer, useState } from "react";
-import type { ExportScope, LabelFilter } from "@atlcli/confluence/browser";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FileText, FileType2 } from "lucide-react";
 import type { ScreenProps } from "../../utils/screens/registry.js";
-import type { ExportScopeRequest, TemplateSettingValue } from "../../utils/ports/index.js";
-import {
-  initialScopeState,
-  reduceScope,
-  toExportScope,
-  toLabelFilter,
-  type ScopeContext,
-} from "../../utils/scope-state.js";
 import { useT } from "../../utils/i18n/context.js";
 import { Button } from "../ui/button.js";
+import { Card, CardContent } from "../ui/card.js";
 import { PageSummary } from "../export/PageSummary.js";
 import { PdfExportPanel } from "../export/PdfExportPanel.js";
 import { DocxExportPanel } from "../export/DocxExportPanel.js";
@@ -43,13 +36,13 @@ import { ScopeSection } from "../export/ScopeSection.js";
 import { SpaceExportConfirm } from "../export/SpaceExportConfirm.js";
 import { SettingsForm } from "../export/SettingsForm.js";
 import { PDF_LEVEL_A_SETTINGS } from "../export/pdf-settings.js";
-import {
-  defaultValues,
-  mergeValues,
-  toPdfSettings,
-  type SettingValue,
-} from "../export/settings-schema.js";
 import { TEMPLATES_SCREEN_ID } from "./TemplatesScreen.js";
+import { PreviewScreen } from "./PreviewScreen.js";
+import {
+  PublishingDraftProvider,
+  useOptionalPublishingDraft,
+  usePublishingDraft,
+} from "../app/publishing-draft.js";
 
 /**
  * `BUILTIN_PDF_TEMPLATE_ID` from `@atlcli/pdf`, duplicated as a literal so the
@@ -58,108 +51,39 @@ import { TEMPLATES_SCREEN_ID } from "./TemplatesScreen.js";
  * `tests/settings-form.test.tsx` asserts the two are equal, so a rename in the
  * engine fails loudly instead of silently orphaning everyone's saved settings.
  */
-export const PDF_BUILTIN_TEMPLATE_ID = "builtin.editorial-indigo";
+export { PDF_BUILTIN_TEMPLATE_ID } from "../app/publishing-draft.js";
 
-/** Prefs are stored per engine; PDF templates are Typst ones. */
-const PDF_PREFS_ENGINE = "typst" as const;
+export function ExportScreen(props: ScreenProps): React.JSX.Element {
+  const draft = useOptionalPublishingDraft();
+  if (draft) return <ExportScreenBody {...props} />;
+  return (
+    <PublishingDraftProvider ports={props.ports} page={props.page}>
+      <ExportScreenBody {...props} />
+    </PublishingDraftProvider>
+  );
+}
 
-export function ExportScreen({ ports, page, retry, navigate }: ScreenProps): React.JSX.Element {
+function ExportScreenBody({ ports, page, retry, navigate }: ScreenProps): React.JSX.Element {
   const t = useT();
   const loadedPage = page.status === "loaded" ? page.page : null;
   const pageUrl = page.status === "loaded" ? page.ref.url : null;
   const spaceKey = loadedPage?.details.spaceKey ?? undefined;
-
-  const [scope, dispatchScope] = useReducer(reduceScope, initialScopeState);
-  const [resolveMacros, setResolveMacros] = useState(true);
-
-  const scopeContext = useMemo<ScopeContext>(
-    () => ({ pageId: loadedPage?.details.id ?? "", spaceKey }),
-    [loadedPage, spaceKey]
-  );
-
-  // `toExportScope` runs the shared `validateExportScope`, which throws for a
-  // space scope with no space key. The radio already prevents that, so a throw
-  // here means the host handed us an inconsistent page — fall back to "let the
-  // engine export the loaded page", which is what every pre-T5.1 host does.
-  const exportScope = useMemo<ExportScope | undefined>(() => {
-    if (!loadedPage) return undefined;
-    try {
-      return toExportScope(scope, scopeContext);
-    } catch {
-      return undefined;
-    }
-  }, [scope, scopeContext, loadedPage]);
-
-  const labels = useMemo<LabelFilter | undefined>(() => toLabelFilter(scope), [scope]);
-
-  const scopeRequest = useMemo<ExportScopeRequest>(
-    () => ({
-      ...(exportScope ? { scope: exportScope } : {}),
-      ...(labels ? { labels } : {}),
-      resolveMacros,
-    }),
-    [exportScope, labels, resolveMacros]
-  );
-
-  // ---- PDF Level-A settings -------------------------------------------------
-
-  const [values, setValues] = useState<Record<string, SettingValue>>(() =>
-    defaultValues(PDF_LEVEL_A_SETTINGS)
-  );
-  const library = ports.templates ?? null;
-
-  useEffect(() => {
-    if (!library) return;
-    let cancelled = false;
-    void library
-      .readSettings(PDF_PREFS_ENGINE, spaceKey, PDF_BUILTIN_TEMPLATE_ID)
-      .then((stored) => {
-        if (!cancelled) setValues(mergeValues(PDF_LEVEL_A_SETTINGS, stored));
-      })
-      .catch(() => {
-        // A settings read failure must never block an export: the form simply
-        // starts at the schema defaults, which is what the engine applies too.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [library, spaceKey]);
-
-  const persist = useCallback(
-    (next: Record<string, SettingValue>) => {
-      if (!library) return;
-      void library
-        .writeSettings(
-          PDF_PREFS_ENGINE,
-          spaceKey,
-          PDF_BUILTIN_TEMPLATE_ID,
-          next as Record<string, TemplateSettingValue>
-        )
-        .catch(() => {
-          /* Best-effort: an unsaved preference is not worth failing an export. */
-        });
-    },
-    [library, spaceKey]
-  );
-
-  const onSettingChange = useCallback(
-    (key: string, value: SettingValue) => {
-      setValues((prev) => {
-        const next = { ...prev, [key]: value };
-        persist(next);
-        return next;
-      });
-    },
-    [persist]
-  );
-
-  const onSettingsReset = useCallback(() => {
-    const next = defaultValues(PDF_LEVEL_A_SETTINGS);
-    setValues(next);
-    persist(next);
-  }, [persist]);
-
-  const pdfSettings = useMemo(() => toPdfSettings(values), [values]);
+  const {
+    format,
+    setFormat,
+    scope,
+    dispatchScope,
+    scopeContext,
+    exportScope,
+    labels,
+    scopeRequest,
+    resolveMacros,
+    setResolveMacros,
+    values,
+    onSettingChange,
+    onSettingsReset,
+    pdfSettings,
+  } = usePublishingDraft();
 
   // ---- The space-export confirmation ---------------------------------------
 
@@ -227,17 +151,56 @@ export function ExportScreen({ ports, page, retry, navigate }: ScreenProps): Rea
     run?.();
   }, [pending]);
 
+  const pdfSettingsSummary = useMemo(() => {
+    const parts = [
+      values.page === "letter" ? t("pdf.settings.page.letter") : t("pdf.settings.page.a4"),
+      values.orientation === "landscape"
+        ? t("pdf.settings.orientation.landscape")
+        : t("pdf.settings.orientation.portrait"),
+    ];
+    if (values.cover === true) parts.push(t("pdf.settings.cover"));
+    if (values.outline === true) parts.push(t("pdf.settings.outline"));
+    return parts.join(" · ");
+  }, [t, values.cover, values.orientation, values.outline, values.page]);
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3" data-testid="publishing-studio">
       <PageSummary state={page} onRetry={retry} />
 
-      <ScopeSection
-        state={scope}
-        dispatch={dispatchScope}
-        context={scopeContext}
-        resolveMacros={resolveMacros}
-        onResolveMacrosChange={setResolveMacros}
-      />
+      <StudioStep number="01" label={t("studio.step.scope")}>
+        <ScopeSection
+          state={scope}
+          dispatch={dispatchScope}
+          context={scopeContext}
+          resolveMacros={resolveMacros}
+          onResolveMacrosChange={setResolveMacros}
+        />
+      </StudioStep>
+
+      <StudioStep number="02" label={t("studio.step.format")}>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("studio.format.label")}>
+          {ports.pdf && (
+            <FormatChoice
+              active={format === "pdf"}
+              icon={<FileText aria-hidden="true" />}
+              title="PDF"
+              detail={t("studio.format.pdfDetail")}
+              onClick={() => setFormat("pdf")}
+              testId="format-pdf"
+            />
+          )}
+          {ports.docx && ports.docxTemplates && (
+            <FormatChoice
+              active={format === "docx"}
+              icon={<FileType2 aria-hidden="true" />}
+              title="Word"
+              detail={t("studio.format.docxDetail")}
+              onClick={() => setFormat("docx")}
+              testId="format-docx"
+            />
+          )}
+        </div>
+      </StudioStep>
 
       {pending !== null && (
         <SpaceExportConfirm
@@ -250,49 +213,131 @@ export function ExportScreen({ ports, page, retry, navigate }: ScreenProps): Rea
       )}
 
       {ports.pdf && (
-        <>
-          <PdfExportPanel
-            port={ports.pdf}
-            page={loadedPage}
-            pageUrl={pageUrl}
-            scopeRequest={scopeRequest}
-            settings={pdfSettings}
-            gate={gate}
-          />
-          <SettingsForm
-            schema={PDF_LEVEL_A_SETTINGS}
-            values={values}
-            onChange={onSettingChange}
-            onReset={onSettingsReset}
-            idPrefix="pdf-settings"
-            collapsible
-          />
-        </>
+        <div
+          hidden={format !== "pdf"}
+          style={format !== "pdf" ? { display: "none" } : undefined}
+          className="flex flex-col gap-3"
+        >
+          <StudioStep number="03" label={t("studio.step.design")}>
+            <SettingsForm
+              schema={PDF_LEVEL_A_SETTINGS}
+              values={values}
+              onChange={onSettingChange}
+              onReset={onSettingsReset}
+              idPrefix="pdf-settings"
+              collapsible
+              summary={pdfSettingsSummary}
+            />
+          </StudioStep>
+
+          {ports.host.capabilities.includes("pdf-preview") && (
+            <StudioStep number="04" label={t("studio.step.review")}>
+              <div data-testid="studio-preview">
+                <PreviewScreen ports={ports} page={page} retry={retry} navigate={navigate} embedded />
+              </div>
+            </StudioStep>
+          )}
+
+          <StudioStep number={ports.host.capabilities.includes("pdf-preview") ? "05" : "04"} label={t("studio.step.export")}>
+            <PdfExportPanel
+              port={ports.pdf}
+              page={loadedPage}
+              pageUrl={pageUrl}
+              scopeRequest={scopeRequest}
+              settings={pdfSettings}
+              gate={gate}
+              compact
+            />
+          </StudioStep>
+        </div>
       )}
 
       {ports.docx && ports.docxTemplates && (
-        <DocxExportPanel
-          port={ports.docx}
-          store={ports.docxTemplates}
-          page={loadedPage}
-          pageUrl={pageUrl}
-          scopeRequest={scopeRequest}
-          gate={gate}
-        />
-      )}
+        <div
+          hidden={format !== "docx"}
+          style={format !== "docx" ? { display: "none" } : undefined}
+          className="flex flex-col gap-3"
+        >
+          <DocxExportPanel
+            port={ports.docx}
+            store={ports.docxTemplates}
+            page={loadedPage}
+            pageUrl={pageUrl}
+            scopeRequest={scopeRequest}
+            gate={gate}
+          />
 
-      {ports.templates && (
-        <div>
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="open-template-library"
-            onClick={() => navigate(TEMPLATES_SCREEN_ID)}
-          >
-            {t("templates.manage")}
-          </Button>
+          {ports.templates && (
+            <div className="border-t pt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="open-template-library"
+                onClick={() => navigate(TEMPLATES_SCREEN_ID)}
+              >
+                {t("templates.manage")}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function StudioStep({
+  number,
+  label,
+  children,
+}: {
+  number: string;
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <section className="flex flex-col gap-1.5" data-testid={`studio-step-${number}`}>
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="text-primary">{number}</span>
+        <span>{label}</span>
+        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function FormatChoice({
+  active,
+  icon,
+  title,
+  detail,
+  onClick,
+  testId,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  onClick: () => void;
+  testId: string;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      data-testid={testId}
+      onClick={onClick}
+      className={
+        "min-h-16 rounded-lg border p-2 text-left transition-colors " +
+        (active
+          ? "border-primary bg-accent text-foreground shadow-sm"
+          : "bg-card text-foreground hover:border-primary/40 hover:bg-accent/50")
+      }
+    >
+      <span className="mb-1 block text-primary [&>svg]:size-4">{icon}</span>
+      <span className="block text-xs font-semibold">{title}</span>
+      <span className="block text-[10px] leading-tight text-muted-foreground">{detail}</span>
+    </button>
   );
 }

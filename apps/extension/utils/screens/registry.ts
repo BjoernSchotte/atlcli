@@ -74,6 +74,8 @@ export interface ScreenDefinition {
   whenUnmet?: UnmetBehavior;
   /** Ascending sort key; ties keep registration order. */
   order?: number;
+  /** Placement in a scalable product shell. Defaults to the area's primary nav. */
+  navigation?: "primary" | "utility" | "hidden";
 }
 
 /** What the shell knows about the world when it resolves the registry. */

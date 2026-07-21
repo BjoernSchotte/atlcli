@@ -59,4 +59,5 @@ export const templatesScreenDefinition: ScreenDefinition = {
   component: TemplatesScreen,
   requirements: [{ kind: "capability", capability: TEMPLATE_LIBRARY_CAPABILITY }],
   order: 20,
+  navigation: "primary",
 };

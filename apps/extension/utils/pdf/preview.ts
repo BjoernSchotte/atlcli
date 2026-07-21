@@ -64,7 +64,11 @@ import {
   hashTreeVersions,
   type PreviewCacheKeyParts,
 } from "./preview-cache.js";
-import { runPdfExport as runExtensionPdfExport, type PdfExportPhase } from "./run-export.js";
+import {
+  runPdfExport as runExtensionPdfExport,
+  type PdfExportPhase,
+  type RunPdfMacroOptions,
+} from "./run-export.js";
 
 export { isPreviewSupersededError };
 
@@ -339,6 +343,8 @@ export interface PdfPreviewResult {
 export interface PdfPagePreviewInput {
   page: LoadedPage;
   pageUrl: string;
+  settings?: PdfTemplateSettings;
+  macros?: RunPdfMacroOptions;
   theme?: PdfThemeOptions;
   profile?: PdfProfile;
   signal?: AbortSignal;
@@ -407,6 +413,8 @@ export async function runPagePdfPreview(
       {
         page: input.page,
         pageUrl: input.pageUrl,
+        settings: input.settings,
+        macros: input.macros,
         theme: input.theme,
         profile: input.profile,
         signal: input.signal,

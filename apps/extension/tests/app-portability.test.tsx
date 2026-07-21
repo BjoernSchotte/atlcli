@@ -581,12 +581,55 @@ describe("the shell renders from the registry", () => {
     expect(maybeFind("nav-settings")).toBeNull();
     expect(maybeFind("pdf-section")).not.toBeNull();
   });
+
+  it("keeps the Publishing draft when moving through the product shell", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+
+    await click("scope-kind-tree");
+    expect((find("scope-kind-tree") as unknown as HTMLInputElement).checked).toBe(true);
+
+    await click("nav-settings");
+    expect(maybeFind("screen-settings")).not.toBeNull();
+    await click("nav-export");
+
+    expect((find("scope-kind-tree") as unknown as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("integrates Preview into Studio instead of adding a fourth local tab", async () => {
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), {}, [
+          "pdf-export",
+          "docx-export",
+          "docx-template-store",
+          "pdf-preview",
+        ])}
+        localeCandidates={["en"]}
+      />
+    );
+
+    expect(maybeFind("studio-preview")).not.toBeNull();
+    expect(find("studio-step-04").textContent).toContain("Review");
+    expect(find("studio-step-05").textContent).toContain("Export");
+    expect(find("pdf-settings-summary").textContent).toContain("A4 · Portrait");
+    expect(maybeFind("nav-preview")).toBeNull();
+  });
+
+  it("uses the compact editorial density of the sidebar mockup", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+
+    const header = find("app-shell").querySelector("header");
+    expect(header?.className).toContain("min-h-12");
+    expect(find("nav-export").className).toContain("min-h-8");
+    expect(find("format-pdf").className).toContain("min-h-16");
+    expect(html()).not.toContain(">Publishing Studio</h1>");
+  });
 });
 
 describe("i18n reaches the rendered app", () => {
   it("renders German when the host language is German", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["de-AT"]} />);
-    expect(find("nav-export").textContent).toContain("Export");
+    expect(find("nav-export").textContent).toContain("Studio");
     expect(find("nav-settings").textContent).toContain("Einstellungen");
     expect(find("nav-activity").getAttribute("title")).toBe(
       "Hintergrund-Jobs gibt es in dieser App noch nicht."
@@ -601,7 +644,7 @@ describe("i18n reaches the rendered app", () => {
     await selectValue("settings-language", "de");
 
     expect(find("nav-settings").textContent).toContain("Einstellungen");
-    expect(find("nav-export").textContent).toContain("Export");
+    expect(find("nav-export").textContent).toContain("Studio");
   });
 
   it("persists the language through the settings port", async () => {

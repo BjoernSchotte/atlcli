@@ -19,6 +19,7 @@ import { Button } from "../ui/button.js";
 import { SectionHeading } from "../ui/field.js";
 import { useExportRuns } from "../app/export-runs.js";
 import { PdfReportView } from "./PdfReportView.js";
+import { cn } from "../ui/utils.js";
 
 const PHASE_KEYS: Record<ExportPhase, MessageKey> = {
   preparing: "pdf.phase.preparing",
@@ -36,6 +37,7 @@ export function PdfExportPanel({
   scopeRequest,
   settings,
   gate = (run) => run(),
+  compact = false,
 }: {
   port: PdfExportPort;
   page: LoadedPage | null;
@@ -46,6 +48,8 @@ export function PdfExportPanel({
   settings?: PdfTemplateSettings;
   /** Lets the screen interpose a confirmation (space scope) before starting. */
   gate?: (run: () => void) => void;
+  /** Studio presentation: the surrounding numbered step owns the heading. */
+  compact?: boolean;
 }): React.JSX.Element {
   const t = useT();
   const { pdf, startPdf, cancelPdf } = useExportRuns();
@@ -53,13 +57,13 @@ export function PdfExportPanel({
 
   return (
     <section data-testid="pdf-section" className="flex flex-col gap-2">
-      <SectionHeading>{t("pdf.title")}</SectionHeading>
+      {!compact && <SectionHeading>{t("pdf.title")}</SectionHeading>}
       {/*
         Stays true for v1: 007's Level-B custom-Typst render path does not
         exist, so there is deliberately no PDF template upload control here —
         only the settings form below, which tunes the built-in design.
       */}
-      <p className="m-0 text-xs text-muted-foreground">{t("pdf.builtIn")}</p>
+      {!compact && <p className="m-0 text-xs text-muted-foreground">{t("pdf.builtIn")}</p>}
 
       <div className="flex items-center gap-2">
         <Button
@@ -78,6 +82,7 @@ export function PdfExportPanel({
           disabled={!ready || Boolean(pdf.phase)}
           data-testid="pdf-export"
           title={ready ? t("pdf.export") : t("pdf.needsPage")}
+          className={cn(compact && "w-full")}
         >
           {pdf.phase ? t(PHASE_KEYS[pdf.phase]) : t("pdf.export")}
         </Button>

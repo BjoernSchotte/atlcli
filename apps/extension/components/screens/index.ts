@@ -49,6 +49,7 @@ export const defaultScreens: readonly ScreenDefinition[] = [
     icon: FileDown,
     component: ExportScreen,
     order: 10,
+    navigation: "primary",
     // No `loaded-page` requirement on purpose: the Export screen renders the
     // detection state itself, so the user always has somewhere to land and a
     // sentence explaining what to do next.
@@ -65,6 +66,7 @@ export const defaultScreens: readonly ScreenDefinition[] = [
     icon: Settings,
     component: SettingsScreen,
     order: 40,
+    navigation: "utility",
   },
   {
     id: SCREEN_IDS.about,
@@ -73,5 +75,6 @@ export const defaultScreens: readonly ScreenDefinition[] = [
     icon: Info,
     component: AboutScreen,
     order: 50,
+    navigation: "utility",
   },
 ];

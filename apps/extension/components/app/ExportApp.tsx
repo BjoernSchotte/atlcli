@@ -25,6 +25,7 @@ import {
 import { defaultScreens, SCREEN_IDS } from "../screens/index.js";
 import { AppShell, type ShellLayout } from "./AppShell.js";
 import { ExportRunsProvider } from "./export-runs.js";
+import { PublishingDraftProvider } from "./publishing-draft.js";
 import { SettingsProvider, useAppSettings } from "./settings-context.js";
 import { usePageContext } from "./use-page-context.js";
 
@@ -150,15 +151,17 @@ function AppBody({
 
   return (
     <ExportRunsProvider identity={identity}>
-      <AppShell
-        title={ports.host.name}
-        version={ports.host.version}
-        screens={resolved}
-        active={active}
-        onNavigate={setRequestedScreenId}
-        screenProps={screenProps}
-        layout={layout}
-      />
+      <PublishingDraftProvider ports={ports} page={state}>
+        <AppShell
+          title={ports.host.name}
+          version={ports.host.version}
+          screens={resolved}
+          active={active}
+          onNavigate={setRequestedScreenId}
+          screenProps={screenProps}
+          layout={layout}
+        />
+      </PublishingDraftProvider>
     </ExportRunsProvider>
   );
 }

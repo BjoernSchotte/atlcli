@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { ExportBlock, ExportNode, ExportScope } from "@atlcli/confluence/browser";
 import { pdfBytesFromUint8Array, type PdfExportReport } from "@atlcli/pdf/browser";
 import { PREVIEW_SUPERSEDED_ERROR } from "../../utils/pdf/compiler-host.js";
+import type { RunPdfExportInput } from "../../utils/pdf/run-export.js";
 import {
   ASSUMED_IMAGE_BYTES,
   DEFAULT_PREVIEW_BUDGET,
@@ -240,6 +241,28 @@ describe("runPagePdfPreview", () => {
     expect(result.truncated).toBe(false);
     expect(result.bytes?.size).toBe(1);
     expect(result.filename).toBe("T.pdf");
+  });
+
+  it("uses the Studio's document settings and macro policy", async () => {
+    const capturedInputs: RunPdfExportInput[] = [];
+    await runPagePdfPreview(
+      {
+        page: loadedPage,
+        pageUrl: "https://x.atlassian.net/wiki/p/1",
+        settings: { page: "letter", orientation: "landscape" },
+        macros: { live: false },
+      },
+      {
+        runExport: async (input, overrides) => {
+          capturedInputs.push(input);
+          await overrides?.output?.emit("T.pdf", pdfBytesFromUint8Array(new Uint8Array([1])));
+          return report;
+        },
+      }
+    );
+
+    expect(capturedInputs[0]?.settings).toEqual({ page: "letter", orientation: "landscape" });
+    expect(capturedInputs[0]?.macros).toEqual({ live: false });
   });
 
   it("reports a superseded preview as a status, not an error", async () => {

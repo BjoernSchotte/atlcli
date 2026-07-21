@@ -8,6 +8,7 @@
  * the export surface.
  */
 import React from "react";
+import { RefreshCw } from "lucide-react";
 import type { AtlassianEntity } from "@atlcli/core";
 import type { PanelState } from "../../utils/panel-state.js";
 import type { ReadErrorKind } from "../../utils/read-path.js";
@@ -98,39 +99,55 @@ function LoadedPageCard({
   const modified = details.modified ? new Date(details.modified).toLocaleString() : undefined;
 
   return (
-    <Card data-testid="state-loaded">
-      <CardContent className="p-3">
-        <h2 className="m-0 mb-1.5 text-sm font-semibold" data-testid="loaded-title">
-          {details.title}
-        </h2>
+    <Card className="rounded-lg" data-testid="state-loaded">
+      <CardContent className="p-2">
+        <div className="flex items-start gap-1.5">
+          <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <h2 className="m-0 truncate text-[13px] font-semibold leading-5" data-testid="loaded-title">
+              {details.title}
+            </h2>
+            <p className="m-0 truncate text-[11px] text-muted-foreground">
+              <span data-testid="loaded-space">{details.spaceKey ?? "—"}</span>
+              {" · "}
+              <span data-testid="loaded-version">
+                {details.version != null ? `v${details.version}` : "—"}
+              </span>
+              {" · "}
+              <span data-testid="loaded-wordcount">{wordCount}</span> {t("page.meta.words").toLowerCase()}
+            </p>
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0"
+            aria-label={t("page.reload")}
+            title={t("page.reload")}
+            onClick={onRetry}
+            data-testid="reload"
+          >
+            <RefreshCw aria-hidden="true" />
+          </Button>
+        </div>
 
-        <dl className="m-0 mb-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          <Meta label={t("page.meta.space")} value={details.spaceKey ?? "—"} testId="loaded-space" />
-          <Meta
-            label={t("page.meta.version")}
-            value={details.version != null ? `v${details.version}` : "—"}
-            testId="loaded-version"
-          />
-          {modified && (
+        <details className="mt-1 text-[11px]">
+          <summary className="cursor-pointer text-muted-foreground">{t("page.details")}</summary>
+          <dl className="m-0 mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            {modified && (
             <Meta
               label={t("page.meta.modified")}
               value={author ? `${modified} · ${author}` : modified}
               testId="loaded-modified"
             />
           )}
-          <Meta label={t("page.meta.words")} value={String(wordCount)} testId="loaded-wordcount" />
-          <Meta
-            label={t("page.meta.attachments")}
-            value={String(attachments.length)}
-            testId="loaded-attachment-count"
-          />
-        </dl>
+            <Meta
+              label={t("page.meta.attachments")}
+              value={String(attachments.length)}
+              testId="loaded-attachment-count"
+            />
+          </dl>
 
-        {attachments.length > 0 && (
-          <details className="mb-2 text-xs">
-            <summary className="cursor-pointer">
-              {t("page.attachments.summary", { count: attachments.length })}
-            </summary>
+          {attachments.length > 0 && (
             <ul className="m-0 mt-1.5 list-disc pl-4" data-testid="attachment-list">
               {attachments.map((attachment) => (
                 <li key={attachment.link || attachment.name}>
@@ -142,12 +159,8 @@ function LoadedPageCard({
                 </li>
               ))}
             </ul>
-          </details>
-        )}
-
-        <Button size="sm" variant="outline" onClick={onRetry} data-testid="reload">
-          {t("page.reload")}
-        </Button>
+          )}
+        </details>
       </CardContent>
     </Card>
   );

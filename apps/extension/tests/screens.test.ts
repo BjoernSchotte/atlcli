@@ -231,6 +231,18 @@ describe("the shipped registry", () => {
     expect(new Set(orders).size).toBe(orders.length);
   });
 
+  it("treats Preview as a Studio capability, not a competing primary area", () => {
+    expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.preview)?.navigation).toBe(
+      "hidden"
+    );
+    expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.export)?.navigation).toBe(
+      "primary"
+    );
+    expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.settings)?.navigation).toBe(
+      "utility"
+    );
+  });
+
   it("keeps Export reachable with no page open, so there is always a landing screen", () => {
     const resolved = resolveScreens(defaultScreens, NOTHING);
     const exportScreen = resolved.find((s) => s.definition.id === SCREEN_IDS.export);

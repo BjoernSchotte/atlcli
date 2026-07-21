@@ -236,4 +236,5 @@ export const jobsScreenDefinition: ScreenDefinition = {
   component: JobsScreen,
   requirements: [{ kind: "capability", capability: "durable-jobs" }],
   order: 30,
+  navigation: "primary",
 };

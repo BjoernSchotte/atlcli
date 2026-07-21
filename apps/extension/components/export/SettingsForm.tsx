@@ -79,6 +79,8 @@ export interface SettingsFormProps {
    * `ScopeSection`'s Advanced block.
    */
   collapsible?: boolean;
+  /** Compact description of the current values while the form is closed. */
+  summary?: string;
 }
 
 function labelFor(t: (key: MessageKey) => string, key: string, schema: SettingSchema): string {
@@ -114,6 +116,7 @@ export function SettingsForm({
   extraIssues,
   idPrefix = "settings",
   collapsible,
+  summary,
 }: SettingsFormProps): React.JSX.Element {
   const t = useT();
   const entries = Object.entries(schema);
@@ -282,7 +285,15 @@ export function SettingsForm({
     return (
       <details data-testid={`${idPrefix}-form`} className="rounded-md border px-2 py-1.5">
         <summary className="cursor-pointer text-xs font-medium">
-          {t("settingsForm.title")}
+          <span>{t("settingsForm.title")}</span>
+          {summary && (
+            <span
+              className="mt-0.5 block pl-4 text-[10px] font-normal text-muted-foreground"
+              data-testid={`${idPrefix}-summary`}
+            >
+              {summary}
+            </span>
+          )}
         </summary>
         <div className="mt-2 flex flex-col gap-2.5">{body}</div>
       </details>

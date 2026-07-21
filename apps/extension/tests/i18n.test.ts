@@ -54,7 +54,7 @@ describe("message catalogues", () => {
   it("actually translates — German differs from English where it should", () => {
     expect(CATALOGS.de["nav.sections"]).toBe("Bereiche");
     expect(CATALOGS.de["screen.settings.label"]).toBe("Einstellungen");
-    expect(CATALOGS.de["screen.activity.label"]).toBe("Aktivitäten");
+    expect(CATALOGS.de["screen.activity.label"]).toBe("Exporte");
   });
 });
 

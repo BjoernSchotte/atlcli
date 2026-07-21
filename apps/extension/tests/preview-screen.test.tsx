@@ -26,6 +26,10 @@ import type { ScreenProps } from "../utils/screens/registry.js";
 import type { PanelState } from "../utils/panel-state.js";
 import type { AppPorts } from "../utils/ports/index.js";
 import type { LoadedPage } from "../utils/read-path.js";
+import {
+  PublishingDraftProvider,
+  usePublishingDraft,
+} from "../components/app/publishing-draft.js";
 
 const DOM_GLOBALS = [
   "window",
@@ -88,6 +92,36 @@ function stubLayout(frameWidth: number, frameHeight = FRAME_HEIGHT): void {
     configurable: true,
     get(this: { tagName?: string }) {
       return this.tagName === "CANVAS" ? 1234 : frameHeight;
+    },
+  });
+}
+
+function installFullscreenMock(): void {
+  const doc = win!.document as unknown as {
+    fullscreenEnabled: boolean;
+    fullscreenElement: Element | null;
+    exitFullscreen(): Promise<void>;
+    dispatchEvent(event: Event): boolean;
+  };
+  let fullscreenElement: Element | null = null;
+  Object.defineProperty(doc, "fullscreenEnabled", { configurable: true, value: true });
+  Object.defineProperty(doc, "fullscreenElement", {
+    configurable: true,
+    get: () => fullscreenElement,
+  });
+  Object.defineProperty(doc, "exitFullscreen", {
+    configurable: true,
+    value: async () => {
+      fullscreenElement = null;
+      doc.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("fullscreenchange"));
+    },
+  });
+  const prototype = (win as unknown as { HTMLElement: { prototype: object } }).HTMLElement.prototype;
+  Object.defineProperty(prototype, "requestFullscreen", {
+    configurable: true,
+    value: async function requestFullscreen(this: Element) {
+      fullscreenElement = this;
+      doc.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("fullscreenchange"));
     },
   });
 }
@@ -342,6 +376,41 @@ async function mount(
   );
 }
 
+function EmbeddedDraftPreview({
+  props,
+}: {
+  props: ScreenProps;
+}): React.JSX.Element {
+  const draft = usePublishingDraft();
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="change-preview-setting"
+        onClick={() => draft.onSettingChange("orientation", "landscape")}
+      >
+        Change setting
+      </button>
+      <PreviewScreen {...props} embedded />
+    </>
+  );
+}
+
+async function mountEmbeddedDraft(page: PanelState, runtime: PreviewRuntime): Promise<void> {
+  const props = screenProps(page);
+  await render(
+    <PreviewShellContext.Provider
+      value={{ layout: "compact", openLargePreview: () => undefined, closePreview: null }}
+    >
+      <PreviewRuntimeContext.Provider value={runtime}>
+        <PublishingDraftProvider ports={props.ports} page={page}>
+          <EmbeddedDraftPreview props={props} />
+        </PublishingDraftProvider>
+      </PreviewRuntimeContext.Provider>
+    </PreviewShellContext.Provider>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 describe("PreviewScreen", () => {
@@ -372,6 +441,28 @@ describe("PreviewScreen", () => {
     expect(find("preview-page-label").textContent).toContain("4");
     // Only the visible page is rasterized.
     expect(viewer.renders).toEqual([1]);
+  });
+
+  it("keeps the embedded preview in Review and marks it stale after design changes", async () => {
+    const runtime = runtimeFor(ready(), fakeViewer(4));
+    await mountEmbeddedDraft(loadedState(), runtime);
+
+    expect(find("preview-status").getAttribute("data-status")).toBe("empty");
+    expect(find("preview-metadata").textContent).toContain("v7");
+    expect(maybeFind("preview-auto")).not.toBeNull();
+
+    await click("preview-generate");
+    expect(find("preview-status").getAttribute("data-status")).toBe("current");
+    expect(find("preview-metadata").textContent).toBe("v7 · 4 pages");
+    expect(find("preview-open-large").textContent).toContain("Large preview");
+    expect(find("preview-open-large").className).toContain("h-7");
+    expect(find("preview-generate").getAttribute("aria-label")).toContain("Refresh");
+    expect(maybeFind("preview-document")).not.toBeNull();
+
+    await click("change-preview-setting");
+    expect(find("preview-status").getAttribute("data-status")).toBe("stale");
+    // The old preview remains reviewable until the user deliberately refreshes it.
+    expect(maybeFind("preview-document")).not.toBeNull();
   });
 
   it("navigates page by page without re-compiling", async () => {
@@ -678,9 +769,28 @@ describe("PreviewScreen — one screen, two shells", () => {
 
     const close = find("preview-close");
     expect(close.getAttribute("aria-label")).toContain("Close");
-    expect(close.className).toContain("size-11");
+    expect(close.className).toContain("size-8");
     await click("preview-close");
     expect(closed).toBe(1);
+  });
+
+  it("promotes the large preview into native fullscreen and back", async () => {
+    installFullscreenMock();
+    const runtime: PreviewRuntime = {
+      compile: async () => ready(),
+      readCached: async () => ready({ filename: "cached.pdf" }),
+      openViewer: async () => fakeViewer(5),
+    };
+    await mount(loadedState(), runtime, "full", null, () => undefined);
+
+    const enter = find("preview-fullscreen");
+    expect(enter.getAttribute("aria-label")).toContain("Enter fullscreen");
+    await click("preview-fullscreen");
+    expect(find("preview-screen").getAttribute("data-fullscreen")).toBe("true");
+    expect(find("preview-fullscreen").getAttribute("aria-label")).toContain("Exit fullscreen");
+
+    await click("preview-fullscreen");
+    expect(find("preview-screen").getAttribute("data-fullscreen")).toBe("false");
   });
 
   it("both shells mount the very same component", () => {
