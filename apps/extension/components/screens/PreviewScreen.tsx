@@ -39,7 +39,10 @@ import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry
 import type { HostCapability } from "../../utils/ports/index.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type { PdfPreviewResult } from "../../utils/pdf/preview.js";
-import type { PdfPreviewViewer } from "../../utils/pdf/viewer.js";
+import type {
+  PdfPreviewInternalLink,
+  PdfPreviewViewer,
+} from "../../utils/pdf/viewer.js";
 import { useI18n } from "../../utils/i18n/context.js";
 import { Alert } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
@@ -190,6 +193,13 @@ const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;
 
 export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const { t } = useI18n();
+  // `useI18n` deliberately provides a no-Provider fallback whose function
+  // identity is not stable. The page-render effect writes link-layer state on
+  // success, so depending on that function would turn the fallback path into a
+  // render loop. Keep the latest translator for the error branch without
+  // making successful annotation renders depend on its identity.
+  const tRef = useRef(t);
+  tRef.current = t;
   const shell = usePreviewShell();
   const runtime = useContext(PreviewRuntimeContext) ?? defaultRuntime;
 
@@ -202,6 +212,13 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const [viewer, setViewer] = useState<PdfPreviewViewer | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [linkLayer, setLinkLayer] = useState<{
+    viewer: PdfPreviewViewer;
+    pageNumber: number;
+    zoom: number;
+    frameWidth: number;
+    links: readonly PdfPreviewInternalLink[];
+  } | null>(null);
 
   const [auto, setAuto] = useState(false);
 
@@ -253,6 +270,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
       const opened = await runtime.openViewer(next.bytes);
       setResult(next);
       setViewer(opened);
+      setLinkLayer(null);
       setPageNumber(1);
       setPhase("ready");
     },
@@ -329,15 +347,32 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     let cancelled = false;
     void viewer
       .renderPage(pageNumber, canvas, { zoom, containerWidth: frameWidth })
+      .then(({ internalLinks }) => {
+        if (!cancelled) {
+          setLinkLayer({ viewer, pageNumber, zoom, frameWidth, links: internalLinks });
+        }
+      })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(t("preview.failed", { message: messageOf(cause) }));
+        if (!cancelled) {
+          setError(tRef.current("preview.failed", { message: messageOf(cause) }));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [viewer, pageNumber, zoom, frameWidth, t]);
+  }, [viewer, pageNumber, zoom, frameWidth]);
 
   const pageCount = viewer?.pageCount ?? 0;
+  // Never leave the previous page's hotspots over a newly selected page while
+  // its render is still settling. The render identity makes stale async results
+  // invisible even before the effect cleanup runs.
+  const visibleLinks =
+    linkLayer?.viewer === viewer &&
+    linkLayer.pageNumber === pageNumber &&
+    linkLayer.zoom === zoom &&
+    linkLayer.frameWidth === frameWidth
+      ? linkLayer.links
+      : [];
   const scopeLabel = result?.truncated
     ? t("preview.scope.truncated", {
         included: result.includedChapters,
@@ -491,7 +526,31 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
                 visible size stayed put.
               */}
               <div ref={frameRef} data-testid="preview-frame">
-                <canvas ref={canvasRef} data-testid="preview-canvas" />
+                <div className="relative inline-block align-top" data-testid="preview-page">
+                  <canvas className="block" ref={canvasRef} data-testid="preview-canvas" />
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    data-testid="preview-link-layer"
+                  >
+                    {visibleLinks.map((link, index) => (
+                      <button
+                        key={`${link.pageNumber}:${link.left}:${link.top}:${index}`}
+                        type="button"
+                        aria-label={t("preview.goToPage", { page: link.pageNumber })}
+                        title={t("preview.goToPage", { page: link.pageNumber })}
+                        data-testid={`preview-internal-link-${index}`}
+                        className="pointer-events-auto absolute cursor-pointer rounded-sm border-0 bg-transparent p-0 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        style={{
+                          left: `${link.left}px`,
+                          top: `${link.top}px`,
+                          width: `${link.width}px`,
+                          height: `${link.height}px`,
+                        }}
+                        onClick={() => setPageNumber(link.pageNumber)}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>

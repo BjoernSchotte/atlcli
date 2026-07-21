@@ -28,10 +28,24 @@ interface Recorded {
   rendered: { scale: number; canvas: unknown }[];
 }
 
-function fakePdfjs(pages = 3): { module: PdfjsModule; recorded: Recorded } {
+function fakePdfjs(
+  pages = 3,
+  options: {
+    annotations?: unknown[];
+    destinations?: Record<string, unknown[]>;
+  } = {}
+): { module: PdfjsModule; recorded: Recorded } {
   const recorded: Recorded = { params: [], rendered: [] };
   const page: PdfjsPage = {
-    getViewport: ({ scale }) => ({ width: 600 * scale, height: 800 * scale }),
+    getViewport: ({ scale }) => ({
+      width: 600 * scale,
+      height: 800 * scale,
+      // PDF coordinates start at the bottom-left; viewport coordinates start
+      // at the top-left. Keeping that flip in the fake makes the link geometry
+      // assertion discriminate between PDF points and CSS pixels.
+      convertToViewportPoint: (x, y) => [x * scale, (800 - y) * scale],
+    }),
+    getAnnotations: async () => options.annotations ?? [],
     render: ({ viewport, canvas }) => {
       recorded.rendered.push({ scale: viewport.width / 600, canvas });
       return { promise: Promise.resolve(), cancel: () => undefined };
@@ -40,6 +54,12 @@ function fakePdfjs(pages = 3): { module: PdfjsModule; recorded: Recorded } {
   const document: PdfjsDocument = {
     numPages: pages,
     getPage: async () => page,
+    getDestination: async (id) => options.destinations?.[id] ?? null,
+    getPageIndex: async (ref) => {
+      const pageIndex = (ref as { pageIndex?: unknown }).pageIndex;
+      if (!Number.isInteger(pageIndex)) throw new Error("unknown page ref");
+      return pageIndex as number;
+    },
     destroy: async () => undefined,
   };
   const module: PdfjsModule = {
@@ -222,6 +242,47 @@ describe("openPdfViewer", () => {
     await expect(viewer.renderPage(1, fakeCanvas(), { containerWidth: 300 })).rejects.toThrow(
       /destroyed/
     );
+  });
+
+  it("projects internal PDF links into CSS pixels and resolves their target pages", async () => {
+    const { module } = fakePdfjs(5, {
+      annotations: [
+        {
+          subtype: "Link",
+          rect: [60, 700, 180, 740],
+          dest: "chapter-three",
+        },
+        {
+          subtype: "Link",
+          rect: [240, 600, 360, 640],
+          dest: [1, { name: "XYZ" }],
+        },
+        // External links and malformed internal destinations are deliberately
+        // inert in the reduced preview surface.
+        { subtype: "Link", rect: [0, 0, 10, 10], url: "https://example.com" },
+        { subtype: "Link", rect: [0, 0, 10, 10], dest: "missing" },
+        { subtype: "Link", rect: [0, 0, 10, 10], dest: [99, { name: "XYZ" }] },
+        { subtype: "Link", rect: [0, 0, 0, 10], dest: [1, { name: "XYZ" }] },
+      ],
+      destinations: { "chapter-three": [{ pageIndex: 2 }, { name: "XYZ" }] },
+    });
+    const viewer = await openPdfViewer(pdfBytesFromUint8Array(new Uint8Array([1])), {
+      importModule: async () => module,
+      workerSrc: "w.mjs",
+      getContext: () => ({}),
+    });
+
+    const rendered = await viewer.renderPage(2, fakeCanvas(), {
+      containerWidth: 300,
+      devicePixelRatio: 2,
+    });
+
+    // Fit width is 0.5 CSS px per PDF point. The backing canvas renders at
+    // deviceScale 1 here, but the hotspots MUST stay in CSS pixels.
+    expect(rendered.internalLinks).toEqual([
+      { pageNumber: 3, left: 30, top: 30, width: 60, height: 20 },
+      { pageNumber: 2, left: 120, top: 80, width: 60, height: 20 },
+    ]);
   });
 });
 

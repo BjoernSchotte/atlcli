@@ -195,6 +195,9 @@ configured through [Document settings](#document-settings-pdf).
 - Page back and forth with **‹** / **›**, zoom with **−** / **+**, and use the
   middle button to go back to **Breite anpassen / Fit width**. That button is
   greyed out while the page already fits — it is not a full-screen control.
+- When the document has a table of contents, its entries are clickable in the
+  preview and jump to the linked page. The downloaded PDF carries the same
+  internal links.
 - **Open large preview** mounts the same view full-size in its own tab, over the
   same compiled bytes. There is no second renderer and no second compile, and
   the panel stays usable while the tab is open.

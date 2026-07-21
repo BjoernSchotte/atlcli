@@ -43,6 +43,7 @@ import type { PdfBytesHandle } from "@atlcli/pdf/browser";
 export interface PdfjsViewport {
   width: number;
   height: number;
+  convertToViewportPoint(x: number, y: number): readonly number[];
 }
 
 export interface PdfjsRenderTask {
@@ -52,6 +53,7 @@ export interface PdfjsRenderTask {
 
 export interface PdfjsPage {
   getViewport(params: { scale: number }): PdfjsViewport;
+  getAnnotations(params: { intent: "display" }): Promise<unknown[]>;
   render(params: {
     canvasContext: unknown;
     viewport: PdfjsViewport;
@@ -63,6 +65,8 @@ export interface PdfjsPage {
 export interface PdfjsDocument {
   numPages: number;
   getPage(pageNumber: number): Promise<PdfjsPage>;
+  getDestination(id: string): Promise<unknown[] | null>;
+  getPageIndex(ref: object): Promise<number>;
   destroy(): Promise<void>;
 }
 
@@ -227,6 +231,103 @@ export async function pdfjsSourceFor(bytes: PdfBytesHandle): Promise<Record<stri
   return { data: new Uint8Array(await bytes.asUint8Array()) };
 }
 
+/** One safe, internal PDF link projected into CSS pixels over the page canvas. */
+export interface PdfPreviewInternalLink {
+  /** One-based page number, matching the preview controls. */
+  pageNumber: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface PdfPreviewPageRender {
+  /** Internal destinations only. External URLs and PDF actions are never activated here. */
+  internalLinks: readonly PdfPreviewInternalLink[];
+}
+
+interface PdfjsLinkAnnotation {
+  subtype?: unknown;
+  rect?: unknown;
+  dest?: unknown;
+}
+
+function finiteRect(value: unknown): [number, number, number, number] | null {
+  if (!Array.isArray(value) || value.length !== 4 || !value.every(Number.isFinite)) return null;
+  return value as [number, number, number, number];
+}
+
+async function destinationPageNumber(
+  document: PdfjsDocument,
+  destination: unknown
+): Promise<number | null> {
+  let explicit: unknown;
+  try {
+    explicit =
+      typeof destination === "string" ? await document.getDestination(destination) : destination;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(explicit) || explicit.length === 0) return null;
+
+  const ref = explicit[0];
+  let pageIndex: number;
+  if (Number.isInteger(ref)) {
+    pageIndex = ref as number;
+  } else if (ref !== null && typeof ref === "object") {
+    try {
+      pageIndex = await document.getPageIndex(ref);
+    } catch {
+      return null;
+    }
+  } else {
+    return null;
+  }
+
+  const pageNumber = pageIndex + 1;
+  return pageNumber >= 1 && pageNumber <= document.numPages ? pageNumber : null;
+}
+
+async function internalLinksForPage(
+  page: PdfjsPage,
+  document: PdfjsDocument,
+  viewport: PdfjsViewport
+): Promise<PdfPreviewInternalLink[]> {
+  // Annotation extraction is an enhancement over an already rendered page. A
+  // malformed annotation must not turn a readable preview into an error state.
+  const annotations = await page.getAnnotations({ intent: "display" }).catch(() => []);
+  const links = await Promise.all(
+    annotations.map(async (candidate): Promise<PdfPreviewInternalLink | null> => {
+      if (!candidate || typeof candidate !== "object") return null;
+      const annotation = candidate as PdfjsLinkAnnotation;
+      if (annotation.subtype !== "Link" || annotation.dest == null) return null;
+      const rect = finiteRect(annotation.rect);
+      if (!rect) return null;
+
+      const pageNumber = await destinationPageNumber(document, annotation.dest);
+      if (pageNumber === null) return null;
+      const first = viewport.convertToViewportPoint(rect[0], rect[1]);
+      const second = viewport.convertToViewportPoint(rect[2], rect[3]);
+      if (first.length < 2 || second.length < 2) return null;
+      const [x1, y1] = first;
+      const [x2, y2] = second;
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+
+      const width = Math.abs(x2! - x1!);
+      const height = Math.abs(y2! - y1!);
+      if (width <= 0 || height <= 0) return null;
+      return {
+        pageNumber,
+        left: Math.min(x1!, x2!),
+        top: Math.min(y1!, y2!),
+        width,
+        height,
+      };
+    })
+  );
+  return links.filter((link): link is PdfPreviewInternalLink => link !== null);
+}
+
 export interface PdfPreviewViewer {
   readonly pageCount: number;
   /** Render one page into `canvas`. Cancels any render already in flight. */
@@ -249,7 +350,7 @@ export interface PdfPreviewViewer {
     pageNumber: number,
     canvas: HTMLCanvasElement,
     options: { containerWidth: number; zoom?: number; devicePixelRatio?: number }
-  ): Promise<void>;
+  ): Promise<PdfPreviewPageRender>;
   destroy(): Promise<void>;
 }
 
@@ -296,6 +397,10 @@ export async function openPdfViewer(
           options.devicePixelRatio ??
           (typeof globalThis.devicePixelRatio === "number" ? globalThis.devicePixelRatio : 1),
       });
+      // Annotation overlays live in CSS pixels, while the canvas backing store
+      // uses the independently capped device scale. Mixing the two shifts every
+      // TOC hotspot on HiDPI displays and at non-default zoom levels.
+      const cssViewport = page.getViewport({ scale: cssScale });
       const viewport = page.getViewport({ scale: deviceScale });
       canvas.width = Math.max(1, Math.floor(viewport.width));
       canvas.height = Math.max(1, Math.floor(viewport.height));
@@ -309,7 +414,11 @@ export async function openPdfViewer(
       const render = page.render({ canvasContext: context, viewport, canvas });
       inFlight = render;
       try {
-        await render.promise;
+        const [, internalLinks] = await Promise.all([
+          render.promise,
+          internalLinksForPage(page, document, cssViewport),
+        ]);
+        return { internalLinks };
       } finally {
         if (inFlight === render) inFlight = null;
         page.cleanup?.();

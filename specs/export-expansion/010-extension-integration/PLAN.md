@@ -2419,7 +2419,9 @@ branch, and all of them invisible to a green 4300-test suite — see
       with the panel still live beside it in the same screenshot.*
 
       *Still not covered by this box and left for a later run: whether the tab
-      view survives a reload of the tab itself, and window-resize re-fitting —
+      view survives a reload of the tab itself, window-resize re-fitting, and
+      whether table-of-contents hotspots align and navigate correctly in both
+      the compact and full layouts —
       the resize path is deliberately untested in the suite too, because
       happy-dom has no layout engine and any assertion there would pass whether
       the observer were wired or deleted (see `preview-screen.test.tsx`).)*

@@ -337,6 +337,72 @@ This is a real PDF.
     expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true, hasOutline: true });
   }, 30_000);
 
+  it("emits table-of-contents links that resolve to the rendered heading pages", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "heading", level: 1, content: [{ type: "text", text: "Chapter One" }] },
+      { type: "paragraph", content: [{ type: "text", text: "First chapter body." }] },
+      { type: "pageBreak" },
+      { type: "heading", level: 1, content: [{ type: "text", text: "Chapter Two" }] },
+      { type: "paragraph", content: [{ type: "text", text: "Second chapter body." }] },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Clickable contents",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-21T00:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+
+    // Parse the actual compiled bytes. A source assertion on `outline(...)`
+    // cannot prove that the PDF contains link annotations or that their named
+    // destinations resolve to real pages.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(result.pdf!),
+    });
+    const document = await task.promise;
+    try {
+      const internal: Array<{ sourcePage: number; destination: string }> = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        for (const annotation of await page.getAnnotations({ intent: "display" })) {
+          if (annotation.subtype === "Link" && typeof annotation.dest === "string") {
+            internal.push({ sourcePage: pageNumber, destination: annotation.dest });
+          }
+        }
+      }
+
+      expect(internal.map((link) => link.destination)).toEqual(
+        expect.arrayContaining(["chapter-one", "chapter-two"])
+      );
+      const targets = await Promise.all(
+        internal
+          .filter((link) => link.destination.startsWith("chapter-"))
+          .map(async (link) => {
+            const destination = await document.getDestination(link.destination);
+            expect(destination).not.toBeNull();
+            const ref = destination![0];
+            const pageIndex = Number.isInteger(ref) ? (ref as number) : await document.getPageIndex(ref);
+            return { sourcePage: link.sourcePage, targetPage: pageIndex + 1 };
+          })
+      );
+      expect(targets).toHaveLength(2);
+      expect(new Set(targets.map((target) => target.targetPage)).size).toBe(2);
+      expect(targets.every((target) => target.targetPage > target.sourcePage)).toBe(true);
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
   it("returns structured diagnostics for invalid Typst", async () => {
     const compiler = await createCompiler();
     const result = await compiler.compile(sourceBundle("#this-function-does-not-exist()"));

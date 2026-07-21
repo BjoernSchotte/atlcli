@@ -256,6 +256,12 @@ function fakeViewer(pageCount = 4): PdfPreviewViewer & {
         zoom: options.zoom,
         containerWidth: options.containerWidth,
       });
+      return {
+        internalLinks:
+          pageNumber === 1
+            ? [{ pageNumber: 3, left: 10, top: 20, width: 120, height: 18 }]
+            : [],
+      };
     },
     async destroy() {
       /* nothing */
@@ -365,6 +371,25 @@ describe("PreviewScreen", () => {
     expect(runtime.compiles).toBe(1);
     await click("preview-prev");
     expect(viewer.renders).toEqual([1, 2, 1]);
+  });
+
+  it("follows a table-of-contents hotspot without re-compiling", async () => {
+    const viewer = fakeViewer(4);
+    const runtime = runtimeFor(ready(), viewer);
+    await mount(loadedState(), runtime);
+    await click("preview-generate");
+
+    const link = find("preview-internal-link-0");
+    expect(link.getAttribute("aria-label")).toContain("3");
+    expect(link.getAttribute("style")).toContain("left: 10px");
+    await click("preview-internal-link-0");
+
+    expect(viewer.renders).toEqual([1, 3]);
+    expect(find("preview-page-label").textContent).toContain("3");
+    expect(runtime.compiles).toBe(1);
+    // The target page has no link in this fake, so the old TOC hotspot cannot
+    // linger over the newly rendered page.
+    expect(maybeFind("preview-internal-link-0")).toBeNull();
   });
 
   it("re-renders the same page at a new zoom without re-compiling", async () => {
