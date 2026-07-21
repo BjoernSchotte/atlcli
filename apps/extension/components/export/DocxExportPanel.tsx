@@ -11,7 +11,11 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import type { LoadedPage } from "../../utils/read-path.js";
-import type { DocxExportPort, DocxTemplateStore } from "../../utils/ports/index.js";
+import type {
+  DocxExportPort,
+  DocxTemplateStore,
+  ExportScopeRequest,
+} from "../../utils/ports/index.js";
 import { useT } from "../../utils/i18n/context.js";
 import { Alert } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
@@ -41,11 +45,23 @@ export function DocxExportPanel({
   store,
   page,
   pageUrl,
+  scopeRequest,
+  gate = (run) => run(),
 }: {
   port: DocxExportPort;
   store: DocxTemplateStore;
   page: LoadedPage | null;
   pageUrl: string | null;
+  /**
+   * The **shared** scope, owned by the Export screen above both engines.
+   *
+   * Note what is *not* here and must never be: a `settings` field.
+   * `packages/docx`'s `ExportInput` has none, so anything the panel put on a
+   * `DocxExportRequest` would be dropped while looking like a feature.
+   */
+  scopeRequest?: ExportScopeRequest;
+  /** Lets the screen interpose a confirmation (space scope) before starting. */
+  gate?: (run: () => void) => void;
 }): React.JSX.Element {
   const t = useT();
   const { docx, startDocx, setDocxError } = useExportRuns();
@@ -182,15 +198,18 @@ export function DocxExportPanel({
               <Button
                 onClick={() => {
                   if (ready && !busy) {
-                    startDocx(port, {
-                      page,
-                      pageUrl,
-                      template: {
-                        name: template.name,
-                        uploadedAt: template.uploadedAt,
-                        bytes: template.bytes,
-                      },
-                    });
+                    gate(() =>
+                      startDocx(port, {
+                        page,
+                        pageUrl,
+                        template: {
+                          name: template.name,
+                          uploadedAt: template.uploadedAt,
+                          bytes: template.bytes,
+                        },
+                        ...scopeRequest,
+                      })
+                    );
                   }
                 }}
                 disabled={busy || !ready}
@@ -203,6 +222,16 @@ export function DocxExportPanel({
                 <span className="text-xs text-muted-foreground">{t("docx.needsPage")}</span>
               )}
             </div>
+
+            {docx.progress && docx.progress.total > 0 && (
+              <p className="m-0 mt-1.5 text-xs text-muted-foreground" data-testid="docx-progress">
+                {t("export.progress", {
+                  fetched: docx.progress.fetched,
+                  total: docx.progress.total,
+                  title: docx.progress.currentTitle ?? "",
+                })}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

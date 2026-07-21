@@ -28,10 +28,16 @@
  *   subscription — {@link AppPorts.watchPageContext} — so the app can be handed
  *   the answer instead of discovering it through `chrome.*`.
  */
+import type { ExportScope, LabelFilter } from "@atlcli/confluence/browser";
 import type { EntityDetection } from "../messages.js";
 import type { LoadedPage } from "../read-path.js";
 import type { HostInfo } from "./host.js";
-import type { DocxExportPort, DocxTemplateStore, PdfExportPort } from "./export.js";
+import type {
+  DocxExportPort,
+  DocxTemplateStore,
+  PdfExportPort,
+  TemplateLibraryPort,
+} from "./export.js";
 import type { SettingsStore } from "./settings.js";
 
 /**
@@ -75,6 +81,33 @@ export interface AppPorts {
   /** `null` when this host cannot persist template bytes. */
   docxTemplates: DocxTemplateStore | null;
   settings: SettingsStore;
+
+  /**
+   * The multi-slot template library (spec 010 T5.2).
+   *
+   * Optional so a host that predates it still satisfies `AppPorts`; the screen
+   * that renders it declares the `template-library` capability, so a host
+   * without the port gets "not available here, because…" rather than a screen
+   * that throws. Never feature-detect on this field in a screen — ask the
+   * registry.
+   */
+  templates?: TemplateLibraryPort | null;
+
+  /**
+   * Pre-flight page count for a tree/space scope, for the "212 pages,
+   * continue?" confirmation (spec 010 T5.1, baseline A2).
+   *
+   * Optional because it is a *nicety*, not a gate: the confirmation is shown
+   * for every space export either way, and a host that cannot count cheaply
+   * gets the count-free wording instead. Rejections (including abort) are
+   * treated as "count unknown" — a failed estimate must never block an export
+   * the user is entitled to run.
+   */
+  countScopePages?(request: {
+    scope: ExportScope;
+    labels?: LabelFilter;
+    signal?: AbortSignal;
+  }): Promise<number>;
 }
 
 export * from "./host.js";

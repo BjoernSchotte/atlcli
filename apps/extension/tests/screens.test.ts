@@ -175,14 +175,53 @@ describe("pickActiveScreen", () => {
 });
 
 describe("the shipped registry", () => {
-  it("registers Export, Template sets, Activity, Settings and About", () => {
+  it("registers Export, Preview, Templates, Activity, Settings and About", () => {
     expect(defaultScreens.map((s) => s.id)).toEqual([
       SCREEN_IDS.export,
+      SCREEN_IDS.preview,
       SCREEN_IDS.templates,
       SCREEN_IDS.activity,
       SCREEN_IDS.settings,
       SCREEN_IDS.about,
     ]);
+  });
+
+  // Both wave-2/3 screens land the same way: registered, and gated on a
+  // capability no host advertises yet. That is the registry behaving correctly
+  // — a nav entry the user can see and a sentence saying why it is off — and
+  // it is what makes "add the capability" the whole of the host-side wiring.
+  it("gates Preview and Templates on capabilities, with a reason each", () => {
+    const withoutEither = resolveScreens(defaultScreens, {
+      hasLoadedPage: true,
+      capabilities: ["pdf-export", "docx-export"],
+    });
+    const preview = withoutEither.find((s) => s.definition.id === SCREEN_IDS.preview);
+    expect(preview?.visible).toBe(true);
+    expect(preview?.available).toBe(false);
+    expect(preview?.reasonKey).toBe("screen.unmet.capability.pdfPreview");
+
+    const templates = withoutEither.find((s) => s.definition.id === SCREEN_IDS.templates);
+    expect(templates?.visible).toBe(true);
+    expect(templates?.available).toBe(false);
+    expect(templates?.reasonKey).toBe("screen.unmet.capability.templateLibrary");
+
+    const withBoth = resolveScreens(defaultScreens, {
+      hasLoadedPage: true,
+      capabilities: ["pdf-export", "docx-export", "pdf-preview", "template-library"],
+    });
+    expect(withBoth.find((s) => s.definition.id === SCREEN_IDS.preview)?.available).toBe(true);
+    expect(withBoth.find((s) => s.definition.id === SCREEN_IDS.templates)?.available).toBe(true);
+  });
+
+  // Preview additionally needs a page: previewing "nothing" is not a state.
+  it("keeps Preview unavailable without a loaded page even with the capability", () => {
+    const resolved = resolveScreens(defaultScreens, {
+      hasLoadedPage: false,
+      capabilities: ["pdf-preview", "template-library"],
+    });
+    const preview = resolved.find((s) => s.definition.id === SCREEN_IDS.preview);
+    expect(preview?.available).toBe(false);
+    expect(preview?.reasonKey).toBe("screen.unmet.page");
   });
 
   it("has unique ids and unique nav order", () => {
