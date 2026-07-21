@@ -47,6 +47,9 @@ export function App(): React.JSX.Element {
         ports={ports}
         screens={[previewScreenDefinition]}
         initialScreenId={PREVIEW_SCREEN_ID}
+        // This page owns a whole tab. Without it the shell keeps the side
+        // panel's 400 px cap and the "large" preview renders panel-sized.
+        layout="full"
       />
     </PreviewShellContext.Provider>
   );

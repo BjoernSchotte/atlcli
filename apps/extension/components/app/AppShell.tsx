@@ -17,6 +17,20 @@ import type { ResolvedScreen, ScreenProps } from "../../utils/screens/registry.j
 import { Alert, AlertTitle } from "../ui/alert.js";
 import { cn } from "../ui/utils.js";
 
+/**
+ * How much room the host gives this shell.
+ *
+ * `compact` is the 400 px side panel. `full` is a shell that owns a whole tab
+ * and must use it: the large-preview page mounted the *same* `AppShell` and so
+ * inherited the panel's `max-w-[400px]`, which made a full tab render as a
+ * narrow column with the page shrunk to panel size — the opposite of why the
+ * large view exists.
+ *
+ * The width belongs to the shell, not to a screen: screens are portable units
+ * and the shell that arranges them is host code.
+ */
+export type ShellLayout = "compact" | "full";
+
 export function AppShell({
   title,
   version,
@@ -24,6 +38,7 @@ export function AppShell({
   active,
   onNavigate,
   screenProps,
+  layout = "compact",
 }: {
   title: string;
   version: string;
@@ -31,12 +46,20 @@ export function AppShell({
   active: ResolvedScreen | null;
   onNavigate: (id: string) => void;
   screenProps: ScreenProps;
+  layout?: ShellLayout;
 }): React.JSX.Element {
   const t = useT();
   const visible = screens.filter((screen) => screen.visible);
 
   return (
-    <main className="mx-auto box-border flex min-h-full max-w-[400px] flex-col gap-3 p-3">
+    <main
+      data-testid="app-shell"
+      data-layout={layout}
+      className={cn(
+        "mx-auto box-border flex min-h-full flex-col gap-3 p-3",
+        layout === "compact" ? "max-w-[400px]" : "max-w-none"
+      )}
+    >
       <header className="flex items-baseline justify-between gap-2">
         <h1 className="m-0 text-sm font-semibold">{title}</h1>
         <span className="text-xs text-muted-foreground" data-testid="app-version">

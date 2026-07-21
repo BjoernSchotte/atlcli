@@ -23,7 +23,7 @@ import {
   type ScreenProps,
 } from "../../utils/screens/registry.js";
 import { defaultScreens, SCREEN_IDS } from "../screens/index.js";
-import { AppShell } from "./AppShell.js";
+import { AppShell, type ShellLayout } from "./AppShell.js";
 import { ExportRunsProvider } from "./export-runs.js";
 import { SettingsProvider, useAppSettings } from "./settings-context.js";
 import { usePageContext } from "./use-page-context.js";
@@ -45,6 +45,11 @@ export interface ExportAppProps {
   localeCandidates?: readonly (string | null | undefined)[];
   /** Screen to open first. Defaults to Export. */
   initialScreenId?: string;
+  /**
+   * How much room the host gives the shell. Defaults to the 400 px side panel;
+   * a host that owns a whole tab passes `"full"`. See {@link ShellLayout}.
+   */
+  layout?: ShellLayout;
 }
 
 function browserLocales(): readonly string[] {
@@ -57,6 +62,7 @@ export function ExportApp({
   screens = defaultScreens,
   localeCandidates,
   initialScreenId = SCREEN_IDS.export,
+  layout = "compact",
 }: ExportAppProps): React.JSX.Element {
   return (
     <SettingsProvider store={ports.settings}>
@@ -65,6 +71,7 @@ export function ExportApp({
         screens={screens}
         localeCandidates={localeCandidates}
         initialScreenId={initialScreenId}
+        layout={layout}
       />
     </SettingsProvider>
   );
@@ -75,7 +82,8 @@ function LocalizedApp({
   screens,
   localeCandidates,
   initialScreenId,
-}: Required<Pick<ExportAppProps, "ports" | "screens" | "initialScreenId">> &
+  layout,
+}: Required<Pick<ExportAppProps, "ports" | "screens" | "initialScreenId" | "layout">> &
   Pick<ExportAppProps, "localeCandidates">): React.JSX.Element {
   const { settings } = useAppSettings();
   const locale = useMemo(
@@ -85,7 +93,12 @@ function LocalizedApp({
 
   return (
     <I18nProvider locale={locale}>
-      <AppBody ports={ports} screens={screens} initialScreenId={initialScreenId} />
+      <AppBody
+        ports={ports}
+        screens={screens}
+        initialScreenId={initialScreenId}
+        layout={layout}
+      />
     </I18nProvider>
   );
 }
@@ -94,10 +107,12 @@ function AppBody({
   ports,
   screens,
   initialScreenId,
+  layout,
 }: {
   ports: AppPorts;
   screens: readonly ScreenDefinition[];
   initialScreenId: string;
+  layout: ShellLayout;
 }): React.JSX.Element {
   // Bound wrappers, not raw method references: `ports` may be an object literal
   // whose methods use `this`, and a stable identity keeps the subscription
@@ -142,6 +157,7 @@ function AppBody({
         active={active}
         onNavigate={setRequestedScreenId}
         screenProps={screenProps}
+        layout={layout}
       />
     </ExportRunsProvider>
   );
