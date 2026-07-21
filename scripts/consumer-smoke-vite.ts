@@ -17,7 +17,9 @@
  * build output (nothing falling through to a src/ path or workspace
  * symlink), then imports the PRODUCTION chunk under Bun (headless — a real
  * browser Worker adds nothing to the packaging proof) and compiles a fixture
- * to real, validated PDF bytes using the EMITTED wasm + font assets.
+ * to real, validated PDF bytes using the EMITTED wasm + font assets — through
+ * the `PdfBytesHandle` the sink is handed since spec 010 T5.6, exercising the
+ * `asBlob()`/`objectUrl()` half a browser host actually uses.
  */
 import {
   existsSync,
@@ -85,7 +87,8 @@ import serifSemiBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Semibold.ttf?url";
 import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
-import { runPdfExport, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
+import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
+import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { storageToBlocks } from "@atlcli/confluence";
@@ -119,7 +122,11 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
       fonts,
     });
     const { blocks } = storageToBlocks("<h1>Vite Smoke Heading</h1><p>Bundled tarball compile.</p>");
-    let outBytes: Uint8Array | undefined;
+    // Since spec 010 T5.6 the sink is handed a PdfBytesHandle, not a
+    // Uint8Array. This is the BROWSER position, where the handle's reason for
+    // existing lives: the download path wants a Blob/object URL and must get
+    // one without the whole document being materialized a second time.
+    let emitted: PdfBytesHandle | undefined;
     await runPdfExport(
       {
         blocks,
@@ -134,15 +141,43 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
         },
         compiler,
         output: {
-          emit: async (_name: string, bytes: Uint8Array) => {
-            outBytes = bytes;
+          emit: async (_name: string, handle: PdfBytesHandle) => {
+            emitted = handle;
           },
         },
       },
     );
-    if (!outBytes) throw new Error("runPdfExport emitted nothing");
-    const inspection = validatePdfOutput(outBytes);
-    return { byteLength: outBytes.byteLength, pageCount: inspection.pageCount, tagged: inspection.tagged };
+    if (!emitted) throw new Error("runPdfExport emitted nothing");
+    const handle: PdfBytesHandle = emitted;
+    // The guard travels in the bundled browser barrel too; a revert to raw
+    // bytes fails here rather than three assertions later with a stranger error.
+    const isHandle = isPdfBytesHandle(handle);
+    if (!isHandle) {
+      throw new Error("PdfOutputSink.emit did not hand over a PdfBytesHandle (spec 010, T5.6)");
+    }
+    const bytes = await handle.asUint8Array();
+    const borrowed = (await handle.asUint8Array()) === bytes;
+    const blob = await handle.asBlob();
+    const blobMemoized = (await handle.asBlob()) === blob;
+    const objectUrl = await handle.objectUrl();
+    const urlMemoized = (await handle.objectUrl()) === objectUrl;
+    const inspection = validatePdfOutput(bytes);
+    const result = {
+      byteLength: bytes.byteLength,
+      handleSize: handle.size,
+      mimeType: handle.mimeType,
+      pageCount: inspection.pageCount,
+      tagged: inspection.tagged,
+      isHandle,
+      borrowed,
+      blobSize: blob.size,
+      blobType: blob.type,
+      blobMemoized,
+      objectUrlScheme: objectUrl.slice(0, 5),
+      urlMemoized,
+    };
+    handle.release();
+    return result;
   },
 };
 `;
@@ -229,8 +264,17 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     expectedFonts: string[];
     compile(load: (url: string) => Promise<Uint8Array>): Promise<{
       byteLength: number;
+      handleSize: number;
+      mimeType: string;
       pageCount: number;
       tagged: boolean;
+      isHandle: boolean;
+      borrowed: boolean;
+      blobSize: number;
+      blobType: string;
+      blobMemoized: boolean;
+      objectUrlScheme: string;
+      urlMemoized: boolean;
     }>;
   };
   if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
@@ -261,6 +305,36 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   const result = await hook.compile(async (url) => new Uint8Array(readFileSync(resolveAsset(url))));
   if (!result.tagged || result.pageCount < 1 || result.byteLength < 1000) {
     throw new Error(`vite smoke compile produced implausible output: ${JSON.stringify(result)}`);
+  }
+
+  // --- The PdfOutputSink.emit contract from the bundled consumer's position
+  // (spec 010, T5.6). Asserted HERE, not only inside the built chunk, so a
+  // silently-degraded hook (fewer fields) fails instead of passing vacuously.
+  if (!result.isHandle) {
+    throw new Error("the vite consumer's sink was not handed a PdfBytesHandle (spec 010, T5.6)");
+  }
+  if (result.handleSize !== result.byteLength) {
+    throw new Error(`handle.size ${result.handleSize} != asUint8Array().byteLength ${result.byteLength}`);
+  }
+  if (result.mimeType !== "application/pdf") {
+    throw new Error(`handle.mimeType is "${result.mimeType}", expected application/pdf`);
+  }
+  if (!result.borrowed) {
+    throw new Error("asUint8Array() copied the document instead of lending it");
+  }
+  // The Blob path is the whole reason the handle exists: the download must get
+  // a Blob of the SAME bytes without a second full copy of the document.
+  if (result.blobSize !== result.byteLength || result.blobType !== "application/pdf") {
+    throw new Error(`asBlob() produced ${result.blobSize} bytes of "${result.blobType}"`);
+  }
+  if (!result.blobMemoized) {
+    throw new Error("asBlob() built a second copy instead of memoizing");
+  }
+  if (result.objectUrlScheme !== "blob:") {
+    throw new Error(`objectUrl() did not return a blob: URL (got "${result.objectUrlScheme}…")`);
+  }
+  if (!result.urlMemoized) {
+    throw new Error("objectUrl() minted a second URL — the first one leaked");
   }
 
   return {

@@ -105,7 +105,10 @@ contacts Adobe, Google Fonts, Fontsource or another font service.
 3. Serialize deterministic `main.typ`, the pinned template, assets and nested source mappings.
 4. Compile through the injected `PdfCompilePort` and normalized diagnostics contract.
 5. Validate pages, tag structure and embedded font programs.
-6. Emit through the host's `PdfOutputSink`, with an abort check before and after emission.
+6. Emit through the host's `PdfOutputSink`, with an abort check before emission. The sink
+   receives a `PdfBytesHandle` rather than the byte array, so a host that needs a `Blob` or an
+   object URL asks the handle for one instead of building a second copy of the whole document —
+   see [Emitting compiled bytes](/reference/export-api/#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle).
 
 The extension adapter additionally stores binary jobs in IndexedDB, sends bounded control
 messages, compiles FIFO in its offscreen worker, downloads as `application/pdf`, and removes job

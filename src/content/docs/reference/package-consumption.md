@@ -178,7 +178,7 @@ PDF needs a compiler port plus wasm + font bytes. In a **Node-ish host**, resolv
 the installed packages:
 
 ```ts
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runPdfExport, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
@@ -197,7 +197,9 @@ await runPdfExport(
   {
     assets: { resolve: async () => { throw new Error("no attachments wired"); } },
     compiler,
-    output: { emit: async (name, bytes) => { /* write or stream */ } },
+    // `bytes` is a PdfBytesHandle, not a Uint8Array: ask it for the shape you
+    // need instead of copying the document. See the Public Export API.
+    output: { emit: async (name, bytes) => writeFileSync(name, await bytes.asUint8Array()) },
   },
 );
 ```
@@ -219,11 +221,13 @@ import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 | `Cannot find module '@atlcli/core'` during install | An internal range hit the registry (where `@atlcli/*` does not exist) | Add the package to `overrides` (and `pnpm.overrides`) pointing at your local dir/tarball |
 | Imports resolve to `src/*.ts` under Bun | You ran with `--conditions=development` (or a bundler dev server applied the `development` condition) | Drop the flag / use a production build, or consume tarballs (their manifests are stripped) |
 | `Cannot find module 'bun:sqlite'` under Node | You imported `@atlcli/confluence/internal` | Only the default barrel is Node-clean; the internal sync machinery is Bun-only |
+| `bytes.slice is not a function` (or `bytes.length` is `undefined`) inside a `PdfOutputSink` | The PDF sink is handed a `PdfBytesHandle`, not a `Uint8Array` | `await bytes.asUint8Array()` for the array, or `asBlob()`/`objectUrl()` for a download — see [Emitting compiled bytes](/reference/export-api/#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle) |
 | PDF compile throws `Blocked unexpected dynamic function` | Working as designed — the CSP-hardened compiler refuses non-allowlisted dynamic code | Report it; do not swap in the unpatched upstream glue |
 | Missing fonts at pack time | `packages/pdf/.fonts/` not populated | Run `bun run fonts:ensure` at the repo root (prepack does this automatically) |
 
 ## Related topics
 
+- [Public Export API (v1)](/reference/export-api/) — the frozen seams these examples drive
 - [Export Asset Contract](/reference/asset-contract/) — stable asset subpaths and `?url` wiring
 - [Package Versioning](/reference/versioning/) — semver policy for these artifacts
 - [DOCX Export Engine](/reference/docx-engine/) · [PDF Export Engine](/reference/pdf-engine/)
