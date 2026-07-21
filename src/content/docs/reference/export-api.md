@@ -20,6 +20,7 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 - [Tree export: TreeSource, fetchExportTree, composeChapters](#tree-export-treesource-fetchexporttree-composechapters)
 - [DOCX engine: ExportEnv & runExport](#docx-engine-exportenv--runexport)
 - [PDF engine: PdfExportEnv & runPdfExport](#pdf-engine-pdfexportenv--runpdfexport)
+  - [Emitting compiled bytes: PdfOutputSink & PdfBytesHandle](#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle)
 - [PDF compiler port: PdfCompilePort & BrowserPdfCompiler](#pdf-compiler-port-pdfcompileport--browserpdfcompiler)
 - [Macro rendering: MacroRendererRegistry](#macro-rendering-macrorendererregistry)
 - [Unstable and internal surfaces](#unstable-and-internal-surfaces)
@@ -76,16 +77,94 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 - `runPdfExport(input: RunPdfExportInput, env: PdfExportEnv)` → `PdfExportReport` (phases:
   preparing → fetching → compiling → validating → emitting; failures are typed
   `PdfExportError`s).
-- `PdfExportEnv` seams: `PdfAssetResolver`, `PdfCompilePort`, `PdfOutputSink`.
+- `PdfExportEnv` seams: `PdfAssetResolver`, `PdfCompilePort`, `PdfOutputSink` — the sink
+  receives a `PdfBytesHandle`, see
+  [Emitting compiled bytes](#emitting-compiled-bytes-pdfoutputsink--pdfbyteshandle).
 - Host helper seams (specs 007/008): `preparePdfDocument` (pre-compile asset resolution),
   `validatePdfOutput` (structural output gate), `resolvePdfSettings` (template settings),
   `normalizePdfLocale`, `parseFontMeta`/`verifyFontBytes` (font intake),
   `formatPdfCompilerDiagnostics`, `PDF_RUNTIME_ASSETS` (the canonical font/license manifest).
-- Transitively frozen types: `PdfSourceBundle`, `PdfCompilerDiagnostic`, `PdfExportMetadata`,
+- Transitively frozen types: `PdfBytesHandle`, `PdfSourceBundle`, `PdfCompilerDiagnostic`, `PdfExportMetadata`,
   `PdfProfile`, `PdfThemeOptions`, `PdfTemplateSettings` (spec 007 settings/watermark),
   `PreparePdfOptions`/`PreparedPdfDocument`, `ResolvedPdfSettings`, `ParsedFontFace`.
 - Internal helpers deliberately **not** frozen (reachable via `./internal`): `sha256Hex`,
   `typstSettingsDict`, the `DEFAULT_PDF_*` watermark consts, and the asset-limit consts.
+
+### Emitting compiled bytes: PdfOutputSink & PdfBytesHandle
+
+`PdfOutputSink.emit(name, bytes, context?)` hands the host a **`PdfBytesHandle`** — a reference
+to the compiled document — not the `Uint8Array` itself. The handle owns one representation and
+converts on demand, memoizing each conversion, so a host that needs a different *shape* of the
+bytes (a `Blob` for a download, an object URL for a viewer) never ends up holding a second full
+copy of the document beside the first. For a 64 MiB PDF that duplicate was measured at
++64.0 MiB.
+
+:::caution[This changed shape after the 1.0 freeze]
+`emit`'s second parameter used to be a `Uint8Array`. Existing sinks must call
+`await bytes.asUint8Array()`. See [Package Versioning](/reference/versioning/#post-freeze-contract-changes)
+for why this landed without a deprecation cycle.
+:::
+
+| Member | Type | Notes |
+|---|---|---|
+| `size` | `number` | Byte length. Deliberately synchronous and always known, so quota accounting never materializes a payload just to add numbers. |
+| `mimeType` | `string` | `"application/pdf"` for everything this engine emits. |
+| `asUint8Array()` | `Promise<Uint8Array>` | **Borrowed, not owned** — see the caution below. |
+| `asBlob()` | `Promise<Blob>` | Memoized: two calls return the same `Blob`, not two copies. |
+| `objectUrl()` | `Promise<string>` | Memoized `blob:` URL; the handle owns revocation. Rejects on a runtime with no `URL.createObjectURL`. |
+| `release()` | `void` | Revoke the minted object URL and drop memoized conversions. The handle stays usable — a later `objectUrl()` mints a fresh one. |
+
+Minimal Node sink — write the document to disk:
+
+```ts
+import { writeFile } from "node:fs/promises";
+import type { PdfOutputSink } from "@atlcli/pdf";
+
+const sink: PdfOutputSink = {
+  async emit(name, bytes) {
+    await writeFile(name, await bytes.asUint8Array());
+  },
+};
+```
+
+Browser sink — download without a second copy of the document in memory:
+
+```ts
+import type { PdfBytesHandle, PdfOutputSink } from "@atlcli/pdf";
+
+const sink: PdfOutputSink = {
+  async emit(name: string, bytes: PdfBytesHandle, context): Promise<void> {
+    context?.signal?.throwIfAborted();
+    const url = await bytes.objectUrl(); // memoized — concurrent calls cannot leak a URL
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = name;
+      anchor.click();
+    } finally {
+      bytes.release(); // the handle revokes what it minted
+    }
+  },
+};
+```
+
+:::caution[`asUint8Array()` lends, it does not copy]
+The array you get back **is** the handle's backing store. Two consumers that both call it hold
+the same object; mutating it, or detaching its `ArrayBuffer`, changes or destroys what every
+other consumer — and the handle itself — will read.
+
+- Read-only (writing to disk, hashing, size accounting)? Use it directly.
+- Need to mutate? Copy first: `new Uint8Array(await bytes.asUint8Array())`.
+- Handing the bytes to something that may **transfer** the buffer? Copy, or prefer
+  `asBlob()`/`objectUrl()`. `pdfjs.getDocument({ data })` is the live example — PDF.js may
+  transfer `data`'s `ArrayBuffer` to its worker, leaving every other holder with a zero-length
+  view. PDF.js accepts a URL and detaches nothing.
+:::
+
+Companion exports on the same barrel: `pdfBytesFromUint8Array(bytes)` and
+`pdfBytesFromBlob(blob)` construct a handle; `isPdfBytesHandle(value)` narrows an unknown value
+to the interface — useful in a sink shared with the DOCX engine, whose `OutputSink.emit` still
+takes a plain `Uint8Array`.
 
 ## PDF compiler port: PdfCompilePort & BrowserPdfCompiler
 
