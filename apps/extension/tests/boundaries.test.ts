@@ -193,9 +193,90 @@ describe("extension host boundaries — no re-implementation of packages/* surfa
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
-    for (const dep of ["@atlcli/export-wiring", "@atlcli/export-macros"]) {
+    for (const dep of ["@atlcli/export-wiring", "@atlcli/export-macros", "@atlcli/jira"]) {
       expect(manifest.dependencies[dep], `${dep} is imported but not declared`).toBe("workspace:*");
     }
+  });
+});
+
+/**
+ * Node barrels must not be importable from this bundle (spec 010 T5.4).
+ *
+ * ## Why this is not already covered by `bun run check:browser`
+ *
+ * It is not, and that is the point of writing it here. The shared gate scans a
+ * `--target=browser` build for **quoted `node:`/`bun:` specifiers**, and the
+ * modules that make `@atlcli/jira`'s default barrel node-only import the LEGACY
+ * bare form — `import { homedir } from "os"`, `"path"`, `"fs"`, `"crypto"` —
+ * which Bun silently polyfills for the browser target. Measured: pointing
+ * `BROWSER_ENTRYPOINTS` at `packages/jira/src/index.ts` produces a 1.03 MB
+ * bundle containing `homedir`, `createHmac`, `Bun.serve` and Bun's own
+ * "not implemented" polyfill text — and the gate reports it CLEAN.
+ *
+ * So the property this file can still check cheaply, with no false positives
+ * and without changing a repo-wide gate's sensitivity, is the *intent*: a
+ * package that ships a browser barrel must be imported through it. The
+ * `exports` map is the source of truth — a `"."` entry carrying a `browser`
+ * condition already resolves safely for a bundler, so a bare import of such a
+ * package (`@atlcli/core`) is fine; one without it is not.
+ */
+describe("no extension source imports a package's node barrel", () => {
+  const SOURCE_ROOTS = ["utils", "entrypoints", "components", "workers"];
+  const sources = SOURCE_ROOTS.flatMap((dir) => sourceFiles(join(ROOT, dir)));
+
+  /** `@atlcli/x` → does its `"."` export resolve to a browser-safe barrel? */
+  function rootExportIsBrowserSafe(pkg: string): boolean {
+    const manifestPath = join(REPO, "packages", pkg.replace("@atlcli/", ""), "package.json");
+    const exportsMap = (
+      JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        exports?: Record<string, unknown>;
+      }
+    ).exports;
+    const root = exportsMap?.["."];
+    // No `./browser` subpath at all ⇒ the package has one isomorphic barrel
+    // (`@atlcli/export-macros`, `@atlcli/export-wiring`), nothing to get wrong.
+    if (!exportsMap || exportsMap["./browser"] === undefined) return true;
+    return JSON.stringify(root ?? {}).includes('"browser"');
+  }
+
+  it("reads a non-trivial set of @atlcli imports", () => {
+    expect(sources.length).toBeGreaterThan(20);
+  });
+
+  it("every bare @atlcli import resolves to a browser-safe barrel", () => {
+    const offenders: string[] = [];
+    for (const file of sources) {
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/from\s+["'](@atlcli\/[a-z0-9-]+)["']/g)) {
+        const pkg = match[1]!;
+        if (rootExportIsBrowserSafe(pkg)) continue;
+        offenders.push(
+          `${file.slice(ROOT.length + 1)}: imports "${pkg}" — that barrel is Node-only; ` +
+            `use "${pkg}/browser"`
+        );
+      }
+    }
+    expect(
+      offenders,
+      offenders.length ? `Node barrel reached the extension bundle:\n  ${offenders.join("\n  ")}` : undefined
+    ).toEqual([]);
+  });
+
+  it("guard-the-guard: the classifier knows a node-only barrel when it sees one", () => {
+    // `@atlcli/jira` gained the `browser` condition in T5.4; before that this
+    // returned false, which is exactly the state the rule exists to forbid.
+    expect(rootExportIsBrowserSafe("@atlcli/jira")).toBe(true);
+    expect(rootExportIsBrowserSafe("@atlcli/export-macros")).toBe(true);
+    // And a package whose "." has no browser condition is classified unsafe.
+    const unsafe = { exports: { ".": { default: "./dist/index.js" }, "./browser": {} } };
+    expect(JSON.stringify(unsafe.exports["."]).includes('"browser"')).toBe(false);
+  });
+
+  it("the Jira client is imported through the browser barrel specifically", () => {
+    const source = readFileSync(join(UTILS, "macros/session-ports.ts"), "utf8");
+    expect(source).toContain('from "@atlcli/jira/browser"');
+    expect(source).not.toMatch(/from\s+["']@atlcli\/jira["']/);
+    expect(source).not.toContain('from "@atlcli/jira/node"');
   });
 });
 

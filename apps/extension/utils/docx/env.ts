@@ -18,6 +18,12 @@ import {
   canvasSvgRasterizer as neutralCanvasSvgRasterizer,
   memoryTemplateSource,
 } from "@atlcli/docx/browser-runtime";
+import type { ExternalAssetFetcher, ExternalAssetPolicy } from "@atlcli/export-macros";
+import { trustRoutingAssetFetcher } from "@atlcli/export-wiring";
+import {
+  createExternalAssetFetcher,
+  extensionAssetPolicyFromPageUrl,
+} from "../macros/external-asset-policy.js";
 import {
   SessionRedirectBlockedError,
   createAtlassianSessionRedirectPolicy,
@@ -224,6 +230,44 @@ export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fe
       return bytes;
     },
   };
+}
+
+export interface SessionDocxAssetsOptions {
+  /** The site's Confluence root (`https://x.atlassian.net/wiki`). */
+  baseUrl?: string;
+  /** The active tab's URL — the origin the external-asset policy is built on. */
+  pageUrl: string;
+  /** Replaces the session fetch; the trust router is composed around it regardless. */
+  inner?: AssetFetcher;
+  /** Defaults to the extension's manifest-scoped origin allowlist. */
+  policy?: ExternalAssetPolicy;
+  /** Defaults to the shared enforced fetcher over {@link policy}. */
+  external?: ExternalAssetFetcher;
+  fetchFn?: typeof fetch;
+}
+
+/**
+ * The fetcher the DOCX export env actually gets: {@link sessionAssetFetcher}
+ * with the spec-004 trust router already composed around it.
+ *
+ * **Every `ExportEnv.assets` this host builds goes through here** — the exact
+ * counterpart of `extensionPdfAssets` in `utils/pdf/run-export.ts`, and for the
+ * exact same reason. Before spec 010 wave 3 this path fetched **any** absolute
+ * URL with `credentials: "include"`, and the panel is about to start resolving
+ * macros: an `<img>` pointing at the cloud metadata service, emitted by a
+ * app's `export_view` HTML would otherwise have been fetched from inside the
+ * user's authenticated browser session. The router sends exactly those
+ * (`trust: "export-view"`) through the policy-checked, redirect-re-checked,
+ * byte-capped, `credentials: "omit"` fetcher; page-author refs keep the
+ * session path unchanged, which is what keeps the DOCX and PDF engines
+ * embedding the same image for the same page.
+ */
+export function sessionDocxAssets(options: SessionDocxAssetsOptions): AssetFetcher {
+  const policy = options.policy ?? extensionAssetPolicyFromPageUrl(options.pageUrl);
+  const external = options.external ?? createExternalAssetFetcher(policy);
+  const inner =
+    options.inner ?? sessionAssetFetcher(options.baseUrl, options.fetchFn ?? fetch);
+  return trustRoutingAssetFetcher(inner, external);
 }
 
 /**

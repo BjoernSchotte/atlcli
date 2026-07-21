@@ -118,12 +118,14 @@ export interface JiraClientLike {
     getIssue(keyOrId: string, options?: {
         fields?: string[];
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<JiraIssueLike>;
     search(jql: string, options?: {
         maxResults?: number;
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        signal?: AbortSignal;
     }): Promise<{
         issues: JiraIssueLike[];
     }>;

@@ -44,16 +44,24 @@
  *
  * ## Wiring status (read before consuming)
  *
- * This module owns the port CONSTRUCTION only. A wave-2 agent wires
- * {@link buildSessionMacroResolutionOptions} into `PdfExportEnv.macros`
- * (`utils/pdf/run-export.ts`) and `ExportEnv.macros` (the DOCX path via
- * `utils/docx/export-deps.ts`), and wires the policy/fetcher from
- * `./external-asset-policy.js` into both asset resolvers — **including the
- * sink-side trust routers** (`trustRoutingAssetFetcher` /
- * `trustRoutingPdfAssetResolver` from `@atlcli/export-wiring`). Wiring
- * {@link buildSessionMacroResolutionOptions} WITHOUT them activates a bypass:
- * the URLs macro HTML emits reach the ENGINE's asset seam, not the fetcher in
- * the macro context. Nothing here reaches into those files.
+ * This module owns the port CONSTRUCTION. {@link buildSessionMacroResolutionOptions}
+ * is consumed by `utils/pdf/run-export.ts` (`PdfExportEnv.macros`) and by
+ * `entrypoints/sidepanel/ports/docx.ts` (`ExportEnv.macros`); **both of those
+ * call sites also compose the sink-side trust routers**
+ * (`trustRoutingPdfAssetResolver` / `trustRoutingAssetFetcher` from
+ * `@atlcli/export-wiring`) around their asset seams.
+ *
+ * That pairing is not optional and not a style preference. The policy/fetcher
+ * this module puts into the macro CONTEXT only guards the bytes the macro
+ * RENDERERS fetch. The URLs macro HTML *emits* arrive at the engine as ordinary
+ * image blocks carrying `trust: "export-view"`, and are resolved by the
+ * engine's own asset seam — so resolving macros without routing that seam turns
+ * an `<img>` naming the cloud metadata service inside third-party macro HTML into a
+ * request the host makes from inside the user's authenticated session.
+ * `assertPdfEnvMacroAssetRule` in `@atlcli/export-wiring/fixtures` is the
+ * executable form of the rule ("if an env carries `macros`, its asset seam must
+ * be policy-routed"); `tests/pdf/run-export-scope.test.ts` runs it against the
+ * env this module feeds.
  */
 import {
   ConfluenceClient,
@@ -71,6 +79,7 @@ import {
   type JiraIssuePort,
   type JiraIssueRef,
   type MacroExportContext,
+  type MacroPageScope,
   type MacroRendererRegistry,
   type MacroResolutionOptions,
   type PortErrorKind,
@@ -81,6 +90,11 @@ import {
   type JiraClientLike,
   type JiraIssueLike,
 } from "@atlcli/export-wiring";
+// `@atlcli/jira/browser`, never `@atlcli/jira`: the default barrel re-exports
+// the Bun-native webhook server plus four `node:fs`/`node:os` modules, and this
+// bundle has no polyfills for them. The browser barrel is on
+// `BROWSER_ENTRYPOINTS`, so "this import stays isomorphic" is CI-enforced.
+import { JiraClient } from "@atlcli/jira/browser";
 import { profileFromTabUrl } from "../profile.js";
 import {
   createExtensionAssetPolicy,
@@ -89,6 +103,20 @@ import {
 } from "./external-asset-policy.js";
 
 export type { JiraClientLike, JiraIssueLike };
+
+/**
+ * A real `JiraClient` satisfies the shared structural port with no cast.
+ *
+ * Compile-time only, and deliberately the same line
+ * `apps/cli/src/commands/export-macros-wiring.ts` carries: if `packages/jira`
+ * ever changes `getIssue`/`search` incompatibly, this fails the typecheck
+ * instead of the wiring quietly needing an `as`. It also replaces the
+ * `SessionJiraClientLike` shim this module used to declare while
+ * `@atlcli/jira` was not a dependency of the extension — that widening now
+ * lives on `JiraClientLike` itself.
+ */
+const _jiraClientSatisfiesPort: JiraClientLike = {} as JiraClient;
+void _jiraClientSatisfiesPort;
 
 // ---------------------------------------------------------------------------
 // Session-expiry latch
@@ -156,14 +184,32 @@ function statusOf(message: string): number | undefined {
 }
 
 /**
- * True for the shapes both clients use to signal "the ambient session is gone":
- * `assertNotAuthRedirect`'s `(302): authentication redirect …`,
- * `assertSessionJsonOk`'s `(login): non-JSON 200 response (login page …)`,
- * and a plain 401. Jira's client has no `assertNotAuthRedirect` of its own
- * (verified: `packages/jira/src/client.ts` carries no such guard), so for the
- * Jira port this string/status classification is the ONLY session-expiry
- * detection there is — which is exactly why it lives in the adapter and covers
- * the follow-the-redirect-to-a-login-page shapes too.
+ * The exact, non-string signal that a Jira response was a session bounce.
+ *
+ * `packages/jira/src/auth-redirect.ts` (spec 010 wave 2) gives `JiraClient` the
+ * `assertNotAuthRedirect` / `assertSessionJsonOk` guards `ConfluenceClient`
+ * already had, and throws a typed `JiraSessionAuthError` for them. Matching on
+ * `name` rather than `instanceof` is deliberate and mirrors that package's own
+ * `isJiraSessionAuthError`, which is intentionally kept OFF every barrel (spec
+ * 009 freezes what a barrel exports): a duplicated module instance in one
+ * bundle would break `instanceof` anyway, and the name is the stable contract
+ * that module documents.
+ */
+function isJiraSessionAuthError(error: unknown): boolean {
+  return error instanceof Error && error.name === "JiraSessionAuthError";
+}
+
+/**
+ * True for the shapes that mean "the ambient session is gone".
+ *
+ * The exact check above is the authority for Jira. This phrase/status fallback
+ * still carries the CONFLUENCE half: `ConfluenceClient` raises its
+ * `assertNotAuthRedirect` / `assertSessionJsonOk` failures as plain `Error`s
+ * (`packages/confluence/src/client.ts` — `authRedirectError`,
+ * `assertSessionJsonOk`), so there is no name to match on that path. The
+ * wordings are kept byte-compatible across the two packages on purpose, which
+ * is why one matcher covers both, and why deleting it would silently stop
+ * latching Confluence expiry.
  */
 function isSessionExpiry(message: string, status: number | undefined): boolean {
   if (status === 401) return true;
@@ -213,7 +259,7 @@ export function classifySessionPortError(
   const status = statusOf(raw);
   const product = productOf(service);
 
-  if (isSessionExpiry(raw, status)) {
+  if (isJiraSessionAuthError(error) || isSessionExpiry(raw, status)) {
     state.markExpired(service);
     throw portError("permission", SESSION_EXPIRED_MESSAGE, { service, cause: error });
   }
@@ -274,12 +320,15 @@ export interface SessionPortDeps {
  * manifest's existing `*://*.atlassian.net/*` host permission, same origin as
  * Confluence).
  *
- * The Jira client takes no `AbortSignal` (verified: its `request()` has no
- * `signal` option, unlike `ConfluenceClient`'s), so the signal is honoured
- * cooperatively — checked before the call and again after it settles — rather
- * than by tearing down the in-flight request. That is the honest boundary: a
- * cancel stops the NEXT issue fetch immediately and stops the current one from
- * being used.
+ * The export `AbortSignal` is threaded INTO the client
+ * ({@link JiraClientLike} — `getIssue(key, { signal })`,
+ * `search(jql, { maxResults, signal })`), so a Cancel tears down the in-flight
+ * request rather than merely refusing to use its result. `packages/jira`
+ * gained that option in spec 010 wave 2; before it existed this port could only
+ * probe `signal.aborted` after the call settled, which left a large JQL search
+ * running to completion after the user had already given up on the export.
+ * {@link preflight} still runs first, so a cancel also stops the NEXT issue
+ * fetch before it is issued.
  */
 export function sessionJiraIssuePort(
   client: JiraClientLike,
@@ -291,16 +340,13 @@ export function sessionJiraIssuePort(
   // local copy of the mapping is how the panel and the CLI start rendering
   // different tables from the same issue.
   const toRef = (issue: JiraIssueLike): JiraIssueRef => jiraIssueRef(issue, browseBaseUrl);
-  const after = (): void => {
-    if (deps.signal?.aborted) throw new DOMException("Macro resolution aborted.", "AbortError");
-  };
+  const signalOption = (): { signal?: AbortSignal } =>
+    deps.signal ? { signal: deps.signal } : {};
   return {
     async getIssue(key) {
       preflight("jira", deps.state, deps.signal);
       try {
-        const issue = await client.getIssue(key);
-        after();
-        return toRef(issue);
+        return toRef(await client.getIssue(key, signalOption()));
       } catch (err) {
         classifySessionPortError(err, "jira", deps.state);
       }
@@ -308,8 +354,10 @@ export function sessionJiraIssuePort(
     async searchJql(jql, opts) {
       preflight("jira", deps.state, deps.signal);
       try {
-        const res = await client.search(jql, { maxResults: opts.maximumIssues });
-        after();
+        const res = await client.search(jql, {
+          maxResults: opts.maximumIssues,
+          ...signalOption(),
+        });
         return res.issues.slice(0, opts.maximumIssues).map(toRef);
       } catch (err) {
         classifySessionPortError(err, "jira", deps.state);
@@ -503,7 +551,13 @@ export function createSessionMacroRegistry(): MacroRendererRegistry {
 }
 
 export interface SessionMacroPorts {
-  jira?: JiraIssuePort;
+  /**
+   * Always present since the extension declares `@atlcli/jira` (T5.4). A site
+   * without Jira access still gets a port — it degrades through the chain with
+   * a report note, which is what the CLI does and what "same export, same
+   * result" requires.
+   */
+  jira: JiraIssuePort;
   exportView: ExportViewPort;
   confluence: ConfluenceContentPort;
   attachments: AttachmentLookupPort;
@@ -518,9 +572,16 @@ export interface SessionMacroPortsInput {
   /** Overrides for tests / callers that already hold a client. */
   confluenceClient?: ConfluenceClient;
   /**
-   * A `JiraClient` (structurally {@link JiraClientLike}). Optional: without it
-   * the Jira renderer degrades through the chain exactly as it does in the CLI
-   * for a profile with no Jira access.
+   * Overrides the `JiraClient` {@link createSessionMacroPorts} builds from the
+   * session profile.
+   *
+   * A test seam, not a feature switch. Atlassian Cloud serves Jira and
+   * Confluence from ONE origin, so a panel that can read the page can read the
+   * site's Jira with the same ambient session — and the CLI unconditionally
+   * constructs a client for exactly that reason
+   * (`buildPdfMacroOptions`/`buildTsEngineMacroOptions`). If Jira is not
+   * accessible the chain degrades to a report note, never a hard failure, which
+   * is why "always construct it" is safe as well as correct.
    */
   jiraClient?: JiraClientLike;
   signal?: AbortSignal;
@@ -544,14 +605,24 @@ export function createSessionMacroPorts(input: SessionMacroPortsInput): SessionM
   const state = input.state ?? createSessionMacroState();
   const deps: SessionPortDeps = { state, ...(input.signal ? { signal: input.signal } : {}) };
   const confluence = input.confluenceClient ?? new ConfluenceClient(profile);
+  // Constructed from the SAME session profile as the Confluence client, exactly
+  // as `ConfluenceClient` is above — Cloud serves both products from one origin,
+  // already covered by the manifest's `*://*.atlassian.net/*` host permission.
+  //
+  // Unconditional on purpose (plan owner's ruling, spec 010 T5.4). While
+  // `@atlcli/jira` was not a dependency of this extension the port was simply
+  // absent, so every Jira macro fell through to the `export_view` stage while
+  // the CLI rendered a real issue table for the same page — parity that was
+  // claimed but not delivered. A site without Jira access degrades through the
+  // documented chain (403/404 → note → placeholder), which is what makes
+  // "always build it" the honest default rather than a gamble.
+  const jira = input.jiraClient ?? new JiraClient(profile);
   const policy = createExtensionAssetPolicy({
     siteOrigin: profile.baseUrl,
     ...(input.allowedMediaOrigins ? { allowedMediaOrigins: input.allowedMediaOrigins } : {}),
   });
   return {
-    ...(input.jiraClient
-      ? { jira: sessionJiraIssuePort(input.jiraClient, profile.baseUrl, deps) }
-      : {}),
+    jira: sessionJiraIssuePort(jira, profile.baseUrl, deps),
     exportView: sessionExportViewPort(confluence, {
       ...deps,
       ...(input.versionOf ? { versionOf: input.versionOf } : {}),
@@ -574,6 +645,13 @@ export interface BuildSessionMacroOptionsInput extends SessionMacroPortsInput {
   nativeTocPresent?: boolean;
   /** Reuse ports already built by {@link createSessionMacroPorts}. */
   ports?: SessionMacroPorts;
+  /**
+   * `composeChapters(...).chapterAnchorById` for a tree/space export, so a
+   * renderer listing other Confluence pages links into THIS document for the
+   * ones that are chapters of it (the same argument the CLI's shared builder
+   * takes). Omitted for single-page exports, where nothing else is in scope.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 export interface SessionMacroResolution {
@@ -614,6 +692,10 @@ export function buildSessionMacroResolutionOptions(
     });
   const registry = createSessionMacroRegistry();
   const siteId = profileFromTabUrl(input.pageUrl)?.baseUrl ?? input.pageUrl;
+  const anchors = input.chapterAnchorById;
+  const pageScope: MacroPageScope | undefined = anchors
+    ? { chapterAnchorFor: (pageId) => anchors.get(pageId) }
+    : undefined;
 
   const options: MacroResolutionOptions = {
     registry,
@@ -626,7 +708,8 @@ export function buildSessionMacroResolutionOptions(
         confluence: ports.confluence,
         exportView: ports.exportView,
         attachments: ports.attachments,
-        ...(ports.jira ? { jira: ports.jira } : {}),
+        jira: ports.jira,
+        ...(pageScope ? { pageScope } : {}),
         externalAssets: ports.externalAssets,
         depth: 0,
         visited: new Set<string>(),
