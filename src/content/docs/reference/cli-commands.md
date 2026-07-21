@@ -104,19 +104,25 @@ atlcli doctor --json          # JSON output for scripting
 ```bash
 atlcli wiki docs init <dir> --space <key>    # Initialize sync directory
 atlcli wiki docs pull <dir>                  # Pull from Confluence
+atlcli wiki docs pull --dir <dir>            # Same, when running from elsewhere
 atlcli wiki docs pull <dir> --page-id <id>   # Pull specific page
 atlcli wiki docs pull <dir> --version <n>    # Pull specific version
 atlcli wiki docs pull <dir> --label <name>   # Pull pages with label
+atlcli wiki docs pull <dir> --force          # Overwrite local edits (markdown + attachments)
 atlcli wiki docs push <dir>                  # Push to Confluence
 atlcli wiki docs push <dir> --dry-run        # Preview changes
 atlcli wiki docs push <dir> --force          # Force overwrite
 atlcli wiki docs push <dir> --legacy-editor  # Use legacy editor (v1)
-atlcli wiki docs sync <dir> --watch          # Watch and sync
+atlcli wiki docs sync <dir> --page-id <id>   # Start the bidirectional sync daemon
+atlcli wiki docs sync <dir> --dry-run        # Report the plan; changes nothing on disk
+atlcli wiki docs sync <dir> --on-conflict remote  # Conflicts: merge (default) | local | remote
+atlcli wiki docs sync --help                 # Full sync option list
 atlcli wiki docs status <dir>                # Show sync status
 atlcli wiki docs add <dir> --template <name> # Add page from template
 atlcli wiki docs diff <dir>                  # Show local vs remote diff (title only for folders)
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
 atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
+atlcli wiki docs check --dir <dir>           # Same, when running from elsewhere (exits 1 if nothing to validate)
 atlcli wiki docs preview <dir>               # Preview markdown rendering
 atlcli wiki docs convert <file> --to-new-editor    # Convert to v2 editor
 atlcli wiki docs convert <file> --to-legacy-editor # Convert to v1 editor
@@ -400,8 +406,10 @@ atlcli jira worklog delete --issue <key> --id <id> --confirm
 # Timer mode
 atlcli jira worklog timer start <key>
 atlcli jira worklog timer start <key> --comment <text>
+atlcli jira worklog timer start <key> --profile <name>  # Record a specific profile
 atlcli jira worklog timer stop           # Stop and log time
 atlcli jira worklog timer stop --round 15m
+atlcli jira worklog timer stop --profile <name>  # Override the recorded profile
 atlcli jira worklog timer status         # Show running timer
 atlcli jira worklog timer cancel         # Cancel without logging
 
@@ -519,6 +527,17 @@ atlcli jira template import --file <path> --project <key>  # To project level
 - Global: `~/.atlcli/templates/jira/global/`
 - Profile: `~/.atlcli/templates/jira/profiles/{name}/`
 - Project: `~/.atlcli/templates/jira/projects/{key}/`
+
+**Choosing a level** — `save`, `import`, `delete` and `list` all use the same rule:
+
+1. an explicit `--level <global|profile|project>` always wins;
+2. otherwise `--project <key>` selects project storage;
+3. otherwise `--profile <name>` selects profile storage;
+4. otherwise global.
+
+`--profile` is primarily the auth-profile flag, so it is the weakest storage
+signal. An unrecognised `--level` value is rejected rather than silently
+falling back to another level.
 
 ### Bulk Operations
 

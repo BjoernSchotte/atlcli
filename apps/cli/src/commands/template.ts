@@ -142,31 +142,173 @@ async function getTemplateContext(flags: Flags): Promise<TemplateContext> {
   return { resolver, global, profile, space, profileName, spaceKey, docsDir: docsDir ?? undefined };
 }
 
+type TemplateLevel = "global" | "profile" | "space";
+
+const TEMPLATE_LEVELS: readonly TemplateLevel[] = ["global", "profile", "space"];
+
+/**
+ * Which storage level the user asked for, if any.
+ *
+ * `level: null` means no level was named, so the caller falls back to its own
+ * default (precedence order for reads, the target default for writes).
+ */
+interface LevelSelection {
+  level: TemplateLevel | null;
+  /** Human-readable label, e.g. `global`, `profile:work`, `space:DOCSY`. */
+  label: string;
+}
+
+/**
+ * Read a flag that must carry a value (`--level`, not a bare `--level`).
+ *
+ * A valueless `--profile` used to read back as "no profile requested", which
+ * silently downgraded an explicit level request to precedence resolution.
+ */
+function requireFlagValue(flags: Flags, key: string, opts: OutputOptions): string | undefined {
+  if (flags[key] === undefined) return undefined;
+  const value = getFlag(flags, key);
+  if (value === undefined || value.trim() === "") {
+    fail(opts, 1, ERROR_CODES.USAGE, `--${key} requires a value.`);
+  }
+  return value;
+}
+
+/**
+ * Resolve the single storage level addressed by `--level` / `--profile` / `--space`.
+ *
+ * The rule, applied identically by every template subcommand:
+ *
+ * 1. `--level <global|profile|space>` names the level. `--profile`/`--space`
+ *    supply that level's coordinate.
+ * 2. `--profile <name>` or `--space <key>` on their own also name the level.
+ * 3. Flag combinations that name two different levels are a usage error - we
+ *    never silently pick one of them.
+ * 4. A named level whose context is missing (no profile name available, no
+ *    space key available) is a usage error, not a fallback to another level.
+ *    Falling back is what deleted a space template for `--level profile`.
+ * 5. Only explicit flags select. Config defaults (active profile, default
+ *    space) supply coordinates for a level that was named, never the level.
+ */
+function selectLevel(
+  ctx: TemplateContext,
+  flags: Flags,
+  opts: OutputOptions
+): LevelSelection {
+  const rawLevel = requireFlagValue(flags, "level", opts);
+  const profileFlag = requireFlagValue(flags, "profile", opts);
+  const spaceFlag = requireFlagValue(flags, "space", opts);
+
+  if (rawLevel !== undefined && !TEMPLATE_LEVELS.includes(rawLevel as TemplateLevel)) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Invalid --level '${rawLevel}'. Expected one of: ${TEMPLATE_LEVELS.join(", ")}.`
+    );
+  }
+  const level = rawLevel as TemplateLevel | undefined;
+
+  // Contradictory selections fail instead of letting one flag win silently.
+  if (profileFlag !== undefined && spaceFlag !== undefined) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `--profile ${profileFlag} and --space ${spaceFlag} name different levels. Pass only one.`
+    );
+  }
+  if (level === "global" && profileFlag !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--level global conflicts with --profile ${profileFlag}.`);
+  }
+  if (level === "global" && spaceFlag !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--level global conflicts with --space ${spaceFlag}.`);
+  }
+  if (level === "profile" && spaceFlag !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--level profile conflicts with --space ${spaceFlag}.`);
+  }
+  if (level === "space" && profileFlag !== undefined) {
+    fail(opts, 1, ERROR_CODES.USAGE, `--level space conflicts with --profile ${profileFlag}.`);
+  }
+
+  const selected: TemplateLevel | null =
+    level ??
+    (profileFlag !== undefined ? "profile" : spaceFlag !== undefined ? "space" : null);
+
+  if (selected === null) {
+    return { level: null, label: "any level" };
+  }
+
+  if (selected === "global") {
+    return { level: "global", label: "global" };
+  }
+
+  if (selected === "profile") {
+    if (!ctx.profile || !ctx.profileName) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        "No profile context for the profile level. Pass --profile <name> or set an active profile."
+      );
+    }
+    return { level: "profile", label: `profile:${ctx.profileName}` };
+  }
+
+  if (!ctx.space || !ctx.spaceKey) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      "No space context for the space level. Pass --space <key> or set a default space."
+    );
+  }
+  return { level: "space", label: `space:${ctx.spaceKey}` };
+}
+
+/**
+ * Storage a write should target.
+ *
+ * A named level is honoured exactly. Without one, the pre-existing default
+ * applies: the current space when there is a space context, else global.
+ */
 function getTargetStorage(
   ctx: TemplateContext,
-  flags: Flags
+  flags: Flags,
+  opts: OutputOptions
 ): { storage: TemplateStorage; level: string } {
-  const level = getFlag(flags, "level");
+  const selection = selectLevel(ctx, flags, opts);
 
-  if (level === "global" || (!getFlag(flags, "profile") && !ctx.spaceKey)) {
-    return { storage: ctx.global, level: "global" };
+  if (selection.level) {
+    const storage = ctx.resolver.getStorage(selection.level);
+    if (!storage) {
+      fail(opts, 1, ERROR_CODES.USAGE, `No storage available for ${selection.label}.`);
+    }
+    return { storage, level: selection.label };
   }
 
-  if (getFlag(flags, "profile")) {
-    if (!ctx.profile) {
-      throw new Error("Profile storage not available");
-    }
-    return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
-  }
-
-  if (ctx.spaceKey) {
-    if (!ctx.space) {
-      throw new Error("Space storage not available");
-    }
+  if (ctx.space && ctx.spaceKey) {
     return { storage: ctx.space, level: `space:${ctx.spaceKey}` };
   }
 
   return { storage: ctx.global, level: "global" };
+}
+
+/**
+ * Build a list/export filter from the same level selection the read and write
+ * paths use, so `--level profile` filters the profile level everywhere.
+ */
+function buildLevelFilter(
+  ctx: TemplateContext,
+  flags: Flags,
+  opts: OutputOptions
+): TemplateFilter {
+  const selection = selectLevel(ctx, flags, opts);
+  if (!selection.level) return {};
+
+  const filter: TemplateFilter = { level: selection.level };
+  if (selection.level === "profile") filter.profile = ctx.profileName;
+  if (selection.level === "space") filter.space = ctx.spaceKey;
+  return filter;
 }
 
 // ============================================================================
@@ -180,22 +322,7 @@ async function handleList(
 ): Promise<void> {
   const ctx = await getTemplateContext(flags);
 
-  const filter: TemplateFilter = {};
-
-  const level = getFlag(flags, "level");
-  if (level === "global" || level === "profile" || level === "space") {
-    filter.level = level;
-  }
-
-  if (getFlag(flags, "profile")) {
-    filter.level = "profile";
-    filter.profile = getFlag(flags, "profile");
-  }
-
-  if (getFlag(flags, "space")) {
-    filter.level = "space";
-    filter.space = getFlag(flags, "space");
-  }
+  const filter: TemplateFilter = buildLevelFilter(ctx, flags, opts);
 
   const tag = getFlag(flags, "tag");
   if (tag) {
@@ -254,11 +381,7 @@ async function handleShow(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, name, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
-  }
+  const { template } = await requireTemplate(ctx, name, flags, opts);
 
   if (opts.json) {
     output({ template }, opts);
@@ -305,28 +428,28 @@ async function handleShow(
   output(template.content, opts);
 }
 
-async function resolveTemplate(
+/**
+ * Look a template up, honouring an explicitly named level.
+ *
+ * When a level is named the lookup is confined to that level's storage: no
+ * fallback to another level, because a fallback here is what made
+ * `delete --level profile` remove the space-level template.
+ */
+async function lookupTemplate(
   ctx: TemplateContext,
   name: string,
-  flags: Flags,
+  selection: LevelSelection,
   opts: OutputOptions
 ): Promise<Template | null> {
-  const level = getFlag(flags, "level");
-  const profile = getFlag(flags, "profile");
-  const space = getFlag(flags, "space");
-
-  // If specific level requested, get from that storage
-  if (level === "global") {
-    return ctx.global.get(name);
-  }
-  if (profile && ctx.profile) {
-    return ctx.profile.get(name);
-  }
-  if (space && ctx.space) {
-    return ctx.space.get(name);
+  if (selection.level) {
+    const storage = ctx.resolver.getStorage(selection.level);
+    if (!storage) {
+      fail(opts, 1, ERROR_CODES.USAGE, `No storage available for ${selection.label}.`);
+    }
+    return storage.get(name);
   }
 
-  // Otherwise use resolver (precedence-based)
+  // No level named: use resolver (precedence-based)
   const template = await ctx.resolver.resolve(name);
 
   // Check for ambiguity
@@ -342,6 +465,38 @@ async function resolveTemplate(
   }
 
   return template;
+}
+
+/**
+ * Resolve a template and the storage that owns it, or fail with a message that
+ * names the level that was searched.
+ */
+async function requireTemplate(
+  ctx: TemplateContext,
+  name: string,
+  flags: Flags,
+  opts: OutputOptions
+): Promise<{ template: Template; storage: TemplateStorage }> {
+  const selection = selectLevel(ctx, flags, opts);
+  const template = await lookupTemplate(ctx, name, selection, opts);
+
+  if (!template) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      selection.level
+        ? `Template '${name}' not found at ${selection.label}.`
+        : `Template '${name}' not found.`
+    );
+  }
+
+  const storage = ctx.resolver.getStorage(template.source.level);
+  if (!storage) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Cannot access template at level '${template.source.level}'.`);
+  }
+
+  return { template, storage };
 }
 
 // ============================================================================
@@ -366,7 +521,7 @@ async function handleCreate(
     name = wizardResult.name;
 
     const ctx = await getTemplateContext(flags);
-    const { storage, level } = getTargetStorage(ctx, flags);
+    const { storage, level } = getTargetStorage(ctx, flags, opts);
     const force = hasFlag(flags, "force");
 
     if (!force && (await storage.exists(name))) {
@@ -388,7 +543,7 @@ async function handleCreate(
   }
 
   const ctx = await getTemplateContext(flags);
-  const { storage, level } = getTargetStorage(ctx, flags);
+  const { storage, level } = getTargetStorage(ctx, flags, opts);
   const force = hasFlag(flags, "force");
 
   // Check if exists
@@ -616,17 +771,7 @@ async function handleEdit(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, name, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
-  }
-
-  // Get the storage for this template's level
-  const storage = ctx.resolver.getStorage(template.source.level);
-  if (!storage) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Cannot edit template at level '${template.source.level}'.`);
-  }
+  const { template, storage } = await requireTemplate(ctx, name, flags, opts);
 
   // Create temp file with content
   const tmpDir = await mkdtemp(join(tmpdir(), "atlcli-template-"));
@@ -675,11 +820,7 @@ async function handleDelete(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, name, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
-  }
+  const { template, storage } = await requireTemplate(ctx, name, flags, opts);
 
   const force = hasFlag(flags, "force");
 
@@ -701,17 +842,28 @@ async function handleDelete(
     fail(opts, 1, ERROR_CODES.USAGE, "Use --force to delete in non-interactive mode.");
   }
 
-  const storage = ctx.resolver.getStorage(template.source.level);
-  if (!storage) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Cannot delete from level '${template.source.level}'.`);
-  }
-
   await storage.delete(name);
 
+  const deletedFrom = formatLevel({
+    name,
+    level: template.source.level,
+    profile: template.source.profile,
+    space: template.source.space,
+  });
+
   if (opts.json) {
-    output({ deleted: true, name }, opts);
+    output(
+      {
+        deleted: true,
+        name,
+        level: template.source.level,
+        profile: template.source.profile,
+        space: template.source.space,
+      },
+      opts
+    );
   } else {
-    output(`Deleted template '${name}'.`, opts);
+    output(`Deleted template '${name}' from ${deletedFrom}.`, opts);
   }
 }
 
@@ -746,16 +898,7 @@ async function handleRename(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, oldName, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${oldName}' not found.`);
-  }
-
-  const storage = ctx.resolver.getStorage(template.source.level);
-  if (!storage) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Cannot rename at level '${template.source.level}'.`);
-  }
+  const { storage } = await requireTemplate(ctx, oldName, flags, opts);
 
   // Check if new name exists
   if (await storage.exists(newName)) {
@@ -798,6 +941,9 @@ async function handleValidate(
 
     const result = engine.validate(template);
     outputValidation(filePath, result, opts);
+    if (!result.valid) {
+      exitInvalid(opts, `Template '${filePath}' is invalid.`);
+    }
     return;
   }
 
@@ -806,22 +952,26 @@ async function handleValidate(
     const ctx = await getTemplateContext(flags);
     const templates = await ctx.resolver.listAll();
 
-    let hasErrors = false;
+    const invalid: string[] = [];
     for (const summary of templates) {
       const template = await ctx.resolver.resolve(summary.name);
       if (template) {
         const result = engine.validate(template);
         if (!result.valid || result.warnings.length > 0) {
           outputValidation(summary.name, result, opts);
-          if (!result.valid) hasErrors = true;
+          if (!result.valid) invalid.push(summary.name);
         }
       }
     }
 
-    if (!hasErrors && !opts.json) {
-      output("All templates valid.", opts);
+    if (invalid.length === 0) {
+      if (!opts.json) {
+        output("All templates valid.", opts);
+      }
+      return;
     }
-    return;
+
+    exitInvalid(opts, `${invalid.length} template(s) invalid: ${invalid.join(", ")}.`);
   }
 
   // Validate specific template
@@ -831,14 +981,28 @@ async function handleValidate(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, name, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
-  }
+  const { template } = await requireTemplate(ctx, name, flags, opts);
 
   const result = engine.validate(template);
   outputValidation(name, result, opts);
+  if (!result.valid) {
+    exitInvalid(opts, `Template '${name}' is invalid.`);
+  }
+}
+
+/**
+ * Exit non-zero after a validation report has already been written.
+ *
+ * `fail()` is not usable here: in `--json` mode it would emit a second JSON
+ * document after the machine-readable report. The report already carries
+ * `valid: false` and the errors, so JSON consumers get the detail and CI gets
+ * the exit code. Warnings alone never fail the command.
+ */
+function exitInvalid(opts: OutputOptions, message: string): never {
+  if (!opts.json) {
+    process.stderr.write(`${message}\n`);
+  }
+  process.exit(1);
 }
 
 // ============================================================================
@@ -857,11 +1021,7 @@ async function handleRender(
   }
 
   const ctx = await getTemplateContext(flags);
-  const template = await resolveTemplate(ctx, name, flags, opts);
-
-  if (!template) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
-  }
+  const { template } = await requireTemplate(ctx, name, flags, opts);
 
   // Parse --var flags
   const variables = parseVarFlags(flags);
@@ -1323,20 +1483,27 @@ async function handleExport(
   // Single template export to stdout or file
   if (args.length === 1) {
     const name = args[0];
-    const level = getFlag(flags, "level") as "global" | "profile" | "space" | undefined;
-    const profile = getFlag(flags, "profile");
-    const space = getFlag(flags, "space");
+    // Same level rule as show/edit/delete: a named level is honoured exactly,
+    // with the coordinate taken from the resolved context.
+    const selection = selectLevel(ctx, flags, opts);
 
     const content = await exportSingleTemplate(
       ctx.resolver,
       name,
-      level,
-      profile,
-      space
+      selection.level ?? undefined,
+      ctx.profileName,
+      ctx.spaceKey
     );
 
     if (!content) {
-      fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found.`);
+      fail(
+        opts,
+        1,
+        ERROR_CODES.USAGE,
+        selection.level
+          ? `Template '${name}' not found at ${selection.label}.`
+          : `Template '${name}' not found.`
+      );
     }
 
     if (outputPath && !outputPath.endsWith("/")) {
@@ -1358,19 +1525,7 @@ async function handleExport(
   const outputDir = outputPath ?? "./templates-export";
 
   // Build filter from flags
-  const filter: TemplateFilter = {};
-  const level = getFlag(flags, "level");
-  if (level === "global" || level === "profile" || level === "space") {
-    filter.level = level;
-  }
-  if (getFlag(flags, "profile")) {
-    filter.level = "profile";
-    filter.profile = getFlag(flags, "profile");
-  }
-  if (getFlag(flags, "space")) {
-    filter.level = "space";
-    filter.space = getFlag(flags, "space");
-  }
+  const filter: TemplateFilter = buildLevelFilter(ctx, flags, opts);
   const tag = getFlag(flags, "tag");
   if (tag) {
     filter.tags = [tag];
@@ -1491,7 +1646,8 @@ async function handleUpdate(
 ): Promise<void> {
   const templateNames = args;
   const sourceUrl = getFlag(flags, "source");
-  const force = hasFlag(flags, "force");
+  // No --force here: updating always replaces and always re-tracks the source
+  // (see importOpts below), so the flag had nothing left to switch on.
 
   const ctx = await getTemplateContext(flags);
 
@@ -1624,15 +1780,25 @@ List options:
   --search <text>                 Search name/description
   --all                           Include overridden templates
 
-Target options (for create/edit/delete/rename):
-  --profile <name>    Target profile templates
-  --space <key>       Target space templates
-  --level global      Target global templates (default)
+Level selection (for show/create/edit/delete/rename/validate/render/export):
+  --level <global|profile|space>  Target that level exactly
+  --profile <name>                Target profile templates (implies --level profile)
+  --space <key>                   Target space templates (implies --level space)
+
+  Flags that name two different levels are rejected. A named level with no
+  context (no profile name, no space key) is rejected rather than silently
+  resolved somewhere else. Without any of these flags, reads use precedence
+  (space > profile > global) and writes target the current space, else global.
 
 Create options:
   --file <path>       Read template from file
   --interactive       Run creation wizard (prompts for name, description, tags)
   --force             Overwrite existing template
+
+Validate options:
+  --file <path>       Validate a file instead of a stored template
+  --all               Validate every resolved template
+                      Exit code 1 when anything is invalid (warnings stay 0).
 
 Render options:
   --var <key=value>   Set variable value (repeatable)
@@ -1670,7 +1836,7 @@ Import options:
 
 Update options:
   --source <url>        Update only from this source
-  --force               Re-track source for templates
+                        (updates always replace and re-track the source)
 
 Built-in @variables available in templates:
   @date, @datetime, @time, @year, @month, @day, @weekday

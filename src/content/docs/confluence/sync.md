@@ -101,14 +101,45 @@ atlcli wiki docs sync <dir> [options]
 | `--space <key>` | Sync entire space |
 | `--ancestor <id>` | Sync page tree under parent ID |
 | `--page-id <id>` | Sync single page |
-| `--poll-interval <ms>` | Remote polling interval (default: 30000) |
+| `--poll-interval <ms>` | Remote polling interval, `100`–`86400000` (default: 30000) |
 | `--no-poll` | Disable remote polling (local watch only) |
 | `--no-watch` | Disable file watching (poll only) |
 | `--on-conflict <mode>` | Conflict handling: `merge`, `local`, `remote` |
 | `--auto-create` | Auto-create pages for new local files |
 | `--label <label>` | Only sync pages with this label |
-| `--dry-run` | Preview changes without syncing |
+| `--dry-run` | Report the plan and exit without changing anything |
 | `--json` | JSON line output for scripting |
+
+Run `atlcli wiki docs sync --help` for the same list from the CLI.
+
+:::note[Invalid values are rejected]
+`--on-conflict`, `--poll-interval` and `--webhook-port` are validated before the
+daemon starts. An unrecognized mode or a non-numeric interval exits with a usage
+error instead of silently falling back to `merge` or to the default interval.
+:::
+
+### Previewing a Sync
+
+```bash
+atlcli wiki docs sync ./docs --page-id 12345 --dry-run
+```
+
+`--dry-run` reports the plan and exits. It performs **no** filesystem writes at
+all:
+
+- No pages are pulled; no local file is created, moved or overwritten.
+- Legacy `<file>.meta.json` / `<file>.base` sidecars are reported as
+  `Would migrate:` and left on disk — they are neither migrated nor deleted.
+- No `.atlcli/` directory, state store or cache is created, and the target
+  directory itself is not created if it does not exist.
+- The sync daemon is not started, so no watcher and no poller run.
+
+:::caution[Behavior changed]
+Earlier versions migrated legacy sidecars for real under `--dry-run`: they
+deleted `<file>.meta.json` and `<file>.base` and created a `.atlcli/` store. If
+you ran a dry run against a directory still in the pre-v2 format, check version
+control for missing sidecar files.
+:::
 
 ### Polling
 
@@ -264,20 +295,42 @@ Download pages from Confluence to local markdown files:
 atlcli wiki docs pull ./docs
 ```
 
-The path argument is optional and defaults to the current directory. Pass the same path you used for `init` (or `cd` into it and omit the path) so files land where the state expects them.
+The path argument is optional and defaults to the current directory. Pass the same path you used for `init` (or `cd` into it and omit the path) so files land where the state expects them. `--dir <path>` does the same thing as the positional argument and is the spelling to use from scripts.
 
 Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path; use it when running from elsewhere) |
+| `--out <path>` | Legacy alias for `--dir` |
 | `--space` | Filter by space key |
 | `--page-id` | Pull specific page |
 | `--ancestor` | Pull page tree |
 | `--label` | Filter by label |
-| `--force` | Overwrite local modifications |
+| `--force` | Overwrite local modifications - markdown **and** attachments |
 | `--comments` | Export comments to sidecar files |
 | `--no-attachments` | Skip downloading attachments |
 | `--limit <n>` | Maximum pages to pull |
+
+### Local modifications are never overwritten silently
+
+Pull compares each file it is about to write against the hash recorded at the
+last sync. Anything you changed locally is left alone and reported:
+
+```
+Skipping architecture.md (local modifications, use --force)
+Skipping architecture.attachments/diagram.png (local modifications, use --force)
+```
+
+This applies to markdown files and to attachments alike. Skipped attachments are
+counted as `attachmentsSkipped` in `--json` output. Use `--force` to discard the
+local version and take the remote one.
+
+:::caution[`--force` discards local edits]
+`--force` overwrites locally modified markdown files *and* attachments,
+including attachments currently in conflict. Run `atlcli wiki docs status`
+first to see what you would lose.
+:::
 
 ### Examples
 
@@ -285,13 +338,16 @@ Options:
 # Pull using saved scope from init
 atlcli wiki docs pull ./docs
 
+# Pull into ./docs from an unrelated working directory
+atlcli wiki docs pull --dir ./docs
+
 # Pull pages with specific label
 atlcli wiki docs pull ./docs --label api-docs
 
 # Pull with comments exported
 atlcli wiki docs pull ./docs --comments
 
-# Force pull (overwrite local changes)
+# Force pull (overwrite local changes, attachments included)
 atlcli wiki docs pull ./docs --force
 
 # Pull without attachments
@@ -325,8 +381,9 @@ Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path) |
 | `--page-id <id>` | Push specific page by ID |
-| `--validate` | Run validation before push |
+| `--validate` | Validate the files being pushed before pushing |
 | `--strict` | Treat warnings as errors |
 | `--json` | JSON output |
 
@@ -369,9 +426,18 @@ Pre-push validation checks for:
 | Unclosed macros | Error | `:::info` without closing `:::` |
 | Page size | Warning | Content exceeds 500KB |
 
+`--validate` checks exactly what the push will send: the single file for
+`push <file>` or `push --page-id <id>`, and the collected (ignore-filtered) set
+for a directory push. Errors in files you are not pushing do not block the push,
+and `--validate` works outside an initialized tree too - it validates the named
+file rather than doing nothing.
+
 ```bash
 # Run validation separately
 atlcli wiki docs check ./docs
+
+# From an unrelated working directory
+atlcli wiki docs check --dir ./docs
 
 # Strict mode (warnings are errors)
 atlcli wiki docs check ./docs --strict
@@ -379,6 +445,12 @@ atlcli wiki docs check ./docs --strict
 # JSON output for CI/scripts
 atlcli wiki docs check ./docs --json
 ```
+
+:::note[`check` never passes by checking nothing]
+If the resolved path contains no markdown files, `check` exits non-zero with
+"nothing was validated" instead of reporting a green run. A missing path fails
+the same way.
+:::
 
 ## Add
 
@@ -448,11 +520,25 @@ Control how conflicts are handled in sync mode:
 atlcli wiki docs sync ./docs --on-conflict <strategy>
 ```
 
-| Strategy | Behavior |
-|----------|----------|
-| `merge` | Attempt three-way merge (default) |
-| `local` | Keep local version, overwrite remote |
-| `remote` | Keep remote version, overwrite local |
+| Strategy | Behavior when the three-way merge fails |
+|----------|----------------------------------------|
+| `merge` | Write conflict markers into the local file and stop (default) |
+| `local` | Local wins: push the local file over the remote page in one update |
+| `remote` | Remote wins: overwrite the conflicted local file in place; the local edit is discarded and never pushed |
+
+All three emit a `conflict` event first, so `--json` consumers see which
+strategy was applied:
+
+```json
+{"schemaVersion":"1","type":"conflict","message":"Conflict (1 regions), keeping remote (--on-conflict remote): ./docs/api.md","file":"./docs/api.md","pageId":"12345","details":{"conflictCount":1,"resolution":"remote"}}
+```
+
+:::caution[Behavior changed]
+Earlier versions handled only `merge` correctly. `local` looped between the push
+and merge paths without ever pushing (thousands of API requests, no result), and
+`remote` wrote the remote content to a *new* file (`api-2.md`) while leaving
+`api.md` on the local edit. Both now behave as documented above.
+:::
 
 ### Three-Way Merge
 
@@ -514,21 +600,37 @@ Sync status for ./docs:
   remote-modified: 1 files
   conflict:        1 files
   untracked:       3 files
+  folders:         2
+
+Attachments:
+  synced:          8
+  local-modified:  1
+  conflict:        0
+  missing:         0
 
 Last sync: 2025-01-14T10:30:00Z
 
 Modified:
   api-reference.md (local changes)
   getting-started.md (remote changes)
+  architecture.attachments/diagram.png (attachment local changes)
 
 Conflicts:
   troubleshooting.md
 ```
 
+The file counters cover markdown only. Attachments are counted separately (they
+have their own base hashes) and appear in `--json` output under
+`attachmentStats`; individual files show up in `modified` with the type
+`attachment local changes`, or `attachment deleted locally` when the file is
+gone.
+
 Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path) |
+| `--links` | Analyze link changes vs stored links |
 | `--json` | JSON output |
 
 ## Ignore Patterns
