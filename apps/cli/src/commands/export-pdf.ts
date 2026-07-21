@@ -47,7 +47,6 @@ import {
   noteToIssue,
   pdfReportContributions,
   type ExportOutcome,
-  type Issue,
   type SourcePageEntry,
 } from "./export-report.js";
 import {
@@ -208,7 +207,6 @@ interface ResolvedScope {
   complete: boolean;
   sourcePages: SourcePageEntry[];
   outNameKey: string;
-  mentionUnresolved: number;
   /**
    * Set ONLY for a single-page scope, to that page's id: the one
    * {@link sourcePages} entry's notes are exactly the walker notes that go into
@@ -319,7 +317,6 @@ async function resolveScope(
       // `reconcilablePageId`) before the report is built.
       sourcePages: [{ id: pageId, title: page.title, notes: walked.notes.map((n) => noteToIssue(n, "compose", pageId)) }],
       outNameKey: pageId,
-      mentionUnresolved: mention.unresolved,
       reconcilablePageId: pageId,
     };
   }
@@ -380,7 +377,6 @@ async function resolveScope(
     complete: treeResult.complete,
     sourcePages,
     outNameKey: request.scopeKind === "space" ? request.spaceKey! : rootId,
-    mentionUnresolved: mention.unresolved,
     // Same builder the DOCX tree path uses — a `--scope space` request stays
     // traceable to the tree rooted at the resolved homepage id (spec 002 A5).
     scopeReport: buildScopeReportFields(request, scope),
@@ -455,13 +451,16 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     );
     progress.clear();
 
+    // `mention-unresolved` is deliberately NOT appended here. `resolveScope`
+    // already pushed it into `scope.sourceNotes`, which rides into the engine as
+    // `input.sourceNotes`, comes back on `report.notes`, and is projected onto an
+    // Issue by `pdfReportContributions` like every other note — same `prepare`
+    // phase, plus the message carrying the unresolved COUNT that a hand-built,
+    // message-less issue could not. Appending a second one made
+    // `notesByCode["mention-unresolved"]` read 2 on the PDF path where the DOCX
+    // ts path (which only maps `report.notes`) read 1, and inflated the
+    // `--strict` warning count for the same single fact.
     const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics ?? []);
-    const allIssues: Issue[] = [
-      ...issues,
-      ...(scope.mentionUnresolved > 0
-        ? [{ code: "mention-unresolved", severity: "warning" as const, phase: "prepare", retryable: false }]
-        : []),
-    ];
 
     // Per-page provenance, reconciled (spec 010). For a single-page scope the
     // one entry's notes ARE `scope.sourceNotes`, and macro resolution rewrote
@@ -490,7 +489,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       format,
       sourcePages,
       outputDetails: [outputDetail],
-      issues: allIssues,
+      issues,
       timings: { ...report.timings, totalMs: Date.now() - startedAt },
       complete: report.complete,
       strict,

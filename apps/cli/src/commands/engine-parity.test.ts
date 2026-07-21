@@ -155,7 +155,7 @@ const EXPORT_VIEW_HTML = `<div data-macro-id="${LIVE_MACRO_ID}"><p>LIVE RENDERED
 interface CliReport {
   notesByCode?: Record<string, number>;
   sourcePages: { id: string; notes: { code: string }[] }[];
-  issues: { code: string }[];
+  issues: { code: string; message?: string }[];
 }
 
 describe("macro-report parity across engines (spec 010)", () => {
@@ -277,6 +277,189 @@ describe("macro-report parity across engines (spec 010)", () => {
     //    codes, aggregate and per page.
     expect(macroCounts(pdf.issues.map((i) => i.code))).toEqual(macroCounts(docx.issues.map((i) => i.code)));
     expect(pdf.sourcePages[0]!.notes.map((n) => n.code)).toEqual(docx.sourcePages[0]!.notes.map((n) => n.code));
+  }, 300_000);
+});
+
+/**
+ * MENTION-NOTE parity (spec 010). Same shape as the macro-report suite above —
+ * the REAL CLI, a real Bun HTTP server standing in for the Confluence REST API,
+ * no fetch mocking — pinning a different cross-engine divergence.
+ *
+ * The defect this pins: BOTH export paths push a `mention-unresolved` note into
+ * the source notes they hand the engine, and both engines return it on
+ * `report.notes`, which `pdfReportContributions`/its DOCX counterpart map onto
+ * report issues. The PDF host then appended a SECOND, hand-built
+ * `mention-unresolved` issue from `scope.mentionUnresolved`, so one unresolvable
+ * account id was counted twice: `notesByCode["mention-unresolved"]` read 2 on
+ * `--format pdf` and 1 on `--engine ts`. Under `--strict` the duplicate also
+ * inflated the warning count for a single fact.
+ *
+ * The engine-borne note is the one that survives: it carries the message with
+ * the unresolved COUNT, and it rides the same channel as every other note. The
+ * message assertions below are therefore load-bearing — dropping the note
+ * instead of the hand-built issue would leave a bare, message-less code and fail
+ * here.
+ */
+const MENTION_PAGE_ID = "1126236301";
+/** Deliberately unknown to the stubbed user lookup — that is the whole fixture. */
+const GHOST_ACCOUNT_ID = "ghost-account-id";
+const MENTION_STORAGE =
+  `<p>Reviewed by <ac:link><ri:user ri:account-id="${GHOST_ACCOUNT_ID}"/></ac:link>.</p>`;
+
+const MENTION_PAGE = {
+  id: MENTION_PAGE_ID,
+  title: "Mention Report Parity",
+  space: { key: "DOCSY" },
+  version: { number: 1, when: "2026-07-20T00:00:00.000Z" },
+  ancestors: [],
+  history: {
+    createdDate: "2026-07-20T00:00:00.000Z",
+    createdBy: { accountId: "acc-1", displayName: "Fixture Author" },
+    lastUpdated: { when: "2026-07-20T00:00:00.000Z", by: { accountId: "acc-1", displayName: "Fixture Author" } },
+  },
+  metadata: { labels: { results: [] }, properties: {} },
+  body: { storage: { value: MENTION_STORAGE, representation: "storage" } },
+  _links: { base: "https://example.invalid/wiki", webui: `/pages/${MENTION_PAGE_ID}` },
+};
+
+interface MentionCliReport extends CliReport {
+  warnings: { code: string; message?: string }[];
+}
+
+describe("mention-note parity across engines (spec 010)", () => {
+  const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
+  const unmatched: string[] = [];
+  /** Account ids the CLI actually asked about — proof the fixture is live. */
+  const userLookups: string[] = [];
+  let server: ReturnType<typeof Bun.serve>;
+  let dir: string;
+  let templatePath: string;
+
+  beforeAll(async () => {
+    await ensurePdfFonts({ logger: () => {} });
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === `/rest/api/content/${MENTION_PAGE_ID}`) {
+          return Response.json(MENTION_PAGE);
+        }
+        // The user lookup answers 404 for every account id: the mention can
+        // never resolve to a display name, so exactly one `mention-unresolved`
+        // fact exists for both engines to report.
+        if (url.pathname === "/rest/api/user") {
+          userLookups.push(url.searchParams.get("accountId") ?? "");
+          return new Response(JSON.stringify({ message: "stub: no such user" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        unmatched.push(`${url.pathname}?${url.searchParams}`);
+        return new Response(JSON.stringify({ message: `stub: no route for ${url.pathname}` }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    dir = await mkdtemp(join(tmpdir(), "atlcli-mention-parity-"));
+    templatePath = join(dir, "parity.docx");
+    await writeFile(templatePath, buildDocx({ body: para("$scroll.content"), date: new Date(0) }));
+  });
+
+  afterAll(async () => {
+    server?.stop(true);
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  async function runCli(args: string[], expectedExit: number): Promise<MentionCliReport> {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        "--conditions=development",
+        "run",
+        CLI,
+        "wiki",
+        "export",
+        MENTION_PAGE_ID,
+        ...args,
+        "--base-url",
+        server.url.origin,
+        "--auth-type",
+        "bearer",
+        "--allow-http",
+        "--report",
+        "json",
+      ],
+      {
+        cwd: dir,
+        env: {
+          ...process.env,
+          HOME: dir,
+          USERPROFILE: dir,
+          ATLCLI_API_TOKEN: "stub-token",
+          ATLCLI_DISABLE_UPDATE_CHECK: "1",
+          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode, `CLI exit (${args.join(" ")}):\n${stderr}`).toBe(expectedExit);
+    return JSON.parse(stdout) as MentionCliReport;
+  }
+
+  const docxArgs = (name: string): string[] => [
+    "--engine",
+    "ts",
+    "--template",
+    templatePath,
+    "-o",
+    join(dir, name),
+  ];
+
+  it("counts one unresolvable mention exactly once on both engines", async () => {
+    // The fixture must really drive a user lookup on BOTH runs — otherwise the
+    // assertions below would be vacuously satisfied by zero notes.
+    const beforeDocx = userLookups.length;
+    const docx = await runCli(docxArgs("out.docx"), 0);
+    expect(userLookups.length - beforeDocx, "docx user lookups").toBe(1);
+    const beforePdf = userLookups.length;
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "out.pdf")], 0);
+    expect(userLookups.length - beforePdf, "pdf user lookups").toBe(1);
+    expect(new Set(userLookups)).toEqual(new Set([GHOST_ACCOUNT_ID]));
+    expect(unmatched).toEqual([]);
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      expect(report.notesByCode?.["mention-unresolved"], `${engine} notesByCode`).toBe(1);
+      const mentionIssues = report.issues.filter((i) => i.code === "mention-unresolved");
+      expect(mentionIssues, `${engine} issues`).toHaveLength(1);
+      // The surviving issue is the engine-borne note, message and all — a bare
+      // hand-built code would lose the unresolved count.
+      expect(mentionIssues[0]!.message, `${engine} issue message`).toBe(
+        "1 mention(s) could not be resolved to a display name."
+      );
+    }
+
+    // The cross-engine claim itself.
+    expect(pdf.notesByCode?.["mention-unresolved"]).toBe(docx.notesByCode?.["mention-unresolved"]);
+  }, 300_000);
+
+  it("still trips --strict on both engines, counting the one warning once", async () => {
+    const docx = await runCli([...docxArgs("strict.docx"), "--strict"], 2);
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "strict.pdf"), "--strict"], 2);
+    expect(unmatched).toEqual([]);
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      expect(
+        report.warnings.filter((w) => w.code === "mention-unresolved"),
+        `${engine} strict warnings`
+      ).toHaveLength(1);
+    }
   }, 300_000);
 });
 
