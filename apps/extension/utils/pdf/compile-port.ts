@@ -1,5 +1,5 @@
 import type { PdfCompilePort, PdfCompileResult, PdfSourceBundle } from "@atlcli/pdf/browser";
-import type { ExtRequest, ExtResponse } from "../messages.js";
+import type { ExtRequest, ExtResponse, PdfJobKind } from "../messages.js";
 import {
   cleanupPdfJobs,
   createPdfJobId,
@@ -21,10 +21,35 @@ export interface ExtensionPdfCompilePortDeps {
 
 export interface ExtensionPdfCompilePortOptions {
   sourceIdentity: string;
+  /**
+   * Scheduling class of the compiles this port issues (spec 010 T5.3).
+   * Defaults to `"export"`: a caller that has not thought about scheduling gets
+   * the behaviour that never yields to anything else.
+   */
+  kind?: PdfJobKind;
   makeJobId?: () => string;
   onQueued?: () => void;
   onCompiling?: () => void;
   deps?: Partial<ExtensionPdfCompilePortDeps>;
+}
+
+/**
+ * Estimated **source** pages in a bundle, for the compile-timeout budget.
+ *
+ * The composed document separates chapters with `pageBreak` blocks
+ * (`composeChapters`), so `1 + pageBreaks` is the number of source pages the
+ * caller asked for. It is deliberately *not* the compiled PDF page count: that
+ * exists only after `validatePdfOutput`, long after the timeout has to be
+ * chosen. Reading it from the source map costs nothing — the port already holds
+ * the bundle — which is why the estimate lives here rather than being threaded
+ * down from every caller.
+ */
+export function estimateSourcePages(bundle: PdfSourceBundle): number {
+  let breaks = 0;
+  for (const entry of bundle.sourceMap) {
+    if (entry.blockType === "pageBreak") breaks += 1;
+  }
+  return breaks + 1;
 }
 
 const defaultDeps: ExtensionPdfCompilePortDeps = {
@@ -61,7 +86,12 @@ export function extensionPdfCompilePort(options: ExtensionPdfCompilePortOptions)
         throwIfAborted(context.signal);
         options.onQueued?.();
         options.onCompiling?.();
-        const response = await deps.sendMessage({ kind: "pdf:compile", jobId });
+        const response = await deps.sendMessage({
+          kind: "pdf:compile",
+          jobId,
+          job: options.kind ?? "export",
+          pages: estimateSourcePages(bundle),
+        });
         throwIfAborted(context.signal);
         if (!response || response.kind !== "pdf:compile-result" || response.jobId !== jobId) {
           throw new Error("PDF compiler returned no correlated response.");

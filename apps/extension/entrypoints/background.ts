@@ -16,10 +16,12 @@ import {
   type EntityChanged,
   type EntityDetection,
   type OffscreenResponse,
+  type PdfCompileHints,
 } from "../utils/messages.js";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
+import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
 import { createObserverSession } from "../utils/observer-session.js";
 import {
   currentDetection,
@@ -46,7 +48,24 @@ const offscreenIdle = createIdleTimer({
   },
 });
 
-let activePdfJobs = 0;
+/**
+ * Idle-close policy for the offscreen document (spec 010 T5.3).
+ *
+ * **Preview compiles are offscreen activity like any other**, which is what
+ * lets the warm compiler survive a debounce pause: previews arrive as ordinary
+ * `pdf:compile` requests, so they go through {@link runPdfCompile} and stop the
+ * idle timer exactly the way an export does. The tracker also guarantees the
+ * other half — once the last job finishes the timer is re-armed, so a panel
+ * that goes quiet still closes the document and releases the ≥ 20 MB wasm
+ * artifact.
+ *
+ * NOTE (T5.6, deliberately not fixed here): this counter is still in-memory and
+ * resets to zero when the service worker restarts, so a restart mid-compile can
+ * arm the timer under a running job (Architecture point 3(b)). Deriving it from
+ * the durable job records is T5.6's task; T5.3 only routes preview traffic
+ * through the same, existing path rather than inventing a second one.
+ */
+const offscreenActivity = createOffscreenActivityTracker(offscreenIdle);
 
 /**
  * Effect wired into the pure router: ensure the offscreen document exists,
@@ -55,7 +74,7 @@ let activePdfJobs = 0;
  * timer so the document is closed once traffic stops.
  */
 async function runWasmSmoke(a: number, b: number): Promise<number> {
-  if (activePdfJobs === 0) offscreenIdle.reset();
+  offscreenActivity.touch();
   await ensureOffscreen();
   const res = (await chrome.runtime.sendMessage({
     kind: "offscreen:wasm-add",
@@ -70,22 +89,27 @@ async function runWasmSmoke(a: number, b: number): Promise<number> {
   return res.result;
 }
 
-async function runPdfCompile(jobId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  activePdfJobs += 1;
-  offscreenIdle.stop();
+async function runPdfCompile(
+  jobId: string,
+  hints?: PdfCompileHints
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  offscreenActivity.begin();
   try {
     await ensureOffscreen();
     const response = (await chrome.runtime.sendMessage({
       kind: "offscreen:pdf-compile",
       jobId,
+      // Forwarded verbatim: the SW makes no scheduling decision of its own, it
+      // just carries the panel's `job`/`pages` scalars to the offscreen queue.
+      job: hints?.job,
+      pages: hints?.pages,
     })) as OffscreenResponse | undefined;
     if (!response || response.kind !== "offscreen:pdf-compile-result" || response.jobId !== jobId) {
       return { ok: false, error: "Offscreen PDF compiler returned no correlated result." };
     }
     return response.ok ? { ok: true } : { ok: false, error: response.error };
   } finally {
-    activePdfJobs = Math.max(0, activePdfJobs - 1);
-    if (activePdfJobs === 0) offscreenIdle.reset();
+    offscreenActivity.end();
   }
 }
 

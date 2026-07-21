@@ -7,7 +7,12 @@
  * wires the real effects (offscreen round-trip) into `RouterDeps` and adapts
  * the result onto `chrome.runtime.onMessage`.
  */
-import type { EntityDetection, ExtRequest, ExtResponse } from "./messages.js";
+import type {
+  EntityDetection,
+  ExtRequest,
+  ExtResponse,
+  PdfCompileHints,
+} from "./messages.js";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -15,8 +20,15 @@ export interface RouterDeps {
   runWasmSmoke: (a: number, b: number) => Promise<number>;
   /** Resolves the active tab's current entity (queries `chrome.tabs`). */
   getCurrentEntity: (windowId: number) => Promise<EntityDetection>;
-  /** Compiles a prepared PDF job through the offscreen worker. */
-  runPdfCompile: (jobId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Compiles a prepared PDF job through the offscreen worker. `hints` carries
+   * the T5.3 scheduling metadata (`job` kind, estimated source `pages`); it is
+   * advisory and every implementation must behave sanely when it is empty.
+   */
+  runPdfCompile: (
+    jobId: string,
+    hints?: PdfCompileHints
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Cancels a queued or active PDF job. */
   runPdfCancel: (jobId: string) => Promise<boolean>;
 }
@@ -51,7 +63,7 @@ export async function routeMessage(
     }
     case "pdf:compile": {
       try {
-        const result = await deps.runPdfCompile(msg.jobId);
+        const result = await deps.runPdfCompile(msg.jobId, { job: msg.job, pages: msg.pages });
         return result.ok
           ? { kind: "pdf:compile-result", jobId: msg.jobId, ok: true }
           : { kind: "pdf:compile-result", jobId: msg.jobId, ok: false, error: result.error };
