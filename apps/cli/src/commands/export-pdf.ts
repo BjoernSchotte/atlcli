@@ -15,7 +15,8 @@
  */
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { buildConfluenceUrl, type OutputOptions } from "@atlcli/core";
+import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
+import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
   SpaceHomepageError,
   composeChapters,
@@ -216,9 +217,50 @@ interface ResolvedScope {
   scopeReport?: ScopeReportFields;
 }
 
+/**
+ * Build the spec-004 macro-resolution options for the PDF env.
+ *
+ * The PDF path used to pass NO `macros`, so every dynamic macro on a page —
+ * Jira tables, includes, the `export_view` catch-all — degraded to a
+ * placeholder that the report described as "not rendered", while the very same
+ * page exported to DOCX with `--engine ts` rendered them live. That gap became
+ * user-visible with datasource smart links: the modern Jira table is *only*
+ * reachable through this chain, so without it a PDF export of a current-editor
+ * page can never show the table.
+ *
+ * Mirrors `buildTsEngineMacroOptions` in `export.ts` (same profile → clients →
+ * shared builder). The sink-side SSRF guard the chain requires is already in
+ * place here: {@link cliPdfAssets} composes `trustRoutingPdfAssetResolver`
+ * unconditionally, which is exactly the "cannot be forgotten tomorrow" it was
+ * written for.
+ */
+async function buildPdfMacroOptions(
+  profile: Profile,
+  client: ConfluenceClient
+): Promise<MacroResolutionOptions> {
+  const [wiring, { JiraClient }] = await Promise.all([
+    import("./export-macros-wiring.js"),
+    import("@atlcli/jira"),
+  ]);
+  return wiring.buildMacroResolutionOptions({
+    profile,
+    confluence: client,
+    // Cloud shares one site between Confluence and Jira; if Jira is not
+    // accessible the chain degrades to a note, never a hard failure.
+    jira: new JiraClient(profile),
+    targetEngine: "pdf",
+    live: true,
+  });
+}
+
 export interface ExportPdfArgs {
   client: ConfluenceClient;
-  profile: { name?: string; email?: string };
+  /**
+   * The resolved auth profile. Widened from `{ name?, email? }` when the macro
+   * chain was wired in: the Jira port needs the real base URL + credentials,
+   * exactly as the DOCX ts path already does.
+   */
+  profile: Profile;
   request: ParsedExportRequest;
   baseUrl: string;
   outputPath?: string;
@@ -374,6 +416,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
+    const macros = await buildPdfMacroOptions(args.profile, client);
     const report = await runPdfExport(
       {
         blocks: scope.blocks,
@@ -383,11 +426,17 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         signal: controller.signal,
         complete: scope.complete,
         onProgress: progress.report,
+        page: {
+          id: scope.metaPage.id,
+          ...(scope.metaPage.version !== undefined ? { version: scope.metaPage.version } : {}),
+          ...(scope.metaPage.spaceKey !== undefined ? { spaceKey: scope.metaPage.spaceKey } : {}),
+        },
       },
       {
         assets: cliPdfAssets(client, baseUrl, { noCache: args.noCache }),
         compiler,
         output: filePdfOutputSink(outputPath, { force: args.force }),
+        macros,
       }
     );
     progress.clear();
