@@ -12,31 +12,38 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 
 - [Browser extension: PDF export](#browser-extension-pdf-export)
 - [CLI: DOCX quick start](#quick-start)
-- [CLI: PDF export](#cli-pdf-export)
+- [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
 - [Rendering engines](#rendering-engines)
 - [Tree and space export](#tree-and-space-export)
 - [Note codes](#note-codes-are-shared-across-formats) and [migrating retired codes](#migrating-retired-note-codes)
 - [Note severity and `--strict`](#note-severity-and---strict)
 - [Templates](#templates)
-- [Table of contents](#table-of-contents)
+- [Table of contents](#table-of-contents) and [caption numbering](#caption-numbering)
 - [Template variables](#template-variables)
 - [Troubleshooting](#troubleshooting)
 
 ## Browser extension: PDF export
 
-The PDF path is additive: **Export to Word** and its template upload continue to work as
-before. On a loaded Confluence page, select **Export to PDF**. The extension prepares
-attachments and diagrams, compiles the page in a background worker, validates the result,
-and downloads `<page-title>.pdf`.
+On a loaded Confluence page, open the side panel and select **Export to PDF**. The
+extension prepares attachments and diagrams, compiles the page in a background worker,
+validates the result, and downloads `<page-title>.pdf`. **Export to Word** works the same
+way with an uploaded `.docx` template.
 
 The completion report separates preparation, compilation, and download time. Preparation
 includes authenticated attachment fetching, so image-heavy pages can be distinguished from
 a slow compiler without enabling debug logging.
 
-PDF currently uses one built-in standard design. It includes a cover, computed table of
-contents, promoted heading hierarchy, running header, page-number footer, callouts, status
-badges, syntax-highlighted code, tables, images and vector Mermaid diagrams. Custom PDF
-template upload is not available yet.
+PDF uses one built-in document design — cover, computed table of contents, promoted
+heading hierarchy, running header, page-number footer, callouts, status badges,
+syntax-highlighted code, tables, images and vector Mermaid diagrams. There is no PDF
+template upload in any host; the design is configured through **settings** instead.
+
+The panel does three things this page's CLI does not: it configures those
+[document settings](/reference/pdf-template-settings/), it can
+[preview](/extension/export/#preview) the PDF before downloading, and it runs exports in
+the background so a whole-space export is something you can walk away from. See
+[Exporting from the panel](/extension/export/) for the full walkthrough and
+[Browser extension](/extension/) for installation.
 
 ### PDF support and limits
 
@@ -66,7 +73,7 @@ not make that claim.
 - **Space permission**: View permission on pages to export
 - Word-compatible template file (`.docx` or `.docm`) — required with `--engine python`,
   optional with `--engine ts` (which has a
-  [bundled default template](#the-bundled-default-template-engine-ts))
+  [bundled default template](#the-bundled-default-template---engine-ts))
 
 ## Quick Start
 
@@ -129,6 +136,19 @@ Pass one or the other, never both.
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options---engine-ts) work with `--format pdf` too.
+
+### Document settings are not CLI flags (yet)
+
+Page size, orientation, cover and outline toggles, header/footer text, organization name,
+accent color, a logo, and a watermark are all real, validated inputs to the PDF template —
+documented in full under [PDF Template Settings](/reference/pdf-template-settings/) — and
+the [browser panel](/extension/export/#document-settings-pdf) exposes every one of them.
+
+**The CLI does not.** `atlcli wiki export --format pdf` always produces the default
+document design. There is no `--page-size`, no `--watermark`, no `--accent-color`. If you
+need a branded PDF from CI today, that is not yet possible from flags; the settings are
+reachable from the [library API](/reference/export-api/) (`RunPdfExportInput.settings`) and
+from the panel.
 
 The output is written atomically: the bytes go to an exclusive-create temp file in the
 target directory and are renamed into place only on success, so a failed or cancelled run
@@ -232,14 +252,18 @@ For a full CI job, see the [Export automation recipe](/recipes/export-automation
 
 | Option | Description |
 |--------|-------------|
-| `--template, -t` | Template name or path. **Required** with `--engine python`; **optional** with `--engine ts`, which falls back to a [bundled default template](#the-bundled-default-template-engine-ts) |
+| `--format <fmt>` | `docx` (default) or `pdf`. With `pdf`, `--template` and `--engine` are not valid — see [CLI: PDF export](#cli-pdf-export) |
+| `--template, -t` | Template name or path. **Required** with `--engine python`; **optional** with `--engine ts`, which falls back to a [bundled default template](#the-bundled-default-template---engine-ts) |
 | `--output, -o` | Output file path (required) |
 | `--no-images` | Don't embed images from attachments |
 | `--include-children` | Deprecated alias for `--scope tree` (with `--engine ts`); legacy child-merge with `--engine python` |
 | `--no-merge` | Keep children as separate array for template loops (python engine) |
 | `--no-field-update-prompt` | Never ask Word to refresh fields on open (see [Field update behavior](#field-update-behavior)). Alias: `--no-toc-prompt` |
+| `--keep-ignored` | Keep `scroll-only`/`scroll-ignore` bodies for debugging. `--engine ts`, single page only; the report is marked `export-controls-passthrough` — see [Keeping ignored content](/confluence/scroll-macros/#keeping-ignored-content-for-debugging) |
+| `--no-live-macros` | Deterministic export: skip live (Jira / `export_view` / attachment) macro rendering. Pure macros still render. Requires `--engine ts`; **not** an offline mode — see [Deterministic exports](/confluence/dynamic-macros/#deterministic-exports) |
 | `--engine` | Rendering engine: `python` (default) or `ts` (see [Rendering Engines](#rendering-engines)) |
 | `--profile` | Use a specific auth profile |
+| `--json` / `--report json` | Emit exactly one `atlcli.export-report/1` document on stdout (PDF and `--engine ts`) |
 
 ### Scope options (`--engine ts`)
 
@@ -489,7 +513,7 @@ Missing chapters are never a silent bug — they are always explained by a note.
 | `link-anchor-missing` / `link-target-ambiguous` | `warning` | A link could not be resolved; rendered as text |
 | `perf-timing` | `info` | Per-phase wall clocks for the run (ts DOCX engine; emitted on every export) |
 | `template-foreign-placeholders` | `warning` | The template carries docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`) that the `ts` engine does not fill; they stay in the document as literal text |
-| `template-default-used` | `info` | No `--template` was given on `--engine ts`; the [bundled default template](#the-bundled-default-template-engine-ts) produced the document |
+| `template-default-used` | `info` | No `--template` was given on `--engine ts`; the [bundled default template](#the-bundled-default-template---engine-ts) produced the document |
 | `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | `error` / `warning` | Completeness events: `error` when `--completeness strict` aborts the export, `warning` when `--completeness partial` substitutes a placeholder and carries on |
 
 ### Note codes are shared across formats
@@ -631,7 +655,7 @@ when it finds a field whose result is computed:
 | Field | Prompt? | Why |
 |-------|---------|-----|
 | `TOC`, `INDEX`, `TOA`, `BIBLIOGRAPHY` | Yes | Generated from the document body, which the export replaces |
-| `SEQ` (caption numbering) | Yes | Every caption is written with a cached number of `1` |
+| `SEQ` (caption numbering) | **Only when the export did not number it** | See [Caption numbering](#caption-numbering) below |
 | `REF`, `PAGEREF`, `NOTEREF`, `STYLEREF` | Yes | Resolve against content that only exists after the export |
 | `INCLUDETEXT`, `INCLUDEPICTURE`, `LINK` | Yes | The cached copy is the template's |
 | `FILENAME`, `FILESIZE`, `DATE`, `TIME` | Yes | Computed from the file or the clock |
@@ -648,6 +672,32 @@ The Python engine sets the flag whenever the document contains a TOC, and never 
 table above describes `--engine ts`.
 :::
 
+### Caption numbering
+
+A caption from a `scroll-title` macro is written as a real Word `SEQ` field — so
+cross-references, a table of figures, and a manual **F9** all keep working — but the
+export also **caches the correct ordinal in the field result**. A document with three
+tables reads "Table 1", "Table 2", "Table 3" the moment it is opened, and any tool that
+reads `<w:t>` without evaluating fields (a text extractor, a diff, a converter) sees the
+same thing.
+
+Because the numbers are already right, a refresh would change nothing, so those captions
+alone **do not** earn the update prompt. Numbering is per sequence name and per export:
+`code` and `equation` captions share Word's `Listing` sequence and count together, a
+tree or space export numbers continuously across chapters, and two exports in the same
+process never continue each other's count.
+
+The prompt does come back when the export cannot vouch for the numbers:
+
+- the **template** already contains its own `SEQ` fields of the same sequence name (a
+  caption inserted with Word's own *Insert Caption*), which interleave with the exported
+  ones and shift the count;
+- an **included page** brings its own captions, which restart at 1;
+- a `SEQ` field whose sequence name cannot be read, or any other computed numbering field
+  (`LISTNUM`, `AUTONUM`, …).
+
+In those cases the cached results are not trustworthy and Word is asked to refresh.
+
 ### Disabling the prompt
 
 Use `--no-field-update-prompt` to suppress the refresh request entirely:
@@ -659,7 +709,9 @@ atlcli wiki export 12345 --template report -o out.docx --no-field-update-prompt
 When using this option:
 
 - Word opens without prompting.
-- A TOC shows placeholder text, captions all read "1", and cross-references stay stale.
+- A TOC shows placeholder text and cross-references stay stale. Captions the export
+  numbered itself are already correct (see [Caption numbering](#caption-numbering));
+  captions inherited from the template or an included page are not.
 - Update manually in Word: select all (**Ctrl+A**), then press **F9**. For a TOC alone,
   right-click it and choose **Update Field**.
 - If the document did contain such fields, the export report carries a
@@ -799,7 +851,7 @@ survive into the document.
    (see [Template Variables](#template-variables)), or
 2. export that template with `--engine python`, which is what it was written for, or
 3. drop `--template` and use the
-   [bundled default template](#the-bundled-default-template-engine-ts) instead.
+   [bundled default template](#the-bundled-default-template---engine-ts) instead.
 
 Add `--strict` to your CI invocation so this fails the build rather than shipping a document
 with visible placeholders.
@@ -851,6 +903,73 @@ The tree/space is larger than `--max-pages` (default 500). Narrow the scope with
 `--max-depth` or label filters, or raise `--max-pages`. The same guard exists for
 folders (`--max-folders`, default 200).
 
+The export **exits 5** before fetching any body, with a `max-pages` (or `max-folders`)
+issue at the `fetch` phase carrying the limit in `details.limit`. Nothing is written, so
+there is no partial file to clean up.
+
+### "No page matched the include label filter"
+
+**Symptom.** The export stops immediately with:
+
+```
+No page matched the include label filter (handbook); nothing to export.
+```
+
+Exit code `5`; the report carries an `empty-include-result` issue at the `fetch` phase.
+
+**Cause.** `--label-include` is an OR filter over the labels *actually on the pages in
+scope*. No page carried any of the labels you listed — usually a typo, a label applied to
+a different space, or a scope that does not reach the labelled pages.
+
+**Why it fails instead of producing an empty document.** A zero-page DOCX or PDF is
+indistinguishable from a successful export of a tree that happens to be empty. Failing
+loudly makes a mistyped label a build error rather than a silently empty artifact.
+
+**Fix.** Check what a page actually carries with
+[`atlcli wiki page label list --id <pageId>`](/confluence/labels/), or find the labelled
+pages with `atlcli wiki search --label handbook`. Then widen the scope, or drop
+`--label-include` and use `--label-exclude` instead. The related
+`labels-unavailable` code means the label API could not be read at all — that is a
+permission or connectivity problem, not a filter mistake.
+
+### "Export aborted: embedded images total N MB, over the 50.0 MB limit"
+
+**Symptom.** The export stops during preparation, and the message names the largest
+offenders:
+
+```
+Export aborted: embedded images total 63.4 MB, over the 50.0 MB limit.
+Largest: "architecture-poster.png" (page 12345678) 21.9 MB,
+"screenshot-4k.png" (page 12345699) 14.1 MB, … .
+Narrow the export with --max-depth or a label filter, or re-run with --no-images.
+```
+
+Exit code `5`; the report carries an `asset-budget-exceeded` issue at the `prepare` phase
+with `details.totalBytes`, `details.limitBytes`, and a `details.offenders[]` array of
+`{ filename, pageId, sizeBytes }` sorted largest-first.
+
+**Cause.** Both engines share one budget: **25 MB per file and 50 MB per export**, counted
+over *deduplicated* asset bytes, so the same image reused on ten pages counts once. The
+export aborts the moment a new asset would cross the total — before any output is
+committed — rather than degrading to a per-image warning, because a document silently
+missing its largest diagrams is worse than no document.
+
+**Fix — pick one:**
+
+1. Narrow the export (`--max-depth`, `--label-exclude`) so the heaviest pages are out of
+   scope,
+2. downscale or remove the named attachments in Confluence, or
+3. re-run with `--no-images` when the images are not the point of the document.
+
+The offender list is identical on both engines, so a page that busts the budget as DOCX
+busts it as PDF with the same names.
+
+```bash
+# The five biggest offenders, from a failed run's report
+jq -r '.issues[] | select(.code == "asset-budget-exceeded")
+       | .details.offenders[] | "\(.sizeBytes)\t\(.filename)"' report.json | head -5
+```
+
 ### Export Aborted on an Unreadable Page
 
 In the default `strict` mode a single unreadable/changed page aborts the export so
@@ -872,9 +991,14 @@ the `--json` report's `notesByCode` before assuming a bug.
 
 ## Related Topics
 
+- [Export template library](export-templates.md) - Which template an export uses, and why
+- [Macro compatibility](macro-compatibility.md) - What each macro produces in each engine
+- [Exporting from the panel](/extension/export/) - Scope, settings, preview and background exports
+- [Browser extension](/extension/) - Install and limits
 - [Pages](pages.md) - Page operations and finding page IDs
 - [Labels](labels.md) - Managing the labels that `--label-include`/`--label-exclude` filter on
 - [Attachments](attachments.md) - Managing page attachments for export
 - [Templates](templates.md) - Page templates (different from export templates)
+- [PDF Template Settings](../reference/pdf-template-settings.md) - The settings the panel exposes
 - [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine behind `--engine ts`
 - [PDF Export Engine](../reference/pdf-engine.md) - Browser compiler, assets and verification

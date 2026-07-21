@@ -94,7 +94,8 @@ rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 ## Templates the engine can fill
 
 The engine fills **`$scroll.*` placeholders only** (the Scroll Word Exporter vocabulary — see
-[Template placeholders](/confluence/export/#template-placeholders)). Everything else in a template
+[Scroll Word Exporter compatibility](/confluence/export/#scroll-word-exporter-compatibility)).
+Everything else in a template
 is carried through byte-for-byte on purpose: docxtemplater runs with a Unicode Private-Use
 delimiter pair, so a template's own `{`, `}` and `{foo}` are never treated as tags.
 

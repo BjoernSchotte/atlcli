@@ -1746,20 +1746,26 @@ independent of it, and the size-metadata split blocks the retention UI.
       export — to admit a new job", "refuses a new job rather than dropping a
       finished export", "does drop a finished export once the user has collected
       it".)*
-- [ ] Copy + docs honesty: the panel states that a background export survives
+- [x] Copy + docs honesty: the panel states that a background export survives
       navigation, panel close and extension restart, but **not** closing the
       browser (Architecture point 3). No wording implies server-side
       durability.
 
-      **Left unticked because it is half of a two-part item.** The **panel**
-      half shipped verbatim: `jobs.durability` in
+      *(Both halves now shipped. **Panel:** `jobs.durability` in
       `apps/extension/utils/i18n/messages.ts:171` (EN) / `:415` (DE) — "Exports
       keep running while you browse and survive closing this panel — but not
       closing the browser." — with the no-server-side rule recorded at `:163`
       and asserted by `tests/pdf/jobs-section.test.tsx`, "says exactly what
-      background means, and promises nothing server-side". The **docs** half
-      cannot be true yet: T5.5 has not started, and there is no
-      `src/content/docs/extension/` at all. Tick this when the docs land.
+      background means, and promises nothing server-side". **Docs:** the same
+      sentence is quoted verbatim as a blockquote in
+      `src/content/docs/extension/export.md` § "Background exports", followed by
+      the explicit enumeration of what is and is not covered ("navigating to
+      another page, closing the side panel, and Chrome restarting the
+      extension's service worker … It does **not** cover quitting Chrome: there
+      is no server side to this extension"). `src/content/docs/extension/index.md`
+      § "Where your data goes" makes the same claim from the other direction.
+      Troubleshooting carries "**My export disappeared**" with browser-close and
+      the 24-hour retention window as its two causes.)*
 
 ### Docs & release (T5.5)
 
@@ -1768,30 +1774,83 @@ Docs are first-class (CLAUDE.md): same PR as the features, per-page template
 related topics), UI-first (panel) and config-first (CLI) paths clearly
 labelled, ≥ 1 minimal + 1 advanced example per feature.
 
-**Status check, this pass: not started — every box below is genuinely open.**
-`src/content/docs/` has no `extension/` directory, no
-`confluence/export-templates.md` and no `confluence/macro-compatibility.md`.
-This is the folder's one outstanding *feature-shaped* gap, and it is also what
-blocks the "Copy + docs honesty" item under T5.6 above.
+**Status check, this pass: the docs shipped.** `src/content/docs/extension/`,
+`confluence/export-templates.md` and `confluence/macro-compatibility.md` all
+exist, the site builds (75 pages), and a new link gate
+(`scripts/docs-links.test.ts`) proves every internal link and heading anchor
+across the corpus resolves. Two boxes stay open and are labelled below: the
+preview **screenshots** (blocked on a real Atlassian session) and the release
+itself (never automatic).
 
-- [ ] `src/content/docs/confluence/export.md`: extend with scope selection
+- [x] `src/content/docs/confluence/export.md`: extend with scope selection
       (tree/space), label filters, and settings — CLI flags (config-first)
       and panel steps (UI-first) side by side; troubleshooting for the new
       failure shapes (page limit, asset budget with named offenders, label
       filter produced empty document).
-- [ ] `src/content/docs/confluence/export-templates.md` (new): template
+
+      *(Scope and label flags were already documented — § "Tree and space
+      export" and § "Scope options". **Added this pass:** § "Document settings
+      are not CLI flags (yet)", which is the config-first/UI-first split the
+      item asks for and had to be written as a **negative**: `apps/cli` contains
+      no occurrence of `settings` in `commands/export.ts`, so the panel exposes
+      every Level-A setting and the CLI exposes none. The three troubleshooting
+      shapes are all present with their real messages, exit codes and report
+      fields: "exceeds the maximum of N pages" (exit 5, `fetch`,
+      `details.limit`), "No page matched the include label filter" (exit 5,
+      `empty-include-result`), and "Export aborted: embedded images total N MB"
+      (exit 5, `prepare`, `details.offenders[]` with a `jq` recipe). Also
+      **corrected two stale claims** that this branch's own caption fix
+      (`5666d6e`) invalidated: the field-update table said `SEQ` always prompts
+      because "every caption is written with a cached number of 1", and
+      `--no-field-update-prompt` said "captions all read 1". Both now point at
+      the new § "Caption numbering". The missing flags `--format`,
+      `--keep-ignored`, `--no-live-macros` and `--json` were added to the
+      Options table.)*
+- [x] `src/content/docs/confluence/export-templates.md` (new): template
       library concept (global vs. space, `resolveTemplate` precedence), CLI
       directories (`~/.atlcli/templates/`, sync-dir space templates) and panel
       library management, manifest settings reference table (each setting:
       type, default, required/optional, constraints) per the docs reference
       standard.
-- [ ] `src/content/docs/confluence/macro-compatibility.md` (new):
+
+      **Divergence, deliberate: "sync-dir space templates" do not exist.**
+      The item assumed one library model across hosts. In reality there are
+      two, and the page says so in a § "Two resolution models" comparison
+      rather than implying a parity: the CLI resolves `--template` through
+      four-level **path precedence** (`resolveTemplatePath`,
+      `apps/cli/src/commands/export.ts:819`) with no space dimension, while the
+      **panel** implements the global/space two-level model through the
+      host-neutral `resolveTemplate` (`packages/core/src/template-library.ts`).
+      `apps/cli` has no reference to `resolveTemplate` or `TemplateLibrary` at
+      all. The precedence, conflict (`TemplateResolutionConflictError`),
+      not-found and integrity (`TemplateIntegrityError`) rules are documented
+      with their real messages. The settings table is the **widget vocabulary**
+      (`text | boolean | choice | color | number | asset` with the constraints
+      each honours, from `components/export/settings-schema.ts`) rather than a
+      copy of the fixed Level-A list, which already has a reference page.
+- [x] `src/content/docs/confluence/macro-compatibility.md` (new):
       compatibility matrix of supported compatibility macros by their storage
       names (`scroll-pagebreak`, `scroll-landscape`, `scroll-portrait`,
       `scroll-only`, `scroll-ignore`, `scroll-title`, …) and dynamic macros
       (jira, drawio/gliffy, `export_view` fallback) with per-engine behavior
       and degradation notes. Macro identifiers only — no third-party product
       or vendor names.
+
+      *(Three matrices — compatibility, structural, dynamic — each split
+      **PDF / DOCX `ts` / DOCX `python`**, plus a note-code index, the fallback
+      chain, and the CLI-vs-panel control differences. Macro identifiers only,
+      as required.*
+
+      *The per-engine column surfaced a **behavioural difference nothing
+      documented**: `scroll-*` macros are handled exclusively in
+      `packages/confluence/src/export-blocks.ts`, i.e. the PDF/`ts` pipeline.
+      `--engine python` converts through `storageToMarkdown` first, where —
+      measured directly — every `scroll-*` macro becomes a `*[scroll-N macro]*`
+      placeholder **and takes its body with it**: a table wrapped in
+      `scroll-title` for its caption is absent from a python-engine export
+      entirely. That is now a callout on both this page and
+      `scroll-macros.md`, whose "Engines: DOCX, PDF" column was misleading and
+      now reads "DOCX `ts`, PDF".)*
 - [ ] `src/content/docs/extension/` (new section): `index.md` (install/load,
       what the panel can do) and `export.md` (scope UI, template library,
       preview walkthrough with captioned screenshots per docs media standard);
@@ -1805,16 +1864,77 @@ blocks the "Copy + docs honesty" item under T5.6 above.
       to find it again, and — stated plainly, not buried — that closing the
       browser ends it. Troubleshooting covers "my export disappeared" with
       browser-close and the retention window (Open question 11) as the causes.
-- [ ] `src/content/docs/recipes/ci-cd-docs.md`: update with the scope/label
+
+      **Left unticked for one reason: there are no screenshots.** Everything
+      else in this item shipped. `src/content/docs/extension/index.md` covers
+      install/load (Chrome ≥ 116, `Load unpacked` from
+      `apps/extension/.output/chrome-mv3/`, the reload-after-rebuild step), a
+      panel-vs-CLI capability table that names the four things each host does
+      not do, "Where your data goes", and the limits table.
+      `src/content/docs/extension/export.md` covers the scope UI, label
+      filters, the macro toggle, document settings, the template library,
+      preview and background exports, with a minimal and an advanced example
+      and a twelve-row troubleshooting table. The published-version callout is
+      there verbatim, `edit → publish → preview` is named as the supported
+      loop, and "**My change isn't in the preview**" is the **first row** of
+      troubleshooting. Both pages are in the `astro.config.mjs` sidebar under a
+      new "Browser Extension" group and cross-link the Confluence guides in
+      both directions.
+
+      Captioned screenshots need the panel running against a **real Atlassian
+      session**, which is the same prerequisite as the extension E2E item and
+      is not available headlessly. Tick this when the screenshots land; do not
+      tick it by lowering the bar to "prose is enough", because the docs media
+      standard asks for screenshots on UI flows specifically.
+- [x] `src/content/docs/recipes/ci-cd-docs.md`: update with the scope/label
       flags and `--report json` recipes (kept in lockstep with folder 008's
       CLI work — one product, one docs release).
-- [ ] `CHANGELOG.md`: entries per Conventional-Commit scope
-      (`feat(extension): …`, `feat(confluence): …`, `docs: …`).
+
+      *(New § "Export the published docs as a release artifact" closes the
+      loop the page was missing — it published to Confluence and never exported
+      back out. A GitHub Actions step with `--scope tree`,
+      `--label-exclude internal,draft`, `--completeness strict`, `--out-dir`,
+      `--report json` and `--strict`, then a per-flag table of why each belongs
+      in a pipeline, the classified exit codes, and a pointer to
+      `recipes/export-automation.md` for report parsing rather than duplicating
+      it. Also carries the "document settings are not CLI flags" note so a CI
+      author does not go looking for `--watermark`.)*
+- [x] ~~`CHANGELOG.md`: entries per Conventional-Commit scope~~
+      **Divergence: this item is a no-op and writing it would be harmful.**
+      `CHANGELOG.md` is generated **wholesale** by `git-cliff` from the commit
+      history at release time (`scripts/release.ts:208`,
+      `bunx git-cliff --tag v<version> -o CHANGELOG.md`), with `cliff.toml`
+      supplying the header and the `feat`/`fix`/`doc`/… grouping. A
+      hand-written entry would be silently overwritten by the next release.
+      The item is satisfied by the *commits* carrying the right Conventional
+      Commit scopes, which they do. There is no `[Unreleased]` section to
+      maintain.
 - [ ] Release: `bun scripts/release.ts <type> --dry-run` first, never
       automatic; post-release verify GitHub release page, Homebrew tap
       (`brew info atlcli`), CHANGELOG.md; run the manual extension
       verification protocol (Tests section) against the release build before
       tagging.
+
+      **Open by design.** CLAUDE.md: "Never release automatically." This is the
+      user's call, not a task to complete here.
+- [x] **Added this pass, not in the original item: a docs link gate.**
+      `scripts/docs-links.test.ts` resolves every internal link and every
+      heading anchor across `src/content/docs/` against the source markdown
+      (heading ids via the same `github-slugger` Astro's `rehype-slug` uses; no
+      site build required), and asserts every page is reachable from the
+      sidebar. It found **five pre-existing defects on its first run**: the
+      anchor `#the-bundled-default-template-engine-ts` wrong on four lines of
+      `export.md` since the commit that introduced the section (the real slug
+      has three hyphens, from `(--engine ts)`), a dead
+      `/confluence/export/#template-placeholders` from `docx-engine.md`, two
+      `getting-started.md` relative links emitted **verbatim** into the built
+      HTML (Astro does not rewrite a `.md` reference to an `.mdx` file, so both
+      were 404s), and `recipes/export-automation` + `confluence/dynamic-macros`
+      missing from the sidebar entirely. All five fixed. Mutation-tested with
+      four independent mutations — dead page link, dead cross-page anchor,
+      removed sidebar entry, and an anchor that exists only as a `#` comment
+      inside a fenced code block — each of which turns exactly one assertion
+      red; the fence-skip in particular is load-bearing rather than defensive.
 
 ### Tests (no mocking)
 
@@ -2233,18 +2353,20 @@ the same profile-equivalent browser session (logged in to the `mayflower`
 site):
 
 **All 17 boxes below are open, and that is the expected state.** This is a
-per-release checklist, T5.5 (Docs & release) has not started, and no release has
-been cut — none of these has been run against a loaded unpacked build. They are
-listed under "not verified" in any status report rather than under "missing
-work". Two of them are load-bearing beyond the release itself, because nothing
-in the automated suite substitutes for them: **"Fresh-profile migration"** (the
-real-browser half of the `TransactionInactiveError` guard —
-`fake-indexeddb` provably cannot model it, see the migration test above) and
-**"Memory sanity"** (the Chrome/V8 measurement T5.6's first task still owes).
-The last box (`bun run typecheck` + full `bun test`) was green in the worktree
-on 2026-07-21 — 4234 pass, 0 fail across 260 files, typecheck clean — but stays
-open because it is a gate to re-run against the release build, not a one-time
-fact.
+per-release checklist and no release has been cut — none of these has been run
+against a loaded unpacked build. (T5.5's *docs* have since landed; its *release*
+box has not, and never will be ticked automatically — CLAUDE.md: "Never release
+automatically.") They are listed under "not verified" in any status report
+rather than under "missing work". Two of them are load-bearing beyond the
+release itself, because nothing in the automated suite substitutes for them:
+**"Fresh-profile migration"** (the real-browser half of the
+`TransactionInactiveError` guard — `fake-indexeddb` provably cannot model it,
+see the migration test above) and **"Memory sanity"** (the Chrome/V8
+measurement T5.6's first task still owes). This session's run of the last box
+(`bun run typecheck` + full `bun test`) was green in the worktree on
+2026-07-21 — **4318 pass, 14 skip, 0 fail across 272 files**, typecheck clean,
+docs site building at 75 pages — but it stays open because it is a gate to
+re-run against the release build, not a one-time fact.
 
 - [ ] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
       Chrome (≥ 116); open the side panel on a DOCSY page.

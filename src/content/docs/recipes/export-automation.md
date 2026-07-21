@@ -168,4 +168,4 @@ key can never read as "nothing to report".
 
 - [DOCX and PDF Export](/confluence/export/) — full command reference
 - [CI/CD Documentation](/recipes/ci-cd-docs/) — publishing docs into Confluence from CI
-- [Authentication](/confluence/authentication/) — tokens and profiles
+- [Authentication](/authentication/) — tokens and profiles
