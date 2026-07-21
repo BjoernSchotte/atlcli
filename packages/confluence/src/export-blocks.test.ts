@@ -1438,3 +1438,180 @@ describe("storage parse budget — realistic pages are NOT rejected", () => {
     expect(DEFAULT_STORAGE_PARSE_BUDGET.maxNodes).toBeGreaterThan(177_029 * 5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Datasource smart links (SUPPORT-DATASOURCE-JIRA)
+// ---------------------------------------------------------------------------
+
+describe("storageToBlocks — datasource smart links", () => {
+  /**
+   * The VERBATIM `<a data-datasource>` element of DOCSY page 1126236245
+   * ("M1 Abnahme Abschnitt 7.7") — the artifact that exposed this defect.
+   * Before the fix this walked into a `{ type: "link" }` inline node and the
+   * export report was empty.
+   */
+  const REAL_DATASOURCE_LINK =
+    '<a href="https://mayflowergmbh.atlassian.net/issues/?jql=project%20in%20(GROW)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC" ' +
+    'local-id="fbd3bb04abe6" data-card-appearance="block" ' +
+    'data-datasource="{&quot;id&quot;:&quot;d8b75300-dfda-4519-b6cd-e49abbd50401&quot;,' +
+    "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca&quot;," +
+    "&quot;jql&quot;:&quot;project in (GROW) and status in (Review) ORDER BY created DESC&quot;}," +
+    "&quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[" +
+    "{&quot;key&quot;:&quot;issuetype&quot;},{&quot;key&quot;:&quot;key&quot;},{&quot;key&quot;:&quot;summary&quot;}," +
+    "{&quot;key&quot;:&quot;assignee&quot;},{&quot;key&quot;:&quot;priority&quot;},{&quot;key&quot;:&quot;status&quot;}," +
+    '{&quot;key&quot;:&quot;updated&quot;}]}}]}">https://mayflowergmbh.atlassian.net/issues/?jql=…</a>';
+
+  function datasourceLink(payload: unknown, href = "https://acme.atlassian.net/issues/?jql=x"): string {
+    const attr = JSON.stringify(payload).replaceAll('"', "&quot;");
+    return `<a href="${href}" data-card-appearance="block" data-datasource="${attr}">${href}</a>`;
+  }
+
+  const JIRA_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
+
+  test("the real artifact becomes an unknown macro block, NOT a link", () => {
+    const out = storageToBlocks(REAL_DATASOURCE_LINK).blocks;
+    expect(out.length).toBe(1);
+    const block = out[0] as Extract<ExportBlock, { type: "unknown" }>;
+    expect(block.type).toBe("unknown");
+    expect(block.macroName).toBe("jira");
+    expect(macroParamText(block.params, "jqlQuery")).toBe(
+      "project in (GROW) and status in (Review) ORDER BY created DESC"
+    );
+    expect(macroParamText(block.params, "columns")).toBe(
+      "issuetype,key,summary,assignee,priority,status,updated"
+    );
+  });
+
+  test("the pre-fix output (a raw-URL link block) is gone", () => {
+    const out = storageToBlocks(REAL_DATASOURCE_LINK).blocks;
+    // The defect signature: a paragraph whose only content is an external link
+    // to the percent-encoded JQL URL, with no note anywhere.
+    expect(out.some((b) => b.type === "paragraph")).toBe(false);
+  });
+
+  test("emits exactly one walker macro note, so resolver note pairing holds", () => {
+    // resolve.ts pairs the i-th walker macro note with the i-th unknown block
+    // POSITIONALLY. An unknown block emitted without its note shifts every
+    // later macro's note onto the wrong instance.
+    const storage = `<ac:structured-macro ac:name="unknownthing"/>${REAL_DATASOURCE_LINK}<ac:structured-macro ac:name="anotherthing"/>`;
+    const res = storageToBlocks(storage);
+    const macroNotes = res.notes.filter(
+      (n) => n.code === "unknown-macro" || n.code === "macro-not-rendered"
+    );
+    const unknownBlocks = res.blocks.filter((b) => b.type === "unknown");
+    expect(unknownBlocks.length).toBe(3);
+    expect(macroNotes.length).toBe(3);
+    // Order matters: note i must describe block i.
+    expect(macroNotes[0].macroName).toBe("unknownthing");
+    expect(macroNotes[1].macroName).toBe("jira");
+    expect(macroNotes[2].macroName).toBe("anotherthing");
+  });
+
+  test("keeps the original link as the block body (the placeholder-floor fallback)", () => {
+    const block = storageToBlocks(REAL_DATASOURCE_LINK).blocks[0] as Extract<
+      ExportBlock,
+      { type: "unknown" }
+    >;
+    expect(block.body?.length).toBe(1);
+    const para = block.body![0] as Extract<ExportBlock, { type: "paragraph" }>;
+    expect(para.content[0]).toMatchObject({ type: "link" });
+  });
+
+  test("carries no macroId (a datasource is not a server-side macro)", () => {
+    const block = storageToBlocks(REAL_DATASOURCE_LINK).blocks[0] as Extract<
+      ExportBlock,
+      { type: "unknown" }
+    >;
+    expect(block.macroId).toBeUndefined();
+  });
+
+  test("binds sourcePage in a multi-page export", () => {
+    const block = storageToBlocks(REAL_DATASOURCE_LINK, {
+      pageContext: { id: "42", version: 7, spaceKey: "DOCSY" },
+    }).blocks[0] as Extract<ExportBlock, { type: "unknown" }>;
+    expect(block.sourcePage).toEqual({ id: "42", version: 7, spaceKey: "DOCSY" });
+  });
+
+  test("a datasource inside a paragraph does not corrupt the surrounding inline content", () => {
+    const out = storageToBlocks(`<p>before ${REAL_DATASOURCE_LINK} after</p>`).blocks;
+    expect(out.map((b) => b.type)).toEqual(["paragraph", "unknown", "paragraph"]);
+    expect((out[0] as { content: InlineNode[] }).content).toEqual([
+      { type: "text", text: "before" },
+    ]);
+    expect((out[2] as { content: InlineNode[] }).content).toEqual([{ type: "text", text: "after" }]);
+  });
+
+  test("an ordinary <a> is still an inline link", () => {
+    const out = storageToBlocks('<p>see <a href="https://example.com/x">here</a></p>').blocks;
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content.some((n) => n.type === "link")).toBe(true);
+  });
+
+  test("unknown provider degrades to the link plus a note carrying the raw id", () => {
+    const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const res = storageToBlocks(
+      datasourceLink({ id, parameters: {}, views: [{ type: "table" }] })
+    );
+    expect(res.blocks.map((b) => b.type)).toEqual(["paragraph"]);
+    const note = res.notes.find((n) => n.code === "datasource-provider-unknown");
+    expect(note).toBeDefined();
+    expect(note!.message).toContain(id);
+    expect(note!.level).toBe("warning");
+  });
+
+  test("a known-but-unimplemented provider degrades by name", () => {
+    const res = storageToBlocks(
+      datasourceLink({
+        id: "361d618a-3c04-40ad-9b27-3c8ea6927020",
+        parameters: {},
+        views: [{ type: "table" }],
+      })
+    );
+    expect(res.notes.some((n) => n.code === "datasource-provider-unsupported")).toBe(true);
+    expect(res.blocks.map((b) => b.type)).toEqual(["paragraph"]);
+  });
+
+  test("the saved-filter variant degrades with its own code", () => {
+    const res = storageToBlocks(
+      datasourceLink({
+        id: JIRA_ID,
+        parameters: { cloudId: "c", filter: "10042" },
+        views: [{ type: "table" }],
+      })
+    );
+    expect(res.notes.some((n) => n.code === "datasource-filter-unsupported")).toBe(true);
+  });
+
+  test("malformed JSON degrades with a note instead of failing the page", () => {
+    const storage = `<h1>Kept</h1><a href="https://acme.atlassian.net/x" data-datasource="{&quot;id&quot;:">link text</a>`;
+    const res = storageToBlocks(storage);
+    expect(res.notes.some((n) => n.code === "datasource-invalid")).toBe(true);
+    // Neither the page nor the link's own text is lost.
+    expect(res.blocks[0].type).toBe("heading");
+    expect(res.blocks[1].type).toBe("paragraph");
+  });
+
+  test("a non-table view degrades", () => {
+    const res = storageToBlocks(
+      datasourceLink({ id: JIRA_ID, parameters: { jql: "a" }, views: [{ type: "gallery" }] })
+    );
+    expect(res.notes.some((n) => n.code === "datasource-invalid")).toBe(true);
+  });
+
+  test("REGRESSION: the legacy jira macro path is untouched", () => {
+    const res = storageToBlocks(
+      '<ac:structured-macro ac:name="jira" ac:macro-id="m-1">' +
+        '<ac:parameter ac:name="jqlQuery">project = ATL ORDER BY created DESC</ac:parameter>' +
+        '<ac:parameter ac:name="columns">key,summary</ac:parameter>' +
+        "</ac:structured-macro>"
+    );
+    const block = res.blocks[0] as Extract<ExportBlock, { type: "unknown" }>;
+    expect(block.type).toBe("unknown");
+    expect(block.macroName).toBe("jira");
+    expect(block.macroId).toBe("m-1");
+    expect(block.body).toBeUndefined();
+    expect(macroParamText(block.params, "jqlQuery")).toBe("project = ATL ORDER BY created DESC");
+    expect(res.notes.filter((n) => n.code === "macro-not-rendered").length).toBe(1);
+    expect(res.notes.some((n) => n.code.startsWith("datasource-"))).toBe(false);
+  });
+});

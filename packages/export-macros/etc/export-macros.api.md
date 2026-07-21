@@ -261,6 +261,15 @@ export declare function childrenRenderer(): MacroRenderer;
 // export: cqlFromParams
 export declare function cqlFromParams(m: MacroInstance): string | undefined;
 
+// export: datasourceSiteVerdict
+export declare function datasourceSiteVerdict(args: {
+    datasourceUrl?: string;
+    siteBaseUrl?: string;
+}): DatasourceSiteVerdict;
+
+// export: DatasourceSiteVerdict
+export type DatasourceSiteVerdict = "same-site" | "cross-site" | "unprovable";
+
 // export: diagramMacroRenderer
 export declare function diagramMacroRenderer(): MacroRenderer;
 

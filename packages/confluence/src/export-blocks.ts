@@ -27,6 +27,7 @@
 import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
+import { translateDatasourceLink } from "./datasource.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -275,6 +276,15 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
+  // for the Jira table macro). Every degradation is typed and visible: the
+  // pre-change behaviour was a raw percent-encoded URL in the body with an
+  // EMPTY report, which is the bug these four codes exist to prevent.
+  "datasource-invalid",
+  "datasource-provider-unknown",
+  "datasource-provider-unsupported",
+  "datasource-filter-unsupported",
+  "datasource-cross-site",
   // Scope orchestration / tree fetch (spec 002)
   "page-unreadable",
   "subtree-unreadable",
@@ -923,6 +933,19 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
       inlineBuf.push(node);
       continue;
     }
+    // A datasource smart link is block-level content wearing an `<a>` tag
+    // (`data-card-appearance="block"`). It has to be intercepted HERE, before
+    // the inline classification below claims it: the inline `<a>` handler is
+    // exactly what produced the raw percent-encoded URL blob this feature
+    // replaces. Flushing first keeps any surrounding prose in its own
+    // paragraph, the same way an `<ac:image>` inside a `<p>` is split out.
+    if (isDatasourceLink(node)) {
+      flush();
+      ctx.blockPath = `${parentPath}[${out.length}]`;
+      out.push(...walkDatasourceLink(node, ctx));
+      ctx.blockPath = savedPath;
+      continue;
+    }
     if (INLINE_TAGS.has(node.name) || isInlineMacro(node)) {
       inlineBuf.push(node);
       continue;
@@ -1558,6 +1581,106 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     };
   }
 
+  return [block];
+}
+
+// ---------------------------------------------------------------------------
+// Datasource smart links
+// ---------------------------------------------------------------------------
+
+/** True for an `<a>` carrying a non-empty `data-datasource` attribute. */
+function isDatasourceLink(node: XmlElement): boolean {
+  return node.name === "a" && (node.attrs["data-datasource"] ?? "").trim() !== "";
+}
+
+/**
+ * Render a datasource smart link's fallback: the link itself, exactly as the
+ * inline `<a>` handler would have produced it (same scheme policy, same display
+ * text). Used both as the degradation output and as the `body` of the emitted
+ * macro block — so if the macro chain later cannot reach Jira, the placeholder
+ * floor still shows the user a working link instead of a bare placeholder.
+ */
+function datasourceFallbackBlocks(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const inner = walkInline(el.children, ctx);
+  const display = hasMeaningfulInline(inner) ? inner : [{ type: "text" as const, text: href }];
+  const verdict = sanitizeLinkHref(href);
+  if (!verdict.safe) {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: UNSAFE_LINK_NOTE_CODE,
+        message: unsafeLinkMessage(verdict, inlineText(display)),
+      })
+    );
+    return hasMeaningfulInline(display) ? [{ type: "paragraph", content: display }] : [];
+  }
+  return [
+    {
+      type: "paragraph",
+      content: [{ type: "link", target: { kind: "external", href }, content: display }],
+    },
+  ];
+}
+
+/**
+ * Walk an `<a data-datasource>` element (spec SUPPORT-DATASOURCE-JIRA).
+ *
+ * A supported provider becomes the SAME `{ type: "unknown", macroName, params }`
+ * shape the macro extractor emits, so the existing spec-004 fallback chain —
+ * renderer, `sourcePage` binding, dedup cache, circuit breaker, session ports —
+ * renders it with no second code path. Everything else keeps the link and says
+ * why in a typed note; nothing here is ever silent, and nothing here throws.
+ */
+function walkDatasourceLink(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const outcome = translateDatasourceLink(el.attrs["data-datasource"] ?? "", href);
+
+  if (outcome.kind === "degrade") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: outcome.level,
+        code: outcome.code,
+        message: outcome.message,
+        ...(outcome.provider ? { macroName: outcome.provider.macroName ?? outcome.provider.id } : {}),
+      })
+    );
+    return datasourceFallbackBlocks(el, ctx);
+  }
+
+  const macroName = outcome.macroName;
+  // The macro-resolution pass pairs the i-th walker macro note with the i-th
+  // `unknown` block POSITIONALLY (`resolve.ts`, reconcileNotes). Emitting an
+  // unknown block without its paired note here would shift every later macro's
+  // note onto the wrong instance — so this note is structural, not decorative.
+  const known = KNOWN_MACROS.includes(macroName);
+  ctx.notes.push(
+    withSource(ctx, {
+      level: known ? "info" : "warning",
+      code: known ? "macro-not-rendered" : "unknown-macro",
+      message: `A datasource smart link was captured as a "${macroName}" macro; it renders as a live table when dynamic macro resolution runs.`,
+      macroName,
+    })
+  );
+
+  const block: Extract<ExportBlock, { type: "unknown" }> = {
+    type: "unknown",
+    macroName,
+    params: outcome.params,
+    // Deliberately the link, not an empty body: this is what the placeholder
+    // floor renders when Jira is unreachable or `--no-live-macros` is set, and
+    // it is never worse than the pre-change output.
+    body: datasourceFallbackBlocks(el, ctx),
+  };
+  // No `macroId`: a datasource is not a macro server-side, so the export_view
+  // catch-all must not try to fetch one (it skips on a missing macroId).
+  if (ctx.pageContext) {
+    block.sourcePage = {
+      id: ctx.pageContext.id,
+      ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+      ...(ctx.pageContext.spaceKey !== undefined ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+    };
+  }
   return [block];
 }
 

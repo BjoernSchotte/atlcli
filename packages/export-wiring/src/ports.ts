@@ -94,7 +94,13 @@ function extraFields(issue: JiraIssueLike): Record<string, string> {
   if (f.updated) out.updated = f.updated;
   if (f.duedate) out.duedate = f.duedate;
   if (f.labels) out.labels = f.labels.join(", ");
-  if (f.issuetype) out.type = f.issuetype.name ?? "";
+  if (f.issuetype) {
+    out.type = f.issuetype.name ?? "";
+    // Datasource tables name this column `issuetype` (the Jira provider's own
+    // schema key), the legacy `jira` macro names it `type`. Both vocabularies
+    // reach the same value here rather than one of them rendering blank cells.
+    out.issuetype = out.type;
+  }
   return out;
 }
 
