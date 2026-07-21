@@ -59,6 +59,22 @@ const deps = {
   getPageOwner: async () => owner,
 };
 
+/**
+ * A Word TOC field, the archetypal reason to set `w:updateFields`: without a
+ * refresh Word shows the cached (usually empty) table of contents.
+ */
+function tocField(): string {
+  return (
+    `<w:p>` +
+    `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+    `<w:r><w:t xml:space="preserve">Right-click to update</w:t></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
+    `</w:p>`
+  );
+}
+
 /** A realistic template: cover placeholders, header/footer, TOC-ready styles. */
 function fullTemplate(withScrollHeadings: boolean): Uint8Array {
   const styles = stylesXml(
@@ -273,10 +289,28 @@ describe("exportDocx — full pipeline", () => {
     assertBalancedXml(doc);
   });
 
-  it("sets w:updateFields so the TOC repaginates on open", async () => {
-    const { bytes } = await exportDocx({ templateBytes: fullTemplate(true), details, template, deps });
+  it("sets w:updateFields so a TOC repaginates on open", async () => {
+    // The flag is CONDITIONAL since the field-refresh policy landed: it is set
+    // when the finished document carries a field whose refresh changes what the
+    // reader sees. A TOC is the archetype, and stays the default. The full
+    // policy — including the hyperlink-only case this template used to be
+    // wrongly flagged for — lives in `update-fields.test.ts`.
+    const templateBytes = buildDocx({
+      body: tocField() + para("$scroll.content"),
+      styles: stylesXml(headingStyle("Heading1", "Heading 1")),
+    });
+    const { bytes } = await exportDocx({ templateBytes, details, template, deps });
     const settings = readPart(bytes, "word/settings.xml");
     expect(settings).toContain('<w:updateFields w:val="true"/>');
+  });
+
+  it("leaves w:updateFields alone when the document has nothing to refresh", async () => {
+    // The same realistic template WITHOUT a TOC: its only fields are the body's
+    // static HYPERLINKs, so asking the reader to refresh on every open would
+    // accomplish nothing.
+    const { bytes } = await exportDocx({ templateBytes: fullTemplate(true), details, template, deps });
+    expect(readPart(bytes, "word/document.xml")).toContain("HYPERLINK");
+    expect(readPart(bytes, "word/settings.xml")).not.toContain("<w:updateFields");
   });
 
   it("falls back to builtin heading ids when the template lacks Scroll Heading styles", async () => {
@@ -405,8 +439,11 @@ describe("exportDocx — full pipeline", () => {
   });
 
   it("normalizes a paired w:updateFields=false to true (#3)", async () => {
+    // The TOC is what makes the refresh worth requesting; the template's pinned
+    // `false` is then about a document that no longer exists (its body has been
+    // replaced), and honouring it would ship a visibly empty table of contents.
     const templateBytes = buildDocx({
-      body: para("$scroll.content"),
+      body: tocField() + para("$scroll.content"),
       styles: stylesXml(headingStyle("Heading1", "Heading 1")),
       settings:
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -439,7 +476,9 @@ describe("exportDocx — full pipeline", () => {
         `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
         `</Relationships>`
     );
-    zip.file("word/document.xml", documentXml(para("$scroll.content")));
+    // A TOC, so the export genuinely needs to SYNTHESIZE settings.xml — which is
+    // what this test is about.
+    zip.file("word/document.xml", documentXml(tocField() + para("$scroll.content")));
     zip.file("word/styles.xml", stylesXml(headingStyle("Heading1", "Heading 1")));
     // Existing document rel uses SINGLE quotes.
     zip.file(

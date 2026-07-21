@@ -60,6 +60,33 @@ import {
 const TEMPLATE_REQUIRED_MESSAGE =
   "--template is required for --engine python (only --engine ts has a bundled default template).";
 
+/**
+ * `--template`, or its documented short form `-t`.
+ *
+ * `-t` is advertised in `--help` (`--template, -t`), in
+ * `docs/confluence/export.md`'s option table, and in worked examples in both
+ * — and was read NOWHERE. The effect was
+ * silent on the engine we ship: `--engine ts -t corporate.docx` exported with
+ * the BUNDLED DEFAULT template and reported `template-default-used`, which
+ * reads as "you passed no template". On `--engine python` it failed with
+ * "--template is required" while the user was looking at the template they had
+ * just passed. `--output`/`-o` had honoured its alias all along, which is what
+ * made the gap invisible in review.
+ *
+ * Both readers go through this pair so the alias cannot drift back apart: the
+ * DOCX path needs the VALUE, the `--format pdf` guard needs only PRESENCE (it
+ * rejects `--template` outright, and rejecting it for the long spelling only
+ * would have let `-t` through into a PDF export that silently ignored it).
+ */
+function templateFlag(flags: Record<string, string | boolean | string[]>): string | undefined {
+  return getFlag(flags, "template") ?? getFlag(flags, "t");
+}
+
+/** Whether `--template` (or `-t`) was passed at all. See {@link templateFlag}. */
+function hasTemplateFlag(flags: Record<string, string | boolean | string[]>): boolean {
+  return hasFlag(flags, "template") || hasFlag(flags, "t");
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -145,7 +172,7 @@ export async function handleExport(
   });
   if (notice) process.stderr.write(`${notice}\n`);
 
-  const templatePath = getFlag(flags, "template");
+  const templatePath = templateFlag(flags);
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
   let embedImages = !hasFlag(flags, "no-images");
   if (hasFlag(flags, "embed-images")) {
@@ -155,7 +182,14 @@ export async function handleExport(
     embedImages = false;
   }
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
-  const noTocPrompt = hasFlag(flags, "no-toc-prompt");
+  // `--no-toc-prompt` was named when the dirty flag was thought of as a TOC
+  // feature. It governs `w:updateFields`, which covers caption numbering,
+  // cross-references and running heads too, so the honest spelling is
+  // `--no-field-update-prompt`. The old name keeps working — it is documented,
+  // it is in people's scripts, and a flag that silently stops being recognized
+  // is worse than a flag with two names.
+  const noFieldUpdatePrompt =
+    hasFlag(flags, "no-field-update-prompt") || hasFlag(flags, "no-toc-prompt");
   // Spec 003 C4 progressive disclosure: keep scroll-only/scroll-ignore bodies
   // for debugging ("why is section X missing?"). Engine option:
   // exportControls "passthrough". ts single-page only for now — the tree/space
@@ -232,6 +266,7 @@ export async function handleExport(
       outputPath,
       embedImages,
       liveMacros: !noLiveMacros,
+      noFieldUpdatePrompt,
       strict: hasFlag(flags, "strict"),
       opts,
     });
@@ -268,6 +303,7 @@ export async function handleExport(
         embedImages,
         keepIgnored,
         liveMacros: !noLiveMacros,
+        noFieldUpdatePrompt,
         strict: hasFlag(flags, "strict"),
         opts,
       });
@@ -496,7 +532,8 @@ export async function handleExport(
     macroChildren: childrenMacro,
     macroContentByLabel: contentByLabelData,
     images,  // Embedded images keyed by filename
-    noTocPrompt,
+    // The python renderer's own key for this flag (docx_renderer.py).
+    noTocPrompt: noFieldUpdatePrompt,
   };
 
   // Resolve output path
@@ -521,8 +558,11 @@ export async function handleExport(
     },
   };
 
-  // Add note when --no-toc-prompt is used and document has TOC
-  if (noTocPrompt && result.hasToc) {
+  // Python engine only. `--no-field-update-prompt` / `--no-toc-prompt` reaches
+  // the renderer as `pageData.noTocPrompt`, which suppresses the dirty flag when
+  // a TOC is present (docx_renderer.py). The ts engine reports the equivalent
+  // fact through the engine's own `field-refresh-suppressed` note.
+  if (noFieldUpdatePrompt && result.hasToc) {
     response.note = "Document contains TOC. Update manually: right-click TOC → Update Field";
   }
 
@@ -557,7 +597,7 @@ async function handlePdfExport(
     }),
   });
 
-  if (hasFlag(flags, "template")) {
+  if (hasTemplateFlag(flags)) {
     return emitReportOutcome(
       usage("--template is DOCX-only; PDF templates arrive via a later release. Drop --template with --format pdf."),
       opts
@@ -1092,6 +1132,8 @@ interface TsEngineArgs {
   keepIgnored?: boolean;
   /** spec 004: `false` under `--no-live-macros` suppresses port-backed macros. */
   liveMacros: boolean;
+  /** `--no-field-update-prompt` / `--no-toc-prompt`: never set `w:updateFields`. */
+  noFieldUpdatePrompt: boolean;
   strict: boolean;
   opts: OutputOptions;
 }
@@ -1168,6 +1210,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     embedImages,
     keepIgnored,
     liveMacros,
+    noFieldUpdatePrompt,
     strict,
     opts,
   } = args;
@@ -1309,6 +1352,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       template: template.meta,
       embedImages,
       ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+      // Omitted (not `"auto"`) so the engine's own default stays the single
+      // definition of the default policy.
+      ...(noFieldUpdatePrompt ? { updateFields: "never" as const } : {}),
       deps: {
         getSpace: async (key: string) => (await spaceInfo(key)).space,
         getCurrentUser: currentUser,
@@ -1419,6 +1465,8 @@ interface TreeEngineArgs {
   embedImages: boolean;
   /** spec 004: `false` under `--no-live-macros`. */
   liveMacros: boolean;
+  /** `--no-field-update-prompt` / `--no-toc-prompt`: never set `w:updateFields`. */
+  noFieldUpdatePrompt: boolean;
   strict: boolean;
   opts: OutputOptions;
 }
@@ -1510,6 +1558,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     outputPath,
     embedImages,
     liveMacros,
+    noFieldUpdatePrompt,
     strict,
     opts,
   } = args;
@@ -1641,6 +1690,9 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
         onProgress,
         template: template.meta,
         embedImages,
+        // Omitted (not `"auto"`) so the engine's own default stays the single
+        // definition of the default policy.
+        ...(noFieldUpdatePrompt ? { updateFields: "never" as const } : {}),
         deps: {
           getSpace: async (key: string) => (await client.getSpaceWithIcon(key)).space,
           getCurrentUser: () => client.getCurrentUser(),
@@ -1861,7 +1913,15 @@ Options:
   --output, -o        Output file path (required, or use --out-dir for PDF)
   --no-images         Do not embed images from page attachments (default embeds)
   --no-merge          Keep children as separate array (for loops in templates)
-  --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
+  --no-field-update-prompt
+                      Never ask Word to refresh fields on open. A table of
+                      contents, caption numbers and cross-references then show
+                      placeholder or stale text until refreshed by hand
+                      (select all, F9); the report says so. Without this flag
+                      the prompt appears only when the document actually has a
+                      field whose refresh changes something — a document whose
+                      only fields are hyperlinks never prompts.
+  --no-toc-prompt     Alias for --no-field-update-prompt (original spelling)
   --keep-ignored      Keep scroll-only/scroll-ignore content for debugging
                       (--engine ts, single page; export is marked in the report)
   --no-live-macros    Deterministic export: skip live (Jira/export_view/attachment)

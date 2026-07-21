@@ -25,6 +25,13 @@
  * now yields a `logo-skipped` note (counted in `skippedImages`) instead of a
  * `placeholder-unsupported` entry. Every zip ENTRY was asserted byte-identical
  * across the recapture — only the report block changed.
+ *
+ * `word/settings.xml` amended 2026-07-21 for the field-refresh policy: this
+ * fixture's only fields are the body's static `HYPERLINK`s, so the export no
+ * longer injects `<w:updateFields w:val="true"/>` and the entry is the
+ * template's own empty `<w:settings>` element. That is the ONE intended
+ * behaviour change; every other entry stayed byte-identical, which is exactly
+ * what a golden file is for. See `update-fields.test.ts`.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";

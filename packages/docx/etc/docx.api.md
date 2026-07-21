@@ -68,6 +68,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -311,6 +312,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -570,6 +572,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -945,6 +948,9 @@ export declare function codeStyleXml(): string;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
 
@@ -1116,6 +1122,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -1341,6 +1348,9 @@ export declare const MAX_TEMPLATE_BYTES: number;
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip): boolean;
+
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
 
@@ -1448,6 +1458,9 @@ export declare function readBodySectPr(zip: PizZip): string | undefined;
 
 // export: readPartText
 export declare function readPartText(zip: PizZip, part: string): string;
+
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
@@ -1689,6 +1702,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -1914,6 +1928,9 @@ export declare function assertSafeDocxEntryName(name: string): void;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
 
@@ -1954,11 +1971,17 @@ export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
 
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip): boolean;
+
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
 
 // export: readPartText
 export declare function readPartText(zip: PizZip, part: string): string;
+
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
 
 // export: ScanHit
 export interface ScanHit {

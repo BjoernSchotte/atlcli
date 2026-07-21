@@ -542,9 +542,13 @@ describe("unzipDocx — active content is REJECTED, never stripped (spec 011)", 
 describe("collectRiskyFieldInstructions — audit, not rejection (spec 011)", () => {
   it("REJECTS a run-split DDEAUTO field at import (not merely audited)", () => {
     // The classic DDE RCE payload, split across runs exactly as Word writes it.
-    // DDE has no legitimate use in an export template, and `ensureUpdateFields`
-    // makes every exported document refresh fields on open — so the exporter
-    // itself would arm this. It must be refused, not reported.
+    // DDE has no legitimate use in an export template and must be refused, not
+    // reported. The refusal does NOT rest on the exporter setting
+    // `<w:updateFields>` — that flag became conditional (see
+    // `update-fields.test.ts`), and `DDE` is deliberately not on the
+    // refresh-sensitive list, so without this rejection such a template would
+    // export with no flag and no note at all. A DDE field fires on any refresh
+    // the reader triggers.
     const bytes = buildDocx({
       body:
         `<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
