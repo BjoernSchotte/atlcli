@@ -68,6 +68,25 @@ export function detectEntity(url: string, seq: number, windowId: number): Entity
 }
 
 /**
+ * Is `url` one of THIS extension's own pages?
+ *
+ * Our large-preview tab opens in the same Chrome window and becomes the active
+ * tab, which is an `onActivated` event carrying a `chrome-extension:` URL. Folding
+ * that in as an ordinary tab switch is wrong twice over: the preview page pulls
+ * back a null entity and has no page to preview, and the side panel behind it —
+ * listening on the same window — loses its page as well.
+ *
+ * The exemption is deliberately narrow. It is keyed on the extension's OWN
+ * origin, supplied by the host (`chrome.runtime.getURL("/")`), not on the
+ * `chrome-extension:` scheme: another extension's page is a genuine navigation
+ * away and must still clear the context, exactly like any foreign site. A host
+ * that supplies nothing gets the old behaviour rather than a guess.
+ */
+function isOwnSurface(url: string, ownOrigin: string | undefined): boolean {
+  return ownOrigin !== undefined && ownOrigin.length > 0 && url.startsWith(ownOrigin);
+}
+
+/**
  * Fold one tab event (the active tab's current URL) into the observer.
  *
  * Returns the next state and, when the URL is new, the `entity-changed` message
@@ -77,17 +96,20 @@ export function detectEntity(url: string, seq: number, windowId: number): Entity
  * emission bumps `seq` so the panel can order deliveries.
  *
  * A falsy/empty URL (no active tab, `chrome://` pages without a URL) is a no-op
- * and never resets the dedup memory.
+ * and never resets the dedup memory. One of THIS extension's own pages is
+ * treated the same way — see {@link isOwnSurface}.
  *
- * @param state  previous observer state.
- * @param url    the active tab's current URL, if any.
+ * @param state      previous observer state.
+ * @param url        the active tab's current URL, if any.
+ * @param ownOrigin  this extension's origin (`chrome.runtime.getURL("/")`).
  */
 export function observeTab(
   state: ObserverState,
   windowId: number,
-  url: string | undefined | null
+  url: string | undefined | null,
+  ownOrigin?: string
 ): { state: ObserverState; message: EntityChanged | null } {
-  if (!url) return { state, message: null };
+  if (!url || isOwnSurface(url, ownOrigin)) return { state, message: null };
   const windowKey = String(windowId);
   if (url === state.lastEmittedUrlByWindow[windowKey]) return { state, message: null };
 
@@ -110,18 +132,31 @@ export function observeTab(
  * counter so pulls and pushes are globally ordered:
  *   - new URL   → behaves like an observation: bump `seq`, remember the URL.
  *   - same URL  → return the seq of that URL's emission (no bump, no re-push).
+ *   - own page  → answer with the page this window is STILL showing, so the
+ *     large-preview tab (which is itself the active tab when it asks) inherits
+ *     the context it was opened from instead of clearing it.
  *   - no URL    → null detection stamped with the current seq (won't supersede
  *     an already-applied real detection at the same seq).
  */
 export function currentDetection(
   state: ObserverState,
   windowId: number,
-  url: string | undefined | null
+  url: string | undefined | null,
+  ownOrigin?: string
 ): { state: ObserverState; detection: EntityDetection } {
+  const windowKey = String(windowId);
+  if (url && isOwnSurface(url, ownOrigin)) {
+    const remembered = state.lastEmittedUrlByWindow[windowKey];
+    return {
+      state,
+      detection: remembered
+        ? detectEntity(remembered, state.seq, windowId)
+        : { windowId, url: null, entity: null, seq: state.seq },
+    };
+  }
   if (!url) {
     return { state, detection: { windowId, url: null, entity: null, seq: state.seq } };
   }
-  const windowKey = String(windowId);
   if (url === state.lastEmittedUrlByWindow[windowKey]) {
     return { state, detection: detectEntity(url, state.seq, windowId) };
   }

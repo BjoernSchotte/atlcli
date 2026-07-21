@@ -246,12 +246,19 @@ export default defineBackground({
     isState: isObserverState,
   });
 
+  /**
+   * This extension's own origin, so the observer can tell "the user navigated
+   * away" from "we opened our own large-preview tab". Resolved once here rather
+   * than inside the pure core, which must not know about `chrome`.
+   */
+  const ownOrigin = chrome.runtime.getURL("/");
+
   const feed = async (
     windowId: number,
     url: string | undefined | null
   ): Promise<void> => {
     const message = await observerSession.mutate((observer) => {
-      const result = observeTab(observer, windowId, url);
+      const result = observeTab(observer, windowId, url, ownOrigin);
       return { state: result.state, value: result.message };
     });
     if (message) pushEntityChanged(message);
@@ -275,7 +282,7 @@ export default defineBackground({
         // Never fall back to a tab from another window.
         url = undefined;
       }
-      const result = currentDetection(observer, windowId, url);
+      const result = currentDetection(observer, windowId, url, ownOrigin);
       return { state: result.state, value: result.detection };
     });
 
