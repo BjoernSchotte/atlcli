@@ -379,6 +379,10 @@ export async function runPdfExport(
         hasLang: inspection.hasLang,
       }),
     ],
+    // The host's source notes as the macro resolver left them (spec 010): a
+    // per-source-page view rebuilt from the PRE-resolution walk contradicts this
+    // aggregate — it still claims a live-rendered macro did not render.
+    sourceNotes: resolvedNotes,
     complete: input.complete ?? true,
     // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
     // can fail `--strict` on real Typst warnings.

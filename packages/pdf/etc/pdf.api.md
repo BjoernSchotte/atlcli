@@ -320,6 +320,7 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;
@@ -975,6 +976,7 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;
@@ -1630,6 +1632,7 @@ export interface PdfExportReport {
     renderedDiagrams: number;
     skippedAssets: number;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
     timings: PdfExportTimings;

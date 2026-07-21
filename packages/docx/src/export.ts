@@ -135,6 +135,16 @@ export interface ExportReport {
   /** All non-fatal notes (resolver + serializer + flow + compose/fetch). */
   notes: ExportNote[];
   /**
+   * The SOURCE half of {@link notes} — the host's {@link ExportInput.sourceNotes}
+   * plus the engine's own storage-walk notes — AFTER dynamic-macro reconciliation
+   * (spec 010). A host that builds a per-source-page view of the report must
+   * project THIS rather than the notes it walked itself: the walker's
+   * `macro-not-rendered`/`unknown-macro` is provisional, and only this pass knows
+   * it became `macro-rendered-via`. Always set by `exportDocx`; optional so
+   * hand-built report literals stay additive.
+   */
+  sourceNotes?: ExportNote[];
+  /**
    * False when the composed document omitted content (partial-mode unreadable
    * pages, spec 002). Single-page/normal exports are `true`. Carried from
    * {@link ExportInput.complete}.
@@ -345,8 +355,28 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       });
   // Dynamic-macro resolution (spec 004): staged fallback chain between the
   // walker and the serializer. Runs once on the (possibly composed) block tree.
+  //
+  // The provisional walker notes the resolver takes ownership of are NOT always
+  // ours. A host that walks the storage itself — the CLI pre-resolves @mentions
+  // before calling us, the tree path composes chapters — hands us the blocks via
+  // `input.blocks` AND the notes describing them via `input.sourceNotes`, which
+  // left `walked.notes` empty. Handing that empty list to `resolveMacroBlocks`
+  // gave it nothing to reconcile, so every terminal `macro-rendered-via` was
+  // APPENDED next to the `macro-not-rendered` it was supposed to REPLACE, and
+  // the report claimed a live-rendered macro had not rendered.
+  //
+  // The two lists are concatenated host-first into the ONE list that both feeds
+  // the resolver and reaches the report, so the resolver's positional pairing
+  // (i-th walker macro note ↔ i-th unknown block, over the filtered macro-code
+  // subsequence) sees the notes of whichever walk produced `blocks`: at most one
+  // of the two can describe a given tree, because `walked.notes` is empty
+  // exactly when the host supplied the blocks. Non-macro notes ride through
+  // untouched — the resolver only ever replaces the macro-code subsequence.
   let blocks = walked.blocks;
-  let walkNotes = walked.notes;
+  let walkNotes: ExportNote[] =
+    input.sourceNotes && input.sourceNotes.length > 0
+      ? [...input.sourceNotes, ...walked.notes]
+      : walked.notes;
   if (input.macros) {
     const rootPage = {
       id: input.details.id,
@@ -559,10 +589,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
   timings.renderMs = Date.now() - renderStart;
 
+  // `walkNotes` already carries `input.sourceNotes` (merged above, then
+  // reconciled by the macro resolver) — listing them again here is what made a
+  // live-rendered macro show up twice in the report.
   const notes = [
-    ...(input.sourceNotes ?? []),
-    ...resolved.notes,
     ...walkNotes,
+    ...resolved.notes,
     ...body.notes,
     ...imageAuditNotes,
     ...flowNotes,
@@ -584,6 +616,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       durationMs: Date.now() - start,
       filename: toDownloadFilename(input.details.title),
       notes,
+      sourceNotes: walkNotes,
       complete: input.complete ?? true,
       scan,
       timings,

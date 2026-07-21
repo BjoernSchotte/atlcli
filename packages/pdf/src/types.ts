@@ -223,6 +223,16 @@ export interface PdfExportReport {
   skippedAssets: number;
   notes: ExportNote[];
   /**
+   * The SOURCE half of {@link notes} — the host's `sourceNotes` — AFTER
+   * dynamic-macro reconciliation (spec 010). A host that builds a
+   * per-source-page view of the report must project THIS rather than the notes
+   * it walked itself: the walker's `macro-not-rendered`/`unknown-macro` is
+   * provisional, and only this pass knows it became `macro-rendered-via`.
+   * Always set by `runPdfExport`; optional so hand-built report literals stay
+   * additive.
+   */
+  sourceNotes?: ExportNote[];
+  /**
    * False when the composed document omitted content (partial-mode unreadable
    * pages, spec 002). Single-page/normal exports are `true`.
    */

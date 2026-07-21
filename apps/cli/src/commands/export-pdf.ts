@@ -210,6 +210,15 @@ interface ResolvedScope {
   outNameKey: string;
   mentionUnresolved: number;
   /**
+   * Set ONLY for a single-page scope, to that page's id: the one
+   * {@link sourcePages} entry's notes are exactly the walker notes that go into
+   * the engine as {@link sourceNotes}, so the engine's reconciled list can be
+   * projected back onto it after the export (spec 010). A tree/space scope
+   * leaves this undefined — its per-page notes come from the per-page walk and
+   * never enter the engine, so there is nothing to project back.
+   */
+  reconcilablePageId?: string;
+  /**
    * Scope traceability for the report (spec 002 A5), built by the shared
    * {@link buildScopeReportFields}. Tree/space only — a single-page export has
    * no scope resolution to trace, matching the DOCX single-page path.
@@ -304,9 +313,14 @@ async function resolveScope(
       blocks: mention.blocks,
       sourceNotes,
       complete: true,
+      // Provisional: these are the PRE-macro-resolution walker notes. The
+      // engine owns the terminal outcome, so `exportPdf` projects its
+      // reconciled `sourceNotes` back onto this entry (see
+      // `reconcilablePageId`) before the report is built.
       sourcePages: [{ id: pageId, title: page.title, notes: walked.notes.map((n) => noteToIssue(n, "compose", pageId)) }],
       outNameKey: pageId,
       mentionUnresolved: mention.unresolved,
+      reconcilablePageId: pageId,
     };
   }
 
@@ -449,6 +463,23 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         : []),
     ];
 
+    // Per-page provenance, reconciled (spec 010). For a single-page scope the
+    // one entry's notes ARE `scope.sourceNotes`, and macro resolution rewrote
+    // that list inside the engine — a provisional `macro-not-rendered` became
+    // `macro-rendered-via`. Projecting the engine's reconciled list back is what
+    // stops `sourcePages[].notes` from contradicting `notesByCode`, which said
+    // the macro rendered. Tree/space keeps its per-page walk: those notes never
+    // enter the engine, so there is no reconciled counterpart to project.
+    const sourcePages: SourcePageEntry[] =
+      scope.reconcilablePageId && report.sourceNotes
+        ? [
+            {
+              ...scope.sourcePages[0]!,
+              notes: report.sourceNotes.map((n) => noteToIssue(n, "compose", scope.reconcilablePageId!)),
+            },
+          ]
+        : scope.sourcePages;
+
     // Report-contract parity with the DOCX path. `complete` rides on EVERY
     // successful export (spec 002's completeness contract, which a CI consumer
     // reads via `jq -r '.complete'` — it must never be null on success); the
@@ -457,7 +488,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     // `buildTreeExportReport`, which makes both REQUIRED at compile time.
     const common = {
       format,
-      sourcePages: scope.sourcePages,
+      sourcePages,
       outputDetails: [outputDetail],
       issues: allIssues,
       timings: { ...report.timings, totalMs: Date.now() - startedAt },
