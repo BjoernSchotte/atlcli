@@ -28,7 +28,7 @@ describe("PDF asset preparation", () => {
     });
     expect(prepared.assets).toEqual([]);
     expect(prepared.blocks[0]).toMatchObject({ type: "image", fallbackLabel: "Image 0" });
-    expect(prepared.notes[0]?.code).toBe("pdf-image-skipped");
+    expect(prepared.notes[0]?.code).toBe("image-embed-failed");
     expect(prepared.notes[0]?.message).toContain("corrupt");
   });
 
@@ -238,7 +238,7 @@ describe("PDF asset preparation", () => {
 describe("PDF alt-text audit", () => {
   const ok = { resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }) };
   const altNotes = (notes: Awaited<ReturnType<typeof preparePdfDocument>>["notes"]) =>
-    notes.filter((note) => note.code === "pdf-image-missing-alt");
+    notes.filter((note) => note.code === "image-missing-alt");
 
   function image(alt: string | undefined, filename = "diagram.png", pageId?: string): ExportBlock {
     return {
@@ -253,7 +253,7 @@ describe("PDF alt-text audit", () => {
     expect(altNotes(prepared.notes)).toEqual([
       {
         level: "warning",
-        code: "pdf-image-missing-alt",
+        code: "image-missing-alt",
         message: expect.stringContaining("chart.png"),
         source: { pageId: "12345", blockPath: "blocks[0]", assetName: "chart.png" },
       },
@@ -280,7 +280,7 @@ describe("PDF alt-text audit", () => {
       },
     });
     expect(altNotes(prepared.notes)).toHaveLength(1);
-    expect(prepared.notes.map((note) => note.code)).toContain("pdf-image-skipped");
+    expect(prepared.notes.map((note) => note.code)).toContain("image-embed-failed");
   });
 
   it("reports a block path that locates the image inside nested containers", async () => {

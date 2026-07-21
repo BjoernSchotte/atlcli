@@ -1792,3 +1792,52 @@ site):
     the answers determine whether Track 2 can reuse this engine at all, and
     they should be established before Track 2 architecture is planned rather
     than discovered during it. Owner: whoever opens the Forge folder.
+
+---
+
+## Addendum — note-code vocabulary unification (shipped)
+
+"Same report vocabulary, shipped together" (see Reference, above) was not
+actually true: three codes named the same condition differently depending on
+which engine, or which host, produced the report. A consumer filtering
+`notesByCode` on one spelling matched nothing on the other — silently, because a
+missing key and a clean export look identical in most `jq` expressions.
+
+**Resolved to the unprefixed spelling in every case**, since each condition is a
+fact about the *source page*, not about the output format or the host:
+
+| Retired | Emitted today | Evidence |
+|---|---|---|
+| `pdf-image-missing-alt` | `image-missing-alt` | Both engines apply the identical `isMissingAltText` rule to the same source block before any fetch (`packages/pdf/src/prepare.ts`, `packages/docx/src/image.ts`) |
+| `pdf-image-skipped` | `image-embed-failed` | Both emit at the same pipeline position when one image's bytes could not be obtained (`prepare.ts` resolver throw ≡ `serialize.ts` `{ ok: false }`) |
+| `pdf-mention-unresolved` | `mention-unresolved` | The extension host's spelling of the code both CLI hosts already used |
+
+**Deliberately left distinct** — verified by reading the emitters, not the names:
+
+- **`image-skipped` is NOT the counterpart of `pdf-image-skipped`.** It is
+  DOCX's `info` note for "this export was configured with no image pipeline at
+  all" (`!ctx.images`), a whole-export configuration fact the PDF engine cannot
+  represent — `preparePdfDocument` takes a *required* resolver. The name
+  similarity is a trap; the true counterpart is `image-embed-failed`.
+- **`pdf-image-alt-fallback`** is the render-stage statement that the filename
+  was substituted into `alt:`. DOCX performs the same substitution into `descr`
+  silently and emits nothing, so there is no counterpart to unify with.
+- **`pdf-mention-resolution-failed`** reports that the whole resolution *call*
+  failed (count unknown). The CLI does not wrap `resolveExportMentions`, so it
+  has no counterpart either. Its `pdf-` prefix is now misleading — it is
+  host-specific, not PDF-specific — but renaming a code with no divergence to
+  fix would be a breaking change bought for nothing. Left for a future pass.
+
+**Contract handling.** The report `schema` string stays `atlcli.export-report/1`:
+the document *shape* is unchanged, only three values inside it, and the repo's
+precedent (the `v1` → `/1` bump) reserves the string for shape changes.
+`RETIRED_EXPORT_NOTE_CODES` + `canonicalExportNoteCode()` in
+`packages/confluence/src/export-blocks.ts` are the machine-readable migration
+path, pinned by tests so the table cannot rot into a comment. Nothing emits both
+spellings: dual emission would double every affected tally and inflate `--strict`
+counts for a single fact — the defect the duplicate-`mention-unresolved` fix
+removed.
+
+**Known remaining divergence, out of scope here:** `pdf-diagram-unsupported` /
+`pdf-diagram-failed` (PDF) versus `diagram-unsupported` / `diagram-render-failed`
+(DOCX) are the same class of split and were left alone.

@@ -168,9 +168,16 @@ export async function runPdfExport(
     const resolved = await deps.resolveMentions(blocks, input.pageUrl, input.signal);
     blocks = resolved.blocks;
     if (resolved.unresolved > 0) {
+      // SHARED code (spec 010): the CLI's PDF host
+      // (`apps/cli/src/commands/export-pdf.ts`) and its DOCX host
+      // (`apps/cli/src/commands/export.ts`) both report this exact condition as
+      // `mention-unresolved`. A host-local spelling made one report's
+      // `notesByCode` unfilterable with the other's key even though the fact —
+      // "an account id did not resolve to a display name on the source page" —
+      // is identical and has nothing to do with which host noticed it.
       mentionNotes.push({
         level: "warning",
-        code: "pdf-mention-unresolved",
+        code: "mention-unresolved",
         message: `${resolved.unresolved} mention display name(s) could not be resolved; technical identifiers were retained.`,
       });
     }

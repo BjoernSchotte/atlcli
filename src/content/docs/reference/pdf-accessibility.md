@@ -62,7 +62,7 @@ checker that merely tests for its *presence* reports no problem — while a scre
 reader announces `chart-final-v2.png`.
 
 This is the single most likely way an export looks accessible without being
-accessible, which is why the [`pdf-image-missing-alt`](#note-codes) audit exists.
+accessible, which is why the [`image-missing-alt`](#note-codes) audit exists.
 :::
 
 ## What this export does *not* guarantee
@@ -127,7 +127,7 @@ The report's `notes` array carries every audit finding. Each note includes a
 ```json
 {
   "level": "warning",
-  "code": "pdf-image-missing-alt",
+  "code": "image-missing-alt",
   "message": "The image \"chart-final-v2.png\" has no alternative text; the exported PDF falls back to a technical label, which assistive technology cannot use. Add alt text on the source page.",
   "source": {
     "pageId": "123456",
@@ -144,20 +144,41 @@ To make missing alt text or a missing document language **fail** a pipeline, add
 atlcli wiki export 123456 --format pdf --output ./report.pdf --report json --strict
 ```
 
-The same audit runs on the DOCX export, reported as `image-missing-alt`. It is
-**not identical**: see the note table below for the one difference that remains.
+The same audit runs on the DOCX export, under the **same** code — the fact "this
+image has no alt text" belongs to the Confluence page, not to the file format you
+asked for, so one `notesByCode` key finds it whichever way you export. The two
+notes are not byte-identical: see the note table below for the one difference
+that remains.
 
 ## Note codes
 
-| Code | Level | Emitted when |
-|---|---|---|
-| `pdf-image-missing-alt` | warning | An image block on a source page has no author-written alt text. Carries `source.pageId` / `source.blockPath` / `source.assetName`. Also fires for images that failed to embed — the source defect is real either way. |
-| `pdf-image-alt-fallback` | warning | The renderer substituted the technical filename into `alt:`. The render-stage counterpart of the note above; both describe one defect from different ends of the pipeline. |
-| `pdf-language-missing` | warning | No usable language was supplied for the export (the PDF then declares `en` regardless), **or** the compiled file's catalog carries no `/Lang` at all. The second is read from the produced bytes, so it can catch a custom template dropping the entry. |
-| `image-missing-alt` | warning | The DOCX counterpart of `pdf-image-missing-alt`. Word writes the filename into `descr`, so Word's own accessibility checker stays silent — this note is the only signal. Fires for failed embeds too, like the PDF audit. **Difference:** it carries `source.pageId` and `source.assetName` but **no `blockPath`** — the DOCX serializer does not track block paths, so a DOCX note identifies the page and the image, not the position in the page. |
-| `pdf-table-cell-contrast-low` | warning | A table cell's source colours fall below the configured contrast target. |
+Every audit note below is `level: "warning"`, and that level is exactly the `severity` it
+carries in the `--report json` document — so `--strict` counts all of them. Notes at
+`level: "info"` (timings, label filters, macros that rendered fine) map to
+`severity: "info"` and never fail a build; see
+[Note severity and `--strict`](/confluence/export/#note-severity-and---strict).
+
+| Code | Level | Engines | Emitted when |
+|---|---|---|---|
+| `image-missing-alt` | warning | PDF + DOCX | An image block on a source page has no author-written alt text. Also fires for images that failed to embed — the source defect is real either way. **The one difference between the engines:** a PDF note carries `source.pageId` / `source.blockPath` / `source.assetName`, a DOCX note carries `source.pageId` / `source.assetName` but **no `blockPath`** (the DOCX serializer tracks no block paths). Same defect, less precise directions. |
+| `image-embed-failed` | warning | PDF + DOCX | One named image could not be embedded, with the reason. Not an accessibility note as such, but listed here because the alt-text audit above fires alongside it for the same image. |
+| `pdf-image-alt-fallback` | warning | PDF only | The renderer substituted the technical filename into `alt:`. The render-stage counterpart of `image-missing-alt`; both describe one defect from different ends of the pipeline. There is no DOCX counterpart — Word's `descr` gets the same substitution silently. |
+| `pdf-language-missing` | warning | PDF only | No usable language was supplied for the export (the PDF then declares `en` regardless), **or** the compiled file's catalog carries no `/Lang` at all. The second is read from the produced bytes, so it can catch a custom template dropping the entry. |
+| `pdf-table-cell-contrast-low` | warning | PDF only | A table cell's source colours fall below the configured contrast target. |
 
 Whitespace-only alt text (`alt=" "`) counts as missing in both engines.
+
+:::note[Renamed in this release: `pdf-image-missing-alt` → `image-missing-alt`]
+The PDF engine used to report the alt-text audit as `pdf-image-missing-alt` and a
+failed image embed as `pdf-image-skipped`, while the DOCX engine reported the
+identical conditions as `image-missing-alt` and `image-embed-failed`. A pipeline
+that gated on one spelling passed silently on the other format.
+
+Both now use the unprefixed code. **If you grep a report for
+`pdf-image-missing-alt` or `pdf-image-skipped`, update the expression** — see
+[Migrating retired note codes](/confluence/export/#migrating-retired-note-codes)
+for the full table and a compatible `jq` expression.
+:::
 
 :::caution[There is currently no way to mark an image as decorative]
 `alt=""` does **not** silence the warning, and there is no suppression flag —

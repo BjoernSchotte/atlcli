@@ -1311,7 +1311,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       report: buildReport({
         format: "docx",
         engine: "ts",
-        sourcePages: [{ id: page.id, title: page.title, notes: [] }],
+        // Per-page provenance for the one page in scope, projected from the
+        // engine's RECONCILED source notes (spec 010) — the same list the PDF
+        // path projects, so both formats describe this page identically. Never
+        // project the pre-export walk: its `macro-not-rendered` is provisional
+        // and contradicts the aggregate the moment a macro renders live.
+        sourcePages: [
+          {
+            id: page.id,
+            title: page.title,
+            notes: (report.sourceNotes ?? []).map((n) => noteToIssue(n, "compose", page.id)),
+          },
+        ],
         outputDetails: [
           {
             output: resolvedOutputPath,

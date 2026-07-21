@@ -83,9 +83,9 @@ describe("CLI PDF asset resolver — trust routing", () => {
   test("an env that resolves macros satisfies the shared wiring rule — non-vacuously", async () => {
     recordingFetch();
     // The rule is "macros present ⇒ assets policy-routed". The CLI PDF path
-    // passes no macros today, so asserting the rule against TODAY's env would
-    // be vacuous; asserting it against the env the CLI would build the moment
-    // macros are wired is what actually protects the seam.
+    // now DOES pass macros (datasource smart links are only reachable through
+    // the macro chain), so this is no longer the hypothetical it was written
+    // as — the structural test below pins that the real env carries them.
     expect(
       await assertPdfEnvMacroAssetRule({
         assets: cliPdfAssets(client(), BASE, NO_CACHE),
@@ -140,5 +140,15 @@ describe("no PDF env construction site bypasses the router", () => {
   test("cliPdfAssets composes the shared router, not a hand-rolled check", () => {
     expect(source).toContain("trustRoutingPdfAssetResolver(");
     expect(source).toContain("@atlcli/export-wiring");
+  });
+
+  test("the PDF env resolves macros, through the shared builder", () => {
+    // Without this the modern Jira table (a datasource smart link) can never
+    // render in a CLI PDF: it is captured as a macro instance and only the
+    // spec-004 chain turns it into a table. The `assets:` pin above is what
+    // keeps that safe.
+    expect(source).toMatch(/\n\s*macros,?\n/);
+    expect(source).toContain("buildMacroResolutionOptions(");
+    expect(source).toContain('targetEngine: "pdf"');
   });
 });

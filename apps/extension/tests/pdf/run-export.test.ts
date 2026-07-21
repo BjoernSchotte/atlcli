@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { canonicalExportNoteCode } from "@atlcli/confluence/browser";
 import type { ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../../utils/read-path.js";
@@ -91,6 +92,16 @@ describe("extension PDF page adapter", () => {
       output: { emit: async () => undefined },
     });
     expect(compiledBundle?.main).toContain("@Ada");
-    expect(report.notes[0]?.code).toBe("pdf-mention-unresolved");
+    // CROSS-HOST vocabulary (spec 010). This is the exact condition the CLI's
+    // PDF host reports — pinned there by `apps/cli/src/commands/
+    // engine-parity.test.ts` ("counts one unresolvable mention exactly once on
+    // both engines"), which asserts `notesByCode["mention-unresolved"] === 1`
+    // for `--format pdf`. The extension used to spell the same fact
+    // `pdf-mention-unresolved`, so a consumer's filter worked on one host's
+    // report and silently matched nothing on the other's.
+    expect(report.notes[0]?.code).toBe("mention-unresolved");
+    // And the retired spelling still resolves, so a consumer that remembers it
+    // has a way back to the code emitted today.
+    expect(canonicalExportNoteCode("pdf-mention-unresolved")).toBe(report.notes[0]?.code);
   });
 });

@@ -17,4 +17,4 @@
 
 ### Entry point `./internal` — internal
 
-- exported symbols (19): childrenRenderer, cqlFromParams, diagramMacroRenderer, escapeCqlValue, excerptIncludeRenderer, excerptRenderer, exportViewFallbackRenderer, includeRenderer, issueTable, jiraMacroRenderer, jiraStatusColor, macroParamText, multiexcerptIncludeRenderer, pagePropertiesReportRenderer, parseWidths, scrollTableLayoutRenderer, slugifyHeading, tocFromHeadings, tocRenderer
+- exported symbols (21): DatasourceSiteVerdict, childrenRenderer, cqlFromParams, datasourceSiteVerdict, diagramMacroRenderer, escapeCqlValue, excerptIncludeRenderer, excerptRenderer, exportViewFallbackRenderer, includeRenderer, issueTable, jiraMacroRenderer, jiraStatusColor, macroParamText, multiexcerptIncludeRenderer, pagePropertiesReportRenderer, parseWidths, scrollTableLayoutRenderer, slugifyHeading, tocFromHeadings, tocRenderer

@@ -27,6 +27,7 @@
 import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
+import { translateDatasourceLink } from "./datasource.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -275,6 +276,15 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
+  // for the Jira table macro). Every degradation is typed and visible: the
+  // pre-change behaviour was a raw percent-encoded URL in the body with an
+  // EMPTY report, which is the bug these four codes exist to prevent.
+  "datasource-invalid",
+  "datasource-provider-unknown",
+  "datasource-provider-unsupported",
+  "datasource-filter-unsupported",
+  "datasource-cross-site",
   // Scope orchestration / tree fetch (spec 002)
   "page-unreadable",
   "subtree-unreadable",
@@ -288,6 +298,12 @@ export const EXPORT_NOTE_CODES = [
   "link-anchor-missing",
   "link-outside-scope",
   "link-target-ambiguous",
+  // CROSS-HOST (spec 010): every host that pre-resolves `@mention`s emits this
+  // one code — the CLI's DOCX path, the CLI's PDF path AND the extension's PDF
+  // path. "an account id did not resolve to a display name" is a fact about the
+  // source page, not about the host that noticed it, so a host-local spelling
+  // (the retired `pdf-mention-unresolved`) made the same fact invisible to a
+  // consumer filtering on the other host's report.
   "mention-unresolved",
   "heading-depth-clamped",
   // Content features / scroll-* compat (spec 003)
@@ -372,38 +388,116 @@ export const EXPORT_NOTE_CODES = [
   "perf-timing",
   // DOCX block serializer (@atlcli/docx)
   "code-highlight-skipped",
+  // DOCX-ONLY, and correctly so: the export was configured with NO image
+  // pipeline at all (`ExportEnv` without an asset fetcher), so every image
+  // degrades at once — an export-configuration fact, level `info`. Distinct from
+  // `image-embed-failed` below, which is one image's own failure. The PDF engine
+  // has no counterpart because `preparePdfDocument` takes a MANDATORY resolver:
+  // "this export cannot embed images" is unrepresentable there.
   "image-skipped",
+  // CROSS-ENGINE (spec 010): ONE named image could not be embedded, with the
+  // reason. DOCX emits it when the image seam returns `{ ok: false }`; the PDF
+  // engine emits it when `resolver.resolve` throws — the same fact from the same
+  // position in the pipeline, so it is one code. (The PDF engine used to spell
+  // it `pdf-image-skipped`, whose name suggested a pairing with `image-skipped`
+  // above; reading the two emitters shows those are different facts.)
   "image-embed-failed",
-  // Accessibility audit (spec 011, PDF/UA): an embedded image whose source
-  // block carries no author-written alt text, so the DOCX `descr` falls back
-  // to a technical filename.
+  // CROSS-ENGINE accessibility audit (spec 011, PDF/UA 7.3): a SOURCE image
+  // block carries no author-written alt text. Both engines decide it with the
+  // identical `isMissingAltText` rule, from the source block, BEFORE any fetch —
+  // so a failed embed is audited too. PDF notes additionally carry
+  // `source.blockPath`; DOCX notes do not (its serializer tracks no block
+  // paths). That is a provenance-richness difference, not a different fact,
+  // which is why one code covers both. (Retired PDF spelling:
+  // `pdf-image-missing-alt`.)
   "image-missing-alt",
   "diagram-skipped",
   "diagram-unsupported",
   "diagram-render-failed",
   "table-shape-approximated",
   // PDF pipeline (@atlcli/pdf)
-  "pdf-image-skipped",
+  // RENDER-side statement that the technical filename was substituted into
+  // Typst's `alt:`. Genuinely PDF-only and deliberately NOT folded into
+  // `image-missing-alt`: that code is the SOURCE defect ("the page needs alt
+  // text"), this one is what the renderer DID about it, at the other end of the
+  // pipeline. DOCX performs the same substitution into `descr` silently and
+  // emits nothing, so there is no DOCX counterpart to unify with.
   "pdf-image-alt-fallback",
-  // Accessibility audits (spec 011, PDF/UA). `pdf-image-missing-alt` is the
-  // SOURCE-side audit emitted by `preparePdfDocument` with page/block
-  // provenance (which page to fix); `pdf-image-alt-fallback` above is the
-  // RENDER-side statement that the filename was substituted into `alt:`.
-  "pdf-image-missing-alt",
   "pdf-language-missing",
   "pdf-diagram-unsupported",
   "pdf-diagram-failed",
   "pdf-link-unresolved",
   "pdf-table-cell-contrast-low",
   "pdf-unknown-block",
-  // Host-emitted source notes (extension panel / conformance harness)
-  "pdf-mention-unresolved",
+  // Host-emitted source notes (extension panel / conformance harness).
+  // NOTE: the per-mention outcome is the shared `mention-unresolved` above, not
+  // a host-local spelling. This one is a different fact: the mention RESOLUTION
+  // CALL itself failed, so the unresolved count is unknown. No CLI counterpart
+  // exists (the CLI does not wrap `resolveExportMentions`), so there is nothing
+  // to unify it with — see the note on `RETIRED_EXPORT_NOTE_CODES`.
   "pdf-mention-resolution-failed",
   "browser-harness",
 ] as const;
 
 /** Stable machine code of an {@link ExportNote} — a member of {@link EXPORT_NOTE_CODES}. */
 export type ExportNoteCode = (typeof EXPORT_NOTE_CODES)[number];
+
+/**
+ * Note codes retired by the cross-engine/cross-host vocabulary unification
+ * (spec 010), mapped to the canonical code that replaced them.
+ *
+ * Why this table exists at all: note codes are a PUBLIC contract. They appear in
+ * `--report json` (`issues[].code`, `notesByCode`), in the docs, and in user CI
+ * that greps for a specific code. Renaming one is therefore a breaking change,
+ * and a breaking change a consumer cannot *detect* is the bad kind. This table
+ * is the machine-readable migration path: a consumer (or a support answer) can
+ * resolve a code it remembers to the code that is emitted today.
+ *
+ * Two deliberate non-choices:
+ *  - The retired codes are NOT kept as `ExportNoteCode` members. Nothing emits
+ *    them, and `scripts/export-note-codes.test.ts` treats an unemitted registry
+ *    member as drift — a union member that can never appear is a lie told in
+ *    the type system.
+ *  - Nothing emits BOTH the old and the new code during a transition. Dual
+ *    emission would double every affected `notesByCode` tally and inflate
+ *    `--strict` warning counts for a single fact, which is exactly the defect
+ *    the duplicate-`mention-unresolved` fix removed.
+ *
+ * `pdf-image-alt-fallback`, `pdf-mention-resolution-failed`, `image-skipped` and
+ * the `pdf-diagram-*` family are deliberately absent: each describes a fact its
+ * apparent counterpart does not (see the comments in the registry above).
+ */
+export const RETIRED_EXPORT_NOTE_CODES = {
+  /** PDF's source-side alt-text audit; identical rule to the DOCX audit. */
+  "pdf-image-missing-alt": "image-missing-alt",
+  /**
+   * PDF's per-image embed failure. Note the replacement is NOT `image-skipped`
+   * despite the name: `image-skipped` means "this export has no image pipeline",
+   * a fact the PDF engine cannot even represent.
+   */
+  "pdf-image-skipped": "image-embed-failed",
+  /** The extension PDF host's spelling of the CLI hosts' `mention-unresolved`. */
+  "pdf-mention-unresolved": "mention-unresolved",
+} as const satisfies Record<string, ExportNoteCode>;
+
+/** A note code that used to be emitted and no longer is. */
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
+
+/**
+ * Resolve any note code — current or retired — to the code emitted today, or
+ * `undefined` when it was never a code at all.
+ *
+ * Intended for report consumers that must keep understanding older reports (or
+ * older grep expressions) after the spec 010 unification.
+ */
+export function canonicalExportNoteCode(code: string): ExportNoteCode | undefined {
+  if (code in RETIRED_EXPORT_NOTE_CODES) {
+    return RETIRED_EXPORT_NOTE_CODES[code as RetiredExportNoteCode];
+  }
+  return (EXPORT_NOTE_CODES as readonly string[]).includes(code)
+    ? (code as ExportNoteCode)
+    : undefined;
+}
 
 /** A non-fatal observation surfaced in the export report (never thrown). */
 export interface ExportNote {
@@ -921,6 +1015,19 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
   for (const node of nodes) {
     if (node.type === "text") {
       inlineBuf.push(node);
+      continue;
+    }
+    // A datasource smart link is block-level content wearing an `<a>` tag
+    // (`data-card-appearance="block"`). It has to be intercepted HERE, before
+    // the inline classification below claims it: the inline `<a>` handler is
+    // exactly what produced the raw percent-encoded URL blob this feature
+    // replaces. Flushing first keeps any surrounding prose in its own
+    // paragraph, the same way an `<ac:image>` inside a `<p>` is split out.
+    if (isDatasourceLink(node)) {
+      flush();
+      ctx.blockPath = `${parentPath}[${out.length}]`;
+      out.push(...walkDatasourceLink(node, ctx));
+      ctx.blockPath = savedPath;
       continue;
     }
     if (INLINE_TAGS.has(node.name) || isInlineMacro(node)) {
@@ -1558,6 +1665,106 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     };
   }
 
+  return [block];
+}
+
+// ---------------------------------------------------------------------------
+// Datasource smart links
+// ---------------------------------------------------------------------------
+
+/** True for an `<a>` carrying a non-empty `data-datasource` attribute. */
+function isDatasourceLink(node: XmlElement): boolean {
+  return node.name === "a" && (node.attrs["data-datasource"] ?? "").trim() !== "";
+}
+
+/**
+ * Render a datasource smart link's fallback: the link itself, exactly as the
+ * inline `<a>` handler would have produced it (same scheme policy, same display
+ * text). Used both as the degradation output and as the `body` of the emitted
+ * macro block — so if the macro chain later cannot reach Jira, the placeholder
+ * floor still shows the user a working link instead of a bare placeholder.
+ */
+function datasourceFallbackBlocks(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const inner = walkInline(el.children, ctx);
+  const display = hasMeaningfulInline(inner) ? inner : [{ type: "text" as const, text: href }];
+  const verdict = sanitizeLinkHref(href);
+  if (!verdict.safe) {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: "warning",
+        code: UNSAFE_LINK_NOTE_CODE,
+        message: unsafeLinkMessage(verdict, inlineText(display)),
+      })
+    );
+    return hasMeaningfulInline(display) ? [{ type: "paragraph", content: display }] : [];
+  }
+  return [
+    {
+      type: "paragraph",
+      content: [{ type: "link", target: { kind: "external", href }, content: display }],
+    },
+  ];
+}
+
+/**
+ * Walk an `<a data-datasource>` element (spec SUPPORT-DATASOURCE-JIRA).
+ *
+ * A supported provider becomes the SAME `{ type: "unknown", macroName, params }`
+ * shape the macro extractor emits, so the existing spec-004 fallback chain —
+ * renderer, `sourcePage` binding, dedup cache, circuit breaker, session ports —
+ * renders it with no second code path. Everything else keeps the link and says
+ * why in a typed note; nothing here is ever silent, and nothing here throws.
+ */
+function walkDatasourceLink(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
+  const href = el.attrs.href ?? "";
+  const outcome = translateDatasourceLink(el.attrs["data-datasource"] ?? "", href);
+
+  if (outcome.kind === "degrade") {
+    ctx.notes.push(
+      withSource(ctx, {
+        level: outcome.level,
+        code: outcome.code,
+        message: outcome.message,
+        ...(outcome.provider ? { macroName: outcome.provider.macroName ?? outcome.provider.id } : {}),
+      })
+    );
+    return datasourceFallbackBlocks(el, ctx);
+  }
+
+  const macroName = outcome.macroName;
+  // The macro-resolution pass pairs the i-th walker macro note with the i-th
+  // `unknown` block POSITIONALLY (`resolve.ts`, reconcileNotes). Emitting an
+  // unknown block without its paired note here would shift every later macro's
+  // note onto the wrong instance — so this note is structural, not decorative.
+  const known = KNOWN_MACROS.includes(macroName);
+  ctx.notes.push(
+    withSource(ctx, {
+      level: known ? "info" : "warning",
+      code: known ? "macro-not-rendered" : "unknown-macro",
+      message: `A datasource smart link was captured as a "${macroName}" macro; it renders as a live table when dynamic macro resolution runs.`,
+      macroName,
+    })
+  );
+
+  const block: Extract<ExportBlock, { type: "unknown" }> = {
+    type: "unknown",
+    macroName,
+    params: outcome.params,
+    // Deliberately the link, not an empty body: this is what the placeholder
+    // floor renders when Jira is unreachable or `--no-live-macros` is set, and
+    // it is never worse than the pre-change output.
+    body: datasourceFallbackBlocks(el, ctx),
+  };
+  // No `macroId`: a datasource is not a macro server-side, so the export_view
+  // catch-all must not try to fetch one (it skips on a missing macroId).
+  if (ctx.pageContext) {
+    block.sourcePage = {
+      id: ctx.pageContext.id,
+      ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+      ...(ctx.pageContext.spaceKey !== undefined ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+    };
+  }
   return [block];
 }
 

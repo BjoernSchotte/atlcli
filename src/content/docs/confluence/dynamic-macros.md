@@ -14,6 +14,7 @@ themed content instead of collapsing them into a gray placeholder.
 
 - [How it works: the fallback chain](#how-it-works-the-fallback-chain)
 - [Supported macros](#supported-macros)
+- [Datasource smart links (modern Jira tables)](#datasource-smart-links-modern-jira-tables)
 - [Deterministic exports (`--no-live-macros`)](#deterministic-exports)
 - [The export report](#the-export-report)
 - [Troubleshooting](#troubleshooting)
@@ -21,8 +22,9 @@ themed content instead of collapsing them into a gray placeholder.
 
 ## Prerequisites
 
-- **Engine:** dynamic-macro resolution runs only on the TypeScript engine
-  (`--engine ts`). The default `python` engine renders placeholders.
+- **Engine:** for DOCX, dynamic-macro resolution runs only on the TypeScript
+  engine (`--engine ts`); the default `python` engine renders placeholders.
+  `--format pdf` always resolves macros (PDF has a single built-in engine).
 - An auth profile with access to the space (and, for Jira macros, the linked
   Jira site).
 
@@ -66,6 +68,62 @@ page content already fetched.
 Any macro not claimed by a specific renderer falls through to the `export_view`
 catch-all, then to the placeholder floor.
 
+## Datasource smart links (modern Jira tables)
+
+Since **2026-05-22** the Confluence Cloud editor no longer inserts a
+`jira` macro when you add an issue table. It inserts a **datasource smart
+link** — an `<a data-datasource="…">` element that carries the JQL, the chosen
+columns and the target site id. Atlassian's Jira Legacy macro became the *Jira
+Data Center* macro and existing Cloud instances were auto-converted.
+
+atlcli reads these directly. A Jira datasource is translated into the same
+macro instance the legacy `jira` renderer already consumes, so it renders as a
+real, themed issue table in DOCX and PDF alike — no separate code path, no
+configuration.
+
+| Provider | Behaviour |
+|----------|-----------|
+| **Jira work items** (`d8b75300-…`) | Rendered as a live issue table |
+| **JSM Assets** (`361d618a-…`) | Kept as a link + `datasource-provider-unsupported` note |
+| **Confluence search** (`768fc736-…`) | Kept as a link + `datasource-provider-unsupported` note |
+| Anything else | Kept as a link + `datasource-provider-unknown` note **including the raw provider id** |
+
+What is preserved:
+
+- **Your JQL, byte for byte** — including the trailing `ORDER BY` that carries
+  your chosen sort. atlcli never rewrites the query.
+- **Your column order**, taken from the table view's `columns`. The provider's
+  `issuetype` key and the legacy macro's `type` key both resolve.
+
+What degrades — always with a note, never silently:
+
+| Case | Note code |
+|------|-----------|
+| Unreadable/invalid `data-datasource` payload, or no `table` view | `datasource-invalid` |
+| Unrecognized provider id (printed in the message) | `datasource-provider-unknown` |
+| Recognized but not implemented (Assets, Confluence search) | `datasource-provider-unsupported` |
+| Table built on a **saved filter** instead of JQL | `datasource-filter-unsupported` |
+| Table targets a **different Jira site** than the export is authenticated against | `datasource-cross-site` |
+
+In every degraded case the original link is kept in the document, so nothing is
+lost.
+
+:::caution[Why a different site degrades instead of rendering]
+Atlassian's datasource dialog has a site selector, so a Confluence page can
+embed a table from another Jira site. Running that JQL against *your* site
+would return plausible-looking but wrong rows. atlcli refuses to guess: unless
+the table's own link points at the site the export is authenticated against, it
+degrades to the link and says so.
+:::
+
+**Row cap.** Atlassian stores no row limit in a datasource (its own export
+pages through the live component until exhausted). atlcli caps the table at
+**100 rows** and emits a `macro-degraded` warning naming the cut whenever the
+cap is reached, so a truncated table is never mistaken for a complete one.
+
+**Data Center.** The legacy `<ac:structured-macro ac:name="jira">` path is
+unchanged and keeps working; both forms can coexist on one site.
+
 ## Deterministic exports
 
 For CI or compliance exports that must not issue extra network calls to Jira /
@@ -102,6 +160,9 @@ Every macro the resolver touches produces exactly one terminal note:
 | "preview may be outdated" note | The diagram preview is older than the page's last edit | Re-save the diagram to regenerate its preview |
 | A third-party macro is a placeholder | The app declares no `export_view`/ADF export | Placeholder + note is the honest floor |
 | Macros not resolved at all | Running the `python` engine | Add `--engine ts` |
+| A Jira table exports as a bare URL, `datasource-cross-site` note | The table points at a different Jira site than the export profile | Export with a profile on that site, or accept the link |
+| A Jira table exports as a bare URL, `datasource-filter-unsupported` note | The table is built on a saved filter, not JQL | Rebuild the table with an explicit JQL query |
+| A Jira table exports as a bare URL, `datasource-provider-unknown` note | Atlassian introduced a datasource provider newer than this release | Report the provider id printed in the note |
 
 ## Related topics
 

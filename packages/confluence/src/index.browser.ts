@@ -21,6 +21,7 @@ export * from "./markdown.js";
 export * from "./asset-budget.js";
 export * from "./compose-document.js";
 export * from "./export-blocks.js";
+export * from "./datasource.js";
 export * from "./html-to-blocks.js";
 export * from "./macro-extract.js";
 export * from "./export-progress.js";

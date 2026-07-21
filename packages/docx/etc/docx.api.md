@@ -80,6 +80,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -321,6 +322,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -578,6 +580,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1119,6 +1122,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1684,6 +1688,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;

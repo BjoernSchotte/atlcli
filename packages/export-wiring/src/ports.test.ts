@@ -192,6 +192,10 @@ describe("jiraIssuePortFromClient", () => {
     expect(ref.url).toBe(`${BASE}/browse/ATL-9`);
     expect(ref.statusColor).toBe("green");
     expect(ref.fields).toMatchObject({ assignee: "Ada", labels: "a, b", type: "Bug" });
+    // Datasource tables name this column `issuetype` (the Jira provider's own
+    // schema key) while the legacy macro names it `type`. Both must resolve, or
+    // a modern datasource table renders a column of blank cells.
+    expect(ref.fields?.issuetype).toBe("Bug");
   });
 
   test("a trailing slash on the site base URL never doubles up in the browse link", async () => {
