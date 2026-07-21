@@ -156,6 +156,26 @@ export interface ScanResult {
    * populated by {@link scanZip}; read it as `?? []`.
    */
   riskyFieldInstructions?: string[];
+  /**
+   * `SEQ` sequence names the TEMPLATE numbers itself, lower-cased, first-seen
+   * order (see {@link seqSequenceName}). Inventory ONLY.
+   *
+   * Its whole purpose is to be read BEFORE the page body is injected. Afterwards
+   * a `SEQ Figure` the template author inserted and a `SEQ Figure` this engine
+   * emitted for a caption are indistinguishable, yet they interleave into ONE
+   * count — so the ordinals the serializer cached are only trustworthy for a
+   * sequence that appears in this list nowhere. `exportDocx` subtracts this from
+   * the body's own sequences to build {@link needsFieldRefresh}'s trust set.
+   *
+   * Collected across EVERY WordprocessingML part, unlike the `$scroll.*` walk
+   * above: a caption in a footnote or a chapter counter in a header numbers the
+   * same sequence as one in the body.
+   *
+   * OPTIONAL for the same additive-API reason as
+   * {@link ScanResult.riskyFieldInstructions}; always populated by
+   * {@link scanZip}, so read it as `?? []`.
+   */
+  seqSequenceNames?: string[];
 }
 
 /**
@@ -820,10 +840,31 @@ export function collectRiskyFieldInstructions(xml: string): string[] {
  *    stale by construction. (`STYLEREF` running heads are a documented feature of
  *    this engine — see `collectStylerefFields`.)
  *  - Numbered over the body — `SEQ`, `LISTNUM`, `AUTONUM`, `AUTONUMLGL`,
- *    `AUTONUMOUT`. The serializer emits every caption's `SEQ` field with a cached
- *    result of literally `1` (see `captionParagraph`), so without a refresh a
- *    document with three figures shows "Figure 1" three times. Wrong numbering is
- *    visible and looks like a product defect.
+ *    `AUTONUMOUT`. A number that is computed FROM the document is stale whenever
+ *    the document changed, and this export replaces the whole body.
+ *
+ *    `SEQ` is the one entry on this list with an ESCAPE HATCH, because it is the
+ *    one this engine emits itself. It was here because `captionParagraph` cached
+ *    every caption's result as literally `1`, so a document with three figures
+ *    showed "Figure 1" three times — and one caption was therefore enough to make
+ *    every reader answer a refresh prompt forever. The serializer now numbers
+ *    captions in document order and caches the REAL ordinal, so for the sequences
+ *    IT owns a refresh changes nothing and the prompt is unearned.
+ *
+ *    That is a claim about OUR fields only, and the scan of a finished document
+ *    cannot tell our `SEQ Figure` from one the template author inserted with
+ *    Word's own Insert Caption. Two `SEQ` fields of the same sequence name
+ *    interleave into a single count, so a template field before the insertion
+ *    point silently shifts every caption we numbered. The trust therefore has to
+ *    be established BEFORE injection and handed in:
+ *    {@link needsFieldRefresh} takes the set of sequence names whose cached
+ *    results are known-good, and `exportDocx` fills it with the sequences the
+ *    serialized body numbered MINUS every sequence the template (or an included
+ *    page, which restarts its own count at 1) also numbers. Anything not in that
+ *    set — a template `SEQ`, a `SEQ` with no parseable sequence name, a
+ *    `LISTNUM` — still earns the flag. Passing no set at all keeps the old,
+ *    unconditional behaviour, which is what every caller that is not the export
+ *    orchestrator wants.
  *  - Pulled from outside — `INCLUDETEXT`, `INCLUDEPICTURE`, `LINK`. The cached
  *    copy is whatever the template captured; a refresh fetches the current
  *    source. (These also raise a `template-field-instruction-risk` note — see
@@ -929,6 +970,108 @@ function fieldKeyword(instruction: string): string | undefined {
 }
 
 /**
+ * One field, as {@link collectFieldUses} reassembled it from a part's XML.
+ */
+export interface FieldUse {
+  /** The field's leading keyword, uppercased (`TOC`, `SEQ`, `HYPERLINK`). */
+  keyword: string;
+  /**
+   * The field's WHOLE instruction, exactly as the XML spelled it — still
+   * entity-encoded, still carrying its surrounding whitespace and switches
+   * (` SEQ Figure \* ARABIC `). Undecoded on purpose: every consumer decodes
+   * with {@link decodeInstruction} as part of its own match, and decoding twice
+   * would turn a literal `&amp;quot;` in a URL argument into a quote.
+   */
+  instruction: string;
+}
+
+/**
+ * Every field in one part's XML — keyword plus full instruction — in document
+ * order. Pure; never mutates. Repeats are kept, and so is the instruction text,
+ * because a caller may need to tell two fields of the SAME keyword apart
+ * (`SEQ Figure` vs `SEQ Table`; see {@link collectSeqSequenceNames}).
+ *
+ * {@link collectFieldKeywords} is the keyword-only projection of this, and
+ * carries the full rationale for reading the keyword positionally out of each
+ * field's own reassembled instruction.
+ */
+export function collectFieldUses(xml: string): FieldUse[] {
+  const uses: FieldUse[] = [];
+  /** Open complex fields, outermost first. `done` = past `fldChar separate`. */
+  const stack: { instruction: string; done: boolean }[] = [];
+  const close = (): void => {
+    const frame = stack.pop();
+    if (!frame) return;
+    const keyword = fieldKeyword(frame.instruction);
+    if (keyword) uses.push({ keyword, instruction: frame.instruction });
+  };
+
+  for (const m of xml.matchAll(FIELD_PART_RE)) {
+    const [, simpleInstr, fldCharType, instrText] = m;
+    if (simpleInstr !== undefined) {
+      const keyword = fieldKeyword(simpleInstr);
+      if (keyword) uses.push({ keyword, instruction: simpleInstr });
+      continue;
+    }
+    if (fldCharType !== undefined) {
+      if (fldCharType === "begin") stack.push({ instruction: "", done: false });
+      // `separate` ends the INSTRUCTION, not the field: everything after it is
+      // the cached result, and any instrText that follows belongs to the parent.
+      else if (fldCharType === "separate" && stack.length) stack[stack.length - 1]!.done = true;
+      else if (fldCharType === "end") close();
+      continue;
+    }
+    if (instrText !== undefined) {
+      const top = stack[stack.length - 1];
+      if (top && !top.done) top.instruction += instrText;
+      else stack.push({ instruction: instrText, done: false });
+    }
+  }
+  while (stack.length) close();
+  return uses;
+}
+
+/**
+ * The SEQUENCE NAME of a `SEQ` field instruction, lower-cased; `undefined` for
+ * any other field, or for a `SEQ` whose name cannot be read.
+ *
+ * `SEQ`'s grammar is `SEQ <identifier> [bookmark] [switches]`, and Word writes
+ * the identifier bare (` SEQ Figure \* ARABIC `) or quoted when it contains
+ * spaces (` SEQ "Sales Table" `). Both forms are read here.
+ *
+ * LOWER-CASED because Word matches sequence identifiers case-insensitively: a
+ * template's ` SEQ table ` and this engine's ` SEQ Table ` are ONE sequence and
+ * do interleave. Folding the case is what makes
+ * {@link needsFieldRefresh}'s trust check refuse that collision instead of
+ * quietly shipping wrong numbers.
+ *
+ * `undefined` (rather than a guess) for ` SEQ \* ARABIC ` and friends, so an
+ * unnameable sequence can never be matched against a trusted name.
+ */
+export function seqSequenceName(instruction: string): string | undefined {
+  const m = /^\s*SEQ\s+(?:"([^"]+)"|([^\s\\"]+))/i.exec(decodeInstruction(instruction));
+  const name = m?.[1] ?? m?.[2];
+  return name === undefined ? undefined : name.toLowerCase();
+}
+
+/**
+ * Every distinct `SEQ` sequence name in one part's XML, lower-cased, first-seen
+ * order. `SEQ` fields whose name cannot be parsed are omitted — deliberately:
+ * the only consumer builds a TRUST list out of this, and a name that cannot be
+ * spelled cannot be trusted (the same field is still seen, and still counted, by
+ * {@link needsFieldRefresh}'s own sweep).
+ */
+export function collectSeqSequenceNames(xml: string): string[] {
+  const names: string[] = [];
+  for (const use of collectFieldUses(xml)) {
+    if (use.keyword !== "SEQ") continue;
+    const name = seqSequenceName(use.instruction);
+    if (name !== undefined && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/**
  * The keyword of every field in one part's XML, uppercased, in document order.
  * Pure; never mutates. Repeats are kept — the caller decides what to do with a
  * count.
@@ -962,39 +1105,22 @@ function fieldKeyword(instruction: string): string | undefined {
  * field-free.
  */
 export function collectFieldKeywords(xml: string): string[] {
-  const keywords: string[] = [];
-  /** Open complex fields, outermost first. `done` = past `fldChar separate`. */
-  const stack: { instruction: string; done: boolean }[] = [];
-  const close = (): void => {
-    const frame = stack.pop();
-    if (!frame) return;
-    const keyword = fieldKeyword(frame.instruction);
-    if (keyword) keywords.push(keyword);
-  };
+  return collectFieldUses(xml).map((use) => use.keyword);
+}
 
-  for (const m of xml.matchAll(FIELD_PART_RE)) {
-    const [, simpleInstr, fldCharType, instrText] = m;
-    if (simpleInstr !== undefined) {
-      const keyword = fieldKeyword(simpleInstr);
-      if (keyword) keywords.push(keyword);
-      continue;
-    }
-    if (fldCharType !== undefined) {
-      if (fldCharType === "begin") stack.push({ instruction: "", done: false });
-      // `separate` ends the INSTRUCTION, not the field: everything after it is
-      // the cached result, and any instrText that follows belongs to the parent.
-      else if (fldCharType === "separate" && stack.length) stack[stack.length - 1]!.done = true;
-      else if (fldCharType === "end") close();
-      continue;
-    }
-    if (instrText !== undefined) {
-      const top = stack[stack.length - 1];
-      if (top && !top.done) top.instruction += instrText;
-      else stack.push({ instruction: instrText, done: false });
-    }
-  }
-  while (stack.length) close();
-  return keywords;
+/** Options for {@link needsFieldRefresh}. */
+export interface FieldRefreshOptions {
+  /**
+   * `SEQ` sequence names (lower-cased, as {@link seqSequenceName} spells them)
+   * whose cached results in THIS package are known to be correct, so their
+   * fields do not by themselves justify a refresh prompt.
+   *
+   * Only the export orchestrator can populate this, and only from knowledge it
+   * has BEFORE injection — see the `SEQ` paragraph of
+   * {@link REFRESH_SENSITIVE_FIELDS}. Omitted/empty (the default) means "trust
+   * nothing", i.e. any `SEQ` field sets the flag.
+   */
+  trustedSeqSequences?: ReadonlySet<string>;
 }
 
 /**
@@ -1007,11 +1133,21 @@ export function collectFieldKeywords(xml: string): string[] {
  *
  * Call this on the RENDERED archive, not the template: the body's own `SEQ`
  * captions only exist after injection, and the template's TOC is present in both.
+ * `opts.trustedSeqSequences`, by contrast, describes what the caller knew
+ * BEFORE injection — which is the only moment our own caption fields are
+ * distinguishable from the template's.
  */
-export function needsFieldRefresh(zip: PizZip): boolean {
+export function needsFieldRefresh(zip: PizZip, opts: FieldRefreshOptions = {}): boolean {
+  const trusted = opts.trustedSeqSequences;
   for (const part of wordprocessingPartNames(zip)) {
-    for (const keyword of collectFieldKeywords(readPartText(zip, part))) {
-      if (REFRESH_SENSITIVE_FIELDS.has(keyword)) return true;
+    for (const use of collectFieldUses(readPartText(zip, part))) {
+      if (!REFRESH_SENSITIVE_FIELDS.has(use.keyword)) continue;
+      if (use.keyword === "SEQ" && trusted?.size) {
+        const name = seqSequenceName(use.instruction);
+        // An unnameable SEQ is never in the trusted set, so it still counts.
+        if (name !== undefined && trusted.has(name)) continue;
+      }
+      return true;
     }
   }
   return false;
@@ -1074,6 +1210,17 @@ export function scanZip(zip: PizZip): ScanResult {
   const stylerefStyleNames: string[] = [];
   const riskyFieldInstructions: string[] = [];
   const foreignPlaceholders: string[] = [];
+
+  // Template-origin SEQ inventory (see ScanResult.seqSequenceNames). Its own
+  // loop, over the BROADER part list `needsFieldRefresh` uses: a caption in a
+  // footnote or a counter in a header numbers the same sequence as one in the
+  // body, and `documentPartNames` above covers neither footnotes nor endnotes.
+  const seqSequenceNames: string[] = [];
+  for (const part of wordprocessingPartNames(zip)) {
+    for (const name of collectSeqSequenceNames(readPartText(zip, part))) {
+      if (!seqSequenceNames.includes(name)) seqSequenceNames.push(name);
+    }
+  }
 
   for (const part of parts) {
     const xml = readPartText(zip, part);
@@ -1144,6 +1291,7 @@ export function scanZip(zip: PizZip): ScanResult {
     stylerefStyleNames,
     riskyFieldInstructions,
     foreignPlaceholders,
+    seqSequenceNames,
   };
 }
 

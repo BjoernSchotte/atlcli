@@ -223,6 +223,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -483,6 +484,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -727,6 +729,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -908,7 +911,7 @@ export declare const CAPTION_STYLE_ID = "Caption";
 export type CaptionLang = "en" | "de";
 
 // export: captionParagraph
-export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string): string;
+export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string, ordinal: number): string;
 
 // export: captionSeqLabel
 export declare function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string;
@@ -951,11 +954,17 @@ export declare function collectFieldInstructions(xml: string, keywords?: Readonl
 // export: collectFieldKeywords
 export declare function collectFieldKeywords(xml: string): string[];
 
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
 
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
 
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
@@ -1168,6 +1177,17 @@ export interface Fetched {
     homepageProperties?: PagePropertiesMacro[];
 }
 
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
@@ -1349,7 +1369,7 @@ export declare const MAX_TEMPLATE_BYTES: number;
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
 
 // export: needsFieldRefresh
-export declare function needsFieldRefresh(zip: PizZip): boolean;
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
 
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
@@ -1554,6 +1574,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -1564,6 +1585,9 @@ export declare function scanZip(zip: PizZip): ScanResult;
 
 // export: sectPrParagraph
 export declare function sectPrParagraph(sectPr: string): string;
+
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
 
 // export: serializeBlocks
 export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeContext): Promise<SerializeResult>;
@@ -1873,6 +1897,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -1931,11 +1956,17 @@ export declare function collectFieldInstructions(xml: string, keywords?: Readonl
 // export: collectFieldKeywords
 export declare function collectFieldKeywords(xml: string): string[];
 
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
 // export: collectForeignPlaceholders
 export declare function collectForeignPlaceholders(text: string): string[];
 
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
 
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
@@ -1956,6 +1987,17 @@ export declare class DocxError extends Error {
 // export: DocxErrorKind
 export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
@@ -1972,7 +2014,7 @@ export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 export declare const MAX_TEMPLATE_BYTES: number;
 
 // export: needsFieldRefresh
-export declare function needsFieldRefresh(zip: PizZip): boolean;
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
 
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
@@ -2002,6 +2044,7 @@ export interface ScanResult {
     stylerefStyleNames: string[];
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -2009,6 +2052,9 @@ export declare function scanTemplate(bytes: Uint8Array): ScanResult;
 
 // export: scanZip
 export declare function scanZip(zip: PizZip): ScanResult;
+
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
 
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;

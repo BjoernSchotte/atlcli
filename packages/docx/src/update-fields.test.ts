@@ -13,9 +13,22 @@
  */
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
-import type { ConfluencePageDetails, TableCell } from "@atlcli/confluence";
+import { composeChapters } from "@atlcli/confluence";
+import type {
+  ConfluencePageDetails,
+  ExportBlock,
+  ExportNode,
+  TableCell,
+} from "@atlcli/confluence";
 import { exportDocx } from "./export.js";
-import { collectFieldKeywords, DocxError, needsFieldRefresh, unzipDocx } from "./scan.js";
+import {
+  collectFieldKeywords,
+  collectSeqSequenceNames,
+  DocxError,
+  needsFieldRefresh,
+  seqSequenceName,
+  unzipDocx,
+} from "./scan.js";
 import { buildDocx, headingStyle, para, readPart, stylesXml } from "./fixtures.js";
 
 const template = { name: "fixture.docx", modificationDate: new Date(2026, 6, 14) };
@@ -94,6 +107,42 @@ function updateFieldsValue(bytes: Uint8Array): string | undefined {
   return /<w:updateFields\b[^>]*\bw:val="([^"]*)"/.exec(settings)?.[1];
 }
 
+/**
+ * Every caption SEQ field's sequence name and CACHED RESULT, in document order —
+ * the numbers a reader sees before pressing F9, and the only ones a consumer
+ * that reads `<w:t>` without evaluating fields (pandoc, python-docx, a search
+ * indexer) ever sees.
+ */
+function seqCachedResults(xml: string): [sequence: string, cached: string][] {
+  // The gap-crossing guards matter: without them a field whose cached result is
+  // formatted differently (`<w:t xml:space="preserve">`) lets the scan run on
+  // into the NEXT field's number and report a pairing that is not in the file.
+  const gap = String.raw`(?:(?!fldCharType="end")[\s\S])*?`;
+  const re = new RegExp(
+    String.raw`SEQ (\w+) \\\* ARABIC${gap}fldCharType="separate"${gap}<w:t[^>]*>(\d+)</w:t>`,
+    "g"
+  );
+  return [...xml.matchAll(re)].map((m) => [m[1], m[2]]);
+}
+
+/** A one-cell table carrying a `table` caption. */
+function captionedTable(title: string): ExportBlock {
+  return {
+    type: "table",
+    rows: [{ cells: [cell(title)] }],
+    caption: { kind: "table", content: [{ type: "text", text: title }] },
+  };
+}
+
+/** An (unembeddable) image carrying a `figure` caption — still numbered. */
+function captionedFigure(title: string): ExportBlock {
+  return {
+    type: "image",
+    source: { kind: "attachment", filename: "arch.png" },
+    caption: { kind: "figure", content: [{ type: "text", text: title }] },
+  };
+}
+
 describe("collectFieldKeywords (pure)", () => {
   it("reads the keyword of a fldSimple and of a complex field", () => {
     const xml =
@@ -156,6 +205,74 @@ describe("collectFieldKeywords (pure)", () => {
 
   it("names no keyword for a formula field (documented gap)", () => {
     expect(collectFieldKeywords(splitInstrField([" =SUM(ABOVE) "], "0"))).toEqual([]);
+  });
+});
+
+describe("seqSequenceName / collectSeqSequenceNames (pure)", () => {
+  it("reads a bare and a quoted sequence identifier, lower-cased", () => {
+    expect(seqSequenceName(" SEQ Figure \\* ARABIC ")).toBe("figure");
+    expect(seqSequenceName(' SEQ "Sales Table" \\* ARABIC ')).toBe("sales table");
+    // Case folding is the point: Word treats these as ONE sequence.
+    expect(seqSequenceName(" SEQ TABLE ")).toBe(seqSequenceName(" SEQ table "));
+  });
+
+  it("names nothing for a non-SEQ field or a SEQ with no identifier", () => {
+    expect(seqSequenceName(' TOC \\o "1-3" ')).toBeUndefined();
+    expect(seqSequenceName(" SEQ \\* ARABIC ")).toBeUndefined();
+    expect(seqSequenceName(" SEQ ")).toBeUndefined();
+  });
+
+  it("collects distinct sequence names in first-seen order, ignoring other fields", () => {
+    const xml =
+      splitInstrField([" SEQ Table \\* ARABIC "], "1") +
+      splitInstrField([' HYPERLINK "https://example.com/seq/Figure" '], "x") +
+      splitInstrField([" SEQ Figure \\* ARABIC "], "1") +
+      fldSimpleField(" SEQ Table ", "2");
+    expect(collectSeqSequenceNames(xml)).toEqual(["table", "figure"]);
+  });
+
+  it("reassembles a SEQ instruction split across runs", () => {
+    expect(collectSeqSequenceNames(splitInstrField([" SE", "Q Fig", "ure \\* ARABIC "], "1"))).toEqual([
+      "figure",
+    ]);
+  });
+
+  it("folds case so a template's ` SEQ table ` and our ` SEQ Table ` are one sequence", () => {
+    // This is the subtraction `exportDocx` performs to build its trust set,
+    // isolated. Verbatim name comparison would leave `Table` in the result —
+    // i.e. would trust ordinals a colliding template counter has already shifted.
+    const templateSeq = collectSeqSequenceNames(splitInstrField([" SEQ table \\* ARABIC "], "1"));
+    const bodySeq = collectSeqSequenceNames(splitInstrField([" SEQ Table \\* ARABIC "], "1"));
+    expect(bodySeq.filter((name) => !templateSeq.includes(name))).toEqual([]);
+  });
+});
+
+describe("needsFieldRefresh — trusted SEQ sequences", () => {
+  const withBody = (body: string) => unzipDocx(buildDocx({ body, styles }));
+
+  it("skips a SEQ whose sequence the caller vouched for", () => {
+    const zip = withBody(splitInstrField([" SEQ Table \\* ARABIC "], "1"));
+    expect(needsFieldRefresh(zip)).toBe(true);
+    expect(needsFieldRefresh(zip, { trustedSeqSequences: new Set(["table"]) })).toBe(false);
+  });
+
+  it("still reports a SEQ of a DIFFERENT sequence in the same document", () => {
+    const zip = withBody(
+      splitInstrField([" SEQ Table \\* ARABIC "], "1") + splitInstrField([" SEQ Figure "], "1")
+    );
+    expect(needsFieldRefresh(zip, { trustedSeqSequences: new Set(["table"]) })).toBe(true);
+  });
+
+  it("never trusts a SEQ whose sequence name cannot be read", () => {
+    const zip = withBody(splitInstrField([" SEQ \\* ARABIC "], "1"));
+    expect(needsFieldRefresh(zip, { trustedSeqSequences: new Set(["table", ""]) })).toBe(true);
+  });
+
+  it("does not let a trusted sequence excuse any OTHER refresh-sensitive field", () => {
+    const zip = withBody(
+      splitInstrField([" SEQ Table \\* ARABIC "], "1") + splitInstrField([' TOC \\o "1-3" '], "x")
+    );
+    expect(needsFieldRefresh(zip, { trustedSeqSequences: new Set(["table"]) })).toBe(true);
   });
 });
 
@@ -270,29 +387,231 @@ describe("exportDocx — the field-refresh flag", () => {
     expect(updateFieldsValue(bytes)).toBe("true");
   });
 
-  it("sets the flag for a caption SEQ the serializer itself emitted", async () => {
-    // The serializer caches every caption's SEQ result as literally `1`
-    // (`captionParagraph`), so without a refresh three figures all read
-    // "Figure 1". Two captions here, to make the wrongness real.
+  it("sets NO flag for caption SEQs the serializer numbered itself", async () => {
+    // This test used to assert the OPPOSITE, and was right to: the serializer
+    // cached every caption's SEQ result as literally `1`, so two tables both
+    // read "Table 1" and only a refresh fixed them. Now the ordinals are
+    // computed in document order and cached correctly, so a refresh would
+    // change nothing and the prompt is unearned. The assertion on the cached
+    // results is load-bearing — without it this test would also pass if
+    // captions had simply stopped emitting a SEQ field.
     const { bytes } = await exportDocx({
       templateBytes: buildDocx({ body: para("$scroll.content"), styles }),
       details: page(""),
-      blocks: [
-        {
-          type: "table",
-          rows: [{ cells: [cell("a")] }],
-          caption: { kind: "table", content: [{ type: "text", text: "First" }] },
-        },
-        {
-          type: "table",
-          rows: [{ cells: [cell("b")] }],
-          caption: { kind: "table", content: [{ type: "text", text: "Second" }] },
-        },
-      ],
+      blocks: [captionedTable("First"), captionedTable("Second")],
       template,
       deps,
     });
-    expect(readPart(bytes, "word/document.xml")).toContain("SEQ Table");
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("SEQ Table");
+    expect(seqCachedResults(doc)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+    expect(updateFieldsValue(bytes)).toBeUndefined();
+  });
+
+  it("sets the flag when the TEMPLATE numbers the same sequence itself", async () => {
+    // Word counts every `SEQ Table` in the document as ONE sequence, so a
+    // caption the template author inserted before the insertion point makes our
+    // first table "Table 2". The ordinals we cached are then wrong and only a
+    // refresh fixes them — the whole reason `SEQ` stays refresh-sensitive by
+    // default. The finished archive cannot tell the two apart; the TEMPLATE
+    // scan, taken before injection, can.
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: splitInstrField([" SEQ Table \\* ARABIC "], "1") + para("$scroll.content"),
+        styles,
+      }),
+      details: page(""),
+      blocks: [captionedTable("First"), captionedTable("Second")],
+      template,
+      deps,
+    });
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("sets the flag for a template SEQ that differs from ours only in case", async () => {
+    // ` SEQ table ` and ` SEQ Table ` are ONE sequence to Word, so this template
+    // shifts our caption numbers just as an exact-case one would. NOTE what this
+    // test does and does not pin: it exercises the template-subtraction path
+    // end to end, but it would also pass with case-SENSITIVE matching, because
+    // the template's own field is then simply an untrusted third sequence. The
+    // case folding itself is pinned by the two pure tests above
+    // ("folds case…" and "skips a SEQ whose sequence the caller vouched for").
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: splitInstrField([" SEQ table \\* ARABIC "], "1") + para("$scroll.content"),
+        styles,
+      }),
+      details: page(""),
+      blocks: [captionedTable("First")],
+      template,
+      deps,
+    });
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("still sets the flag for a template SEQ of a sequence we do NOT number", async () => {
+    // `SEQ Chart` cannot interleave with our `SEQ Table`, so OUR ordinals stay
+    // right — but the flag is about the whole document, and nothing here knows
+    // whether the TEMPLATE's cached `Chart` number is right. It may be a header
+    // counter (instantiated per page, against a pagination that no longer
+    // exists), or hand-written XML Word never computed. The trust set is
+    // deliberately limited to numbers this engine produced itself; this is the
+    // pre-existing behaviour, unchanged, and the reason the fix is narrow.
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: splitInstrField([" SEQ Chart \\* ARABIC "], "1") + para("$scroll.content"),
+        styles,
+      }),
+      details: page(""),
+      blocks: [captionedTable("First"), captionedTable("Second")],
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("SEQ Chart");
+    // Our own captions are numbered correctly regardless — the prompt is about
+    // the template's field, not ours.
+    expect(seqCachedResults(doc)).toEqual([
+      ["Chart", "1"],
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("sets the flag for a template SEQ whose sequence name cannot be read", async () => {
+    // ` SEQ \* ARABIC ` names nothing this scan can match against a trusted
+    // name, so it is never trusted — an unparseable field must not be silently
+    // waved through as "probably one of ours".
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: splitInstrField([" SEQ \\* ARABIC "], "1") + para("$scroll.content"),
+        styles,
+      }),
+      details: page(""),
+      blocks: [captionedTable("First")],
+      template,
+      deps,
+    });
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("finds a colliding template SEQ that lives in a footnote, not the body", async () => {
+    // The template-origin sweep runs over EVERY WordprocessingML part, like
+    // `needsFieldRefresh` — a caption in a footnote numbers the same sequence
+    // as one in the body, and the `$scroll.*` scan's narrower part list covers
+    // neither footnotes nor endnotes.
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content"),
+        styles,
+        extraParts: {
+          "word/footnotes.xml":
+            `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+            `<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+            `<w:footnote w:id="2">${splitInstrField([" SEQ Figure \\* ARABIC "], "1")}</w:footnote>` +
+            `</w:footnotes>`,
+        },
+      }),
+      details: page(""),
+      blocks: [captionedFigure("Architecture")],
+      template,
+      deps,
+    });
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("continues caption numbering across a composed tree document, and stays quiet", async () => {
+    // A tree/space export is ONE document of many pages — page 2's first table
+    // is "Table 2". This is the 62-page shape the whole conditional-flag change
+    // exists for: correct numbers, therefore nothing to refresh, therefore no
+    // prompt.
+    const pageNode = (id: string, title: string): ExportNode => ({
+      kind: "page",
+      pageId: id,
+      title,
+      depth: 0,
+      effectiveDepth: 0,
+      parentId: null,
+      position: null,
+      blocks: [captionedTable(`${title} table`)],
+      notes: [],
+      meta: { labels: [], spaceKey: "ENG" },
+    });
+    const composed = composeChapters([
+      pageNode("1", "Alpha"),
+      pageNode("2", "Beta"),
+      pageNode("3", "Gamma"),
+    ]);
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({ body: para("$scroll.content"), styles }),
+      details: page(""),
+      blocks: composed.blocks,
+      template,
+      deps,
+    });
+    expect(seqCachedResults(readPart(bytes, "word/document.xml"))).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+      ["Table", "3"],
+    ]);
+    expect(updateFieldsValue(bytes)).toBeUndefined();
+  });
+
+  it("sets the flag when the body was injected into a HEADER, where SEQ repeats", async () => {
+    // `$scroll.content` is looked for in headers/footers too. A body rendered
+    // into a header repeats on every page, and each repetition re-instantiates
+    // its SEQ fields — ordinals counted once in document order are not what Word
+    // computes there, so no sequence is trusted.
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("body text"),
+        styles,
+        header: para("$scroll.content"),
+      }),
+      details: page(""),
+      blocks: [captionedTable("First"), captionedTable("Second")],
+      template,
+      deps,
+    });
+    expect(readPart(bytes, "word/header1.xml")).toContain("SEQ Table");
+    expect(updateFieldsValue(bytes)).toBe("true");
+  });
+
+  it("sets the flag when an INCLUDED page contributes captions of its own", async () => {
+    // `$scroll.includepage` occurrences are serialized through their own
+    // `serializeBlocks` call, so each restarts its captions at 1 and lands at an
+    // arbitrary position relative to the body. Two "Table 1"s in one document is
+    // exactly the defect this change removes, so the sequence is not trusted.
+    const included: ConfluencePageDetails = {
+      id: "999",
+      title: "Imprint",
+      spaceKey: "ENG",
+      storage:
+        '<ac:structured-macro ac:name="scroll-title">' +
+        '<ac:parameter ac:name="title">Included table</ac:parameter>' +
+        "<ac:rich-text-body><table><tbody><tr><td>c</td></tr></tbody></table></ac:rich-text-body>" +
+        "</ac:structured-macro>",
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: buildDocx({
+        body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
+        styles,
+      }),
+      details: page(""),
+      blocks: [captionedTable("Body table")],
+      template,
+      deps: { ...deps, getIncludedPage: async () => ({ kind: "resolved" as const, page: included }) },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    // Both captions really are in there — otherwise this proves nothing.
+    expect(seqCachedResults(doc)).toEqual([
+      ["Table", "1"],
+      ["Table", "1"],
+    ]);
     expect(updateFieldsValue(bytes)).toBe("true");
   });
 
