@@ -4770,6 +4770,12 @@ export declare function parseStartedDate(input: string): Date;
 // export: parseTimeToSeconds
 export declare function parseTimeToSeconds(input: string, config?: TimeConfig): number;
 
+// export: peekTimer
+export declare function peekTimer(): {
+    timer: TimerState;
+    elapsedSeconds: number;
+};
+
 // export: ProfileJiraTemplateStorage
 export declare class ProfileJiraTemplateStorage extends BaseJiraTemplateStorage {
     private profileName;
@@ -4831,6 +4837,10 @@ export interface SprintMetrics {
 export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
 
 // export: stopTimer
+// @deprecated stopTimer — Destructive read: the timer state is deleted before the caller
+has had any chance to persist the elapsed time, so any subsequent failure
+loses it. Use {@link peekTimer} and call {@link clearTimer} only after the
+worklog has been confirmed created.
 export declare function stopTimer(): {
     timer: TimerState;
     elapsedSeconds: number;

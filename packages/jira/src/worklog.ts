@@ -405,17 +405,35 @@ export function startTimer(
 }
 
 /**
- * Stop the timer and return the elapsed time.
+ * Read the running timer and its elapsed time *without* clearing it.
  * Throws if no timer is running.
+ *
+ * This is the non-destructive half of stopping a timer. Callers that log a
+ * worklog must peek first, do every fallible step (flag parsing, profile
+ * lookup, the REST call), and only then call {@link clearTimer} — otherwise a
+ * failure between the read and the write silently destroys tracked time.
  */
-export function stopTimer(): { timer: TimerState; elapsedSeconds: number } {
+export function peekTimer(): { timer: TimerState; elapsedSeconds: number } {
   const timer = loadTimer();
   if (!timer) {
     throw new Error("No timer is running. Use 'jira worklog timer start <issue>' to start one.");
   }
-  const elapsedSeconds = getElapsedSeconds(timer);
+  return { timer, elapsedSeconds: getElapsedSeconds(timer) };
+}
+
+/**
+ * Stop the timer and return the elapsed time.
+ * Throws if no timer is running.
+ *
+ * @deprecated Destructive read: the timer state is deleted before the caller
+ * has had any chance to persist the elapsed time, so any subsequent failure
+ * loses it. Use {@link peekTimer} and call {@link clearTimer} only after the
+ * worklog has been confirmed created.
+ */
+export function stopTimer(): { timer: TimerState; elapsedSeconds: number } {
+  const result = peekTimer();
   clearTimer();
-  return { timer, elapsedSeconds };
+  return result;
 }
 
 /**

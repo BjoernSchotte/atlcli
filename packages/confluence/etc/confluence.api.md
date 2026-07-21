@@ -4888,6 +4888,7 @@ export declare function buildPathMap(pages: PageHierarchyInfo[], options?: Build
 export interface BuildPathMapOptions {
     existingPaths?: Set<string>;
     rootAncestorId?: string;
+    pathOwners?: Record<string, string> | Map<string, string>;
 }
 
 // export: BulkOperationResult
@@ -4965,6 +4966,7 @@ export declare function computeFilePath(page: PageHierarchyInfo, ancestorTitles:
 export interface ComputeFilePathOptions {
     existingPaths?: Set<string>;
     rootAncestorId?: string;
+    pathOwners?: Record<string, string> | Map<string, string>;
 }
 
 // export: computeSyncState

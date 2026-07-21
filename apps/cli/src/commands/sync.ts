@@ -65,12 +65,22 @@ import {
 } from "@atlcli/confluence/internal";
 import type { Ignore } from "@atlcli/confluence/internal";
 
+/**
+ * Conflict-resolution modes accepted by `--on-conflict`.
+ *
+ * This is the single source of truth: {@link handleSync} validates the flag
+ * against it, so an unknown spelling is rejected instead of silently falling
+ * back to `merge`.
+ */
+const ON_CONFLICT_MODES = ["merge", "local", "remote"] as const;
+type OnConflictMode = (typeof ON_CONFLICT_MODES)[number];
+
 /** Sync daemon options */
 interface SyncOptions {
   dir: string;
   scope: SyncScope;
   pollIntervalMs: number;
-  onConflict: "merge" | "local" | "remote" | "prompt";
+  onConflict: OnConflictMode;
   dryRun: boolean;
   noWatch: boolean;
   noPoll: boolean;
@@ -88,6 +98,31 @@ interface SyncEvent {
   pageId?: string;
   message: string;
   details?: Record<string, unknown>;
+}
+
+/**
+ * Parse a flag that must be a positive integer.
+ *
+ * `Number(undefined ?? fallback)` used to be applied straight to the raw flag,
+ * so `--poll-interval abc` produced `NaN` and `setInterval(…, NaN)` — which Node
+ * clamps to 1 ms, hammering the tenant with thousands of requests per second
+ * under a status line reading `poll: NaNms`.
+ *
+ * @returns the parsed value, or `null` when the flag is present but not a
+ * positive integer within `[min, max]`.
+ */
+function parsePositiveIntFlag(
+  raw: string | undefined,
+  fallback: number,
+  bounds: { min: number; max: number }
+): number | null {
+  if (raw === undefined) return fallback;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value)) return null;
+  if (value < bounds.min || value > bounds.max) return null;
+  return value;
 }
 
 export async function handleSync(
@@ -143,17 +178,59 @@ export async function handleSync(
 
   const webhookPortStr = getFlag(flags, "webhook-port");
   const labelFilter = getFlag(flags, "label");
+
+  // Validate enum/numeric flags up front: an unrecognized value must be an
+  // error, never a silent fallback to the default mode/interval.
+  const onConflictRaw = getFlag(flags, "on-conflict");
+  if (onConflictRaw !== undefined && !ON_CONFLICT_MODES.includes(onConflictRaw as OnConflictMode)) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Unknown --on-conflict "${onConflictRaw}". Expected one of: ${ON_CONFLICT_MODES.join(", ")}.`
+    );
+    return;
+  }
+
+  // The floor is deliberately low (100 ms): the goal is to reject garbage and
+  // zero, not to second-guess someone who knowingly wants fast polling. What it
+  // rules out is the accidental 1 ms storm that `NaN` produced.
+  const pollIntervalMs = parsePositiveIntFlag(getFlag(flags, "poll-interval"), 30000, {
+    min: 100,
+    max: 24 * 60 * 60 * 1000,
+  });
+  if (pollIntervalMs === null) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Invalid --poll-interval "${getFlag(flags, "poll-interval")}". Expected whole milliseconds between 100 and 86400000.`
+    );
+    return;
+  }
+
+  const webhookPort = parsePositiveIntFlag(webhookPortStr, 0, { min: 1, max: 65535 });
+  if (webhookPort === null) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `Invalid --webhook-port "${webhookPortStr}". Expected a port between 1 and 65535.`
+    );
+    return;
+  }
+
   const syncOpts: SyncOptions = {
     dir,
     scope,
-    pollIntervalMs: Number(getFlag(flags, "poll-interval") ?? 30000),
-    onConflict: (getFlag(flags, "on-conflict") as any) ?? "merge",
+    pollIntervalMs,
+    onConflict: (onConflictRaw as OnConflictMode | undefined) ?? "merge",
     dryRun: hasFlag(flags, "dry-run"),
     noWatch: hasFlag(flags, "no-watch"),
     noPoll: hasFlag(flags, "no-poll"),
     json: opts.json,
     autoCreate: hasFlag(flags, "auto-create"),
-    webhookPort: webhookPortStr ? Number(webhookPortStr) : undefined,
+    webhookPort: webhookPortStr ? webhookPort : undefined,
     webhookUrl: getFlag(flags, "webhook-url"),
     labelFilter,
   };
@@ -168,7 +245,12 @@ export async function handleSync(
 
   assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
-  await ensureDir(syncOpts.dir);
+  // A dry run must not touch the filesystem at all — not even to create the
+  // target directory. Everything downstream tolerates a missing directory
+  // (`collectMarkdownFiles` yields nothing, `readState` yields empty state).
+  if (!syncOpts.dryRun) {
+    await ensureDir(syncOpts.dir);
+  }
 
   // Create sync engine
   const engine = new SyncEngine(client, syncOpts, opts, profile.baseUrl);
@@ -274,12 +356,19 @@ class SyncEngine {
         this.spaceKey = page.spaceKey ?? "";
       }
 
-      this.emit({ type: "status", message: "Initializing .atlcli/ directory..." });
-      await initAtlcliDirV2(this.opts.dir, {
-        scope: this.opts.scope,
-        space: this.spaceKey,
-        baseUrl: this.baseUrl,
-      });
+      if (this.opts.dryRun) {
+        // Report, don't create. `readState` below returns empty state for a
+        // directory with no `.atlcli/`, which is exactly the right baseline for
+        // "what would a first sync do?".
+        this.emit({ type: "status", message: "Would initialize .atlcli/ directory" });
+      } else {
+        this.emit({ type: "status", message: "Initializing .atlcli/ directory..." });
+        await initAtlcliDirV2(this.opts.dir, {
+          scope: this.opts.scope,
+          space: this.spaceKey,
+          baseUrl: this.baseUrl,
+        });
+      }
       this.atlcliDir = this.opts.dir;
     }
 
@@ -380,16 +469,25 @@ class SyncEngine {
                 parentId: legacyMeta.parentId ?? null,
                 ancestors: legacyMeta.ancestors || [],
               });
-              // Migrate .base file if exists
-              const legacyBasePath = `${filePath}.base`;
-              if (existsSync(legacyBasePath)) {
-                const baseContent = await readTextFile(legacyBasePath);
-                await writeBaseContent(this.atlcliDir, pageId, baseContent);
-                await unlink(legacyBasePath);
+              // The state update above is in-memory only, and that is all a dry
+              // run needs to report an accurate plan. Everything below moves or
+              // destroys the user's files, so a dry run stops here: it must not
+              // delete `<file>.meta.json` / `<file>.base` — the legacy format is
+              // the ONLY copy of that metadata — nor seed `.atlcli/cache/`.
+              if (this.opts.dryRun) {
+                this.emit({ type: "status", message: `Would migrate: ${relativePath}` });
+              } else {
+                // Migrate .base file if exists
+                const legacyBasePath = `${filePath}.base`;
+                if (existsSync(legacyBasePath)) {
+                  const baseContent = await readTextFile(legacyBasePath);
+                  await writeBaseContent(this.atlcliDir, pageId, baseContent);
+                  await unlink(legacyBasePath);
+                }
+                // Delete legacy meta
+                await unlink(legacyMetaPath);
+                this.emit({ type: "status", message: `Migrated: ${relativePath}` });
               }
-              // Delete legacy meta
-              await unlink(legacyMetaPath);
-              this.emit({ type: "status", message: `Migrated: ${relativePath}` });
             }
           } catch {
             // Migration failed, continue
@@ -428,8 +526,11 @@ class SyncEngine {
       }
     }
 
-    // Save migrated state
-    await writeState(this.atlcliDir, this.state!);
+    // Save migrated state. Under --dry-run the in-memory state alone drives the
+    // per-page report below; persisting it would create `.atlcli/sync.db`.
+    if (!this.opts.dryRun) {
+      await writeState(this.atlcliDir, this.state!);
+    }
 
     // Sync each page
     for (const pageInfo of pages) {
@@ -769,12 +870,24 @@ class SyncEngine {
         ancestors: ancestorIds,
       };
 
-      // Get existing paths to avoid collisions
+      // Two guards stand between `--on-conflict remote` and a duplicated file,
+      // one at the cause and one at the symptom. They are deliberately
+      // redundant — either alone fixes today's bug, so the regression test can
+      // only kill both together. Do not delete "the one that isn't needed":
+      // the pair is what makes a wrong path impossible rather than merely
+      // unreached. Guard 1, here: a page never collides with *itself*. Leaving
+      // its own registered path in the collision set makes `computeFilePath`
+      // append a "-2" suffix on every re-pull, which also mis-targets the
+      // `moveFile` call below when a page really has moved.
       const existingPaths = new Set<string>(Object.keys(this.state?.pathIndex || {}));
+      const ownRegisteredPath = this.state?.pages[pageId]?.path;
+      if (ownRegisteredPath) existingPaths.delete(ownRegisteredPath);
 
       const computed = computeFilePath(pageInfo, ancestorTitles, {
         existingPaths,
         rootAncestorId: this.homePageId,
+        // A page's own stored path is not a collision.
+        pathOwners: this.state?.pathIndex,
       });
       let filePath = join(this.opts.dir, computed.relativePath);
 
@@ -782,31 +895,39 @@ class SyncEngine {
       if (existingFile && existingFile !== filePath) {
         // Page moved in Confluence - check if ancestors changed
         const existingState = this.state?.pages[pageId];
-        if (existingState?.ancestors) {
-          const oldAncestors = existingState.ancestors;
-          if (hasPageMoved(oldAncestors, ancestorIds)) {
-            if (!this.opts.dryRun) {
-              // Get relative paths for moveFile (it expects relative paths)
-              const oldRelPath = this.getRelativePath(existingFile);
+        const moved = existingState?.ancestors
+          ? hasPageMoved(existingState.ancestors, ancestorIds)
+          : false;
 
-              // Move the local file to match new hierarchy
-              await moveFile(this.opts.dir, oldRelPath, computed.relativePath);
+        if (moved) {
+          if (!this.opts.dryRun) {
+            // Get relative paths for moveFile (it expects relative paths)
+            const oldRelPath = this.getRelativePath(existingFile);
 
-              this.emit({
-                type: "status",
-                message: `Moved: ${existingFile} → ${filePath}`,
-                file: filePath,
-                pageId: page.id,
-              });
-            } else {
-              this.emit({
-                type: "status",
-                message: `Would move: ${existingFile} → ${filePath}`,
-                file: filePath,
-                pageId: page.id,
-              });
-            }
+            // Move the local file to match new hierarchy
+            await moveFile(this.opts.dir, oldRelPath, computed.relativePath);
+
+            this.emit({
+              type: "status",
+              message: `Moved: ${existingFile} → ${filePath}`,
+              file: filePath,
+              pageId: page.id,
+            });
+          } else {
+            this.emit({
+              type: "status",
+              message: `Would move: ${existingFile} → ${filePath}`,
+              file: filePath,
+              pageId: page.id,
+            });
           }
+        } else {
+          // Guard 2 (see `existingPaths` above): the page did not move, so the
+          // caller's file is the target. `--on-conflict remote` reaches this
+          // branch with the conflicted file and must overwrite it in place —
+          // it used to fall through and write `<slug>-2.md`, leaving the
+          // "remote wins" mode as the one that preserved the local version.
+          filePath = existingFile;
         }
       } else if (existingFile) {
         // Use existing file path if no move detected
@@ -910,10 +1031,17 @@ class SyncEngine {
         contentType: "folder",
       };
 
+      // As in `pullPage`: a folder must not collide with its own tracked path,
+      // or every re-pull lands in `<slug>-2/index.md`.
       const existingPaths = new Set<string>(Object.keys(this.state?.pathIndex || {}));
+      const ownRegisteredPath = this.state?.pages[folderId]?.path;
+      if (ownRegisteredPath) existingPaths.delete(ownRegisteredPath);
+
       const computed = computeFilePath(folderInfo, ancestorTitles, {
         existingPaths,
         rootAncestorId: this.homePageId,
+        // A folder's own stored path is not a collision.
+        pathOwners: this.state?.pathIndex,
       });
 
       let filePath = join(this.opts.dir, computed.relativePath);
@@ -921,19 +1049,23 @@ class SyncEngine {
       // Handle folder move if path changed
       if (existingFile && existingFile !== computed.relativePath) {
         const existingState = this.state?.pages[folderId];
-        if (existingState?.ancestors) {
-          const oldAncestors = existingState.ancestors;
-          if (hasPageMoved(oldAncestors, ancestorIds)) {
-            if (!this.opts.dryRun) {
-              await moveFile(this.opts.dir, existingFile, computed.relativePath);
-              this.emit({
-                type: "status",
-                message: `Moved folder: ${existingFile} → ${computed.relativePath}`,
-                file: filePath,
-                pageId: folder.id,
-              });
-            }
+        const moved = existingState?.ancestors
+          ? hasPageMoved(existingState.ancestors, ancestorIds)
+          : false;
+
+        if (moved) {
+          if (!this.opts.dryRun) {
+            await moveFile(this.opts.dir, existingFile, computed.relativePath);
+            this.emit({
+              type: "status",
+              message: `Moved folder: ${existingFile} → ${computed.relativePath}`,
+              file: filePath,
+              pageId: folder.id,
+            });
           }
+        } else {
+          // Not a hierarchy move — keep writing the folder index we track.
+          filePath = join(this.opts.dir, existingFile);
         }
       } else if (existingFile) {
         filePath = join(this.opts.dir, existingFile);
@@ -1106,8 +1238,17 @@ class SyncEngine {
     }, this.debounceMs);
   }
 
-  /** Push a local file to Confluence */
-  private async pushFile(filePath: string): Promise<void> {
+  /**
+   * Push a local file to Confluence.
+   *
+   * @param options.force - Skip the "remote moved ahead → merge" detour and
+   *   overwrite the remote with the local content. Set only by
+   *   {@link mergeChanges} for `--on-conflict local`, whose whole contract is
+   *   "local wins". Without it the two methods call each other forever:
+   *   `mergeChanges` → `pushFile` → (remote is still ahead) → `mergeChanges` →
+   *   … which produced tens of thousands of GETs, zero PUTs and no output.
+   */
+  private async pushFile(filePath: string, options: { force?: boolean } = {}): Promise<void> {
     try {
       const localContent = await readTextFile(filePath);
 
@@ -1149,7 +1290,7 @@ class SyncEngine {
         const stateVersion = pageState?.version ?? 0;
 
         // Check if remote changed since last sync
-        if (stateVersion && current.version && current.version > stateVersion) {
+        if (!options.force && stateVersion && current.version && current.version > stateVersion) {
           // Remote changed - need merge
           await this.mergeChanges(pageId, filePath, markdownContent, pageState!);
           return;
@@ -1645,10 +1786,28 @@ class SyncEngine {
       } else {
         // Merge has conflicts
         if (this.opts.onConflict === "local") {
-          // Use local version
-          await this.pushFile(filePath);
+          this.emit({
+            type: "conflict",
+            message: `Conflict (${result.conflictCount} regions), keeping local (--on-conflict local): ${filePath}`,
+            file: filePath,
+            pageId,
+            details: { conflictCount: result.conflictCount, resolution: "local" },
+          });
+          // Local wins: overwrite the remote. `force` stops pushFile from
+          // bouncing straight back into mergeChanges (the remote is, by
+          // definition, still ahead at this point).
+          await this.pushFile(filePath, { force: true });
         } else if (this.opts.onConflict === "remote") {
-          // Use remote version
+          this.emit({
+            type: "conflict",
+            message: `Conflict (${result.conflictCount} regions), keeping remote (--on-conflict remote): ${filePath}`,
+            file: filePath,
+            pageId,
+            details: { conflictCount: result.conflictCount, resolution: "remote" },
+          });
+          // Remote wins: overwrite the conflicted file in place. Passing
+          // filePath is what pins the write to the tracked file rather than a
+          // freshly suffixed sibling.
           await this.pullPage(pageId, filePath);
         } else {
           // Write conflict markers
@@ -1779,12 +1938,16 @@ Filter options:
   --label <label>       Only sync pages with this label
 
 Behavior options:
-  --poll-interval <ms>  Polling interval in ms (default: 30000)
+  --poll-interval <ms>  Polling interval in ms, 100-86400000 (default: 30000)
   --no-poll             Disable polling (local watch only)
   --no-watch            Disable local file watching (poll only)
-  --on-conflict <mode>  Conflict handling: merge|local|remote (default: merge)
+  --on-conflict <mode>  Conflict handling (default: merge)
+                          merge   three-way merge; write conflict markers if it fails
+                          local   local wins: overwrite the remote page
+                          remote  remote wins: overwrite the local file in place
   --auto-create         Auto-create Confluence pages for new local files
-  --dry-run             Show what would sync without changes
+  --dry-run             Report the plan and exit; writes nothing, deletes
+                        nothing, and does not create .atlcli/
   --json                JSON output for scripting
   --profile <name>      Use specific auth profile
 

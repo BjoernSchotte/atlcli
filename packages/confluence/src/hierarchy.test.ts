@@ -105,6 +105,43 @@ describe("hierarchy utilities", () => {
       expect(result.relativePath).toBe("test-2.md");
     });
 
+    test("keeps a path the page itself already owns", () => {
+      // Regression: re-computing the path of an already-synced page treated its
+      // own file as a collision and aliased it to `test-2.md`, which then got
+      // recorded as the page's location.
+      const page: PageHierarchyInfo = {
+        id: "100",
+        title: "Test",
+        parentId: null,
+        ancestors: [],
+      };
+      const ancestorTitles = new Map([["100", "Test"]]);
+
+      const result = computeFilePath(page, ancestorTitles, {
+        existingPaths: new Set(["test.md"]),
+        pathOwners: { "test.md": "100" },
+      });
+
+      expect(result.relativePath).toBe("test.md");
+    });
+
+    test("still avoids a path owned by a different page", () => {
+      const page: PageHierarchyInfo = {
+        id: "100",
+        title: "Test",
+        parentId: null,
+        ancestors: [],
+      };
+      const ancestorTitles = new Map([["100", "Test"]]);
+
+      const result = computeFilePath(page, ancestorTitles, {
+        existingPaths: new Set(["test.md"]),
+        pathOwners: { "test.md": "999" },
+      });
+
+      expect(result.relativePath).toBe("test-2.md");
+    });
+
     test("handles empty title", () => {
       const page: PageHierarchyInfo = {
         id: "100",
@@ -262,6 +299,53 @@ describe("hierarchy utilities", () => {
       const pathMap = buildPathMap(pages, existingPaths);
 
       expect(pathMap.get("100")?.relativePath).toBe("test-2.md");
+    });
+
+    test("leaves an already-tracked page on its own path", () => {
+      const pages: PageHierarchyInfo[] = [
+        { id: "100", title: "Test", parentId: null, ancestors: [] },
+      ];
+
+      const pathMap = buildPathMap(pages, {
+        existingPaths: new Set(["test.md"]),
+        pathOwners: { "test.md": "100" },
+      });
+
+      expect(pathMap.get("100")?.relativePath).toBe("test.md");
+    });
+
+    test("gives a new page a unique path next to the owner of the slug", () => {
+      const pages: PageHierarchyInfo[] = [
+        { id: "100", title: "Test", parentId: null, ancestors: [] },
+        // Same title, not yet tracked - must not land on the owner's path.
+        { id: "101", title: "Test", parentId: null, ancestors: [] },
+      ];
+
+      const pathMap = buildPathMap(pages, {
+        existingPaths: new Set(["test.md"]),
+        pathOwners: { "test.md": "100" },
+      });
+
+      expect(pathMap.get("100")?.relativePath).toBe("test.md");
+      expect(pathMap.get("101")?.relativePath).toBe("test-2.md");
+    });
+
+    test("does not hand two pages the same path when one owns it", () => {
+      // Ordering matters: the untracked page is placed first, so path claims
+      // made during the run must block later pages just like stored ones do.
+      const pages: PageHierarchyInfo[] = [
+        { id: "101", title: "Test", parentId: null, ancestors: [] },
+        { id: "100", title: "Test", parentId: null, ancestors: [] },
+      ];
+
+      const pathMap = buildPathMap(pages, {
+        existingPaths: new Set(["test.md"]),
+        pathOwners: { "test.md": "100" },
+      });
+
+      const paths = [pathMap.get("100")!.relativePath, pathMap.get("101")!.relativePath];
+      expect(pathMap.get("100")?.relativePath).toBe("test.md");
+      expect(new Set(paths).size).toBe(2);
     });
   });
 

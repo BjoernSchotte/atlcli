@@ -40,7 +40,8 @@ import {
   formatWorklogDate,
   formatElapsed,
   startTimer,
-  stopTimer,
+  peekTimer,
+  clearTimer,
   cancelTimer,
   loadTimer,
   getElapsedSeconds,
@@ -1785,8 +1786,23 @@ async function handleTimerStart(
     fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required. Usage: jira worklog timer start <issue>");
   }
 
-  const profileName = getFlag(flags, "profile") || "default";
   const comment = getFlag(flags, "comment");
+
+  // Record the profile that will actually be used, not the literal string
+  // "default": on a machine whose only profile is e.g. `mayflower`, recording
+  // "default" made every later `timer stop` fail the profile lookup.
+  const requestedProfile = getFlag(flags, "profile");
+  const config = await loadConfig();
+  const activeProfile = getActiveProfile(config, requestedProfile);
+  if (requestedProfile && !activeProfile) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.AUTH,
+      `Profile "${requestedProfile}" not found. Run 'atlcli auth list' to see configured profiles.`
+    );
+  }
+  const profileName = activeProfile?.name ?? requestedProfile ?? "default";
 
   try {
     const timer = startTimer(issueKey, profileName, comment);
@@ -1808,21 +1824,54 @@ async function handleTimerStart(
   }
 }
 
+/**
+ * Abort `timer stop` while the timer file is still on disk.
+ *
+ * Every losing path between reading the timer and confirming the worklog goes
+ * through here, so the message always states that the tracked time survived and
+ * how to retry. `details.timerPreserved` is the machine-readable form.
+ */
+function failTimerPreserved(
+  opts: OutputOptions,
+  errCode: string,
+  message: string,
+  timer: TimerState
+): never {
+  return fail(
+    opts,
+    1,
+    errCode,
+    `${message}\nNothing was logged and the timer is still running for ${timer.issueKey} ` +
+      `(started ${timer.startedAt}). Retry 'atlcli jira worklog timer stop', or ` +
+      `'atlcli jira worklog timer cancel' to discard it.`,
+    {
+      timerPreserved: true,
+      issueKey: timer.issueKey,
+      startedAt: timer.startedAt,
+    }
+  );
+}
+
 async function handleTimerStop(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
   const roundFlag = getFlag(flags, "round");
   const commentOverride = getFlag(flags, "comment");
+  const profileOverride = getFlag(flags, "profile");
 
+  // Non-destructive read. The timer file stays on disk until the worklog has
+  // been confirmed created — everything below can fail (bad --round, missing
+  // profile, session auth, network/5xx) and tracked time must survive all of it.
   let result: { timer: TimerState; elapsedSeconds: number };
   try {
-    result = stopTimer();
+    result = peekTimer();
   } catch (e) {
     fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
   }
 
-  let { timer, elapsedSeconds } = result;
+  const { timer } = result;
+  let { elapsedSeconds } = result;
 
   // Apply rounding if specified
   if (roundFlag) {
@@ -1830,7 +1879,12 @@ async function handleTimerStop(
       const interval = parseRoundingInterval(roundFlag);
       elapsedSeconds = roundTime(elapsedSeconds, interval);
     } catch (e) {
-      fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+      failTimerPreserved(
+        opts,
+        ERROR_CODES.USAGE,
+        e instanceof Error ? e.message : String(e),
+        timer
+      );
     }
   }
 
@@ -1842,25 +1896,44 @@ async function handleTimerStop(
   // Use comment from stop command or from timer start
   const comment = commentOverride || timer.comment;
 
-  // Get client using the profile from when timer was started
+  // An explicit --profile at stop time overrides the name recorded at start:
+  // the recorded one can be stale (renamed profile) or plain wrong, and this is
+  // the documented escape hatch out of a timer that cannot otherwise be stopped.
+  const profileName = profileOverride ?? timer.profile;
   const config = await loadConfig();
-  const profile = getActiveProfile(config, timer.profile);
+  const profile = getActiveProfile(config, profileName);
   if (!profile) {
-    fail(
+    failTimerPreserved(
       opts,
-      1,
       ERROR_CODES.AUTH,
-      `Profile "${timer.profile}" not found. The timer was started with this profile.`
+      profileOverride
+        ? `Profile "${profileName}" not found.`
+        : `Profile "${profileName}" not found. The timer was started with this profile; ` +
+            `pass --profile <name> to stop it with a different one.`,
+      timer
     );
   }
   assertCliAuthSupported(profile, opts);
   const client = new JiraClient(profile);
 
   // Log the worklog
-  const worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
-    started: timer.startedAt.replace("Z", "+0000"),
-    comment,
-  });
+  let worklog: JiraWorklog;
+  try {
+    worklog = await client.addWorklog(timer.issueKey, elapsedSeconds, {
+      started: timer.startedAt.replace("Z", "+0000"),
+      comment,
+    });
+  } catch (e) {
+    failTimerPreserved(
+      opts,
+      ERROR_CODES.API,
+      e instanceof Error ? e.message : String(e),
+      timer
+    );
+  }
+
+  // The worklog exists in Jira — only now is it safe to drop the timer.
+  clearTimer();
 
   output(
     {
@@ -1922,20 +1995,27 @@ function timerHelp(): string {
   return `atlcli jira worklog timer <command>
 
 Commands:
-  start <issue> [--comment <text>]   Start tracking time on an issue
-  stop [--round <interval>] [--comment <text>]   Stop timer and log worklog
+  start <issue> [--comment <text>] [--profile <name>]   Start tracking time on an issue
+  stop [--round <interval>] [--comment <text>] [--profile <name>]   Stop timer and log worklog
   status                             Show current timer status
   cancel                             Cancel timer without logging
 
 Options:
-  --profile <name>   Use a specific auth profile
+  --profile <name>   Use a specific auth profile. 'start' records the resolved
+                     active profile; 'stop' uses that recorded profile unless
+                     --profile is given again, which overrides it.
   --round <interval> Round time when stopping (15m, 30m, 1h)
   --comment <text>   Comment for the worklog
+
+The timer is only cleared once Jira has confirmed the worklog. If 'stop' fails
+(bad --round, unknown profile, network error), the elapsed time is preserved and
+the command can simply be retried.
 
 Examples:
   jira worklog timer start PROJ-123 --comment "Working on feature"
   jira worklog timer status
   jira worklog timer stop --round 15m
+  jira worklog timer stop --profile work
   jira worklog timer cancel
 `;
 }
@@ -5237,32 +5317,80 @@ async function getJiraTemplateContext(
   return { resolver, global, profile, project, profileName, projectKey };
 }
 
+/** The three template storage levels, in precedence order (lowest first). */
+const JIRA_TEMPLATE_LEVELS = ["global", "profile", "project"] as const;
+type JiraTemplateLevel = (typeof JIRA_TEMPLATE_LEVELS)[number];
+
+/**
+ * Decide which storage level a template command addresses.
+ *
+ * One rule, used by save / import / delete / list alike:
+ *
+ *   1. an explicit `--level` always wins;
+ *   2. otherwise `--project <key>` selects project storage;
+ *   3. otherwise `--profile <name>` selects profile storage;
+ *   4. otherwise global.
+ *
+ * `--profile` is primarily the *global auth-profile* flag, so it is the weakest
+ * storage signal. It used to be checked before `--project` and before an
+ * explicit `--level`, which meant that anyone with more than one auth profile
+ * silently wrote to `profiles/<name>/` no matter what they asked for — and then
+ * could not find the template again with the same flags.
+ *
+ * An unknown `--level` value is rejected rather than silently falling through.
+ */
+function resolveJiraTemplateLevel(
+  flags: Record<string, string | boolean | string[]>
+): JiraTemplateLevel | undefined {
+  const level = getFlag(flags, "level");
+  if (level !== undefined) {
+    if (!(JIRA_TEMPLATE_LEVELS as readonly string[]).includes(level)) {
+      throw new Error(
+        `Unknown --level "${level}". Use one of: ${JIRA_TEMPLATE_LEVELS.join(", ")}.`
+      );
+    }
+    return level as JiraTemplateLevel;
+  }
+  if (getFlag(flags, "project")) return "project";
+  if (getFlag(flags, "profile")) return "profile";
+  return undefined;
+}
+
 function getTargetJiraStorage(
   ctx: JiraTemplateContext,
   flags: Record<string, string | boolean | string[]>
 ): { storage: JiraTemplateStorage; level: string } {
-  const level = getFlag(flags, "level");
-
-  if (level === "global") {
-    return { storage: ctx.global, level: "global" };
+  switch (resolveJiraTemplateLevel(flags)) {
+    case "profile":
+      if (!ctx.profile) {
+        throw new Error("Profile not specified. Use --profile <name>.");
+      }
+      return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+    case "project":
+      if (!ctx.project) {
+        throw new Error("Project not specified. Use --project <key>.");
+      }
+      return { storage: ctx.project, level: `project:${ctx.projectKey}` };
+    case "global":
+    default:
+      return { storage: ctx.global, level: "global" };
   }
+}
 
-  if (level === "profile" || getFlag(flags, "profile")) {
-    if (!ctx.profile) {
-      throw new Error("Profile not specified. Use --profile <name>.");
-    }
-    return { storage: ctx.profile, level: `profile:${ctx.profileName}` };
+/**
+ * `getTargetJiraStorage` with the level/flag errors reported through `fail()`,
+ * so `--json` callers get a proper error envelope instead of a bare throw.
+ */
+function requireTargetJiraStorage(
+  ctx: JiraTemplateContext,
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): { storage: JiraTemplateStorage; level: string } {
+  try {
+    return getTargetJiraStorage(ctx, flags);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
   }
-
-  if (level === "project" || getFlag(flags, "project")) {
-    if (!ctx.project) {
-      throw new Error("Project not specified. Use --project <key>.");
-    }
-    return { storage: ctx.project, level: `project:${ctx.projectKey}` };
-  }
-
-  // Default to global
-  return { storage: ctx.global, level: "global" };
 }
 
 function formatJiraLevel(t: JiraTemplateSummary): string {
@@ -5324,21 +5452,28 @@ async function handleTemplateList(
 ): Promise<void> {
   const ctx = await getJiraTemplateContext(flags);
 
-  // Build filter from flags
+  // Build filter from flags. Same level rule as save/import/delete: an explicit
+  // --level wins, then --project, then --profile (which is mainly the auth
+  // flag). The profile/project *values* only refine the level they belong to —
+  // `--level global --profile work` used to be silently rewritten into a
+  // profile-level listing and never showed a single global template.
   const filter: JiraTemplateFilter = {};
-  const level = getFlag(flags, "level");
-  if (level === "global" || level === "profile" || level === "project") {
+  let level: JiraTemplateLevel | undefined;
+  try {
+    level = resolveJiraTemplateLevel(flags);
+  } catch (e) {
+    fail(opts, 1, ERROR_CODES.USAGE, e instanceof Error ? e.message : String(e));
+  }
+  if (level) {
     filter.level = level;
   }
-  const profileFilter = getFlag(flags, "profile");
-  if (profileFilter) {
-    filter.level = "profile";
-    filter.profile = profileFilter;
+  if (level === "profile") {
+    const profileFilter = getFlag(flags, "profile") ?? ctx.profileName;
+    if (profileFilter) filter.profile = profileFilter;
   }
-  const projectFilter = getFlag(flags, "project");
-  if (projectFilter) {
-    filter.level = "project";
-    filter.project = projectFilter;
+  if (level === "project") {
+    const projectFilter = getFlag(flags, "project") ?? ctx.projectKey;
+    if (projectFilter) filter.project = projectFilter;
   }
   const search = getFlag(flags, "search");
   if (search) {
@@ -5433,7 +5568,7 @@ async function handleTemplateSave(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   const client = await getClient(flags, opts);
   const issue = await client.getIssue(issueKey, { fields: ["*all"] });
@@ -5570,7 +5705,7 @@ async function handleTemplateDelete(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   if (!(await storage.exists(name))) {
     fail(opts, 1, ERROR_CODES.USAGE, `Template '${name}' not found at ${level}.`);
@@ -5657,7 +5792,7 @@ async function handleTemplateImport(
   }
 
   const ctx = await getJiraTemplateContext(flags);
-  const { storage, level } = getTargetJiraStorage(ctx, flags);
+  const { storage, level } = requireTargetJiraStorage(ctx, flags, opts);
 
   if (!force && (await storage.exists(template.name))) {
     fail(opts, 1, ERROR_CODES.USAGE, `Template '${template.name}' already exists at ${level}. Use --force to overwrite.`);
@@ -5693,10 +5828,19 @@ Storage Hierarchy (precedence: project > profile > global):
   ~/.atlcli/templates/jira/profiles/{name}/     Profile-specific
   ~/.atlcli/templates/jira/projects/{key}/      Project-specific
 
+Choosing a level (save, import, delete and list all follow this rule):
+  1. an explicit --level <global|profile|project> always wins
+  2. otherwise --project <key> selects project storage
+  3. otherwise --profile <name> selects profile storage
+  4. otherwise global
+  Note that --profile is primarily the auth-profile flag, so it is the weakest
+  signal: 'save --level project --project PROJ --profile work' stores under
+  PROJ, and 'delete --level project --project PROJ' finds it again.
+
 List options:
   --level <global|profile|project>   Filter by storage level
-  --profile <name>                   Filter by profile
-  --project <key>                    Filter by project
+  --profile <name>                   Filter by profile (only with level profile)
+  --project <key>                    Filter by project (only with level project)
   --type <type>                      Filter by issue type (Bug, Task, etc.)
   --tag <tag>                        Filter by tag
   --search <text>                    Search name and description
@@ -5707,8 +5851,8 @@ Save options:
   --issue <key>         Source issue key (required)
   --description <text>  Template description
   --tags <tags>         Comma-separated tags
-  --level global        Save to global templates
-  --project <key>       Save to project templates
+  --level <level>       Storage level: global (default), profile or project
+  --project <key>       Save to project templates (implies --level project)
   --force               Overwrite existing template
 
 Apply options:
@@ -5744,8 +5888,9 @@ Examples:
   jira template export bug-report -o /tmp/template.json
   jira template import --file /tmp/template.json --project PROJ
 
-  # Delete
+  # Delete — use the same level flags the template was saved with
   jira template delete old-template --confirm
+  jira template delete sprint-task --level project --project PROJ --confirm
 `;
 }
 
