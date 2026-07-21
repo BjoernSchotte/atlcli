@@ -285,6 +285,15 @@ export const EXPORT_NOTE_CODES = [
   "datasource-provider-unsupported",
   "datasource-filter-unsupported",
   "datasource-cross-site",
+  // A datasource whose parameters compose to NO query fragment. Emitted instead
+  // of issuing an unbounded site-wide search that would look like a rendered
+  // table while answering a question nobody asked.
+  "datasource-query-empty",
+  // One requested table column could not be filled: either its key has no
+  // mapping, or the mapping produced an empty value on every row. The Jira
+  // round proved this drift real (`issuetype` vs `type`), and a silently blank
+  // column is indistinguishable from empty data.
+  "datasource-column-unresolved",
   // Scope orchestration / tree fetch (spec 002)
   "page-unreadable",
   "subtree-unreadable",
@@ -1737,11 +1746,16 @@ function walkDatasourceLink(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   // `unknown` block POSITIONALLY (`resolve.ts`, reconcileNotes). Emitting an
   // unknown block without its paired note here would shift every later macro's
   // note onto the wrong instance — so this note is structural, not decorative.
-  const known = KNOWN_MACROS.includes(macroName);
+  //
+  // Always the RECOGNIZED-macro note: this branch is reachable only for a
+  // `supported` provider, i.e. only when a renderer for `macroName` exists by
+  // construction. `KNOWN_MACROS` is deliberately NOT consulted — it is the
+  // *markdown* converter's vocabulary of real Confluence macros, and
+  // `confluence-list` is a synthetic routing name with no macro behind it.
   ctx.notes.push(
     withSource(ctx, {
-      level: known ? "info" : "warning",
-      code: known ? "macro-not-rendered" : "unknown-macro",
+      level: "info",
+      code: "macro-not-rendered",
       message: `A datasource smart link was captured as a "${macroName}" macro; it renders as a live table when dynamic macro resolution runs.`,
       macroName,
     })

@@ -1081,7 +1081,13 @@ async function buildTsEngineMacroOptions(
   profile: Profile,
   client: ConfluenceClient,
   targetEngine: "docx" | "pdf",
-  live: boolean
+  live: boolean,
+  /**
+   * `composeChapters(...).chapterAnchorById` for a tree/space export — see
+   * `BuildMacroOptionsArgs.chapterAnchorById`. Absent on the single-page path,
+   * where nothing but the page itself is in scope.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>
 ) {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -1093,6 +1099,7 @@ async function buildTsEngineMacroOptions(
     jira: new JiraClient(profile),
     targetEngine,
     live,
+    ...(chapterAnchorById ? { chapterAnchorById } : {}),
   });
   // SSRF enforcement (spec 004): export_view-derived external image refs carry
   // trust:"export-view"; route them through the policy-checked external fetcher
@@ -1571,7 +1578,13 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     }
 
     const resolvedOutputPath = resolve(outputPath);
-    const treeMacroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
+    const treeMacroSetup = await buildTsEngineMacroOptions(
+      profile,
+      client,
+      "docx",
+      liveMacros,
+      composed.chapterAnchorById
+    );
     const docxReport = await runExport(
       {
         details: rootDetails,

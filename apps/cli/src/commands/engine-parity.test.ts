@@ -646,6 +646,246 @@ describe("image-note vocabulary parity across engines (spec 010)", () => {
 });
 
 /**
+ * CONFLUENCE-LIST DATASOURCE parity (spec SUPPORT-DATASOURCE-CONFLUENCE).
+ *
+ * Same shape as the two suites above — the REAL CLI, a real `Bun.serve` origin
+ * standing in for the Confluence REST API, no fetch mocking — pinning the claim
+ * that a Confluence list renders the SAME table and reports the SAME note codes
+ * from the PDF and the DOCX engine.
+ *
+ * The page storage is the VERBATIM artifact of DOCSY page 1126236229, with only
+ * the site origin rewritten to the stub's (the renderer's cross-site guard
+ * compares the datasource `href` origin against the export's own site, so a
+ * literal `mayflowergmbh.atlassian.net` here would correctly degrade and the
+ * suite would be testing nothing).
+ */
+const LIST_PAGE_ID = "1126236229";
+const LIST_COLUMN_KEYS = [
+  "type",
+  "title",
+  "space",
+  "description",
+  "ownedBy",
+  "updatedAt",
+  "labels",
+  "status",
+];
+
+function listStorage(origin: string): string {
+  const href = `${origin}/wiki/search?text=&contributors=70121%3A666cbd78-32fa-4764-90a1-d3368305f07b`;
+  const datasource = JSON.stringify({
+    id: "768fc736-3af4-4a8f-b27e-203602bff8ca",
+    parameters: {
+      cloudId: "ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca",
+      contributorAccountIds: ["70121:666cbd78-32fa-4764-90a1-d3368305f07b"],
+      searchString: "",
+    },
+    views: [{ type: "table", properties: { columns: LIST_COLUMN_KEYS.map((key) => ({ key })) } }],
+  })
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;");
+  return (
+    `<h2>Abschnitt 7.6</h2><p>Fachtext im Abschnitt 7.6.</p>` +
+    `<a href="${href.replaceAll("&", "&amp;")}" data-card-appearance="block" ` +
+    `data-datasource="${datasource}">${href.replaceAll("&", "&amp;")}</a>`
+  );
+}
+
+describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOURCE-CONFLUENCE)", () => {
+  const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
+  const unmatched: string[] = [];
+  /** Every CQL the CLI actually issued — proof the fixture is live. */
+  const searches: string[] = [];
+  let server: ReturnType<typeof Bun.serve>;
+  let dir: string;
+  let templatePath: string;
+
+  /**
+   * 150 hits against the 100-row cap: for THIS provider truncation is the
+   * normal case (the live artifact matches 2 817 rows), so the parity claim has
+   * to cover the truncated shape, not the comfortable one.
+   */
+  const SEARCH_HITS = Array.from({ length: 150 }, (_v, i) => ({
+    content: {
+      id: `${2000 + i}`,
+      type: "page",
+      status: "current",
+      title: `Ergebnis ${i}`,
+      space: { key: "DOCSY", name: "Docs and Systems" },
+      history: {
+        lastUpdated: { when: "2026-05-26T06:25:48.628Z" },
+        ownedBy: { displayName: "Robert Lippert" },
+      },
+      metadata: { labels: { results: [{ name: "jourfixe" }] } },
+      _links: { webui: `/spaces/DOCSY/pages/${2000 + i}` },
+    },
+    title: `Ergebnis ${i}`,
+    excerpt: `Auszug ${i}`,
+    url: `/spaces/DOCSY/pages/${2000 + i}`,
+  }));
+
+  const LIST_PAGE = (origin: string) => ({
+    id: LIST_PAGE_ID,
+    title: "M1 Abnahme Abschnitt 7.6",
+    space: { key: "DOCSY" },
+    version: { number: 1, when: "2026-07-20T00:00:00.000Z" },
+    ancestors: [],
+    history: {
+      createdDate: "2026-07-20T00:00:00.000Z",
+      createdBy: { accountId: "acc-1", displayName: "Fixture Author" },
+      lastUpdated: {
+        when: "2026-07-20T00:00:00.000Z",
+        by: { accountId: "acc-1", displayName: "Fixture Author" },
+      },
+    },
+    metadata: { labels: { results: [] }, properties: {} },
+    body: { storage: { value: listStorage(origin), representation: "storage" } },
+    _links: { base: `${origin}/wiki`, webui: `/pages/${LIST_PAGE_ID}` },
+  });
+
+  beforeAll(async () => {
+    await ensurePdfFonts({ logger: () => {} });
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        const origin = server.url.origin;
+        if (url.pathname === `/rest/api/content/${LIST_PAGE_ID}`) {
+          if ((url.searchParams.get("expand") ?? "").includes("body.export_view")) {
+            return Response.json({ body: { export_view: { value: "" } }, version: { number: 1 } });
+          }
+          return Response.json(LIST_PAGE(origin));
+        }
+        if (url.pathname === "/rest/api/search") {
+          searches.push(url.searchParams.get("cql") ?? "");
+          const limit = Number(url.searchParams.get("limit") ?? "25");
+          return Response.json({
+            results: SEARCH_HITS.slice(0, limit),
+            start: 0,
+            limit,
+            size: Math.min(limit, SEARCH_HITS.length),
+            totalSize: 2817,
+            _links: { base: `${origin}/wiki` },
+          });
+        }
+        unmatched.push(`${url.pathname}?${url.searchParams}`);
+        return new Response(JSON.stringify({ message: `stub: no route for ${url.pathname}` }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    dir = await mkdtemp(join(tmpdir(), "atlcli-list-parity-"));
+    templatePath = join(dir, "parity.docx");
+    await writeFile(templatePath, buildDocx({ body: para("$scroll.content"), date: new Date(0) }));
+  });
+
+  afterAll(async () => {
+    server?.stop(true);
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  async function runCli(args: string[]): Promise<CliReport> {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        "--conditions=development",
+        "run",
+        CLI,
+        "wiki",
+        "export",
+        LIST_PAGE_ID,
+        ...args,
+        "--base-url",
+        server.url.origin,
+        "--auth-type",
+        "bearer",
+        "--allow-http",
+        "--report",
+        "json",
+      ],
+      {
+        cwd: dir,
+        env: {
+          ...process.env,
+          HOME: dir,
+          USERPROFILE: dir,
+          ATLCLI_API_TOKEN: "stub-token",
+          ATLCLI_DISABLE_UPDATE_CHECK: "1",
+          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode, `CLI failed (${args.join(" ")}):\n${stderr}`).toBe(0);
+    return JSON.parse(stdout) as CliReport;
+  }
+
+  /** Macro-note codes only, counted — same projection the suites above use. */
+  const listMacroCounts = (codes: string[]): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const code of codes) if (MACRO_CODES.has(code)) out[code] = (out[code] ?? 0) + 1;
+    return out;
+  };
+
+  it("renders the list live on BOTH engines, with the same note codes", async () => {
+    searches.length = 0;
+    const docx = await runCli(["--engine", "ts", "--template", templatePath, "-o", join(dir, "list.docx")]);
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "list.pdf")]);
+    expect(unmatched).toEqual([]);
+
+    // The CQL is composed from the FILTERS, not from the empty `searchString`.
+    expect(searches).toHaveLength(2);
+    for (const cql of searches) {
+      expect(cql).toBe('contributor in ("70121:666cbd78-32fa-4764-90a1-d3368305f07b")');
+    }
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      const counts = listMacroCounts(report.issues.map((i) => i.code));
+      // The provisional walker note was REPLACED by the terminal one — the same
+      // reconciliation the two suites above pin, now over a datasource macro.
+      expect(counts, `${engine} macro notes`).toEqual({
+        "macro-rendered-via": 1,
+        "macro-degraded": 1,
+      });
+      expect(report.notesByCode?.["datasource-provider-unsupported"], engine).toBeUndefined();
+      expect(report.notesByCode?.["macro-not-rendered"], engine).toBeUndefined();
+      expect(report.notesByCode?.["unknown-macro"], engine).toBeUndefined();
+    }
+
+    // Cross-engine claim: identical input ⇒ identical codes, aggregate and per page.
+    expect(listMacroCounts(pdf.issues.map((i) => i.code))).toEqual(
+      listMacroCounts(docx.issues.map((i) => i.code))
+    );
+    expect(pdf.sourcePages[0]!.notes.map((n) => n.code)).toEqual(
+      docx.sourcePages[0]!.notes.map((n) => n.code)
+    );
+  }, 300_000);
+
+  it("truncates to the cap and names BOTH counts, identically on both engines", async () => {
+    const docx = await runCli(["--engine", "ts", "--template", templatePath, "-o", join(dir, "t.docx")]);
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "t.pdf")]);
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      const note = report.issues.find((i) => i.code === "macro-degraded");
+      expect(note, `${engine} truncation note`).toBeDefined();
+      // Both counts: "100 of 100+" would hide that the reader sees 3.5 %.
+      expect(note!.message, engine).toContain("100 of 2817");
+      expect(note!.message, engine).toContain("sample");
+    }
+    expect(pdf.issues.find((i) => i.code === "macro-degraded")!.message).toBe(
+      docx.issues.find((i) => i.code === "macro-degraded")!.message
+    );
+  }, 300_000);
+});
+
+/**
  * LIVE dual-engine render diff (layer 2). GATED: needs Python (`packages/
  * export` venv or system install), a Scroll-style template, a configured
  * profile, and a live page — which per the project's hard E2E rule MUST live in

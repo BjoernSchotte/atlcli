@@ -20,6 +20,7 @@ export interface BuildMacroOptionsArgs {
     nativeTocPresent?: boolean;
     policy?: ExternalAssetPolicy;
     externalAssets?: ExternalAssetFetcher;
+    chapterAnchorById?: ReadonlyMap<string, string>;
     signal?: AbortSignal;
 }
 

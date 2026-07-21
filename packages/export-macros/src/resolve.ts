@@ -401,6 +401,25 @@ function wrapPorts(
           () => c.getPageStorageById!(id)
         ) as ReturnType<NonNullable<ConfluenceContentPort["getPageStorageById"]>>;
     }
+    // Optional methods must be re-attached EXPLICITLY. This wrapper REBUILDS the
+    // port instead of proxying it, so any method it does not name disappears —
+    // and a renderer that feature-detects one (the Confluence list checks for
+    // `searchContent`) then degrades on a host that does implement it.
+    if (c.searchContent) {
+      wrappedC.searchContent = (cql, o) =>
+        guard(
+          "confluence",
+          stableKey({
+            port: "confluence",
+            method: "searchContent",
+            siteId,
+            cql,
+            maximumResults: o.maximumResults,
+            contentStatuses: o.contentStatuses ? [...o.contentStatuses].sort() : undefined,
+          }),
+          () => c.searchContent!(cql, o)
+        ) as ReturnType<NonNullable<ConfluenceContentPort["searchContent"]>>;
+    }
     wrapped.confluence = wrappedC;
   }
 

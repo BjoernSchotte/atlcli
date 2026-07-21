@@ -10,11 +10,11 @@
 
 ### Entry point `.` — stable
 
-- exported symbols (33): AttachmentLookupPort, AttachmentMeta, ConfluenceContentPort, DefaultRegistryDeps, ExportViewPort, ExternalAssetFetcher, ExternalAssetPolicy, ExtractMacroBodyDep, HtmlToExportBlocksDep, JiraIssuePort, JiraIssueRef, MACRO_DEGRADED, MACRO_RENDERED_VIA, MACRO_SKIPPED_BY_CONFIG, MacroExportContext, MacroInstance, MacroInstanceId, MacroRenderResult, MacroRenderer, MacroRendererRegistry, MacroResolutionBudget, MacroResolutionOptions, ParsePagePropertiesDep, PortError, PortErrorKind, StorageToBlocksDep, UnknownBlock, createRegistry, defaultRegistry, isAbortError, isPortError, portError, resolveMacroBlocks
-- same-package closure references: 21
+- exported symbols (36): AttachmentLookupPort, AttachmentMeta, ConfluenceContentPort, ConfluenceSearchHit, ConfluenceSearchHits, DefaultRegistryDeps, ExportViewPort, ExternalAssetFetcher, ExternalAssetPolicy, ExtractMacroBodyDep, HtmlToExportBlocksDep, JiraIssuePort, JiraIssueRef, MACRO_DEGRADED, MACRO_RENDERED_VIA, MACRO_SKIPPED_BY_CONFIG, MacroExportContext, MacroInstance, MacroInstanceId, MacroPageScope, MacroRenderResult, MacroRenderer, MacroRendererRegistry, MacroResolutionBudget, MacroResolutionOptions, ParsePagePropertiesDep, PortError, PortErrorKind, StorageToBlocksDep, UnknownBlock, createRegistry, defaultRegistry, isAbortError, isPortError, portError, resolveMacroBlocks
+- same-package closure references: 24
 - reaches `@atlcli/confluence` (frozen): ExportBlock, ExportNote, MacroParameter, StorageToBlocksResult
 - reachable-but-unexported gaps: none
 
 ### Entry point `./internal` — internal
 
-- exported symbols (21): DatasourceSiteVerdict, childrenRenderer, cqlFromParams, datasourceSiteVerdict, diagramMacroRenderer, escapeCqlValue, excerptIncludeRenderer, excerptRenderer, exportViewFallbackRenderer, includeRenderer, issueTable, jiraMacroRenderer, jiraStatusColor, macroParamText, multiexcerptIncludeRenderer, pagePropertiesReportRenderer, parseWidths, scrollTableLayoutRenderer, slugifyHeading, tocFromHeadings, tocRenderer
+- exported symbols (25): DatasourceSiteVerdict, childrenRenderer, columnNotes, confluenceListCellText, confluenceListRenderer, confluenceListTable, cqlFromParams, datasourceSiteVerdict, diagramMacroRenderer, escapeCqlValue, excerptIncludeRenderer, excerptRenderer, exportViewFallbackRenderer, includeRenderer, issueTable, jiraMacroRenderer, jiraStatusColor, macroParamText, multiexcerptIncludeRenderer, pagePropertiesReportRenderer, parseWidths, scrollTableLayoutRenderer, slugifyHeading, tocFromHeadings, tocRenderer

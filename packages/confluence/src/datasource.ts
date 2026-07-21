@@ -41,6 +41,7 @@
  */
 
 import { decodeHTML } from "entities";
+import { escapeCqlValue } from "./client.js";
 import type { ExportNoteCode, MacroParameter } from "./export-blocks.js";
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ export type DatasourceDegradeCode = Extract<
   | "datasource-provider-unknown"
   | "datasource-provider-unsupported"
   | "datasource-filter-unsupported"
+  | "datasource-query-empty"
 >;
 
 /**
@@ -152,9 +154,14 @@ export interface DatasourceMapContext {
   columns: string[];
 }
 
-export type DatasourceMapResult =
-  | { params: MacroParameter[] }
-  | { degrade: { code: DatasourceDegradeCode; level: "info" | "warning"; message: string } };
+/** A typed, user-facing reason a datasource was kept as a link. */
+export interface DatasourceDegradation {
+  code: DatasourceDegradeCode;
+  level: "info" | "warning";
+  message: string;
+}
+
+export type DatasourceMapResult = { params: MacroParameter[] } | { degrade: DatasourceDegradation };
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -361,8 +368,305 @@ const jiraProvider: DatasourceProvider = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Confluence search provider (spec SUPPORT-DATASOURCE-CONFLUENCE)
+// ---------------------------------------------------------------------------
+
 /**
- * Every datasource provider we recognize. Two are registered as
+ * Synthetic macro name for a Confluence-list datasource.
+ *
+ * Synthetic on purpose: unlike `"jira"` there is no legacy
+ * `<ac:structured-macro ac:name="confluence-list">` to collide with, so this
+ * name exists solely to route the translated datasource at the renderer the
+ * registry owns. It is deliberately NOT added to `KNOWN_MACROS` (the *markdown*
+ * converter's vocabulary describes real Confluence macros).
+ */
+export const CONFLUENCE_LIST_MACRO = "confluence-list";
+
+/**
+ * The `type` values CQL accepts, measured against Confluence Cloud
+ * (`GET /rest/api/search?cql=type = "…"`, 2026-07-21): every other value is a
+ * 400, so passing an unrecognized `entityTypes` entry straight through would
+ * fail the whole query with an opaque message. `blog` is Atlassian's older
+ * spelling and is the one alias that is safe to normalize.
+ */
+const CQL_CONTENT_TYPES = new Set([
+  "page",
+  "blogpost",
+  "attachment",
+  "comment",
+  "whiteboard",
+  "database",
+  "embed",
+  "folder",
+]);
+const ENTITY_TYPE_ALIASES: Record<string, string> = { blog: "blogpost", blogpost: "blogpost" };
+
+/**
+ * `parameters` keys that carry no filter. `cloudId` identifies the site (the
+ * `href` is the site evidence the renderer actually uses); `searchString` and
+ * `shouldMatchTitleOnly` are consumed by the text fragment.
+ */
+const CONFLUENCE_NON_FILTER_PARAMS = new Set([
+  "cloudId",
+  "searchString",
+  "shouldMatchTitleOnly",
+]);
+
+/**
+ * List parameter → CQL field, in the order fragments are emitted.
+ *
+ * Order is fixed here rather than taken from `Object.keys(parameters)`, so two
+ * exports of the same page produce a byte-identical CQL string (and therefore
+ * hit the resolver's dedup cache) no matter how the editor happened to
+ * serialize the object.
+ */
+const CONFLUENCE_LIST_FILTERS: readonly { param: string; field: string }[] = [
+  { param: "entityTypes", field: "type" },
+  { param: "spaceKeys", field: "space" },
+  { param: "labels", field: "label" },
+  { param: "ancestorPageIds", field: "ancestor" },
+  { param: "creatorAccountIds", field: "creator" },
+  { param: "contributorAccountIds", field: "contributor" },
+];
+
+/**
+ * A Confluence-list query: the CQL, plus the one filter that is NOT expressible
+ * in CQL (see {@link composeConfluenceSearchCql}).
+ */
+export interface ConfluenceSearchQuery {
+  cql: string;
+  /** `current` / `archived` / `draft` — a request parameter, not a CQL fragment. */
+  contentStatuses?: string[];
+}
+
+/** A datasource parameter value that would constrain the query if we honoured it. */
+function isMeaningful(v: unknown): boolean {
+  if (v === null || v === undefined || v === false) return false;
+  if (typeof v === "string") return v.trim() !== "";
+  if (Array.isArray(v)) return v.some(isMeaningful);
+  if (typeof v === "object") return Object.values(v as Record<string, unknown>).some(isMeaningful);
+  return true;
+}
+
+/** Non-empty string entries of an array parameter (trap 2: values are lists). */
+function listParam(ds: Datasource, name: string): string[] | undefined {
+  const v = ds.parameters[name];
+  if (!Array.isArray(v)) return undefined;
+  const items = v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
+  return items.length > 0 ? items : undefined;
+}
+
+/** `field in ("a","b")`, every literal through `escapeCqlValue`. */
+function inFragment(field: string, values: readonly string[]): string {
+  return `${field} in (${values.map((v) => `"${escapeCqlValue(v)}"`).join(",")})`;
+}
+
+/** `yyyy-MM-dd`, the one CQL date literal shape we accept (see below). */
+function cqlDate(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const m = v.trim().match(/^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/);
+  return m ? m[1] : undefined;
+}
+
+function degrade(
+  code: DatasourceDegradeCode,
+  level: "info" | "warning",
+  message: string
+): DatasourceMapResult {
+  return { degrade: { code, level, message } };
+}
+
+/**
+ * Compose the CQL for a Confluence-list datasource from **all** present
+ * parameters.
+ *
+ * The trap this function exists for: on the real artifact `searchString` is the
+ * EMPTY STRING and the entire query lives in `contributorAccountIds`. Keying on
+ * `searchString` (the obvious field, and the Jira provider's `jql` analogue)
+ * would conclude "no query" and render nothing. So the empty case is "no
+ * parameter produced a fragment", never "no searchString".
+ *
+ * Returns the composed query, or a typed degradation. Never an unbounded
+ * site-wide search: a parameter set that yields no fragment degrades, because
+ * `GET /search?cql=` over a whole site is not what the author asked for.
+ */
+export function composeConfluenceSearchCql(
+  ds: Datasource
+): ConfluenceSearchQuery | { degrade: DatasourceDegradation } {
+  // `contentARIs` first: it is the one documented filter with NO CQL
+  // equivalent, so honouring the rest and dropping it would WIDEN the result
+  // set — a table of plausible-looking rows the author never asked for, which
+  // is the same failure mode the Jira cross-site guard exists to prevent.
+  if (isMeaningful(ds.parameters.contentARIs)) {
+    return {
+      degrade: {
+        code: "datasource-filter-unsupported",
+        level: "warning",
+        message:
+          "A Confluence list filters on specific content (`contentARIs`), which has no CQL equivalent; it was kept as a link rather than rendered from a wider query.",
+      },
+    };
+  }
+
+  const fragments: string[] = [];
+
+  // 1. Free text. `shouldMatchTitleOnly` is a MODIFIER of this fragment, not a
+  //    filter of its own — with no search string it has nothing to modify.
+  const searchString = stringParam(ds, "searchString");
+  if (searchString !== undefined) {
+    const field = ds.parameters.shouldMatchTitleOnly === true ? "title" : "text";
+    fragments.push(`${field} ~ "${escapeCqlValue(searchString)}"`);
+  }
+
+  // 2. List filters → `in (…)`.
+  for (const { param, field } of CONFLUENCE_LIST_FILTERS) {
+    const values = listParam(ds, param);
+    if (!values) {
+      // A filter that is PRESENT but not a usable list (a scalar, say, if
+      // Atlassian ever changes the shape) must not be quietly skipped: dropping
+      // it widens the table with rows the author excluded.
+      if (isMeaningful(ds.parameters[param])) {
+        return {
+          degrade: {
+            code: "datasource-filter-unsupported",
+            level: "warning",
+            message: `A Confluence list carries a "${param}" filter in a shape this exporter does not recognize; it was kept as a link rather than rendered from a query missing that filter.`,
+          },
+        };
+      }
+      continue;
+    }
+    if (param === "entityTypes") {
+      const mapped: string[] = [];
+      for (const raw of values) {
+        const key = raw.toLowerCase();
+        const cqlType = ENTITY_TYPE_ALIASES[key] ?? key;
+        if (!CQL_CONTENT_TYPES.has(cqlType)) {
+          return {
+            degrade: {
+              code: "datasource-filter-unsupported",
+              level: "warning",
+              message: `A Confluence list filters on content type "${raw}", which is not a CQL content type; it was kept as a link rather than rendered from a query missing that filter.`,
+            },
+          };
+        }
+        mapped.push(cqlType);
+      }
+      fragments.push(inFragment(field, mapped));
+      continue;
+    }
+    fragments.push(inFragment(field, values));
+  }
+
+  // 3. Date window. This is the one filter we have no artifact for, so it is
+  //    deliberately narrow: ABSOLUTE `yyyy-MM-dd` bounds only. Atlassian's own
+  //    resolver sends an `origin-timezone` header with relative values
+  //    (`today`, `-7d`), and an export has no defensible timezone to resolve
+  //    those against — a reproducible document must not silently pick one.
+  const lastModified = ds.parameters.lastModified;
+  if (isMeaningful(lastModified)) {
+    if (typeof lastModified !== "object" || Array.isArray(lastModified)) {
+      return {
+        degrade: {
+          code: "datasource-filter-unsupported",
+          level: "warning",
+          message:
+            "A Confluence list carries a `lastModified` filter in a shape this exporter does not recognize; it was kept as a link rather than rendered from a query missing that filter.",
+        },
+      };
+    }
+    const { from, to } = lastModified as Record<string, unknown>;
+    const fromDate = from === undefined ? undefined : cqlDate(from);
+    const toDate = to === undefined ? undefined : cqlDate(to);
+    if ((from !== undefined && fromDate === undefined) || (to !== undefined && toDate === undefined)) {
+      return {
+        degrade: {
+          code: "datasource-filter-unsupported",
+          level: "warning",
+          message:
+            "A Confluence list filters on a relative last-modified window, which an export cannot resolve reproducibly (it depends on the reader's timezone); it was kept as a link.",
+        },
+      };
+    }
+    if (fromDate) fragments.push(`lastmodified >= "${fromDate}"`);
+    if (toDate) fragments.push(`lastmodified <= "${toDate}"`);
+  }
+
+  // 4. Anything we do not recognize. A filter we silently drop widens the
+  //    table; naming it in the report is the only honest outcome, and it is
+  //    what makes a filter Atlassian adds after this release diagnosable.
+  const known = new Set([
+    ...CONFLUENCE_NON_FILTER_PARAMS,
+    ...CONFLUENCE_LIST_FILTERS.map((f) => f.param),
+    "contentStatuses",
+    "contentARIs",
+    "lastModified",
+  ]);
+  for (const [key, value] of Object.entries(ds.parameters)) {
+    if (known.has(key) || !isMeaningful(value)) continue;
+    return {
+      degrade: {
+        code: "datasource-filter-unsupported",
+        level: "warning",
+        message: `A Confluence list carries an unsupported filter "${key}"; it was kept as a link rather than rendered from a query missing that filter.`,
+      },
+    };
+  }
+
+  // 5. `contentStatuses` is NOT a CQL fragment. Measured against Confluence
+  //    Cloud: `status = "archived"` is a 400 — content status is a REQUEST
+  //    parameter (`cqlcontext.contentStatuses`), not a CQL field. It therefore
+  //    rides beside the CQL rather than inside it, and it does not on its own
+  //    make a query non-empty (a status with no other filter is still a
+  //    site-wide search).
+  const contentStatuses = listParam(ds, "contentStatuses");
+
+  if (fragments.length === 0) {
+    return {
+      degrade: {
+        code: "datasource-query-empty",
+        level: "warning",
+        message:
+          "A Confluence list carries no filter this exporter can turn into a query; it was kept as a link rather than answered with an unbounded site-wide search.",
+      },
+    };
+  }
+
+  return {
+    cql: fragments.join(" AND "),
+    ...(contentStatuses ? { contentStatuses } : {}),
+  };
+}
+
+const confluenceListProvider: DatasourceProvider = {
+  id: CONFLUENCE_SEARCH_DATASOURCE_ID,
+  label: "Confluence search results",
+  status: "supported",
+  macroName: CONFLUENCE_LIST_MACRO,
+  toParams(ds, ctx) {
+    const composed = composeConfluenceSearchCql(ds);
+    if ("degrade" in composed) return degrade(composed.degrade.code, composed.degrade.level, composed.degrade.message);
+
+    const params: MacroParameter[] = [{ name: "cql", text: composed.cql }];
+    if (composed.contentStatuses) {
+      params.push({ name: "contentstatuses", text: composed.contentStatuses.join(",") });
+    }
+    if (ctx.columns.length > 0) params.push({ name: "columns", text: ctx.columns.join(",") });
+    // Not stored by Atlassian — see DATASOURCE_DEFAULT_MAX_ROWS. For this
+    // provider the cap is the NORMAL case (the live artifact matches 2 817
+    // rows), which is why the renderer's truncation note names both counts.
+    params.push({ name: "maximumresults", text: String(DATASOURCE_DEFAULT_MAX_ROWS) });
+    params.push({ name: "datasourceid", text: ds.id });
+    const cloudId = stringParam(ds, "cloudId");
+    if (cloudId !== undefined) params.push({ name: "datasourcecloudid", text: cloudId });
+    if (ctx.href !== "") params.push({ name: "datasourceurl", text: ctx.href });
+    return { params };
+  },
+};
+
+/**
+ * Every datasource provider we recognize. One is registered as
  * `known-unsupported` on purpose: "we recognize this and have not implemented
  * it" is a precise, actionable message, and it is materially different from
  * the unknown-id case, which must additionally print the raw id so a provider
@@ -375,11 +679,7 @@ export const DATASOURCE_PROVIDERS: readonly DatasourceProvider[] = [
     label: "Jira Service Management Assets",
     status: "known-unsupported",
   },
-  {
-    id: CONFLUENCE_SEARCH_DATASOURCE_ID,
-    label: "Confluence search results",
-    status: "known-unsupported",
-  },
+  confluenceListProvider,
 ];
 
 /** Look a provider up by its global id. */

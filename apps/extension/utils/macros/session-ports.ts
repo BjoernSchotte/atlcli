@@ -432,6 +432,25 @@ export function sessionConfluenceContentPort(
         classifySessionPortError(err, "confluence", deps.state);
       }
     },
+    async searchContent(cql, opts) {
+      preflight("confluence", deps.state, deps.signal);
+      try {
+        // `searchDetailed` (GET /search), not `searchPages` (GET /content/search):
+        // only the former carries the excerpt, the owner and the `totalSize` a
+        // Confluence-list table needs, and it costs ONE request per table.
+        const page = await client.searchDetailed(cql, {
+          limit: opts.maximumResults,
+          ...(opts.contentStatuses ? { contentStatuses: opts.contentStatuses } : {}),
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        });
+        return {
+          hits: page.results.slice(0, opts.maximumResults),
+          ...(page.totalSize !== undefined ? { totalSize: page.totalSize } : {}),
+        };
+      } catch (err) {
+        classifySessionPortError(err, "confluence", deps.state);
+      }
+    },
   };
 }
 

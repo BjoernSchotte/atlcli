@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   ASSETS_DATASOURCE_ID,
+  CONFLUENCE_LIST_MACRO,
   CONFLUENCE_SEARCH_DATASOURCE_ID,
   DATASOURCE_DEFAULT_MAX_ROWS,
   DATASOURCE_PROVIDERS,
@@ -192,7 +193,8 @@ describe("provider registry", () => {
   test("resolves the three known provider ids", () => {
     expect(datasourceProvider(JIRA_DATASOURCE_ID)?.status).toBe("supported");
     expect(datasourceProvider(ASSETS_DATASOURCE_ID)?.status).toBe("known-unsupported");
-    expect(datasourceProvider(CONFLUENCE_SEARCH_DATASOURCE_ID)?.status).toBe("known-unsupported");
+    expect(datasourceProvider(CONFLUENCE_SEARCH_DATASOURCE_ID)?.status).toBe("supported");
+    expect(datasourceProvider(CONFLUENCE_SEARCH_DATASOURCE_ID)?.macroName).toBe(CONFLUENCE_LIST_MACRO);
     expect(datasourceProvider("nope")).toBeUndefined();
   });
 
@@ -272,15 +274,28 @@ describe("translateDatasourceLink — degradation", () => {
     expect(out.message).toContain("Assets");
   });
 
-  test("Confluence search degrades by name", () => {
+  test("Confluence search is SUPPORTED now — it routes to a macro, not a degradation", () => {
+    const out = translateDatasourceLink(
+      attr({
+        id: CONFLUENCE_SEARCH_DATASOURCE_ID,
+        parameters: { cloudId: "c-1", spaceKeys: ["DOCSY"] },
+        views: [{ type: "table", properties: { columns: [{ key: "title" }] } }],
+      }),
+      "https://x.atlassian.net/wiki/search?text="
+    );
+    expect(out.kind).toBe("macro");
+    if (out.kind !== "macro") return;
+    expect(out.macroName).toBe(CONFLUENCE_LIST_MACRO);
+  });
+
+  test("a Confluence list with NO usable filter still degrades — never a site-wide search", () => {
     const out = translateDatasourceLink(
       attr({ id: CONFLUENCE_SEARCH_DATASOURCE_ID, parameters: {}, views: [{ type: "table" }] }),
       "https://x.atlassian.net/thing"
     );
     expect(out.kind).toBe("degrade");
     if (out.kind !== "degrade") return;
-    expect(out.code).toBe("datasource-provider-unsupported");
-    expect(out.message).toContain("Confluence search");
+    expect(out.code).toBe("datasource-query-empty");
   });
 
   test("the saved-filter variant degrades with its own code", () => {
@@ -335,5 +350,190 @@ describe("translateDatasourceLink — degradation", () => {
       expect(out.message.length).toBeGreaterThan(20);
       expect(out.level).toBe("warning");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Confluence list ("Confluence search") provider
+// ---------------------------------------------------------------------------
+
+/**
+ * The VERBATIM `data-datasource` attribute of DOCSY page 1126236229
+ * ("M1 Abnahme Abschnitt 7.6"), as Confluence Cloud stores it — HTML entities
+ * intact, fetched from the live page on 2026-07-21.
+ *
+ * Two facts about this artifact drive the whole provider, and both would be
+ * lost by a hand-written idealization: `searchString` is the EMPTY STRING, and
+ * the only real filter is an ARRAY.
+ */
+const REAL_CONFLUENCE_ATTR_ENCODED =
+  "{&quot;id&quot;:&quot;768fc736-3af4-4a8f-b27e-203602bff8ca&quot;," +
+  "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca&quot;," +
+  "&quot;contributorAccountIds&quot;:[&quot;70121:666cbd78-32fa-4764-90a1-d3368305f07b&quot;]," +
+  "&quot;searchString&quot;:&quot;&quot;}," +
+  "&quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[" +
+  "{&quot;key&quot;:&quot;type&quot;},{&quot;key&quot;:&quot;title&quot;},{&quot;key&quot;:&quot;space&quot;}," +
+  "{&quot;key&quot;:&quot;description&quot;},{&quot;key&quot;:&quot;ownedBy&quot;},{&quot;key&quot;:&quot;updatedAt&quot;}," +
+  "{&quot;key&quot;:&quot;labels&quot;},{&quot;key&quot;:&quot;status&quot;}]}}]}";
+
+const REAL_CONFLUENCE_HREF =
+  "https://mayflowergmbh.atlassian.net/wiki/search?text=&contributors=70121%3A666cbd78-32fa-4764-90a1-d3368305f07b";
+
+function confluenceList(parameters: Record<string, unknown>, columns: string[] = ["title"]): string {
+  return attr({
+    id: CONFLUENCE_SEARCH_DATASOURCE_ID,
+    parameters,
+    views: [{ type: "table", properties: { columns: columns.map((key) => ({ key })) } }],
+  });
+}
+
+/** The composed CQL, or `undefined` when the parameters degraded. */
+function cqlOf(parameters: Record<string, unknown>): string | undefined {
+  const out = translateDatasourceLink(confluenceList(parameters), "https://x.atlassian.net/wiki/s");
+  return out.kind === "macro" ? macroParamText(out.params, "cql") : undefined;
+}
+
+function degradeOf(parameters: Record<string, unknown>): { code: string; message: string } | undefined {
+  const out = translateDatasourceLink(confluenceList(parameters), "https://x.atlassian.net/wiki/s");
+  return out.kind === "degrade" ? { code: out.code, message: out.message } : undefined;
+}
+
+describe("Confluence list — the real artifact (DOCSY 1126236229)", () => {
+  test("trap 1: an EMPTY searchString still yields a query, built from the filters", () => {
+    const out = translateDatasourceLink(REAL_CONFLUENCE_ATTR_ENCODED, REAL_CONFLUENCE_HREF);
+    expect(out.kind).toBe("macro");
+    if (out.kind !== "macro") return;
+    const cql = macroParamText(out.params, "cql");
+    expect(cql).toBe('contributor in ("70121:666cbd78-32fa-4764-90a1-d3368305f07b")');
+    // The whole trap: keying on `searchString` would have produced a `text ~ ""`
+    // fragment (or concluded "no query"). Neither may appear.
+    expect(cql).not.toContain("text ~");
+    expect(cql).not.toContain("title ~");
+  });
+
+  test("carries the author's eight columns, in the author's order", () => {
+    const out = translateDatasourceLink(REAL_CONFLUENCE_ATTR_ENCODED, REAL_CONFLUENCE_HREF);
+    if (out.kind !== "macro") throw new Error("expected a macro");
+    expect(macroParamText(out.params, "columns")).toBe(
+      "type,title,space,description,ownedBy,updatedAt,labels,status"
+    );
+  });
+
+  test("carries the row cap, the provider id, the cloud id and the live-list URL", () => {
+    const out = translateDatasourceLink(REAL_CONFLUENCE_ATTR_ENCODED, REAL_CONFLUENCE_HREF);
+    if (out.kind !== "macro") throw new Error("expected a macro");
+    expect(macroParamText(out.params, "maximumResults")).toBe(String(DATASOURCE_DEFAULT_MAX_ROWS));
+    expect(macroParamText(out.params, "datasourceId")).toBe(CONFLUENCE_SEARCH_DATASOURCE_ID);
+    expect(macroParamText(out.params, "datasourceCloudId")).toBe("ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca");
+    expect(macroParamText(out.params, "datasourceUrl")).toBe(REAL_CONFLUENCE_HREF);
+  });
+});
+
+describe("Confluence list — parameter → CQL mapping", () => {
+  test("trap 2: array parameters become `in (…)` lists, not scalars", () => {
+    expect(cqlOf({ spaceKeys: ["DOCSY", "ATL"] })).toBe('space in ("DOCSY","ATL")');
+    expect(cqlOf({ labels: ["a", "b"] })).toBe('label in ("a","b")');
+    expect(cqlOf({ ancestorPageIds: ["1", "2"] })).toBe('ancestor in ("1","2")');
+    expect(cqlOf({ creatorAccountIds: ["u1"] })).toBe('creator in ("u1")');
+  });
+
+  test("a search string becomes `text ~`, and `shouldMatchTitleOnly` switches it to `title ~`", () => {
+    expect(cqlOf({ searchString: "budget" })).toBe('text ~ "budget"');
+    expect(cqlOf({ searchString: "budget", shouldMatchTitleOnly: true })).toBe('title ~ "budget"');
+  });
+
+  test("every literal goes through escapeCqlValue — including a value carrying a quote", () => {
+    const cql = cqlOf({ searchString: 'ev"il', labels: ['a"b', "c\\d"] })!;
+    // The quote is escaped rather than closing the literal early.
+    expect(cql).toContain('text ~ "ev\\"il"');
+    expect(cql).toContain('label in ("a\\"b","c\\\\d")');
+    // A naive builder would emit `text ~ "ev"il"`, which is a different query.
+    expect(cql).not.toContain('"ev"il"');
+  });
+
+  test("all present parameters are AND-joined, in a fixed order", () => {
+    // Key order in the object is deliberately scrambled: the CQL must not be.
+    const cql = cqlOf({
+      labels: ["x"],
+      searchString: "q",
+      spaceKeys: ["S"],
+      entityTypes: ["page"],
+    });
+    expect(cql).toBe('text ~ "q" AND type in ("page") AND space in ("S") AND label in ("x")');
+  });
+
+  test("entityTypes maps onto CQL's own vocabulary and rejects what CQL would 400 on", () => {
+    // Measured against Cloud: these eight are accepted by `type in (…)`.
+    expect(cqlOf({ entityTypes: ["page", "blogpost", "attachment", "folder"] })).toBe(
+      'type in ("page","blogpost","attachment","folder")'
+    );
+    // `blog` is Atlassian's older spelling and 400s as a CQL type.
+    expect(cqlOf({ entityTypes: ["blog"] })).toBe('type in ("blogpost")');
+    // A type we cannot map degrades rather than being sent and failing opaquely.
+    expect(degradeOf({ entityTypes: ["hologram"] })?.code).toBe("datasource-filter-unsupported");
+    expect(degradeOf({ entityTypes: ["hologram"] })?.message).toContain("hologram");
+  });
+
+  test("contentStatuses rides BESIDE the CQL — content status is not a CQL field", () => {
+    // Measured: `status = "archived"` is a 400 on Cloud; the filter belongs in
+    // `cqlcontext`. It also does not on its own make a query non-empty.
+    const out = translateDatasourceLink(
+      confluenceList({ spaceKeys: ["S"], contentStatuses: ["current", "archived"] }),
+      "https://x/y"
+    );
+    if (out.kind !== "macro") throw new Error("expected a macro");
+    expect(macroParamText(out.params, "cql")).toBe('space in ("S")');
+    expect(macroParamText(out.params, "cql")).not.toContain("status");
+    expect(macroParamText(out.params, "contentStatuses")).toBe("current,archived");
+    expect(degradeOf({ contentStatuses: ["current"] })?.code).toBe("datasource-query-empty");
+  });
+
+  test("an absolute lastModified window becomes CQL date bounds", () => {
+    expect(cqlOf({ lastModified: { from: "2026-01-01", to: "2026-06-30" } })).toBe(
+      'lastmodified >= "2026-01-01" AND lastmodified <= "2026-06-30"'
+    );
+  });
+
+  test("a RELATIVE lastModified degrades — an export has no reproducible timezone", () => {
+    expect(degradeOf({ lastModified: { from: "-7d" } })?.code).toBe("datasource-filter-unsupported");
+    expect(degradeOf({ lastModified: "today" })?.code).toBe("datasource-filter-unsupported");
+  });
+
+  test("contentARIs degrades rather than widening the table by dropping the filter", () => {
+    // Present ALONGSIDE a mappable filter: honouring only the mappable one
+    // would show rows the author excluded, which looks perfectly successful.
+    const d = degradeOf({ spaceKeys: ["S"], contentARIs: ["ari:cloud:confluence:x:page/1"] });
+    expect(d?.code).toBe("datasource-filter-unsupported");
+    expect(d?.message).toContain("contentARIs");
+  });
+
+  test("a KNOWN filter in an unexpected shape degrades instead of being skipped", () => {
+    // Skipping it would widen the table with rows the author excluded — the
+    // same failure mode as dropping `contentARIs`.
+    const d = degradeOf({ spaceKeys: "DOCSY" });
+    expect(d?.code).toBe("datasource-filter-unsupported");
+    expect(d?.message).toContain("spaceKeys");
+  });
+
+  test("an unrecognized filter degrades and names itself", () => {
+    const d = degradeOf({ spaceKeys: ["S"], someFutureFilter: ["v"] });
+    expect(d?.code).toBe("datasource-filter-unsupported");
+    expect(d?.message).toContain("someFutureFilter");
+  });
+
+  test("empty values are not filters: empty arrays and blank strings yield no fragment", () => {
+    expect(degradeOf({ cloudId: "c", searchString: "", spaceKeys: [], labels: [] })?.code).toBe(
+      "datasource-query-empty"
+    );
+    // ...and cloudId alone never counts as a query.
+    expect(degradeOf({ cloudId: "c" })?.code).toBe("datasource-query-empty");
+  });
+
+  test("regression: the Jira provider is untouched by the second provider", () => {
+    const out = translateDatasourceLink(REAL_ATTR_ENCODED, REAL_HREF);
+    expect(out.kind).toBe("macro");
+    if (out.kind !== "macro") return;
+    expect(out.macroName).toBe("jira");
+    expect(macroParamText(out.params, "jqlQuery")).toBe(REAL_JQL);
   });
 });
