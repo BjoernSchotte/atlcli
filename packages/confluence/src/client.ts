@@ -1,3 +1,4 @@
+import { decodeHTML } from "entities";
 import { parseRetryAfterMs } from "./retry-after.js";
 import {
   SessionRedirectBlockedError,
@@ -77,6 +78,48 @@ export type ConfluenceSearchResult = {
   labels?: string[];
   creator?: string;
   created?: string;
+};
+
+/**
+ * One row of a {@link ConfluenceClient.searchDetailed} result — the fields a
+ * Confluence-list datasource table needs, from ONE request.
+ *
+ * Deliberately separate from {@link ConfluenceSearchResult}: that type is what
+ * `GET /content/search` can produce, and measurement (2026-07-21, Cloud) showed
+ * that endpoint returns **no excerpt at all** (with either `excerpt=indexed` or
+ * `excerpt=highlight`) and **no `totalSize`** — the two facts a datasource table
+ * cannot render without.
+ */
+export type ConfluenceSearchDetail = {
+  id: string;
+  title: string;
+  /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
+  type?: string;
+  /** Absolute URL of the content. */
+  url?: string;
+  spaceKey?: string;
+  /** The space's display NAME (the UI's space chip shows this, not the key). */
+  spaceName?: string;
+  /** Plain-text search excerpt (highlight markers stripped, entities decoded). */
+  excerpt?: string;
+  /** Display name of the content owner (`history.ownedBy`). */
+  ownedBy?: string;
+  /** ISO timestamp of the last update. */
+  lastModified?: string;
+  labels?: string[];
+  /** Content status: `current`, `draft`, `archived`, … */
+  status?: string;
+};
+
+/** A page of {@link ConfluenceClient.searchDetailed} results. */
+export type ConfluenceDetailedSearchResults = {
+  results: ConfluenceSearchDetail[];
+  /**
+   * The server's own count of ALL matches, not just this page. Load-bearing for
+   * a datasource table's truncation note, which must name the matched count and
+   * not merely "100+".
+   */
+  totalSize?: number;
 };
 
 /** Sync scope type for polling */
@@ -174,6 +217,23 @@ export function escapeCqlValue(value: string): string {
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"');
+}
+
+/**
+ * Turn a Confluence search excerpt into plain text.
+ *
+ * Confluence wraps matched terms in its own `@@@hl@@@…@@@endhl@@@` sentinels
+ * and entity-encodes the rest, so a raw excerpt renders as literal `&quot;` and
+ * marker noise in a document. The highlight is dropped rather than styled
+ * (spec SUPPORT-DATASOURCE-CONFLUENCE, open question 3): a Confluence list can
+ * have an EMPTY `searchString`, in which case the highlight refers to a search
+ * term that does not exist. Newlines collapse to spaces because the excerpt is
+ * a one-line table cell.
+ */
+function cleanExcerpt(raw: string): string {
+  return decodeHTML(raw.replace(/@@@hl@@@/g, "").replace(/@@@endhl@@@/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -907,6 +967,90 @@ export class ConfluenceClient {
       totalSize: data.totalSize,
       hasMore: !!nextLink || (data.start ?? 0) + (data.size ?? results.length) < (data.totalSize ?? 0),
       nextLink,
+    };
+  }
+
+  /**
+   * CQL search through `GET /rest/api/search` (the SEARCH endpoint), returning
+   * the per-row detail a Confluence-list datasource table renders.
+   *
+   * Why a second search method rather than widening {@link search}: `search`
+   * drives `GET /content/search`, and measurement against Confluence Cloud
+   * (2026-07-21) showed that endpoint returns **no `excerpt`** — with
+   * `excerpt=indexed` *and* with `excerpt=highlight` — and **no `totalSize`**.
+   * The datasource table needs both (a `description` column, and a truncation
+   * note that names how many rows matched, not just "100+"). `/search` returns
+   * both plus owner and content status in the SAME response, so the whole
+   * eight-column table costs one request instead of one-plus-N.
+   *
+   * `contentStatuses` is a REQUEST parameter, not a CQL fragment: `status =
+   * "archived"` is a 400 on Cloud (measured), while `cqlcontext` carries the
+   * filter correctly.
+   */
+  async searchDetailed(
+    cql: string,
+    options: {
+      limit?: number;
+      /** `current` / `archived` / `draft`; sent via `cqlcontext`. */
+      contentStatuses?: string[];
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<ConfluenceDetailedSearchResults> {
+    const { limit = 25, contentStatuses, signal } = options;
+    const data = (await this.request("/search", {
+      query: {
+        cql,
+        limit,
+        expand: [
+          "content.space",
+          "content.version",
+          "content.history.lastUpdated",
+          "content.history.ownedBy",
+          "content.metadata.labels",
+        ].join(","),
+        ...(contentStatuses && contentStatuses.length > 0
+          ? { cqlcontext: JSON.stringify({ contentStatuses }) }
+          : {}),
+      },
+      signal,
+    })) as any;
+
+    const base: string = data._links?.base ?? "";
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      results: results.map((item: any) => this.parseSearchDetail(item, base)),
+      ...(typeof data.totalSize === "number" ? { totalSize: data.totalSize } : {}),
+    };
+  }
+
+  /** Map one `/search` result onto {@link ConfluenceSearchDetail}. */
+  private parseSearchDetail(item: any, base: string): ConfluenceSearchDetail {
+    const content = item.content ?? {};
+    const labels: string[] = Array.isArray(content.metadata?.labels?.results)
+      ? content.metadata.labels.results.map((l: any) => l.name).filter((n: unknown): n is string => typeof n === "string")
+      : [];
+    // `item.url` is site-relative (`/spaces/…`); `_links.base` is the wiki root.
+    const relative: string | undefined = item.url ?? content._links?.webui;
+    return {
+      id: String(content.id ?? item.id ?? ""),
+      // `item.title` may carry the search highlighter's markers; `content.title`
+      // is the raw stored title, so prefer it and clean the fallback.
+      title: typeof content.title === "string" ? content.title : cleanExcerpt(item.title ?? ""),
+      ...(content.type ? { type: String(content.type) } : {}),
+      ...(relative ? { url: base && relative.startsWith("/") ? `${base}${relative}` : relative } : {}),
+      ...(content.space?.key ? { spaceKey: String(content.space.key) } : {}),
+      ...(content.space?.name ? { spaceName: String(content.space.name) } : {}),
+      ...(item.excerpt ? { excerpt: cleanExcerpt(String(item.excerpt)) } : {}),
+      ...(content.history?.ownedBy?.displayName
+        ? { ownedBy: String(content.history.ownedBy.displayName) }
+        : {}),
+      ...(content.history?.lastUpdated?.when
+        ? { lastModified: String(content.history.lastUpdated.when) }
+        : item.lastModified
+          ? { lastModified: String(item.lastModified) }
+          : {}),
+      ...(labels.length > 0 ? { labels } : {}),
+      ...(content.status ? { status: String(content.status) } : {}),
     };
   }
 

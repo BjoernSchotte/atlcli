@@ -14,6 +14,7 @@ import type {
 } from "./deps.js";
 import { tocRenderer } from "./toc.js";
 import { jiraMacroRenderer } from "./jira.js";
+import { confluenceListRenderer } from "./confluence-list.js";
 import { diagramMacroRenderer } from "./diagram.js";
 import { multiexcerptIncludeRenderer } from "./multiexcerpt.js";
 import { scrollTableLayoutRenderer } from "./table-layout.js";
@@ -120,14 +121,16 @@ function validateRenderers(
 
 /**
  * Assemble the standard renderer order: TOC first (pure reference renderer),
- * then the specific renderers (Jira, diagram, multiexcerpt-include,
- * scroll-tablelayout, children, include/excerpt, page-properties-report),
- * `exportViewFallbackRenderer` last as the `"*"` catch-all.
+ * then the specific renderers (Jira, Confluence list, diagram,
+ * multiexcerpt-include, scroll-tablelayout, children, include/excerpt,
+ * page-properties-report), `exportViewFallbackRenderer` last as the `"*"`
+ * catch-all.
  */
 export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistry {
   return createRegistry([
     tocRenderer(),
     jiraMacroRenderer(),
+    confluenceListRenderer(),
     diagramMacroRenderer(),
     multiexcerptIncludeRenderer({
       storageToBlocks: deps.storageToBlocks,

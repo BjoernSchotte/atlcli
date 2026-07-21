@@ -411,3 +411,106 @@ describe("resolveMacroBlocks — bodyNotes promotion (001 deferral)", () => {
     expect(out.notes.some((n) => n.message === "in body")).toBe(false);
   });
 });
+
+describe("port wrapping preserves the WHOLE port surface", () => {
+  /**
+   * Regression (spec SUPPORT-DATASOURCE-CONFLUENCE): `wrapPorts` REBUILDS each
+   * port to add dedup + the circuit breaker, so any method it does not name
+   * disappears before a renderer sees it. The Confluence-list renderer
+   * feature-detects `searchContent`; when the wrapper dropped it, the CLI
+   * degraded every list with "this host's Confluence port does not implement
+   * content search" — while the host's port implemented it perfectly.
+   *
+   * The assertion is on the port the RENDERER receives, not on the one the host
+   * built, because that is where the method went missing.
+   */
+  function seenPort(): {
+    renderer: MacroRenderer;
+    seen: { hasSearchContent?: boolean; results?: number };
+    calls: string[];
+  } {
+    const seen: { hasSearchContent?: boolean; results?: number } = {};
+    const calls: string[] = [];
+    const renderer: MacroRenderer = {
+      id: "probe",
+      macros: ["probe"],
+      requiresLivePort: true,
+      async render(_m, c) {
+        seen.hasSearchContent = typeof c.confluence?.searchContent === "function";
+        if (c.confluence?.searchContent) {
+          const page = await c.confluence.searchContent("type = page", { maximumResults: 3 });
+          seen.results = page.hits.length;
+        }
+        calls.push("render");
+        return { kind: "blocks", blocks: [{ type: "paragraph", content: [] }] };
+      },
+    };
+    return { renderer, seen, calls };
+  }
+
+  const confluencePort = (calls: string[]) => ({
+    async getPageStorage() {
+      return undefined;
+    },
+    async getChildren() {
+      return [];
+    },
+    async searchCql() {
+      return [];
+    },
+    async searchContent(cql: string) {
+      calls.push(cql);
+      return { hits: [{ id: "1", title: "A" }], totalSize: 42 };
+    },
+  });
+
+  test("searchContent survives the dedup/breaker wrapper", async () => {
+    const portCalls: string[] = [];
+    const { renderer, seen } = seenPort();
+    const input: StorageToBlocksResult = {
+      blocks: [unknownBlock("probe")],
+      notes: [walkerNote("probe")],
+    };
+    await resolveMacroBlocks(input, createRegistry([renderer]), ctx({ confluence: confluencePort(portCalls) }));
+    expect(seen.hasSearchContent).toBe(true);
+    expect(seen.results).toBe(1);
+    expect(portCalls).toEqual(["type = page"]);
+  });
+
+  test("two identical searches across instances cost ONE port call (dedup applies)", async () => {
+    const portCalls: string[] = [];
+    const { renderer } = seenPort();
+    const input: StorageToBlocksResult = {
+      blocks: [unknownBlock("probe"), unknownBlock("probe")],
+      notes: [walkerNote("probe"), walkerNote("probe")],
+    };
+    await resolveMacroBlocks(input, createRegistry([renderer]), ctx({ confluence: confluencePort(portCalls) }));
+    expect(portCalls).toHaveLength(1);
+  });
+
+  test("a port without searchContent stays without it (feature detection still works)", async () => {
+    const { renderer, seen } = seenPort();
+    const input: StorageToBlocksResult = {
+      blocks: [unknownBlock("probe")],
+      notes: [walkerNote("probe")],
+    };
+    await resolveMacroBlocks(
+      input,
+      createRegistry([renderer]),
+      ctx({
+        confluence: {
+          async getPageStorage() {
+            return undefined;
+          },
+          async getChildren() {
+            return [];
+          },
+          async searchCql() {
+            return [];
+          },
+        },
+      })
+    );
+    expect(seen.hasSearchContent).toBe(false);
+  });
+});

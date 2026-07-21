@@ -144,4 +144,28 @@ describe("buildMacroResolutionOptions", () => {
       controller.signal
     );
   });
+  test("chapterAnchorById becomes the renderer-visible page scope", () => {
+    // Macro resolution runs AFTER composeChapters, so a renderer that links to
+    // other Confluence pages cannot emit `{ kind: "page" }` and have it
+    // rewritten. It reads composition's own answer through this seam instead.
+    const options = buildMacroResolutionOptions({
+      siteBaseUrl: BASE,
+      confluence,
+      targetEngine: "pdf",
+      chapterAnchorById: new Map([["1001", "page-1001"]]),
+    });
+    const scope = options.contextFor!({ id: "1", spaceKey: "D" }).pageScope;
+    expect(scope?.chapterAnchorFor("1001")).toBe("page-1001");
+    // An id composition never placed is OUT of scope, not a guessed anchor.
+    expect(scope?.chapterAnchorFor("9999")).toBeUndefined();
+  });
+
+  test("without chapterAnchorById there is no page scope at all (single-page export)", () => {
+    const options = buildMacroResolutionOptions({
+      siteBaseUrl: BASE,
+      confluence,
+      targetEngine: "pdf",
+    });
+    expect(options.contextFor!({ id: "1", spaceKey: "D" }).pageScope).toBeUndefined();
+  });
 });

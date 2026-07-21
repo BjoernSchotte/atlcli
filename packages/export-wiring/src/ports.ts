@@ -203,6 +203,39 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
         classifyClientError(err, "confluence");
       }
     },
+    async searchContent(cql, opts) {
+      try {
+        // `searchDetailed`, NOT `search`/`searchPages`: those drive
+        // `GET /content/search`, which (measured against Cloud, 2026-07-21)
+        // returns no excerpt and no `totalSize` — the `description` column and
+        // the "N of M" truncation note both depend on the `/search` endpoint.
+        // ONE request, no per-row follow-up: a 100-row list inside a 200-page
+        // export must not multiply into 100 lookups.
+        const page = await client.searchDetailed(cql, {
+          limit: opts.maximumResults,
+          ...(opts.contentStatuses ? { contentStatuses: opts.contentStatuses } : {}),
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        });
+        return {
+          hits: page.results.slice(0, opts.maximumResults).map((r) => ({
+            id: r.id,
+            title: r.title,
+            ...(r.type !== undefined ? { type: r.type } : {}),
+            ...(r.url !== undefined ? { url: r.url } : {}),
+            ...(r.spaceKey !== undefined ? { spaceKey: r.spaceKey } : {}),
+            ...(r.spaceName !== undefined ? { spaceName: r.spaceName } : {}),
+            ...(r.excerpt !== undefined ? { excerpt: r.excerpt } : {}),
+            ...(r.ownedBy !== undefined ? { ownedBy: r.ownedBy } : {}),
+            ...(r.lastModified !== undefined ? { lastModified: r.lastModified } : {}),
+            ...(r.labels !== undefined ? { labels: r.labels } : {}),
+            ...(r.status !== undefined ? { status: r.status } : {}),
+          })),
+          ...(page.totalSize !== undefined ? { totalSize: page.totalSize } : {}),
+        };
+      } catch (err) {
+        classifyClientError(err, "confluence");
+      }
+    },
   };
 }
 

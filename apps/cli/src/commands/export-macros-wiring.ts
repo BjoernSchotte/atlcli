@@ -55,6 +55,12 @@ export interface BuildMacroOptionsArgs {
   live?: boolean;
   /** Whether the DOCX template already carries a native TOC field. */
   nativeTocPresent?: boolean;
+  /**
+   * `composeChapters(...).chapterAnchorById` for a tree/space export, so a
+   * renderer listing other Confluence pages links into THIS document for the
+   * ones that are chapters of it. Omitted for single-page exports.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -71,5 +77,6 @@ export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroR
     targetEngine: args.targetEngine,
     ...(args.live !== undefined ? { live: args.live } : {}),
     ...(args.nativeTocPresent !== undefined ? { nativeTocPresent: args.nativeTocPresent } : {}),
+    ...(args.chapterAnchorById ? { chapterAnchorById: args.chapterAnchorById } : {}),
   });
 }

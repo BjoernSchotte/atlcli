@@ -20,6 +20,7 @@ import {
   type ExternalAssetFetcher,
   type ExternalAssetPolicy,
   type MacroExportContext,
+  type MacroPageScope,
   type MacroRendererRegistry,
   type MacroResolutionOptions,
 } from "@atlcli/export-macros";
@@ -69,6 +70,16 @@ export interface BuildMacroOptionsArgs {
   policy?: ExternalAssetPolicy;
   /** Host-supplied fetcher; defaults to the shared enforced one over `policy`. */
   externalAssets?: ExternalAssetFetcher;
+  /**
+   * `composeChapters(...).chapterAnchorById` for a tree/space export.
+   *
+   * Renderers that link to OTHER Confluence pages (the Confluence-list
+   * datasource) run after composition, so composition can no longer rewrite
+   * their link targets; this hands them composition's own answer instead of
+   * growing a second link-resolution path. Omitted for single-page exports —
+   * nothing else is in scope there, so every row links absolutely.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>;
   /** Cancels in-flight port work; forwarded into every macro context. */
   signal?: AbortSignal;
 }
@@ -98,6 +109,10 @@ export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroR
   const policy = args.policy ?? defaultExternalAssetPolicy(args.siteBaseUrl);
   const externalAssets = args.externalAssets ?? defaultExternalAssetFetcher(policy);
   const siteId = args.siteBaseUrl;
+  const anchors = args.chapterAnchorById;
+  const pageScope: MacroPageScope | undefined = anchors
+    ? { chapterAnchorFor: (pageId) => anchors.get(pageId) }
+    : undefined;
 
   return {
     registry,
@@ -109,6 +124,7 @@ export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroR
         exportView: exportViewPort,
         attachments: attachmentsPort,
         ...(jiraPort ? { jira: jiraPort } : {}),
+        ...(pageScope ? { pageScope } : {}),
         externalAssets,
         depth: 0,
         visited: new Set(),

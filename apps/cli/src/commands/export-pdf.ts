@@ -222,6 +222,13 @@ interface ResolvedScope {
    * no scope resolution to trace, matching the DOCX single-page path.
    */
   scopeReport?: ScopeReportFields;
+  /**
+   * `composeChapters(...).chapterAnchorById` — tree/space only. Macro
+   * resolution runs after composition, so a renderer that links to other
+   * Confluence pages (the Confluence-list datasource) reads composition's own
+   * in-scope answer from here rather than resolving links a second way.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -243,7 +250,8 @@ interface ResolvedScope {
  */
 async function buildPdfMacroOptions(
   profile: Profile,
-  client: ConfluenceClient
+  client: ConfluenceClient,
+  chapterAnchorById?: ReadonlyMap<string, string>
 ): Promise<MacroResolutionOptions> {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -257,6 +265,7 @@ async function buildPdfMacroOptions(
     jira: new JiraClient(profile),
     targetEngine: "pdf",
     live: true,
+    ...(chapterAnchorById ? { chapterAnchorById } : {}),
   });
 }
 
@@ -386,6 +395,7 @@ async function resolveScope(
     // Same builder the DOCX tree path uses — a `--scope space` request stays
     // traceable to the tree rooted at the resolved homepage id (spec 002 A5).
     scopeReport: buildScopeReportFields(request, scope),
+    chapterAnchorById: composed.chapterAnchorById,
   };
 }
 
@@ -432,7 +442,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
-    const macros = await buildPdfMacroOptions(args.profile, client);
+    const macros = await buildPdfMacroOptions(args.profile, client, scope.chapterAnchorById);
     const report = await runPdfExport(
       {
         blocks: scope.blocks,

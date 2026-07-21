@@ -10,6 +10,7 @@
 export * from "./params.js";
 export * from "./toc.js";
 export * from "./jira.js";
+export * from "./confluence-list.js";
 export * from "./diagram.js";
 export * from "./multiexcerpt.js";
 export * from "./table-layout.js";

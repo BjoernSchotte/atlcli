@@ -151,6 +151,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -162,10 +167,14 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
 
 // export: CONFLUENCE_SEARCH_DATASOURCE_ID
 export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
@@ -220,6 +229,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -424,6 +439,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -459,6 +480,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -525,8 +567,15 @@ export interface DatasourceColumn {
     isWrapped?: boolean;
 }
 
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
 // export: DatasourceDegradeCode
-export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported">;
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
 
 // export: DatasourceMapContext
 export interface DatasourceMapContext {
@@ -538,11 +587,7 @@ export interface DatasourceMapContext {
 export type DatasourceMapResult = {
     params: MacroParameter[];
 } | {
-    degrade: {
-        code: DatasourceDegradeCode;
-        level: "info" | "warning";
-        message: string;
-    };
+    degrade: DatasourceDegradation;
 };
 
 // export: DatasourceOutcome
@@ -615,6 +660,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "datasource-provider-unsupported",
     "datasource-filter-unsupported",
     "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -1685,6 +1732,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -1696,10 +1748,14 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
 
 // export: CONFLUENCE_SEARCH_DATASOURCE_ID
 export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
@@ -1754,6 +1810,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -1958,6 +2020,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -1993,6 +2061,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -2059,8 +2148,15 @@ export interface DatasourceColumn {
     isWrapped?: boolean;
 }
 
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
 // export: DatasourceDegradeCode
-export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported">;
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
 
 // export: DatasourceMapContext
 export interface DatasourceMapContext {
@@ -2072,11 +2168,7 @@ export interface DatasourceMapContext {
 export type DatasourceMapResult = {
     params: MacroParameter[];
 } | {
-    degrade: {
-        code: DatasourceDegradeCode;
-        level: "info" | "warning";
-        message: string;
-    };
+    degrade: DatasourceDegradation;
 };
 
 // export: DatasourceOutcome
@@ -2149,6 +2241,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "datasource-provider-unsupported",
     "datasource-filter-unsupported",
     "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -3219,6 +3313,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -3230,10 +3329,14 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
 
 // export: CONFLUENCE_SEARCH_DATASOURCE_ID
 export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
@@ -3288,6 +3391,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -3492,6 +3601,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -3527,6 +3642,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -3593,8 +3729,15 @@ export interface DatasourceColumn {
     isWrapped?: boolean;
 }
 
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
 // export: DatasourceDegradeCode
-export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported">;
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
 
 // export: DatasourceMapContext
 export interface DatasourceMapContext {
@@ -3606,11 +3749,7 @@ export interface DatasourceMapContext {
 export type DatasourceMapResult = {
     params: MacroParameter[];
 } | {
-    degrade: {
-        code: DatasourceDegradeCode;
-        level: "info" | "warning";
-        message: string;
-    };
+    degrade: DatasourceDegradation;
 };
 
 // export: DatasourceOutcome
@@ -3683,6 +3822,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "datasource-provider-unsupported",
     "datasource-filter-unsupported",
     "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -4889,6 +5030,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -5093,6 +5240,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -5154,6 +5307,21 @@ export declare class ConfluencePoller {
     setInterval(ms: number): void;
     isRunning(): boolean;
 }
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -5363,6 +5531,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "datasource-provider-unsupported",
     "datasource-filter-unsupported",
     "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -7220,6 +7390,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -7231,10 +7406,14 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
 
 // export: CONFLUENCE_SEARCH_DATASOURCE_ID
 export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
@@ -7289,6 +7468,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -7493,6 +7678,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -7528,6 +7719,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -7594,8 +7806,15 @@ export interface DatasourceColumn {
     isWrapped?: boolean;
 }
 
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
 // export: DatasourceDegradeCode
-export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported">;
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
 
 // export: DatasourceMapContext
 export interface DatasourceMapContext {
@@ -7607,11 +7826,7 @@ export interface DatasourceMapContext {
 export type DatasourceMapResult = {
     params: MacroParameter[];
 } | {
-    degrade: {
-        code: DatasourceDegradeCode;
-        level: "info" | "warning";
-        message: string;
-    };
+    degrade: DatasourceDegradation;
 };
 
 // export: DatasourceOutcome
@@ -7684,6 +7899,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "datasource-provider-unsupported",
     "datasource-filter-unsupported",
     "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",

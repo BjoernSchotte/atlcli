@@ -95,6 +95,68 @@ describe("confluenceContentPortFromClient", () => {
     expect(await kindOf("Confluence API error (500): boom")).toBe("network");
     expect(await kindOf("socket hang up")).toBe("network");
   });
+
+  test("searchContent uses searchDetailed, NOT searchPages", async () => {
+    // Pin the client method. `searchPages` drives `GET /content/search`, which
+    // returns neither the excerpt the `description` column needs nor the
+    // `totalSize` the truncation note names — a table built on it would look
+    // fine and be missing a column plus its own scale.
+    const calls: string[] = [];
+    const fake = {
+      async searchDetailed(cql: string, opts: { limit?: number; contentStatuses?: string[] }) {
+        calls.push(`searchDetailed:${cql}:${opts.limit}:${opts.contentStatuses?.join("|") ?? "-"}`);
+        return {
+          results: [
+            {
+              id: "1",
+              title: "P",
+              type: "page",
+              spaceName: "S",
+              excerpt: "E",
+              ownedBy: "O",
+              status: "current",
+            },
+          ],
+          totalSize: 2817,
+        };
+      },
+      async searchPages() {
+        calls.push("searchPages");
+        return [];
+      },
+    } as unknown as ConfluenceClient;
+
+    const port = confluenceContentPortFromClient(fake);
+    const page = await port.searchContent!('space in ("DOCSY")', {
+      maximumResults: 11,
+      contentStatuses: ["current"],
+    });
+
+    expect(calls).toEqual(['searchDetailed:space in ("DOCSY"):11:current']);
+    expect(page.totalSize).toBe(2817);
+    expect(page.hits[0]).toEqual({
+      id: "1",
+      title: "P",
+      type: "page",
+      spaceName: "S",
+      excerpt: "E",
+      ownedBy: "O",
+      status: "current",
+    });
+  });
+
+  test("searchContent slices to the requested cap so the renderer's probe still measures", async () => {
+    const fake = {
+      async searchDetailed() {
+        return { results: Array.from({ length: 9 }, (_v, i) => ({ id: `${i}`, title: `P${i}` })) };
+      },
+    } as unknown as ConfluenceClient;
+    const page = await confluenceContentPortFromClient(fake).searchContent!("type = page", {
+      maximumResults: 4,
+    });
+    expect(page.hits).toHaveLength(4);
+    expect(page.totalSize).toBeUndefined();
+  });
 });
 
 describe("exportViewPortFromClient", () => {
