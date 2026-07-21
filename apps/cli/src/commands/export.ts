@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
@@ -51,6 +51,14 @@ import {
   noteToIssue,
   type ExportOutcome,
 } from "./export-report.js";
+
+/**
+ * Usage error for a python-engine export with no `--template`. Only the python
+ * engine can hit it: `--engine ts` falls back to the bundled default template
+ * (spec 010 W3-D), and docxtpl has no equivalent to fall back to.
+ */
+const TEMPLATE_REQUIRED_MESSAGE =
+  "--template is required for --engine python (only --engine ts has a bundled default template).";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -169,8 +177,21 @@ export async function handleExport(
     fail(opts, 1, ERROR_CODES.USAGE, "--no-live-macros requires --engine ts.");
   }
 
-  if (!templatePath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
+  // `--template` is OPTIONAL on `--engine ts`: `@atlcli/export-node` ships a
+  // deterministic default template with correct `$scroll.title` /
+  // `$scroll.exportdate` / `$scroll.content` placeholders, so the zero-config
+  // path produces a document with nothing unfilled. Requiring the flag is what
+  // pushed first-time ts users toward grabbing whatever `.docx` was at hand —
+  // including docxtpl templates this engine cannot fill (see the
+  // `template-foreign-placeholders` note). `--engine python` keeps requiring it:
+  // docxtpl has no bundled default to fall back to.
+  if (!templatePath && engine !== "ts") {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      TEMPLATE_REQUIRED_MESSAGE
+    );
   }
 
   if (!outputPath) {
@@ -180,10 +201,19 @@ export async function handleExport(
   // Get Confluence client (needed for profile name in template resolution)
   const { client, profile } = await getClient(flags, opts);
 
-  // Resolve template path (with profile for hierarchical lookup)
-  const resolvedTemplatePath = await resolveTemplatePath(templatePath, profile.name);
-  if (!existsSync(resolvedTemplatePath)) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${resolvedTemplatePath}`);
+  // Resolve template path (with profile for hierarchical lookup). Undefined
+  // means "use the bundled default" — only reachable on the ts engine.
+  let resolvedTemplatePath: string | undefined;
+  if (templatePath) {
+    resolvedTemplatePath = await resolveTemplatePath(templatePath, profile.name);
+    if (!existsSync(resolvedTemplatePath)) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${resolvedTemplatePath}`);
+    }
+  } else if (!opts.json) {
+    // The report carries a `template-default-used` note, but the text-mode
+    // summary line shows only warning COUNTS — so say it here too. Never in
+    // `--json` mode: stderr is the progress JSONL channel there.
+    process.stderr.write("hint: no --template given; using the bundled default template.\n");
   }
 
   const baseUrl = getConfluenceBaseUrl(profile);
@@ -259,6 +289,19 @@ export async function handleExport(
       );
     }
     return;
+  }
+
+  // Every ts path has returned; only the python engine reaches here, and it has
+  // no bundled default. The usage check above already rejected a missing
+  // `--template` for this engine — this restates the invariant for the type
+  // system (and would fail honestly rather than crash if that check ever moved).
+  if (!templatePath || !resolvedTemplatePath) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      TEMPLATE_REQUIRED_MESSAGE
+    );
   }
 
   // Fetch page data (with metadata for export)
@@ -1041,7 +1084,8 @@ interface TsEngineArgs {
   pagePromise: Promise<ConfluencePageDetails>;
   pageId: string;
   baseUrl: string;
-  resolvedTemplatePath: string;
+  /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
+  resolvedTemplatePath: string | undefined;
   outputPath: string;
   embedImages: boolean;
   /** `--keep-ignored`: run export-control macros in passthrough mode (spec 003). */
@@ -1130,21 +1174,24 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // Everything local (engine import + template bytes) loads WHILE the page
   // round-trip is in flight. The much larger rasterizer wasm/fonts are gated
   // on the page storage below.
-  const { readFile, stat } = await import("node:fs/promises");
+  // A path reads from disk; no path resolves to the bundled default template and
+  // carries the `template-default-used` note (spec 010 W3-D). Chained off the
+  // module import so it still runs concurrently with the engine imports and the
+  // page round-trip, exactly as the inline `readFile`/`stat` pair used to.
+  const internalsPromise = import("./export-internals.js");
+  const templatePromise = internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath));
   const [
     { runExport, fileOutputSink },
     { buildGetIncludedPage },
     { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
-    templateBytesRaw,
-    templateStat,
+    template,
   ] = await Promise.all([
     import("@atlcli/docx"),
     import("@atlcli/docx/internal"),
-    import("./export-internals.js"),
-    readFile(resolvedTemplatePath),
-    stat(resolvedTemplatePath),
+    internalsPromise,
+    templatePromise,
   ]);
-  const templateBytes = new Uint8Array(templateBytesRaw);
+  const templateBytes = template.bytes;
   const assetCache = createAssetByteCache(baseUrl);
 
   const cliNotes: string[] = [];
@@ -1259,10 +1306,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       details: page,
       blocks: mention.blocks,
       sourceNotes: tsSourceNotes,
-      template: {
-        name: basename(resolvedTemplatePath),
-        modificationDate: templateStat.mtime,
-      },
+      template: template.meta,
       embedImages,
       ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
       deps: {
@@ -1339,6 +1383,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
           },
         ],
         issues: [
+          ...template.notes.map((n) => noteToIssue(n, "prepare")),
           ...report.notes.map((n) => noteToIssue(n, "prepare")),
           ...cliNotes.map((message) => ({
             code: "cli-note",
@@ -1368,7 +1413,8 @@ interface TreeEngineArgs {
   profile: Profile;
   request: ParsedExportRequest;
   baseUrl: string;
-  resolvedTemplatePath: string;
+  /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
+  resolvedTemplatePath: string | undefined;
   outputPath: string;
   embedImages: boolean;
   /** spec 004: `false` under `--no-live-macros`. */
@@ -1531,16 +1577,16 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     // convention single-page export uses.
     const rootDetails = await client.getPageDetails(rootId, { signal: controller.signal });
 
-    // Load engine + template + optional rasterizer.
-    const { readFile, stat } = await import("node:fs/promises");
-    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, templateBytesRaw, templateStat] =
+    // Load engine + template + optional rasterizer. No `--template` resolves to
+    // the bundled default (spec 010 W3-D), with a `template-default-used` note.
+    const internalsPromise = import("./export-internals.js");
+    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, template] =
       await Promise.all([
         import("@atlcli/docx"),
-        import("./export-internals.js"),
-        readFile(resolvedTemplatePath),
-        stat(resolvedTemplatePath),
+        internalsPromise,
+        internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath)),
       ]);
-    const templateBytes = new Uint8Array(templateBytesRaw);
+    const templateBytes = template.bytes;
     const assetCache = createAssetByteCache(baseUrl);
 
     // Resolve @mentions across the WHOLE composed document with one deduped bulk
@@ -1593,10 +1639,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
         complete: treeResult.complete,
         signal: controller.signal,
         onProgress,
-        template: {
-          name: basename(resolvedTemplatePath),
-          modificationDate: templateStat.mtime,
-        },
+        template: template.meta,
         embedImages,
         deps: {
           getSpace: async (key: string) => (await client.getSpaceWithIcon(key)).space,
@@ -1655,6 +1698,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
             },
           ],
           issues: [
+            ...template.notes.map((n) => noteToIssue(n, "prepare")),
             ...docxReport.notes.map((n) => noteToIssue(n, "prepare")),
             ...cliNotes.map((message) => ({
               code: "cli-note",
@@ -1797,16 +1841,23 @@ async function callExportSubprocess(
 }
 
 function exportHelp(): string {
-  return `atlcli wiki export <page> --template <name> --output <path>
+  return `atlcli wiki export <page> [--template <name>] --output <path>
 
-Export a Confluence page to DOCX using a Word template.
+Export a Confluence page to DOCX using a Word template (--engine ts falls back
+to a bundled default template when --template is omitted).
 
 Arguments:
   <page>              Page reference (ID, SPACE:Title, or URL)
 
 Options:
   --format <fmt>      Output format: "docx" (default) or "pdf"
-  --template, -t      Template name or path (DOCX only; required for DOCX)
+  --template, -t      Template name or path (DOCX only). Required with
+                      --engine python; OPTIONAL with --engine ts, which falls
+                      back to a bundled default template (page title, export
+                      date, page body) and reports which template it used.
+                      The ts engine fills $scroll.* placeholders only — a
+                      docxtpl/Jinja template ({{ … }}, {% … %}) exports with
+                      those left as literal text and a warning note.
   --output, -o        Output file path (required, or use --out-dir for PDF)
   --no-images         Do not embed images from page attachments (default embeds)
   --no-merge          Keep children as separate array (for loops in templates)
@@ -1886,6 +1937,8 @@ Template Resolution:
   2. Project: .atlcli/templates/confluence/<name>.docx
   3. Profile: ~/.atlcli/profiles/<profile>/templates/confluence/<name>.docx
   4. Global: ~/.atlcli/templates/confluence/<name>.docx
+  With --engine ts and no --template at all: the bundled default template
+  (reported as the info note "template-default-used").
 
 Template Management:
   atlcli wiki export template list                    List available templates
@@ -1893,6 +1946,9 @@ Template Management:
   atlcli wiki export template delete <name> --confirm
 
 Examples:
+  # Zero-config: one page to DOCX with the bundled default template
+  atlcli wiki export 12345 --output page.docx --engine ts
+
   # Minimal: one page tree to a single DOCX
   atlcli wiki export 12345 --template corporate --output handbook.docx --engine ts --scope tree
 

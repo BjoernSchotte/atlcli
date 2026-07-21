@@ -220,6 +220,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 
@@ -478,6 +479,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 
@@ -720,6 +722,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 
@@ -942,6 +945,9 @@ export declare function codeStyleXml(): string;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
 
@@ -1158,6 +1164,9 @@ export interface Fetched {
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
+
 // export: formatDatePlaceholder
 export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
 
@@ -1307,6 +1316,9 @@ export interface LogoArgs {
 
 // export: MAX_CONTENT_WIDTH_PX
 export declare const MAX_CONTENT_WIDTH_PX = 600;
+
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 
 // export: MAX_ILVL
 export declare const MAX_ILVL = 8;
@@ -1527,6 +1539,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 
@@ -1844,6 +1857,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 
@@ -1900,6 +1914,9 @@ export declare function assertSafeDocxEntryName(name: string): void;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
 
@@ -1925,8 +1942,14 @@ export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-ent
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
 
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
+
 // export: hasAltChunkRelationship
 export declare function hasAltChunkRelationship(relsXml: string): boolean;
+
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
 
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
@@ -1954,6 +1977,7 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
 }
 

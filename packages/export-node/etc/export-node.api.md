@@ -23,6 +23,9 @@ export interface AssetClient {
     }): Promise<Uint8Array>;
 }
 
+// export: BUNDLED_TEMPLATE_EPOCH
+export declare const BUNDLED_TEMPLATE_EPOCH: Date;
+
 // export: bundledDefaultTemplate
 export declare function bundledDefaultTemplate(): Uint8Array;
 

@@ -268,6 +268,14 @@ const DELIM_END = String.fromCodePoint(0xe001);
 const CONTENT_KEY = "scrollContent";
 
 /**
+ * How many foreign (docxtpl/Jinja) placeholder forms the
+ * `template-foreign-placeholders` note names. A bare COUNT is not actionable —
+ * the reader needs to recognise their own template — but the whole inventory
+ * would bury the sentence, so the note shows a sample and tallies the rest.
+ */
+const FOREIGN_PLACEHOLDER_SAMPLE = 5;
+
+/**
  * The paragraph we swap in for `$scroll.content` before render. Its ONLY text is
  * the docxtemplater rawxml tag `@scrollContent` (delimited with the PUA pair);
  * the free-tier rawxml module requires a raw tag to be the sole content of its
@@ -494,6 +502,33 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       level: "warning",
       code: "template-field-instruction-risk",
       message: `The template contains field instructions that fetch content when Word refreshes fields (${riskyFields.join(", ")}); the exported document refreshes fields on open, so review the template if you did not author it.`,
+    });
+  }
+  // Foreign-placeholder audit (spec 010 W3-D): a docxtpl/Jinja template handed
+  // to this engine renders `{{ … }}` / `{% … %}` as LITERAL BODY TEXT — the PUA
+  // delimiter swap guarantees the customer's braces are never tags, so nothing
+  // fills them and nothing used to say so. A migrating user got a finished
+  // document with visible unfilled placeholders and a clean report.
+  //
+  // WARNING, not info: since note level drives issue severity, `info` would be
+  // invisible to `--strict` and repeat the bug. Not fatal either — a hybrid
+  // template that deliberately keeps Jinja for a later docxtpl pass is a real
+  // (if rare) workflow, and refusing it would break someone shipping today.
+  //
+  // TEMPLATE-only by construction: `scan` was taken from the template archive at
+  // the top of this function, long before the page body is rendered in at step
+  // 5, so a page that documents Jinja syntax cannot reach this list.
+  const foreignPlaceholders = scan.foreignPlaceholders ?? [];
+  if (foreignPlaceholders.length > 0) {
+    const shown = foreignPlaceholders.slice(0, FOREIGN_PLACEHOLDER_SAMPLE);
+    const rest = foreignPlaceholders.length - shown.length;
+    flowNotes.push({
+      level: "warning",
+      code: "template-foreign-placeholders",
+      message:
+        `Template uses Jinja/docxtpl placeholders (${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}); ` +
+        `the ts engine fills $scroll.* placeholders and will leave these in the document as literal text. ` +
+        `Rewrite them as $scroll.* placeholders, or export this template with --engine python.`,
     });
   }
 

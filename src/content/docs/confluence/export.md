@@ -64,11 +64,16 @@ not make that claim.
 
 - Authenticated profile (`atlcli auth login`)
 - **Space permission**: View permission on pages to export
-- Word-compatible template file (`.docx` or `.docm`)
+- Word-compatible template file (`.docx` or `.docm`) — required with `--engine python`,
+  optional with `--engine ts` (which has a
+  [bundled default template](#the-bundled-default-template-engine-ts))
 
 ## Quick Start
 
 ```bash
+# No template needed: the ts engine falls back to its bundled default
+atlcli wiki export 12345678 --output ./report.docx --engine ts
+
 # Export a page using a template
 atlcli wiki export 12345678 --template corporate --output ./report.docx
 
@@ -227,7 +232,7 @@ For a full CI job, see the [Export automation recipe](/recipes/export-automation
 
 | Option | Description |
 |--------|-------------|
-| `--template, -t` | Template name or path (required) |
+| `--template, -t` | Template name or path. **Required** with `--engine python`; **optional** with `--engine ts`, which falls back to a [bundled default template](#the-bundled-default-template-engine-ts) |
 | `--output, -o` | Output file path (required) |
 | `--no-images` | Don't embed images from attachments |
 | `--include-children` | Deprecated alias for `--scope tree` (with `--engine ts`); legacy child-merge with `--engine python` |
@@ -277,6 +282,19 @@ The JSON result includes an export report: how many placeholders resolved, which
 embed inline at their intrinsic size (or the page-set width), capped to the content width; an
 image that cannot be fetched or decoded becomes a warning note instead of failing the export.
 `--no-images` disables embedding for this engine too.
+
+:::caution[The two engines do not read each other's templates]
+The template vocabularies in the table above are **not interchangeable**. Hand a docxtpl
+template to `--engine ts` and its `{{ … }}` / `{% … %}` placeholders arrive in the finished
+document as **literal text** — the engine only fills `$scroll.*`. The export completes (a
+deliberate hybrid template is a legitimate workflow), but the report carries a
+`template-foreign-placeholders` **warning** naming the placeholders it will not fill, so
+`--strict` fails the run in CI. See
+[Jinja placeholders appear in the exported document](#jinja-placeholders-appear-in-the-exported-document).
+
+Going the other way, a `$scroll.*` template on `--engine python` leaves the `$scroll.*` text
+literal in the same way — docxtpl has no notion of Scroll placeholders.
+:::
 
 ### Mermaid diagrams
 
@@ -470,6 +488,8 @@ Missing chapters are never a silent bug — they are always explained by a note.
 | `link-outside-scope` | `info` | A cross-page link points outside the export; linked absolutely |
 | `link-anchor-missing` / `link-target-ambiguous` | `warning` | A link could not be resolved; rendered as text |
 | `perf-timing` | `info` | Per-phase wall clocks for the run (ts DOCX engine; emitted on every export) |
+| `template-foreign-placeholders` | `warning` | The template carries docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`) that the `ts` engine does not fill; they stay in the document as literal text |
+| `template-default-used` | `info` | No `--template` was given on `--engine ts`; the [bundled default template](#the-bundled-default-template-engine-ts) produced the document |
 | `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | `error` / `warning` | Completeness events: `error` when `--completeness strict` aborts the export, `warning` when `--completeness partial` substitutes a placeholder and carries on |
 
 ### Note codes are shared across formats
@@ -538,6 +558,24 @@ Templates are resolved in order (first match wins):
 4. Global: `~/.atlcli/templates/confluence/<name>.docx`
 
 atlcli supports both `.docx` and `.docm` (macro-enabled) templates.
+
+### The bundled default template (`--engine ts`)
+
+With `--engine ts` you can omit `--template` entirely. The export then uses a **bundled default
+template**: a title heading, an export-date line, the page body, and the Scroll heading styles.
+It is built programmatically (no binary asset ships with atlcli) and is byte-deterministic, so
+repeated exports of the same page produce the same document.
+
+```bash
+# Zero-config: no template to find, install, or maintain
+atlcli wiki export 12345678 --output page.docx --engine ts
+```
+
+The report records which template produced the document with a `template-default-used`
+**info** note, and in text mode the CLI prints a one-line hint on stderr. Because the note is
+informational, it does not fail `--strict`.
+
+`--engine python` still requires `--template` — docxtpl has no bundled default.
 
 ### Template Management
 
@@ -703,6 +741,31 @@ Confluence content property in the export settings. (The alias bridge itself is 
 below.)
 
 ## Troubleshooting
+
+### Jinja placeholders appear in the exported document
+
+**Symptom.** The exported `.docx` shows literal `{{ title }}`, `{{ author }}`,
+`{% for … %}` (or similar) where a value should be. The report contains:
+
+```
+warning  template-foreign-placeholders  prepare
+```
+
+**Cause.** A docxtpl/Jinja template was exported with `--engine ts`. The two engines read
+different placeholder vocabularies (see [Rendering Engines](#rendering-engines)); the `ts` engine
+fills `$scroll.*` only and carries every other brace through untouched, so Jinja placeholders
+survive into the document.
+
+**Fix — pick one:**
+
+1. Rewrite the template's placeholders as `$scroll.*`
+   (see [Template Variables](#template-variables)), or
+2. export that template with `--engine python`, which is what it was written for, or
+3. drop `--template` and use the
+   [bundled default template](#the-bundled-default-template-engine-ts) instead.
+
+Add `--strict` to your CI invocation so this fails the build rather than shipping a document
+with visible placeholders.
 
 ### Word Can't Open the File
 

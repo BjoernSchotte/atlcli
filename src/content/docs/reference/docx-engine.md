@@ -15,6 +15,7 @@ inject.
 
 - [Architecture](#architecture)
 - [Host ports](#host-ports)
+- [Templates the engine can fill](#templates-the-engine-can-fill)
 - [Browser hosts](#browser-hosts)
 - [Lists and numbering](#lists-and-numbering)
 - [Tables](#tables)
@@ -88,6 +89,47 @@ blocks as readable source code blocks with a `diagram-skipped` report note. Two 
 ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-runtime`) and a Node
 rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 `packages/docx/src/node-adapters.ts`) that the CLI uses.
+
+## Templates the engine can fill
+
+The engine fills **`$scroll.*` placeholders only** (the Scroll Word Exporter vocabulary — see
+[Template placeholders](/confluence/export/#template-placeholders)). Everything else in a template
+is carried through byte-for-byte on purpose: docxtemplater runs with a Unicode Private-Use
+delimiter pair, so a template's own `{`, `}` and `{foo}` are never treated as tags.
+
+### Foreign (docxtpl/Jinja) placeholders
+
+That pass-through guarantee has a sharp edge for anyone migrating from the legacy Python engine:
+a **docxtpl template** handed to the ts engine renders its `{{ … }}` / `{% … %}` placeholders as
+**visible literal text** in the finished document. Nothing fills them, and nothing fails.
+
+The template scan therefore inventories that syntax and the report names it:
+
+```
+warning  template-foreign-placeholders
+Template uses Jinja/docxtpl placeholders ({{ title }}, {{ author }}, {{ spaceName }});
+the ts engine fills $scroll.* placeholders and will leave these in the document as
+literal text. Rewrite them as $scroll.* placeholders, or export this template with
+--engine python.
+```
+
+- **`warning`, so `--strict` catches it** in CI. An `info` note would be reported and ignored,
+  which is how the original 62-page document with seven unfilled placeholders shipped.
+- **Not a refusal.** A hybrid template that deliberately keeps Jinja for a later docxtpl pass is a
+  real workflow; the export completes and the note says exactly what happened.
+- **Template-only, by construction.** The scan runs on the template archive before the serialized
+  page body is rendered in, so a *page* that documents Jinja syntax (`{{ title }}` in prose or a
+  code block) never triggers the note — and its braces reach the output untouched.
+
+### The bundled default template
+
+`--template` is **optional** with `--engine ts`. Omit it and the export uses the bundled default
+template from `@atlcli/export-node` (`bundledDefaultTemplate()`): a title heading, an export-date
+line, the `$scroll.content` body anchor and the Scroll heading styles — built programmatically
+from OOXML parts, byte-deterministic, with its zip timestamps pinned to a fixed epoch. A
+`template-default-used` **info** note records that it was used, so the output is never mysterious.
+
+`--engine python` still requires `--template`: docxtpl has no bundled default.
 
 ## Lists and numbering
 
