@@ -9,7 +9,7 @@
  *   1. zero `node:`/`bun:` module specifiers,
  *   2. zero remote script origins (import / importScripts / <script src> from
  *      an http(s) URL) — the extension must load only bundled, local assets, and
- *   3. zero bare node GLOBALS (`Buffer.`, `process.env`, `__dirname`),
+ *   3. zero bare node/Bun GLOBALS (`Buffer.`, `process.env`, `__dirname`, `Bun.`),
  *   4. zero string-to-code constructors (`Function(...)`, `eval(...)`) that
  *      violate Manifest V3's extension-page CSP, and
  *   5. a complete, locally bundled PDF runtime (worker, WASM and ten fonts).
@@ -61,13 +61,21 @@ import { createHash } from "node:crypto";
 const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
 
 /**
- * Bare node GLOBALS that do not exist in the extension runtime. Matched as
+ * Bare node/Bun GLOBALS that do not exist in the extension runtime. Matched as
  * member access / usage rather than as import specifiers (there is no import to
  * find). `Buffer\.` catches `Buffer.from(...)` etc.; `process\.env` catches env
  * reads; `__dirname` / `__filename` are CJS-only path globals. A hit here means
  * code will throw `ReferenceError`/`undefined` at runtime in the panel/worker.
+ *
+ * `Bun\.` joined the set with spec 010's browser-gate work: `import type
+ * { Server } from "bun"` erases at compile time, so NODE_BUN_RE has nothing to
+ * find, while the `Bun.serve(...)` CALL survives into the bundle. That is the
+ * exact shape of `packages/jira/src/webhook-server.ts`. The negative lookbehind
+ * keeps `foo.Bun.x` and identifiers merely ending in `Bun` out. Measured
+ * against the built `.output/chrome-mv3` (77 scanned files): zero hits.
  */
-const NODE_GLOBAL_RE = /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b/g;
+const NODE_GLOBAL_RE =
+  /\bBuffer\.|\bprocess\.env\b|\b__dirname\b|\b__filename\b|(?<![\w$.])Bun\s*\.\s*[A-Za-z_$]/g;
 
 /** A browser bundle must not hide the same dependency behind a fake global Buffer. */
 const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
