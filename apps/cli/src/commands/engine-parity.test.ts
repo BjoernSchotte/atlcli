@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,6 +91,37 @@ describe("engine parity checklist — shared block model (spec 008 T3.5)", () =>
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+/**
+ * The failure message every `runCli` helper below attaches to its exit-code
+ * assertion.
+ *
+ * It deliberately carries **stdout as well as stderr**, and it exists because
+ * printing only stderr made a real CI failure undiagnosable. `wiki export` is
+ * run here with `--report json`, and `emitReportOutcome` writes the JSON report
+ * — including the classified error, its phase and its message — to *stdout* on
+ * failure just as it does on success; stderr only carries progress lines and,
+ * on a runtime crash, the runtime's own panic. So the one channel these helpers
+ * used to show was the one guaranteed to be empty for the most common failure
+ * (a `compile`-phase `PdfExportError`, exit 5).
+ *
+ * The exit code and the terminating signal are named too: a segfaulting child
+ * (`exitCode` 132/133/139, `signalCode` set) and a clean exit-5 export failure
+ * are the same "not 0" to the assertion but completely different defects, and
+ * the CI log is the only place anyone gets to tell them apart.
+ */
+function cliFailureMessage(
+  args: string[],
+  result: { exitCode: number; signalCode?: string | null; stdout: string; stderr: string }
+): string {
+  const signal = result.signalCode ? ` signal=${result.signalCode}` : "";
+  return (
+    `wiki export ${args.join(" ")} → exit ${result.exitCode}${signal}\n` +
+    `--- stderr ---\n${result.stderr || "(empty)"}\n` +
+    `--- stdout (the --report json payload; carries the real diagnosis) ---\n` +
+    `${result.stdout || "(empty)"}`
+  );
+}
 
 /**
  * MACRO-REPORT parity (spec 010). Layer 1.5: both engines, driven through the
@@ -234,7 +265,10 @@ describe("macro-report parity across engines (spec 010)", () => {
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    expect(exitCode, `CLI failed (${args.join(" ")}):\n${stderr}`).toBe(0);
+    expect(
+      exitCode,
+      cliFailureMessage(args, { exitCode, signalCode: proc.signalCode, stdout, stderr })
+    ).toBe(0);
     return JSON.parse(stdout) as CliReport;
   }
 
@@ -409,7 +443,10 @@ describe("mention-note parity across engines (spec 010)", () => {
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    expect(exitCode, `CLI exit (${args.join(" ")}):\n${stderr}`).toBe(expectedExit);
+    expect(
+      exitCode,
+      cliFailureMessage(args, { exitCode, signalCode: proc.signalCode, stdout, stderr })
+    ).toBe(expectedExit);
     return JSON.parse(stdout) as MentionCliReport;
   }
 
@@ -590,7 +627,10 @@ describe("image-note vocabulary parity across engines (spec 010)", () => {
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    expect(exitCode, `CLI exit (${args.join(" ")}):\n${stderr}`).toBe(expectedExit);
+    expect(
+      exitCode,
+      cliFailureMessage(args, { exitCode, signalCode: proc.signalCode, stdout, stderr })
+    ).toBe(expectedExit);
     return JSON.parse(stdout) as CliReport;
   }
 
@@ -785,6 +825,16 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
     if (dir) await rm(dir, { recursive: true, force: true });
   });
 
+  // `searches` and `unmatched` are recorded by the stub across the whole block,
+  // so each test must own only the requests IT provoked. Resetting here rather
+  // than inside one test keeps both tests runnable in any order and on their
+  // own (`-t`), and asserts nothing weaker: the first test was already the
+  // first to run, so it was already only ever seeing its own requests.
+  beforeEach(() => {
+    searches.length = 0;
+    unmatched.length = 0;
+  });
+
   async function runCli(args: string[]): Promise<CliReport> {
     const proc = Bun.spawn(
       [
@@ -823,7 +873,10 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    expect(exitCode, `CLI failed (${args.join(" ")}):\n${stderr}`).toBe(0);
+    expect(
+      exitCode,
+      cliFailureMessage(args, { exitCode, signalCode: proc.signalCode, stdout, stderr })
+    ).toBe(0);
     return JSON.parse(stdout) as CliReport;
   }
 
@@ -835,7 +888,6 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
   };
 
   it("renders the list live on BOTH engines, with the same note codes", async () => {
-    searches.length = 0;
     const docx = await runCli(["--engine", "ts", "--template", templatePath, "-o", join(dir, "list.docx")]);
     const pdf = await runCli(["--format", "pdf", "-o", join(dir, "list.pdf")]);
     expect(unmatched).toEqual([]);
