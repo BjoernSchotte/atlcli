@@ -309,6 +309,27 @@ information).
   should emit an informational note carrying the composed CQL so a user can tell
   the two apart from the report alone.
 
+## Follow-ups recorded after the live review (2026-07-21)
+
+1. **Make the row cap configurable.** Accepted as the right default for now
+   (100), but the plan owner asked to keep the door open. The seam already
+   exists: `confluence-list.ts` reads `maximumResults` off the macro params
+   (`macroParamText(m.params, "maximumResults")`) and only falls back to
+   `DEFAULT_MAX_RESULTS`. So exposing it is threading a value into that param —
+   a CLI flag and/or a template setting — not a redesign. The same applies to the
+   Jira provider's `maximumIssues`. Whatever exposes it should keep the
+   both-counts truncation note, which is what makes a sample legible as a sample.
+
+2. **The "Open the full list" link can land on an empty Confluence search page.**
+   Verified not to be an export defect: we emit the `href` Confluence itself
+   stored on the card (pinned by test: `datasourceUrl === REAL_HREF`), and the
+   live macro's *own* detail-view link opens the same URL with the same empty
+   result. Confluence's search page does not reliably reproduce a
+   contributor-only filter. Recorded as a troubleshooting row rather than worked
+   around — synthesising a "better" URL would mean diverging from what the page
+   actually says, and would break the moment Atlassian changes its search
+   parameters.
+
 ## Open questions
 
 1. **Relative date filters.** `lastModified` supports relative values, and

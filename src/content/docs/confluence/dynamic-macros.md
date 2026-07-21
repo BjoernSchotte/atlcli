@@ -236,6 +236,7 @@ Every macro the resolver touches produces exactly one terminal note:
 | A Confluence list column is empty, `datasource-column-unresolved` note | That column has no field this exporter can read, or the field is empty on every row | Pick a different column in Confluence, or accept the empty column |
 | A Confluence list exports as a bare URL, `datasource-query-empty` note | The list has no filter that maps to a query (an unbounded site-wide search is never issued) | Add a space, label, type or contributor filter to the list |
 | A Confluence list exports as a bare URL, `datasource-filter-unsupported` note | The list uses a filter with no query equivalent (specific content, or a *relative* date window) | Replace it with a space/label/type filter or an absolute date range |
+| The "Open the full list" link lands on an empty Confluence search page | Not an export defect: the link is the URL Confluence itself stored on the card, and the list macro's own detail-view link opens the same URL with the same result. Confluence's search page does not always reproduce a contributor-only filter | Use the exported table, or rebuild the filter in Confluence search directly |
 
 ## Related topics
 
