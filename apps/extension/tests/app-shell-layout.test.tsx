@@ -131,6 +131,11 @@ describe("AppShell width is host configuration", () => {
     // view capped at panel width is the bug this file exists for.
     expect(shell.className).not.toContain("max-w-[400px]");
     expect(shell.className).toContain("max-w-none");
+    expect(shell.className).toContain("h-dvh");
+    expect(shell.className).toContain("overflow-hidden");
+    expect(shell.querySelector('[data-testid="app-nav"]')).toBeNull();
+    expect(shell.querySelector('[data-testid="app-version"]')).toBeNull();
+    expect(shell.querySelector('[data-testid="screen-preview"]')?.className).toContain("flex-1");
   });
 
   it("is actually wired: the large-preview entrypoint asks for the full width", async () => {
@@ -143,5 +148,6 @@ describe("AppShell width is host configuration", () => {
       "utf8"
     );
     expect(source).toMatch(/layout=("full"|{"full"})/);
+    expect(source).toMatch(/closePreview:\s*\(\)\s*=>\s*window\.close\(\)/);
   });
 });

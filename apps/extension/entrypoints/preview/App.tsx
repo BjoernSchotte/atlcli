@@ -25,7 +25,11 @@ import {
 import type { AppPorts } from "../../utils/ports/index.js";
 import { createChromePorts } from "../sidepanel/ports/index.js";
 
-const FULL_SHELL: PreviewShellConfig = { layout: "full", openLargePreview: null };
+const FULL_SHELL: PreviewShellConfig = {
+  layout: "full",
+  openLargePreview: null,
+  closePreview: () => window.close(),
+};
 
 function withPreviewCapability(ports: AppPorts): AppPorts {
   if (ports.host.capabilities.includes(PREVIEW_CAPABILITY)) return ports;

@@ -115,19 +115,29 @@ export const MAX_DEVICE_PIXEL_RATIO = 2;
 /** Ceiling on canvas pixels (≈ 4096²), so a poster-sized page cannot exhaust memory. */
 export const MAX_CANVAS_PIXELS = 16 * 1024 * 1024;
 
+/** How the PDF page is fitted into the preview viewport before user zoom. */
+export type PdfPreviewFit = "width" | "height" | "auto";
+export type ResolvedPdfPreviewFit = Exclude<PdfPreviewFit, "auto">;
+
 export interface RenderScaleInput {
   /** CSS pixels available for the page. */
   containerWidth: number;
+  /** CSS pixels available for the page. */
+  containerHeight: number;
   /** Page width in PDF units at scale 1. */
   pageWidth: number;
   /** Page height in PDF units at scale 1. */
   pageHeight: number;
-  /** User zoom multiplier (1 = fit width). */
+  /** Fit basis. `auto` uses height for portrait pages and width otherwise. */
+  fit?: PdfPreviewFit;
+  /** User zoom multiplier (1 = the requested fit). */
   zoom?: number;
   devicePixelRatio?: number;
 }
 
 export interface RenderScale {
+  /** Concrete fit selected after resolving `auto` against the page shape. */
+  fit: ResolvedPdfPreviewFit;
   /** Scale for the CSS box. */
   cssScale: number;
   /** Scale for the backing store (`cssScale × capped DPR`, further capped by area). */
@@ -135,7 +145,7 @@ export interface RenderScale {
 }
 
 /**
- * Fit-width scale plus a resolution cap.
+ * Fit scale plus a resolution cap.
  *
  * Two independent ceilings, because they fail differently: an uncapped
  * device-pixel-ratio quadruples memory on a 3× display for no visible gain past
@@ -145,7 +155,17 @@ export interface RenderScale {
 export function computeRenderScale(input: RenderScaleInput): RenderScale {
   const zoom = input.zoom && input.zoom > 0 ? input.zoom : 1;
   const width = input.pageWidth > 0 ? input.pageWidth : 1;
-  const cssScale = Math.max(0.05, (input.containerWidth / width) * zoom);
+  const height = input.pageHeight > 0 ? input.pageHeight : 1;
+  const requestedFit = input.fit ?? "width";
+  const fit: ResolvedPdfPreviewFit =
+    requestedFit === "auto"
+      ? height > width
+        ? "height"
+        : "width"
+      : requestedFit;
+  const available = fit === "height" ? input.containerHeight : input.containerWidth;
+  const pageExtent = fit === "height" ? height : width;
+  const cssScale = Math.max(0.05, (Math.max(1, available) / pageExtent) * zoom);
   const dpr = Math.min(
     MAX_DEVICE_PIXEL_RATIO,
     Math.max(1, input.devicePixelRatio && input.devicePixelRatio > 0 ? input.devicePixelRatio : 1)
@@ -155,7 +175,7 @@ export function computeRenderScale(input: RenderScaleInput): RenderScale {
   if (pixels > MAX_CANVAS_PIXELS) {
     deviceScale *= Math.sqrt(MAX_CANVAS_PIXELS / pixels);
   }
-  return { cssScale, deviceScale };
+  return { fit, cssScale, deviceScale };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +262,8 @@ export interface PdfPreviewInternalLink {
 }
 
 export interface PdfPreviewPageRender {
+  /** Concrete fit used for this page; useful when the caller requested `auto`. */
+  fit: ResolvedPdfPreviewFit;
   /** Internal destinations only. External URLs and PDF actions are never activated here. */
   internalLinks: readonly PdfPreviewInternalLink[];
 }
@@ -334,7 +356,7 @@ export interface PdfPreviewViewer {
   /**
    * Draw one page onto `canvas`.
    *
-   * `containerWidth` is REQUIRED, and that is the whole point of this
+   * `containerWidth` and `containerHeight` are REQUIRED, and that is the whole point of this
    * signature. It used to be optional with a `canvas.clientWidth` fallback —
    * but this method *sets* `canvas.style.width` at the end, so falling back to
    * the canvas's own width measured the output of the previous render and fed
@@ -349,7 +371,13 @@ export interface PdfPreviewViewer {
   renderPage(
     pageNumber: number,
     canvas: HTMLCanvasElement,
-    options: { containerWidth: number; zoom?: number; devicePixelRatio?: number }
+    options: {
+      containerWidth: number;
+      containerHeight: number;
+      fit?: PdfPreviewFit;
+      zoom?: number;
+      devicePixelRatio?: number;
+    }
   ): Promise<PdfPreviewPageRender>;
   destroy(): Promise<void>;
 }
@@ -387,11 +415,13 @@ export async function openPdfViewer(
       const clamped = Math.min(Math.max(1, Math.floor(pageNumber)), document.numPages);
       const page = await document.getPage(clamped);
       const base = page.getViewport({ scale: 1 });
-      const { cssScale, deviceScale } = computeRenderScale({
+      const { fit, cssScale, deviceScale } = computeRenderScale({
         // Never `canvas.clientWidth` — see the interface docstring.
         containerWidth: options.containerWidth,
+        containerHeight: options.containerHeight,
         pageWidth: base.width,
         pageHeight: base.height,
+        fit: options.fit,
         zoom: options.zoom,
         devicePixelRatio:
           options.devicePixelRatio ??
@@ -418,7 +448,7 @@ export async function openPdfViewer(
           render.promise,
           internalLinksForPage(page, document, cssViewport),
         ]);
-        return { internalLinks };
+        return { fit, internalLinks };
       } finally {
         if (inFlight === render) inFlight = null;
         page.cleanup?.();

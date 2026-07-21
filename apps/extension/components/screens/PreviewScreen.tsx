@@ -33,7 +33,17 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ChevronLeft, ChevronRight, Eye, ExternalLink, Minus, MoveHorizontal, Plus } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  ExternalLink,
+  Minus,
+  MoveHorizontal,
+  MoveVertical,
+  Plus,
+  X,
+} from "lucide-react";
 import type { PdfBytesHandle } from "@atlcli/pdf/browser";
 import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
 import type { HostCapability } from "../../utils/ports/index.js";
@@ -41,6 +51,8 @@ import type { LoadedPage } from "../../utils/read-path.js";
 import type { PdfPreviewResult } from "../../utils/pdf/preview.js";
 import type {
   PdfPreviewInternalLink,
+  PdfPreviewFit,
+  ResolvedPdfPreviewFit,
   PdfPreviewViewer,
 } from "../../utils/pdf/viewer.js";
 import { useI18n } from "../../utils/i18n/context.js";
@@ -48,6 +60,7 @@ import { Alert } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent } from "../ui/card.js";
 import { FieldHelp, SectionHeading } from "../ui/field.js";
+import { cn } from "../ui/utils.js";
 
 /** The capability a host must advertise for this screen to be usable. */
 export const PREVIEW_CAPABILITY: HostCapability = "pdf-preview";
@@ -67,6 +80,8 @@ export interface PreviewShellConfig {
    * view itself passes, and what a host without tabs (Forge) gets.
    */
   openLargePreview: (() => void) | null;
+  /** Closes a full-tab preview. Compact and non-tab hosts pass `null`. */
+  closePreview: (() => void) | null;
 }
 
 function defaultOpenLargePreview(): (() => void) | null {
@@ -86,7 +101,12 @@ export const PreviewShellContext = createContext<PreviewShellConfig | null>(null
 export function usePreviewShell(): PreviewShellConfig {
   const value = useContext(PreviewShellContext);
   return useMemo(
-    () => value ?? { layout: "compact", openLargePreview: defaultOpenLargePreview() },
+    () =>
+      value ?? {
+        layout: "compact",
+        openLargePreview: defaultOpenLargePreview(),
+        closePreview: null,
+      },
     [value]
   );
 }
@@ -201,6 +221,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const tRef = useRef(t);
   tRef.current = t;
   const shell = usePreviewShell();
+  const full = shell.layout === "full";
   const runtime = useContext(PreviewRuntimeContext) ?? defaultRuntime;
 
   const loadedPage = page.status === "loaded" ? page.page : null;
@@ -212,11 +233,15 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const [viewer, setViewer] = useState<PdfPreviewViewer | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [fitMode, setFitMode] = useState<PdfPreviewFit>(full ? "auto" : "width");
   const [linkLayer, setLinkLayer] = useState<{
     viewer: PdfPreviewViewer;
     pageNumber: number;
     zoom: number;
     frameWidth: number;
+    frameHeight: number;
+    requestedFit: PdfPreviewFit;
+    resolvedFit: ResolvedPdfPreviewFit;
     links: readonly PdfPreviewInternalLink[];
   } | null>(null);
 
@@ -227,7 +252,7 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   viewerRef.current = viewer;
 
   /**
-   * The width a page is fitted to, measured from the frame that holds the
+   * The width and height a page is fitted to, measured from the frame that holds the
    * canvas — never from the canvas, which `renderPage` resizes itself.
    *
    * This has to be measured rather than assumed because the same component
@@ -236,13 +261,17 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
    */
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [frameWidth, setFrameWidth] = useState(0);
+  const [frameHeight, setFrameHeight] = useState(0);
 
   // `useLayoutEffect`, not `useEffect`: the first render must fit the real
   // frame, and layout is only guaranteed readable before paint.
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    const measure = () => setFrameWidth(frame.clientWidth);
+    const measure = () => {
+      setFrameWidth(frame.clientWidth);
+      setFrameHeight(frame.clientHeight);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -272,9 +301,11 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
       setViewer(opened);
       setLinkLayer(null);
       setPageNumber(1);
+      setZoom(1);
+      setFitMode(full ? "auto" : "width");
       setPhase("ready");
     },
-    [runtime, t]
+    [full, runtime, t]
   );
 
   const compile = useCallback(async () => {
@@ -336,20 +367,39 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     };
   }, [auto, versionKey, compile]);
 
-  // Render the current page whenever it, the zoom, the frame width or the
+  // Render the current page whenever it, the zoom, fit or frame size changes.
   // document changes. Only the visible page is rasterized — never the whole
   // document.
   useEffect(() => {
     const canvas = canvasRef.current;
-    // A zero width means the frame has not been laid out yet. Rendering anyway
-    // would fit the page to nothing; the measurement effect will re-run this.
-    if (!viewer || !canvas || frameWidth <= 0) return;
+    // A zero relevant extent means the frame has not been laid out yet.
+    // Rendering anyway would fit the page to nothing; measurement re-runs this.
+    if (
+      !viewer ||
+      !canvas ||
+      frameWidth <= 0 ||
+      (fitMode !== "width" && frameHeight <= 0)
+    ) return;
     let cancelled = false;
     void viewer
-      .renderPage(pageNumber, canvas, { zoom, containerWidth: frameWidth })
-      .then(({ internalLinks }) => {
+      .renderPage(pageNumber, canvas, {
+        zoom,
+        fit: fitMode,
+        containerWidth: frameWidth,
+        containerHeight: frameHeight,
+      })
+      .then(({ fit, internalLinks }) => {
         if (!cancelled) {
-          setLinkLayer({ viewer, pageNumber, zoom, frameWidth, links: internalLinks });
+          setLinkLayer({
+            viewer,
+            pageNumber,
+            zoom,
+            frameWidth,
+            frameHeight,
+            requestedFit: fitMode,
+            resolvedFit: fit,
+            links: internalLinks,
+          });
         }
       })
       .catch((cause: unknown) => {
@@ -360,19 +410,24 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [viewer, pageNumber, zoom, frameWidth]);
+  }, [viewer, pageNumber, zoom, fitMode, frameWidth, frameHeight]);
 
   const pageCount = viewer?.pageCount ?? 0;
   // Never leave the previous page's hotspots over a newly selected page while
   // its render is still settling. The render identity makes stale async results
   // invisible even before the effect cleanup runs.
-  const visibleLinks =
+  const visibleRender =
     linkLayer?.viewer === viewer &&
     linkLayer.pageNumber === pageNumber &&
     linkLayer.zoom === zoom &&
-    linkLayer.frameWidth === frameWidth
-      ? linkLayer.links
-      : [];
+    linkLayer.frameWidth === frameWidth &&
+    linkLayer.frameHeight === frameHeight &&
+    linkLayer.requestedFit === fitMode
+      ? linkLayer
+      : null;
+  const visibleLinks = visibleRender?.links ?? [];
+  const activeFit =
+    visibleRender?.resolvedFit ?? (fitMode === "auto" ? null : fitMode);
   const scopeLabel = result?.truncated
     ? t("preview.scope.truncated", {
         included: result.includedChapters,
@@ -381,50 +436,80 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     : t("preview.scope.full");
 
   return (
-    <div className="flex flex-col gap-4" data-testid="preview-screen" data-layout={shell.layout}>
-      <SectionHeading>{t("preview.title")}</SectionHeading>
-
-      <Card>
-        <CardContent className="flex flex-col gap-2 p-3">
-          {!loadedPage ? (
-            <Alert data-testid="preview-needs-page">{t("preview.needsPage")}</Alert>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  onClick={() => void compile()}
-                  disabled={phase === "compiling"}
-                  data-testid="preview-generate"
-                >
-                  <Eye aria-hidden="true" />
-                  {phase === "ready" ? t("preview.refresh") : t("preview.generate")}
-                </Button>
-                {shell.layout === "compact" && shell.openLargePreview && (
-                  <Button
-                    variant="outline"
-                    onClick={shell.openLargePreview}
-                    data-testid="preview-open-large"
-                  >
-                    <ExternalLink aria-hidden="true" />
-                    {t("preview.openLarge")}
-                  </Button>
-                )}
-              </div>
-              <label className="flex items-center gap-2 text-xs font-medium">
-                <input
-                  type="checkbox"
-                  checked={auto}
-                  onChange={(event) => setAuto(event.target.checked)}
-                  data-testid="preview-auto"
-                />
-                {t("preview.auto")}
-              </label>
-              <FieldHelp>{t("preview.autoHelp")}</FieldHelp>
-              <FieldHelp>{t("preview.publishedOnly")}</FieldHelp>
-            </>
+    <div
+      className={cn("flex flex-col", full ? "h-full min-h-0" : "gap-4")}
+      data-testid="preview-screen"
+      data-layout={shell.layout}
+    >
+      {full ? (
+        <header
+          className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2"
+          data-testid="preview-full-header"
+        >
+          <div className="text-sm font-semibold" data-testid="preview-scope">
+            {scopeLabel}
+          </div>
+          {shell.closePreview && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-11"
+              aria-label={t("preview.closeLarge")}
+              title={t("preview.closeLarge")}
+              onClick={shell.closePreview}
+              data-testid="preview-close"
+            >
+              <X aria-hidden="true" />
+            </Button>
           )}
-        </CardContent>
-      </Card>
+        </header>
+      ) : (
+        <SectionHeading>{t("preview.title")}</SectionHeading>
+      )}
+
+      {!full && (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-3">
+            {!loadedPage ? (
+              <Alert data-testid="preview-needs-page">{t("preview.needsPage")}</Alert>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={() => void compile()}
+                    disabled={phase === "compiling"}
+                    data-testid="preview-generate"
+                  >
+                    <Eye aria-hidden="true" />
+                    {phase === "ready" ? t("preview.refresh") : t("preview.generate")}
+                  </Button>
+                  {shell.openLargePreview && (
+                    <Button
+                      variant="outline"
+                      onClick={shell.openLargePreview}
+                      data-testid="preview-open-large"
+                    >
+                      <ExternalLink aria-hidden="true" />
+                      {t("preview.openLarge")}
+                    </Button>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <input
+                    type="checkbox"
+                    checked={auto}
+                    onChange={(event) => setAuto(event.target.checked)}
+                    data-testid="preview-auto"
+                  />
+                  {t("preview.auto")}
+                </label>
+                <FieldHelp>{t("preview.autoHelp")}</FieldHelp>
+                <FieldHelp>{t("preview.publishedOnly")}</FieldHelp>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {phase === "compiling" && (
         <Alert tone="info" data-testid="preview-compiling">
@@ -443,11 +528,16 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
       )}
 
       {phase === "ready" && result && (
-        <Card>
-          <CardContent className="flex flex-col gap-2 p-3">
-            <div className="text-xs text-muted-foreground" data-testid="preview-scope">
-              {scopeLabel}
-            </div>
+        <Card
+          className={cn(full && "flex min-h-0 flex-1 flex-col rounded-none border-0")}
+          data-testid="preview-document"
+        >
+          <CardContent className={cn("flex flex-col gap-2 p-3", full && "min-h-0 flex-1")}>
+            {!full && (
+              <div className="text-xs text-muted-foreground" data-testid="preview-scope">
+                {scopeLabel}
+              </div>
+            )}
             {result.truncated && (
               <Alert tone="warning" data-testid="preview-truncated-hint">
                 {t("preview.truncatedDownloadHint")}
@@ -499,11 +589,28 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
                 variant="outline"
                 aria-label={t("preview.fitWidth")}
                 title={t("preview.fitWidth")}
-                disabled={zoom === 1}
-                onClick={() => setZoom(1)}
+                disabled={zoom === 1 && activeFit === "width"}
+                onClick={() => {
+                  setFitMode("width");
+                  setZoom(1);
+                }}
                 data-testid="preview-fit-width"
               >
                 <MoveHorizontal aria-hidden="true" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                aria-label={t("preview.fitHeight")}
+                title={t("preview.fitHeight")}
+                disabled={zoom === 1 && activeFit === "height"}
+                onClick={() => {
+                  setFitMode("height");
+                  setZoom(1);
+                }}
+                data-testid="preview-fit-height"
+              >
+                <MoveVertical aria-hidden="true" />
               </Button>
               <Button
                 size="icon"
@@ -516,7 +623,13 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
               </Button>
             </div>
 
-            <div className="overflow-auto rounded-md border bg-muted p-2">
+            <div
+              className={cn(
+                "overflow-auto rounded-md border bg-muted p-2",
+                full && "min-h-0 flex-1"
+              )}
+              data-testid="preview-viewer"
+            >
               {/*
                 The measured frame. It is a plain block, so it stays at the
                 scroll container's content width even when the canvas inside it
@@ -525,7 +638,11 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
                 it would make zooming in change the backing store while the
                 visible size stayed put.
               */}
-              <div ref={frameRef} data-testid="preview-frame">
+              <div
+                ref={frameRef}
+                className={full ? "h-full min-h-0" : undefined}
+                data-testid="preview-frame"
+              >
                 <div className="relative inline-block align-top" data-testid="preview-page">
                   <canvas className="block" ref={canvasRef} data-testid="preview-canvas" />
                   <div

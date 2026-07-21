@@ -21,7 +21,7 @@ import {
   type PreviewRuntime,
 } from "../components/screens/PreviewScreen.js";
 import type { PdfPreviewResult } from "../utils/pdf/preview.js";
-import type { PdfPreviewViewer } from "../utils/pdf/viewer.js";
+import type { PdfPreviewFit, PdfPreviewViewer } from "../utils/pdf/viewer.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
 import type { PanelState } from "../utils/panel-state.js";
 import type { AppPorts } from "../utils/ports/index.js";
@@ -54,6 +54,7 @@ const DOM_GLOBALS = [
  * elements have a size, and it keeps the production code free of test hooks.
  */
 const FRAME_WIDTH = 412;
+const FRAME_HEIGHT = 688;
 
 /**
  * The width the CANVAS reports — deliberately different from {@link FRAME_WIDTH}.
@@ -75,12 +76,18 @@ let savedChrome: PropertyDescriptor | undefined;
  * regression to the old canvas-relative fit basis produces a *different* number
  * rather than the same one by luck.
  */
-function stubLayout(frameWidth: number): void {
+function stubLayout(frameWidth: number, frameHeight = FRAME_HEIGHT): void {
   const prototype = (win as unknown as { HTMLElement: { prototype: object } }).HTMLElement.prototype;
   Object.defineProperty(prototype, "clientWidth", {
     configurable: true,
     get(this: { tagName?: string }) {
       return this.tagName === "CANVAS" ? CANVAS_WIDTH : frameWidth;
+    },
+  });
+  Object.defineProperty(prototype, "clientHeight", {
+    configurable: true,
+    get(this: { tagName?: string }) {
+      return this.tagName === "CANVAS" ? 1234 : frameHeight;
     },
   });
 }
@@ -230,6 +237,8 @@ interface RecordedRender {
   page: number;
   zoom: number | undefined;
   containerWidth: number;
+  containerHeight: number;
+  fit: PdfPreviewFit | undefined;
 }
 
 /**
@@ -255,8 +264,11 @@ function fakeViewer(pageCount = 4): PdfPreviewViewer & {
         page: pageNumber,
         zoom: options.zoom,
         containerWidth: options.containerWidth,
+        containerHeight: options.containerHeight,
+        fit: options.fit,
       });
       return {
+        fit: options.fit === "auto" ? "height" : options.fit ?? "width",
         internalLinks:
           pageNumber === 1
             ? [{ pageNumber: 3, left: 10, top: 20, width: 120, height: 18 }]
@@ -318,10 +330,11 @@ async function mount(
   page: PanelState,
   runtime: PreviewRuntime,
   layout: "compact" | "full" = "compact",
-  openLargePreview: (() => void) | null = () => undefined
+  openLargePreview: (() => void) | null = () => undefined,
+  closePreview: (() => void) | null = null
 ): Promise<void> {
   await render(
-    <PreviewShellContext.Provider value={{ layout, openLargePreview }}>
+    <PreviewShellContext.Provider value={{ layout, openLargePreview, closePreview }}>
       <PreviewRuntimeContext.Provider value={runtime}>
         <PreviewScreen {...screenProps(page)} />
       </PreviewRuntimeContext.Provider>
@@ -442,7 +455,22 @@ describe("PreviewScreen", () => {
     // not "the current size times one".
     expect(fitted.zoom).toBe(1);
     expect(fitted.containerWidth).toBe(first.containerWidth);
+    expect(fitted.fit).toBe("width");
     expect(fitted.page).toBe(first.page);
+  });
+
+  it("fits to the measured frame height when requested", async () => {
+    const viewer = fakeViewer(2);
+    await mount(loadedState(), runtimeFor(ready(), viewer));
+    await click("preview-generate");
+    await click("preview-fit-height");
+
+    const fitted = viewer.calls.at(-1)!;
+    expect(fitted.fit).toBe("height");
+    expect(fitted.containerHeight).toBe(FRAME_HEIGHT);
+    expect(fitted.zoom).toBe(1);
+    expect(find("preview-fit-height").hasAttribute("disabled")).toBe(true);
+    expect(find("preview-fit-width").hasAttribute("disabled")).toBe(false);
   });
 
   it("disables fit-width when the preview is already fitted", async () => {
@@ -623,6 +651,36 @@ describe("PreviewScreen — one screen, two shells", () => {
     await mount(loadedState(), runtimeFor(ready(), fakeViewer()), "full", null);
     expect(find("preview-screen").getAttribute("data-layout")).toBe("full");
     expect(maybeFind("preview-open-large")).toBeNull();
+  });
+
+  it("turns the full shell into a focused, viewport-filling document view", async () => {
+    let closed = 0;
+    const viewer = fakeViewer(5);
+    const runtime: PreviewRuntime = {
+      compile: async () => ready(),
+      readCached: async () => ready({ filename: "cached.pdf" }),
+      openViewer: async () => viewer,
+    };
+    await mount(loadedState(), runtime, "full", null, () => {
+      closed += 1;
+    });
+
+    expect(find("preview-full-header").textContent).toContain("whole document");
+    expect(maybeFind("preview-generate")).toBeNull();
+    expect(maybeFind("preview-auto")).toBeNull();
+    expect(find("preview-screen").className).toContain("h-full");
+    expect(find("preview-viewer").className).toContain("flex-1");
+    expect(find("preview-viewer").className).toContain("min-h-0");
+    expect(find("preview-frame").className).toContain("h-full");
+    expect(viewer.calls.at(-1)?.fit).toBe("auto");
+    expect(viewer.calls.at(-1)?.containerHeight).toBe(FRAME_HEIGHT);
+    expect(find("preview-fit-height").hasAttribute("disabled")).toBe(true);
+
+    const close = find("preview-close");
+    expect(close.getAttribute("aria-label")).toContain("Close");
+    expect(close.className).toContain("size-11");
+    await click("preview-close");
+    expect(closed).toBe(1);
   });
 
   it("both shells mount the very same component", () => {

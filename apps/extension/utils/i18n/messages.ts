@@ -217,7 +217,9 @@ const en = {
   "preview.zoomIn": "Zoom in",
   "preview.zoomOut": "Zoom out",
   "preview.fitWidth": "Fit width",
+  "preview.fitHeight": "Fit height",
   "preview.openLarge": "Open large preview",
+  "preview.closeLarge": "Close large preview",
   "preview.failed": "The preview could not be compiled: {message}",
   "preview.diagnostics": "Compiler diagnostics ({count})",
 
@@ -460,7 +462,9 @@ const de: MessageCatalog = {
   "preview.zoomIn": "Vergrößern",
   "preview.zoomOut": "Verkleinern",
   "preview.fitWidth": "Breite anpassen",
+  "preview.fitHeight": "Höhe anpassen",
   "preview.openLarge": "Große Vorschau öffnen",
+  "preview.closeLarge": "Große Vorschau schließen",
   "preview.failed": "Die Vorschau konnte nicht kompiliert werden: {message}",
   "preview.diagnostics": "Compiler-Meldungen ({count})",
 

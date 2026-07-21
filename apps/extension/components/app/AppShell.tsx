@@ -56,58 +56,67 @@ export function AppShell({
       data-testid="app-shell"
       data-layout={layout}
       className={cn(
-        "mx-auto box-border flex min-h-full flex-col gap-3 p-3",
-        layout === "compact" ? "max-w-[400px]" : "max-w-none"
+        "mx-auto box-border flex flex-col",
+        layout === "compact"
+          ? "min-h-full max-w-[400px] gap-3 p-3"
+          : "h-dvh max-w-none overflow-hidden"
       )}
     >
-      <header className="flex items-baseline justify-between gap-2">
-        <h1 className="m-0 text-sm font-semibold">{title}</h1>
-        <span className="text-xs text-muted-foreground" data-testid="app-version">
-          {t("app.version", { version })}
-        </span>
-      </header>
+      {layout === "compact" && (
+        <>
+          <header className="flex items-baseline justify-between gap-2">
+            <h1 className="m-0 text-sm font-semibold">{title}</h1>
+            <span className="text-xs text-muted-foreground" data-testid="app-version">
+              {t("app.version", { version })}
+            </span>
+          </header>
 
-      <nav aria-label={t("nav.sections")} data-testid="app-nav">
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("nav.sections")}
-        </div>
-        <ul className="m-0 flex list-none flex-wrap gap-1 p-0">
-          {visible.map((screen) => {
-            const label = t(screen.definition.labelKey);
-            const Icon = screen.definition.icon;
-            const isActive = active?.definition.id === screen.definition.id;
-            return (
-              <li key={screen.definition.id}>
-                <button
-                  type="button"
-                  data-testid={`nav-${screen.definition.id}`}
-                  data-active={isActive ? "true" : undefined}
-                  aria-current={isActive ? "page" : undefined}
-                  disabled={!screen.available}
-                  title={
-                    screen.available
-                      ? t("nav.openSection", { label })
-                      : t(screen.reasonKey ?? "screen.unavailable.title")
-                  }
-                  onClick={() => onNavigate(screen.definition.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                    "disabled:cursor-not-allowed disabled:opacity-50",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <Icon size={14} aria-hidden="true" />
-                  {label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+          <nav aria-label={t("nav.sections")} data-testid="app-nav">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("nav.sections")}
+            </div>
+            <ul className="m-0 flex list-none flex-wrap gap-1 p-0">
+              {visible.map((screen) => {
+                const label = t(screen.definition.labelKey);
+                const Icon = screen.definition.icon;
+                const isActive = active?.definition.id === screen.definition.id;
+                return (
+                  <li key={screen.definition.id}>
+                    <button
+                      type="button"
+                      data-testid={`nav-${screen.definition.id}`}
+                      data-active={isActive ? "true" : undefined}
+                      aria-current={isActive ? "page" : undefined}
+                      disabled={!screen.available}
+                      title={
+                        screen.available
+                          ? t("nav.openSection", { label })
+                          : t(screen.reasonKey ?? "screen.unavailable.title")
+                      }
+                      onClick={() => onNavigate(screen.definition.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <Icon size={14} aria-hidden="true" />
+                      {label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </>
+      )}
 
-      <section data-testid={active ? `screen-${active.definition.id}` : "screen-none"}>
+      <section
+        data-testid={active ? `screen-${active.definition.id}` : "screen-none"}
+        className={layout === "full" ? "min-h-0 flex-1 overflow-hidden" : undefined}
+      >
         {active === null ? null : active.available ? (
           <active.definition.component {...screenProps} />
         ) : (

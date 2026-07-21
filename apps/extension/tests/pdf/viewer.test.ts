@@ -33,21 +33,25 @@ function fakePdfjs(
   options: {
     annotations?: unknown[];
     destinations?: Record<string, unknown[]>;
+    pageWidth?: number;
+    pageHeight?: number;
   } = {}
 ): { module: PdfjsModule; recorded: Recorded } {
   const recorded: Recorded = { params: [], rendered: [] };
+  const pageWidth = options.pageWidth ?? 600;
+  const pageHeight = options.pageHeight ?? 800;
   const page: PdfjsPage = {
     getViewport: ({ scale }) => ({
-      width: 600 * scale,
-      height: 800 * scale,
+      width: pageWidth * scale,
+      height: pageHeight * scale,
       // PDF coordinates start at the bottom-left; viewport coordinates start
       // at the top-left. Keeping that flip in the fake makes the link geometry
       // assertion discriminate between PDF points and CSS pixels.
-      convertToViewportPoint: (x, y) => [x * scale, (800 - y) * scale],
+      convertToViewportPoint: (x, y) => [x * scale, (pageHeight - y) * scale],
     }),
     getAnnotations: async () => options.annotations ?? [],
     render: ({ viewport, canvas }) => {
-      recorded.rendered.push({ scale: viewport.width / 600, canvas });
+      recorded.rendered.push({ scale: viewport.width / pageWidth, canvas });
       return { promise: Promise.resolve(), cancel: () => undefined };
     },
   };
@@ -178,6 +182,7 @@ describe("computeRenderScale", () => {
   it("fits the page to the container width", () => {
     const { cssScale } = computeRenderScale({
       containerWidth: 300,
+      containerHeight: 700,
       pageWidth: 600,
       pageHeight: 800,
       devicePixelRatio: 1,
@@ -188,6 +193,7 @@ describe("computeRenderScale", () => {
   it("applies zoom on top of fit-width", () => {
     const { cssScale } = computeRenderScale({
       containerWidth: 300,
+      containerHeight: 700,
       pageWidth: 600,
       pageHeight: 800,
       zoom: 2,
@@ -196,15 +202,53 @@ describe("computeRenderScale", () => {
     expect(cssScale).toBeCloseTo(1);
   });
 
+  it("fits the page to the container height", () => {
+    const result = computeRenderScale({
+      containerWidth: 1200,
+      containerHeight: 400,
+      pageWidth: 600,
+      pageHeight: 800,
+      fit: "height",
+      devicePixelRatio: 1,
+    });
+    expect(result.fit).toBe("height");
+    expect(result.cssScale).toBeCloseTo(0.5);
+  });
+
+  it("auto-fits portrait pages by height and landscape pages by width", () => {
+    const portrait = computeRenderScale({
+      containerWidth: 1200,
+      containerHeight: 400,
+      pageWidth: 600,
+      pageHeight: 800,
+      fit: "auto",
+      devicePixelRatio: 1,
+    });
+    const landscape = computeRenderScale({
+      containerWidth: 400,
+      containerHeight: 1200,
+      pageWidth: 800,
+      pageHeight: 600,
+      fit: "auto",
+      devicePixelRatio: 1,
+    });
+    expect(portrait.fit).toBe("height");
+    expect(portrait.cssScale).toBeCloseTo(0.5);
+    expect(landscape.fit).toBe("width");
+    expect(landscape.cssScale).toBeCloseTo(0.5);
+  });
+
   it("caps the device-pixel-ratio contribution", () => {
     const capped = computeRenderScale({
       containerWidth: 300,
+      containerHeight: 700,
       pageWidth: 600,
       pageHeight: 800,
       devicePixelRatio: 4,
     });
     const atCap = computeRenderScale({
       containerWidth: 300,
+      containerHeight: 700,
       pageWidth: 600,
       pageHeight: 800,
       devicePixelRatio: MAX_DEVICE_PIXEL_RATIO,
@@ -215,6 +259,7 @@ describe("computeRenderScale", () => {
   it("caps total canvas area for a poster-sized page", () => {
     const { deviceScale } = computeRenderScale({
       containerWidth: 4000,
+      containerHeight: 4000,
       pageWidth: 3370,
       pageHeight: 4768,
       devicePixelRatio: 2,
@@ -233,15 +278,23 @@ describe("openPdfViewer", () => {
       getContext: () => ({}),
     });
     expect(viewer.pageCount).toBe(3);
-    await viewer.renderPage(2, fakeCanvas(), { containerWidth: 300, devicePixelRatio: 1 });
+    await viewer.renderPage(2, fakeCanvas(), {
+      containerWidth: 300,
+      containerHeight: 700,
+      devicePixelRatio: 1,
+    });
     // One page rendered — never the whole document.
     expect(recorded.rendered).toHaveLength(1);
-    await viewer.renderPage(99, fakeCanvas(), { containerWidth: 300, devicePixelRatio: 1 });
+    await viewer.renderPage(99, fakeCanvas(), {
+      containerWidth: 300,
+      containerHeight: 700,
+      devicePixelRatio: 1,
+    });
     expect(recorded.rendered).toHaveLength(2);
     await viewer.destroy();
-    await expect(viewer.renderPage(1, fakeCanvas(), { containerWidth: 300 })).rejects.toThrow(
-      /destroyed/
-    );
+    await expect(
+      viewer.renderPage(1, fakeCanvas(), { containerWidth: 300, containerHeight: 700 })
+    ).rejects.toThrow(/destroyed/);
   });
 
   it("projects internal PDF links into CSS pixels and resolves their target pages", async () => {
@@ -274,6 +327,7 @@ describe("openPdfViewer", () => {
 
     const rendered = await viewer.renderPage(2, fakeCanvas(), {
       containerWidth: 300,
+      containerHeight: 700,
       devicePixelRatio: 2,
     });
 
@@ -283,6 +337,39 @@ describe("openPdfViewer", () => {
       { pageNumber: 3, left: 30, top: 30, width: 60, height: 20 },
       { pageNumber: 2, left: 120, top: 80, width: 60, height: 20 },
     ]);
+    expect(rendered.fit).toBe("width");
+  });
+
+  it("uses the real page orientation when auto-fit is requested", async () => {
+    const portrait = fakePdfjs(1, { pageWidth: 600, pageHeight: 800 });
+    const portraitViewer = await openPdfViewer(
+      pdfBytesFromUint8Array(new Uint8Array([1])),
+      { importModule: async () => portrait.module, workerSrc: "w.mjs", getContext: () => ({}) }
+    );
+    const portraitRender = await portraitViewer.renderPage(1, fakeCanvas(), {
+      containerWidth: 1200,
+      containerHeight: 400,
+      fit: "auto",
+      devicePixelRatio: 1,
+    });
+    expect(portraitRender.fit).toBe("height");
+    expect(portrait.recorded.rendered[0]!.scale).toBeCloseTo(0.5);
+    await portraitViewer.destroy();
+    __resetPdfjsModule();
+
+    const landscape = fakePdfjs(1, { pageWidth: 800, pageHeight: 600 });
+    const landscapeViewer = await openPdfViewer(
+      pdfBytesFromUint8Array(new Uint8Array([2])),
+      { importModule: async () => landscape.module, workerSrc: "w.mjs", getContext: () => ({}) }
+    );
+    const landscapeRender = await landscapeViewer.renderPage(1, fakeCanvas(), {
+      containerWidth: 400,
+      containerHeight: 1200,
+      fit: "auto",
+      devicePixelRatio: 1,
+    });
+    expect(landscapeRender.fit).toBe("width");
+    expect(landscape.recorded.rendered[0]!.scale).toBeCloseTo(0.5);
   });
 });
 
