@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://atlcli.dev/schemas/export-report-1.json",
   "title": "atlcli.export-report/1",
-  "description": "The stable machine-readable report emitted by `atlcli wiki export` under --json / --report json. Additive changes only; a breaking change bumps the schema string.",
+  "description": "The stable machine-readable report emitted by `atlcli wiki export` under --json / --report json. Additive changes only; a breaking change bumps the schema string. Note the one widening within /1: issue.severity gained `info` when severity started honouring the engine note level, so informational notes stopped inflating `warnings[]` and `--strict`.",
   "type": "object",
   "required": ["schema", "format", "sourcePages", "outputDetails", "outputs", "issues", "warnings", "errors", "timings", "exitCode"],
   "additionalProperties": false,
@@ -41,8 +41,8 @@
       }
     },
     "outputs": { "type": "array", "items": { "type": "string" } },
-    "issues": { "type": "array", "items": { "$ref": "#/definitions/issue" } },
-    "warnings": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==warning." },
+    "issues": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Every issue, at every severity. There is no `infos` convenience view — read severity==info off here or off notesByCode." },
+    "warnings": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==warning. Informational notes are NOT included (they were, before severity honoured the engine note level)." },
     "errors": { "type": "array", "items": { "$ref": "#/definitions/issue" }, "description": "Convenience view: issues with severity==error." },
     "timings": { "type": "object", "additionalProperties": { "type": "number" } },
     "exitCode": {
@@ -87,7 +87,10 @@
       "additionalProperties": false,
       "properties": {
         "code": { "type": "string" },
-        "severity": { "enum": ["error", "warning"] },
+        "severity": {
+          "enum": ["error", "warning", "info"],
+          "description": "`info` mirrors an engine note with level==info (an observation about a correct export). Added in the same change that made severity honour the note level; a consumer pinned to an older copy of this file must widen its enum."
+        },
         "phase": { "type": "string" },
         "retryable": { "type": "boolean" },
         "message": { "type": "string" },
