@@ -104,9 +104,11 @@ atlcli doctor --json          # JSON output for scripting
 ```bash
 atlcli wiki docs init <dir> --space <key>    # Initialize sync directory
 atlcli wiki docs pull <dir>                  # Pull from Confluence
+atlcli wiki docs pull --dir <dir>            # Same, when running from elsewhere
 atlcli wiki docs pull <dir> --page-id <id>   # Pull specific page
 atlcli wiki docs pull <dir> --version <n>    # Pull specific version
 atlcli wiki docs pull <dir> --label <name>   # Pull pages with label
+atlcli wiki docs pull <dir> --force          # Overwrite local edits (markdown + attachments)
 atlcli wiki docs push <dir>                  # Push to Confluence
 atlcli wiki docs push <dir> --dry-run        # Preview changes
 atlcli wiki docs push <dir> --force          # Force overwrite
@@ -120,6 +122,7 @@ atlcli wiki docs add <dir> --template <name> # Add page from template
 atlcli wiki docs diff <dir>                  # Show local vs remote diff (title only for folders)
 atlcli wiki docs resolve <dir>               # Resolve sync conflicts
 atlcli wiki docs check <dir>                 # Validate docs (includes folder checks)
+atlcli wiki docs check --dir <dir>           # Same, when running from elsewhere (exits 1 if nothing to validate)
 atlcli wiki docs preview <dir>               # Preview markdown rendering
 atlcli wiki docs convert <file> --to-new-editor    # Convert to v2 editor
 atlcli wiki docs convert <file> --to-legacy-editor # Convert to v1 editor
