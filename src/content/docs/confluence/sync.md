@@ -101,14 +101,45 @@ atlcli wiki docs sync <dir> [options]
 | `--space <key>` | Sync entire space |
 | `--ancestor <id>` | Sync page tree under parent ID |
 | `--page-id <id>` | Sync single page |
-| `--poll-interval <ms>` | Remote polling interval (default: 30000) |
+| `--poll-interval <ms>` | Remote polling interval, `100`–`86400000` (default: 30000) |
 | `--no-poll` | Disable remote polling (local watch only) |
 | `--no-watch` | Disable file watching (poll only) |
 | `--on-conflict <mode>` | Conflict handling: `merge`, `local`, `remote` |
 | `--auto-create` | Auto-create pages for new local files |
 | `--label <label>` | Only sync pages with this label |
-| `--dry-run` | Preview changes without syncing |
+| `--dry-run` | Report the plan and exit without changing anything |
 | `--json` | JSON line output for scripting |
+
+Run `atlcli wiki docs sync --help` for the same list from the CLI.
+
+:::note[Invalid values are rejected]
+`--on-conflict`, `--poll-interval` and `--webhook-port` are validated before the
+daemon starts. An unrecognized mode or a non-numeric interval exits with a usage
+error instead of silently falling back to `merge` or to the default interval.
+:::
+
+### Previewing a Sync
+
+```bash
+atlcli wiki docs sync ./docs --page-id 12345 --dry-run
+```
+
+`--dry-run` reports the plan and exits. It performs **no** filesystem writes at
+all:
+
+- No pages are pulled; no local file is created, moved or overwritten.
+- Legacy `<file>.meta.json` / `<file>.base` sidecars are reported as
+  `Would migrate:` and left on disk — they are neither migrated nor deleted.
+- No `.atlcli/` directory, state store or cache is created, and the target
+  directory itself is not created if it does not exist.
+- The sync daemon is not started, so no watcher and no poller run.
+
+:::caution[Behavior changed]
+Earlier versions migrated legacy sidecars for real under `--dry-run`: they
+deleted `<file>.meta.json` and `<file>.base` and created a `.atlcli/` store. If
+you ran a dry run against a directory still in the pre-v2 format, check version
+control for missing sidecar files.
+:::
 
 ### Polling
 
@@ -448,11 +479,25 @@ Control how conflicts are handled in sync mode:
 atlcli wiki docs sync ./docs --on-conflict <strategy>
 ```
 
-| Strategy | Behavior |
-|----------|----------|
-| `merge` | Attempt three-way merge (default) |
-| `local` | Keep local version, overwrite remote |
-| `remote` | Keep remote version, overwrite local |
+| Strategy | Behavior when the three-way merge fails |
+|----------|----------------------------------------|
+| `merge` | Write conflict markers into the local file and stop (default) |
+| `local` | Local wins: push the local file over the remote page in one update |
+| `remote` | Remote wins: overwrite the conflicted local file in place; the local edit is discarded and never pushed |
+
+All three emit a `conflict` event first, so `--json` consumers see which
+strategy was applied:
+
+```json
+{"schemaVersion":"1","type":"conflict","message":"Conflict (1 regions), keeping remote (--on-conflict remote): ./docs/api.md","file":"./docs/api.md","pageId":"12345","details":{"conflictCount":1,"resolution":"remote"}}
+```
+
+:::caution[Behavior changed]
+Earlier versions handled only `merge` correctly. `local` looped between the push
+and merge paths without ever pushing (thousands of API requests, no result), and
+`remote` wrote the remote content to a *new* file (`api-2.md`) while leaving
+`api.md` on the local edit. Both now behave as documented above.
+:::
 
 ### Three-Way Merge
 
