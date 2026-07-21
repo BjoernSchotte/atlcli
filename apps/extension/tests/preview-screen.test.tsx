@@ -42,13 +42,48 @@ const DOM_GLOBALS = [
   "requestAnimationFrame",
   "cancelAnimationFrame",
   "MutationObserver",
+  "ResizeObserver",
 ] as const;
+
+/**
+ * The width the preview FRAME reports.
+ *
+ * happy-dom has no layout engine, so every `clientWidth` is 0 — and the screen
+ * (correctly) refuses to fit a page to a zero-width frame. Stubbing the
+ * property is the smallest thing that makes these tests run in a world where
+ * elements have a size, and it keeps the production code free of test hooks.
+ */
+const FRAME_WIDTH = 412;
+
+/**
+ * The width the CANVAS reports — deliberately different from {@link FRAME_WIDTH}.
+ *
+ * If both were the same number, "fits to the measured frame" could not tell the
+ * two apart, and reverting to the old `canvas.clientWidth` basis would leave the
+ * suite green. Different values are what make that assertion discriminating.
+ */
+const CANVAS_WIDTH = 987;
 
 let saved: { key: string; descriptor: PropertyDescriptor | undefined }[] = [];
 let win: Window | null = null;
 let container: HTMLElement | null = null;
 let root: { render: (node: React.ReactNode) => void; unmount: () => void } | null = null;
 let savedChrome: PropertyDescriptor | undefined;
+
+/**
+ * Give elements a size. A `<canvas>` always reports {@link CANVAS_WIDTH}, so a
+ * regression to the old canvas-relative fit basis produces a *different* number
+ * rather than the same one by luck.
+ */
+function stubLayout(frameWidth: number): void {
+  const prototype = (win as unknown as { HTMLElement: { prototype: object } }).HTMLElement.prototype;
+  Object.defineProperty(prototype, "clientWidth", {
+    configurable: true,
+    get(this: { tagName?: string }) {
+      return this.tagName === "CANVAS" ? CANVAS_WIDTH : frameWidth;
+    },
+  });
+}
 
 function installGlobal(key: string, value: unknown): void {
   saved.push({ key, descriptor: Object.getOwnPropertyDescriptor(globalThis, key) });
@@ -71,6 +106,7 @@ beforeEach(() => {
     installGlobal(key, value);
   }
   installGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  stubLayout(FRAME_WIDTH);
   container = win.document.createElement("div") as unknown as HTMLElement;
   win.document.body.appendChild(container as unknown as never);
 });
@@ -189,13 +225,37 @@ function idleState(): PanelState {
 
 const report = { filename: "Handbook.pdf" } as unknown as PdfExportReport;
 
-function fakeViewer(pageCount = 4): PdfPreviewViewer & { renders: number[] } {
-  const renders: number[] = [];
+/** One recorded `renderPage` call — the WHOLE call, not just the page number. */
+interface RecordedRender {
+  page: number;
+  zoom: number | undefined;
+  containerWidth: number;
+}
+
+/**
+ * The fake used to be `async renderPage(pageNumber) { renders.push(pageNumber) }`
+ * — it dropped the options argument entirely. That is why no test could see
+ * that the screen never passed `containerWidth`, and why the zoom test could
+ * only assert *that* a re-render happened, never *at what scale*. It records
+ * the full call now, and the assertions below read the recorded scale.
+ */
+function fakeViewer(pageCount = 4): PdfPreviewViewer & {
+  renders: number[];
+  calls: RecordedRender[];
+} {
+  const calls: RecordedRender[] = [];
   return {
-    renders,
+    get renders() {
+      return calls.map((c) => c.page);
+    },
+    calls,
     pageCount,
-    async renderPage(pageNumber) {
-      renders.push(pageNumber);
+    async renderPage(pageNumber, _canvas, options) {
+      calls.push({
+        page: pageNumber,
+        zoom: options.zoom,
+        containerWidth: options.containerWidth,
+      });
     },
     async destroy() {
       /* nothing */
@@ -315,6 +375,85 @@ describe("PreviewScreen", () => {
     await click("preview-zoom-in");
     expect(viewer.renders).toEqual([1, 1]);
     expect(runtime.compiles).toBe(1);
+    // The zoom must actually REACH the viewer. Asserting only that a second
+    // render happened is what let the fit-width defect through: the old fake
+    // discarded the options argument, so a zoom that changed nothing looked
+    // identical to one that worked.
+    expect(viewer.calls.map((c) => c.zoom)).toEqual([1, 1.25]);
+  });
+
+  /**
+   * The regression for the reported bug: "Breite anpassen" did nothing.
+   *
+   * `renderPage` sets `canvas.style.width`, so the old code's
+   * `canvas.clientWidth` fallback fed the previous render's output back in as
+   * the fit basis. The scale was relative to itself, which made `zoom: 1` a
+   * multiplication by one at every zoom level.
+   */
+  it("fits to the MEASURED frame, never to the canvas it just resized", async () => {
+    const viewer = fakeViewer(2);
+    await mount(loadedState(), runtimeFor(ready(), viewer));
+    await click("preview-generate");
+    for (const call of viewer.calls) {
+      expect(call.containerWidth).toBe(FRAME_WIDTH);
+    }
+    expect(viewer.calls.length).toBeGreaterThan(0);
+  });
+
+  it("returns to fit-width after zooming, at the same scale as the first render", async () => {
+    const viewer = fakeViewer(2);
+    await mount(loadedState(), runtimeFor(ready(), viewer));
+    await click("preview-generate");
+    const first = viewer.calls.at(-1)!;
+
+    await click("preview-zoom-in");
+    await click("preview-zoom-in");
+    const zoomed = viewer.calls.at(-1)!;
+    expect(zoomed.zoom).toBeGreaterThan(1);
+
+    await click("preview-fit-width");
+    const fitted = viewer.calls.at(-1)!;
+    // Same page, same basis, back to 1 — i.e. genuinely the first render again,
+    // not "the current size times one".
+    expect(fitted.zoom).toBe(1);
+    expect(fitted.containerWidth).toBe(first.containerWidth);
+    expect(fitted.page).toBe(first.page);
+  });
+
+  it("disables fit-width when the preview is already fitted", async () => {
+    // A control that is a no-op in its default state and gives no feedback
+    // reads as broken — which is exactly how this was reported.
+    const viewer = fakeViewer(2);
+    await mount(loadedState(), runtimeFor(ready(), viewer));
+    await click("preview-generate");
+    expect(find("preview-fit-width").hasAttribute("disabled")).toBe(true);
+    await click("preview-zoom-in");
+    expect(find("preview-fit-width").hasAttribute("disabled")).toBe(false);
+  });
+
+  /**
+   * The other half of the measurement contract, and the one a fake CAN show.
+   *
+   * A frame with no layout must produce no render at all. Fitting a page to a
+   * zero-width frame is how you get a 1-pixel-wide canvas, and the previous
+   * code reached for `canvas.clientWidth` precisely to paper over this moment —
+   * which is what made the fit basis self-referential ever after.
+   *
+   * The *resize* path (ResizeObserver → re-measure → re-render) is deliberately
+   * NOT tested here: happy-dom has no layout engine, so its ResizeObserver
+   * never fires and any assertion would pass whether the observer were wired up
+   * or deleted. Do not "add coverage" for it against this fake — that trades a
+   * real check for a green light. It belongs in the manual release protocol
+   * (resize the panel and the large-preview tab with a preview on screen).
+   */
+  it("renders nothing while the frame has no width", async () => {
+    stubLayout(0);
+    const viewer = fakeViewer(2);
+    const runtime = runtimeFor(ready(), viewer);
+    await mount(loadedState(), runtime);
+    await click("preview-generate");
+    expect(runtime.compiles).toBe(1);
+    expect(viewer.calls).toEqual([]);
   });
 
   /** The label must never say "pages" for a truncated tree/space preview. */

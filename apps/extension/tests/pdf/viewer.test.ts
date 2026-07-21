@@ -219,7 +219,9 @@ describe("openPdfViewer", () => {
     await viewer.renderPage(99, fakeCanvas(), { containerWidth: 300, devicePixelRatio: 1 });
     expect(recorded.rendered).toHaveLength(2);
     await viewer.destroy();
-    await expect(viewer.renderPage(1, fakeCanvas())).rejects.toThrow(/destroyed/);
+    await expect(viewer.renderPage(1, fakeCanvas(), { containerWidth: 300 })).rejects.toThrow(
+      /destroyed/
+    );
   });
 });
 

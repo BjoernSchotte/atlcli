@@ -230,10 +230,25 @@ export async function pdfjsSourceFor(bytes: PdfBytesHandle): Promise<Record<stri
 export interface PdfPreviewViewer {
   readonly pageCount: number;
   /** Render one page into `canvas`. Cancels any render already in flight. */
+  /**
+   * Draw one page onto `canvas`.
+   *
+   * `containerWidth` is REQUIRED, and that is the whole point of this
+   * signature. It used to be optional with a `canvas.clientWidth` fallback —
+   * but this method *sets* `canvas.style.width` at the end, so falling back to
+   * the canvas's own width measured the output of the previous render and fed
+   * it back in as the fit basis. The scale became relative to itself, which
+   * made `zoom: 1` ("fit width") a multiplication by one — a no-op at every
+   * zoom level — and left the page pinned at whatever width the canvas
+   * happened to have on its first layout.
+   *
+   * Requiring the caller to measure its own container makes that class of bug
+   * a compile error rather than a button that silently does nothing.
+   */
   renderPage(
     pageNumber: number,
     canvas: HTMLCanvasElement,
-    options?: { zoom?: number; containerWidth?: number; devicePixelRatio?: number }
+    options: { containerWidth: number; zoom?: number; devicePixelRatio?: number }
   ): Promise<void>;
   destroy(): Promise<void>;
 }
@@ -266,13 +281,14 @@ export async function openPdfViewer(
     get pageCount() {
       return document.numPages;
     },
-    async renderPage(pageNumber, canvas, options = {}) {
+    async renderPage(pageNumber, canvas, options) {
       if (destroyed) throw new Error("PDF preview viewer was destroyed.");
       const clamped = Math.min(Math.max(1, Math.floor(pageNumber)), document.numPages);
       const page = await document.getPage(clamped);
       const base = page.getViewport({ scale: 1 });
       const { cssScale, deviceScale } = computeRenderScale({
-        containerWidth: options.containerWidth ?? canvas.clientWidth ?? base.width,
+        // Never `canvas.clientWidth` — see the interface docstring.
+        containerWidth: options.containerWidth,
         pageWidth: base.width,
         pageHeight: base.height,
         zoom: options.zoom,

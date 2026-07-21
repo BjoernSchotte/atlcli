@@ -28,11 +28,12 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { ChevronLeft, ChevronRight, Eye, ExternalLink, Minus, Plus, Scan } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, ExternalLink, Minus, MoveHorizontal, Plus } from "lucide-react";
 import type { PdfBytesHandle } from "@atlcli/pdf/browser";
 import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
 import type { HostCapability } from "../../utils/ports/index.js";
@@ -208,6 +209,30 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
   const viewerRef = useRef<PdfPreviewViewer | null>(null);
   viewerRef.current = viewer;
 
+  /**
+   * The width a page is fitted to, measured from the frame that holds the
+   * canvas — never from the canvas, which `renderPage` resizes itself.
+   *
+   * This has to be measured rather than assumed because the same component
+   * runs in a 400 px side panel and in a full-width tab, and either can be
+   * resized while a preview is on screen.
+   */
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const [frameWidth, setFrameWidth] = useState(0);
+
+  // `useLayoutEffect`, not `useEffect`: the first render must fit the real
+  // frame, and layout is only guaranteed readable before paint.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const measure = () => setFrameWidth(frame.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [viewer]);
+
   // Tear the viewer down on unmount: it owns a PDF.js document, a worker
   // channel and (via the handle) an object URL.
   useEffect(
@@ -293,21 +318,24 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
     };
   }, [auto, versionKey, compile]);
 
-  // Render the current page whenever it, the zoom or the document changes.
-  // Only the visible page is rasterized — never the whole document.
+  // Render the current page whenever it, the zoom, the frame width or the
+  // document changes. Only the visible page is rasterized — never the whole
+  // document.
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!viewer || !canvas) return;
+    // A zero width means the frame has not been laid out yet. Rendering anyway
+    // would fit the page to nothing; the measurement effect will re-run this.
+    if (!viewer || !canvas || frameWidth <= 0) return;
     let cancelled = false;
     void viewer
-      .renderPage(pageNumber, canvas, { zoom })
+      .renderPage(pageNumber, canvas, { zoom, containerWidth: frameWidth })
       .catch((cause: unknown) => {
         if (!cancelled) setError(t("preview.failed", { message: messageOf(cause) }));
       });
     return () => {
       cancelled = true;
     };
-  }, [viewer, pageNumber, zoom, t]);
+  }, [viewer, pageNumber, zoom, frameWidth, t]);
 
   const pageCount = viewer?.pageCount ?? 0;
   const scopeLabel = result?.truncated
@@ -425,14 +453,22 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
               >
                 <Minus aria-hidden="true" />
               </Button>
+              {/*
+                `MoveHorizontal`, not `Scan`: the scan-corners glyph reads as
+                "fullscreen" next to − and +, and the first person to try it
+                pressed it expecting a full-screen viewer. Full size is the
+                separate "Open large preview" action.
+              */}
               <Button
                 size="icon"
                 variant="outline"
                 aria-label={t("preview.fitWidth")}
+                title={t("preview.fitWidth")}
+                disabled={zoom === 1}
                 onClick={() => setZoom(1)}
                 data-testid="preview-fit-width"
               >
-                <Scan aria-hidden="true" />
+                <MoveHorizontal aria-hidden="true" />
               </Button>
               <Button
                 size="icon"
@@ -446,7 +482,17 @@ export function PreviewScreen({ page }: ScreenProps): React.JSX.Element {
             </div>
 
             <div className="overflow-auto rounded-md border bg-muted p-2">
-              <canvas ref={canvasRef} className="max-w-full" data-testid="preview-canvas" />
+              {/*
+                The measured frame. It is a plain block, so it stays at the
+                scroll container's content width even when the canvas inside it
+                is wider — which is what makes it a stable fit basis at any
+                zoom. The canvas deliberately carries NO `max-w-full`: clamping
+                it would make zooming in change the backing store while the
+                visible size stayed put.
+              */}
+              <div ref={frameRef} data-testid="preview-frame">
+                <canvas ref={canvasRef} data-testid="preview-canvas" />
+              </div>
             </div>
           </CardContent>
         </Card>

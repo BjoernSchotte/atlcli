@@ -192,9 +192,12 @@ configured through [Document settings](#document-settings-pdf).
 - Preview is **opt-in**. Click **Generate preview**, or turn on **Update
   automatically** — which is **off by default**, so a plain export never waits
   for a preview compile.
-- Page back and forth, zoom, fit-to-width, or **Open large preview** to mount the
-  same view full-size in its own tab over the same compiled bytes. There is no
-  second renderer and no second compile.
+- Page back and forth with **‹** / **›**, zoom with **−** / **+**, and use the
+  middle button to go back to **Breite anpassen / Fit width**. That button is
+  greyed out while the page already fits — it is not a full-screen control.
+- **Open large preview** mounts the same view full-size in its own tab, over the
+  same compiled bytes. There is no second renderer and no second compile, and
+  the panel stays usable while the tab is open.
 - The preview *is* the export pipeline with the download swapped for a capture,
   so what you preview is what you download — literally the same bytes, reused.
 
@@ -284,6 +287,7 @@ atlcli wiki export <pageId> --format pdf --scope tree \
 |---------|--------------|-----|
 | **My change isn't in the preview** | The preview renders the last **published** version, not the open editor draft | Publish the page, then refresh the preview |
 | **My export disappeared** | Either the browser was closed (background exports do not survive that), or the job passed the 24-hour retention window | Re-run it. For long exports, leave Chrome running |
+| The middle zoom button does nothing | It is **Fit width**, not full screen, and it is disabled while the page already fits | Zoom in or out first; for a bigger view use **Open large preview** |
 | The preview stops after a few chapters | A tree/space preview is capped at the first 5 chapters by design | Nothing to fix — **Download** compiles the whole document |
 | **Download** is unavailable on a preview | A truncated preview's bytes are a prefix, not the document | Use **Export to PDF**, which compiles all of it |
 | No page matched the include filter | The include labels match no page in scope | Widen or remove **Only pages with these labels**; check the labels on the pages |
