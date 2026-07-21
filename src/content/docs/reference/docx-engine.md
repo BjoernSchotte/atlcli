@@ -547,7 +547,9 @@ latency plus the heaviest CPU leg:
 ## Guarantees and gates
 
 - **Isomorphism:** `packages/docx/src/index.browser.ts` is one of the CI-gated browser
-  entrypoints (`bun run check:browser`) — a `node:`/`bun:` specifier anywhere in its graph fails CI.
+  entrypoints (`bun run check:browser`) — a Node/Bun builtin anywhere in its transitive source
+  graph fails CI in either spelling (`node:fs` **and** the legacy bare `fs`), as does a surviving
+  `Bun.*` call left behind by an erased `import type … from "bun"`.
 - **Golden-file equality:** `packages/docx/src/golden.test.ts` pins the engine's output to the
   pre-extraction extension export; `node-consumer.test.ts` proves the identical output under Node
   filesystem adapters.

@@ -4,7 +4,7 @@ import sub from "markdown-it-sub";
 import sup from "markdown-it-sup";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
-import { createHash } from "crypto";
+import { sha256HexOfUtf8 } from "./sha256.js";
 import { encodeBase64, decodeBase64 } from "@atlcli/core";
 import { stripFrontmatter } from "./frontmatter.js";
 
@@ -3141,7 +3141,12 @@ export function normalizeMarkdown(markdown: string): string {
 /**
  * Computes SHA-256 hash of content for change detection.
  * Returns hex-encoded hash string.
+ *
+ * Backed by {@link sha256HexOfUtf8} rather than `node:crypto` — this module is a
+ * browser entrypoint, and the bare `crypto` import this replaced pulled Bun's
+ * `crypto-browserify` polyfill (~1.2 MB, and node-global member access with it)
+ * into every browser bundle. Digests are unchanged; see `sha256.ts`.
  */
 export function hashContent(content: string): string {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+  return sha256HexOfUtf8(content);
 }

@@ -202,23 +202,29 @@ describe("extension host boundaries — no re-implementation of packages/* surfa
 /**
  * Node barrels must not be importable from this bundle (spec 010 T5.4).
  *
- * ## Why this is not already covered by `bun run check:browser`
+ * ## Relationship to `bun run check:browser`
  *
- * It is not, and that is the point of writing it here. The shared gate scans a
- * `--target=browser` build for **quoted `node:`/`bun:` specifiers**, and the
- * modules that make `@atlcli/jira`'s default barrel node-only import the LEGACY
- * bare form — `import { homedir } from "os"`, `"path"`, `"fs"`, `"crypto"` —
- * which Bun silently polyfills for the browser target. Measured: pointing
- * `BROWSER_ENTRYPOINTS` at `packages/jira/src/index.ts` produces a 1.03 MB
- * bundle containing `homedir`, `createHmac`, `Bun.serve` and Bun's own
- * "not implemented" polyfill text — and the gate reports it CLEAN.
+ * HISTORICAL NOTE (kept because it explains why this file exists): when this
+ * was written the shared gate scanned a `--target=browser` build for **quoted
+ * `node:`/`bun:` specifiers** only, and the modules that make `@atlcli/jira`'s
+ * default barrel node-only import the LEGACY bare form — `import { homedir }
+ * from "os"`, `"path"`, `"fs"`, `"crypto"` — which Bun silently polyfills for
+ * the browser target. Measured then: pointing `BROWSER_ENTRYPOINTS` at
+ * `packages/jira/src/index.ts` produced a ~1 MB bundle containing `homedir`,
+ * `createHmac`, `Bun.serve` and Bun's own "not implemented" polyfill text —
+ * and the gate reported it CLEAN.
  *
- * So the property this file can still check cheaply, with no false positives
- * and without changing a repo-wide gate's sensitivity, is the *intent*: a
- * package that ships a browser barrel must be imported through it. The
- * `exports` map is the source of truth — a `"."` entry carrying a `browser`
- * condition already resolves safely for a bundler, so a bare import of such a
- * package (`@atlcli/core`) is fine; one without it is not.
+ * That hole is now closed: `scripts/check-browser-build.ts` resolves each
+ * entrypoint's source graph and flags builtins in BOTH spellings, and its test
+ * runs the real check against that real barrel and asserts it fails.
+ *
+ * This file is still the cheaper and more specific check, so it stays: it
+ * asserts the *intent* at the source level — a package that ships a browser
+ * barrel must be imported through it — without needing a build at all, and it
+ * covers extension sources that are not §6 entrypoints. The `exports` map is
+ * the source of truth: a `"."` entry carrying a `browser` condition already
+ * resolves safely for a bundler, so a bare import of such a package
+ * (`@atlcli/core`) is fine; one without it is not.
  */
 describe("no extension source imports a package's node barrel", () => {
   const SOURCE_ROOTS = ["utils", "entrypoints", "components", "workers"];

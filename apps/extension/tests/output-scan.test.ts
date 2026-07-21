@@ -79,10 +79,25 @@ describe("scanText classification", () => {
     expect(scanText(text)).toContain(expected);
   });
 
+  // Spec 010: the same blind spot the repo-wide browser gate had. A type-only
+  // `import type { Server } from "bun"` erases, so NODE_BUN_RE sees no
+  // specifier — but the call survives and `Bun` is undefined in an extension
+  // page.
+  it.each([
+    ["Bun.serve", `const s = Bun.serve({ port: 0 });`],
+    ["Bun.file", `const f = Bun.file("x.txt");`],
+    ["minified spacing", `Bun.$\`ls\``],
+  ])("flags the Bun global via %s", (_label, source) => {
+    expect(scanText(source).some((finding) => finding.startsWith("Bun."))).toBe(true);
+  });
+
   it("does not flag look-alike identifiers that are not node globals", () => {
     // A property literally named `Buffer` or a `processEnv` variable must not trip.
     expect(scanText(`const myBuffer = new Uint8Array(4);`)).toEqual([]);
     expect(scanText(`const processEnvironment = cfg.processEnvironment;`)).toEqual([]);
+    // …nor an identifier ending in `Bun`, nor `Bun` as someone else's property.
+    expect(scanText(`const isBun = { serve() {} }; isBun.serve();`)).toEqual([]);
+    expect(scanText(`const v = runtimes.Bun.serve;`)).toEqual([]);
   });
 
   it.each([
