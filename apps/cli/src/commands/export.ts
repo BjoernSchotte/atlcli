@@ -1331,7 +1331,17 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
   // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
   // only happens when an account-id-only mention is actually present.
-  const walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+  //
+  // `exportControls` MUST be threaded into this walk, not only into `runExport`
+  // below: the engine applies its own control policy only when it does the walk
+  // itself, and this pre-walk means it never does. Omitting it here silently
+  // dropped every `--keep-ignored` body (spec 003) from the moment this
+  // pre-walk was added — the engine-level option at :1354 was addressing a walk
+  // that no longer happened.
+  const walked = storageToBlocks(page.storage ?? "", {
+    exporter: "word",
+    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+  });
   const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
   const tsSourceNotes = [...walked.notes];
   if (mention.unresolved > 0) {
