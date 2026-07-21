@@ -324,7 +324,18 @@ wiring stays in thin components and entrypoints.
 
    **Renderer: locally bundled PDF.js, not `<embed>`.** Output goes to a
    capture sink (bytes, not a download) and is handed to PDF.js as a
-   `Uint8Array` via `getDocument({ data })` — no intermediate `blob:` URL.
+   ~~`Uint8Array` via `getDocument({ data })` — no intermediate `blob:` URL~~.
+
+   **Corrected during implementation (T5.3):** it is the other way round —
+   PDF.js gets a `blob:` URL, and `data` is only the copy-based fallback for a
+   runtime without `URL.createObjectURL`. `getDocument({ data })` may transfer
+   (and thereby detach) the buffer it is given, and since T5.6 the bytes are a
+   `PdfBytesHandle` whose `asUint8Array()` hands out its *borrowed* backing
+   array — so `data` would have left Download with a zero-length view. See the
+   T5.3 task and `apps/extension/utils/pdf/viewer.ts:26-35`. None of the
+   positive rationale below depends on this: the viewer is still a `<canvas>`
+   under `script-src 'self'`, and no `object-src`/`<embed>` question arises
+   either way.
 
    **Decision record (2026-07-20).** Earlier drafts of this plan justified the
    choice negatively, by asserting that a `blob:`-sourced
@@ -666,7 +677,7 @@ app renders and completes an export in a happy-dom test **with `chrome`
 undefined**. If that is green, the Forge port is mechanical; if it is not, no
 amount of abstraction helps.
 
-- [ ] **UI foundation.** Tailwind in the WXT/Vite build, shadcn/ui
+- [x] **UI foundation.** Tailwind in the WXT/Vite build, shadcn/ui
       (`components.json`, path aliases, `globals.css` with the CSS-variable
       theme), `lucide-react`. Dark mode comes from shadcn's variable theming —
       it closes the PoC gap at no extra cost. Components live in
@@ -678,41 +689,106 @@ amount of abstraction helps.
       dependency before relaxing the gate (Architecture point 8 — note the
       gate ended up **not** being relaxed at all, so there is no existing
       exemption to widen; any relaxation would be the first).
-- [ ] **i18n from the first component**, DE + EN. A typed message dictionary
+      *(Shipped: `apps/extension/components.json` — shadcn `new-york`,
+      `cssVariables: true`, `iconLibrary: "lucide"`, css `assets/globals.css`;
+      `tailwindcss` + `@tailwindcss/postcss` ^4.3.3 and `lucide-react` in
+      `apps/extension/package.json`; `components/ui/{button,card,alert,field}.tsx`.
+      `DYNAMIC_CODE_RES` is untouched — `scripts/check-output-build.ts:87`.)*
+- [x] **i18n from the first component**, DE + EN. A typed message dictionary
       plus React context — deliberately **not** `chrome.i18n`, which would not
       port. Retrofitting i18n later would touch every component; the design's
       settings screen has a language selector, so it is a requirement, not a
       nice-to-have.
-- [ ] `PageContextSource` port (new): "which page am I on?" — the one genuinely
+      *(`apps/extension/utils/i18n/messages.ts` — `LOCALES = ["en", "de"]`,
+      `MessageKey` derived from the `en` catalogue; `utils/i18n/context.tsx`
+      (`useT`); `tests/i18n.test.ts` — "`de` has exactly the English key set —
+      no missing, no stale". Language selector: `components/screens/SettingsScreen.tsx`,
+      asserted by `tests/app-portability.test.tsx` — "switching the language
+      preference re-renders the whole app".)*
+- [x] `PageContextSource` port (new): "which page am I on?" — the one genuinely
       new seam. The extension implements it over `tab-observer.ts` /
       `detection-pull.ts` / `chrome.windows.getCurrent`; a Forge host would
       receive the page from the platform instead of discovering it. This is
       what removes detection logic from the view layer.
-- [ ] `ConfluenceExportReader` port (adopt SPIKE.md's shape): the portable read
+
+      **Shipped, but not as a named port.** There is no `PageContextSource`
+      interface: the seam is the single method `AppPorts.watchPageContext`
+      (`apps/extension/utils/ports/index.ts:64`, `PageContext` = the existing
+      `EntityDetection` minus `windowId`), implemented for Chrome by
+      `entrypoints/sidepanel/ports/page-context.ts#watchChromePageContext`
+      (`chrome.windows.getCurrent` + the tab observer's `seq`, plus a
+      focus/visibility re-pull). The reasoning is recorded at
+      `utils/ports/index.ts:24-29`: URL → entity is already
+      `extractEntityFromUrl` and URL → profile is already `profileFromTabUrl`,
+      so only the *subscription* was missing. The effect the task asked for —
+      no detection logic in the view layer — holds either way.
+- [x] ~~`ConfluenceExportReader` port (adopt SPIKE.md's shape): the portable read
       seam. The extension implements it over `ConfluenceClient`; a Forge host
-      would implement it over its own transport. **`packages/confluence/src/client.ts`
+      would implement it over its own transport.~~ **Deliberately NOT declared —
+      superseded by an audit of the isomorphic base.**
+      `utils/ports/index.ts:8-22` records the finding: every
+      read this port would have carried already has a seam —
+      `getSpace`/`getCurrentUser`/`getPageOwner` are `ResolveDeps`
+      (`packages/docx/src/resolver.ts`), attachment bytes are `AssetFetcher` /
+      `PdfAssetResolver`, attachment metadata is `AttachmentLookupPort`
+      (`@atlcli/export-macros`), tree reads are `TreeSource`
+      (`@atlcli/confluence`). The only uncovered slot was loading the root page
+      for the panel, which shipped as the single function `AppPorts.loadPage`
+      (`utils/ports/index.ts:75`), following the base's own idiom of a
+      structural type next to the consumer rather than a named interface. The
+      *property* the task was for still holds: the portable cut sits above
+      `ConfluenceClient`, and the Chrome binding lives in
+      `entrypoints/sidepanel/ports/index.ts`. The caveat below stands unchanged
+      — T5.4 does wire macro ports directly onto
+      `ConfluenceClient`/`JiraClient`, which is correct for the extension and
+      does not port. Original wording, retained for review history:
+      **`packages/confluence/src/client.ts`
       is explicitly "nicht direkt verwenden" for Forge** (profile + session
       cookies), so the portable cut must sit *above* the client — note that
       T5.4 wires macro ports directly onto `ConfluenceClient`/`JiraClient`,
       which is correct for the extension but does not port.
-- [ ] **Naming collision to resolve:** `PdfCompilerHost` already exists as the
+- [x] **Naming collision to resolve:** `PdfCompilerHost` already exists as the
       Chrome worker FIFO class (`utils/pdf/compiler-host.ts:30`), while
       SPIKE.md uses the same name for the abstract `compile(bundle, signal)`
       contract. These are different things at different layers. Decide once:
       either rename the existing class to its adapter role
       (e.g. `ChromeWorkerCompilerHost`) and let the seam take the generic name,
       or give the seam a distinct name. Do not ship both meanings.
-- [ ] **Keep DOCX and PDF independently swappable.** SPIKE.md documents a
+      *(Resolved the first way: the class is `ChromeWorkerCompilerHost`
+      (`apps/extension/utils/pdf/compiler-host.ts:134`, rename recorded at
+      `:89-90`), constructed in `entrypoints/offscreen/main.ts:13`; no
+      `PdfCompilerHost` identifier survives anywhere in the repo, so the seam
+      name is free.)*
+- [x] **Keep DOCX and PDF independently swappable.** SPIKE.md documents a
       conditional GO where PDF-WASM fails in Forge while DOCX works, leaving
       "Browserbasis nur DOCX". The port boundary must therefore not force a
       shared path between the two engines.
-- [ ] `App.tsx` split: a portable `<ExportApp ports={…} />` plus a thin
+      *(`AppPorts.pdf: PdfExportPort | null` / `AppPorts.docx: DocxExportPort | null`
+      — `utils/ports/index.ts:78-80` — plus the `"pdf-export"` / `"docx-export"`
+      entries of `HostCapability` (`utils/ports/host.ts:20-22`). Asserted by
+      `tests/app-portability.test.tsx` — "keeps the two engines independently
+      swappable" and "hides the Word panel for a host with no template storage".)*
+- [x] `App.tsx` split: a portable `<ExportApp ports={…} />` plus a thin
       sidepanel shell that wires the Chrome adapters. `getManifest()` moves out
       of module scope and becomes an injected value.
-- [ ] `PdfSection.tsx` / `TemplateSection.tsx`: from effect owners to port
+      *(`entrypoints/sidepanel/App.tsx` is now 21 lines —
+      `const [ports] = useState(createChromePorts)` → `<ExportApp ports={ports} />`;
+      the app lives in `components/app/ExportApp.tsx` + `AppShell.tsx`. The
+      manifest read is injected as `HostInfo.name`/`HostInfo.version`
+      (`utils/ports/host.ts:40-43`), built inside `createChromePorts`
+      (`entrypoints/sidepanel/ports/index.ts`).)*
+- [x] `PdfSection.tsx` / `TemplateSection.tsx`: from effect owners to port
       consumers. Their presentational parts are already separated and tested —
       keep those tests green through the move.
-- [ ] **Screen registry — the actual Phase 0 deliverable.** The design
+      *(Both files are now compatibility re-exports only —
+      `entrypoints/sidepanel/PdfSection.tsx` (14 lines) re-exports
+      `components/export/PdfReportView.tsx`, `TemplateSection.tsx` (21 lines)
+      the DOCX views — so `tests/pdf/report-view.test.tsx` and
+      `tests/docx/{scan-view,report-view}.test.tsx` kept passing unchanged. The
+      rendering moved to `components/export/{PdfExportPanel,DocxExportPanel}.tsx`;
+      the effects moved to `entrypoints/sidepanel/ports/{pdf,docx}.ts` and
+      `components/app/export-runs.tsx`.)*
+- [x] **Screen registry — the actual Phase 0 deliverable.** The design
       screenshots are **orientation, not specification**. What must be right is
       the *shell model*: adding a screen is a registry entry, never an edit to
       the shell. Each screen declares `id`, label key (i18n), icon
@@ -733,13 +809,31 @@ amount of abstraction helps.
       preview is a screen, and the "large preview" tab page
       (`entrypoints/preview/`) is the *same screen* mounted by a different host
       shell — not a second implementation.
-- [ ] **Screens shipped in Phase 0:** **Export** (today's functionality,
+      *(`apps/extension/utils/screens/registry.ts` — `ScreenDefinition`
+      (`id`, `labelKey`, `icon`, `component`, `requirements`, `whenUnmet`),
+      pure `resolveScreens` / `pickActiveScreen` / `requirementReasonKey`.
+      `components/app/ExportApp.tsx:118-125` resolves the registry and
+      `components/app/AppShell.tsx` renders the nav from `ResolvedScreen[]`
+      alone — it imports no screen and knows no screen id (`AppShell.tsx:4-10`,
+      `:16`). Covered by
+      `tests/screens.test.ts` ("disables — but keeps visible — a screen whose
+      capability is missing") and `tests/app-portability.test.tsx` ("renders one
+      nav entry per visible screen and opens the requested one", "mounts only
+      the screens a host registers").)*
+- [x] **Screens shipped in Phase 0:** **Export** (today's functionality,
       rebuilt) and **Einstellungen**. Registered-but-empty routes for
       Template-Sets, Aktivitäten, Über so the registry is exercised by more
       than one real screen. **Chat is out of scope** — it is not planned for
       the extension sidebar for now; the registry must simply not make it
       awkward to add later. Preview joins as a screen in T5.3.
-- [ ] **Debug UI leaves the main surface.** `DebugSection`
+      *(`components/screens/index.ts` registers export / preview / templates /
+      activity / settings / about; `tests/screens.test.ts` — "registers Export,
+      Preview, Templates, Activity, Settings and About". **Diverges upward**:
+      the three placeholder routes are no longer empty — Templates is the real
+      T5.2 library (`TemplatesScreen.tsx`), Activity is the real T5.6
+      `JobsScreen.tsx`, and Preview is the real T5.3 screen. Chat is absent, as
+      planned.)*
+- [x] **Debug UI leaves the main surface.** `DebugSection`
       (`App.tsx:390-448`, Ping / WASM smoke) and the "Markdown preview (debug)"
       dump (`App.tsx:311-329`) are removed from the export surface. The Ping and
       WASM round-trips are already covered by `tests/wasm-smoke.test.ts`,
@@ -748,49 +842,112 @@ amount of abstraction helps.
       screen (the design reveals developer flags after five clicks on the
       version) is the eventual home for anything that must come back — it is
       **not** a Phase 0 screen, so nothing here depends on it existing.
-- [ ] **The gate test:** `apps/extension/tests/app-portability.test.tsx` (new)
+      *(No `DebugSection` identifier survives in `apps/extension/`; the
+      markdown dump's removal is recorded at
+      `components/export/PageSummary.tsx:4`. Asserted by
+      `tests/app-portability.test.tsx` — "the debug surface is gone > renders no
+      Ping / WASM-smoke buttons and no markdown dump".)*
+- [x] **The gate test:** `apps/extension/tests/app-portability.test.tsx` (new)
       — render the app and drive an export to completion under happy-dom with
       `globalThis.chrome` deleted, using fake ports. This is the Definition of
       Done for Phase 0 and the standing regression against re-coupling.
+      *(Shipped at exactly that path: "renders the whole app with
+      globalThis.chrome deleted", "drives a PDF export to completion and shows
+      the report", "drives a DOCX export to completion over the stored
+      template". The deletion is re-asserted after the export, so a test that
+      restores the global cannot pass silently.)*
 
 **Open in Phase 0:** Tailwind v3 vs v4 — the design preview will be integrated
 later and should decide it; v4 (CSS-first config) is the working assumption and
 is a single-file change if the preview turns out to be v3.
+*(Settled as v4: `tailwindcss` and `@tailwindcss/postcss` are both `^4.3.3` in
+`apps/extension/package.json`, and `components.json` carries an empty
+`tailwind.config` — the CSS-first setup.)*
 
 ### Scope UI (T5.1)
 
-- [ ] `apps/extension/utils/confluence/tree-source.ts` (new): session-backed
+- [x] `apps/extension/utils/confluence/tree-source.ts` (new): session-backed
       `TreeSource` adapter (`getPage`, `getChildren` in UI order,
       `getSpaceHomepageId`, `searchPages` for CQL label batches), built on
       `profileFromTabUrl` + `ConfluenceClient` from `@atlcli/confluence/browser`
       (pattern: `utils/read-path.ts`). Every method takes the export
       `AbortSignal`.
-- [ ] `apps/extension/utils/scope-state.ts` (new): pure reducer for the scope
+      *(Shipped at that path — `sessionTreeSource` / `sessionTreeSourceForProfile`
+      / `combineAbortSignals`, wrapping folder 002's own
+      `confluenceTreeSource(client)` rather than redeclaring the port. Covered
+      by `tests/confluence/tree-source.test.ts`: "produces UI order end-to-end
+      through fetchExportTree", "rejects every method on an already-aborted
+      export signal, without any request", "classifies an expired session's
+      login bounce instead of following it".)*
+- [x] `apps/extension/utils/scope-state.ts` (new): pure reducer for the scope
       form (kind page/tree/space, `maxDepth`, include-root, label include/
       exclude chips, parse/normalize of comma-separated label input) —
       testable without DOM, mirroring `utils/panel-state.ts`.
-- [ ] `apps/extension/entrypoints/sidepanel/ScopeSection.tsx` (new): scope
+      *(Shipped at that path — `reduceScope`, `parseLabelInput`, `clampDepth`,
+      `toExportScope`, `toLabelFilter`, `scopeIdentity`; `tests/scope-state.test.ts`
+      ("is identity-preserving for a no-op transition", "produces exactly what
+      the shared normalizer produces").)*
+- [x] `apps/extension/entrypoints/sidepanel/ScopeSection.tsx` (new): scope
       radio (Current page / Page + children / Entire space — space option
       enabled when `LoadedPage.details.spaceKey` is present), depth selector,
       and an "Advanced" `<details>` with two label tag inputs
       (include/exclude, OR semantics, `excludeMode` default `prune-subtree` —
       copy explains "excluded pages take their children with them"). Renders a
       page-count confirmation ("212 pages, continue?") before space exports.
-- [ ] `apps/extension/utils/pdf/run-export.ts`: accept
+      *(**Path moved by Phase 0**: screens are portable units, so this is
+      `apps/extension/components/export/ScopeSection.tsx`, with the
+      confirmation split out as `components/export/SpaceExportConfirm.tsx` over
+      the optional `AppPorts.countScopePages`. Covered by
+      `tests/scope-section.test.tsx`: "starts on 'Current page' with the
+      Advanced disclosure closed", "disables it — with a reason — when the page
+      reports no space", "turns label input into a normalized OR filter with
+      the prune-subtree default", "asks before a space export and names the
+      page count", "still asks — with count-free wording — when the host cannot
+      count".)*
+- [x] `apps/extension/utils/pdf/run-export.ts`: accept
       `scope: ExportScope` + `labels?: LabelFilter`; call `fetchExportTree` →
       `composeChapters`; extend `sourceIdentity` with a scope+filter
       discriminator (today `pageUrl|id|version` — a tree export must never
       reuse a single-page cache identity); forward `onProgress`
       (`{ fetched, total, currentTitle }`) alongside the existing `onPhase`.
-- [ ] `apps/extension/utils/pdf/run-export.ts` + `apps/extension/utils/docx/env.ts`:
+      *(`utils/pdf/run-export.ts` — `RunPdfExportInput.scope`/`.labels`/`.onProgress`,
+      `pdfSourceIdentity` folding in `exportScopeIdentity`. The
+      `fetchExportTree` → `composeChapters` call itself was factored into
+      `utils/confluence/export-composition.ts` so the PDF and DOCX hosts cannot
+      drift apart — a **divergence from the task's single-file wording**, taken
+      deliberately (module docstring, `export-composition.ts:1-26`). Covered by
+      `tests/pdf/run-export-scope.test.ts`: "hands the COMPOSED chapters to the
+      neutral engine, in document order", "differs between a page export and a
+      tree export of the SAME root", "forwards onProgress in document order,
+      one tick per fetched body".)*
+- [x] `apps/extension/utils/pdf/run-export.ts` + `apps/extension/utils/docx/env.ts`:
       key attachment fetches on `ref.pageId ?? rootPageId` once folder 002
       lands `ImageSource.pageId` (BASELINE-DESIGN A1, recommended variant).
-- [ ] `apps/extension/entrypoints/sidepanel/PdfSection.tsx` +
+      *(PDF half is where the task said: `utils/pdf/run-export.ts:318`
+      (`const pageId = ref.pageId ?? rootPageId`). **The DOCX half landed in the
+      shared engine instead of `utils/docx/env.ts`** —
+      `packages/docx/src/export.ts:1755-1765` `assetRefFor`
+      (`block.source.pageId ?? pageId`) — which is the folder's own "no
+      extension-only engine logic" rule applied: the CLI needed the identical
+      fix. `utils/docx/env.ts` only resolves the relative URL against the wiki
+      base. Covered by `packages/docx/src/env.test.ts` (deep page → `/download/
+      attachments/424242/`, root page → `/1/`) and
+      `tests/pdf/run-export-scope.test.ts` — "an attachment without a page id
+      falls back to the export root".)*
+- [x] `apps/extension/entrypoints/sidepanel/PdfSection.tsx` +
       `TemplateSection.tsx`: consume the shared scope; progress line
       "Page 37/210: <title>" during `fetching`; Cancel keeps working mid-walk
       (signal reaches `fetchExportTree`, not only the compile — verify the
       `pdf:cancel` path still tears down queued jobs).
-- [ ] `apps/extension/utils/pdf/job-store.ts` budget hardening for multi-page
+      *(Same Phase 0 path move: the consumers are
+      `components/export/{PdfExportPanel,DocxExportPanel}.tsx` under one
+      `ScopeSection`, driven by `components/app/export-runs.tsx`. Progress line:
+      `tests/scope-section.test.tsx` — 'renders "Page n/total: title" while the
+      walk reports progress'; one scope for both engines: "hands the identical
+      scope to the PDF and the Word panel". Cancel reaching the walk:
+      `tests/pdf/run-export-scope.test.ts` — "aborting mid-walk stops fetching
+      and never reaches the compile port".)*
+- [x] `apps/extension/utils/pdf/job-store.ts` budget hardening for multi-page
       bundles: pre-flight estimate, computed from `preparePdfDocument`'s
       already-deduped asset list (`packages/pdf/src/prepare.ts` — do **not**
       re-implement dedupe in the job store, see Architecture point 2), with
@@ -798,10 +955,36 @@ is a single-file change if the preview turns out to be v3.
       filters instead of failing after a long fetch; keep
       `PDF_JOB_MAX_BYTES`/`PDF_STORE_MAX_BYTES` values (document why in the
       module comment).
-- [ ] `apps/extension/utils/pdf/compiler-host.ts`: make `timeoutMs` scale with
+
+      **Two of the three clauses shipped where planned; the third moved.**
+      Caps kept and justified in the module comment
+      (`utils/pdf/job-store.ts:39-47`, "Why the cap VALUES did not change") and
+      the no-second-dedupe rule is stated (`:48-56`) *and* asserted
+      (`tests/pdf/job-store.test.ts` — "never runs a second dedupe pass over the
+      bundle it is handed"); rejection happens before any IDB write
+      (`putPdfJob`, `job-store.ts:461`; test "rejects oversized input before
+      writing"). ~~pre-flight estimate … instead of failing after a long
+      fetch~~ — **there is no job-store-level pre-flight**. The
+      offender-naming error is the shared engine's
+      `AssetBudgetExceededError` (`packages/confluence/src/asset-budget.ts:62-80`
+      — offenders sorted largest-first, message names the top five with their
+      page ids and suggests `--max-depth` / a label filter / `--no-images`),
+      raised from `AssetBudget.account` inside `preparePdfDocument`, i.e. still
+      *after* the fetch, not before it. Both engines surface it identically
+      (`packages/pdf/src/asset-budget-parity.test.ts`). The user-facing
+      "don't spend minutes to then fail" property the clause asked for is
+      therefore **not** delivered; the actionable error is.
+- [x] `apps/extension/utils/pdf/compiler-host.ts`: make `timeoutMs` scale with
       job size (e.g. base 60 s + per-page increment carried in the job
       record) so a 200-page space compile is not killed as a hang.
-- [ ] Durable job survival across service-worker restarts (Architecture
+      *(`utils/pdf/compiler-host.ts:69-73` — `PDF_COMPILE_BASE_TIMEOUT_MS`
+      60 s, `PDF_COMPILE_PER_PAGE_TIMEOUT_MS` 1.5 s, `PDF_COMPILE_MAX_TIMEOUT_MS`
+      15 min, applied by `timeoutFor(pages)`; the page count rides the job
+      record. Tests: `tests/pdf/compiler-host.test.ts` — "scales with source
+      pages from the documented base", "treats missing/absurd page counts as
+      one page and clamps the ceiling", "arms the scaled timeout for the job
+      actually being compiled".)*
+- [x] Durable job survival across service-worker restarts (Architecture
       point 3): the panel's export flow re-attaches to a running/finished job
       by reading `job.status` from `atlcli-pdf` (`utils/pdf/job-store.ts`)
       instead of depending solely on the open `chrome.runtime.sendMessage`
@@ -810,10 +993,20 @@ is a single-file change if the preview turns out to be v3.
       startup rather than assuming a fresh `0`; a job whose worker never
       reports back within its timeout is marked `failed` with a
       recoverable error, never left `queued`/`compiling` forever.
+      *(`utils/jobs/watch.ts#watchPdfJob` polls the record
+      (`PDF_JOB_POLL_MS` 750) instead of trusting the `sendMessage` reply;
+      `utils/jobs/idle-gate.ts#createDurableIdleGate` +
+      `job-store.ts#countInFlightPdfJobs` rebuild in-flight state from the
+      records (wired at `entrypoints/background.ts:79-84`);
+      `job-store.ts#failPdfJob` closes a past-deadline record. Tests:
+      `tests/pdf/job-durability.test.ts` — "is still findable, and still
+      finishes, after the in-memory state is rebuilt", "returns the compiled
+      result even though the compile message is never answered", "ends the job
+      failed at its deadline instead of leaving it compiling forever".)*
 
 ### Template library UI & migration (T5.2)
 
-- [ ] `apps/extension/utils/docx/template-store.ts` — **DB migration v1→v2**
+- [x] `apps/extension/utils/docx/template-store.ts` — **DB migration v1→v2**
       (`DB_NAME "atlcli-docx"`, `DB_VERSION` 1 → 2), split into two phases so
       no `await` ever happens inside the `onupgradeneeded` version-change
       transaction (IndexedDB auto-commits a `versionchange` transaction once
@@ -862,7 +1055,19 @@ is a single-file change if the preview turns out to be v3.
          (existing invariant in the module docstring stays true for v2).
       4. Idempotent: opening at `DB_VERSION` 2 a second time (schema already
          current, no `migrationPending` records left) is a no-op.
-- [ ] `apps/extension/utils/templates/library.ts` (new): adapt the v2 store to
+
+      *(Shipped exactly as specified — `utils/docx/template-store.ts`:
+      `DB_VERSION = 2`, `MIGRATION_PENDING = 1` (`:90`, with the
+      invalid-key reasoning at `:66-68`), synchronous `upgradeSync` creating
+      `templates` (keyPath `recordKey`) + the four indexes + `template-prefs`,
+      and the post-commit backfill reading through `s.index("migrationPending")`
+      (`:573`). Covered by `tests/docx/template-store-migration.test.ts`:
+      phase-1 placeholder, phase-2 backfill, "resumes an interrupted backfill",
+      "is a no-op on a second open at v2", "migrates an empty v1 database
+      cleanly". Went **beyond** the plan: a slow-backfill/newer-upload race,
+      two concurrent backfills, a blocked upgrade, and a site-agnostic sentinel
+      when no session origin is resolvable are all covered too.)*
+- [x] `apps/extension/utils/templates/library.ts` (new): adapt the v2 store to
       the folder-007 `TemplateLibrary` interface (`list(engine, spaceKey)`,
       sha256-verified `getBytes(entry)`); the store's IDB primary key is
       `recordKey` (`<site>|<engine>|<templateId>|<scope>|<spaceKey?>`, unique
@@ -880,7 +1085,14 @@ is a single-file change if the preview turns out to be v3.
       `templateId` with `scope: "space"`/`spaceKey` set (never mutates the
       global entry's `scope` in place) so deleting the space override leaves
       the global entry intact for `resolveTemplate` to fall back to.
-- [ ] `apps/extension/entrypoints/sidepanel/TemplateSection.tsx`: replace the
+      *(`utils/templates/library.ts#idbTemplateLibrary` — `list`, sha256-verified
+      `getBytes` (throws `TemplateIntegrityError`), `resolve` delegating to
+      `resolveTemplate` from `@atlcli/core` (`:408`), `assignToSpace` creating a
+      new row. Covered by `tests/templates/library.test.ts`: "keeps a global
+      entry and its space override as two rows and resolves the space one",
+      "leaves the global entry resolvable after the space override is deleted",
+      "keeps two sites that share a space key completely independent".)*
+- [x] `apps/extension/entrypoints/sidepanel/TemplateSection.tsx`: replace the
       single-slot UI with a library list (name, scope badge Global/Space,
       uploaded date, scan verdict re-derived on read), actions upload / set
       active / assign to current space / delete; sha256 mismatch on
@@ -891,7 +1103,17 @@ is a single-file change if the preview turns out to be v3.
       required" copy; do not add a PDF template upload control (see
       Architecture point 4 and Dependencies — 007's Level-B render path for
       custom Typst templates does not exist yet).
-- [ ] `apps/extension/entrypoints/sidepanel/SettingsForm.tsx` (new): generic
+      *(**Path moved by Phase 0**: the list is
+      `components/export/TemplateLibraryPanel.tsx`, hosted by
+      `components/screens/TemplatesScreen.tsx`;
+      `entrypoints/sidepanel/TemplateSection.tsx` is now a 21-line
+      compatibility re-export. Covered by `tests/template-library.test.tsx`:
+      "lists name, scope badge and upload date, and marks the active entry",
+      "classifies the stored bytes on demand" (verdict re-derived, never
+      persisted), "refuses the bytes and tells the user to re-upload" (sha256
+      mismatch), "keeps the global row untouched and lets the override win,
+      then fall back", "offers no PDF template upload — only .docx".)*
+- [x] `apps/extension/entrypoints/sidepanel/SettingsForm.tsx` (new): generic
       form renderer over the template-manifest settings schema
       (`text | boolean | choice | color | number | asset` — folder 007 / B10);
       values persisted per template in `template-prefs`; feeds
@@ -905,14 +1127,35 @@ is a single-file change if the preview turns out to be v3.
       the PDF form and leave the DOCX template's manifest settings
       (if any) informational-only in the panel for v1. Presets are out of
       scope here (folder 007 owns preset storage semantics — Open questions).
-- [ ] `apps/extension/utils/docx/env.ts`: `idbTemplateSource` resolves through
+      *(**Path moved by Phase 0**: `components/export/SettingsForm.tsx`, with
+      the schema projection in `components/export/settings-schema.ts` and the
+      engine hand-off in `components/export/pdf-settings.ts#toPdfSettings`.
+      "Informational-only for DOCX" shipped concretely as a `readOnly` render
+      plus the message `settingsForm.readOnly` ("…the Word engine cannot apply
+      them yet — shown for information only"), so a DOCX manifest's settings are
+      visible but not editable. Covered by `tests/settings-form.test.tsx`:
+      "declares exactly one widget of every supported type", "renders text,
+      boolean, choice, color, number and asset controls", "readOnly disables
+      every control and says why — the DOCX branch", "hands the resolved
+      settings to the PDF export request", "**never writes `settings` onto a
+      DOCX export request**", "round-trips values through the real
+      template-prefs store". No preset UI, as planned.)*
+- [x] `apps/extension/utils/docx/env.ts`: `idbTemplateSource` resolves through
       the library (active entry for engine+space, via `template-prefs`'s
       `recordKey`) instead of the literal `"current"` slot; keep
       `memoryTemplateSource` re-export untouched.
+      *(`utils/docx/env.ts:63-90` — `idbTemplateSource` builds
+      `idbTemplateLibrary({ factory, siteOrigin })`, falls back to
+      `getActiveTemplateId(engine, spaceKey)` for an empty id or the retired
+      `"current"` name, then `library.resolve(...)` → `library.getBytes(entry)`;
+      `memoryTemplateSource` untouched. Covered by `tests/docx/env.test.ts`:
+      "resolves the active selection when no explicit id is given", "lets a
+      space-scoped override beat the global entry of the same templateId",
+      "rejects when the requested templateId is not in the library".)*
 
 ### PDF preview (T5.3)
 
-- [ ] `apps/extension/utils/pdf/compiler-host.ts`: add a `kind: "preview" |
+- [x] `apps/extension/utils/pdf/compiler-host.ts`: add a `kind: "preview" |
       "export"` tag to queued/active jobs. Export always jumps ahead of any
       queued preview in `pump()`. A superseded/obsolete **preview** is
       abandoned cooperatively (its promise resolves with a
@@ -924,6 +1167,17 @@ is a single-file change if the preview turns out to be v3.
       (`workers/pdf-compiler.ts`) survives every debounced preview and the
       export that follows it stays warm. Test: rapid preview→preview→export
       sequence creates exactly one worker instance.
+      *(`utils/pdf/compiler-host.ts` — `PdfCompileJobOptions.kind` (default
+      `"export"`), `takeNext()` picking the first queued export (`:251-256`),
+      `supersedePreviews()` never touching the worker (`:226-239`),
+      `PREVIEW_SUPERSEDED_ERROR` / `isPreviewSupersededError` (`:27-33`); the
+      contract is written out at `:97-123`. Tests, all in
+      `tests/pdf/compiler-host.test.ts`: "creates exactly ONE worker across a
+      rapid preview → preview → export sequence", "lets an export queued behind
+      an in-flight preview jump ahead of a queued preview", "cancelling an
+      active preview does NOT terminate the worker", "cancelling an active
+      EXPORT still terminates the worker (user-initiated abort)", "defaults an
+      untagged compile to `export` so it is never superseded".)*
 - [x] ~~**First task, blocking the viewer choice — verify the CSP claim
       empirically.**~~ **Dropped by the plan owner, 2026-07-20.** The experiment
       would have decided nothing: PDF.js is the choice either way (zoom /
@@ -934,7 +1188,7 @@ is a single-file change if the preview turns out to be v3.
       all. Consequence for implementers: **do not** build an `<embed>` fallback
       path, and do not re-introduce the "blocked by `object-src 'self'`"
       assertion into docs or code comments — it is unverified.
-- [ ] `apps/extension/utils/pdf/preview.ts` (new): `runPdfPreview(input, deps)`
+- [x] `apps/extension/utils/pdf/preview.ts` (new): `runPdfPreview(input, deps)`
       — same pipeline as `runPdfExport` but (a) **scope-dependent truncation**:
       `scope: page` compiles the full document (the CONFCLOUD-84742 case — a
       partial preview of one page defeats the purpose); `tree`/`space` truncate
@@ -951,7 +1205,21 @@ is a single-file change if the preview turns out to be v3.
       reuses `extensionPdfCompilePort`/`kind: "preview"` so the compile rides
       the warm worker per the coalescing contract above; (d) the result
       carries `truncated: boolean` so the cache and Download can act on it.
-- [ ] `apps/extension/utils/pdf/preview-cache.ts` (new): stores the most recent
+      *(Shipped at that path, but as **two entry points rather than one**
+      `runPdfPreview`: `runPagePdfPreview` (never truncated) and
+      `runComposedPdfPreview` (takes a `PreviewTruncationPlan`) —
+      `utils/pdf/preview.ts:399,434`. Truncation is the pure
+      `planPreviewTruncation` over `DEFAULT_PREVIEW_BUDGET`
+      (chapters + `maxBlocks` + `maxAssetBytes` backstops, `:72-102`); capture
+      sink is `capturePdfOutput` (`:298`); the result carries `truncated`,
+      `includedChapters`, `totalChapters`, `reason`. Tests in
+      `tests/pdf/preview.test.ts`: "compiles the WHOLE document for scope: page
+      — the CONFCLOUD-84742 case", "stops on the block backstop before the
+      chapter budget is reached", "stops on the asset-byte backstop", "always
+      keeps the first chapter, even when it alone busts every backstop", "keeps
+      the handle instead of downloading it", "runs the REAL export pipeline with
+      a capture sink and a preview-tagged port".)*
+- [x] `apps/extension/utils/pdf/preview-cache.ts` (new): stores the most recent
       successful preview's bytes keyed on `sourceIdentity` + a hash of the
       resolved settings, with the `truncated` flag alongside. `getReusableBytes`
       returns bytes **only** for a non-truncated entry whose key matches the
@@ -959,10 +1227,23 @@ is a single-file change if the preview turns out to be v3.
       Download must fall through to a full compile (Architecture point 5).
       Entries follow the existing job lifecycle (`finally` deletion, same store
       budget) so preview traffic cannot grow the IndexedDB footprint.
-- [ ] **Preview is a screen, registered in Phase 0's screen registry** — not a
+      *(`utils/pdf/preview-cache.ts` — key is
+      `sourceIdentity · settingsHash · treeVersionHash` (`previewCacheKey`,
+      `:152`), single-slot store `atlcli-pdf-preview`;
+      `getReusableExportBytes` returns `undefined` for a truncated entry
+      (`:313`) while `getPreviewEntry` still serves the viewer.
+      **Beyond plan**: a third key component, `treeVersionHash`, was added
+      because `sourceIdentity` carries only the *root* page's version, so a
+      changed child page would otherwise have served stale bytes (`:21-31`).
+      Tests in `tests/pdf/preview-cache.test.ts`: "Download must NOT reuse a
+      truncated entry, but the viewer may read it", "changes the tree hash when
+      a CHILD page's version changes", "hashes different settings to different
+      keys", "expires an entry older than the job horizon and drops it from
+      storage".)*
+- [x] **Preview is a screen, registered in Phase 0's screen registry** — not a
       panel-local component and not two implementations. `utils/pdf/viewer.ts`
       (new) holds the PDF.js viewer over the captured `Uint8Array` via
-      `getDocument({ data })` — no `blob:` URL. Constructed **once** with
+      ~~`getDocument({ data })` — no `blob:` URL~~. Constructed **once** with
       `isEvalSupported: false` (asserted by test, Architecture point 8) and a
       locally bundled `GlobalWorkerOptions.workerSrc`; both viewer and worker
       behind a dynamic `import()` so a session that never opens the preview
@@ -971,7 +1252,31 @@ is a single-file change if the preview turns out to be v3.
       Compile diagnostics render inline on failure. The screen declares its
       requirement (a compiled or cached preview result) so the registry can
       surface it correctly when unmet.
-- [ ] The **same** preview screen is mounted by two host shells: the sidebar
+
+      **The `data`-not-`blob:` clause was inverted during implementation, and
+      the plan was wrong.** `getDocument({ data })` may **transfer** the passed
+      buffer to the PDF.js worker, detaching it. Since T5.6 the bytes arrive as
+      a `PdfBytesHandle` whose `asUint8Array()` returns the handle's *borrowed*
+      backing array, so handing it to `data` would leave the handle — and
+      therefore Download — holding a zero-length view. `pdfjsSourceFor`
+      (`utils/pdf/viewer.ts:221`) therefore hands PDF.js a `blob:` URL, which
+      PDF.js fetches and never detaches, and falls back to `data` **with an
+      explicit copy** only when the runtime has no `URL.createObjectURL` (a
+      non-browser test host). Nothing about the CSP rationale changes: the
+      viewer is still `<canvas>` under `script-src 'self'`, and no `<embed>` /
+      `object-src` question arises. Pinned by `tests/pdf/viewer.test.ts` —
+      "hands PDF.js a blob: URL, never the borrowed array" and "falls back to a
+      COPY — never the borrowed array — without createObjectURL". *(The rest as
+      specified: single options site `PDFJS_DOCUMENT_OPTIONS` (`viewer.ts:103`,
+      `isEvalSupported`/`enableXfa`/`useSystemFonts` all `false`, no
+      `wasmUrl`/`cMapUrl`/`standardFontDataUrl`); `loadPdfjs` behind a dynamic
+      `import()` of `utils/pdf/pdfjs-assets.ts` (`:176-180`);
+      `MAX_DEVICE_PIXEL_RATIO` 2 and `MAX_CANVAS_PIXELS` ≈ 4096² (`:110-112`);
+      the screen is `components/screens/PreviewScreen.tsx` with
+      `previewScreenDefinition` declaring the `pdf-preview` capability and a
+      loaded page — `tests/screens.test.ts`, "keeps Preview unavailable without
+      a loaded page even with the capability".)*
+- [x] The **same** preview screen is mounted by two host shells: the sidebar
       shell renders it compactly (current page, forward/back, fit-width, zoom)
       behind a "Preview" toggle so the common export click never pays a preview
       compile; a new `apps/extension/entrypoints/preview/` WXT page mounts it
@@ -981,6 +1286,18 @@ is a single-file change if the preview turns out to be v3.
       `tests/manifest.test.ts`). If this task needs to fork the component per
       shell, the Phase 0 screen model is wrong and should be fixed there
       instead.
+      *(`entrypoints/preview/{main.tsx,App.tsx}` mounts the very same
+      `PreviewScreen` with a one-element `screens` array and a
+      `PreviewShellContext` of `{ layout: "full", openLargePreview: null }`.
+      Tests in `tests/preview-screen.test.tsx`: "offers 'open large preview' in
+      the compact shell", "hides it in the full shell — that shell IS the large
+      preview", "**both shells mount the very same component**", "opens the
+      cached preview without compiling". No new permission —
+      `tests/manifest.test.ts` still pins `permissions` to exactly
+      `sidePanel, offscreen, storage, tabs`. **Divergence in the compact
+      shell**: the gate is not a "Preview" toggle but an explicit "Generate
+      preview" button plus an off-by-default "Update automatically" switch — see
+      the debounce task below.)*
 - [x] `apps/extension/scripts/check-output-build.ts` (build gate, Architecture
       point 8): **no exemption added — the premise was measured and is false.**
       `pdfjs-dist@6.1.200` contains zero `eval`/`new Function` tokens (v6 uses a
@@ -992,7 +1309,13 @@ is a single-file change if the preview turns out to be v3.
       `REQUIRED_PDF_ARTIFACTS`, vendored with `?url&no-inline` so the pins are
       stable and no rolldown chunk name is ever pattern-matched, and the module
       docstring records the measurement plus what would reopen the question.
-- [ ] Debounce + coalescing: settings-form and scope changes trigger a
+      *(Verified: `scripts/check-output-build.ts:314`
+      `SCANNED_EXTENSIONS = [".js", ".mjs", ".html"]`, `:294` `.mjs` joins the
+      hashed set, `:117-126` both `pdf.min-*.mjs` / `pdf.worker.min-*.mjs`
+      entries in `REQUIRED_PDF_ARTIFACTS`, `:87` `DYNAMIC_CODE_RES` carrying no
+      exemption, measurement recorded at `:29-46`. Vendoring:
+      `utils/pdf/pdfjs-assets.ts` imports both with `?url&no-inline`.)*
+- [x] Debounce + coalescing: settings-form and scope changes trigger a
       preview recompile after ~400 ms of quiet; each new trigger supersedes
       the in-flight preview per the `kind: "preview"` coalescing rule above
       (**not** `pdf:cancel` → `PdfCompilerHost.cancel` — that path terminates
@@ -1000,19 +1323,53 @@ is a single-file change if the preview turns out to be v3.
       `finally` like export jobs (no budget creep). A user-initiated export
       click still goes through the real `AbortController` → `pdf:cancel` path
       when the user explicitly cancels an export.
-- [ ] `apps/extension/entrypoints/background.ts`: count `pdf:compile` traffic
+
+      **Shipped, but auto-recompile is opt-in, not the default.** The debouncer
+      exists and behaves as specified — `createPreviewScheduler` /
+      `PREVIEW_DEBOUNCE_MS = 400` (`utils/pdf/preview.ts:500-512`), tests
+      "coalesces a burst into one run after the quiet period", "cancel() drops
+      the pending run entirely", "flush() runs the pending request immediately"
+      — but `PreviewScreen.tsx:205` starts with `auto = false`, so nothing
+      recompiles until the user turns "Update automatically" on or presses
+      "Generate preview". That is stricter than the plan asked for and is what
+      makes "the common export click never pays a preview compile" literally
+      true (`tests/preview-screen.test.tsx` — "compiles nothing until the user
+      asks"). Consequence for Open question 10: the "manual Refresh preview
+      button instead of debounced auto-recompile" fallback is already the
+      shipped default. Supersession never routes through `destroyWorker`
+      (`compiler-host.ts:190-193`); preview jobs are deleted in
+      `compile-port.ts:245`'s `finally` regardless of consumption.
+- [x] `apps/extension/entrypoints/background.ts`: count `pdf:compile` traffic
       from previews as offscreen activity (reset `offscreenIdle`) so the warm
       worker is not torn down between debounced previews; verify the idle
       close still happens after the panel goes quiet.
+      *(`utils/pdf/offscreen-activity.ts#createOffscreenActivityTracker`, wired
+      at `entrypoints/background.ts:84` and used at `:151` (`touch()`),
+      `:170`/`:186` (`begin()`/`end()` around a compile). Tests in
+      `tests/pdf/offscreen-activity.test.ts`: "counts a preview compile as
+      activity and re-arms the idle close afterwards", "survives a debounce
+      pause: back-to-back previews never leave the timer armed while
+      compiling", "does not re-arm under an overlapping job" — the second and
+      third are the "idle close still happens" half.)*
 - [ ] Honest DOCX story: no fake Word preview. `TemplateSection.tsx` keeps the
       scan report (placeholder verdicts) as the DOCX "preview"; add one line
       of copy explaining why ("Word rendering happens in Word — the scan
       shows exactly what will be filled in"). No task may add an HTML
       approximation of the DOCX output.
 
+      **Left unticked: the negative half holds, the copy line does not exist.**
+      No DOCX preview of any kind ships — `previewScreenDefinition` is
+      PDF-only and nothing renders an HTML approximation — and the scan report
+      survives (`components/export/ScanView.tsx`, messages `docx.scan.*` in
+      `utils/i18n/messages.ts:240-245`). But there is **no message explaining
+      why there is no Word preview**: the only DOCX/PDF asymmetry the catalogue
+      states is `templates.docxOnly` ("Word templates only. PDF uses the
+      built-in atlcli document design."), which is about template upload, not
+      about preview. One `i18n` key plus its DE translation would close this.
+
 ### Macro renderer wiring (T5.4)
 
-- [ ] **Prerequisite (owned by 004, verify only)**: 004's T1.10 now exports
+- [x] **Prerequisite (owned by 004, verify only)**: 004's T1.10 now exports
       `packages/confluence/src/html-to-blocks.ts` from
       `packages/confluence/src/index.browser.ts` itself
       (`004-macro-renderer/PLAN.md:415-450,1053-1054`) — do not re-add it
@@ -1021,7 +1378,17 @@ is a single-file change if the preview turns out to be v3.
       `scripts/check-browser-build.ts` (add it here only if 004's task
       missed that specific check file) before wiring it into
       `defaultRegistry` below.
-- [ ] `apps/extension/utils/macros/session-ports.ts` (new): `JiraIssuePort`
+      *(Verified, and nothing had to be added here.
+      `packages/confluence/src/index.browser.ts:25` —
+      `export * from "./html-to-blocks.js"`. It is **covered transitively**
+      rather than listed in its own right: `BROWSER_ENTRYPOINTS`
+      (`scripts/check-browser-build.ts:68-87`) names
+      `packages/confluence/src/index.browser.ts`, and the checker walks the
+      import graph from each entrypoint, so the barrel drags `html-to-blocks.ts`
+      into the gate. The extension consumes it through
+      `@atlcli/export-wiring`'s `createMacroRegistry`, not a local
+      `defaultRegistry`.)*
+- [x] `apps/extension/utils/macros/session-ports.ts` (new): `JiraIssuePort`
       and `ExportViewPort` implementations built by **adapting
       `JiraClient`/`ConfluenceClient` constructed with a session profile**
       (`profileFromTabUrl`, the pattern `TemplateSection.tsx` already uses
@@ -1043,7 +1410,27 @@ is a single-file change if the preview turns out to be v3.
       after the client's own retries are exhausted, and 5xx → typed
       `degraded` note, chain continues to the next macro instance (never
       aborts the whole export for one flaky third-party app).
-- [ ] Per-source-page macro context: wire `packages/export-macros`'s
+      *(Shipped at that path — `sessionJiraIssuePort` (`:333`),
+      `sessionExportViewPort` (`:393`), `createSessionMacroPorts` (`:600`)
+      building `new ConfluenceClient(profile)` / `new JiraClient(profile)` from
+      `profileFromTabUrl`; `classifySessionPortError` (`:251`) holds the
+      taxonomy and `createSessionMacroState` (`:149`) the session-expiry latch.
+      Adapter-not-reimplementation is pinned structurally at `:118`
+      (`const _jiraClientSatisfiesPort: JiraClientLike = {} as JiraClient`).
+      Tests in `tests/macros/session-ports.test.ts`: "403 → chain skip with a
+      permission note, export continues", "404 → chain skip with a not-found
+      note", "429 exhausting the client's own retries → degraded note, chain
+      continues", "5xx after the client's retries → degraded note, chain
+      continues", "an opaque redirect stops further port calls and surfaces one
+      distinct note", "the latch is emitted exactly once across many macros",
+      "maps an issue through the client and issues no HTTP of its own".
+      **Beyond plan**: the Jira half of `assertNotAuthRedirect` did not exist
+      yet and was built here — `packages/jira/src/auth-redirect.ts` plus the
+      shared `packages/core/src/session-redirect.ts` (see "shipped beyond
+      plan"); and `ExportViewPort` batches every macro on a page into one
+      request (`tests/…` — "batches every macro on a page into ONE export_view
+      request") with a per-macro v1 fallback.)*
+- [x] Per-source-page macro context: wire `packages/export-macros`'s
       `contextFor(block.sourcePage ?? ctx.page)` through unchanged when
       constructing the registry (see Architecture point 6) so a macro on a
       child page in a tree/space export resolves `ExportViewPort`/
@@ -1057,7 +1444,20 @@ is a single-file change if the preview turns out to be v3.
       macros. Regression test: a tree/space export with a Jira/`export_view`
       macro on a **non-root** page renders against that page's id/space in
       both CLI and extension output (same assertion, two hosts).
-- [ ] `ExternalAssetPolicy` wiring (Architecture point 6): implement the
+      *(`unknown.sourcePage` did land, so no `TODO` gate was needed.
+      `contextFor` is passed through unchanged in
+      `utils/macros/session-ports.ts:683-710`
+      (`buildSessionMacroResolutionOptions`), over the shared
+      `@atlcli/export-wiring#buildMacroResolutionOptions`; the reasoning is at
+      `session-ports.ts:667-669`. Tests: `tests/macros/session-ports.test.ts` —
+      "resolves a child page's macro against THAT page, never the export root",
+      "contextFor returns the page it was handed, verbatim"; and end to end in
+      `tests/pdf/run-export-scope.test.ts` — "uses the macro's OWN page id,
+      never the export root's", "the rendered body is the CHILD page's, and it
+      reaches the compiler". The CLI half of the "two hosts" assertion is
+      `apps/cli/src/commands/engine-parity.test.ts`; the DOCSY E2E half is
+      **not** run — see the unticked E2E items below.)*
+- [x] `ExternalAssetPolicy` wiring (Architecture point 6): implement the
       port once in `apps/extension/utils/macros/` — allow the active site's
       own origin plus explicitly configured Atlassian media origins, reject
       redirects to a disallowed origin and loopback/private/link-local
@@ -1072,26 +1472,84 @@ is a single-file change if the preview turns out to be v3.
       (`env.ts:77-100`) — gate it the same way. Both engines must reach the
       same allow/reject decision for the same URL (shared policy fixtures in
       Tests).
-- [ ] Wire the registry through the existing env seams: `ExportEnv.macros` in
+      *(Implemented once, but **one level lower than planned**: the policy
+      itself is the shared `packages/export-wiring/src/asset-policy.ts`, and
+      `apps/extension/utils/macros/external-asset-policy.ts` is the thin
+      extension binding (`ATLASSIAN_MEDIA_ORIGINS`,
+      `extensionAssetPolicyFromPageUrl`, re-exporting the shared fetcher). That
+      is the "no extension-only engine logic" rule again — the CLI needed the
+      same policy. Wired into both resolvers:
+      `utils/pdf/run-export.ts:338`/`:47-60` and `utils/docx/env.ts:21-26,266`.
+      Parity is asserted over one shared fixture set
+      (`packages/export-wiring/src/fixtures.ts`) from both sides —
+      `tests/macros/external-asset-policy.test.ts` ("cross-host parity — the
+      shared fixtures through the extension's policy", "the SSRF guard the
+      extension uses is the shared predicate") and
+      `tests/pdf/run-export-scope.test.ts` ("cross-engine policy parity over the
+      shared fixtures", plus guard-the-guard cases proving an unwrapped resolver
+      *fails* the assertion).)*
+- [x] Wire the registry through the existing env seams: `ExportEnv.macros` in
       the DOCX path (`apps/extension/entrypoints/sidepanel/TemplateSection.tsx`
       export handler via `utils/docx/export-deps.ts`) and `PdfExportEnv`
       (`apps/extension/utils/pdf/run-export.ts`), with the renderer set from
       `packages/export-macros` (jira, diagram preview-PNG, `export_view`
       fallback) — one registry construction site per engine path, no
       extension-local renderer logic.
-- [ ] Progressive-disclosure toggle "Resolve dynamic macros (contacts
+      *(One construction site per engine, as required, but the **DOCX site
+      moved with Phase 0**: it is `entrypoints/sidepanel/ports/docx.ts:196-200`
+      (`buildSessionMacroResolutionOptions` → `env.macros`, `:249`), not
+      `TemplateSection.tsx`/`export-deps.ts`. PDF is where planned —
+      `utils/pdf/run-export.ts:231,517,560`. Renderers come from
+      `@atlcli/export-wiring#createMacroRegistry` over `@atlcli/export-macros`;
+      no renderer logic lives in `apps/extension/`. Asserted by
+      `tests/pdf/run-export-scope.test.ts` — "no PDF env construction site
+      bypasses the router > runPdfExport is only ever handed extensionPdfAssets",
+      "the PDF env resolves macros, through the session builder", "the DOCX host
+      does the same, with its own router".)*
+- [x] Progressive-disclosure toggle "Resolve dynamic macros (contacts
       Jira/Confluence)" in `ScopeSection.tsx`'s Advanced block, default ON;
       OFF yields deterministic exports (chain stops at native conversion +
       placeholder, report note `skipped-by-config`).
+      *(`components/export/ScopeSection.tsx:249-256`
+      (`data-testid="scope-resolve-macros"`), threaded as
+      `resolveMacros === false → macros: { live: false }` in
+      `entrypoints/sidepanel/ports/pdf.ts:52` and `ports/docx.ts:200`. Tests:
+      `tests/scope-section.test.tsx` — "defaults the dynamic-macro toggle to
+      ON", "turns macro resolution off, which is what makes an export
+      deterministic"; `tests/macros/session-ports.test.ts` — "emits
+      skipped-by-config without a single port call";
+      `tests/pdf/run-export-scope.test.ts` — "`resolveMacros: false` makes no
+      port call at all".)*
 - [ ] Report surfacing: `PdfReportView` (`PdfSection.tsx`) and the DOCX report
       view group the new note classes (`rendered-via`, `degraded`,
       `skipped-by-config`) so "3 macros rendered live, 1 degraded" is visible
       without expanding all notes.
-- [ ] Verify `apps/extension/wxt.config.ts` host permissions cover the Jira
+
+      **Left unticked — not implemented.** The engine emits the codes
+      (`packages/export-macros/src/resolve.ts:38-40` —
+      `macro-rendered-via` / `macro-degraded` / `macro-skipped-by-config`), but
+      neither panel view groups by them: `components/export/PdfReportView.tsx:42`
+      renders `report.notes` as one flat `<ul>` inside a collapsed `<details>`,
+      and `components/export/DocxReportView.tsx:27-32` groups by note *level*
+      (`warning`/`info`), not by code. So "3 macros rendered live, 1 degraded"
+      is exactly what a user still has to count by hand — the condition this
+      task exists to remove.
+- [x] Verify `apps/extension/wxt.config.ts` host permissions cover the Jira
       REST calls on Cloud sites (`*://*.atlassian.net/*` — same origin) and
       assert it in `apps/extension/tests/manifest.test.ts`; no new
       permissions expected, fail the task if one becomes necessary (that is a
       review-worthy scope change).
+      *(No new permission was needed: Jira Cloud REST is served from the same
+      `*.atlassian.net` origin the manifest already grants
+      (`wxt.config.ts:44-45`, unchanged host list), and
+      `session-ports.ts:607-619` builds the `JiraClient` from the same tab
+      profile as the `ConfluenceClient`. `tests/manifest.test.ts` pins both
+      lists as exact sets — "declares the normative permissions"
+      (`sidePanel, offscreen, storage, tabs`) and "declares atlassian.net +
+      media-CDN host permissions" — so any addition fails the suite. **One
+      manifest change did land**, and it is a *key*, not a permission:
+      `action: {}`, required by T5.6's `chrome.action.setBadgeText`
+      (`wxt.config.ts:36-41`).)*
 
 ### Durable background jobs & byte handling (T5.6)
 
@@ -1108,69 +1566,200 @@ independent of it, and the size-metadata split blocks the retention UI.
       chunk-load from a `blob:` URL? **If the numbers do not justify a change,
       write that down and drop the corresponding fix** — this task exists to
       prevent optimizing on suspicion.
-- [ ] `apps/extension/entrypoints/sidepanel/PdfSection.tsx`: identity change
+
+      **Left unticked: a benchmark shipped, the measurement this task asks for
+      did not.** What exists is `packages/pdf/scripts/bytes-memory.bench.ts` — a
+      re-runnable harness covering all four suspected peaks as named scenarios
+      (`validate-32`/`validate-64`/`live-whole`/`live-chunked`, `getall`,
+      `status`, `blob`, `hash`), sampling `bun:jsc`'s `heapStats()` with a
+      forced `Bun.gc(true)` because `process.memoryUsage().heapUsed` reports
+      +0.0 MiB for a 64 MiB string under Bun. Three gaps against the task as
+      written:
+      1. **It runs under Bun/JavaScriptCore, not Chrome/V8**, and it is a
+         synthetic PDF, not "a real image-heavy DOCSY tree export in the panel
+         and the offscreen worker". The script says so itself (`:18-24`).
+      2. **No numbers are recorded in this PLAN.** The harness prints them; the
+         plan still has no figures to cite, so nothing here can be quoted as
+         measured.
+      3. **Both gating assumptions remain UNVERIFIED**, and the script states
+         that explicitly rather than faking a result (`:485-497`):
+         `fake-indexeddb` has no out-of-line blob store, so a Chrome IDB `Blob`
+         round-trip cannot be measured there; PDF.js is not loaded, and a
+         `blob:` URL supports no HTTP Range requests anyway. Per Architecture
+         point 9 the consequence was taken correctly — the seam stands and **the
+         storage format reverted to `Uint8Array`** — but that is reasoning from
+         the spec, not the measurement the task ordered.
+      Closing this needs a DevTools heap snapshot against a real Chrome
+      profile; it is the same work as the "Memory sanity (T5.6 measurement
+      task)" item in the manual release protocol below.
+- [x] `apps/extension/entrypoints/sidepanel/PdfSection.tsx`: identity change
       **stops watching**, never aborts (defect (a), Architecture point 3).
       `AbortController` stays bound to the explicit Cancel button only.
       Regression test: a simulated page navigation mid-export leaves the job
       `compiling` and the record intact.
-- [ ] `apps/extension/entrypoints/background.ts`: derive in-flight state from
+      *(**Path moved by Phase 0**: the run state left `PdfSection.tsx` for
+      `components/app/export-runs.tsx`, where the identity effect now detaches
+      the PDF run instead of aborting it (`:96-111`, reasoning at `:11-16`).
+      Tests in `tests/pdf/section-navigation.test.tsx`: "stops watching without
+      aborting — the export and its record survive", "still aborts on the
+      explicit Cancel button", "does not abort when the panel itself goes away",
+      "starts a fresh export on the new page rather than reusing the detached
+      one". **Scope note the plan did not state**: this is PDF-only —
+      `export-runs.tsx:113-114` still aborts a running **DOCX** export on
+      identity change, deliberately, because DOCX has no durable job record to
+      re-attach to (comment at `:112`). CONFCLOUD-83694 is therefore fixed for
+      PDF and still open for Word.)*
+- [x] `apps/extension/entrypoints/background.ts`: derive in-flight state from
       durable job records (`status: "queued" | "compiling"`), not from the
       volatile `activePdfJobs` counter (`background.ts:49`), before arming
       `offscreenIdle` — at both call sites (`:58` `runWasmSmoke`, `:87-88`
       `runPdfCompile`'s `finally`). Fixes defect (b): an offscreen document
       torn down while a compile from before a SW restart is still running.
-- [ ] Cleanup ownership moves out of the panel: terminal-state deletion is
+      *(`utils/jobs/idle-gate.ts#createDurableIdleGate` wraps the timer and asks
+      `countInFlightPdfJobs()` (over the durable meta records) before arming;
+      both former call sites funnel through it via
+      `createOffscreenActivityTracker(durableIdle)` —
+      `entrypoints/background.ts:79-84`, noted at `:74-78`. Tests:
+      `tests/jobs/idle-gate.test.ts` — "does not arm the timer after a restart
+      while an older compile is still running", "arms the timer once the older
+      compile also finishes", "fails open when the record store cannot be read";
+      end to end in `tests/pdf/job-durability.test.ts` — "does not arm the
+      offscreen idle timer while a pre-restart compile is still running".)*
+- [x] Cleanup ownership moves out of the panel: terminal-state deletion is
       driven by the SW/offscreen side, which outlives the panel;
       `compile-port.ts:90`'s `finally` may only delete a job this panel is
       actively watching *and* has consumed. `cancelPdfJob`
       (`job-store.ts:244-250`) must release the bundle, not only set a status.
       Regression test: closing the panel mid-export leaves no orphan record
       holding a full bundle.
-- [ ] `apps/extension/utils/pdf/job-store.ts`: size metadata split out of the
+      *(`utils/pdf/compile-port.ts:240-247` — the `finally` deletes only when
+      `consumed || kind === "preview"`, and marks the record consumed through
+      `markPdfJobConsumed` otherwise (rationale at `:17-20`);
+      `job-store.ts#cancelPdfJob` (`:867`) drops both payloads and keeps only
+      the meta record for the re-attach UI (`:858-866`), with
+      `releasePdfJobBundle` (`:682`) for the ordinary terminal path. Tests in
+      `tests/pdf/job-durability.test.ts`: "releases the source bundle at every
+      terminal state", "removes a cancelled preview entirely — nobody
+      re-attaches to one", "keeps a consumed record only until the sweep runs";
+      and `tests/pdf/job-store.test.ts` — "cancelPdfJob releases the bundle, not
+      only the status", "deleting a job leaves no orphan payload behind".)*
+- [x] `apps/extension/utils/pdf/job-store.ts`: size metadata split out of the
       payload so `PDF_STORE_MAX_BYTES` is enforced **without** `getAll()`
       (Architecture point 9). Also split the volatile status/progress record
       from the immutable payload record so `claimPdfJob`/`completePdfJob` stop
       rewriting every asset byte for a status field
       (`job-store.ts:152-181`). Keep the cap *values*; change only how they are
       computed and stored.
-- [ ] `packages/pdf/src/validate.ts`: chunked scanning with boundary overlap
+      *(Store v2: one `jobs` meta store (numbers + short strings, `inputBytes`
+      / `outputBytes`, `storedJobBytes` at `:252`) plus two separate payload
+      stores; quota reads meta only (`putPdfJob` `:487`, `completePdfJob`
+      `:724`), never a payload. Invariant stated at `job-store.ts:36-37`, cap
+      values unchanged and justified at `:39-47`. Tests in
+      `tests/pdf/job-store.test.ts`: "enforces PDF_STORE_MAX_BYTES without
+      opening a payload store", "computes the quota from meta records even when
+      every payload is unreadable", "does not rewrite the payload record on a
+      status transition", "claims without putting the bundle back".)*
+- [x] `packages/pdf/src/validate.ts`: chunked scanning with boundary overlap
       instead of `TextDecoder("latin1").decode(bytes)` over the whole PDF
       (`validate.ts:48`). Shared-engine change — the CLI gets the same benefit.
       Test: identical verdicts to the current implementation across the
       existing fixtures, including a marker deliberately straddling a chunk
       boundary.
-- [ ] `packages/pdf/src/run-export.ts`: release `prepared`/`bundle`
+      *(`packages/pdf/src/validate.ts:44` `CHUNK_BYTES` = 1 MiB (exported as
+      `PDF_SCAN_CHUNK_BYTES` so the boundary tests cannot hard-code 1 MiB),
+      tiling scan at `:165-166` with the "where the window must stop" rule at
+      `:108-114`. Tests in `packages/pdf/src/validate.test.ts` — "agrees with
+      the whole-file scan on every existing fixture", "joins a /Type at
+      BOUNDARY-1 to a /Page thousands of spaces later", "finds a catalog /Lang
+      whose enclosing object spans the chunk boundary", "reports untagged when
+      the only /StructTreeRoot is a near-miss at the boundary".)*
+- [x] `packages/pdf/src/run-export.ts`: release `prepared`/`bundle`
       (`:241-242`) once the job is stored, so they are not retained through
       compile, validate and download.
-- [ ] `PdfBytesHandle` seam (`packages/pdf`): replace raw `Uint8Array` in the
+      *(`packages/pdf/src/run-export.ts:249-260` — both are declared
+      `| undefined` and nulled once the last consumer has taken what it needs;
+      the two facts the report still needs (`counts`, `bundle.notes`) are
+      hoisted out first. Rationale in the comment at `:251-258`.)*
+- [x] `PdfBytesHandle` seam (`packages/pdf`): replace raw `Uint8Array` in the
       cross-layer output contract with a handle (`size`, `asBlob()`,
       `asUint8Array()`, `objectUrl()`). Storage format for the extension host
       is decided by the measurement task, not assumed. `PdfOutputSink`
       (`packages/pdf/src/run-export.ts:25`) and the preview cache (T5.3) both
       consume the handle; `download.ts` uses `asBlob()` and drops its own copy.
       **Do not** land this before the measurement task reports.
-- [ ] `apps/extension/entrypoints/sidepanel/JobsSection.tsx` (new): the
+      *(`packages/pdf/src/bytes-handle.ts` — `PdfBytesHandle`,
+      `pdfBytesFromUint8Array`, `pdfBytesFromBlob`, `isPdfBytesHandle`,
+      exported from `index.browser.ts:25-26`. `PdfOutputSink.emit` now takes a
+      handle (`run-export.ts:36`); consumers adapted across
+      `apps/extension/utils/download.ts` (`asBlob()`, own copy dropped),
+      `utils/pdf/preview-cache.ts`, `apps/cli/src/commands/export-pdf-sink.ts`,
+      `packages/export-node/src/pdf-env.ts`,
+      `apps/browser-export-harness/src/memory-output.ts`. Tests:
+      `packages/pdf/src/bytes-handle.test.ts`, `tests/pdf/download.test.ts`
+      ("PdfBytesHandle (spec 010, T5.6)"). **Storage format: reverted to
+      `Uint8Array`**, which is the branch Architecture point 9 prescribes when
+      the two IDB-Blob assumptions are unverified — and they are (see the
+      measurement item above). The seam itself stands, as designed.)*
+- [x] `apps/extension/entrypoints/sidepanel/JobsSection.tsx` (new): the
       re-attach UI — running/finished jobs for this site with scope, progress
       ("Page 37/210"), age, and actions (show result / download / cancel /
       dismiss). On panel mount it reads `atlcli-pdf` and re-attaches to
       anything still `queued`/`compiling`; a finished job offers its download.
       Collapsed when there are no jobs, so the 90 % single-page case sees no
       new UI.
-- [ ] Notification: in-panel status plus `chrome.action.setBadgeText` when a
+      *(**Path moved by Phase 0** — it is a registered screen, not a panel
+      section: `components/screens/JobsScreen.tsx` (`JOBS_SCREEN_ID =
+      "activity"`, `jobsScreenDefinition` requiring the `durable-jobs`
+      capability), over `utils/jobs/store.ts#createDurableJobsStore` and
+      `utils/jobs/context.tsx`. Tests in `tests/pdf/jobs-section.test.tsx`:
+      "renders no list at all when there are no jobs", "re-attaches on mount to
+      a job that is still compiling, with its progress", "offers the download
+      for a finished job, and consumes it when taken", "cancels a running job
+      through the compiler, not only in the record", "does not list a job from
+      another site", "never lists a preview job".)*
+- [x] Notification: in-panel status plus `chrome.action.setBadgeText` when a
       job finishes while the panel is closed. **Deliberately not**
       `chrome.notifications` — that needs a new manifest permission, and this
       folder's rule is no new permissions (asserted by
       `tests/manifest.test.ts`). Badge clears when the panel is opened.
-- [ ] Shared store budget: the preview cache (T5.3) and retained background
+      *(`utils/jobs/model.ts#jobBadgeText` (`:222`) over the count of finished
+      but unconsumed records; set at `entrypoints/background.ts:117` and
+      cleared at `:124`. `chrome.notifications` is absent and the permission
+      list is unchanged — the only manifest addition is the `action: {}` key
+      the badge API requires (`wxt.config.ts:36-41`), which
+      `tests/manifest.test.ts` treats correctly because it pins `permissions`,
+      not the whole manifest.)*
+- [x] Shared store budget: the preview cache (T5.3) and retained background
       jobs (T5.6) compete for the same `PDF_STORE_MAX_BYTES`. Design one
       eviction policy over both — previews are evictable at any time, a
       finished-but-unconsumed export job is not — rather than two features
       independently filling one store. Document the policy in the job-store
       module comment.
+      *(One policy in `utils/jobs/model.ts` (`BudgetTenant`, `BudgetEntry`,
+      `planStoreEviction`), with the preview cache registered as the second
+      tenant through `utils/jobs/preview-tenant.ts#previewCacheTenant` /
+      `job-store.ts#setSharedBudgetTenants` (`:287`). Documented in the
+      job-store module comment at `:58-70` ("One budget, one eviction policy
+      (T5.6)", cheapest-loss-first ordering). Tests in
+      `tests/jobs/shared-budget.test.ts`: "sees the preview cache as an occupant
+      of the same budget", "evicts the preview cache — and not the finished
+      export — to admit a new job", "refuses a new job rather than dropping a
+      finished export", "does drop a finished export once the user has collected
+      it".)*
 - [ ] Copy + docs honesty: the panel states that a background export survives
       navigation, panel close and extension restart, but **not** closing the
       browser (Architecture point 3). No wording implies server-side
       durability.
+
+      **Left unticked because it is half of a two-part item.** The **panel**
+      half shipped verbatim: `jobs.durability` in
+      `apps/extension/utils/i18n/messages.ts:171` (EN) / `:415` (DE) — "Exports
+      keep running while you browse and survive closing this panel — but not
+      closing the browser." — with the no-server-side rule recorded at `:163`
+      and asserted by `tests/pdf/jobs-section.test.tsx`, "says exactly what
+      background means, and promises nothing server-side". The **docs** half
+      cannot be true yet: T5.5 has not started, and there is no
+      `src/content/docs/extension/` at all. Tick this when the docs land.
 
 ### Docs & release (T5.5)
 
@@ -1178,6 +1767,12 @@ Docs are first-class (CLAUDE.md): same PR as the features, per-page template
 (intro → prerequisites → steps → options → examples → troubleshooting →
 related topics), UI-first (panel) and config-first (CLI) paths clearly
 labelled, ≥ 1 minimal + 1 advanced example per feature.
+
+**Status check, this pass: not started — every box below is genuinely open.**
+`src/content/docs/` has no `extension/` directory, no
+`confluence/export-templates.md` and no `confluence/macro-compatibility.md`.
+This is the folder's one outstanding *feature-shaped* gap, and it is also what
+blocks the "Copy + docs honesty" item under T5.6 above.
 
 - [ ] `src/content/docs/confluence/export.md`: extend with scope selection
       (tree/space), label filters, and settings — CLI flags (config-first)
@@ -1243,28 +1838,55 @@ warm repeats), build gates (`manifest.test.ts`, `output-scan.test.ts`,
 
 Component/unit (new):
 
-- [ ] `apps/extension/tests/scope-state.test.ts`: scope reducer — kind
+- [x] `apps/extension/tests/scope-state.test.ts`: scope reducer — kind
       transitions, depth bounds, label parsing/dedupe, prune-subtree default.
-- [ ] `apps/extension/tests/scope-section.test.tsx`: progressive disclosure
+      *(All four at that path: "moves between page / tree / space", "clamps
+      below the minimum and above the maximum", "splits on commas and
+      whitespace, trims, drops empties, dedupes", "defaults excludeMode to
+      prune-subtree (excluded pages take their children)".)*
+- [x] `apps/extension/tests/scope-section.test.tsx`: progressive disclosure
       (advanced closed by default), space option gating on `spaceKey`,
       confirmation copy for space scope.
-- [ ] `apps/extension/tests/pdf/run-export-scope.test.ts`: scope-aware
+      *(All three at that path: "starts on 'Current page' with the Advanced
+      disclosure closed", "disables it — with a reason — when the page reports
+      no space", "asks before a space export and names the page count" /
+      "still asks — with count-free wording — when the host cannot count".)*
+- [x] `apps/extension/tests/pdf/run-export-scope.test.ts`: scope-aware
       `runPdfExport` against a **fake `TreeSource`** (port fake, no HTTP):
       composed chapters reach the neutral engine, `sourceIdentity` differs
       between page and tree scope for the same root, abort during the walk
       stops fetching and stores no job, `onProgress` sequence is ordered.
-- [ ] `apps/extension/tests/pdf/run-export-scope.test.ts` (extend): a macro on
+      *(All four at that path: "hands the COMPOSED chapters to the neutral
+      engine, in document order", "differs between a page export and a tree
+      export of the SAME root", "aborting mid-walk stops fetching and never
+      reaches the compile port", "forwards onProgress in document order, one
+      tick per fetched body".)*
+- [x] `apps/extension/tests/pdf/run-export-scope.test.ts` (extend): a macro on
       a **non-root** `ExportPageNode` resolves `MacroExportContext` from
       `block.sourcePage`, not the root page — regression for Architecture
       point 6/T5.4's per-source-page context task (fake `TreeSource` +
       port-fake registry, no HTTP).
-- [ ] `apps/extension/tests/pdf/job-store.test.ts` (extend): pre-flight
+      *(`describe("macro resolution is per SOURCE page (Architecture point 6)")`
+      — "uses the macro's OWN page id, never the export root's", "the rendered
+      body is the CHILD page's, and it reaches the compiler".)*
+- [x] `apps/extension/tests/pdf/job-store.test.ts` (extend): pre-flight
       rejection reads the already-deduped asset list from a fake
       `preparePdfDocument` result and names the largest offenders (no
       dedupe logic inside `job-store.ts` itself — assert it does *not*
       duplicate `prepare.ts`'s hashing); regression: a bundle > 64 MiB fails
       before any IDB write.
-- [ ] `apps/extension/tests/docx/template-store-migration.test.ts` (new,
+
+      **Two of three assertions are here; the offender-naming one is
+      elsewhere, because the code is elsewhere** (see the T5.1 budget-hardening
+      task). At this path: "never runs a second dedupe pass over the bundle it
+      is handed" (the "does not duplicate `prepare.ts`'s hashing" assertion) and
+      "rejects oversized input before writing" (the > 64 MiB regression), plus
+      four bonus cases proving the caps cannot be bypassed by mutating the
+      bundle after the call. The largest-offender message is asserted in
+      `packages/confluence/src/asset-budget.test.ts` and, cross-engine, in
+      `packages/pdf/src/asset-budget-parity.test.ts` — "both engines throw
+      AssetBudgetExceededError with the identical offender list".
+- [x] `apps/extension/tests/docx/template-store-migration.test.ts` (new,
       fake-indexeddb): seed a **v1** database containing a `"current"`
       record, reopen at `DB_VERSION` 2, assert (a) the synchronous phase
       completes with a `migrationPending: 1` placeholder record (`recordKey`
@@ -1293,7 +1915,26 @@ Component/unit (new):
       against the fake — that trades a real check for a green light. The real
       browser behavior is covered by the manual fresh-profile migration item in
       the release protocol.
-- [ ] `apps/extension/tests/templates/library.test.ts`: v2-store
+
+      *(Verified this pass. (a)–(e) are at the stated path — "phase 1 lands a
+      synchronous placeholder record and drops the legacy 'current' key",
+      "phase 2 backfills sha256 + size and clears the pending marker", "resumes
+      an interrupted backfill: the pending row is found via its index on the
+      next open", "is a no-op on a second open at v2", "migrates an empty v1
+      database cleanly". (f) landed exactly as the correction above describes:
+      `apps/extension/tests/docx/phase1-sync-guard.ts`, an **AST walk of the
+      real call graph from `req.onupgradeneeded`**, closed by default — an
+      unresolvable or imported callee is itself a violation. It is invoked by
+      "keeps migration phase 1 free of any await — the guard a runtime test
+      cannot give us" and mutation-tested by six cases under `describe("the
+      phase-1 guard itself (mutation tests)")`: awaiting `const` arrow helper,
+      imported helper, unlisted name, an `await` hidden behind a `}` inside a
+      string literal, a vanished entry point (must fail loudly, not report
+      success), and a no-false-positive run on the unmodified source. The guard
+      header (`phase1-sync-guard.ts:6-41`) also records that an earlier
+      regex-based version proved nothing — worth keeping, because it is the
+      reason the AST form exists.)*
+- [x] `apps/extension/tests/templates/library.test.ts`: v2-store
       `TemplateLibrary` adapter — `list` filtering by engine/space,
       `getBytes` sha256 verification failure is a hard error; a global entry
       and a space-scoped override sharing the same `templateId` but distinct
@@ -1306,12 +1947,29 @@ Component/unit (new):
       `resolveTemplate` from `@atlcli/core` (already covered by folder-007
       unit tests — do not re-test the pure function here, test the adapter's
       wiring of it and the `recordKey`/`templateId` split).
-- [ ] `apps/extension/tests/settings-form.test.tsx`: one case per widget type
+      *(All five clauses at that path: "filters by engine, never resolving a
+      wrong-engine entry", "throws a hard integrity error when the stored bytes
+      were modified", "keeps a global entry and its space override as two rows
+      and resolves the space one", "leaves the global entry resolvable after the
+      space override is deleted", "keeps two sites that share a space key
+      completely independent". `resolveTemplate` itself is not re-tested here.
+      **Beyond plan**: a `describe("delimiter injection in logical ids")` block
+      proving one upload cannot destroy another's bytes through a colliding
+      record key, and four cases covering the site-agnostic migration
+      sentinel.)*
+- [x] `apps/extension/tests/settings-form.test.tsx`: one case per widget type
       (`text|boolean|choice|color|number|asset`), default filling from
       manifest, invalid number/color rejection, values round-trip to
       `template-prefs`; PDF-only for v1 — assert the form never attempts to
       write a `settings` field onto a DOCX `ExportInput`.
-- [ ] `apps/extension/tests/pdf/preview.test.ts`: **scope-dependent**
+      *(All at that path: "renders text, boolean, choice, color, number and
+      asset controls", "fills every control from the schema default", "shows the
+      issue next to the field for an invalid number and colour", "round-trips
+      values through the real template-prefs store", "**never writes `settings`
+      onto a DOCX export request**". Also pins the schema to the engine — "uses
+      the same template id the engine's built-in manifest declares" — and
+      treats a manifest as untrusted data.)*
+- [x] `apps/extension/tests/pdf/preview.test.ts`: **scope-dependent**
       truncation — `scope: page` is never truncated; `tree`/`space` is
       chapter-count **and** block/asset-byte bounded (a single oversized
       chapter is still capped, not just counted as "1 of N"); capture sink
@@ -1319,7 +1977,18 @@ Component/unit (new):
       as discarded **without** the worker being terminated (assert
       `destroyWorker`/`terminate` is not called on preview supersession,
       only on an explicit export cancel).
-- [ ] `apps/extension/tests/pdf/preview-cache.test.ts` (new, fake-indexeddb):
+      *(First three clauses at that path: "compiles the WHOLE document for
+      scope: page — the CONFCLOUD-84742 case", "stops on the block backstop
+      before the chapter budget is reached" / "stops on the asset-byte
+      backstop" / "always keeps the first chapter, even when it alone busts
+      every backstop", "keeps the handle instead of downloading it". The fourth
+      clause **split across two files**: this file asserts the caller-visible
+      half ("reports a superseded preview as a status, not an error"), and the
+      `destroyWorker`/`terminate` half lives where the worker does —
+      `tests/pdf/compiler-host.test.ts`, "cancelling an active preview does NOT
+      terminate the worker" and "cancelling an active EXPORT still terminates
+      the worker (user-initiated abort)".)*
+- [x] `apps/extension/tests/pdf/preview-cache.test.ts` (new, fake-indexeddb):
       a cache hit on identical `sourceIdentity` + settings hash returns bytes
       and suppresses a second compile; **changing one setting value invalidates
       the entry** (no stale-bytes download); a `truncated: true` entry is
@@ -1327,10 +1996,30 @@ Component/unit (new):
       trap, Architecture point 5) while still serving the viewer; entries are
       deleted on the normal job-lifecycle path so preview churn does not grow
       the store.
-- [ ] `apps/extension/tests/pdf/viewer-config.test.ts` (new): the single PDF.js
+      *(All at that path: "Download reuses a complete entry" + "opens the cached
+      preview without compiling" (`tests/preview-screen.test.tsx`), "hashes
+      different settings to different keys" / "changes the cache key when any of
+      the three parts changes", "**Download must NOT reuse a truncated entry,
+      but the viewer may read it**", "expires an entry older than the job
+      horizon and drops it from storage" / "is single-slot: a second preview
+      replaces the first". **Beyond plan**: "changes the tree hash when a CHILD
+      page's version changes" — the stale-child-page hole the planned two-part
+      key would have left open.)*
+- [x] ~~`apps/extension/tests/pdf/viewer-config.test.ts` (new)~~
+      **`apps/extension/tests/pdf/viewer.test.ts`** — the file was written
+      broader than "config" and the narrower name would have been misleading:
+      the single PDF.js
       construction site passes `isEvalSupported: false` and a local
       `workerSrc` — the runtime half of Architecture point 8's contract, which
       the static build scan cannot check.
+      *("sets isEvalSupported: false at the single construction site",
+      "disables XFA and system fonts, and configures no remote runtime URLs",
+      "points the worker at a bundled URL and assigns it once", "sources both
+      runtime files from the vendored package, emitted verbatim", plus
+      "does not implement isEvalSupported (the option was removed in v6)" —
+      the test Architecture point 8 asks for, which fails if PDF.js ever
+      reintroduces the option. The same file also carries the `blob:`-URL
+      borrow-hazard cases and the render-scale/canvas-cap tests.)*
 - [x] `apps/extension/tests/output-scan.test.ts` (extend): **inverted, because
       no exemption was added.** Instead of proving an exemption is narrow, the
       tests prove the gate covers PDF.js at all: seeding `new Function(` into
@@ -1338,6 +2027,14 @@ Component/unit (new):
       leak elsewhere must fail too (`.mjs` was previously unscanned). Adding a
       simulated path-scoped exemption turns those tests red — so one cannot be
       introduced later without the suite objecting.
+      *(Verified: `describe("dynamic-code rule has no PDF.js exemption")` —
+      "flags a string-to-code constructor at the vendored PDF.js path like
+      anywhere else", "the emitted PDF.js paths are recognizable, and match
+      nothing else in the bundle"; and the end-to-end CLI cases "fails when
+      dynamic code is seeded into the vendored PDF.js file itself" and "scans
+      .mjs assets at all — a new extension is not a way around the gate". These
+      run against the real `.output/chrome-mv3`, so they require `bun run build`
+      first.)*
 - [ ] **Real-browser render coverage belongs in Playwright, not happy-dom.**
       PDF.js rendering is `<canvas>` + a real Worker; happy-dom cannot
       meaningfully execute it, so the unit tests above deliberately cover the
@@ -1347,12 +2044,26 @@ Component/unit (new):
       `apps/browser-export-harness` (which already runs a real browser for
       engine parity). Do not simulate a canvas in a unit test and call it
       render coverage.
-- [ ] `apps/extension/tests/pdf/compiler-host.test.ts` (extend): `kind:
+
+      **Left unticked — not implemented.** The harness has no PDF.js case: no
+      module under `apps/browser-export-harness/src/` imports `pdfjs-dist` or
+      asserts a page count, and the registered cases
+      (`conformance-registry.ts`) are the engine-parity ones. The *discipline*
+      half of the item does hold — no unit test simulates a canvas and claims
+      render coverage; `tests/pdf/viewer.test.ts` drives a structural PDF.js
+      stub and says so. So today **nothing anywhere proves the compiled bytes
+      actually render**.
+- [x] `apps/extension/tests/pdf/compiler-host.test.ts` (extend): `kind:
       "preview" | "export"` scheduling — an export queued behind an
       in-flight preview jumps ahead; rapid preview→preview→export creates
       exactly one worker instance (`createWorker` call count); a queued
       preview superseded before it starts never reaches the worker.
-- [ ] `apps/extension/tests/macros/session-ports.test.ts`: constructed real
+      *(All three at that path, under `describe("ChromeWorkerCompilerHost —
+      preview/export scheduling")`: "lets an export queued behind an in-flight
+      preview jump ahead of a queued preview", "creates exactly ONE worker
+      across a rapid preview → preview → export sequence", "never sends a
+      superseded queued preview to the worker".)*
+- [x] `apps/extension/tests/macros/session-ports.test.ts`: constructed real
       `Response` objects (per the "never mock HTTP" rule — these are
       hand-built `Response`s, not a fetch mock) covering the full taxonomy:
       403 → `skip` + permission note; 404 → `skip` + not-found note; opaque
@@ -1365,16 +2076,47 @@ Component/unit (new):
       `JiraClient`/`ConfluenceClient` (constructed with a session profile),
       not a parallel fetch implementation — the real HTTP behavior of the
       underlying clients is exercised E2E (below), never via mocked fetch.
-- [ ] `apps/extension/tests/macros/external-asset-policy.test.ts` (new): same
+      *(Every branch of the taxonomy at that path: "403 → chain skip with a
+      permission note, export continues", "404 → chain skip with a not-found
+      note", "an opaque redirect stops further port calls and surfaces one
+      distinct note" (+ "a raw 3xx", "a 200 login page (non-JSON body)", "the
+      latch is emitted exactly once across many macros"), "429 exhausting the
+      client's own retries → degraded note, chain continues", "5xx after the
+      client's retries → degraded note, chain continues", "emits
+      skipped-by-config without a single port call". Thin-adapter claim:
+      "maps an issue through the client and issues no HTTP of its own",
+      "builds a Jira port from the tab's session profile with no client
+      passed", plus the compile-time witness `session-ports.ts:118`.)*
+- [x] `apps/extension/tests/macros/external-asset-policy.test.ts` (new): same
       fixture set (site-origin URL, allowed Atlassian media origin,
       disallowed third-party origin, redirect to a disallowed origin,
       loopback/private target) run through **both** `utils/pdf/run-export.ts`'s
       resolver and `utils/docx/env.ts`'s `sessionAssetFetcher` — assert
       identical allow/reject outcomes across engines.
+      *(At that path, table-driven over the shared
+      `packages/export-wiring/src/fixtures.ts` set —
+      `describe("cross-host parity — the shared fixtures through the
+      extension's policy")` running each fixture through both `allow()` and
+      `fetch()` including the redirect chain, plus "the SSRF guard the extension
+      uses is the shared predicate" and "is exactly the set the manifest grants
+      — the fixture allowlist, not a superset". The *both-engines* half is
+      asserted from the engine side in `tests/pdf/run-export-scope.test.ts` —
+      `describe("cross-engine policy parity over the shared fixtures")`, with
+      guard-the-guard cases showing an unwrapped resolver fails the assertion.)*
 - [ ] `apps/extension/tests/pdf/compiler.test.ts` (extend): warm-worker
       preview-then-export sequence compiles both from one compiler instance;
       multi-chapter bundle compile stays under the scaled timeout.
-- [ ] `apps/extension/tests/pdf/job-durability.test.ts` (new): re-instantiate
+
+      **Left unticked — neither assertion was added to this file.**
+      `tests/pdf/compiler.test.ts` still ends at the pre-existing "produces
+      byte-identical output on a warm repeat compile"; there is no
+      preview-then-export sequence and no multi-chapter timeout case in it. The
+      *scheduling* property is covered against a fake worker in
+      `tests/pdf/compiler-host.test.ts` ("creates exactly ONE worker across a
+      rapid preview → preview → export sequence"), which is what makes this
+      cheap to leave — but the point of putting it here was to prove it against
+      the **real wasm compiler**, and that is not proven.
+- [x] `apps/extension/tests/pdf/job-durability.test.ts` (new): re-instantiate
       the background router mid-job (simulating a service-worker restart —
       drop and rebuild `activePdfJobs`/message listeners without touching the
       `atlcli-pdf` job record) and assert the panel can still find the job's
@@ -1385,35 +2127,87 @@ Component/unit (new):
       `offscreenIdle` while the first is still `compiling` — the regression for
       Architecture point 3 defect (b), the torn-down-mid-compile offscreen
       document.
-- [ ] `apps/extension/tests/pdf/section-navigation.test.tsx` (new): changing
+      *(All at that path: "is still findable, and still finishes, after the
+      in-memory state is rebuilt", "returns the compiled result even though the
+      compile message is never answered", "ends the job failed at its deadline
+      instead of leaving it compiling forever" (+ "is reached by the watcher
+      too, so the panel is told rather than hanging"), and the T5.6 extension
+      "does not arm the offscreen idle timer while a pre-restart compile is
+      still running".)*
+- [x] `apps/extension/tests/pdf/section-navigation.test.tsx` (new): changing
       `loadedPage`/`pageUrl` mid-export **stops watching** but does not abort —
       the `AbortController` is not signalled and the job record stays
       `compiling`; only the explicit Cancel button aborts. Direct regression
       for `PdfSection.tsx:30-37` (Architecture point 3 defect (a)) and the
       in-repo reproduction of CONFCLOUD-83694.
-- [ ] `apps/extension/tests/pdf/job-store.test.ts` (extend, T5.6): enforcing
+      *(At that path: "stops watching without aborting — the export and its
+      record survive", "still aborts on the explicit Cancel button", "does not
+      abort when the panel itself goes away", "starts a fresh export on the new
+      page rather than reusing the detached one". The subject under test is now
+      `components/app/export-runs.tsx`, not `PdfSection.tsx` — see the T5.6
+      task, and note it covers the **PDF** run only.)*
+- [x] `apps/extension/tests/pdf/job-store.test.ts` (extend, T5.6): enforcing
       `PDF_STORE_MAX_BYTES` performs **no** `getAll()` over payload records
       (assert via a spy or a store seeded with records whose payload access
       would throw); a status transition does not rewrite the payload record
       (byte-identical payload row, changed status row); `cancelPdfJob`
       releases the bundle rather than only setting a status; closing the panel
       mid-export leaves no orphan record holding a full bundle.
-- [ ] `packages/pdf/src/validate.test.ts` (extend): chunked scanning yields
+      *(All four, under `describe("byte handling (spec 010, T5.6)")`: "enforces
+      PDF_STORE_MAX_BYTES without opening a payload store" + "computes the quota
+      from meta records even when every payload is unreadable" (the
+      seeded-throwing-payload variant the task suggested), "does not rewrite the
+      payload record on a status transition", "cancelPdfJob releases the bundle,
+      not only the status", "deleting a job leaves no orphan payload behind"
+      (with the panel-close path in `tests/pdf/job-durability.test.ts`,
+      "releases the source bundle at every terminal state").)*
+- [x] `packages/pdf/src/validate.test.ts` (extend): chunked scanning yields
       verdicts identical to the current whole-buffer implementation across the
       existing fixtures, **including a marker deliberately straddling a chunk
       boundary** — the failure mode a naive chunking introduces.
-- [ ] `apps/extension/tests/pdf/jobs-section.test.tsx` (new): re-attach UI —
+      *(`describe("chunked scanning (spec 010, T5.6)")` — "agrees with the
+      whole-file scan on every existing fixture", plus seven boundary cases
+      including "joins a /Type at BOUNDARY-1 to a /Page thousands of spaces
+      later", "finds a catalog /Lang whose enclosing object spans the chunk
+      boundary" and "reports untagged when the only /StructTreeRoot is a
+      near-miss at the boundary". The chunk size is exported as
+      `PDF_SCAN_CHUNK_BYTES` so the tests cannot silently stop testing the
+      boundary if it changes.)*
+- [x] `apps/extension/tests/pdf/jobs-section.test.tsx` (new): re-attach UI —
       mounting with a `compiling` record in `atlcli-pdf` re-attaches and shows
       progress; a finished record offers its download; a job from another site
       origin is not listed; no jobs → no UI (the 90 % case sees nothing new).
-- [ ] Shared-budget test (T5.3 + T5.6): with the store near
+      *(All four at that path: "re-attaches on mount to a job that is still
+      compiling, with its progress", "offers the download for a finished job,
+      and consumes it when taken", "does not list a job from another site",
+      "renders no list at all when there are no jobs" — plus "never lists a
+      preview job" and the copy-honesty assertion.)*
+- [x] Shared-budget test (T5.3 + T5.6): with the store near
       `PDF_STORE_MAX_BYTES`, a new export evicts preview-cache entries but
       **never** a finished-but-unconsumed export job — the eviction policy from
       the T5.6 task, asserted rather than left to two features racing.
+      *(`apps/extension/tests/jobs/shared-budget.test.ts` — "evicts the preview
+      cache — and not the finished export — to admit a new job", "refuses a new
+      job rather than dropping a finished export", "does drop a finished export
+      once the user has collected it".)*
 
 E2E — primary path via CLI against DOCSY (engine behavior is owned and covered
 by folders 002/008; CLAUDE.md workflow: profile `mayflower`, space `DOCSY`,
 project `ATLCLI`):
+
+**Both boxes below stay open, but not for want of DOCSY exposure.** Real
+read-only DOCSY runs happened repeatedly during implementation and are recorded
+in commit messages rather than here — a 62-page tree export against the standing
+"M1 Abnahme" tree (`512b527`, `9a6410f`), a live 12-issue Jira datasource table
+on page 1126236245 in **both** engines with the author's column order preserved
+(`512b527`), and the macro-note reconciliation defect measured on the same page
+in both engines (`de4696d`). What is missing is specifically the *purpose-built*
+fixture this box describes — a fresh root + 2 levels carrying `handbook` /
+`internal` labels, with the jira macro placed on a **non-root, non-leaf** page,
+exported with `--tree --label-exclude internal` — so `label-filtered` and the
+`sourcePage` binding have never been asserted together over real HTTP. In-repo,
+the `sourcePage` half is covered by `apps/cli/src/commands/engine-parity.test.ts`
+and `apps/extension/tests/pdf/run-export-scope.test.ts`.
 
 - [ ] Create a small DOCSY test tree (root + 2 levels, labels `handbook` /
       `internal`, one page with a jira macro on `ATLCLI` issues, one with a
@@ -1427,7 +2221,9 @@ project `ATLCLI`):
       `sourcePage`/`contextFor` gap (Architecture point 6, T5.4 task).
 - [ ] **Clean up all DOCSY test pages and ATLCLI test issues after the run**
       (workflow rule; the tree-export tests must delete the whole created
-      subtree, not just the root).
+      subtree, not just the root). *(Nothing to clean up yet: the runs above
+      were read-only against pre-existing pages. The deliberately retained
+      DOCSY fixtures from earlier folders are not this box's business.)*
 
 E2E — extension-specific: a **manual verification protocol per release**
 (Chrome extension E2E is not CI-automatable here without mocking; the
@@ -1435,6 +2231,20 @@ Playwright conformance harness in `apps/browser-export-harness` covers engine
 parity, not the panel chrome). Execute and check off before each release, with
 the same profile-equivalent browser session (logged in to the `mayflower`
 site):
+
+**All 17 boxes below are open, and that is the expected state.** This is a
+per-release checklist, T5.5 (Docs & release) has not started, and no release has
+been cut — none of these has been run against a loaded unpacked build. They are
+listed under "not verified" in any status report rather than under "missing
+work". Two of them are load-bearing beyond the release itself, because nothing
+in the automated suite substitutes for them: **"Fresh-profile migration"** (the
+real-browser half of the `TransactionInactiveError` guard —
+`fake-indexeddb` provably cannot model it, see the migration test above) and
+**"Memory sanity"** (the Chrome/V8 measurement T5.6's first task still owes).
+The last box (`bun run typecheck` + full `bun test`) was green in the worktree
+on 2026-07-21 — 4234 pass, 0 fail across 260 files, typecheck clean — but stays
+open because it is a gate to re-run against the release build, not a one-time
+fact.
 
 - [ ] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
       Chrome (≥ 116); open the side panel on a DOCSY page.
