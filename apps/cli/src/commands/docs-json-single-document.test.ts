@@ -257,6 +257,20 @@ describe("docs check --json: one document, pass or fail", () => {
     );
   }, 60_000);
 
+  it("emits one error-only document when there is nothing to validate", async () => {
+    // `check` refuses to pass an empty tree (a CI gate that validated nothing).
+    // That failure happens before the report exists, so the document carries
+    // only `error` - and it must still be exactly one document.
+    const json = await runCli(["wiki", "docs", "check", ".", "--json"], checkDir);
+    expect(json.exitCode).toBe(1);
+
+    const parsed = parseSingleDocument(json.stdout);
+    const error = parsed.error as Record<string, unknown>;
+    expect(error.code).toBe("ATLCLI_ERR_USAGE");
+    expect(error.message).toContain("nothing was validated");
+    expect((error.details as Record<string, unknown>).filesChecked).toBe(0);
+  }, 60_000);
+
   it("does not emit an error field without --strict when only warnings exist", async () => {
     await mkdir(join(checkDir, "guides"), { recursive: true });
     await writeFile(join(checkDir, "guides", "one.md"), "# One\n\nFine.\n");

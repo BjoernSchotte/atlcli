@@ -195,6 +195,23 @@ and exit code `1`. Branch on the exit code (or on the presence of `error`), not
 on `passed`.
 :::
 
+The two failures that stop `check` before it validates anything — a path that
+does not exist, and a path with no markdown files in it — emit a document that
+carries only the `error` field, with `code` set to `ATLCLI_ERR_USAGE` rather
+than `ATLCLI_ERR_VALIDATION`:
+
+```json
+{
+  "error": {
+    "code": "ATLCLI_ERR_USAGE",
+    "message": "No markdown files found in /work/docs - nothing was validated. Pass the directory explicitly (path argument or --dir).",
+    "details": { "path": "/work/docs", "filesChecked": 0 }
+  }
+}
+```
+
+So a consumer should read `error` first and only then the report fields.
+
 ## Pre-Push Validation
 
 Use the `--validate` flag with push to run checks before pushing:
