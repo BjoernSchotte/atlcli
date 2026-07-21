@@ -3,7 +3,7 @@
  *
  *  1. The REAL merged PDF asset pipeline (`preparePdfDocument`) — proves the PDF
  *     engine actually wires the sanitizer: an unsafe SVG is skipped
- *     (`pdf-image-skipped`, not embedded); the safe baseline embeds.
+ *     (`image-embed-failed`, not embedded); the safe baseline embeds.
  *
  *  2. 006's SHARED sanitizer (`assertSafeSvg(decodeSvgSource(bytes))` from
  *     `@atlcli/confluence`) — the exact function BOTH engines delegate to
@@ -34,7 +34,7 @@ async function prepareOne(caseBytes: Uint8Array): Promise<{ embedded: boolean; s
   ];
   const prepared = await preparePdfDocument(blocks, svgResolver(caseBytes));
   const embedded = prepared.assets.some((asset) => asset.mediaType === "image/svg+xml");
-  const skipped = prepared.notes.some((note) => note.code === "pdf-image-skipped");
+  const skipped = prepared.notes.some((note) => note.code === "image-embed-failed");
   return { embedded, skipped };
 }
 
@@ -58,7 +58,7 @@ describe("SVG safety corpus — PDF engine pipeline (merged)", () => {
     it(`rejects ${testCase.id} (${testCase.note})`, async () => {
       const { embedded, skipped } = await prepareOne(caseBytes(testCase));
       expect(embedded, `${testCase.id} must NOT embed`).toBe(false);
-      expect(skipped, `${testCase.id} must emit pdf-image-skipped`).toBe(true);
+      expect(skipped, `${testCase.id} must emit image-embed-failed`).toBe(true);
     });
   }
 

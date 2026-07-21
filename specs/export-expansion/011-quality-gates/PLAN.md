@@ -632,7 +632,8 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
       alone), and warns on a shrinking baseline. `baseline.json` starts empty;
       it is populated from the first real veraPDF run (a reviewed diff).)*
 - [x] Alt-text audit task: emit a dedicated note code (e.g.
-      `pdf-image-missing-alt`) from `packages/pdf/src/prepare.ts` when an
+      `pdf-image-missing-alt`; renamed to `image-missing-alt` by spec 010's
+      vocabulary unification) from `packages/pdf/src/prepare.ts` when an
       image block has no `alt`; surface it in `PdfExportReport` and the CLI
       `--report json` (T3.4) so authors can fix source pages. Same audit in
       the DOCX path (`packages/docx/src/image.ts`).

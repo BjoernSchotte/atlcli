@@ -290,6 +290,14 @@ export function isMissingAltText(alt: string | undefined): boolean {
  * the picture as "has alt text" and its own accessibility checker stays silent,
  * while a screen reader reads out `chart-final-v2.png`. This audit is the only
  * signal an author gets that the fallback was taken.
+ *
+ * The emitted `image-missing-alt` code is SHARED with the PDF engine (spec 010),
+ * which emits the same code from `packages/pdf/src/prepare.ts` for the same
+ * source-block condition. Both must keep emitting it: `notesByCode` is the
+ * only cross-format handle a CI pipeline has on "pages that still need alt
+ * text", and it must not depend on which format was exported. The DOCX note
+ * carries no `source.blockPath` (this serializer tracks none) — less
+ * provenance for the same fact, not a different fact.
  */
 export function auditImageAltText(input: {
   alt?: string;

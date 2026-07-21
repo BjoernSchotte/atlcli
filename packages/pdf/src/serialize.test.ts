@@ -1102,7 +1102,7 @@ describe("serialize — C3 captions", () => {
     expect(main).not.toContain("#figure(#");
     expect(main).toContain("Image unavailable");
     expect(main).toContain("caption: [");
-    expect(notes.map((n) => n.code)).toContain("pdf-image-skipped");
+    expect(notes.map((n) => n.code)).toContain("image-embed-failed");
   });
 
   it("wraps a captioned table in a figure with kind table (declared kind wins)", async () => {

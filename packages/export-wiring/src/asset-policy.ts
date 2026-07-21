@@ -74,10 +74,10 @@ export interface ExternalAssetPolicyOptions {
 
 /**
  * Thrown when a URL fails {@link ExternalAssetPolicy.allow}. Both engines
- * already degrade a thrown asset-resolution error into a placeholder plus a
- * report note (`pdf-image-skipped` / `image-embed-failed`), so throwing this is
- * exactly the "visible placeholder + report note" outcome — no engine change
- * required.
+ * already degrade a thrown asset-resolution error into a placeholder plus an
+ * `image-embed-failed` report note (one code on both engines since spec 010),
+ * so throwing this is exactly the "visible placeholder + report note" outcome
+ * — no engine change required.
  */
 export class ExternalAssetBlockedError extends Error {
   readonly url: string;

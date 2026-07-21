@@ -15,6 +15,8 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [CLI: PDF export](#cli-pdf-export)
 - [Rendering engines](#rendering-engines)
 - [Tree and space export](#tree-and-space-export)
+- [Note codes](#note-codes-are-shared-across-formats) and [migrating retired codes](#migrating-retired-note-codes)
+- [Note severity and `--strict`](#note-severity-and---strict)
 - [Templates](#templates)
 - [Table of contents](#table-of-contents)
 - [Template variables](#template-variables)
@@ -116,7 +118,7 @@ Pass one or the other, never both.
 | `--output, -o <path>` | Output file path (or use `--out-dir`) |
 | `--out-dir <dir>` | Write a derived filename into this directory |
 | `--force` | Overwrite an existing **regular** file (never a symlink or directory) |
-| `--strict` | Exit code `2` if the export completed with any warning |
+| `--strict` | Exit code `2` if the export completed with any **warning**- or **error**-severity issue (informational notes never trip it — see [Note severity](#note-severity-and---strict)) |
 | `--no-cache` | Do not persist downloaded assets across invocations |
 | `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
 | `--report json` | Synonym for `--json` |
@@ -134,7 +136,7 @@ file is **not** overwritten (`--force` opts in, for regular files only).
 |------|---------|
 | `0` | Success |
 | `1` | Usage / config / local IO error |
-| `2` | Completed with warnings (only under `--strict`) |
+| `2` | Completed with warnings (only under `--strict`; [informational notes do not count](#note-severity-and---strict)) |
 | `3` | Authentication error (401/403) |
 | `4` | Remote/API error (page not found, fetch failed) |
 | `5` | Compile / validation failure |
@@ -144,6 +146,49 @@ These codes are derived from classified errors (HTTP status, compiler phase), no
 string-matching messages, and apply to the whole export command. Under `--json` /
 `--report json`, stdout carries **exactly one** `atlcli.export-report/1` document; progress
 goes to stderr.
+
+### Note severity and `--strict`
+
+Every entry in the report's `issues[]` carries a `severity`:
+
+| Severity | Meaning | Counts toward `--strict`? |
+|----------|---------|---------------------------|
+| `error` | The export failed, or the produced artifact is wrong | Yes |
+| `warning` | The export completed, but something in the output is not right — an image did not embed, a link did not resolve, an image has no alt text | Yes |
+| `info` | An observation about a **correct** export — timings, a label filter doing exactly what you asked, a macro that rendered successfully | No |
+
+`warnings` and `errors` are convenience views over `issues[]` filtered by severity. There is
+deliberately no `infos` array: read informational entries off `issues[]` or `notesByCode`.
+
+```bash
+# Everything the export observed, grouped by how much you should care
+jq -r '.issues[] | "\(.severity)\t\(.code)\t\(.phase)"' report.json
+```
+
+:::note[Behavior change: informational notes no longer fail `--strict`]
+Earlier releases reported **every** note as `severity: "warning"`, whatever the exporter
+actually said about it. Because the ts DOCX engine appends a `perf-timing` note to every
+export, `--engine ts … --strict` exited `2` even on a completely clean run, while
+`--format pdf` on the same page exited `0`.
+
+`severity` now mirrors the note's own level. Notes that describe a correct export —
+`perf-timing`, `label-filtered`, `root-filter-bypassed`,
+`folder-position-unknown`, `link-outside-scope`, `macro-rendered-via`,
+`macro-skipped-by-config`, `placeholder-substituted`, `image-skipped`,
+`diagram-skipped`, `list-nesting-clamped`, `table-shape-approximated` and the other
+`info`-level codes — are still reported in full, but no longer inflate `warnings[]` or
+fail a `--strict` build. Genuine warnings (`image-unresolved`, `image-embed-failed`,
+`image-missing-alt`, `tree-cycle`, `heading-depth-clamped`, `link-anchor-missing`,
+`link-target-ambiguous`, `mention-unresolved`, the PDF/UA audits, …) are unchanged and
+still exit `2` under `--strict`. Severity is per **occurrence**, not per code:
+`macro-degraded`, for instance, is a warning when a macro could not be fetched and
+informational when an include hit its own depth limit and emitted a placeholder.
+
+The schema string stays `atlcli.export-report/1`; the only contract widening is the new
+`info` member of the `severity` enum. If you validate the report against a **pinned copy**
+of the JSON Schema, widen that enum. If you gate on `jq '.warnings | length'`, expect it to
+drop — that is the fix, not a regression.
+:::
 
 ### Profile-free auth (for CI)
 
@@ -350,7 +395,7 @@ pipe in a headless job:
 |-------|---------|
 | `sourcePages` | One entry per exported page: `id`, `title`, compose/fetch notes |
 | `outputDetails` / `outputs` | Per-artifact metrics: `embeddedImages`, `renderedDiagrams`, `skippedAssets` (and `pageCount` for PDF) |
-| `issues` / `warnings` / `errors` | Structured problems; `notesByCode` is the per-code tally |
+| `issues` / `warnings` / `errors` | Structured problems; `warnings`/`errors` are severity-filtered views over `issues`, and `notesByCode` is the per-code tally over **all** of them (see [Note severity](#note-severity-and---strict)) |
 | `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) — `--scope tree`/`space` only |
 | `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) — `--scope tree`/`space` only |
 | `complete` | `false` when partial mode omitted content; present on every successful export |
@@ -411,19 +456,75 @@ cancelled run never leaves a corrupt or partial `.docx` at the destination.
 
 ### Report notes you may see
 
-Missing chapters are never a silent bug — they are always explained by a note:
+Missing chapters are never a silent bug — they are always explained by a note. The
+**Severity** column is what `--strict` reads (see [Note severity](#note-severity-and---strict)):
 
-| Code | Meaning |
-|------|---------|
-| `label-filtered` | Pages omitted by a label filter (with a count) |
-| `root-filter-bypassed` | The root would have been filtered out but was kept as structure |
-| `tree-cycle` | A cycle was detected and the repeated node skipped |
-| `unsupported-child-type` | A whiteboard/database/embed child was skipped |
-| `folder-position-unknown` | A folder has no UI position; ordered by title |
-| `heading-depth-clamped` | A heading exceeded level 6 after the chapter shift |
-| `link-outside-scope` | A cross-page link points outside the export; linked absolutely |
-| `link-anchor-missing` / `link-target-ambiguous` | A link could not be resolved; rendered as text |
-| `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | Completeness events (abort in `strict`, placeholder in `partial`) |
+| Code | Severity | Meaning |
+|------|----------|---------|
+| `label-filtered` | `info` | Pages omitted by a label filter (with a count) — you asked for this |
+| `root-filter-bypassed` | `info` | The root would have been filtered out but was kept as structure |
+| `tree-cycle` | `warning` | A cycle was detected and the repeated node skipped |
+| `unsupported-child-type` | `warning` | A whiteboard/database/embed child was skipped — content you asked for is missing from the export |
+| `folder-position-unknown` | `info` | A folder has no UI position; ordered by title |
+| `heading-depth-clamped` | `warning` | A heading exceeded level 6 after the chapter shift |
+| `link-outside-scope` | `info` | A cross-page link points outside the export; linked absolutely |
+| `link-anchor-missing` / `link-target-ambiguous` | `warning` | A link could not be resolved; rendered as text |
+| `perf-timing` | `info` | Per-phase wall clocks for the run (ts DOCX engine; emitted on every export) |
+| `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | `error` / `warning` | Completeness events: `error` when `--completeness strict` aborts the export, `warning` when `--completeness partial` substitutes a placeholder and carries on |
+
+### Note codes are shared across formats
+
+A note code describes a **condition on your content**, not the file format you
+asked for. Exporting the same page as DOCX and as PDF therefore produces the same
+code for the same problem, and one `notesByCode` key works for both:
+
+| Code | Severity | Emitted when |
+|------|----------|--------------|
+| `image-missing-alt` | `warning` | An image on the source page has no author-written alt text (PDF notes also carry a `blockPath`; DOCX notes do not) |
+| `image-embed-failed` | `warning` | One named image could not be embedded — attachment missing, download failed, unsupported or unsafe bytes |
+| `mention-unresolved` | `warning` | An `@mention` account id did not resolve to a display name; the technical id was kept |
+
+Two neighbours are deliberately **not** the same fact, and no amount of similar
+naming makes them one:
+
+- `image-skipped` (`info`) means *the export had no image pipeline at all*, so
+  every image degraded — e.g. `--no-images`. That is a request you made, not a
+  defect, and it never happens on a PDF export (the PDF engine always has an
+  image pipeline). Do not treat it as a synonym for `image-embed-failed`.
+- `pdf-image-alt-fallback` (`warning`) is the PDF **renderer** reporting that it
+  substituted the filename into the tagged `/Alt` entry. `image-missing-alt` is
+  the source defect that caused it. The DOCX engine performs the same
+  substitution into Word's `descr` silently, so there is nothing to unify.
+
+### Migrating retired note codes
+
+Earlier releases spelled three of these codes differently depending on which
+engine — or which host — produced the report. They now use one spelling each:
+
+| Retired code | Emitted today | Why they were the same fact |
+|--------------|---------------|------------------------------|
+| `pdf-image-missing-alt` | `image-missing-alt` | Both engines apply the identical "no author-written alt text" rule to the same source block, before any download |
+| `pdf-image-skipped` | `image-embed-failed` | Both engines emit it at the same point, when one image's bytes could not be obtained. **Note the target:** *not* `image-skipped`, which means something else entirely (see above) |
+| `pdf-mention-unresolved` | `mention-unresolved` | The browser extension's spelling of the code both CLI paths already used |
+
+The report `schema` string stays `atlcli.export-report/1` — the shape of the
+document has not changed, only three of the values inside it. Nothing emits both
+the old and the new code: dual emission would double every affected
+`notesByCode` tally and inflate `--strict` warning counts for a single fact.
+
+**If your CI greps for a retired code, update the expression.** A transitional
+form that accepts either spelling:
+
+```bash
+# Fail when the export left any image without alt text, old or new spelling
+jq -e '[.notesByCode // {} | to_entries[]
+        | select(.key == "image-missing-alt" or .key == "pdf-image-missing-alt")
+        | .value] | add // 0 | . == 0' report.json
+```
+
+Programmatic consumers of `@atlcli/confluence` can resolve an old code instead of
+matching on strings: `canonicalExportNoteCode("pdf-image-skipped")` returns
+`"image-embed-failed"`, and `RETIRED_EXPORT_NOTE_CODES` is the whole table.
 
 ## Templates
 

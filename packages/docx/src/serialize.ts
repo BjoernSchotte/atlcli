@@ -528,6 +528,14 @@ async function serializeBlock(
       // (spec 003 C3). Caption below figures (established convention).
       const cap = block.caption ? captionXml(block.caption, ctx) : "";
       const fallback = () => (block.caption ? imageUnavailablePara(block) + cap : "");
+      // DOCX-ONLY fact (spec 010): NO image pipeline was configured for this
+      // export, so every image degrades at once. It is `info`, not `warning`,
+      // because nothing went wrong — the export was asked to run this way.
+      // Deliberately NOT unified with the PDF engine's per-image failure code
+      // despite the similar name: PDF cannot reach this state (its
+      // `preparePdfDocument` takes a required resolver). The PDF counterpart of
+      // the per-image failure below is `image-embed-failed`, which PDF now
+      // emits too.
       if (!ctx.images) {
         notes.push({
           level: "info",
@@ -544,6 +552,12 @@ async function serializeBlock(
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
       // but keep a numbered fallback when a caption is present. The seam may name
       // a specific code (spec 006 G4 SVG codes) — else the generic one.
+      //
+      // `image-embed-failed` is the CROSS-ENGINE generic (spec 010): the PDF
+      // engine emits the same code from `packages/pdf/src/prepare.ts` when
+      // `resolver.resolve` throws. Keep them the same — a consumer counting
+      // "images that did not make it into the document" must not need one key
+      // per output format.
       notes.push({
         level: outcome.level ?? "warning",
         code: outcome.code ?? "image-embed-failed",

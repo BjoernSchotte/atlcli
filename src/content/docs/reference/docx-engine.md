@@ -77,6 +77,10 @@ interface ExportEnv {
 
 `AssetFetcher` drives image embedding (spec 005). It is optional: a host that omits it gets the
 pre-005 behavior — every image degrades to an `image-skipped` report note instead of embedding.
+That note is `info`-level and DOCX-only: it says *this export had no image pipeline*, which is a
+configuration fact, not a defect. It is **not** the same condition as `image-embed-failed` below,
+despite the similar name — see
+[Note codes are shared across formats](/confluence/export/#note-codes-are-shared-across-formats).
 
 `SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
 fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
@@ -159,7 +163,9 @@ inline `<w:drawing>` with unique element ids and alt text. Details that matter t
 - **Sizing:** page-set width/height (`ac:width`) wins over the intrinsic size; everything is
   capped to the content width (600 px at 96 dpi) preserving aspect ratio.
 - **Failure is never fatal:** a failed fetch/decode/oversized image produces an
-  `image-embed-failed` warning note and no OOXML — never a dangling relationship.
+  `image-embed-failed` warning note and no OOXML — never a dangling relationship. The PDF engine
+  reports the same condition under the same code, so a report consumer needs one key, not one
+  per format.
 - **`AssetRef` shape:** attachment refs carry a wiki-base-relative `url`
   (`/download/attachments/{pageId}/{filename}`) plus `pageId`/`filename`; external images carry
   their absolute URL. A session host (the extension) prefixes its Confluence root and rides the

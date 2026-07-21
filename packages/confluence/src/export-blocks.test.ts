@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_STORAGE_PARSE_BUDGET,
+  EXPORT_NOTE_CODES,
+  RETIRED_EXPORT_NOTE_CODES,
   StorageParseError,
+  canonicalExportNoteCode,
   macroParamText,
   normalizeCaptionKind,
   parseXml,
@@ -1613,5 +1616,75 @@ describe("storageToBlocks — datasource smart links", () => {
     expect(macroParamText(block.params, "jqlQuery")).toBe("project = ATL ORDER BY created DESC");
     expect(res.notes.filter((n) => n.code === "macro-not-rendered").length).toBe(1);
     expect(res.notes.some((n) => n.code.startsWith("datasource-"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Note-code vocabulary contract (spec 010)
+// ---------------------------------------------------------------------------
+
+/**
+ * The alias table is a CONTRACT, not a comment. Note codes reach users through
+ * `--report json` (`issues[].code`, `notesByCode`), through the docs, and
+ * through CI pipelines that grep for one specific code. The spec 010
+ * unification retired three of them, so the only honest migration story is a
+ * table a consumer can actually resolve — and a table nobody executes rots into
+ * a lie within one release. These tests are the execution.
+ */
+describe("retired note codes resolve to the code emitted today (spec 010)", () => {
+  const registry = new Set<string>(EXPORT_NOTE_CODES);
+
+  test("every retired code maps to a code that is still emitted", () => {
+    for (const [retired, canonical] of Object.entries(RETIRED_EXPORT_NOTE_CODES)) {
+      expect(canonicalExportNoteCode(retired), `alias for "${retired}"`).toBe(canonical);
+      expect(registry.has(canonical), `"${canonical}" (target of "${retired}") is a live code`).toBe(
+        true
+      );
+    }
+  });
+
+  test("no retired code is still a registry member", () => {
+    // Both directions matter: a code cannot be simultaneously retired and
+    // current, and leaving it in the union would tell the type system it can
+    // still appear on a report when nothing emits it.
+    const zombies = Object.keys(RETIRED_EXPORT_NOTE_CODES).filter((code) => registry.has(code));
+    expect(zombies, `retired codes still in EXPORT_NOTE_CODES: ${zombies.join(", ")}`).toEqual([]);
+  });
+
+  test("the alt-text audit is one fact across both engines", () => {
+    expect(canonicalExportNoteCode("pdf-image-missing-alt")).toBe("image-missing-alt");
+  });
+
+  test("the PDF per-image failure maps to image-embed-failed, NOT image-skipped", () => {
+    // The load-bearing one. `pdf-image-skipped` LOOKS like it pairs with
+    // `image-skipped`; reading both emitters says otherwise. `image-skipped`
+    // (info) is DOCX's "this export has no image pipeline at all" — a state the
+    // PDF engine cannot reach, since `preparePdfDocument` requires a resolver.
+    // The fact `pdf-image-skipped` reported — "this one image's bytes could not
+    // be resolved" — is DOCX's `image-embed-failed` (warning).
+    expect(canonicalExportNoteCode("pdf-image-skipped")).toBe("image-embed-failed");
+    expect(canonicalExportNoteCode("pdf-image-skipped")).not.toBe("image-skipped");
+    // …and the DOCX-only code survives untouched, because it is a real, distinct fact.
+    expect(canonicalExportNoteCode("image-skipped")).toBe("image-skipped");
+  });
+
+  test("the mention code is one fact across both hosts", () => {
+    expect(canonicalExportNoteCode("pdf-mention-unresolved")).toBe("mention-unresolved");
+  });
+
+  test("codes that describe facts their look-alike does not are NOT aliased away", () => {
+    // Each of these survived the unification on purpose (see the registry
+    // comments): a render-stage statement, a whole-call failure with no CLI
+    // counterpart, and a no-pipeline configuration fact.
+    const kept = ["pdf-image-alt-fallback", "pdf-mention-resolution-failed", "image-skipped"] as const;
+    for (const code of kept) {
+      expect(canonicalExportNoteCode(code), `"${code}" must stay a code of its own`).toBe(code);
+      expect(Object.keys(RETIRED_EXPORT_NOTE_CODES)).not.toContain(code);
+    }
+  });
+
+  test("a current code passes through and an invented one does not resolve", () => {
+    expect(canonicalExportNoteCode("unknown-macro")).toBe("unknown-macro");
+    expect(canonicalExportNoteCode("pdf-image-definitely-not-a-code")).toBeUndefined();
   });
 });

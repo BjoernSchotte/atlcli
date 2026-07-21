@@ -120,6 +120,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -704,16 +707,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -1223,6 +1223,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -1644,6 +1654,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -2228,16 +2241,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -2747,6 +2757,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -3168,6 +3188,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -3752,16 +3775,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -4271,6 +4291,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -4724,6 +4754,9 @@ export interface BulkOperationResult {
 
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
 
 // export: Caption
 export interface Caption {
@@ -5422,16 +5455,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -6430,6 +6460,16 @@ export declare function resolveRelativePath(fromFile: string, linkTarget: string
 // export: restoreFromBackup
 export declare function restoreFromBackup(atlcliDir: string): Promise<boolean>;
 
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
+
 // export: runMigrations
 export declare function runMigrations(db: Database): {
     applied: number;
@@ -7149,6 +7189,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -7733,16 +7776,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -8252,6 +8292,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [

@@ -464,6 +464,188 @@ describe("mention-note parity across engines (spec 010)", () => {
 });
 
 /**
+ * IMAGE-NOTE VOCABULARY parity (spec 010). Same shape again — the REAL CLI, a
+ * real Bun HTTP server standing in for the Confluence REST API, no fetch
+ * mocking — pinning the last cross-engine divergence in the note vocabulary.
+ *
+ * The defect this pins: both engines detected the same two conditions on the
+ * same image and reported them under DIFFERENT codes. The PDF engine emitted
+ * `pdf-image-missing-alt` / `pdf-image-skipped` where the DOCX engine emitted
+ * `image-missing-alt` / `image-embed-failed`. A pipeline that greps
+ * `notesByCode` for missing alt text therefore worked on one format and matched
+ * nothing on the other, silently — the worst way for an accessibility gate to
+ * fail.
+ *
+ * Note what the second pair is NOT. `pdf-image-skipped` was unified with
+ * `image-embed-failed`, not with the similarly-named `image-skipped`. Reading
+ * both emitters (rather than both names) shows `image-skipped` is DOCX's `info`
+ * note for "this export has no image pipeline at all" — a whole-export
+ * configuration fact the PDF engine cannot even represent, since
+ * `preparePdfDocument` takes a REQUIRED resolver. Its assertion below is
+ * therefore that `image-skipped` appears on NEITHER engine here: this fixture
+ * has a working image pipeline, it just has a broken image.
+ *
+ * The fixture is one `<ac:image>` with no `ac:alt` whose attachment the stub
+ * refuses to serve — one image carrying both conditions at once, so a fix that
+ * unified one code and not the other cannot pass.
+ */
+const IMAGE_PAGE_ID = "1126236411";
+/** No `ac:alt` (the audit condition); `ghost.png` is served by nobody (the embed condition). */
+const IMAGE_STORAGE =
+  `<p>Before</p><ac:image><ri:attachment ri:filename="ghost.png" /></ac:image><p>After</p>`;
+
+const IMAGE_PAGE = {
+  id: IMAGE_PAGE_ID,
+  title: "Image Note Parity",
+  space: { key: "DOCSY" },
+  version: { number: 1, when: "2026-07-21T00:00:00.000Z" },
+  ancestors: [],
+  history: {
+    createdDate: "2026-07-21T00:00:00.000Z",
+    createdBy: { accountId: "acc-1", displayName: "Fixture Author" },
+    lastUpdated: { when: "2026-07-21T00:00:00.000Z", by: { accountId: "acc-1", displayName: "Fixture Author" } },
+  },
+  metadata: { labels: { results: [] }, properties: {} },
+  body: { storage: { value: IMAGE_STORAGE, representation: "storage" } },
+  _links: { base: "https://example.invalid/wiki", webui: `/pages/${IMAGE_PAGE_ID}` },
+};
+
+describe("image-note vocabulary parity across engines (spec 010)", () => {
+  const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
+  const unmatched: string[] = [];
+  /** Attachment listings the CLI actually asked for — proof the image path ran. */
+  let attachmentListings = 0;
+  let server: ReturnType<typeof Bun.serve>;
+  let dir: string;
+  let templatePath: string;
+
+  beforeAll(async () => {
+    await ensurePdfFonts({ logger: () => {} });
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        // The listing is empty, so BOTH engines' shared `tokenAssetFetcher`
+        // raises `attachment "ghost.png" not found` — one per-image failure,
+        // identical on both paths, without needing to serve corrupt bytes.
+        if (url.pathname === `/rest/api/content/${IMAGE_PAGE_ID}/child/attachment`) {
+          attachmentListings += 1;
+          return Response.json({ results: [], size: 0, start: 0, limit: 50 });
+        }
+        if (url.pathname === `/rest/api/content/${IMAGE_PAGE_ID}`) {
+          return Response.json(IMAGE_PAGE);
+        }
+        unmatched.push(`${url.pathname}?${url.searchParams}`);
+        return new Response(JSON.stringify({ message: `stub: no route for ${url.pathname}` }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    dir = await mkdtemp(join(tmpdir(), "atlcli-image-parity-"));
+    templatePath = join(dir, "parity.docx");
+    await writeFile(templatePath, buildDocx({ body: para("$scroll.content"), date: new Date(0) }));
+  });
+
+  afterAll(async () => {
+    server?.stop(true);
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  async function runCli(args: string[], expectedExit = 0): Promise<CliReport> {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        "--conditions=development",
+        "run",
+        CLI,
+        "wiki",
+        "export",
+        IMAGE_PAGE_ID,
+        ...args,
+        "--base-url",
+        server.url.origin,
+        "--auth-type",
+        "bearer",
+        "--allow-http",
+        "--report",
+        "json",
+      ],
+      {
+        cwd: dir,
+        env: {
+          ...process.env,
+          HOME: dir,
+          USERPROFILE: dir,
+          ATLCLI_API_TOKEN: "stub-token",
+          ATLCLI_DISABLE_UPDATE_CHECK: "1",
+          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode, `CLI exit (${args.join(" ")}):\n${stderr}`).toBe(expectedExit);
+    return JSON.parse(stdout) as CliReport;
+  }
+
+  it("reports the same alt-text and embed-failure codes on both engines", async () => {
+    const beforeDocx = attachmentListings;
+    const docx = await runCli(["--engine", "ts", "--template", templatePath, "-o", join(dir, "out.docx")]);
+    expect(attachmentListings - beforeDocx, "docx attachment listings").toBeGreaterThan(0);
+    const beforePdf = attachmentListings;
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "out.pdf")]);
+    expect(attachmentListings - beforePdf, "pdf attachment listings").toBeGreaterThan(0);
+    expect(unmatched).toEqual([]);
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      // The source-page accessibility defect, under ONE code regardless of
+      // output format. Audited from the source block, so a broken image is
+      // audited too — which is why one fixture image carries both facts.
+      expect(report.notesByCode?.["image-missing-alt"], `${engine} image-missing-alt`).toBe(1);
+      // The per-image embed failure, under ONE code regardless of output format.
+      expect(report.notesByCode?.["image-embed-failed"], `${engine} image-embed-failed`).toBe(1);
+      // No engine-prefixed spelling of either fact survives anywhere.
+      const prefixed = Object.keys(report.notesByCode ?? {}).filter((code) => code.startsWith("pdf-image"));
+      expect(prefixed, `${engine} engine-prefixed image codes`).toEqual([]);
+      // `image-skipped` is a DIFFERENT fact ("no image pipeline configured") and
+      // must not be conflated with the failure above: this export has a pipeline.
+      expect(report.notesByCode?.["image-skipped"], `${engine} image-skipped`).toBeUndefined();
+    }
+
+    // The cross-engine claim itself: identical input ⇒ identical image-note tallies.
+    const imageCounts = (report: CliReport): Record<string, number> =>
+      Object.fromEntries(
+        Object.entries(report.notesByCode ?? {}).filter(([code]) => code.includes("image"))
+      );
+    expect(imageCounts(pdf)).toEqual(imageCounts(docx));
+  }, 300_000);
+
+  it("gates --strict on the same codes from both engines", async () => {
+    // Both facts are `warning`-level on both engines, so a pipeline that gates
+    // on them must reach the same verdict whichever format it exports — and it
+    // must be able to name WHY with one set of codes.
+    const docx = await runCli(
+      ["--engine", "ts", "--template", templatePath, "-o", join(dir, "strict.docx"), "--strict"],
+      2
+    );
+    const pdf = await runCli(["--format", "pdf", "-o", join(dir, "strict.pdf"), "--strict"], 2);
+    expect(unmatched).toEqual([]);
+
+    for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {
+      const codes = report.issues.map((i) => i.code);
+      expect(codes, `${engine} strict issues`).toContain("image-embed-failed");
+      expect(codes, `${engine} strict issues`).toContain("image-missing-alt");
+    }
+  }, 300_000);
+});
+
+/**
  * LIVE dual-engine render diff (layer 2). GATED: needs Python (`packages/
  * export` venv or system install), a Scroll-style template, a configured
  * profile, and a live page — which per the project's hard E2E rule MUST live in

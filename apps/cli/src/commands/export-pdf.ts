@@ -303,6 +303,12 @@ async function resolveScope(
     });
     const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
     const sourceNotes: ExportNote[] = [...walked.notes];
+    // `mention-unresolved` is the CROSS-HOST code (spec 010): the CLI's DOCX
+    // path (`export.ts`) and the extension's PDF host
+    // (`apps/extension/utils/pdf/run-export.ts`) report this same condition
+    // under this same code. Pinned from both ends —
+    // `engine-parity.test.ts` for the CLI, `apps/extension/tests/pdf/
+    // run-export.test.ts` for the extension.
     if (mention.unresolved > 0) {
       sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
     }

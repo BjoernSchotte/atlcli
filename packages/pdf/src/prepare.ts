@@ -244,6 +244,15 @@ export async function preparePdfDocument(
             // audited too. Provenance points the author at the exact page and
             // block to fix; without it "an image has no alt text" is unfixable
             // advice in a 500-page tree export.
+            //
+            // The code is the SHARED `image-missing-alt` (spec 010), the same one
+            // `auditImageAltText` emits in `packages/docx/src/image.ts` from the
+            // identical `isMissingAltText` rule. "This image has no alt text" is
+            // a fact about the Confluence page, not about the output format, so
+            // a consumer must not have to know which engine ran to filter for
+            // it. The PDF note stays richer — it carries `source.blockPath`,
+            // which the DOCX serializer cannot supply — but richer provenance
+            // for the same fact is not a different fact.
             if (isMissingAltText(block.alt)) {
               const pageId = owningPage ?? options.pageContext?.pageId;
               const source = {
@@ -255,7 +264,7 @@ export async function preparePdfDocument(
               };
               notes.push({
                 level: "warning",
-                code: "pdf-image-missing-alt",
+                code: "image-missing-alt",
                 message:
                   `The image "${filename}" has no alternative text; the exported PDF falls back to ` +
                   `a technical label, which assistive technology cannot use. Add alt text on the source page.`,
@@ -304,9 +313,21 @@ export async function preparePdfDocument(
               // a soft per-image skip note (spec 008 T3.2).
               if (isAbortError(error)) throw error;
               reportAsset(filename);
+              // SHARED with DOCX (spec 010): one named image could not be
+              // embedded, and here is why. The DOCX counterpart is the
+              // `image-embed-failed` branch in `packages/docx/src/serialize.ts`
+              // — same position in the pipeline (after the per-image fetch
+              // failed), same warning level, same consequence (a fallback in
+              // place of the picture).
+              //
+              // NOT `image-skipped`, despite this note's retired name
+              // (`pdf-image-skipped`). `image-skipped` is DOCX's *info* note for
+              // "this export was configured with no image pipeline at all", a
+              // whole-export fact the PDF engine cannot even express: `resolver`
+              // is a required parameter of `preparePdfDocument`.
               notes.push({
                 level: "warning",
-                code: "pdf-image-skipped",
+                code: "image-embed-failed",
                 message: `${fallbackLabel} was not embedded: ${error instanceof Error ? error.message : String(error)}`,
               });
               return { type: "image", alt: block.alt, fallbackLabel, caption: block.caption };
