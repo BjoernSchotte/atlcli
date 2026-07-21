@@ -17,7 +17,7 @@
  *      survive (findings #7/#11);
  *   8. synthesize the code style, and set `w:updateFields` when — and only when —
  *      the finished document carries a field whose refresh changes what the
- *      reader sees (a TOC, caption numbering, a cross-reference);
+ *      reader sees (a TOC, a cross-reference, numbering this export does not own);
  *   9. emit bytes + a structured {@link ExportReport}.
  *
  * **Engine (PLAN Decision F1, Option A):** docxtemplater free is the rendering
@@ -50,11 +50,13 @@ import {
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  collectSeqSequenceNames,
   documentPartNames,
   needsFieldRefresh,
   PLACEHOLDER_RE,
   scanZip,
   unzipDocx,
+  type FieldRefreshOptions,
   type ScanResult,
 } from "./scan.js";
 import {
@@ -510,7 +512,8 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
-  const contentFound = injectContentTag(zip);
+  const contentPart = injectContentTag(zip);
+  const contentFound = contentPart !== undefined;
   const flowNotes: ExportNote[] = [];
   if (captionLocale.note) flowNotes.push(captionLocale.note);
   if (tableStyleResolution.note) flowNotes.push(tableStyleResolution.note);
@@ -658,7 +661,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   //     FINISHED document would show something different afterwards, which is
   //     why this runs on `rendered` (the body's own caption SEQ fields exist
   //     only now) rather than on the template scan.
-  const refreshNote = applyFieldRefreshPolicy(rendered, input.updateFields ?? "auto");
+  //
+  //     The one thing `rendered` cannot answer is WHOSE caption SEQ fields those
+  //     are, so that question is answered here, from the pre-injection parts.
+  const refreshNote = applyFieldRefreshPolicy(rendered, input.updateFields ?? "auto", {
+    trustedSeqSequences: trustedSeqSequences(scan, body.xml, includeXml, contentPart),
+  });
   if (refreshNote) flowNotes.push(refreshNote);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
@@ -1767,18 +1775,28 @@ function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
   };
 }
 
-/** Replace the paragraph containing `$scroll.content` with the rawxml tag. */
-function injectContentTag(zip: PizZip): boolean {
+/**
+ * Replace the paragraph containing `$scroll.content` with the rawxml tag, and
+ * report WHICH part received it (`undefined` when the template has none).
+ *
+ * The part matters, not just the fact: the search runs over headers and footers
+ * too, so a template that puts `$scroll.content` in a header really does render
+ * the page body into a header — where it repeats on every page and any `SEQ`
+ * field in it is instantiated per page. Caption ordinals counted once, in
+ * document order, are then not what Word computes, so the caller withholds its
+ * numbering trust unless the body landed in `word/document.xml`.
+ */
+function injectContentTag(zip: PizZip): string | undefined {
   for (const part of documentPartNames(zip)) {
     const xml = zip.file(part)?.asText() ?? "";
     for (const para of splitParagraphs(xml)) {
       if (paragraphText(para).includes("$scroll.content")) {
         zip.file(part, xml.replace(para, CONTENT_TAG_PARA));
-        return true;
+        return part;
       }
     }
   }
-  return false;
+  return undefined;
 }
 
 /** Insert the rawxml tag before the body's final section break (fallback). */
@@ -2023,7 +2041,8 @@ export function readBodySectPr(zip: PizZip): string | undefined {
  */
 function applyFieldRefreshPolicy(
   zip: PizZip,
-  mode: NonNullable<ExportInput["updateFields"]>
+  mode: NonNullable<ExportInput["updateFields"]>,
+  opts: FieldRefreshOptions = {}
 ): ExportNote | undefined {
   if (mode === "never") {
     // Only rewrite what is already there: with no `<w:updateFields>` in the
@@ -2031,9 +2050,10 @@ function applyFieldRefreshPolicy(
     // `false` into a template that never mentioned it is noise.
     writeUpdateFields(zip, false, { create: false });
     // The note is owed only when the suppression COSTS something. A document of
-    // static hyperlinks would not have carried the flag anyway, and saying so
-    // would be noise on every export.
-    if (!needsFieldRefresh(zip)) return undefined;
+    // static hyperlinks — or one whose only computed fields are captions this
+    // export numbered correctly — would not have carried the flag anyway, and
+    // saying so would be noise on every export.
+    if (!needsFieldRefresh(zip, opts)) return undefined;
     return {
       level: "info",
       code: "field-refresh-suppressed",
@@ -2043,10 +2063,68 @@ function applyFieldRefreshPolicy(
         "or stale text until refreshed manually in Word (select all, then press F9).",
     };
   }
-  if (mode === "always" || needsFieldRefresh(zip)) {
+  if (mode === "always" || needsFieldRefresh(zip, opts)) {
     writeUpdateFields(zip, true, { create: true });
   }
   return undefined;
+}
+
+/**
+ * The `SEQ` sequences whose cached results in the finished document are known
+ * to be right — the trust set {@link needsFieldRefresh} subtracts from its
+ * sweep.
+ *
+ * A sequence qualifies when the SERIALIZED BODY numbers it (so every one of its
+ * fields came out of `captionParagraph` with an ordinal counted in document
+ * order) and nothing else in the package numbers the same name:
+ *
+ *  - **The template.** Word matches sequence names case-insensitively and
+ *    counts every `SEQ Figure` in the document as one sequence, so a caption the
+ *    template author inserted before the insertion point shifts all of ours by
+ *    one. `scan` was taken from the template BEFORE any injection, which is the
+ *    only moment the two are distinguishable — after render they are the same
+ *    XML. This is why the check cannot simply be "does the finished document
+ *    contain SEQ".
+ *  - **Included pages.** `runIncludePass` serializes each `$scroll.includepage`
+ *    occurrence through its OWN `serializeBlocks` call, so each restarts its
+ *    captions at 1 (and sits at an arbitrary position relative to the body).
+ *    Conservative rather than clever: a single include whose captions happen to
+ *    be the document's only ones is numbered correctly too, and still costs a
+ *    prompt here. Includes are rare; wrong numbers are not worth the special
+ *    case.
+ *
+ *  - **A body that did not land in the main story.** `$scroll.content` is looked
+ *    for in headers and footers too, so a template can genuinely render the page
+ *    body into a header — where it repeats per page and each repetition
+ *    re-instantiates its `SEQ` fields. Ordinals counted once, in document order,
+ *    are not what Word computes there, so nothing is trusted at all.
+ *
+ * A template `SEQ` of a sequence the body does NOT number (say `SEQ Chart`)
+ * stays untrusted as well, and that is deliberate rather than an oversight: our
+ * ordinals are unaffected by it, but nothing here knows whether the TEMPLATE's
+ * cached `Chart` number is right — it may be a header counter cached against a
+ * pagination that no longer exists, or hand-written XML Word never computed.
+ * The claim this function is willing to make is only ever "these numbers came
+ * out of `captionParagraph`, counted in document order"; everything else keeps
+ * the pre-existing, unconditional behaviour.
+ *
+ * Everything else — a `SEQ` with no readable sequence name, a `LISTNUM`, a TOC —
+ * is untouched by this and still earns the flag on its own.
+ */
+function trustedSeqSequences(
+  scan: ScanResult,
+  bodyXml: string,
+  includeXml: string,
+  contentPart: string | undefined
+): Set<string> {
+  // No `$scroll.content` at all ⇒ `injectContentTagAtEnd` put the body in the
+  // main story; an explicit anchor anywhere else forfeits the trust.
+  if (contentPart !== undefined && contentPart !== "word/document.xml") return new Set();
+  const template = new Set(scan.seqSequenceNames ?? []);
+  const included = new Set(collectSeqSequenceNames(includeXml));
+  return new Set(
+    collectSeqSequenceNames(bodyXml).filter((name) => !template.has(name) && !included.has(name))
+  );
 }
 
 /**

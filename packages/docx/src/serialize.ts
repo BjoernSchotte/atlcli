@@ -31,6 +31,7 @@ import {
   bookmarkStart,
   calloutTable,
   captionParagraph,
+  captionSeqName,
   codeLineParagraph,
   dataTable,
   dividerParagraph,
@@ -172,6 +173,27 @@ interface InternalContext extends SerializeContext {
    * bookmark names when two raw anchor names sanitize to the same id.
    */
   bookmarks: { next: number; used: Set<string> };
+  /**
+   * Per-document caption ordinals: SEQ SEQUENCE NAME → how many captions of
+   * that sequence have been emitted so far. Read + incremented by
+   * {@link captionXml}, which stamps the next value into the caption's SEQ
+   * field as its cached result.
+   *
+   * Keyed by {@link captionSeqName}, not by {@link Caption.kind}, because that
+   * is how WORD scopes a sequence: `code` and `equation` captions both emit
+   * `SEQ Listing`, so they share ONE counter and Word's own refresh agrees with
+   * what we cached. Figures and tables are independent sequences.
+   *
+   * A per-context field, deliberately not a module-level counter: a module
+   * counter would pass a single-document test and then number the second export
+   * in the same process from wherever the first one stopped — a tree export's
+   * captions would silently continue a previous export's sequence. Like
+   * {@link InternalContext.bookmarks} it is a MUTABLE reference so the state
+   * stays shared when a derived context is spread (`{ ...ctx }`) for a table
+   * cell or callout — a caption inside a container numbers in document order
+   * with the rest.
+   */
+  captionSeq: Map<string, number>;
   /** Distinct heading style ids emitted so far (spec 006 G1 STYLEREF check). */
   emittedHeadingStyles: Set<string>;
   /**
@@ -383,6 +405,7 @@ export async function serializeBlocks(
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
     bookmarks: { next: 1, used: new Set() },
+    captionSeq: new Map<string, number>(),
     emittedHeadingStyles: new Set<string>(),
     container: "body",
   };
@@ -663,13 +686,28 @@ function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
   return block.source.kind === "attachment" ? `"${block.source.filename}"` : `"${block.source.url}"`;
 }
 
-/** Render a {@link Caption} to a caption paragraph (spec 003 C3). */
+/**
+ * Render a {@link Caption} to a caption paragraph (spec 003 C3), consuming the
+ * next ordinal of its SEQ sequence.
+ *
+ * The SINGLE place a caption ordinal is allocated, and the reason the counters
+ * live on the context: this function is called from the walk, so "next ordinal"
+ * is by construction "next in document order". Callers must call it exactly
+ * once per emitted caption — the `image` branch relies on that by computing the
+ * caption ONCE and reusing the same string on both the embedded and the
+ * degraded path, so a figure that fails to embed still consumes its number and
+ * every later figure keeps the number Word will compute.
+ */
 function captionXml(caption: Caption, ctx: InternalContext): string {
+  const sequence = captionSeqName(caption.kind);
+  const ordinal = (ctx.captionSeq.get(sequence) ?? 0) + 1;
+  ctx.captionSeq.set(sequence, ordinal);
   return captionParagraph(
     resolveCaptionStyleId(ctx.styleNames),
     caption.kind,
     ctx.captionLang ?? "en",
-    serializeInline(caption.content)
+    serializeInline(caption.content),
+    ordinal
   );
 }
 
