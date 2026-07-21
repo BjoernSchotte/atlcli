@@ -80,6 +80,15 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "renderer SET may still grow (additive, non-breaking); the registry/resolve contract " +
       "itself is what freezes.",
   },
+  "@atlcli/export-wiring": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: created in spec 010 by promoting the CLI's host-wiring module into a package " +
+      "so the extension stops carrying a second copy. Its shape follows the hosts (client " +
+      "construction, origin allowlists, session latching are all still moving); freeze it only " +
+      "once a third shell — Forge or Tauri — has consumed it unchanged.",
+  },
   "@atlcli/export-node": {
     version: "0.x",
     frozen: false,

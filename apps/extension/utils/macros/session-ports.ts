@@ -47,21 +47,20 @@
  * This module owns the port CONSTRUCTION only. A wave-2 agent wires
  * {@link buildSessionMacroResolutionOptions} into `PdfExportEnv.macros`
  * (`utils/pdf/run-export.ts`) and `ExportEnv.macros` (the DOCX path via
- * `utils/docx/export-deps.ts`), and wires
- * {@link createExternalAssetPolicy}/{@link createExternalAssetFetcher} into
- * both asset resolvers. Nothing here reaches into those files.
+ * `utils/docx/export-deps.ts`), and wires the policy/fetcher from
+ * `./external-asset-policy.js` into both asset resolvers — **including the
+ * sink-side trust routers** (`trustRoutingAssetFetcher` /
+ * `trustRoutingPdfAssetResolver` from `@atlcli/export-wiring`). Wiring
+ * {@link buildSessionMacroResolutionOptions} WITHOUT them activates a bypass:
+ * the URLs macro HTML emits reach the ENGINE's asset seam, not the fetcher in
+ * the macro context. Nothing here reaches into those files.
  */
 import {
   ConfluenceClient,
   escapeCqlValue,
-  extractMacroBody,
-  htmlToExportBlocks,
-  parsePageProperties,
-  storageToBlocks,
   type ExportNote,
 } from "@atlcli/confluence/browser";
 import {
-  defaultRegistry,
   portError,
   type AttachmentLookupPort,
   type AttachmentMeta,
@@ -76,13 +75,20 @@ import {
   type MacroResolutionOptions,
   type PortErrorKind,
 } from "@atlcli/export-macros";
-import { jiraStatusColor } from "@atlcli/export-macros/internal";
+import {
+  createMacroRegistry,
+  jiraIssueRef,
+  type JiraClientLike,
+  type JiraIssueLike,
+} from "@atlcli/export-wiring";
 import { profileFromTabUrl } from "../profile.js";
 import {
+  createExtensionAssetPolicy,
   createExternalAssetFetcher,
-  createExternalAssetPolicy,
   EXTERNAL_ASSET_MAX_BYTES,
 } from "./external-asset-policy.js";
+
+export type { JiraClientLike, JiraIssueLike };
 
 // ---------------------------------------------------------------------------
 // Session-expiry latch
@@ -257,61 +263,6 @@ function preflight(service: string, state: SessionMacroState, signal?: AbortSign
 // Ports
 // ---------------------------------------------------------------------------
 
-/**
- * The slice of `JiraClient` the Jira port drives, expressed structurally.
- *
- * Structural (not `import type { JiraClient } from "@atlcli/jira"`) for one
- * reason only: `apps/extension/package.json` does not yet declare
- * `@atlcli/jira`, so the specifier does not resolve from this workspace. The
- * signatures below are copied verbatim from `packages/jira/src/client.ts`
- * (`getIssue`, `search`), so a real `JiraClient` instance satisfies this
- * interface with no cast — see the handoff note: adding the dependency makes
- * `const c: JiraClientLike = new JiraClient(profile)` compile as-is, and this
- * interface can then be replaced by the import in a one-line diff.
- */
-export interface JiraClientLike {
-  getIssue(
-    keyOrId: string,
-    options?: { fields?: string[]; expand?: string }
-  ): Promise<JiraIssueLike>;
-  search(
-    jql: string,
-    options?: { maxResults?: number; fields?: string[]; expand?: string; nextPageToken?: string }
-  ): Promise<{ issues: JiraIssueLike[] }>;
-}
-
-/** The fields the Jira renderer reads off an issue (subset of `JiraIssue`). */
-export interface JiraIssueLike {
-  key: string;
-  fields: {
-    summary?: string;
-    status?: { name?: string; statusCategory?: { colorName?: string } } | null;
-    assignee?: { displayName?: string } | null;
-    reporter?: { displayName?: string } | null;
-    priority?: { name?: string } | null;
-    issuetype?: { name?: string } | null;
-    created?: string;
-    updated?: string;
-    duedate?: string | null;
-    labels?: string[];
-  };
-}
-
-/** Best-effort extra columns for a JQL table (mirrors the CLI wiring). */
-function extraFields(issue: JiraIssueLike): Record<string, string> {
-  const f = issue.fields;
-  const out: Record<string, string> = {};
-  if (f.assignee) out.assignee = f.assignee.displayName ?? "";
-  if (f.reporter) out.reporter = f.reporter.displayName ?? "";
-  if (f.priority) out.priority = f.priority.name ?? "";
-  if (f.created) out.created = f.created;
-  if (f.updated) out.updated = f.updated;
-  if (f.duedate) out.duedate = f.duedate;
-  if (f.labels) out.labels = f.labels.join(", ");
-  if (f.issuetype) out.type = f.issuetype.name ?? "";
-  return out;
-}
-
 export interface SessionPortDeps {
   state: SessionMacroState;
   signal?: AbortSignal;
@@ -335,15 +286,11 @@ export function sessionJiraIssuePort(
   browseBaseUrl: string,
   deps: SessionPortDeps
 ): JiraIssuePort {
-  const base = browseBaseUrl.replace(/\/+$/, "");
-  const toRef = (issue: JiraIssueLike): JiraIssueRef => ({
-    key: issue.key,
-    summary: issue.fields.summary ?? "",
-    status: issue.fields.status?.name ?? "",
-    statusColor: jiraStatusColor(issue.fields.status?.statusCategory?.colorName),
-    url: `${base}/browse/${issue.key}`,
-    fields: extraFields(issue),
-  });
+  // The issue → ref mapping (browse URL, status colour, JQL-table columns) is
+  // the SHARED one: only the error handling below is session-specific, and a
+  // local copy of the mapping is how the panel and the CLI start rendering
+  // different tables from the same issue.
+  const toRef = (issue: JiraIssueLike): JiraIssueRef => jiraIssueRef(issue, browseBaseUrl);
   const after = (): void => {
     if (deps.signal?.aborted) throw new DOMException("Macro resolution aborted.", "AbortError");
   };
@@ -526,21 +473,14 @@ export function sessionAttachmentLookupPort(
 // ---------------------------------------------------------------------------
 
 /**
- * The extension's `defaultRegistry` construction site. Mirrors the CLI
- * (`apps/cli/src/commands/export-macros-wiring.ts#buildMacroResolutionOptions`)
- * exactly — same injected deps, same renderer set — so a macro renders
- * identically from the panel and from the CLI. The only difference is the
- * import specifier: the browser barrel (`@atlcli/confluence/browser`), which
- * `scripts/check-browser-build.ts` proves is free of `node:`/`bun:` specifiers,
- * and which exports `html-to-blocks.ts` (folder 004's T1.10).
+ * The registry the panel resolves macros with — the SHARED construction site,
+ * not a parallel one. It used to be an inlined `defaultRegistry({…})` call that
+ * "mirrored the CLI"; mirroring is what drifts. Same injected deps, same
+ * renderer set, so a macro renders identically from the panel and the CLI by
+ * construction rather than by review.
  */
 export function createSessionMacroRegistry(): MacroRendererRegistry {
-  return defaultRegistry({
-    storageToBlocks,
-    htmlToExportBlocks,
-    parsePageProperties,
-    extractMacroBody,
-  });
+  return createMacroRegistry();
 }
 
 export interface SessionMacroPorts {
@@ -585,7 +525,7 @@ export function createSessionMacroPorts(input: SessionMacroPortsInput): SessionM
   const state = input.state ?? createSessionMacroState();
   const deps: SessionPortDeps = { state, ...(input.signal ? { signal: input.signal } : {}) };
   const confluence = input.confluenceClient ?? new ConfluenceClient(profile);
-  const policy = createExternalAssetPolicy({
+  const policy = createExtensionAssetPolicy({
     siteOrigin: profile.baseUrl,
     ...(input.allowedMediaOrigins ? { allowedMediaOrigins: input.allowedMediaOrigins } : {}),
   });

@@ -18,6 +18,12 @@ import {
   canvasSvgRasterizer as neutralCanvasSvgRasterizer,
   memoryTemplateSource,
 } from "@atlcli/docx/browser-runtime";
+import {
+  SessionRedirectBlockedError,
+  createAtlassianSessionRedirectPolicy,
+  fetchSessionBinaryFollowingRedirects,
+  type SessionRedirectPolicy,
+} from "@atlcli/core/internal";
 import { LEGACY_CURRENT_KEY, type TemplateEngine } from "./template-store.js";
 import { idbTemplateLibrary } from "../templates/library.js";
 import { downloadBytes } from "../download.js";
@@ -89,6 +95,14 @@ export function idbTemplateSource(
  * relative fetch would resolve against `chrome-extension://` — `baseUrl`
  * (the site's Confluence root, e.g. `https://x.atlassian.net/wiki`) is
  * prefixed to make them absolute. External image URLs pass through as-is.
+ *
+ * Redirects are classified by DESTINATION through the shared session policy
+ * (`@atlcli/core/internal`), the same one `ConfluenceClient.requestBinary` uses
+ * (spec 010 wave 2). Before that, a plain `fetch(url, { credentials: "include" })`
+ * followed anything: an expired session bounced to the login host, the HTML
+ * login page came back `ok`, and its bytes were embedded into the export as
+ * image data — and cached under a version-stamped key, so the poison persisted
+ * for the rest of the panel session.
  */
 /**
  * Panel-lifetime cache for IMMUTABLE asset bytes: version-stamped
@@ -96,6 +110,12 @@ export function idbTemplateSource(
  * `version=…&modificationDate=…`) never change under their key — a replaced
  * logo gets a new stamp — so repeat exports skip those round-trips entirely.
  * Bounded so a long panel session can't hoard megabytes.
+ *
+ * Cache-poisoning invariant: the only write is AFTER the redirect follower has
+ * returned an allowlisted, non-redirect, `ok` response. A login bounce or a
+ * blocked destination throws out of {@link sessionAssetFetcher}'s `fetch`
+ * before the write is reached, so login-page HTML can never take up residence
+ * under an attachment's key and outlive the expired session.
  */
 const versionedAssetCache = new Map<string, Uint8Array>();
 const VERSIONED_CACHE_MAX_ENTRIES = 32;
@@ -114,6 +134,55 @@ function canonicalAssetBaseUrl(baseUrl?: string): string {
   }
 }
 
+/**
+ * The one place this module spells the session-expiry message for an asset
+ * download — the wording is load-bearing, not cosmetic.
+ *
+ * `apps/extension/utils/read-path.ts` (`classifyThrownError`) and
+ * `apps/extension/utils/macros/session-ports.ts` both latch "the Atlassian
+ * session is gone" by matching `authentication redirect` (among a few other
+ * phrases) against a thrown message. Without that phrase a login bounce would
+ * classify as a generic asset failure and the user would get a silently broken
+ * image instead of "your session expired, sign in again". The phrasing is
+ * deliberately the same one `ConfluenceClient` uses so both asset paths read
+ * identically to the panel.
+ */
+function assetAuthRedirectError(status: number, ref: AssetRef): Error {
+  return new Error(
+    `Asset fetch failed (${status}) for ${ref.filename ?? ref.url}: ` +
+      `authentication redirect to Atlassian login (session not logged in)`
+  );
+}
+
+/**
+ * Destination allowlist for one asset request.
+ *
+ * `siteOrigin` is the panel's Confluence root — `getConfluenceBaseUrl(profile)`
+ * for the docx port, `<profile.baseUrl>/wiki` for the PDF port — i.e. the very
+ * base the relative `/download/attachments/…` refs are resolved against, so the
+ * origin that is allowed is by construction the origin the attachment came from.
+ *
+ * The request's OWN origin is vouched for as well: an absolute external image
+ * URL (which passes through untouched, and never was a session-authenticated
+ * fetch) must keep following its own host's internal redirects exactly as
+ * before. For a site attachment this adds nothing — the two origins coincide.
+ * Everything else is refused, and the Atlassian media CDN is allowed by the
+ * shared policy because that is how Cloud actually delivers attachment bytes.
+ */
+function assetRedirectPolicy(canonicalBaseUrl: string, requestUrl: string): SessionRedirectPolicy {
+  let ownOrigin = "";
+  try {
+    ownOrigin = new URL(requestUrl).origin;
+  } catch {
+    // Unparseable request URL: nothing extra to vouch for; the site origin and
+    // the media CDN still apply.
+  }
+  return createAtlassianSessionRedirectPolicy({
+    siteOrigin: canonicalBaseUrl,
+    allowedOrigins: ownOrigin === "" ? [] : [ownOrigin],
+  });
+}
+
 export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fetch): AssetFetcher {
   const canonicalBaseUrl = canonicalAssetBaseUrl(baseUrl);
   return {
@@ -123,7 +192,23 @@ export function sessionAssetFetcher(baseUrl?: string, fetchFn: typeof fetch = fe
       const cached = cacheable ? versionedAssetCache.get(cacheKey) : undefined;
       if (cached) return cached;
       const url = /^https?:\/\//i.test(ref.url) ? ref.url : `${canonicalBaseUrl}${ref.url}`;
-      const res = await fetchFn(url, { credentials: "include" });
+      // `redirect: "manual"` hands the 3xx back to the follower instead of
+      // letting the runtime chase it blindly; the follower classifies the
+      // DESTINATION and only then re-issues. This is what stops an expired
+      // session's HTML login page from being embedded as image bytes.
+      const res = await fetchSessionBinaryFollowingRedirects(
+        url,
+        { credentials: "include", redirect: "manual" },
+        assetRedirectPolicy(canonicalBaseUrl, url),
+        {
+          fetchFn: (input, init) => fetchFn(input, init),
+          loginRedirectError: (status) => assetAuthRedirectError(status, ref),
+          // A refused third-party hop is NOT a session expiry: this message
+          // deliberately avoids the phrases the panel latches expiry on.
+          blockedRedirectError: (target, reason) =>
+            new SessionRedirectBlockedError("Asset fetch", target, reason),
+        }
+      );
       if (!res.ok) {
         throw new Error(`Asset fetch failed (${res.status}) for ${ref.filename ?? ref.url}`);
       }

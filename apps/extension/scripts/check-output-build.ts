@@ -22,6 +22,36 @@
  *      whole class of leak.
  *
  * On a leak it names the offending file(s) and finding(s) and exits non-zero.
+ *
+ * ## Why there is NO dynamic-code exemption for PDF.js (spec 010 T5.3)
+ *
+ * The plan for T5.3 anticipated that vendoring PDF.js would force this gate's
+ * `DYNAMIC_CODE_RES` rule to grow a path-scoped exemption, on the premise that
+ * "PDF.js ships those tokens (its PostScript function evaluator constructs
+ * compiled functions)". **Measured against `pdfjs-dist@6.1.200`, that premise is
+ * false**: `scanText` over the vendored `build/pdf.min.mjs` and
+ * `build/pdf.worker.min.mjs` returns zero findings of any kind. PDF.js v6
+ * replaced the `Function`-based PostScript evaluator with a WebAssembly one
+ * (`buildPostScriptWasmFunction`) and removed the `isEvalSupported` option
+ * along with it.
+ *
+ * So the gate is **not loosened**. No exemption mechanism was added — an unused
+ * one is an invitation, and a used-but-unnecessary one is a hole. What replaces
+ * it is mechanical rather than editorial:
+ *
+ *   - `.mjs` was added to the scanned extensions, so the two vendored files are
+ *     actually covered by every rule here (they were invisible before: the walk
+ *     only looked at `.js`/`.html`);
+ *   - both files are pinned by sha256 in {@link REQUIRED_PDF_ARTIFACTS}, so
+ *     "bundled locally, never a CDN, never modified" is a build assertion;
+ *   - `tests/output-scan.test.ts` asserts the vendored sources are clean *and*
+ *     that a dynamic-code token seeded into that exact path still fails the
+ *     gate — i.e. the PDF.js path is provably **not** exempt.
+ *
+ * If a future PDF.js release does reintroduce `new Function(`, this gate fails
+ * the build and the exemption becomes a deliberate, reviewed decision at that
+ * point — with the trade-off visible — instead of a pre-granted allowance
+ * inherited from a plan written before the dependency was measured.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -58,8 +88,37 @@ export interface OutputArtifact {
   sha256?: string;
 }
 
+/** Path patterns of the vendored PDF.js runtime — exported for the gate tests. */
+export const PDFJS_ARTIFACT_PATTERNS: readonly RegExp[] = [
+  /(?:^|\/)assets\/pdf\.min-[^/]+\.mjs$/,
+  /(?:^|\/)assets\/pdf\.worker\.min-[^/]+\.mjs$/,
+];
+
+/**
+ * The vendored PDF.js runtime (spec 010 T5.3).
+ *
+ * Both files are emitted **verbatim** (Vite `?url&no-inline`), never merged
+ * into a rolldown chunk, which is what lets them be sha256-pinned at all: a
+ * bundled chunk's hash changes whenever any of our own sources do, so pinning
+ * one would be noise. Here the pin means exactly what it says — these are the
+ * unmodified upstream bytes of `pdfjs-dist@6.1.200`, bundled locally.
+ */
+const PDFJS_ARTIFACTS = [
+  {
+    label: "PDF.js viewer runtime",
+    pattern: /(?:^|\/)assets\/pdf\.min-[^/]+\.mjs$/,
+    sha256: "4ba2f15599b03fde8755ad91349920c21dadd3e8fd6b6460a7663d46d4cf21b5",
+  },
+  {
+    label: "PDF.js worker",
+    pattern: /(?:^|\/)assets\/pdf\.worker\.min-[^/]+\.mjs$/,
+    sha256: "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa",
+  },
+] as const;
+
 const REQUIRED_PDF_ARTIFACTS = [
   { label: "PDF compiler worker", pattern: /(?:^|\/)assets\/pdf-compiler-[^/]+\.js$/ },
+  ...PDFJS_ARTIFACTS,
   {
     label: "Typst compiler WASM",
     pattern: /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
@@ -221,7 +280,10 @@ export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): strin
 function collectArtifacts(root: string): OutputArtifact[] {
   return walk(root, [""]).map((file) => {
     const path = relative(root, file);
-    const needsHash = file.endsWith(".wasm") || file.endsWith(".ttf");
+    // `.mjs` joins the hashed set for the vendored PDF.js runtime — see
+    // PDFJS_ARTIFACTS. Bundled `.js` chunks are deliberately NOT hashed: their
+    // content legitimately changes with every edit to our own sources.
+    const needsHash = file.endsWith(".wasm") || file.endsWith(".ttf") || file.endsWith(".mjs");
     return {
       path,
       size: statSync(file).size,
@@ -233,12 +295,26 @@ function collectArtifacts(root: string): OutputArtifact[] {
 }
 
 /**
+ * Extensions carrying executable code in the built output.
+ *
+ * `.mjs` was added with the vendored PDF.js runtime (spec 010 T5.3): emitting
+ * it as a verbatim asset is what makes its sha256 pin meaningful, but an asset
+ * with a `.mjs` extension is still executed, so it must be scanned like any
+ * other script — otherwise vendoring a dependency under a new extension would
+ * be a way *around* this gate rather than through it.
+ */
+const SCANNED_EXTENSIONS = [".js", ".mjs", ".html"] as const;
+
+/**
  * Scan a built extension directory for disallowed specifiers / remote origins.
  * Returns one {@link FileLeak} per offending file (empty array = clean).
+ *
+ * Every file is scanned under the same rules; there is no per-path exemption
+ * (see the module comment, "Why there is NO dynamic-code exemption for PDF.js").
  */
 export function scanOutputDir(root: string): FileLeak[] {
   const leaks: FileLeak[] = [];
-  for (const file of walk(root, [".js", ".html"])) {
+  for (const file of walk(root, [...SCANNED_EXTENSIONS])) {
     const findings = scanText(readFileSync(file, "utf8"));
     if (findings.length > 0) {
       leaks.push({ file: relative(root, file), findings });

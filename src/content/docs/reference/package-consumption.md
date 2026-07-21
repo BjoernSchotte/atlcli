@@ -5,9 +5,10 @@ description: "How external projects install and use the @atlcli/* export package
 
 # Consuming the `@atlcli/*` Packages
 
-The eleven publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
-`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/export-macros`, `@atlcli/template-pack`,
-`@atlcli/docx`, `@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and `@atlcli/export-node` —
+The twelve publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
+`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/export-macros`, `@atlcli/export-wiring`,
+`@atlcli/template-pack`, `@atlcli/docx`, `@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and
+`@atlcli/export-node` —
 ship compiled ESM (`dist/*.js` + `.d.ts`) and can be consumed by any repo outside this
 monorepo through **two supported install paths**, neither of which needs a package registry.
 
@@ -58,6 +59,7 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 | `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
 | `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
 | `@atlcli/export-macros` | Node ≥ 20, Bun, browsers | Isomorphic; hosts inject walker/client ports |
+| `@atlcli/export-wiring` | Node ≥ 20, Bun, browsers | Isomorphic host wiring: macro ports over a real client, the external-asset policy/fetcher, and the trust routers |
 | `@atlcli/template-pack` | Node ≥ 20, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |
 | `@atlcli/export-node` | Node ≥ 20, Bun | The batteries-included Node starting point |
 

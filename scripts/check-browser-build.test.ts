@@ -44,6 +44,8 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/template-pack/src/index.browser.ts",
       "packages/export-macros/src/index.ts",
       "packages/export-macros/src/internal.ts",
+      "packages/export-wiring/src/index.ts",
+      "packages/export-wiring/src/fixtures.ts",
     ]);
   });
 

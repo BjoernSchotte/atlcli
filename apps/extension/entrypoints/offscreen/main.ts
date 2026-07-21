@@ -24,8 +24,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       const { runWasmAdd } = await import("../../utils/wasm-smoke.js");
       return runWasmAdd(a, b);
     },
-    runPdfCompile: async (jobId) => {
-      const result = await pdfHost.compile(jobId);
+    // The T5.3 scheduling hints ride the message (scalars only) because the
+    // panel decides the job kind while the offscreen queue enforces it — see
+    // `utils/pdf/compiler-host.ts`, "The job-kind scheduling contract".
+    runPdfCompile: async (jobId, hints) => {
+      const result = await pdfHost.compile(jobId, { kind: hints?.job, pages: hints?.pages });
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },
     runPdfCancel: (jobId) => pdfHost.cancel(jobId),

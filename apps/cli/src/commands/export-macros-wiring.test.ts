@@ -1,9 +1,14 @@
 /**
- * spec 004 host-wiring: external-asset policy + fetcher (SSRF / byte-cap /
- * redirect enforcement) and Jira/Confluence port error classification.
+ * spec 004 host-wiring, as the CLI sees it after the spec 010 promotion.
+ *
+ * The implementation now lives in `@atlcli/export-wiring`; this file stays the
+ * CLI-facing regression contract for it — same import specifier, same behaviour
+ * through the real DOCX/PDF seams — plus explicit coverage of the places where
+ * the shared policy is deliberately STRONGER than the CLI's own copy was.
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { isPortError } from "@atlcli/export-macros";
+import { isPortError, type MacroExportContext } from "@atlcli/export-macros";
+import type { Profile } from "@atlcli/core";
 import type { JiraClient, JiraIssue } from "@atlcli/jira";
 import type { ExportBlock } from "@atlcli/confluence";
 import { exportDocx, type AssetRef } from "@atlcli/docx";
@@ -12,6 +17,7 @@ import { preparePdfDocument } from "@atlcli/pdf";
 import type { PdfAssetRef } from "@atlcli/pdf";
 import type { ConfluenceClient } from "@atlcli/confluence";
 import {
+  buildMacroResolutionOptions,
   confluenceContentPortFromClient,
   defaultExternalAssetPolicy,
   defaultExternalAssetFetcher,
@@ -63,7 +69,7 @@ describe("defaultExternalAssetFetcher", () => {
       }
       return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
     }) as unknown as typeof fetch;
-    await expect(fetcher.fetch(`${BASE}/start.png`, { maxBytes: 1000 })).rejects.toThrow(/blocked by policy/);
+    await expect(fetcher.fetch(`${BASE}/start.png`, { maxBytes: 1000 })).rejects.toThrow(/blocked by the export asset policy/);
   });
 
   test("caps oversized responses via the stream (before full buffer)", async () => {
@@ -72,7 +78,7 @@ describe("defaultExternalAssetFetcher", () => {
     const big = new Uint8Array(5000);
     globalThis.fetch = (async () =>
       new Response(big, { status: 200, headers: { "content-type": "image/png" } })) as unknown as typeof fetch;
-    await expect(fetcher.fetch(`${BASE}/big.png`, { maxBytes: 1000 })).rejects.toThrow(/exceeded 1000 bytes/);
+    await expect(fetcher.fetch(`${BASE}/big.png`, { maxBytes: 1000 })).rejects.toThrow(/exceeded the 1000-byte export limit/);
   });
 
   test("returns bytes for an allowed same-origin URL", async () => {
@@ -123,7 +129,7 @@ describe("trust routing — SSRF enforcement through the real engine seams", () 
     expect(seen[0].filename).toBe("a.png");
     expect(seen[0].trust).toBeUndefined();
     // The blocked image degraded to a report note, not a fetched byte stream.
-    expect(report.notes.some((n) => /blocked by policy/.test(n.message))).toBe(true);
+    expect(report.notes.some((n) => /blocked by the export asset policy/.test(n.message))).toBe(true);
   });
 
   test("PDF: export_view-trust loopback ref is policy-blocked at the resolver seam; attachment passes through", async () => {
@@ -144,7 +150,7 @@ describe("trust routing — SSRF enforcement through the real engine seams", () 
     // policy inside the external fetcher and degraded to a skipped image.
     expect(seen.length).toBe(1);
     expect(seen[0]).toMatchObject({ kind: "attachment", filename: "a.png" });
-    expect(prepared.notes.some((n) => /blocked by policy/.test(n.message))).toBe(true);
+    expect(prepared.notes.some((n) => /blocked by the export asset policy/.test(n.message))).toBe(true);
   });
 
   test("page-trust external image (no trust marker) stays on the token fetcher path", async () => {
@@ -260,4 +266,109 @@ describe("jiraIssuePortFromClient error classification", () => {
     expect(ref.url).toBe(`${BASE}/browse/ATL-9`);
     expect(ref.statusColor).toBe("green");
   });
+});
+
+describe("buildMacroResolutionOptions — the CLI's half of the shared builder", () => {
+  const profile = { name: "p", baseUrl: BASE, email: "e@x", token: "t" } as unknown as Profile;
+  const confluence = {
+    async getPage() {
+      return { id: "1", version: 1, storage: "" };
+    },
+  } as unknown as ConfluenceClient;
+
+  test("maps profile.baseUrl onto the site identity, the browse links and the policy origin", async () => {
+    const jira = {
+      async getIssue(): Promise<JiraIssue> {
+        return { id: "1", key: "ATL-3", self: "", fields: { summary: "S" } } as unknown as JiraIssue;
+      },
+      async search() {
+        return { issues: [] };
+      },
+    } as unknown as JiraClient;
+
+    const options = buildMacroResolutionOptions({
+      profile,
+      confluence,
+      jira,
+      targetEngine: "docx",
+      live: true,
+    });
+    const ctx: MacroExportContext = options.contextFor!({ id: "9", spaceKey: "DOC" });
+
+    expect(ctx.siteId).toBe(BASE);
+    expect(ctx.flags?.targetEngine).toBe("docx");
+    expect(options.live).toBe(true);
+    expect((await ctx.jira!.getIssue("ATL-3")).url).toBe(`${BASE}/browse/ATL-3`);
+    // Same-origin-only, exactly as before the promotion: the CLI passes no
+    // extra origins, and the shared package adds none of its own.
+    await expect(
+      ctx.externalAssets!.fetch("https://api.media.atlassian.com/file/a/binary", { maxBytes: 10 })
+    ).rejects.toThrow(/blocked by the export asset policy/);
+  });
+
+  test("contextFor builds from the page it is handed, never a remembered root", () => {
+    const options = buildMacroResolutionOptions({ profile, confluence, targetEngine: "docx" });
+    expect(options.contextFor!({ id: "100", spaceKey: "D" }).page.id).toBe("100");
+    expect(options.contextFor!({ id: "200", spaceKey: "D" }).page.id).toBe("200");
+  });
+});
+
+/**
+ * Deliberate CLI behaviour CHANGES (spec 010 W2-0). The CLI's own policy was
+ * weaker than the extension's in each of these; the shared one takes the
+ * stronger behaviour, so these are the regression pins for the upgrade.
+ */
+describe("policy upgrades the CLI inherited from the shared implementation", () => {
+  const policy = defaultExternalAssetPolicy(BASE);
+
+  test("rejects credentials embedded in the URL, even on the site's own origin", () => {
+    expect(policy.allow(`https://user:secret@acme.atlassian.net/img.png`)).toBe(false);
+  });
+
+  test("rejects private targets spelled as IPv6 that the old dotted-quad regex missed", () => {
+    // WHATWG URL canonicalizes `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`, so the
+    // old `/^127\./` test never saw a dotted quad at all.
+    for (const url of [
+      "http://[::ffff:7f00:1]/x.png",
+      "http://[::ffff:a9fe:a9fe]/latest/meta-data/",
+      "http://[::]:8080/x.png",
+      "http://[fd00:ec2::254]/latest/meta-data/",
+      "http://metadata.google.internal/computeMetadata/v1/",
+      "http://100.64.0.1/x.png",
+      "http://0.0.0.0/x.png",
+      "http://intranet/x.png",
+    ]) {
+      expect(policy.allow(url), url).toBe(false);
+    }
+  });
+
+  test("keeps signed media tokens out of the report note", async () => {
+    const fetcher = defaultExternalAssetFetcher(policy);
+    const error = await fetcher
+      .fetch("https://evil.example.com/chart.png?token=SUPERSECRET", { maxBytes: 10 })
+      .then(() => undefined)
+      .catch((e: unknown) => e);
+    expect((error as Error).message).not.toContain("SUPERSECRET");
+  });
+
+  test(
+    "bounds a stalled body on wall-clock time, which the CLI's fetcher never did",
+    async () => {
+      const stalled = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1]));
+          },
+        }),
+        { status: 200 }
+      );
+      globalThis.fetch = (async () => stalled) as unknown as typeof fetch;
+      const fetcher = defaultExternalAssetFetcher(policy, { timeoutMs: 25 });
+      await expect(fetcher.fetch(`${BASE}/stall.png`, { maxBytes: 1024 })).rejects.toThrow(
+        /timed out after 25 ms/
+      );
+      globalThis.fetch = originalFetch;
+    },
+    2_000
+  );
 });

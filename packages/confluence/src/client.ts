@@ -1,5 +1,11 @@
 import { parseRetryAfterMs } from "./retry-after.js";
 import {
+  SessionRedirectBlockedError,
+  createAtlassianSessionRedirectPolicy,
+  fetchSessionBinaryFollowingRedirects,
+  type SessionRedirectPolicy,
+} from "@atlcli/core/internal";
+import {
   Profile,
   getLogger,
   generateRequestId,
@@ -188,6 +194,13 @@ export class ConfluenceClient {
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
+  /**
+   * Where a SESSION-mode binary download may be redirected to. Injected into
+   * `requestBinary`'s redirect follower rather than hardcoded there, so the
+   * allowlist stays one reviewable decision (`@atlcli/core/internal`) shared with
+   * `JiraClient` instead of a per-client copy.
+   */
+  private sessionRedirectPolicy: SessionRedirectPolicy;
 
   constructor(profile: Profile) {
     this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
@@ -200,6 +213,9 @@ export class ConfluenceClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
+      siteOrigin: this.confluenceBaseUrl,
+    });
   }
 
   /** Get the Confluence instance base URL */
@@ -256,10 +272,19 @@ export class ConfluenceClient {
       delete headers.Authorization;
       // `redirect: "manual"` (session only): an unauthenticated Atlassian API
       // call answers with a 3xx to `id.atlassian.com`. Manual redirect stops the
-      // browser from FOLLOWING that bounce with cookies to a foreign origin;
-      // instead the fetch resolves as an opaque redirect we classify as
-      // not-logged-in (spec 003 §2.3). CLI (token) mode keeps the default
-      // follow behavior — this branch never runs for it.
+      // browser from FOLLOWING that bounce; instead the fetch resolves as an
+      // opaque redirect we classify as not-logged-in (spec 003 §2.3). CLI
+      // (token) mode keeps the default follow behavior — this branch never runs
+      // for it.
+      //
+      // "Manual" means *we* decide, not "never follow". `request()` (JSON) never
+      // follows: an API endpoint has no legitimate redirect. `requestBinary`
+      // (attachment bytes) DOES follow, but only to a destination the session
+      // redirect policy allows — Cloud delivers attachment content by 302ing to
+      // `api.media.atlassian.com`, so refusing every redirect made session-mode
+      // downloads unreachable by construction (spec 010 wave 2). The cross-origin
+      // hop is re-issued with `credentials: "omit"`, so the ambient session never
+      // travels with it.
       result = { ...result, headers, credentials: "include", redirect: "manual" };
     }
     if (this.tlsOptions) {
@@ -269,22 +294,44 @@ export class ConfluenceClient {
   }
 
   /**
-   * Session-mode guard: a redirect on an API call means the ambient Atlassian
-   * session is missing/expired (the request is being bounced to the login host).
-   * With `redirect: "manual"` this surfaces as an opaque-redirect response
-   * (`type === "opaqueredirect"`, `status 0`); some environments expose the raw
-   * 3xx instead. Either way we throw an auth-redirect error (mapped to
-   * `not-logged-in` by the extension) rather than following it with credentials
-   * to a foreign origin. No-op for CLI/token auth.
+   * The one place this package spells the session-expiry message.
+   *
+   * The wording is load-bearing, not cosmetic: the extension classifies session
+   * expiry by matching `authentication redirect` against thrown client errors
+   * (`apps/extension/utils/read-path.ts`,
+   * `apps/extension/utils/macros/session-ports.ts`). Both the JSON guard below
+   * and the binary redirect follower in `requestBinary` build their error here so
+   * the two can never drift.
    */
-  private assertNotAuthRedirect(res: Response): void {
+  private authRedirectError(status: number): Error {
+    return new Error(
+      `Confluence API error (${status}): authentication redirect to Atlassian login (session not logged in)`
+    );
+  }
+
+  /**
+   * Session-mode guard for JSON API calls: a redirect means the ambient
+   * Atlassian session is missing/expired (the request is being bounced to the
+   * login host). With `redirect: "manual"` this surfaces as an opaque-redirect
+   * response (`type === "opaqueredirect"`, `status 0`); some environments expose
+   * the raw 3xx instead. Either way we throw an auth-redirect error (mapped to
+   * `not-logged-in` by the extension) rather than following it. No-op for
+   * CLI/token auth.
+   *
+   * JSON-only on purpose. An API endpoint has no legitimate reason to bounce
+   * anywhere, so "any redirect is a login redirect" holds here. It does NOT hold
+   * for attachment bytes, which Cloud delivers *via* a redirect to the media CDN
+   * — that path is classified by destination in `requestBinary` instead.
+   */
+  private assertNotAuthRedirect(res: { type?: string; status: number }): void {
     if (!this.useSession) return;
     const isRedirect =
       res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
     if (isRedirect) {
-      throw new Error(
-        "Confluence API error (302): authentication redirect to Atlassian login (session not logged in)"
-      );
+      // 302 is hardcoded (rather than `res.status`) because an opaque redirect
+      // reports status 0, which carries no information; this is the value the
+      // downstream `(\d{3})` classifiers have always seen here.
+      throw this.authRedirectError(302);
     }
   }
 
@@ -1874,6 +1921,14 @@ export class ConfluenceClient {
 
   /**
    * Request helper for binary downloads.
+   *
+   * Session mode follows a redirect to an ALLOWLISTED destination (spec 010
+   * wave 2). Confluence Cloud answers `/download/attachments/…` with a 302 to
+   * the media CDN, so the previous blanket "a redirect means the session
+   * expired" rule made this method unusable for session profiles. The rule is
+   * now by destination: a login bounce still raises the same typed auth error
+   * (there are no attachment bytes at a login page), a media/site hop is
+   * followed with the session credential stripped, and anything else is refused.
    */
   private async requestBinary(
     downloadPath: string,
@@ -1900,13 +1955,27 @@ export class ConfluenceClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const init = this.applyFetchOptions({
         method: "GET",
         headers: {
           Authorization: this.authHeader,
         },
         signal: options.signal,
-      }));
+      });
+      // Token mode is untouched: no `redirect: "manual"` was set for it, so
+      // fetch keeps following redirects exactly as before.
+      const res = this.useSession
+        ? await fetchSessionBinaryFollowingRedirects(
+            url.toString(),
+            init,
+            this.sessionRedirectPolicy,
+            {
+              loginRedirectError: (status) => this.authRedirectError(status),
+              blockedRedirectError: (target, reason) =>
+                new SessionRedirectBlockedError("Confluence attachment download", target, reason),
+            }
+          )
+        : await fetch(url.toString(), init);
 
       if (res.status === 429) {
         const delayMs =

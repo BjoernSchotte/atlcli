@@ -23,7 +23,10 @@
         "packages/docx/src/**/*.ts",
         "packages/pdf/src/**/*.ts",
         "packages/pdf-compiler-browser/src/**/*.ts",
-        "packages/diagram/src/**/*.ts"
+        "packages/diagram/src/**/*.ts",
+        "packages/export-macros/src/**/*.ts",
+        "packages/export-wiring/src/**/*.ts",
+        "packages/template-pack/src/**/*.ts"
       ]
     }
   }

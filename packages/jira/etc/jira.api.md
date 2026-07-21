@@ -357,6 +357,7 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     private get apiPath();
     private get agilePath();
@@ -476,6 +477,7 @@ export declare class JiraClient {
     getIssue(keyOrId: string, options?: {
         fields?: string[];
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<JiraIssue>;
     createIssue(input: CreateIssueInput): Promise<JiraIssue>;
     createIssuesBulk(issues: CreateIssueInput[]): Promise<BulkCreateResult>;
@@ -497,10 +499,12 @@ export declare class JiraClient {
         fields?: string[];
         expand?: string;
         nextPageToken?: string;
+        signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     searchGet(jql: string, options?: {
         maxResults?: number;
         fields?: string;
+        signal?: AbortSignal;
     }): Promise<JiraSearchResults>;
     getComments(keyOrId: string, options?: {
         startAt?: number;
@@ -668,7 +672,9 @@ export declare class JiraClient {
         total: number;
     }>;
     getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
-    downloadAttachment(contentUrl: string): Promise<Buffer>;
+    downloadAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Buffer>;
     uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
     getWatchers(keyOrId: string): Promise<{
         watchers: JiraUser[];
