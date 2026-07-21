@@ -70,6 +70,24 @@ export interface ComputeFilePathOptions {
    * in the directory path. Used to flatten space home page children.
    */
   rootAncestorId?: string;
+  /**
+   * Map of path to the ID of the page/folder that already owns it
+   * (typically `state.pathIndex`).
+   *
+   * A path in `existingPaths` that this very page owns is not a collision:
+   * without this, re-computing the path of an already-synced page hands out a
+   * `{slug}-2.md` alias for the file it is already stored at.
+   */
+  pathOwners?: Record<string, string> | Map<string, string>;
+}
+
+/** Look up the current owner of a path, accepting either map shape. */
+function ownerOf(
+  owners: Record<string, string> | Map<string, string> | undefined,
+  path: string
+): string | undefined {
+  if (!owners) return undefined;
+  return owners instanceof Map ? owners.get(path) : owners[path];
 }
 
 /**
@@ -98,6 +116,9 @@ export function computeFilePath(
     options instanceof Set ? { existingPaths: options } : options;
   const existingPaths = opts.existingPaths ?? new Set<string>();
   const rootAncestorId = opts.rootAncestorId;
+  /** A path is only taken if somebody *else* owns it. */
+  const isTaken = (path: string) =>
+    existingPaths.has(path) && ownerOf(opts.pathOwners, path) !== page.id;
 
   const slug = slugifyTitle(page.title) || "page";
   const contentType = page.contentType ?? "page";
@@ -141,7 +162,7 @@ export function computeFilePath(
   let relativePath = directory ? `${directory}/${filename}` : filename;
   let counter = 2;
 
-  while (existingPaths.has(relativePath)) {
+  while (isTaken(relativePath)) {
     if (isIndex) {
       // For index files, modify the directory instead
       const newSlug = `${slug}-${counter}`;
@@ -313,6 +334,12 @@ export interface BuildPathMapOptions {
    * Children of this page will be placed at the root level.
    */
   rootAncestorId?: string;
+  /**
+   * Map of path to the ID of the page/folder that already owns it
+   * (typically `state.pathIndex`). Keeps an already-synced page on the path it
+   * is stored at instead of aliasing it to `{slug}-2.md`.
+   */
+  pathOwners?: Record<string, string> | Map<string, string>;
 }
 
 /**
@@ -346,13 +373,28 @@ export function buildPathMap(
   const pathMap = new Map<string, ComputedPath>();
   const usedPaths = new Set(existingPaths);
 
+  // Ownership grows as pages claim paths, so a path taken earlier in this run
+  // still blocks later pages while staying free for the page that owns it.
+  const owners = new Map<string, string>();
+  if (opts.pathOwners) {
+    const entries =
+      opts.pathOwners instanceof Map
+        ? opts.pathOwners.entries()
+        : Object.entries(opts.pathOwners);
+    for (const [path, pageId] of entries) {
+      owners.set(path, pageId);
+    }
+  }
+
   for (const page of sorted) {
     const computed = computeFilePath(page, titleMap, {
       existingPaths: usedPaths,
       rootAncestorId,
+      pathOwners: owners,
     });
     pathMap.set(page.id, computed);
     usedPaths.add(computed.relativePath);
+    owners.set(computed.relativePath, page.id);
   }
 
   return pathMap;

@@ -296,6 +296,22 @@ export async function findMarkdownFileByFrontmatterId(
   return null;
 }
 
+/**
+ * @internal
+ * Check whether one specific markdown file carries a given page ID.
+ *
+ * The cheap counterpart to findMarkdownFileByFrontmatterId() for when a
+ * candidate path is already known - no tree walk, no ignore-file loading.
+ */
+async function markdownFileHasPageId(absolutePath: string, pageId: string): Promise<boolean> {
+  try {
+    const { frontmatter } = parseFrontmatter(await readTextFile(absolutePath));
+    return frontmatter?.id === pageId;
+  } catch {
+    return false;
+  }
+}
+
 
 /**
  * Subcommands that render their own `--help` text instead of the shared
@@ -927,11 +943,23 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
-  // Compute nested paths
+  // Compute nested paths. pathOwners keeps an already-tracked page on the path
+  // it is stored at instead of uniquifying it against its own file.
   const pathMap = buildPathMap(hierarchyPages, {
     existingPaths,
     rootAncestorId: homePageId,
+    pathOwners: state?.pathIndex,
   });
+
+  /**
+   * Path each page/folder was actually written to, keyed by ID.
+   *
+   * The computed path is only a proposal: a page that has not moved keeps the
+   * path it already has. sync.db must record what the pull did, not what
+   * buildPathMap() suggested - otherwise the next pull looks for the page at a
+   * path that has no file and writes a duplicate there.
+   */
+  const resolvedPaths = new Map<string, string>();
 
   let pulled = 0;
   let skipped = 0;
@@ -995,31 +1023,46 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       } else {
         // Keep existing path if not moved
         relativePath = existingState.path;
-      }
 
-      // Check if local has modifications
-      if (!force) {
-        const localPath = join(atlcliDir!, relativePath);
-        try {
-          const localContent = await readTextFile(localPath);
-          const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
-          const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
-
-          if (localHash !== existingState.baseHash) {
-            // Local has modifications, skip unless --force
-            output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
-            skipped++;
-            getLogger().sync({
-              eventType: "status",
-              file: relativePath,
-              pageId: detail.id,
-              title: `Skipped: local modifications`,
-            });
-            continue;
-          }
-        } catch {
-          // File doesn't exist, will be re-created
+        // Heal a stale record: earlier versions stored a uniquified alias
+        // ({slug}-2.md) for pages that never moved. If the recorded file is
+        // gone but the computed path holds this very page, adopt it instead of
+        // writing a duplicate next to it.
+        if (
+          relativePath !== computed.relativePath &&
+          !existsSync(join(outDir, toPlatformPath(relativePath))) &&
+          (await markdownFileHasPageId(join(outDir, toPlatformPath(computed.relativePath)), detail.id))
+        ) {
+          relativePath = computed.relativePath;
         }
+      }
+    }
+
+    // Record the path this pull settled on, before any early exit below.
+    resolvedPaths.set(detail.id, relativePath);
+
+    // Check if local has modifications
+    if (existingState && !force) {
+      const localPath = join(atlcliDir!, relativePath);
+      try {
+        const localContent = await readTextFile(localPath);
+        const { content: localWithoutFrontmatter } = parseFrontmatter(localContent);
+        const localHash = hashContent(normalizeMarkdown(localWithoutFrontmatter));
+
+        if (localHash !== existingState.baseHash) {
+          // Local has modifications, skip unless --force
+          output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
+          skipped++;
+          getLogger().sync({
+            eventType: "status",
+            file: relativePath,
+            pageId: detail.id,
+            title: `Skipped: local modifications`,
+          });
+          continue;
+        }
+      } catch {
+        // File doesn't exist, will be re-created
       }
     }
 
@@ -1349,6 +1392,8 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
       folderRelativePath = existingFolderState.path;
     }
 
+    resolvedPaths.set(folder.id, folderRelativePath);
+
     // Recompute folderPath and folderDir based on final path
     const finalFolderPath = join(outDir, folderRelativePath);
     const finalFolderDir = dirname(finalFolderPath);
@@ -1410,27 +1455,28 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     try {
       // Upsert all pages to sync.db (populates last_modified for stale detection)
       for (const detail of pageDetails) {
-        const computed = pathMap.get(detail.id);
-        if (!computed) continue;
+        // The path the pull used, not the one buildPathMap proposed.
+        const pagePath = resolvedPaths.get(detail.id) ?? pathMap.get(detail.id)?.relativePath;
+        if (!pagePath) continue;
 
         const pageRecord = createPageRecord({
           pageId: detail.id,
-          path: computed.relativePath,
+          path: pagePath,
           title: detail.title,
           spaceKey: detail.spaceKey,
           version: detail.version,
           lastSyncedAt: new Date().toISOString(),
           localHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           remoteHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           baseHash: hashContent(normalizeMarkdown(replaceAttachmentPaths(
             storageToMarkdown(detail.storage, buildConversionOptions(dirConfig?.baseUrl)),
-            basename(computed.relativePath, ".md")
+            basename(pagePath, ".md")
           ))),
           syncState: "synced",
           parentId: detail.parentId,
@@ -1448,12 +1494,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
       // Upsert folder records to sync.db
       for (const folder of folders) {
-        const computed = pathMap.get(folder.id);
-        if (!computed) continue;
+        const folderPath = resolvedPaths.get(folder.id) ?? pathMap.get(folder.id)?.relativePath;
+        if (!folderPath) continue;
 
         const folderRecord = createPageRecord({
           pageId: folder.id,
-          path: computed.relativePath,
+          path: folderPath,
           title: folder.title,
           spaceKey: space!,
           version: 1,
