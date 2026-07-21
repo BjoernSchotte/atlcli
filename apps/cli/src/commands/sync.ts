@@ -886,6 +886,8 @@ class SyncEngine {
       const computed = computeFilePath(pageInfo, ancestorTitles, {
         existingPaths,
         rootAncestorId: this.homePageId,
+        // A page's own stored path is not a collision.
+        pathOwners: this.state?.pathIndex,
       });
       let filePath = join(this.opts.dir, computed.relativePath);
 
@@ -1038,6 +1040,8 @@ class SyncEngine {
       const computed = computeFilePath(folderInfo, ancestorTitles, {
         existingPaths,
         rootAncestorId: this.homePageId,
+        // A folder's own stored path is not a collision.
+        pathOwners: this.state?.pathIndex,
       });
 
       let filePath = join(this.opts.dir, computed.relativePath);

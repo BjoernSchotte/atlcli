@@ -100,6 +100,30 @@ Conflict: file.md was modified both locally and on Confluence
 2. Merge manually
 3. Force push: `atlcli wiki docs push --force`
 
+### Duplicate `-2.md` Files After Pulling
+
+A page you pull repeatedly shows up twice: `page.md` **and** `page-2.md`, each with the
+same `id` in its frontmatter, plus a second `page-2.attachments/` directory.
+
+**Cause:**
+Older versions recorded a uniquified filename in `.atlcli/sync.db` for pages that had
+not moved, so the next `pull` treated that alias as the page's location.
+
+**Solutions:**
+1. Upgrade and pull again — `atlcli wiki docs pull` re-adopts the original file and
+   corrects the recorded path, as long as only one of the two files exists.
+2. If both files are already on disk, delete the `-2` copy (and its
+   `-2.attachments/` directory) after checking it holds no edits of yours, then pull
+   again:
+   ```bash
+   atlcli wiki docs diff page-2.md   # confirm there is nothing to keep
+   rm -r page-2.md page-2.attachments
+   atlcli wiki docs pull
+   ```
+
+Note that a genuine `-2` suffix is also how atlcli keeps two *different* pages with the
+same title apart — check the `id` in the frontmatter before deleting anything.
+
 ### Page Not Found
 
 ```
