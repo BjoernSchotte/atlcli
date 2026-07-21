@@ -104,7 +104,11 @@ describe("PDF job store", () => {
       tx.objectStore("jobs").add({
         id: "423e4567-e89b-42d3-a456-426614174000",
         sourceIdentity: "seed",
-        createdAt: 1,
+        // FRESH, deliberately. `createdAt: 1` is 1970 — long past
+        // `PDF_JOB_MAX_AGE_MS` — and T5.6's eviction policy evicts an expired
+        // record rather than rejecting the caller, so the old fixture stopped
+        // describing the rule this test is about.
+        createdAt: Date.now(),
         status: "prepared",
         inputBytes: PDF_STORE_MAX_BYTES,
         outputBytes: 0,
@@ -274,7 +278,9 @@ describe("PDF job store", () => {
         tx.objectStore("jobs").add({
           id,
           sourceIdentity: "seed",
-          createdAt: 1,
+          // Fresh — see the note on the total-quota test: an expired record is
+          // evicted rather than refused, which is a different rule from this one.
+          createdAt: Date.now(),
           status: "prepared",
           inputBytes: PDF_STORE_MAX_BYTES - 16,
           outputBytes: 0,

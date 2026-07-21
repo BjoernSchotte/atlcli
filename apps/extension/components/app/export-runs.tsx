@@ -8,11 +8,12 @@
  * as CONFCLOUD-83694, just at the UI layer, so the state is hoisted from the
  * start.
  *
- * What is deliberately NOT changed here: a page change still aborts the active
- * export (preserving `PdfSection.tsx:30-37`'s behaviour verbatim). Turning that
- * into "identity change stops *watching*, never aborts" is T5.1/T5.6 work with
- * its own durable-job machinery behind it; doing half of it here would ship a
- * running export nobody can observe or cancel.
+ * Phase 0 deliberately kept `PdfSection.tsx:30-37`'s "a page change aborts the
+ * export" behaviour verbatim, because half of the fix without durable records
+ * would have shipped a running export nobody could observe or cancel. T5.6
+ * built the other half, so it lands here: **an identity change stops watching a
+ * PDF export, it never aborts one.** See the effect below for why the DOCX path
+ * still aborts.
  */
 import React, {
   createContext,
@@ -29,6 +30,7 @@ import type {
   DocxExportPort,
   DocxExportRequest,
   ExportPhase,
+  ExportProgress,
   PdfExportPort,
   PdfExportRequest,
 } from "../../utils/ports/index.js";
@@ -39,23 +41,30 @@ export interface PdfRun {
   phase: ExportPhase | null;
   error: string | null;
   report: PdfExportReport | null;
+  /** Per-page tree-walk ticks (T5.1); `null` outside a multi-page walk. */
+  progress: ExportProgress | null;
 }
 
 export interface DocxRun {
   running: boolean;
   error: string | null;
   report: ExportReport | null;
+  progress: ExportProgress | null;
 }
 
-const IDLE_PDF: PdfRun = { phase: null, error: null, report: null };
-const IDLE_DOCX: DocxRun = { running: false, error: null, report: null };
+const IDLE_PDF: PdfRun = { phase: null, error: null, report: null, progress: null };
+const IDLE_DOCX: DocxRun = { running: false, error: null, report: null, progress: null };
+
+/** What a caller supplies; the provider owns `signal` and the callbacks. */
+export type StartPdfRequest = Omit<PdfExportRequest, "signal" | "onPhase" | "onProgress">;
+export type StartDocxRequest = Omit<DocxExportRequest, "signal" | "onProgress">;
 
 export interface ExportRuns {
   pdf: PdfRun;
   docx: DocxRun;
-  startPdf(port: PdfExportPort, request: Omit<PdfExportRequest, "signal" | "onPhase">): void;
+  startPdf(port: PdfExportPort, request: StartPdfRequest): void;
   cancelPdf(): void;
-  startDocx(port: DocxExportPort, request: Omit<DocxExportRequest, "signal">): void;
+  startDocx(port: DocxExportPort, request: StartDocxRequest): void;
   /** Surface an error raised outside a run (template upload, store read). */
   setDocxError(message: string | null): void;
 }
@@ -84,11 +93,23 @@ export function ExportRunsProvider({
   identityRef.current = identity;
 
   useEffect(() => {
+    // A page change STOPS WATCHING the PDF export; it never aborts one
+    // (spec 010 T5.6, Architecture point 3 defect (a)). Aborting here was
+    // CONFCLOUD-83694 reproduced in our own panel: navigating to another
+    // Confluence page killed a running export by design. It looked harmless
+    // while every export was one page and took seconds; tree and space exports
+    // make it the normal case, and the Chrome side panel survives tab
+    // navigation on its own, so this was our decision and not a platform limit.
+    // The job keeps running, its durable record keeps being updated, and the
+    // Jobs screen is where it is observed and cancelled from. Abort stays bound
+    // to the explicit Cancel button.
     if (pdfRun.current && pdfRun.current.identity !== identity) {
-      pdfRun.current.controller.abort();
       pdfRun.current = null;
       setPdf(IDLE_PDF);
     }
+    // DOCX has no durable job record — its export lives entirely in this
+    // panel's memory, so detaching from it would orphan work nobody could
+    // observe or stop. It keeps today's abort until it has a record of its own.
     if (docxRun.current && docxRun.current.identity !== identity) {
       docxRun.current.controller.abort();
       docxRun.current = null;
@@ -96,11 +117,12 @@ export function ExportRunsProvider({
     }
   }, [identity]);
 
-  // Unmount (panel closed) tears down anything still running: without a durable
-  // job record (T5.6) an orphaned run has no observer left.
+  // Unmount (panel closed): same asymmetry. A PDF export is durable — the
+  // offscreen worker keeps compiling and `completePdfJob` still writes the
+  // result to `atlcli-pdf`, so the next time the panel opens the Jobs screen
+  // offers the download. A DOCX export is not, so it is torn down.
   useEffect(
     () => () => {
-      pdfRun.current?.controller.abort();
       docxRun.current?.controller.abort();
     },
     []
@@ -112,7 +134,7 @@ export function ExportRunsProvider({
       const runIdentity = identityRef.current;
       const controller = new AbortController();
       pdfRun.current = { identity: runIdentity, controller };
-      setPdf({ phase: "preparing", error: null, report: null });
+      setPdf({ phase: "preparing", error: null, report: null, progress: null });
 
       void (async () => {
         try {
@@ -122,15 +144,19 @@ export function ExportRunsProvider({
             onPhase: (phase) => {
               if (!controller.signal.aborted) setPdf((prev) => ({ ...prev, phase }));
             },
+            onProgress: (progress) => {
+              if (!controller.signal.aborted) setPdf((prev) => ({ ...prev, progress }));
+            },
           });
           if (!controller.signal.aborted && identityRef.current === runIdentity) {
-            setPdf({ phase: null, error: null, report });
+            setPdf({ phase: null, error: null, report, progress: null });
           }
         } catch (reason) {
           if (!controller.signal.aborted) {
             setPdf({
               phase: null,
               report: null,
+              progress: null,
               error: reason instanceof Error ? reason.message : String(reason),
             });
           }
@@ -145,7 +171,7 @@ export function ExportRunsProvider({
   const cancelPdf = useCallback<ExportRuns["cancelPdf"]>(() => {
     pdfRun.current?.controller.abort();
     pdfRun.current = null;
-    setPdf({ phase: null, report: null, error: t("pdf.cancelled") });
+    setPdf({ phase: null, report: null, progress: null, error: t("pdf.cancelled") });
   }, [t]);
 
   const startDocx = useCallback<ExportRuns["startDocx"]>(
@@ -154,17 +180,28 @@ export function ExportRunsProvider({
       const runIdentity = identityRef.current;
       const controller = new AbortController();
       docxRun.current = { identity: runIdentity, controller };
-      setDocx({ running: true, error: null, report: null });
+      setDocx({ running: true, error: null, report: null, progress: null });
 
       void (async () => {
         try {
-          const report = await port.run({ ...request, signal: controller.signal });
+          const report = await port.run({
+            ...request,
+            signal: controller.signal,
+            onProgress: (progress) => {
+              if (!controller.signal.aborted) setDocx((prev) => ({ ...prev, progress }));
+            },
+          });
           if (!controller.signal.aborted && identityRef.current === runIdentity) {
-            setDocx({ running: false, error: null, report });
+            setDocx({ running: false, error: null, report, progress: null });
           }
         } catch (reason) {
           if (!controller.signal.aborted) {
-            setDocx({ running: false, report: null, error: exportErrorMessage(t, reason) });
+            setDocx({
+              running: false,
+              report: null,
+              progress: null,
+              error: exportErrorMessage(t, reason),
+            });
           }
         } finally {
           if (docxRun.current?.controller === controller) docxRun.current = null;
