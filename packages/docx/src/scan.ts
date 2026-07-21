@@ -509,16 +509,27 @@ function classifyActiveContentPart(name: string): string | undefined {
 }
 
 /**
- * Parts whose XML is inspected for an `altChunk` element.
+ * EVERY WordprocessingML part in the package — the main story plus headers,
+ * footers, footnotes, endnotes, comments, glossary, charts, diagrams.
  *
- * `CT_AltChunk` is a member of `EG_BlockLevelElts`, so it is valid anywhere
- * block-level content is — not just the main story. Probing the earlier
- * document/header/footer-only list found it accepted in `word/footnotes.xml`,
- * `word/endnotes.xml`, `word/comments.xml` and `word/glossary/document.xml`.
- * Every WordprocessingML part in the package is therefore scanned; the cost is
- * one regex over parts already being read.
+ * Two callers need exactly this breadth, for the same underlying reason: a
+ * document's content is not confined to `word/document.xml`.
+ *
+ *  - The `altChunk` sweep ({@link assertNoActiveContent}). `CT_AltChunk` is a
+ *    member of `EG_BlockLevelElts`, so it is valid anywhere block-level content
+ *    is. Probing the earlier document/header/footer-only list found it accepted
+ *    in `word/footnotes.xml`, `word/endnotes.xml`, `word/comments.xml` and
+ *    `word/glossary/document.xml`.
+ *  - The field sweep ({@link needsFieldRefresh}). A TOC in a header, a `SEQ` in
+ *    a footnote and a `STYLEREF` in a footer are all ordinary authoring; a
+ *    document-only scan would call such a document field-free and ship it
+ *    without the refresh flag.
+ *
+ * Deliberately NOT narrowed further: the cost is one regex over parts that are
+ * being read anyway, and every narrowing so far has turned out to have a
+ * counterexample.
  */
-function altChunkScanParts(zip: PizZip): string[] {
+function wordprocessingPartNames(zip: PizZip): string[] {
   return Object.keys(zip.files).filter(
     (n) => /^word\/.*\.xml$/i.test(n) && !/^word\/_rels\//i.test(n)
   );
@@ -648,10 +659,9 @@ export function hasAltChunkRelationship(relsXml: string): boolean {
  *     these parts and the only channel that cannot be evaded by relocating a
  *     file or renaming a prefix.
  *  4. FIELD INSTRUCTION — `DDE`/`DDEAUTO`, a documented remote-code-execution
- *     chain with no legitimate use in an export template. Rejected here rather
- *     than merely audited because `ensureUpdateFields` writes
- *     `<w:updateFields w:val="true"/>` into every exported document, so the
- *     exporter itself arms the trigger.
+ *     chain with no legitimate use in an export template. Rejected, never merely
+ *     audited: see {@link REJECTED_FIELD_INSTRUCTIONS} for why the refusal does
+ *     not depend on whether THIS export sets the field-refresh flag.
  *
  * Runs inside {@link unzipDocx}, so the guarantee does not depend on which entry
  * point a host uses.
@@ -669,7 +679,7 @@ export function assertNoActiveContent(zip: PizZip): void {
       );
     }
   }
-  for (const part of altChunkScanParts(zip)) {
+  for (const part of wordprocessingPartNames(zip)) {
     const xml = readPartText(zip, part);
     // Any namespace prefix, or none: `<w:altChunk`, `<x:altChunk`, `<altChunk`.
     if (/<(?:[A-Za-z_][\w.-]*:)?altChunk[\s/>]/.test(xml)) {
@@ -705,15 +715,28 @@ export function assertNoActiveContent(zip: PizZip): void {
 /**
  * Field instructions that reach outside the document when Word refreshes fields.
  *
- * `preprocessScrollText` deliberately leaves field instructions untouched, and
- * `ensureUpdateFields` writes `<w:updateFields w:val="true"/>` into every
- * exported document — so Word refreshes the template's own fields on open. The
- * exporter therefore ARMS whatever instruction the template carries, which is
- * why the two lists are graded differently.
+ * `preprocessScrollText` deliberately leaves field instructions untouched, so
+ * whatever instruction the template carries survives into the exported document
+ * verbatim. That is why the two lists below are graded differently.
  *
  * REJECTED: `DDE`/`DDEAUTO` execute an arbitrary command through Dynamic Data
  * Exchange. This is a documented remote-code-execution chain with no legitimate
  * use in an export template, so it is refused at import rather than audited.
+ *
+ * The refusal is deliberately INDEPENDENT of `<w:updateFields>`. An earlier
+ * revision of this comment justified it by "the exporter writes the refresh flag
+ * into every document, so the exporter itself arms the trigger" — true then,
+ * false since {@link needsFieldRefresh} made the flag conditional. The premise
+ * changed; the rule does not, and the rule was never contingent on it:
+ *  - A `DDE` field fires on ANY field refresh — the reader pressing F9, printing,
+ *    or Word's own "update fields before printing" option — not only the refresh
+ *    this exporter's flag requests.
+ *  - `DDE` is not on the {@link REFRESH_SENSITIVE_FIELDS} list, so a template
+ *    carrying one would (absent this rejection) sail through with NO flag set
+ *    and no note — a quieter delivery of the same payload, not a safer one.
+ *  - "The flag might not be set this time" is not a security property. Shipping
+ *    a remote-code-execution chain inside a document the customer will hand
+ *    around is the harm; who eventually presses F9 is not ours to bet on.
  */
 const REJECTED_FIELD_INSTRUCTIONS = ["DDEAUTO", "DDE"] as const;
 
@@ -761,6 +784,237 @@ export function collectFieldInstructions(
  */
 export function collectRiskyFieldInstructions(xml: string): string[] {
   return collectFieldInstructions(xml, AUDITED_FIELD_INSTRUCTIONS);
+}
+
+// ---------------------------------------------------------------------------
+// Field-refresh classification (does this document need `<w:updateFields>`?)
+// ---------------------------------------------------------------------------
+
+/**
+ * Field instructions whose REFRESH changes what the reader sees.
+ *
+ * `<w:updateFields w:val="true"/>` makes Word ask, on every single open, to
+ * refresh the document's fields. That is worth asking for exactly when the
+ * cached result baked into the file is wrong, and is pure noise otherwise. The
+ * exporter used to set it unconditionally, so a 62-page tree export with no
+ * table of contents and 116 static `HYPERLINK` fields prompted its reader
+ * forever, to accomplish nothing. This list is the answer to "would a refresh
+ * fix something visible?", type by type.
+ *
+ * The test each entry has to pass is narrower than "is this field dynamic": it
+ * is *would setting the flag change what the reader sees, compared to not
+ * setting it*. That is why `PAGE` is absent (see below) even though a page
+ * number is about as dynamic as a field gets.
+ *
+ * INCLUDED, grouped by why:
+ *
+ *  - Generated over the body — `TOC`, `TOA`, `INDEX`, `RD`, `BIBLIOGRAPHY`.
+ *    The field's content is produced FROM the document, and this export replaces
+ *    the whole body. Unrefreshed, the reader gets the template's table of
+ *    contents (usually literally empty, or "Right-click to update"). This is the
+ *    case the flag exists for and it stays the default whenever a TOC is present:
+ *    a silently empty TOC is a worse surprise than one prompt.
+ *  - Resolved against the body — `REF`, `PAGEREF`, `NOTEREF`, `STYLEREF`.
+ *    Cross-references and running heads point at bookmarks / styled paragraphs
+ *    that only exist after injection; the cached result is the template's, i.e.
+ *    stale by construction. (`STYLEREF` running heads are a documented feature of
+ *    this engine — see `collectStylerefFields`.)
+ *  - Numbered over the body — `SEQ`, `LISTNUM`, `AUTONUM`, `AUTONUMLGL`,
+ *    `AUTONUMOUT`. The serializer emits every caption's `SEQ` field with a cached
+ *    result of literally `1` (see `captionParagraph`), so without a refresh a
+ *    document with three figures shows "Figure 1" three times. Wrong numbering is
+ *    visible and looks like a product defect.
+ *  - Pulled from outside — `INCLUDETEXT`, `INCLUDEPICTURE`, `LINK`. The cached
+ *    copy is whatever the template captured; a refresh fetches the current
+ *    source. (These also raise a `template-field-instruction-risk` note — see
+ *    {@link AUDITED_FIELD_INSTRUCTIONS} — which is about trust, not staleness.)
+ *  - Computed from the file — `FILENAME`, `FILESIZE`. The exported document IS a
+ *    different file from the template these results were cached against.
+ *  - Read from the clock — `DATE`, `TIME`. Word does not tick these on open; they
+ *    change only on refresh, and showing the template author's save date as
+ *    "today" is wrong on the face of it.
+ *
+ * EXCLUDED, and why — this half is the actual fix:
+ *
+ *  - `HYPERLINK`. A hyperlink field carries its display text statically in the
+ *    field result; refreshing re-resolves the target and changes NOTHING the
+ *    reader sees. 116 of them are what made every export prompt.
+ *  - `PAGE`, `NUMPAGES`, `SECTIONPAGES`, `SECTION`. Word and LibreOffice compute
+ *    these during pagination, on every open, independently of this flag. Setting
+ *    it buys nothing — and since a page-number footer is in nearly every
+ *    corporate template, including them would have quietly reinstated the defect.
+ *  - `TITLE`, `SUBJECT`, `AUTHOR`, `KEYWORDS`, `COMMENTS`, `LASTSAVEDBY`,
+ *    `CREATEDATE`, `SAVEDATE`, `PRINTDATE`, `REVNUM`, `EDITTIME`, `NUMWORDS`,
+ *    `NUMCHARS`, `TEMPLATE`, `DOCPROPERTY`, `INFO`, `DOCVARIABLE`. These read
+ *    `docProps/*` or `w:docVars`, and this exporter never rewrites either part —
+ *    a refresh reproduces the value already cached. CONDITIONAL exclusion: if the
+ *    export ever starts writing document properties or doc variables, move them
+ *    into the included list.
+ *  - `USERNAME`, `USERADDRESS`, `USERINITIALS`. A refresh WOULD change these — to
+ *    the identity of whoever opened the file. Excluded deliberately: rewriting an
+ *    author's document with its reader's name is a change, but not a correction.
+ *  - `ASK`, `FILLIN`. A refresh interrogates the reader with a modal dialog per
+ *    field. Never worth requesting on the reader's behalf.
+ *  - `MACROBUTTON`, `GOTOBUTTON`, `SYMBOL`, `EQ`, `ADVANCE`, `QUOTE`, `SET`,
+ *    `PRINT`. No recomputed visible result, or no result at all.
+ *  - `IF` / `COMPARE`. Conditional on other fields — and if the condition reads a
+ *    field that IS on this list, the document already qualifies through that one.
+ *  - `DDE` / `DDEAUTO`. Unreachable: {@link assertNoActiveContent} refuses such a
+ *    template at import. Their absence here is not a policy about them; see
+ *    {@link REJECTED_FIELD_INSTRUCTIONS}.
+ *  - Formula fields (`{ =SUM(ABOVE) }`). KNOWN GAP: the instruction starts with
+ *    `=`, not a keyword, so {@link fieldKeyword} does not name it and a template
+ *    whose only field is a table formula over injected content will not get the
+ *    flag. Left as a gap rather than special-cased because the engine never emits
+ *    one and a template formula cannot span into the injected body anyway.
+ */
+export const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string> = new Set([
+  // generated over the body
+  "TOC",
+  "TOA",
+  "INDEX",
+  "RD",
+  "BIBLIOGRAPHY",
+  // resolved against the body
+  "REF",
+  "PAGEREF",
+  "NOTEREF",
+  "STYLEREF",
+  // numbered over the body
+  "SEQ",
+  "LISTNUM",
+  "AUTONUM",
+  "AUTONUMLGL",
+  "AUTONUMOUT",
+  // pulled from outside the document
+  "INCLUDETEXT",
+  "INCLUDEPICTURE",
+  "LINK",
+  // computed from the file itself
+  "FILENAME",
+  "FILESIZE",
+  // read from the clock
+  "DATE",
+  "TIME",
+]);
+
+/**
+ * One field's parts, in the order they appear in a part's XML.
+ *
+ * Both OOXML field encodings are covered, because a document routinely carries
+ * both: `<w:fldSimple w:instr="…">` puts the whole instruction in an attribute,
+ * while a complex field is a RUN SEQUENCE — `fldChar begin` → one or more
+ * `<w:instrText>` runs → optional `fldChar separate` + cached result →
+ * `fldChar end`.
+ */
+const FIELD_PART_RE =
+  /<w:fldSimple\b[^>]*\bw:instr="([^"]*)"|<w:fldChar\b[^>]*\bw:fldCharType="([^"]*)"|<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g;
+
+/** Resolve the XML entities Word writes inside a field instruction. */
+function decodeInstruction(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&amp;/g, "&");
+}
+
+/**
+ * The leading keyword of one reassembled field instruction, uppercased.
+ *
+ * A field instruction's grammar is `<keyword> [arguments] [switches]`, so the
+ * type of the field is its FIRST token and nothing else. `undefined` for an
+ * instruction that opens with something other than an identifier — a formula
+ * (`=SUM(ABOVE)`), a stray switch, or an empty instruction.
+ */
+function fieldKeyword(instruction: string): string | undefined {
+  const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)/.exec(decodeInstruction(instruction));
+  return m ? m[1].toUpperCase() : undefined;
+}
+
+/**
+ * The keyword of every field in one part's XML, uppercased, in document order.
+ * Pure; never mutates. Repeats are kept — the caller decides what to do with a
+ * count.
+ *
+ * WHY NOT {@link collectFieldInstructions}: that function concatenates every
+ * instruction in the part into ONE haystack and asks whether a keyword appears
+ * anywhere in it. For its own job — "does this template mention DDE at all",
+ * where a false positive costs an over-cautious refusal — that is the right
+ * trade. Here it would be actively wrong in both directions:
+ *
+ *  - FALSE POSITIVES from field ARGUMENTS. `\bSEQ\b` matches the URL inside
+ *    ` HYPERLINK "https://example.com/seq/123" `, and `\bINDEX\b` matches any
+ *    link ending `/index.html`. A document of nothing but hyperlinks would have
+ *    kept prompting — the exact defect, re-created through the matcher.
+ *  - FALSE POSITIVES from the JOIN. Instructions are concatenated with no
+ *    separator, so two adjacent fields can spell a third keyword across their
+ *    seam.
+ *
+ * So the keyword is read positionally, from the front of each field's OWN
+ * instruction. What IS reused is the insight that fix was built on (see
+ * {@link collectStylerefFields}): Word splits one instruction across several
+ * `<w:instrText>` runs — ` TO` + `C \o "1-3"` is ordinary output — so the runs
+ * are concatenated BEFORE matching. The concatenation is just bounded by the
+ * field's own `fldChar begin`/`end` instead of running to the end of the part.
+ *
+ * Nesting is tracked with a stack, so `{ IF { PAGE } = 1 … }` reports both `IF`
+ * and `PAGE` and the outer instruction does not swallow the inner one. An
+ * unterminated field (no `end`) is flushed at the end of the part rather than
+ * dropped; a `<w:instrText>` with no enclosing `begin` opens an implicit field,
+ * because a malformed part should still be classified, not silently treated as
+ * field-free.
+ */
+export function collectFieldKeywords(xml: string): string[] {
+  const keywords: string[] = [];
+  /** Open complex fields, outermost first. `done` = past `fldChar separate`. */
+  const stack: { instruction: string; done: boolean }[] = [];
+  const close = (): void => {
+    const frame = stack.pop();
+    if (!frame) return;
+    const keyword = fieldKeyword(frame.instruction);
+    if (keyword) keywords.push(keyword);
+  };
+
+  for (const m of xml.matchAll(FIELD_PART_RE)) {
+    const [, simpleInstr, fldCharType, instrText] = m;
+    if (simpleInstr !== undefined) {
+      const keyword = fieldKeyword(simpleInstr);
+      if (keyword) keywords.push(keyword);
+      continue;
+    }
+    if (fldCharType !== undefined) {
+      if (fldCharType === "begin") stack.push({ instruction: "", done: false });
+      // `separate` ends the INSTRUCTION, not the field: everything after it is
+      // the cached result, and any instrText that follows belongs to the parent.
+      else if (fldCharType === "separate" && stack.length) stack[stack.length - 1]!.done = true;
+      else if (fldCharType === "end") close();
+      continue;
+    }
+    if (instrText !== undefined) {
+      const top = stack[stack.length - 1];
+      if (top && !top.done) top.instruction += instrText;
+      else stack.push({ instruction: instrText, done: false });
+    }
+  }
+  while (stack.length) close();
+  return keywords;
+}
+
+/**
+ * True when ANY field in the package would show the reader something different
+ * after a refresh — i.e. when `<w:updateFields w:val="true"/>` earns its prompt.
+ *
+ * Runs over every WordprocessingML part ({@link wordprocessingPartNames}), not
+ * just `word/document.xml`: a TOC in a header, a `SEQ` in a footnote and a
+ * `STYLEREF` in a footer are all ordinary authoring.
+ *
+ * Call this on the RENDERED archive, not the template: the body's own `SEQ`
+ * captions only exist after injection, and the template's TOC is present in both.
+ */
+export function needsFieldRefresh(zip: PizZip): boolean {
+  for (const part of wordprocessingPartNames(zip)) {
+    for (const keyword of collectFieldKeywords(readPartText(zip, part))) {
+      if (REFRESH_SENSITIVE_FIELDS.has(keyword)) return true;
+    }
+  }
+  return false;
 }
 
 /**

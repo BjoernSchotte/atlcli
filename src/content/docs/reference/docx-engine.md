@@ -23,6 +23,7 @@ inject.
 - [SVG attachments](#svg-attachments)
 - [Mermaid diagrams](#mermaid-diagrams)
 - [Running headers (STYLEREF)](#running-headers-styleref)
+- [The field-refresh flag](#the-field-refresh-flag)
 - [Plugging in a new surface](#plugging-in-a-new-surface)
 - [Performance model](#performance-model)
 - [Guarantees and gates](#guarantees-and-gates)
@@ -394,7 +395,8 @@ field (`STYLEREF "Scroll Heading 1" \* MERGEFORMAT`). The engine keeps this work
 - Headings carry the **exact `w:pStyle` id** whose style *name* the field references
   (`resolveHeadingStyleId` against the template's `word/styles.xml`).
 - `word/settings.xml` gets `<w:updateFields w:val="true"/>` so Word offers to refresh fields on
-  open.
+  open. `STYLEREF` is one of the field types that earns this — see
+  [The field-refresh flag](#the-field-refresh-flag).
 
 **Which heading a page gets.** By default Word searches the page from the **top down** and
 shows the **first** paragraph in the named style; if the style does not occur on the page, it
@@ -437,6 +439,42 @@ but not sufficient. Once per release, confirm in Word 365:
 4. If it stays blank or stale after refresh, check the report for a `styleref-*` note — a
    warning means promotion left the referenced style unused (fix the template's field to name the
    effective heading style), an info means the style name is not in the template.
+
+## The field-refresh flag
+
+`<w:updateFields w:val="true"/>` in `word/settings.xml` makes Word offer to refresh the
+document's fields every time it is opened. The engine writes it **only when a refresh would
+change what the reader sees**, decided from the FINISHED archive — the template's own fields plus
+everything the export injected.
+
+**Where it looks.** Every WordprocessingML part in the package, not just `word/document.xml`: a
+TOC in a header, a `SEQ` in a footnote and a `STYLEREF` in a footer are ordinary authoring.
+Both encodings count — `<w:fldSimple w:instr="…">` and the `fldChar`/`instrText` run sequence —
+and an instruction Word split across several `<w:instrText>` runs (` TO` + `C \o "1-3"`) is
+reassembled inside its own field before the keyword is read. The keyword is taken positionally,
+from the front of each field's own instruction, so a `HYPERLINK` whose URL happens to contain
+`/seq/` or `index.html` is not mistaken for a `SEQ` or an `INDEX` field.
+
+**What counts.** See the table in
+[DOCX Export → Field update behavior](../confluence/export.md#field-update-behavior). The rule
+behind it: does setting the flag change what the reader sees, *compared to not setting it*.
+`TOC`/`SEQ`/`REF`/`PAGEREF`/`STYLEREF` qualify; `HYPERLINK` does not (its display text is
+static), and neither does `PAGE`/`NUMPAGES` (Word recomputes those during pagination regardless).
+The full reasoning, type by type including the deliberate exclusions, lives on
+`REFRESH_SENSITIVE_FIELDS` in `packages/docx/src/scan.ts`.
+
+**Host control** — `ExportInput.updateFields`:
+
+| Value | Behavior |
+|-------|----------|
+| `"auto"` (default) | Set the flag when a refresh-sensitive field is present. A template's own `<w:updateFields>` is left untouched when nothing needs a refresh — the author may know about a field type the engine does not classify. |
+| `"never"` | Never set it, and pin a template's own setting to `false`, so "Word will not prompt" actually holds. Emits a `field-refresh-suppressed` note if the document did contain such fields. The CLI's `--no-field-update-prompt`. |
+| `"always"` | Unconditional, the pre-policy behavior. |
+
+`DDE`/`DDEAUTO` deliberately do **not** appear on the refresh-sensitive list, and that is not a
+loophole: a template carrying either is refused outright at import (`assertNoActiveContent`),
+independently of this flag. A `DDE` field fires on any field refresh — the reader pressing F9,
+printing — not only the one this flag requests.
 
 ## Browser hosts
 

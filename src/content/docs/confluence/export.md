@@ -237,7 +237,7 @@ For a full CI job, see the [Export automation recipe](/recipes/export-automation
 | `--no-images` | Don't embed images from attachments |
 | `--include-children` | Deprecated alias for `--scope tree` (with `--engine ts`); legacy child-merge with `--engine python` |
 | `--no-merge` | Keep children as separate array for template loops (python engine) |
-| `--no-toc-prompt` | Disable TOC update prompt in Word |
+| `--no-field-update-prompt` | Never ask Word to refresh fields on open (see [Field update behavior](#field-update-behavior)). Alias: `--no-toc-prompt` |
 | `--engine` | Rendering engine: `python` (default) or `ts` (see [Rendering Engines](#rendering-engines)) |
 | `--profile` | Use a specific auth profile |
 
@@ -614,26 +614,60 @@ The exported TOC:
 - Includes heading levels 1-3 with hyperlinks
 - Shows placeholder text until updated in Word
 
-### TOC Update Behavior
+### Field update behavior
 
-By default, Word prompts to update fields when opening the document:
+Word only fills in a table of contents, a caption number or a cross-reference when it
+*refreshes fields*. The export asks it to, by writing `<w:updateFields w:val="true"/>` into
+`word/settings.xml`; Word then prompts on open:
 
 > "This document contains fields that may refer to other files. Do you want to update the fields in this document?"
 
 Click **Yes** to populate the TOC with correct entries and page numbers.
 
-### Disabling the Prompt
+**The prompt appears only when a refresh would change something** (`--engine ts`). The engine
+inspects the finished document — every part, headers and footers included — and sets the flag
+when it finds a field whose result is computed:
 
-Use `--no-toc-prompt` to disable the update prompt:
+| Field | Prompt? | Why |
+|-------|---------|-----|
+| `TOC`, `INDEX`, `TOA`, `BIBLIOGRAPHY` | Yes | Generated from the document body, which the export replaces |
+| `SEQ` (caption numbering) | Yes | Every caption is written with a cached number of `1` |
+| `REF`, `PAGEREF`, `NOTEREF`, `STYLEREF` | Yes | Resolve against content that only exists after the export |
+| `INCLUDETEXT`, `INCLUDEPICTURE`, `LINK` | Yes | The cached copy is the template's |
+| `FILENAME`, `FILESIZE`, `DATE`, `TIME` | Yes | Computed from the file or the clock |
+| `HYPERLINK` | **No** | The link text is stored statically; a refresh changes nothing visible |
+| `PAGE`, `NUMPAGES`, `SECTIONPAGES` | **No** | Word recomputes these during pagination on every open anyway |
+| `USERNAME`, `ASK`, `FILLIN` | **No** | A refresh would rewrite the document with the *reader's* name or input |
+
+So an ordinary page export — prose, headings, images and links — opens without any prompt, while
+a document with a table of contents still gets one. If your template sets `<w:updateFields>`
+itself, that setting is left in place.
+
+:::note[`--engine python`]
+The Python engine sets the flag whenever the document contains a TOC, and never otherwise. The
+table above describes `--engine ts`.
+:::
+
+### Disabling the prompt
+
+Use `--no-field-update-prompt` to suppress the refresh request entirely:
 
 ```bash
-atlcli wiki export 12345 -t report -o out.docx --no-toc-prompt
+atlcli wiki export 12345 --template report -o out.docx --no-field-update-prompt
 ```
 
 When using this option:
-- Word opens without prompting
-- TOC shows placeholder text
-- Update manually: right-click TOC, select "Update Field"
+
+- Word opens without prompting.
+- A TOC shows placeholder text, captions all read "1", and cross-references stay stale.
+- Update manually in Word: select all (**Ctrl+A**), then press **F9**. For a TOC alone,
+  right-click it and choose **Update Field**.
+- If the document did contain such fields, the export report carries a
+  `field-refresh-suppressed` note saying so.
+
+`--no-toc-prompt` is the original spelling of this flag and keeps working. The new name reflects
+what the flag actually governs: the refresh covers caption numbering, cross-references and
+running heads, not only tables of contents.
 
 ## Template Variables
 
@@ -708,11 +742,14 @@ atlcli wiki export 12345 -t book -o book.docx --include-children --no-merge
 atlcli wiki export 12345 -t report -o report.docx --no-images
 ```
 
-### Suppress TOC Prompt
+### Suppress the field update prompt
 
 ```bash
-atlcli wiki export 12345 -t report -o report.docx --no-toc-prompt
+atlcli wiki export 12345 --template report -o report.docx --no-field-update-prompt
 ```
+
+A document without computed fields never prompts in the first place — see
+[Field update behavior](#field-update-behavior).
 
 ## Scroll Word Exporter Compatibility
 

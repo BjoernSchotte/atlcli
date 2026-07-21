@@ -15,7 +15,9 @@
  *      the serialized body VERBATIM — the page body is a DATA value, never
  *      re-parsed for tags, so literal braces and `$scroll.*` examples in the page
  *      survive (findings #7/#11);
- *   8. synthesize the code style, set `w:updateFields` so the TOC repaginates;
+ *   8. synthesize the code style, and set `w:updateFields` when — and only when —
+ *      the finished document carries a field whose refresh changes what the
+ *      reader sees (a TOC, caption numbering, a cross-reference);
  *   9. emit bytes + a structured {@link ExportReport}.
  *
  * **Engine (PLAN Decision F1, Option A):** docxtemplater free is the rendering
@@ -47,7 +49,14 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
-import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
+import {
+  documentPartNames,
+  needsFieldRefresh,
+  PLACEHOLDER_RE,
+  scanZip,
+  unzipDocx,
+  type ScanResult,
+} from "./scan.js";
 import {
   resolvePlaceholders,
   type CurrentUser,
@@ -249,6 +258,27 @@ export interface ExportInput {
    * keeps today's behavior byte-identical.
    */
   tableStyle?: { source: "template" | "confluence"; styleId?: string };
+  /**
+   * Whether the exported document asks Word to refresh its fields on open
+   * (`word/settings.xml` → `<w:updateFields w:val="…"/>`).
+   *
+   *  - `"auto"` (default) — set the flag only when the finished document
+   *    actually carries a field whose refresh changes what the reader sees
+   *    ({@link import("./scan.js").REFRESH_SENSITIVE_FIELDS}). A document whose
+   *    only fields are static `HYPERLINK`s gets no flag and opens without a
+   *    prompt; a document with a TOC, a caption `SEQ` or a `STYLEREF` running
+   *    head still gets it.
+   *  - `"never"` — suppress it, and pin a template's own `<w:updateFields>` to
+   *    `false` so the promise "Word will not prompt" actually holds. The CLI's
+   *    `--no-field-update-prompt` (alias `--no-toc-prompt`). A TOC then shows
+   *    placeholder text until the reader refreshes manually, which is why the
+   *    engine emits a `field-refresh-suppressed` note when it applies.
+   *  - `"always"` — the pre-`"auto"` behaviour, for a template carrying a field
+   *    type this engine does not classify.
+   *
+   * Defaults to `"auto"`.
+   */
+  updateFields?: "auto" | "always" | "never";
 }
 
 /**
@@ -493,9 +523,11 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // outright by `unzipDocx`, but field instructions that reach outside the
   // document are legitimate often enough that refusing them would break real
   // templates. Surface them instead — `preprocessScrollText` leaves field
-  // instructions untouched and `ensureUpdateFields` (step 6) tells Word to
-  // refresh every field on open, so this note is the ONLY place the user learns
-  // the exported document will re-run them.
+  // instructions untouched, so the exported document carries them verbatim and
+  // any field refresh (the flag in step 6b, the reader pressing F9, printing)
+  // re-runs them. This note is the ONLY place the user learns that.
+  // `INCLUDETEXT`/`INCLUDEPICTURE` are also refresh-sensitive, so a template
+  // carrying one gets the flag as well — the note stands either way.
   const riskyFields = scan.riskyFieldInstructions ?? [];
   if (riskyFields.length > 0) {
     flowNotes.push({
@@ -619,7 +651,15 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       });
     }
   }
-  ensureUpdateFields(rendered);
+  // 6b. Field-refresh flag. NOT unconditional: `<w:updateFields w:val="true"/>`
+  //     makes Word ask to refresh on every open, and asking a reader to refresh
+  //     116 static HYPERLINK fields — the shape of a real 62-page tree export
+  //     with no TOC — accomplishes nothing. Set it only when a field in the
+  //     FINISHED document would show something different afterwards, which is
+  //     why this runs on `rendered` (the body's own caption SEQ fields exist
+  //     only now) rather than on the template scan.
+  const refreshNote = applyFieldRefreshPolicy(rendered, input.updateFields ?? "auto");
+  if (refreshNote) flowNotes.push(refreshNote);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
   timings.renderMs = Date.now() - renderStart;
@@ -1950,37 +1990,114 @@ export function readBodySectPr(zip: PizZip): string | undefined {
 }
 
 /**
- * Ensure `word/settings.xml` carries `<w:updateFields w:val="true"/>` so Word
- * offers to repaginate a TOC field on open. Creates settings.xml (+ content-type
- * + relationship) when a bare template lacks it.
+ * Apply the {@link ExportInput.updateFields} policy to the RENDERED archive and
+ * return the report note it owes the user, if any.
+ *
+ * Three decisions are recorded here, because each is a judgement rather than a
+ * mechanism:
+ *
+ * 1. **`"auto"` sets the flag only when a field would change.** See
+ *    {@link import("./scan.js").REFRESH_SENSITIVE_FIELDS} for the type-by-type
+ *    reasoning. A TOC is decisive: without the flag Word shows an EMPTY table of
+ *    contents until the reader refreshes by hand, which is a worse surprise than
+ *    a prompt — so the flag stays the default whenever one is present.
+ *
+ * 2. **A template's own `<w:updateFields>` is honoured under `"auto"`.** When
+ *    nothing in the finished document needs a refresh, `word/settings.xml` is
+ *    left EXACTLY as the template author wrote it — including a deliberate
+ *    `w:val="true"`. They may know about a field type this engine does not
+ *    classify (a formula, an add-in field), and silently deleting a setting
+ *    someone typed on purpose is how you turn a fix into a bug report. What
+ *    `"auto"` manages is the flag this exporter would otherwise INJECT.
+ *    A template `w:val="false"` is still normalized to `true` when the document
+ *    does need a refresh: at that point the template's setting is about a
+ *    document that no longer exists, and an empty TOC is the visible cost.
+ *
+ * 3. **`"never"` overrides the template.** An explicit host flag is a stronger,
+ *    more recent signal than a template default, and `--no-field-update-prompt`
+ *    promises in its help text that Word will not prompt. Honouring a template's
+ *    `true` here would make that text false again — the very class of defect
+ *    this change exists to remove. Pinning to `w:val="false"` (rather than
+ *    deleting the element) keeps the suppression legible to whoever opens the
+ *    package next.
  */
-export function ensureUpdateFields(zip: PizZip): void {
+function applyFieldRefreshPolicy(
+  zip: PizZip,
+  mode: NonNullable<ExportInput["updateFields"]>
+): ExportNote | undefined {
+  if (mode === "never") {
+    // Only rewrite what is already there: with no `<w:updateFields>` in the
+    // package, "do not refresh" is already the state, and injecting an explicit
+    // `false` into a template that never mentioned it is noise.
+    writeUpdateFields(zip, false, { create: false });
+    // The note is owed only when the suppression COSTS something. A document of
+    // static hyperlinks would not have carried the flag anyway, and saying so
+    // would be noise on every export.
+    if (!needsFieldRefresh(zip)) return undefined;
+    return {
+      level: "info",
+      code: "field-refresh-suppressed",
+      message:
+        "Field refresh on open is suppressed, but this document contains computed fields " +
+        "(a table of contents, caption numbering or a cross-reference). They show placeholder " +
+        "or stale text until refreshed manually in Word (select all, then press F9).",
+    };
+  }
+  if (mode === "always" || needsFieldRefresh(zip)) {
+    writeUpdateFields(zip, true, { create: true });
+  }
+  return undefined;
+}
+
+/**
+ * Write `<w:updateFields w:val="…"/>` into `word/settings.xml`.
+ *
+ * Handles BOTH the self-closing (`<w:updateFields w:val="false"/>`) and the
+ * paired (`<w:updateFields w:val="false"></w:updateFields>`) forms — the paired
+ * form was once left as-is, so a template pinning the flag to false never
+ * refreshed. With `create: true` a missing settings.xml is synthesized and
+ * registered (content type + relationship); with `create: false` a package that
+ * declares no setting is left alone.
+ */
+function writeUpdateFields(zip: PizZip, value: boolean, opts: { create: boolean }): void {
   const path = "word/settings.xml";
+  const element = `<w:updateFields w:val="${value}"/>`;
   const existing = zip.file(path)?.asText();
   if (existing) {
     if (/<w:updateFields\b/.test(existing)) {
-      // Normalize BOTH the self-closing (`<w:updateFields w:val="false"/>`) and
-      // the paired (`<w:updateFields w:val="false"></w:updateFields>`) forms to a
-      // single self-closing `true` — the paired form was previously left as-is,
-      // so a template pinning the TOC to false never refreshed.
       const normalized = existing
-        .replace(/<w:updateFields\b[^>]*>[\s\S]*?<\/w:updateFields>/, '<w:updateFields w:val="true"/>')
-        .replace(/<w:updateFields\b[^>]*\/>/, '<w:updateFields w:val="true"/>');
+        .replace(/<w:updateFields\b[^>]*>[\s\S]*?<\/w:updateFields>/, element)
+        .replace(/<w:updateFields\b[^>]*\/>/, element);
       zip.file(path, normalized);
       return;
     }
+    if (!opts.create) return;
     // Insert as the first child of <w:settings …>.
-    const opened = existing.replace(/(<w:settings\b[^>]*>)/, '$1<w:updateFields w:val="true"/>');
-    zip.file(path, opened);
+    zip.file(path, existing.replace(/(<w:settings\b[^>]*>)/, `$1${element}`));
     return;
   }
+  if (!opts.create) return;
   // No settings.xml — synthesize one and register it.
   const settings =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
-    `<w:updateFields w:val="true"/></w:settings>`;
+    `${element}</w:settings>`;
   zip.file(path, settings);
   registerSettingsPart(zip);
+}
+
+/**
+ * Force `word/settings.xml` to carry `<w:updateFields w:val="true"/>`, creating
+ * settings.xml (+ content-type + relationship) when a bare template lacks it.
+ *
+ * This is the UNCONDITIONAL form, equivalent to `updateFields: "always"`. The
+ * export flow itself no longer calls it: since the field-refresh policy landed,
+ * `exportDocx` sets the flag only when a field in the finished document would
+ * actually change on refresh (see {@link applyFieldRefreshPolicy}). Retained as
+ * a named export for API stability, and as the primitive `"always"` uses.
+ */
+export function ensureUpdateFields(zip: PizZip): void {
+  writeUpdateFields(zip, true, { create: true });
 }
 
 function registerSettingsPart(zip: PizZip): void {

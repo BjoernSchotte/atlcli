@@ -408,6 +408,14 @@ export const EXPORT_NOTE_CODES = [
   "homepage-fetch-failed",
   "homepage-unavailable",
   "no-content-placeholder",
+  // The host asked for no field-refresh prompt (`--no-field-update-prompt`,
+  // alias `--no-toc-prompt`) on a document that DOES carry computed fields — a
+  // table of contents, caption numbering, a cross-reference. `info`: the export
+  // is exactly what was asked for, but "your TOC will be empty until you press
+  // F9" must not be something the reader discovers in Word. Only emitted when
+  // the suppression costs something; a document of static hyperlinks would not
+  // have carried the flag anyway.
+  "field-refresh-suppressed",
   "logo-skipped",
   "logo-embed-failed",
   "perf-timing",

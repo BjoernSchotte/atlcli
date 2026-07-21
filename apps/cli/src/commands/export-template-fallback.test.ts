@@ -272,3 +272,72 @@ describe("Gap 1: a docxtpl/Jinja template is reported, not silently rendered", (
     expect(report.issues.map((i) => i.code)).not.toContain("template-default-used");
   }, 60_000);
 });
+
+/**
+ * `-t` is the documented short form of `--template` — in `--help`, in the option
+ * table of `docs/confluence/export.md`, and in worked examples in both. It was
+ * read nowhere, so `-t` fell through to the bundled default and reported
+ * `template-default-used`: a documented option accepted and silently ignored,
+ * the same class as Gap 1 above.
+ *
+ * Both halves are asserted deliberately. The absence of the note alone would
+ * pass if the flag were read and the template still ignored, and the presence of
+ * template content alone would pass if the default happened to contain it — so
+ * the document must come FROM the named template, and the note must be gone.
+ */
+describe("short flag aliases the help advertises", () => {
+  it("-t names the template, exactly like --template", async () => {
+    const out = join(dir, "short-t.docx");
+    const { stdout, stderr, exitCode } = await runCli([
+      "--engine",
+      "ts",
+      "-t",
+      jinjaTemplate,
+      "-o",
+      out,
+      "--json",
+    ]);
+    expect(exitCode, stderr).toBe(0);
+    const report = parseReport(stdout, stderr);
+
+    // (a) the export used THIS template: the Jinja fixture's own placeholders
+    //     survive as literal text (and the bundled default has none of them).
+    const doc = readPart(new Uint8Array(await readFile(out)), "word/document.xml");
+    expect(doc).toContain("{{ title }}");
+    expect(report.issues.map((i) => i.code)).toContain("template-foreign-placeholders");
+    // (b) …and the CLI did not fall back.
+    expect(report.issues.map((i) => i.code)).not.toContain("template-default-used");
+  }, 60_000);
+
+  it("-t is rejected with --format pdf, like the long spelling", async () => {
+    // The PDF guard checks PRESENCE. Rejecting only `--template` would let `-t`
+    // through into an export that silently ignores it.
+    const { stdout, stderr, exitCode } = await runCli([
+      "--format",
+      "pdf",
+      "-t",
+      scrollTemplate,
+      "-o",
+      join(dir, "short-t.pdf"),
+      "--json",
+    ]);
+    expect(exitCode).not.toBe(0);
+    expect(`${stdout}${stderr}`).toContain("--template is DOCX-only");
+  }, 60_000);
+
+  it("-o names the output file, exactly like --output", async () => {
+    const out = join(dir, "short-o.docx");
+    const { stderr, exitCode } = await runCli([
+      "--engine",
+      "ts",
+      "--template",
+      scrollTemplate,
+      "-o",
+      out,
+      "--json",
+    ]);
+    expect(exitCode, stderr).toBe(0);
+    const doc = readPart(new Uint8Array(await readFile(out)), "word/document.xml");
+    expect(doc).toContain(PAGE.title);
+  }, 60_000);
+});
