@@ -33,12 +33,29 @@ const WORKFLOWS_DIR = join(REPO_ROOT, ".github", "workflows");
 const KNOWN_BAD_BUN_VERSIONS = new Set(["1.3.5"]);
 
 /**
- * Non-literal `bun-version` values that are deliberately not pinned:
- * `latest` on the publish/consumer-smoke jobs (they verify the packages work on
- * whatever Bun a consumer has), and the `env.BUN_VERSION` indirection in
- * `release.yml` (whose literal is checked through the env assignment itself).
+ * Non-literal `bun-version` values that are deliberately not a fixed version:
+ * the `env.BUN_VERSION` indirection in `release.yml` (whose literal is checked
+ * through the env assignment itself) and the `steps.pin.outputs.version` /
+ * matrix expressions that read the version out of `packageManager`, which is
+ * strictly better than repeating the literal because it cannot drift.
+ *
+ * `latest` is NOT on this list — see {@link latestOnlyOnNonBlockingJobs}.
  */
-const ALLOWED_NON_LITERAL = /^(latest|\$\{\{\s*env\.BUN_VERSION\s*\}\})$/;
+const ALLOWED_NON_LITERAL =
+  /^(\$\{\{\s*env\.BUN_VERSION\s*\}\}|\$\{\{\s*steps\.pin\.outputs\.version\s*\}\}|\$\{\{\s*matrix\.leg\s*==\s*'pinned'\s*&&\s*steps\.pin\.outputs\.version\s*\|\|\s*'latest'\s*\}\})$/;
+
+/**
+ * A floating `latest` is allowed ONLY where a red result cannot block anyone —
+ * i.e. the job (or its matrix leg) carries `continue-on-error`.
+ *
+ * The reason is diagnostic, not stylistic. Bun 1.3.5 crashed the Typst wasm
+ * compile on Linux; the failure surfaced as a red check that looked exactly
+ * like our own regression, and separating the two took a container repro and
+ * several hours. A blocking job on `latest` reproduces that ambiguity on
+ * Atlassian's schedule rather than ours. A non-blocking one turns the same
+ * event into a legible signal: latest red + pinned green = the runtime moved.
+ */
+const LATEST = "latest";
 
 async function pinnedByPackageManager(): Promise<string> {
   const manifest = JSON.parse(await readFile(join(REPO_ROOT, "package.json"), "utf8")) as {
@@ -96,12 +113,54 @@ describe("Bun version pin", () => {
     ).toBeGreaterThan(0);
 
     for (const pin of pins) {
+      if (pin.value === LATEST) continue; // covered by the next test
       if (ALLOWED_NON_LITERAL.test(pin.value)) continue;
       expect(
         pin.value,
         `${pin.file}:${pin.line} installs Bun ${pin.value} but package.json declares bun@${declared}. ` +
           `CI must run the runtime the release binaries embed.`
       ).toBe(declared);
+    }
+  });
+
+  it("declares the same Bun to local toolchain managers as to CI", async () => {
+    // Without this, `.tool-versions` is the one place the version can drift
+    // unnoticed: nothing in CI reads it, so a stale entry silently puts every
+    // developer on a different runtime than the one the release binaries
+    // embed — which is how a runtime-specific defect reaches users after
+    // passing on every machine that mattered.
+    const declared = await pinnedByPackageManager();
+    const toolVersions = await readFile(join(REPO_ROOT, ".tool-versions"), "utf8");
+    const match = /^bun\s+(\S+)\s*$/m.exec(toolVersions);
+    expect(match, ".tool-versions must carry a `bun <version>` line").not.toBeNull();
+    expect(
+      match![1],
+      `.tool-versions pins bun ${match![1]} but package.json declares bun@${declared}.`
+    ).toBe(declared);
+  });
+
+  it("only floats on `latest` where a red result cannot block anyone", async () => {
+    // Match pins that CAN RESOLVE to `latest`, not only those that spell it
+    // literally. The consumer-smoke pin is a matrix expression whose `latest`
+    // branch is real but invisible to an equality check — an earlier version of
+    // this test compared `=== "latest"`, found nothing, and passed vacuously
+    // while a blocking floating pin sat right there.
+    const floating = (await workflowBunPins()).filter((p) => new RegExp(`\\b${LATEST}\\b`).test(p.value));
+    expect(
+      floating.length,
+      "no pin can resolve to `latest` — if that is now true by design, delete this test rather than letting it pass on an empty set"
+    ).toBeGreaterThan(0);
+
+    for (const pin of floating) {
+      const text = await readFile(join(WORKFLOWS_DIR, pin.file), "utf8");
+      expect(
+        /^\s*continue-on-error:/m.test(text),
+        `${pin.file}:${pin.line} installs Bun \`latest\` on a job that can block. ` +
+          `A floating runtime that gates a merge makes "the runtime regressed" ` +
+          `indistinguishable from "we regressed" — which is exactly how Bun 1.3.5 ` +
+          `cost hours of diagnosis. Either pin it, or mark the job continue-on-error ` +
+          `so it reads as an early warning.`
+      ).toBe(true);
     }
   });
 });
