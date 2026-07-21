@@ -55,17 +55,54 @@
  * identical asset here would not rewrite anything, leaving the compiler VFS
  * with a dangling asset path. Asserted in `tests/pdf/job-store.test.ts`.
  *
- * ## Shared budget (informative — the eviction policy is T5.3's to land)
+ * ## One budget, one eviction policy (T5.6)
  *
- * `PDF_STORE_MAX_BYTES` is a *single* budget that the preview cache (T5.3) and
- * retained background jobs (T5.6) will both draw on. They are not equally
- * evictable: a preview is a cache and may be dropped at any time, whereas a
- * finished-but-unconsumed export job is the user's only copy of work they
- * waited for and may only be dropped by age (`PDF_JOB_MAX_AGE_MS`) or by an
- * explicit dismissal. Any eviction policy added here must respect that
- * asymmetry rather than evicting by size or recency alone.
+ * `PDF_STORE_MAX_BYTES` is a *single* budget with two tenants: the preview cache
+ * (T5.3, physically the separate `atlcli-pdf-preview` database) and retained
+ * background job records. Letting each feature enforce its own ceiling would
+ * mean two features independently filling one disk quota, and the loser would
+ * always be whichever wrote second.
+ *
+ * So admission control ({@link putPdfJob}, {@link completePdfJob}) plans over
+ * **both** tenants through {@link planStoreEviction}, in this order — cheapest
+ * loss first:
+ *
+ *   0. anything past `PDF_JOB_MAX_AGE_MS` — garbage under every policy;
+ *   1. **the preview cache** — a cache, rebuilt in one debounce;
+ *   2. spent job records — cancelled, failed, or complete-and-consumed;
+ *   3. preview *job* records — regenerable like the cache;
+ *   ∅. a running export, or a finished export nobody has collected yet:
+ *      **never evicted**. It is the only copy of work the user waited minutes
+ *      for, so a new export is refused rather than served by destroying it.
+ *
+ * Rule ∅ is the reason the policy is not "drop the biggest" or "drop the
+ * oldest": both would happily trade a finished 40 MiB space export for a 2 MiB
+ * preview. The cross-database half is reached through an injectable
+ * {@link SharedBudgetTenants} port whose default lazily imports
+ * `utils/jobs/preview-tenant.js` — lazily, because a static import would close
+ * the cycle `job-store → preview-tenant → preview-cache → job-store`.
+ *
+ * ## Terminal cleanup belongs to whoever outlives the panel
+ *
+ * `deletePdfJob` used to run from `compile-port.ts`'s `finally` — in the panel,
+ * i.e. exactly the context a background export is defined by *not* having. A
+ * closed panel therefore left a record holding a full bundle until the 24 h
+ * sweep. Now: reaching a terminal state **releases the source bundle**
+ * ({@link completePdfJob}, {@link failPdfJob}, {@link cancelPdfJob}) from the
+ * worker/offscreen side, which survives the panel; the panel may delete a whole
+ * record only once it has consumed the result ({@link markPdfJobConsumed}); and
+ * {@link sweepPdfJobs} is the backstop that fails a job whose worker never
+ * answered and deletes what nobody is coming back for.
  */
 import type { PdfCompilerDiagnostic, PdfSourceBundle } from "@atlcli/pdf/browser";
+import type { PdfJobKind } from "../messages.js";
+import {
+  isPdfJobInFlight,
+  planSweep,
+  planStoreEviction,
+  type BudgetEntry,
+  type SweepAction,
+} from "../jobs/model.js";
 
 const DB_NAME = "atlcli-pdf";
 /**
@@ -85,12 +122,32 @@ export const PDF_JOB_MAX_BYTES = 64 * 1024 * 1024;
 export const PDF_STORE_MAX_BYTES = 128 * 1024 * 1024;
 export const PDF_JOB_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Job lifecycle.
+ *
+ * `"prepared"` is the plan's **queued**: stored, compile requested, no worker
+ * has claimed it. The panel already renders it as the `queued` export phase.
+ * The literal is kept because it is what lives in `atlcli-pdf` today and what
+ * `workers/pdf-compiler.ts` compares against; `isPdfJobInFlight` is the name to
+ * reason with, so no caller has to remember the spelling.
+ */
 export type PdfJobStatus = "prepared" | "compiling" | "complete" | "failed" | "cancelled";
+
+/** "Page 37 of 210" — the only progress a caller can report before compiling. */
+export interface PdfJobProgress {
+  done: number;
+  total: number;
+}
 
 /**
  * The volatile record: everything a status transition touches, and nothing
  * else. Sized so that reading every one of them to enforce the store quota
  * costs no measurable memory.
+ *
+ * Everything added for T5.6 is **optional**, so a record written by the previous
+ * build (jobs live at most 24 h, so both can coexist across an update) still
+ * reads back cleanly with sane defaults rather than forcing a schema version
+ * bump and discarding an export in flight.
  */
 export interface StoredPdfJobMeta {
   id: string;
@@ -104,6 +161,36 @@ export interface StoredPdfJobMeta {
   diagnostics?: PdfCompilerDiagnostic[];
   compilerVersion?: string;
   error?: string;
+
+  // --- durability metadata (T5.6) ------------------------------------------
+  /**
+   * Scheduling class. Only `"export"` jobs are durable; a preview is panel-owned
+   * and swept as soon as it is terminal. Absent → `"export"` (the conservative
+   * reading of a record written before this field existed).
+   */
+  kind?: PdfJobKind;
+  /** Atlassian site the job belongs to, so the Jobs list stays per-site. */
+  siteOrigin?: string;
+  /** Document title, for the job row. */
+  title?: string;
+  /** What the download will be called. */
+  filename?: string;
+  /** Human-readable scope ("Page", "Tree · 37 pages"). */
+  scopeLabel?: string;
+  /** Compile progress, when the caller can report one. */
+  progress?: PdfJobProgress;
+  /** Last transition — job age in the UI is measured from `createdAt`, staleness from here. */
+  updatedAt?: number;
+  /**
+   * Wall clock after which an unfinished job is declared failed.
+   *
+   * The watchdog for the case durability exists for: a service worker torn down
+   * mid-compile drops the `sendMessage` response, and without a deadline the
+   * record would read `compiling` until the 24 h sweep with nobody to answer it.
+   */
+  deadlineAt?: number;
+  /** True once the panel has handed these bytes to the user. */
+  consumed?: boolean;
 }
 
 /** A job with whichever payloads the caller asked for (and that still exist). */
@@ -164,6 +251,86 @@ function sourceBundleBytes(bundle: PdfSourceBundle): number {
 /** Bytes one job holds, from its meta record alone — no payload read. */
 function storedJobBytes(meta: StoredPdfJobMeta): number {
   return meta.inputBytes + meta.outputBytes;
+}
+
+/**
+ * The other tenant of {@link PDF_STORE_MAX_BYTES}: the preview cache.
+ *
+ * A port rather than an import, so this module keeps no knowledge of the preview
+ * database and the two can be tested apart. The default implementation is loaded
+ * lazily (see the module comment on the import cycle).
+ */
+export interface SharedBudgetTenants {
+  /** What the other tenants currently hold. */
+  inventory(): Promise<readonly BudgetEntry[]>;
+  /** Drop one entry `inventory()` reported. Best-effort. */
+  evict(id: string): Promise<void>;
+}
+
+const lazyPreviewTenants: SharedBudgetTenants = {
+  async inventory() {
+    const module = await import("../jobs/preview-tenant.js");
+    return module.previewCacheTenant().inventory();
+  },
+  async evict(id) {
+    const module = await import("../jobs/preview-tenant.js");
+    await module.previewCacheTenant().evict(id);
+  },
+};
+
+let sharedTenants: SharedBudgetTenants = lazyPreviewTenants;
+
+/**
+ * Replace the co-tenant view of the shared budget (tests, and a host that has no
+ * preview cache). Returns a restore function.
+ */
+export function setSharedBudgetTenants(tenants: SharedBudgetTenants): () => void {
+  const previous = sharedTenants;
+  sharedTenants = tenants;
+  return () => {
+    sharedTenants = previous;
+  };
+}
+
+/** Map a meta record onto the shared budget's structural entry. */
+function budgetEntryOf(meta: StoredPdfJobMeta): BudgetEntry {
+  return {
+    id: meta.id,
+    tenant: "job",
+    bytes: storedJobBytes(meta),
+    createdAt: meta.createdAt,
+    status: meta.status,
+    kind: meta.kind ?? "export",
+    consumed: meta.consumed === true,
+  };
+}
+
+/**
+ * Make room for `incomingBytes` across **both** tenants, before any write
+ * transaction opens.
+ *
+ * Deliberately outside the transaction: IndexedDB transactions cannot span an
+ * `await`, and the preview cache is a different database entirely. The write
+ * path re-checks the quota inside its own transaction afterwards, so a
+ * concurrent writer that ate the space we just freed still gets a clean
+ * rejection rather than an overdrawn store.
+ */
+async function makeRoomFor(
+  incomingBytes: number,
+  factory: IDBFactory | undefined,
+  now: number
+): Promise<void> {
+  const jobs = (await listPdfJobMeta(factory)).map(budgetEntryOf);
+  const others = await sharedTenants.inventory().catch(() => [] as readonly BudgetEntry[]);
+  const plan = planStoreEviction([...jobs, ...others], incomingBytes, {
+    limit: PDF_STORE_MAX_BYTES,
+    now,
+    maxAgeMs: PDF_JOB_MAX_AGE_MS,
+  });
+  for (const entry of plan.evict) {
+    if (entry.tenant === "job") await deletePdfJob(entry.id, factory).catch(() => undefined);
+    else await sharedTenants.evict(entry.id).catch(() => undefined);
+  }
 }
 
 /**
@@ -267,8 +434,23 @@ async function withDb<T>(factory: IDBFactory | undefined, run: (db: IDBDatabase)
   }
 }
 
+/** Everything a caller may record about a job when it is stored. */
+export interface PutPdfJobInput {
+  id: string;
+  sourceIdentity: string;
+  bundle: PdfSourceBundle;
+  createdAt?: number;
+  kind?: PdfJobKind;
+  siteOrigin?: string;
+  title?: string;
+  filename?: string;
+  scopeLabel?: string;
+  deadlineAt?: number;
+  progress?: PdfJobProgress;
+}
+
 export async function putPdfJob(
-  input: { id: string; sourceIdentity: string; bundle: PdfSourceBundle; createdAt?: number },
+  input: PutPdfJobInput,
   factory?: IDBFactory
 ): Promise<StoredPdfJob> {
   if (!isPdfJobId(input.id)) throw new Error("Invalid PDF job id.");
@@ -279,14 +461,26 @@ export async function putPdfJob(
   if (inputBytes > PDF_JOB_MAX_BYTES) {
     throw new Error(`PDF export input exceeds the ${PDF_JOB_MAX_BYTES} byte job limit.`);
   }
+  const createdAt = input.createdAt ?? Date.now();
   const meta: StoredPdfJobMeta = {
     id: input.id,
     sourceIdentity: input.sourceIdentity,
-    createdAt: input.createdAt ?? Date.now(),
+    createdAt,
     status: "prepared",
     inputBytes,
     outputBytes: 0,
+    kind: input.kind ?? "export",
+    updatedAt: createdAt,
+    ...(input.siteOrigin === undefined ? {} : { siteOrigin: input.siteOrigin }),
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.filename === undefined ? {} : { filename: input.filename }),
+    ...(input.scopeLabel === undefined ? {} : { scopeLabel: input.scopeLabel }),
+    ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
+    ...(input.progress === undefined ? {} : { progress: input.progress }),
   };
+  // Admission control across BOTH tenants of the shared budget, before the write
+  // transaction opens (see the module comment).
+  await makeRoomFor(inputBytes, factory, createdAt);
   return withDb(factory, (db) =>
     transaction<StoredPdfJob>(db, [META_STORE, BUNDLE_STORE], "readwrite", (stores, done, reject) => {
       // Quota from the META store only: numbers, never payloads.
@@ -322,6 +516,39 @@ export async function putPdfJob(
       };
     })
   );
+}
+
+/**
+ * Every meta record — the durable source of truth the panel re-attaches to.
+ *
+ * Cheap by construction: the meta store holds numbers and short strings only,
+ * measured at +0.0 MiB for a store whose payloads total 64 MiB. That is what
+ * makes "read the whole inventory" an acceptable primitive for the Jobs list,
+ * the quota check and the sweep alike.
+ */
+export function listPdfJobMeta(factory?: IDBFactory): Promise<StoredPdfJobMeta[]> {
+  return withDb(factory, (db) =>
+    transaction<StoredPdfJobMeta[]>(db, [META_STORE], "readonly", (stores, done, reject) => {
+      const request = stores[META_STORE]!.getAll();
+      request.onsuccess = () => done(request.result as StoredPdfJobMeta[]);
+      request.onerror = () => reject(request.error);
+    })
+  );
+}
+
+/**
+ * How many jobs a compiler still owns, **from the durable records**.
+ *
+ * This is what replaces `background.ts#activePdfJobs`. That counter was a plain
+ * in-memory `let` that reset to `0` on every service-worker restart, so a
+ * restart mid-compile let the *next* job's completion arm the offscreen idle
+ * timer under a job that was still running — and five minutes later the idle
+ * close tore down the offscreen document, killing it. The records survive the
+ * restart; the counter did not.
+ */
+export async function countInFlightPdfJobs(factory?: IDBFactory): Promise<number> {
+  const all = await listPdfJobMeta(factory);
+  return all.filter((meta) => isPdfJobInFlight(meta.status)).length;
 }
 
 /** The small record alone — the cheap read, and what quota logic uses. */
@@ -430,7 +657,7 @@ export function claimPdfJob(id: string, factory?: IDBFactory): Promise<ClaimedPd
               done({ ...current, bundle: row.bundle });
               return;
             }
-            const next: StoredPdfJobMeta = { ...current, status: "compiling" };
+            const next: StoredPdfJobMeta = { ...current, status: "compiling", updatedAt: Date.now() };
             const write = stores[META_STORE]!.put(next);
             write.onerror = () => reject(write.error);
             write.onsuccess = () => done({ ...next, bundle: row.bundle });
@@ -438,6 +665,37 @@ export function claimPdfJob(id: string, factory?: IDBFactory): Promise<ClaimedPd
         };
       }
     )
+  );
+}
+
+/**
+ * Release a job's **source bundle** — up to 64 MiB — keeping the meta record.
+ *
+ * Runs as its own transaction, deliberately: `completePdfJob`'s transaction is
+ * scoped to `jobs` + `results` precisely so that finishing a job cannot touch a
+ * payload store, and the measured guarantee behind that scope
+ * (`tests/pdf/job-store.test.ts`) is worth more than making the release atomic
+ * with the completion. If a service worker dies between the two commits, the
+ * record simply still holds its bundle until {@link sweepPdfJobs} — the same
+ * backstop that covers every other half-finished transition.
+ */
+export async function releasePdfJobBundle(id: string, factory?: IDBFactory): Promise<void> {
+  await withDb(factory, (db) =>
+    transaction<undefined>(db, [META_STORE, BUNDLE_STORE], "readwrite", (stores, done, reject) => {
+      const request = stores[META_STORE]!.get(id);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const current = request.result as StoredPdfJobMeta | undefined;
+        stores[BUNDLE_STORE]!.delete(id);
+        if (!current || current.inputBytes === 0) {
+          done(undefined);
+          return;
+        }
+        const write = stores[META_STORE]!.put({ ...current, inputBytes: 0 });
+        write.onsuccess = () => done(undefined);
+        write.onerror = () => reject(write.error);
+      };
+    })
   );
 }
 
@@ -449,7 +707,13 @@ export async function completePdfJob(
   if (output.pdf.byteLength > PDF_JOB_MAX_BYTES) {
     throw new Error(`PDF result exceeds the ${PDF_JOB_MAX_BYTES} byte job limit.`);
   }
-  return withDb(factory, (db) =>
+  // The result is about to be added while the bundle is about to go away, so the
+  // net demand is the difference. Asking for the full result would evict a
+  // co-tenant to make room for bytes the same job is already holding.
+  const current = await getPdfJobMeta(id, factory).catch(() => undefined);
+  const net = output.pdf.byteLength - (current?.inputBytes ?? 0);
+  if (net > 0) await makeRoomFor(net, factory, Date.now());
+  const completed = await withDb(factory, (db) =>
     transaction<StoredPdfJobMeta | undefined>(
       db,
       [META_STORE, RESULT_STORE],
@@ -477,6 +741,7 @@ export async function completePdfJob(
             outputBytes: output.pdf.byteLength,
             diagnostics: output.diagnostics,
             compilerVersion: output.compilerVersion,
+            updatedAt: Date.now(),
           };
           const addResult = stores[RESULT_STORE]!.put({ id, pdf: output.pdf });
           addResult.onerror = () => reject(addResult.error);
@@ -489,6 +754,13 @@ export async function completePdfJob(
       }
     )
   );
+  // Terminal state reached — the source bundle is dead weight from here on, and
+  // this runs in the worker/offscreen context, which outlives the panel.
+  if (completed?.status === "complete") {
+    await releasePdfJobBundle(id, factory).catch(() => undefined);
+    return { ...completed, inputBytes: 0 };
+  }
+  return completed;
 }
 
 /** Meta-only status transition. Never opens a payload store. */
@@ -520,16 +792,61 @@ function updateMeta(
   );
 }
 
-export function failPdfJob(
+/**
+ * Fail a job and **release its bundle**.
+ *
+ * Same ownership rule as {@link completePdfJob}: this runs on the
+ * worker/offscreen side, so the 64 MiB of source is dropped by the context that
+ * survives the panel rather than waiting for the 24 h sweep. The meta record
+ * (with its error and diagnostics) stays — a failed export the user can read
+ * about is the point of re-attachment.
+ */
+export async function failPdfJob(
   id: string,
   error: string,
   diagnostics: PdfCompilerDiagnostic[] = [],
   factory?: IDBFactory
 ): Promise<StoredPdfJobMeta | undefined> {
-  return updateMeta(id, (meta) =>
-    meta.status === "prepared" || meta.status === "compiling"
-      ? { ...meta, status: "failed", error, diagnostics }
+  const failed = await updateMeta(id, (meta) =>
+    isPdfJobInFlight(meta.status)
+      ? { ...meta, status: "failed", error, diagnostics, updatedAt: Date.now() }
       : null, factory
+  );
+  if (failed?.status === "failed" && failed.inputBytes > 0) {
+    await releasePdfJobBundle(id, factory).catch(() => undefined);
+    return { ...failed, inputBytes: 0 };
+  }
+  return failed;
+}
+
+/** Record compile progress ("Page 37 of 210"). Meta-only; never touches a payload. */
+export function updatePdfJobProgress(
+  id: string,
+  progress: PdfJobProgress,
+  factory?: IDBFactory
+): Promise<StoredPdfJobMeta | undefined> {
+  return updateMeta(
+    id,
+    (meta) => (isPdfJobInFlight(meta.status) ? { ...meta, progress, updatedAt: Date.now() } : null),
+    factory
+  );
+}
+
+/**
+ * Mark a finished job as collected.
+ *
+ * The panel's licence to delete: `compile-port.ts` may remove a whole record
+ * only for a job it is actively watching **and** whose bytes it has handed to
+ * the user. Everything else is the sweep's business.
+ */
+export function markPdfJobConsumed(
+  id: string,
+  factory?: IDBFactory
+): Promise<StoredPdfJobMeta | undefined> {
+  return updateMeta(
+    id,
+    (meta) => (meta.consumed ? null : { ...meta, consumed: true, updatedAt: Date.now() }),
+    factory
   );
 }
 
@@ -542,6 +859,10 @@ export function failPdfJob(
  * payload rows and zeroes the byte counts, so the quota reflects the release
  * immediately. The meta record survives on purpose — the re-attach UI needs to
  * tell "cancelled" apart from "never existed".
+ *
+ * A **preview** job is the exception: nobody re-attaches to a preview, so a
+ * cancelled one is removed outright. Otherwise debounced preview churn would
+ * leave a trail of `cancelled` tombstones in a store the Jobs list reads.
  */
 export function cancelPdfJob(id: string, factory?: IDBFactory): Promise<StoredPdfJobMeta | undefined> {
   return withDb(factory, (db) =>
@@ -564,7 +885,16 @@ export function cancelPdfJob(id: string, factory?: IDBFactory): Promise<StoredPd
           error: "PDF export was cancelled.",
           inputBytes: 0,
           outputBytes: 0,
+          updatedAt: Date.now(),
         };
+        if (current.kind === "preview") {
+          stores[BUNDLE_STORE]!.delete(id);
+          stores[RESULT_STORE]!.delete(id);
+          const drop = stores[META_STORE]!.delete(id);
+          drop.onsuccess = () => done(next);
+          drop.onerror = () => reject(drop.error);
+          return;
+        }
         stores[BUNDLE_STORE]!.delete(id);
         stores[RESULT_STORE]!.delete(id);
         const write = stores[META_STORE]!.put(next);
@@ -585,6 +915,43 @@ export async function deletePdfJob(id: string, factory?: IDBFactory): Promise<vo
       request.onerror = () => reject(request.error);
     })
   );
+}
+
+/**
+ * The backstop that keeps "durable" from meaning "stuck".
+ *
+ * Runs on the service-worker side (startup, and whenever the panel talks to it),
+ * and applies {@link planSweep}:
+ *
+ *   - a job whose `deadlineAt` has passed while still in flight ends **failed**
+ *     with a recoverable message — the case an MV3 worker teardown creates, and
+ *     the reason a record can never read `compiling` forever;
+ *   - consumed, preview, expired and long-terminal records are deleted.
+ *
+ * Returns what it did, so a caller can log or badge on it.
+ */
+export async function sweepPdfJobs(
+  options: { now?: number; maxAgeMs?: number; terminalGraceMs?: number } = {},
+  factory?: IDBFactory
+): Promise<SweepAction[]> {
+  const now = options.now ?? Date.now();
+  const all = await listPdfJobMeta(factory);
+  const actions = planSweep(
+    all.map((meta) => ({
+      id: meta.id,
+      status: meta.status,
+      kind: meta.kind ?? "export",
+      createdAt: meta.createdAt,
+      ...(meta.deadlineAt === undefined ? {} : { deadlineAt: meta.deadlineAt }),
+      consumed: meta.consumed === true,
+    })),
+    { now, maxAgeMs: options.maxAgeMs ?? PDF_JOB_MAX_AGE_MS, ...(options.terminalGraceMs === undefined ? {} : { terminalGraceMs: options.terminalGraceMs }) }
+  );
+  for (const action of actions) {
+    if (action.action === "delete") await deletePdfJob(action.id, factory).catch(() => undefined);
+    else await failPdfJob(action.id, action.error, [], factory).catch(() => undefined);
+  }
+  return actions;
 }
 
 export async function cleanupPdfJobs(

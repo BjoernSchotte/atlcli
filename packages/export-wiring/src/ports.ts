@@ -32,17 +32,34 @@ import {
  * The slice of `JiraClient` the Jira port drives, expressed structurally.
  *
  * Structural rather than `import type { JiraClient } from "@atlcli/jira"` for
- * two reasons: `@atlcli/jira`'s barrel re-exports the Bun-native webhook server
- * (so a type import would drag a non-isomorphic module into every host's type
- * graph), and a host that has no `@atlcli/jira` dependency at all can still
+ * two reasons: `@atlcli/jira`'s DEFAULT barrel re-exports the Bun-native webhook
+ * server (so a type import from it would drag a non-isomorphic module into every
+ * host's type graph — `@atlcli/jira/browser` exists for hosts that need the real
+ * class), and a host that has no `@atlcli/jira` dependency at all can still
  * satisfy this interface. A real `JiraClient` instance is assignable with no
  * cast — `packages/export-wiring/src/ports.test.ts` pins that.
+ *
+ * `signal` is part of the copy because it is part of the real signatures (spec
+ * 010 wave 2 added it to `JiraClient.getIssue`/`.search`). Leaving it out is not
+ * a harmless simplification: a caller typed against this interface then cannot
+ * pass the export's `AbortSignal` at all, and the only cancellation left is
+ * "check `signal.aborted` after the request finished" — which does not stop a
+ * large JQL search that the user has already given up on.
  */
 export interface JiraClientLike {
-  getIssue(keyOrId: string, options?: { fields?: string[]; expand?: string }): Promise<JiraIssueLike>;
+  getIssue(
+    keyOrId: string,
+    options?: { fields?: string[]; expand?: string; signal?: AbortSignal }
+  ): Promise<JiraIssueLike>;
   search(
     jql: string,
-    options?: { maxResults?: number; fields?: string[]; expand?: string; nextPageToken?: string }
+    options?: {
+      maxResults?: number;
+      fields?: string[];
+      expand?: string;
+      nextPageToken?: string;
+      signal?: AbortSignal;
+    }
   ): Promise<{ issues: JiraIssueLike[] }>;
 }
 

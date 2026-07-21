@@ -3,29 +3,38 @@
  *
  * **This list is the extension point.** Adding a screen is one entry here plus
  * its component — the shell (`AppShell.tsx`) never learns a screen id, and no
- * navigation code changes. Wave-2 additions land as:
+ * navigation code changes. What landed since Phase 0:
  *
- *   - `ScopeSection`  → part of the Export screen (T5.1), not a new entry;
- *   - `PdfPreview`    → `{ id: "preview", requirements: [{ kind: "capability",
- *                        capability: "pdf-preview" }, { kind: "loaded-page" }] }`
- *                        (T5.3) — the same component is what the large-preview
- *                        tab page mounts, with a different shell;
- *   - `JobsSection`   → replaces the Activity placeholder's `component` (T5.6);
- *                        its `durable-jobs` requirement is already declared, so
- *                        the entry becomes available the moment a host
- *                        advertises the capability.
+ *   - `ScopeSection`  → part of the Export screen (T5.1), correctly *not* a
+ *                       registry entry: it is one form above both engines;
+ *   - `PreviewScreen` → registered (T5.3). Its `pdf-preview` requirement means
+ *                       it stays disabled-with-a-reason until a host advertises
+ *                       the capability — the registry behaving correctly, not a
+ *                       bug. The large-preview tab page mounts the *same*
+ *                       component with its own shell.
+ *   - `TemplatesScreen` → the T5.2 library, replacing the Phase 0 placeholder.
+ *                       Requires `template-library`, so a host that cannot
+ *                       store templates drops it without the Export screen
+ *                       noticing.
+ *   - `JobsSection`   → still the Activity placeholder (T5.6); its
+ *                       `durable-jobs` requirement is already declared, so the
+ *                       entry becomes available the moment a host advertises
+ *                       the capability.
  *
  * Chat is deliberately out of scope; nothing here makes it awkward to add.
  */
-import { ClipboardList, FileDown, Info, LayoutTemplate, Settings } from "lucide-react";
+import { FileDown, Info, Settings } from "lucide-react";
 import type { ScreenDefinition } from "../../utils/screens/registry.js";
 import { ExportScreen } from "./ExportScreen.js";
+import { previewScreenDefinition } from "./PreviewScreen.js";
+import { templatesScreenDefinition } from "./TemplatesScreen.js";
 import { SettingsScreen } from "./SettingsScreen.js";
 import { AboutScreen } from "./AboutScreen.js";
-import { createPlaceholderScreen } from "./PlaceholderScreen.js";
+import { jobsScreenDefinition } from "./JobsScreen.js";
 
 export const SCREEN_IDS = {
   export: "export",
+  preview: "preview",
   templates: "templates",
   activity: "activity",
   settings: "settings",
@@ -44,33 +53,10 @@ export const defaultScreens: readonly ScreenDefinition[] = [
     // detection state itself, so the user always has somewhere to land and a
     // sentence explaining what to do next.
   },
+  previewScreenDefinition,
+  templatesScreenDefinition,
   {
-    id: SCREEN_IDS.templates,
-    labelKey: "screen.templates.label",
-    descriptionKey: "screen.templates.description",
-    icon: LayoutTemplate,
-    component: createPlaceholderScreen(
-      "screen.templates.label",
-      "placeholder.templates",
-      "templates-screen"
-    ),
-    order: 20,
-  },
-  {
-    id: SCREEN_IDS.activity,
-    labelKey: "screen.activity.label",
-    descriptionKey: "screen.activity.description",
-    icon: ClipboardList,
-    component: createPlaceholderScreen(
-      "screen.activity.label",
-      "placeholder.activity",
-      "activity-screen"
-    ),
-    // No host advertises `durable-jobs` yet (T5.6), so this entry stays visible
-    // and disabled **with a reason** — which is exactly the behaviour the
-    // registry exists to guarantee.
-    requirements: [{ kind: "capability", capability: "durable-jobs" }],
-    order: 30,
+    ...jobsScreenDefinition,
   },
   {
     id: SCREEN_IDS.settings,

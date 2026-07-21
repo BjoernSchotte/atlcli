@@ -22,6 +22,13 @@ import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
+import { createDurableIdleGate } from "../utils/jobs/idle-gate.js";
+import { jobBadgeText } from "../utils/jobs/model.js";
+import {
+  countInFlightPdfJobs,
+  listPdfJobMeta,
+  sweepPdfJobs,
+} from "../utils/pdf/job-store.js";
 import { createObserverSession } from "../utils/observer-session.js";
 import {
   currentDetection,
@@ -49,7 +56,7 @@ const offscreenIdle = createIdleTimer({
 });
 
 /**
- * Idle-close policy for the offscreen document (spec 010 T5.3).
+ * Idle-close policy for the offscreen document (spec 010 T5.3/T5.6).
  *
  * **Preview compiles are offscreen activity like any other**, which is what
  * lets the warm compiler survive a debounce pause: previews arrive as ordinary
@@ -59,13 +66,80 @@ const offscreenIdle = createIdleTimer({
  * that goes quiet still closes the document and releases the ≥ 20 MB wasm
  * artifact.
  *
- * NOTE (T5.6, deliberately not fixed here): this counter is still in-memory and
- * resets to zero when the service worker restarts, so a restart mid-compile can
- * arm the timer under a running job (Architecture point 3(b)). Deriving it from
- * the durable job records is T5.6's task; T5.3 only routes preview traffic
- * through the same, existing path rather than inventing a second one.
+ * T5.6 closes Architecture point 3(b): the tracker's counter is in-memory and
+ * resets to zero when the service worker restarts, so after a restart a *second*
+ * job's completion would arm the timer under a first job that is still
+ * compiling — and five minutes later close the document out from under it. The
+ * counter still decides "did this worker's own traffic stop"; whether the timer
+ * may actually be armed is decided by {@link createDurableIdleGate} from the
+ * durable job records, which survived the restart. Both former call sites
+ * (`runWasmSmoke`'s `touch()`, `runPdfCompile`'s `end()`) funnel through the
+ * gate's `reset()`, so neither can arm the timer under a running compile.
  */
-const offscreenActivity = createOffscreenActivityTracker(offscreenIdle);
+const durableIdle = createDurableIdleGate({
+  timer: offscreenIdle,
+  countInFlight: () => countInFlightPdfJobs(),
+  onError: (error) => console.error("in-flight job lookup failed", error),
+});
+const offscreenActivity = createOffscreenActivityTracker(durableIdle);
+
+/**
+ * Toolbar badge: the only notification channel this folder may use.
+ *
+ * `chrome.notifications` would need a new manifest permission and this folder
+ * ships none (`tests/manifest.test.ts`). The badge shows how many finished
+ * exports are waiting to be collected, is set when a job finishes with **no side
+ * panel open**, and is cleared the moment the panel talks to the worker again.
+ * Optional-chained throughout: a host without an `action` key simply has no
+ * badge, and losing a notification must never take a compile down with it.
+ */
+async function isPanelOpen(): Promise<boolean> {
+  try {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
+    return contexts.length > 0;
+  } catch {
+    // Older Chrome, or a filter it does not know: assume open, which only ever
+    // costs a badge that was not shown.
+    return true;
+  }
+}
+
+async function setJobBadge(): Promise<void> {
+  try {
+    const all = await listPdfJobMeta();
+    const waiting = all.filter(
+      (meta) =>
+        (meta.kind ?? "export") === "export" &&
+        meta.status === "complete" &&
+        meta.outputBytes > 0 &&
+        meta.consumed !== true
+    ).length;
+    await chrome.action?.setBadgeText?.({ text: jobBadgeText(waiting) });
+  } catch (error) {
+    console.debug("[atlcli] badge update skipped", error);
+  }
+}
+
+function clearJobBadge(): void {
+  void Promise.resolve(chrome.action?.setBadgeText?.({ text: "" })).catch(() => undefined);
+}
+
+/**
+ * The watchdog + retention pass, run from the worker (which outlives the panel).
+ *
+ * Not `chrome.alarms` — that is a permission this folder does not have. Instead
+ * it runs on worker start-up and, throttled, whenever the panel talks to the
+ * worker: both are moments where being wrong about a stuck record is about to
+ * become visible.
+ */
+const SWEEP_THROTTLE_MS = 60_000;
+let lastSweep = 0;
+function sweepJobs(force = false): void {
+  const now = Date.now();
+  if (!force && now - lastSweep < SWEEP_THROTTLE_MS) return;
+  lastSweep = now;
+  void sweepPdfJobs().catch((error) => console.error("PDF job sweep failed", error));
+}
 
 /**
  * Effect wired into the pure router: ensure the offscreen document exists,
@@ -110,6 +184,16 @@ async function runPdfCompile(
     return response.ok ? { ok: true } : { ok: false, error: response.error };
   } finally {
     offscreenActivity.end();
+    // A job that finished while nobody was watching is the whole point of
+    // durable jobs — say so on the toolbar rather than losing it silently.
+    // Previews are excluded: they are never retained, so there is nothing to
+    // collect, and a debounced preview loop would poll `getContexts` per
+    // keystroke for an answer that is always "nothing to show".
+    if (hints?.job !== "preview") {
+      void isPanelOpen().then((open) => {
+        if (!open) void setJobBadge();
+      });
+    }
   }
 }
 
@@ -195,16 +279,27 @@ export default defineBackground({
       return { state: result.state, value: result.detection };
     });
 
+  // Start-up pass: a worker that just woke may be looking at records whose
+  // compile died with the previous one.
+  sweepJobs(true);
+
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
-    handleExtMessage(message, sendResponse, {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    const handled = handleExtMessage(message, sendResponse, {
       runWasmSmoke,
       getCurrentEntity,
       runPdfCompile,
       runPdfCancel,
-    })
-  );
+    });
+    if (handled) {
+      // A panel-facing request means a panel is open and looking: the badge has
+      // done its job, and this is a cheap moment to run the watchdog.
+      clearJobBadge();
+      sweepJobs();
+    }
+    return handled;
+  });
 
   // Tab switch: resolve the newly-active tab's URL, then observe it.
   chrome.tabs.onActivated.addListener((activeInfo) => {

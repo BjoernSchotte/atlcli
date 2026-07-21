@@ -6,6 +6,22 @@
  * not at module scope: the module-scope call in the old `App.tsx:33` is what
  * made the panel unimportable outside an extension, and therefore why no test
  * ever imported it.
+ *
+ * ## Why `countScopePages` is absent (spec 010 T5.1, baseline A2)
+ *
+ * The port is optional precisely so a host can decline, and this one does. The
+ * shared orchestration has **no discovery-only walk**: `fetchExportTree`
+ * discovers and body-fetches in ONE pass (`TreeFetchOptions` carries no
+ * bodies-off flag), so an honest pre-flight count would cost the same requests
+ * as the export it is meant to let the user cancel — and would fetch every page
+ * body twice for the users who say yes.
+ *
+ * The two alternatives are worse. A CQL `totalSize` probe would be exact only
+ * for an unfiltered `space` scope and silently wrong for `tree` scope or any
+ * label filter; a second traversal implemented here would be extension-only
+ * engine logic, which this folder's hard rule forbids. So the space-export
+ * confirmation uses its count-free wording, which is the documented fallback,
+ * and this stays unwired until the shared layer offers a cheap count.
  */
 import { profileFromTabUrl } from "../../../utils/profile.js";
 import { ReadError, loadConfluencePage } from "../../../utils/read-path.js";
@@ -14,20 +30,26 @@ import { createSiteContext } from "./site-context.js";
 import { watchChromePageContext } from "./page-context.js";
 import { chromePdfExportPort } from "./pdf.js";
 import { chromeDocxExportPort, chromeDocxTemplateStore } from "./docx.js";
+import { chromeTemplateLibrary } from "./templates.js";
 import { chromeSettingsStore } from "./settings.js";
 
 /**
  * What the Chrome side panel can actually do today.
  *
- * `durable-jobs` (T5.6) and `pdf-preview` (T5.3) are deliberately absent: the
- * Activity screen is registered against `durable-jobs` and therefore renders as
- * disabled-with-a-reason until the capability is real. Adding the capability
- * here is what turns those screens on — no shell change.
+ * This list is the ONLY switch for the screens registered against a capability:
+ * a screen whose capability is missing renders disabled-with-a-reason rather
+ * than erroring, which is why an unlisted-but-implemented feature looks exactly
+ * like an unimplemented one. `pdf-preview` (T5.3), `template-library` (T5.2) and
+ * `durable-jobs` (T5.6) are listed here because their implementations landed —
+ * adding the capability is the whole activation, no shell change.
  */
-const CHROME_CAPABILITIES: readonly HostCapability[] = [
+export const CHROME_CAPABILITIES: readonly HostCapability[] = [
   "pdf-export",
   "docx-export",
   "docx-template-store",
+  "pdf-preview",
+  "template-library",
+  "durable-jobs",
   "settings-persistence",
 ];
 
@@ -60,6 +82,8 @@ export function createChromePorts(): AppPorts {
     pdf: chromePdfExportPort(),
     docx: chromeDocxExportPort(),
     docxTemplates: chromeDocxTemplateStore(site),
+    templates: chromeTemplateLibrary(site),
     settings: chromeSettingsStore(),
+    // `countScopePages` is deliberately NOT supplied — see the note above.
   };
 }

@@ -4,7 +4,3512 @@
 > Do NOT edit by hand — regenerate with `bun scripts/api-report.ts --update`
 > and have the diff reviewed (spec 009, API freeze & guards).
 
-### Entry point `.`
+### Entry point `. (browser)`
+
+```ts
+// export: AdfDocument
+export interface AdfDocument {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    content?: AdfNode[];
+    text?: string;
+    attrs?: Record<string, unknown>;
+    marks?: Array<{
+        type: string;
+        attrs?: Record<string, unknown>;
+    }>;
+}
+
+// export: BulkCreateResult
+export interface BulkCreateResult {
+    issues: Array<{
+        id: string;
+        key: string;
+        self: string;
+    }>;
+    errors: Array<{
+        status: number;
+        elementErrors?: {
+            errors: Record<string, string>;
+            errorMessages: string[];
+        };
+    }>;
+}
+
+// export: BulkOperationResult
+export interface BulkOperationResult {
+    taskId: string;
+    status: string;
+}
+
+// export: BulkOperationSummary
+export interface BulkOperationSummary {
+    total: number;
+    successful: number;
+    failed: number;
+    errors: Array<{
+        key: string;
+        error: string;
+    }>;
+}
+
+// export: BurndownDataPoint
+export interface BurndownDataPoint {
+    date: string;
+    remaining: number;
+    ideal: number;
+    completed: number;
+}
+
+// export: CreateFilterInput
+export interface CreateFilterInput {
+    name: string;
+    description?: string;
+    jql: string;
+    favourite?: boolean;
+}
+
+// export: CreateIssueInput
+export interface CreateIssueInput {
+    fields: {
+        project: {
+            key: string;
+        } | {
+            id: string;
+        };
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        summary: string;
+        description?: AdfDocument | string;
+        priority?: {
+            name: string;
+        } | {
+            id: string;
+        };
+        assignee?: {
+            accountId: string;
+        } | {
+            name: string;
+        };
+        labels?: string[];
+        components?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        fixVersions?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        parent?: {
+            key: string;
+        } | {
+            id: string;
+        };
+        duedate?: string;
+        [key: string]: unknown;
+    };
+}
+
+// export: CreateRemoteLinkInput
+export interface CreateRemoteLinkInput {
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+    };
+}
+
+// export: ExportData
+export interface ExportData {
+    exportedAt: string;
+    query: string;
+    issues: ExportedIssue[];
+}
+
+// export: ExportedAttachment
+export interface ExportedAttachment {
+    filename: string;
+    content: string;
+    size: number;
+    mimeType: string;
+}
+
+// export: ExportedComment
+export interface ExportedComment {
+    author: string;
+    body: string;
+    created: string;
+}
+
+// export: ExportedIssue
+export interface ExportedIssue {
+    key: string;
+    fields: Record<string, unknown>;
+    comments?: ExportedComment[];
+    attachments?: ExportedAttachment[];
+}
+
+// export: ExportOptions
+export interface ExportOptions {
+    format: "csv" | "json";
+    includeComments?: boolean;
+    includeAttachments?: boolean;
+    outputPath: string;
+}
+
+// export: ImportIssue
+export interface ImportIssue {
+    fields: {
+        summary: string;
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        [key: string]: unknown;
+    };
+    comments?: Array<{
+        body: string;
+    }>;
+    attachments?: Array<{
+        filename: string;
+        content: string;
+    }>;
+}
+
+// export: ImportResult
+export interface ImportResult {
+    total: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    issues: Array<{
+        key?: string;
+        summary: string;
+        status: "created" | "skipped" | "failed";
+        error?: string;
+    }>;
+}
+
+// export: JiraAttachment
+export interface JiraAttachment {
+    id: string;
+    filename: string;
+    author: JiraUser;
+    created: string;
+    size: number;
+    mimeType: string;
+    content: string;
+}
+
+// export: JiraBoard
+export interface JiraBoard {
+    id: number;
+    name: string;
+    type: "scrum" | "kanban" | "simple";
+    location?: {
+        projectId?: number;
+        projectKey?: string;
+        projectName?: string;
+    };
+}
+
+// export: JiraChangelogEntry
+export interface JiraChangelogEntry {
+    id: string;
+    author: JiraUser;
+    created: string;
+    items: Array<{
+        field: string;
+        fieldtype: string;
+        from: string | null;
+        fromString: string | null;
+        to: string | null;
+        toString: string | null;
+    }>;
+}
+
+// export: JiraClient
+export declare class JiraClient {
+    private baseUrl;
+    private authHeader;
+    private useSession;
+    private maxRetries;
+    private baseDelayMs;
+    private isCloud;
+    private tlsOptions;
+    private sessionRedirectPolicy;
+    constructor(profile: Profile);
+    private get apiPath();
+    private get agilePath();
+    private sleep;
+    private applyFetchOptions;
+    private request;
+    getCurrentUser(): Promise<JiraUser>;
+    listProjects(options?: {
+        startAt?: number;
+        maxResults?: number;
+        orderBy?: string;
+        query?: string;
+        typeKey?: string;
+        expand?: string;
+    }): Promise<{
+        values: JiraProject[];
+        total: number;
+    }>;
+    getProject(keyOrId: string): Promise<JiraProject>;
+    createProject(params: {
+        key: string;
+        name: string;
+        projectTypeKey: "software" | "service_desk" | "business";
+        projectTemplateKey?: string;
+        description?: string;
+        leadAccountId?: string;
+        url?: string;
+        assigneeType?: "PROJECT_LEAD" | "UNASSIGNED";
+    }): Promise<JiraProject>;
+    getProjectIssueTypes(keyOrId: string): Promise<JiraIssueType[]>;
+    private parseProject;
+    getProjectComponents(projectKeyOrId: string): Promise<JiraComponent[]>;
+    getComponent(id: string): Promise<JiraComponent>;
+    createComponent(input: {
+        project: string;
+        name: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    updateComponent(id: string, input: {
+        name?: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    deleteComponent(id: string): Promise<void>;
+    getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
+    getVersion(id: string): Promise<JiraVersion>;
+    createVersion(input: {
+        projectId: string;
+        name: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+    }): Promise<JiraVersion>;
+    updateVersion(id: string, input: {
+        name?: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+        released?: boolean;
+        archived?: boolean;
+    }): Promise<JiraVersion>;
+    deleteVersion(id: string): Promise<void>;
+    getFields(): Promise<JiraField[]>;
+    getPriorities(): Promise<Array<{
+        id: string;
+        name: string;
+        description?: string;
+        iconUrl?: string;
+    }>>;
+    detectStoryPointsField(): Promise<string | null>;
+    getFieldContexts(fieldId: string): Promise<{
+        values: Array<{
+            id: string;
+            name: string;
+            isGlobalContext: boolean;
+            isAnyIssueType: boolean;
+        }>;
+    }>;
+    getFieldContextOptions(fieldId: string, contextId: string): Promise<{
+        values: Array<{
+            id: string;
+            value: string;
+            disabled?: boolean;
+        }>;
+    }>;
+    getFieldOptions(fieldId: string): Promise<Array<{
+        id: string;
+        value: string;
+        disabled?: boolean;
+    }>>;
+    listFilters(options?: {
+        filterName?: string;
+        startAt?: number;
+        maxResults?: number;
+        expand?: string;
+        favourite?: boolean;
+    }): Promise<{
+        values: JiraFilter[];
+        total: number;
+    }>;
+    getFavouriteFilters(): Promise<JiraFilter[]>;
+    getFilter(id: string, options?: {
+        expand?: string;
+    }): Promise<JiraFilter>;
+    createFilter(input: CreateFilterInput): Promise<JiraFilter>;
+    updateFilter(id: string, input: UpdateFilterInput): Promise<JiraFilter>;
+    deleteFilter(id: string): Promise<void>;
+    addFilterPermission(id: string, permission: {
+        type: "global" | "project" | "group" | "user";
+        projectId?: string;
+        groupname?: string;
+        accountId?: string;
+    }): Promise<JiraFilterPermission>;
+    getFilterPermissions(id: string): Promise<JiraFilterPermission[]>;
+    deleteFilterPermission(filterId: string, permissionId: number): Promise<void>;
+    getIssue(keyOrId: string, options?: {
+        fields?: string[];
+        expand?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraIssue>;
+    createIssue(input: CreateIssueInput): Promise<JiraIssue>;
+    createIssuesBulk(issues: CreateIssueInput[]): Promise<BulkCreateResult>;
+    updateIssue(keyOrId: string, input: UpdateIssueInput, options?: {
+        notifyUsers?: boolean;
+    }): Promise<void>;
+    deleteIssue(keyOrId: string, options?: {
+        deleteSubtasks?: boolean;
+    }): Promise<void>;
+    getTransitions(keyOrId: string): Promise<JiraTransition[]>;
+    transitionIssue(keyOrId: string, input: TransitionIssueInput): Promise<void>;
+    assignIssue(keyOrId: string, assignee: {
+        accountId: string;
+    } | {
+        name: string;
+    } | null): Promise<void>;
+    search(jql: string, options?: {
+        maxResults?: number;
+        fields?: string[];
+        expand?: string;
+        nextPageToken?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    searchGet(jql: string, options?: {
+        maxResults?: number;
+        fields?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    getComments(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        comments: JiraComment[];
+        total: number;
+    }>;
+    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    getWorklogs(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        worklogs: JiraWorklog[];
+        total: number;
+    }>;
+    getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
+    addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
+        started?: string;
+        comment?: string;
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        reduceBy?: string;
+    }): Promise<JiraWorklog>;
+    updateWorklog(keyOrId: string, worklogId: string, updates: {
+        timeSpentSeconds?: number;
+        started?: string;
+        comment?: string;
+    }): Promise<JiraWorklog>;
+    deleteWorklog(keyOrId: string, worklogId: string, options?: {
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        increaseBy?: string;
+    }): Promise<void>;
+    addLabels(keyOrId: string, labels: string[]): Promise<void>;
+    removeLabels(keyOrId: string, labels: string[]): Promise<void>;
+    createIssueLink(params: {
+        type: {
+            name: string;
+        } | {
+            id: string;
+        };
+        inwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        outwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        comment?: {
+            body: AdfDocument | string;
+        };
+    }): Promise<void>;
+    deleteIssueLink(linkId: string): Promise<void>;
+    getIssueLinkTypes(): Promise<{
+        issueLinkTypes: Array<{
+            id: string;
+            name: string;
+            inward: string;
+            outward: string;
+        }>;
+    }>;
+    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
+    createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
+        id: number;
+        self: string;
+    }>;
+    deleteRemoteLink(keyOrId: string, linkId: number): Promise<void>;
+    deleteRemoteLinkByGlobalId(keyOrId: string, globalId: string): Promise<void>;
+    listBoards(options?: {
+        startAt?: number;
+        maxResults?: number;
+        type?: "scrum" | "kanban" | "simple";
+        name?: string;
+        projectKeyOrId?: string;
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            type: string;
+        }>;
+        total: number;
+    }>;
+    getBoard(boardId: number): Promise<{
+        id: number;
+        name: string;
+        type: string;
+        location?: {
+            projectKey?: string;
+        };
+    }>;
+    listSprints(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        state?: "future" | "active" | "closed";
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            state: string;
+            startDate?: string;
+            endDate?: string;
+        }>;
+        total: number;
+    }>;
+    getBoardBacklog(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    getBoardIssues(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    createSprint(params: {
+        name: string;
+        originBoardId: number;
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    getSprint(sprintId: number): Promise<JiraSprint>;
+    updateSprint(sprintId: number, params: {
+        name?: string;
+        state?: "future" | "active" | "closed";
+        startDate?: string;
+        endDate?: string;
+        completeDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    startSprint(sprintId: number, params?: {
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    closeSprint(sprintId: number, completeDate?: string): Promise<JiraSprint>;
+    deleteSprint(sprintId: number): Promise<void>;
+    getSprintIssues(sprintId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
+    moveIssuesToBacklog(issues: string[]): Promise<void>;
+    getEpicIssues(epicKeyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<JiraSearchResults>;
+    moveIssuesToEpic(epicKeyOrId: string, issues: string[]): Promise<void>;
+    removeIssuesFromEpic(issues: string[]): Promise<void>;
+    listBoardEpics(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        done?: boolean;
+    }): Promise<{
+        values: JiraEpic[];
+        total: number;
+    }>;
+    getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    downloadAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Buffer>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    getWatchers(keyOrId: string): Promise<{
+        watchers: JiraUser[];
+        watchCount: number;
+        isWatching: boolean;
+    }>;
+    addWatcher(keyOrId: string, accountId: string): Promise<void>;
+    removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    registerWebhooks(webhooks: Array<{
+        jqlFilter: string;
+        events: string[];
+    }>, url: string): Promise<{
+        webhookRegistrationResult: Array<{
+            createdWebhookId?: number;
+            errors?: string[];
+        }>;
+    }>;
+    getWebhooks(startAt?: number, maxResults?: number): Promise<{
+        values: Array<{
+            id: number;
+            jqlFilter: string;
+            fieldIdsFilter?: string[];
+            issuePropertyKeysFilter?: string[];
+            events: string[];
+            expirationDate?: string;
+        }>;
+        startAt: number;
+        maxResults: number;
+        total: number;
+    }>;
+    deleteWebhooks(webhookIds: number[]): Promise<void>;
+    refreshWebhooks(webhookIds: number[]): Promise<{
+        expirationDate: string;
+    }>;
+    textToAdf(text: string): AdfDocument;
+    adfToText(adf: AdfDocument | string | null | undefined): string;
+}
+
+// export: JiraComment
+export interface JiraComment {
+    id: string;
+    author: JiraUser;
+    body: AdfDocument | string;
+    created: string;
+    updated: string;
+    updateAuthor?: JiraUser;
+}
+
+// export: JiraComponent
+export interface JiraComponent {
+    id: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    assigneeType?: string;
+}
+
+// export: JiraEpic
+export interface JiraEpic {
+    id: number;
+    key: string;
+    name: string;
+    summary: string;
+    done: boolean;
+    color?: {
+        key: string;
+    };
+}
+
+// export: JiraErrorResponse
+export interface JiraErrorResponse {
+    errorMessages?: string[];
+    errors?: Record<string, string>;
+    status?: number;
+}
+
+// export: JiraField
+export interface JiraField {
+    id: string;
+    key?: string;
+    name: string;
+    custom: boolean;
+    orderable?: boolean;
+    navigable?: boolean;
+    searchable?: boolean;
+    clauseNames?: string[];
+    schema?: {
+        type: string;
+        system?: string;
+        custom?: string;
+        customId?: number;
+    };
+}
+
+// export: JiraFilter
+export interface JiraFilter {
+    id: string;
+    name: string;
+    description?: string;
+    jql: string;
+    favourite: boolean;
+    owner?: JiraUser;
+    self?: string;
+    sharePermissions?: JiraFilterPermission[];
+    viewUrl?: string;
+    searchUrl?: string;
+}
+
+// export: JiraFilterPermission
+export interface JiraFilterPermission {
+    id?: number;
+    type: "global" | "project" | "group" | "user" | "loggedin" | "project-unknown";
+    project?: {
+        id: string;
+        key?: string;
+        name?: string;
+    };
+    group?: {
+        name: string;
+    };
+    user?: JiraUser;
+}
+
+// export: JiraIssue
+export interface JiraIssue {
+    id: string;
+    key: string;
+    self: string;
+    fields: JiraIssueFields;
+    changelog?: {
+        histories: JiraChangelogEntry[];
+    };
+}
+
+// export: JiraIssueFields
+export interface JiraIssueFields {
+    summary: string;
+    description?: AdfDocument | string | null;
+    issuetype: JiraIssueType;
+    project: {
+        id: string;
+        key: string;
+        name?: string;
+    };
+    status: JiraStatus;
+    priority?: JiraPriority;
+    assignee?: JiraUser | null;
+    reporter?: JiraUser;
+    creator?: JiraUser;
+    created?: string;
+    updated?: string;
+    resolutiondate?: string;
+    resolution?: JiraResolution | null;
+    duedate?: string | null;
+    labels?: string[];
+    components?: JiraComponent[];
+    fixVersions?: JiraVersion[];
+    versions?: JiraVersion[];
+    parent?: JiraIssueRef;
+    subtasks?: JiraIssueRef[];
+    issuelinks?: JiraIssueLink[];
+    timetracking?: {
+        originalEstimate?: string;
+        remainingEstimate?: string;
+        timeSpent?: string;
+        originalEstimateSeconds?: number;
+        remainingEstimateSeconds?: number;
+        timeSpentSeconds?: number;
+    };
+    [key: `customfield_${number}`]: unknown;
+}
+
+// export: JiraIssueLink
+export interface JiraIssueLink {
+    id: string;
+    type: JiraIssueLinkType;
+    inwardIssue?: JiraIssueRef;
+    outwardIssue?: JiraIssueRef;
+}
+
+// export: JiraIssueLinkType
+export interface JiraIssueLinkType {
+    id: string;
+    name: string;
+    inward: string;
+    outward: string;
+}
+
+// export: JiraIssueRef
+export interface JiraIssueRef {
+    id: string;
+    key: string;
+    fields?: {
+        summary?: string;
+        status?: JiraStatus;
+        issuetype?: JiraIssueType;
+    };
+}
+
+// export: JiraIssueType
+export interface JiraIssueType {
+    id: string;
+    name: string;
+    description?: string;
+    subtask: boolean;
+    iconUrl?: string;
+    hierarchyLevel?: number;
+}
+
+// export: JiraPriority
+export interface JiraPriority {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+}
+
+// export: JiraProject
+export interface JiraProject {
+    id: string;
+    key: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    url?: string;
+    projectTypeKey?: string;
+    style?: string;
+    avatarUrls?: Record<string, string>;
+    simplified?: boolean;
+}
+
+// export: JiraProjectCategory
+export interface JiraProjectCategory {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraRemoteLink
+export interface JiraRemoteLink {
+    id?: number;
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+        status?: {
+            resolved?: boolean;
+            icon?: {
+                url16x16?: string;
+                title?: string;
+                link?: string;
+            };
+        };
+    };
+}
+
+// export: JiraResolution
+export interface JiraResolution {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraSearchResults
+// @deprecated JiraSearchResults.startAt — Use nextPageToken for pagination
+export interface JiraSearchResults {
+    issues: JiraIssue[];
+    startAt: number;
+    maxResults: number;
+    total: number;
+    nextPageToken?: string;
+}
+
+// export: JiraSprint
+export interface JiraSprint {
+    id: number;
+    name: string;
+    state: "future" | "active" | "closed";
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    goal?: string;
+    boardId?: number;
+}
+
+// export: JiraStatus
+export interface JiraStatus {
+    id: string;
+    name: string;
+    description?: string;
+    statusCategory?: {
+        id: number;
+        key: string;
+        name: string;
+        colorName?: string;
+    };
+}
+
+// export: JiraTransition
+export interface JiraTransition {
+    id: string;
+    name: string;
+    to: JiraStatus;
+    fields?: Record<string, JiraTransitionField>;
+}
+
+// export: JiraTransitionField
+export interface JiraTransitionField {
+    required: boolean;
+    name: string;
+    fieldId: string;
+    allowedValues?: unknown[];
+}
+
+// export: JiraUser
+export interface JiraUser {
+    accountId?: string;
+    name?: string;
+    displayName: string;
+    emailAddress?: string;
+    avatarUrls?: Record<string, string>;
+    active?: boolean;
+}
+
+// export: JiraVersion
+export interface JiraVersion {
+    id: string;
+    name: string;
+    description?: string;
+    released?: boolean;
+    releaseDate?: string;
+    startDate?: string;
+    archived?: boolean;
+}
+
+// export: JiraWorklog
+export interface JiraWorklog {
+    id: string;
+    author: JiraUser;
+    updateAuthor?: JiraUser;
+    comment?: AdfDocument | string;
+    created: string;
+    updated: string;
+    started: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    issueId: string;
+}
+
+// export: SprintMetrics
+export interface SprintMetrics {
+    sprintId: number;
+    sprintName: string;
+    state: string;
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    committedPoints: number;
+    completedPoints: number;
+    totalIssues: number;
+    completedIssues: number;
+    incompleteIssues: number;
+    addedDuringSprint: number;
+    removedDuringSprint: number;
+    scopeChangePercent: number;
+    sayDoRatio: number;
+}
+
+// export: TransitionIssueInput
+export interface TransitionIssueInput {
+    transition: {
+        id: string;
+    } | {
+        name: string;
+    };
+    fields?: Record<string, unknown>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: UpdateFilterInput
+export interface UpdateFilterInput {
+    name?: string;
+    description?: string;
+    jql?: string;
+    favourite?: boolean;
+}
+
+// export: UpdateIssueInput
+export interface UpdateIssueInput {
+    fields?: Partial<CreateIssueInput["fields"]>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: VelocityTrend
+export interface VelocityTrend {
+    boardId: number;
+    boardName: string;
+    sprints: Array<{
+        id: number;
+        name: string;
+        velocity: number;
+        completedIssues: number;
+    }>;
+    averageVelocity: number;
+    trend: number;
+}
+
+// export: WorklogReport
+export interface WorklogReport {
+    user: string;
+    userId?: string;
+    dateRange: {
+        from: string;
+        to: string;
+    };
+    summary: {
+        totalTimeSeconds: number;
+        totalTimeHuman: string;
+        worklogCount: number;
+        issueCount: number;
+        averagePerDay: string;
+    };
+    worklogs: WorklogWithIssue[];
+    byIssue?: Record<string, WorklogWithIssue[]>;
+    byDate?: Record<string, WorklogWithIssue[]>;
+}
+
+// export: WorklogWithIssue
+export interface WorklogWithIssue {
+    issueKey: string;
+    issueSummary: string;
+    worklogId: string;
+    author: string;
+    authorId?: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    started: string;
+    comment?: string;
+}
+```
+
+### Entry point `. (default)`
+
+```ts
+// export: AdfDocument
+export interface AdfDocument {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    content?: AdfNode[];
+    text?: string;
+    attrs?: Record<string, unknown>;
+    marks?: Array<{
+        type: string;
+        attrs?: Record<string, unknown>;
+    }>;
+}
+
+// export: aggregateWorklogs
+export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: string, userId: string | undefined, dateRange: {
+    from: string;
+    to: string;
+}, groupBy?: "issue" | "date"): WorklogReport;
+
+// export: BulkCreateResult
+export interface BulkCreateResult {
+    issues: Array<{
+        id: string;
+        key: string;
+        self: string;
+    }>;
+    errors: Array<{
+        status: number;
+        elementErrors?: {
+            errors: Record<string, string>;
+            errorMessages: string[];
+        };
+    }>;
+}
+
+// export: BulkOperationResult
+export interface BulkOperationResult {
+    taskId: string;
+    status: string;
+}
+
+// export: BulkOperationSummary
+export interface BulkOperationSummary {
+    total: number;
+    successful: number;
+    failed: number;
+    errors: Array<{
+        key: string;
+        error: string;
+    }>;
+}
+
+// export: BurndownDataPoint
+export interface BurndownDataPoint {
+    date: string;
+    remaining: number;
+    ideal: number;
+    completed: number;
+}
+
+// export: calculateBurndown
+export declare function calculateBurndown(sprint: JiraSprint, issuesWithChangelog: JiraIssue[], pointsField: string): BurndownDataPoint[];
+
+// export: calculateSprintMetrics
+export declare function calculateSprintMetrics(sprint: JiraSprint, issues: JiraIssue[], pointsField: string, issuesWithChangelog?: JiraIssue[]): SprintMetrics;
+
+// export: calculateVelocityTrend
+export declare function calculateVelocityTrend(boardId: number, boardName: string, sprintMetrics: SprintMetrics[]): VelocityTrend;
+
+// export: cancelTimer
+export declare function cancelTimer(): TimerState;
+
+// export: clearTimer
+export declare function clearTimer(): void;
+
+// export: collectExportData
+export declare function collectExportData(client: JiraClient, issues: JiraIssue[], options: ExportOptions, onProgress?: (current: number, total: number, key: string) => void): Promise<ExportedIssue[]>;
+
+// export: CreateFilterInput
+export interface CreateFilterInput {
+    name: string;
+    description?: string;
+    jql: string;
+    favourite?: boolean;
+}
+
+// export: CreateIssueInput
+export interface CreateIssueInput {
+    fields: {
+        project: {
+            key: string;
+        } | {
+            id: string;
+        };
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        summary: string;
+        description?: AdfDocument | string;
+        priority?: {
+            name: string;
+        } | {
+            id: string;
+        };
+        assignee?: {
+            accountId: string;
+        } | {
+            name: string;
+        };
+        labels?: string[];
+        components?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        fixVersions?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        parent?: {
+            key: string;
+        } | {
+            id: string;
+        };
+        duedate?: string;
+        [key: string]: unknown;
+    };
+}
+
+// export: CreateRemoteLinkInput
+export interface CreateRemoteLinkInput {
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+    };
+}
+
+// export: deleteTemplate
+// @deprecated deleteTemplate — Use JiraTemplateStorage.delete() instead
+export declare function deleteTemplate(name: string): Promise<void>;
+
+// export: ensureMigrated
+export declare function ensureMigrated(): Promise<{
+    migrated: string[];
+    skipped: string[];
+    errors: string[];
+} | null>;
+
+// export: ExportData
+export interface ExportData {
+    exportedAt: string;
+    query: string;
+    issues: ExportedIssue[];
+}
+
+// export: ExportedAttachment
+export interface ExportedAttachment {
+    filename: string;
+    content: string;
+    size: number;
+    mimeType: string;
+}
+
+// export: ExportedComment
+export interface ExportedComment {
+    author: string;
+    body: string;
+    created: string;
+}
+
+// export: ExportedIssue
+export interface ExportedIssue {
+    key: string;
+    fields: Record<string, unknown>;
+    comments?: ExportedComment[];
+    attachments?: ExportedAttachment[];
+}
+
+// export: ExportOptions
+export interface ExportOptions {
+    format: "csv" | "json";
+    includeComments?: boolean;
+    includeAttachments?: boolean;
+    outputPath: string;
+}
+
+// export: formatElapsed
+export declare function formatElapsed(seconds: number): string;
+
+// export: formatSprintMetrics
+export declare function formatSprintMetrics(metrics: SprintMetrics): string;
+
+// export: formatWebhookEvent
+export declare function formatWebhookEvent(payload: JiraWebhookPayload): string;
+
+// export: formatWorklogDate
+export declare function formatWorklogDate(date?: Date): string;
+
+// export: generateProgressBar
+export declare function generateProgressBar(completed: number, total: number, width?: number): string;
+
+// export: getElapsedSeconds
+export declare function getElapsedSeconds(timer: TimerState | null): number;
+
+// export: getJiraTemplatesBaseDir
+export declare function getJiraTemplatesBaseDir(): string;
+
+// export: getLegacyTemplatesDir
+export declare function getLegacyTemplatesDir(): string;
+
+// export: getStoryPoints
+export declare function getStoryPoints(issue: JiraIssue, pointsField: string): number;
+
+// export: getTemplateFieldNames
+export declare function getTemplateFieldNames(template: JiraTemplate): string[];
+
+// export: getTemplatesDir
+// @deprecated getTemplatesDir — Use GlobalJiraTemplateStorage instead
+export declare function getTemplatesDir(): string;
+
+// export: getTimerPath
+export declare function getTimerPath(): string;
+
+// export: GlobalJiraTemplateStorage
+export declare class GlobalJiraTemplateStorage extends BaseJiraTemplateStorage {
+    protected getDir(): string;
+    protected getSource(path: string): JiraTemplateSource;
+    protected getLevel(): "global";
+}
+
+// export: ImportIssue
+export interface ImportIssue {
+    fields: {
+        summary: string;
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        [key: string]: unknown;
+    };
+    comments?: Array<{
+        body: string;
+    }>;
+    attachments?: Array<{
+        filename: string;
+        content: string;
+    }>;
+}
+
+// export: importIssues
+export declare function importIssues(client: JiraClient, issues: ImportIssue[], options: {
+    project: string;
+    dryRun?: boolean;
+    skipAttachments?: boolean;
+}, onProgress?: (current: number, total: number, summary: string, status: string) => void): Promise<ImportResult>;
+
+// export: ImportResult
+export interface ImportResult {
+    total: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    issues: Array<{
+        key?: string;
+        summary: string;
+        status: "created" | "skipped" | "failed";
+        error?: string;
+    }>;
+}
+
+// export: isIssueComplete
+export declare function isIssueComplete(issue: JiraIssue): boolean;
+
+// export: issuesToCsv
+export declare function issuesToCsv(issues: ExportedIssue[], includeComments?: boolean, includeAttachments?: boolean): string;
+
+// export: issuesToJson
+export declare function issuesToJson(data: ExportData): string;
+
+// export: issueToTemplate
+export declare function issueToTemplate(issue: JiraIssue, name: string, description?: string): JiraTemplate;
+
+// export: JiraAttachment
+export interface JiraAttachment {
+    id: string;
+    filename: string;
+    author: JiraUser;
+    created: string;
+    size: number;
+    mimeType: string;
+    content: string;
+}
+
+// export: JiraBoard
+export interface JiraBoard {
+    id: number;
+    name: string;
+    type: "scrum" | "kanban" | "simple";
+    location?: {
+        projectId?: number;
+        projectKey?: string;
+        projectName?: string;
+    };
+}
+
+// export: JiraChangelogEntry
+export interface JiraChangelogEntry {
+    id: string;
+    author: JiraUser;
+    created: string;
+    items: Array<{
+        field: string;
+        fieldtype: string;
+        from: string | null;
+        fromString: string | null;
+        to: string | null;
+        toString: string | null;
+    }>;
+}
+
+// export: JiraClient
+export declare class JiraClient {
+    private baseUrl;
+    private authHeader;
+    private useSession;
+    private maxRetries;
+    private baseDelayMs;
+    private isCloud;
+    private tlsOptions;
+    private sessionRedirectPolicy;
+    constructor(profile: Profile);
+    private get apiPath();
+    private get agilePath();
+    private sleep;
+    private applyFetchOptions;
+    private request;
+    getCurrentUser(): Promise<JiraUser>;
+    listProjects(options?: {
+        startAt?: number;
+        maxResults?: number;
+        orderBy?: string;
+        query?: string;
+        typeKey?: string;
+        expand?: string;
+    }): Promise<{
+        values: JiraProject[];
+        total: number;
+    }>;
+    getProject(keyOrId: string): Promise<JiraProject>;
+    createProject(params: {
+        key: string;
+        name: string;
+        projectTypeKey: "software" | "service_desk" | "business";
+        projectTemplateKey?: string;
+        description?: string;
+        leadAccountId?: string;
+        url?: string;
+        assigneeType?: "PROJECT_LEAD" | "UNASSIGNED";
+    }): Promise<JiraProject>;
+    getProjectIssueTypes(keyOrId: string): Promise<JiraIssueType[]>;
+    private parseProject;
+    getProjectComponents(projectKeyOrId: string): Promise<JiraComponent[]>;
+    getComponent(id: string): Promise<JiraComponent>;
+    createComponent(input: {
+        project: string;
+        name: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    updateComponent(id: string, input: {
+        name?: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    deleteComponent(id: string): Promise<void>;
+    getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
+    getVersion(id: string): Promise<JiraVersion>;
+    createVersion(input: {
+        projectId: string;
+        name: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+    }): Promise<JiraVersion>;
+    updateVersion(id: string, input: {
+        name?: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+        released?: boolean;
+        archived?: boolean;
+    }): Promise<JiraVersion>;
+    deleteVersion(id: string): Promise<void>;
+    getFields(): Promise<JiraField[]>;
+    getPriorities(): Promise<Array<{
+        id: string;
+        name: string;
+        description?: string;
+        iconUrl?: string;
+    }>>;
+    detectStoryPointsField(): Promise<string | null>;
+    getFieldContexts(fieldId: string): Promise<{
+        values: Array<{
+            id: string;
+            name: string;
+            isGlobalContext: boolean;
+            isAnyIssueType: boolean;
+        }>;
+    }>;
+    getFieldContextOptions(fieldId: string, contextId: string): Promise<{
+        values: Array<{
+            id: string;
+            value: string;
+            disabled?: boolean;
+        }>;
+    }>;
+    getFieldOptions(fieldId: string): Promise<Array<{
+        id: string;
+        value: string;
+        disabled?: boolean;
+    }>>;
+    listFilters(options?: {
+        filterName?: string;
+        startAt?: number;
+        maxResults?: number;
+        expand?: string;
+        favourite?: boolean;
+    }): Promise<{
+        values: JiraFilter[];
+        total: number;
+    }>;
+    getFavouriteFilters(): Promise<JiraFilter[]>;
+    getFilter(id: string, options?: {
+        expand?: string;
+    }): Promise<JiraFilter>;
+    createFilter(input: CreateFilterInput): Promise<JiraFilter>;
+    updateFilter(id: string, input: UpdateFilterInput): Promise<JiraFilter>;
+    deleteFilter(id: string): Promise<void>;
+    addFilterPermission(id: string, permission: {
+        type: "global" | "project" | "group" | "user";
+        projectId?: string;
+        groupname?: string;
+        accountId?: string;
+    }): Promise<JiraFilterPermission>;
+    getFilterPermissions(id: string): Promise<JiraFilterPermission[]>;
+    deleteFilterPermission(filterId: string, permissionId: number): Promise<void>;
+    getIssue(keyOrId: string, options?: {
+        fields?: string[];
+        expand?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraIssue>;
+    createIssue(input: CreateIssueInput): Promise<JiraIssue>;
+    createIssuesBulk(issues: CreateIssueInput[]): Promise<BulkCreateResult>;
+    updateIssue(keyOrId: string, input: UpdateIssueInput, options?: {
+        notifyUsers?: boolean;
+    }): Promise<void>;
+    deleteIssue(keyOrId: string, options?: {
+        deleteSubtasks?: boolean;
+    }): Promise<void>;
+    getTransitions(keyOrId: string): Promise<JiraTransition[]>;
+    transitionIssue(keyOrId: string, input: TransitionIssueInput): Promise<void>;
+    assignIssue(keyOrId: string, assignee: {
+        accountId: string;
+    } | {
+        name: string;
+    } | null): Promise<void>;
+    search(jql: string, options?: {
+        maxResults?: number;
+        fields?: string[];
+        expand?: string;
+        nextPageToken?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    searchGet(jql: string, options?: {
+        maxResults?: number;
+        fields?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    getComments(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        comments: JiraComment[];
+        total: number;
+    }>;
+    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    getWorklogs(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        worklogs: JiraWorklog[];
+        total: number;
+    }>;
+    getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
+    addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
+        started?: string;
+        comment?: string;
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        reduceBy?: string;
+    }): Promise<JiraWorklog>;
+    updateWorklog(keyOrId: string, worklogId: string, updates: {
+        timeSpentSeconds?: number;
+        started?: string;
+        comment?: string;
+    }): Promise<JiraWorklog>;
+    deleteWorklog(keyOrId: string, worklogId: string, options?: {
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        increaseBy?: string;
+    }): Promise<void>;
+    addLabels(keyOrId: string, labels: string[]): Promise<void>;
+    removeLabels(keyOrId: string, labels: string[]): Promise<void>;
+    createIssueLink(params: {
+        type: {
+            name: string;
+        } | {
+            id: string;
+        };
+        inwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        outwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        comment?: {
+            body: AdfDocument | string;
+        };
+    }): Promise<void>;
+    deleteIssueLink(linkId: string): Promise<void>;
+    getIssueLinkTypes(): Promise<{
+        issueLinkTypes: Array<{
+            id: string;
+            name: string;
+            inward: string;
+            outward: string;
+        }>;
+    }>;
+    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
+    createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
+        id: number;
+        self: string;
+    }>;
+    deleteRemoteLink(keyOrId: string, linkId: number): Promise<void>;
+    deleteRemoteLinkByGlobalId(keyOrId: string, globalId: string): Promise<void>;
+    listBoards(options?: {
+        startAt?: number;
+        maxResults?: number;
+        type?: "scrum" | "kanban" | "simple";
+        name?: string;
+        projectKeyOrId?: string;
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            type: string;
+        }>;
+        total: number;
+    }>;
+    getBoard(boardId: number): Promise<{
+        id: number;
+        name: string;
+        type: string;
+        location?: {
+            projectKey?: string;
+        };
+    }>;
+    listSprints(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        state?: "future" | "active" | "closed";
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            state: string;
+            startDate?: string;
+            endDate?: string;
+        }>;
+        total: number;
+    }>;
+    getBoardBacklog(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    getBoardIssues(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    createSprint(params: {
+        name: string;
+        originBoardId: number;
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    getSprint(sprintId: number): Promise<JiraSprint>;
+    updateSprint(sprintId: number, params: {
+        name?: string;
+        state?: "future" | "active" | "closed";
+        startDate?: string;
+        endDate?: string;
+        completeDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    startSprint(sprintId: number, params?: {
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    closeSprint(sprintId: number, completeDate?: string): Promise<JiraSprint>;
+    deleteSprint(sprintId: number): Promise<void>;
+    getSprintIssues(sprintId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
+    moveIssuesToBacklog(issues: string[]): Promise<void>;
+    getEpicIssues(epicKeyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<JiraSearchResults>;
+    moveIssuesToEpic(epicKeyOrId: string, issues: string[]): Promise<void>;
+    removeIssuesFromEpic(issues: string[]): Promise<void>;
+    listBoardEpics(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        done?: boolean;
+    }): Promise<{
+        values: JiraEpic[];
+        total: number;
+    }>;
+    getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    downloadAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Buffer>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    getWatchers(keyOrId: string): Promise<{
+        watchers: JiraUser[];
+        watchCount: number;
+        isWatching: boolean;
+    }>;
+    addWatcher(keyOrId: string, accountId: string): Promise<void>;
+    removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    registerWebhooks(webhooks: Array<{
+        jqlFilter: string;
+        events: string[];
+    }>, url: string): Promise<{
+        webhookRegistrationResult: Array<{
+            createdWebhookId?: number;
+            errors?: string[];
+        }>;
+    }>;
+    getWebhooks(startAt?: number, maxResults?: number): Promise<{
+        values: Array<{
+            id: number;
+            jqlFilter: string;
+            fieldIdsFilter?: string[];
+            issuePropertyKeysFilter?: string[];
+            events: string[];
+            expirationDate?: string;
+        }>;
+        startAt: number;
+        maxResults: number;
+        total: number;
+    }>;
+    deleteWebhooks(webhookIds: number[]): Promise<void>;
+    refreshWebhooks(webhookIds: number[]): Promise<{
+        expirationDate: string;
+    }>;
+    textToAdf(text: string): AdfDocument;
+    adfToText(adf: AdfDocument | string | null | undefined): string;
+}
+
+// export: JiraComment
+export interface JiraComment {
+    id: string;
+    author: JiraUser;
+    body: AdfDocument | string;
+    created: string;
+    updated: string;
+    updateAuthor?: JiraUser;
+}
+
+// export: JiraComponent
+export interface JiraComponent {
+    id: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    assigneeType?: string;
+}
+
+// export: JiraEpic
+export interface JiraEpic {
+    id: number;
+    key: string;
+    name: string;
+    summary: string;
+    done: boolean;
+    color?: {
+        key: string;
+    };
+}
+
+// export: JiraErrorResponse
+export interface JiraErrorResponse {
+    errorMessages?: string[];
+    errors?: Record<string, string>;
+    status?: number;
+}
+
+// export: JiraField
+export interface JiraField {
+    id: string;
+    key?: string;
+    name: string;
+    custom: boolean;
+    orderable?: boolean;
+    navigable?: boolean;
+    searchable?: boolean;
+    clauseNames?: string[];
+    schema?: {
+        type: string;
+        system?: string;
+        custom?: string;
+        customId?: number;
+    };
+}
+
+// export: JiraFilter
+export interface JiraFilter {
+    id: string;
+    name: string;
+    description?: string;
+    jql: string;
+    favourite: boolean;
+    owner?: JiraUser;
+    self?: string;
+    sharePermissions?: JiraFilterPermission[];
+    viewUrl?: string;
+    searchUrl?: string;
+}
+
+// export: JiraFilterPermission
+export interface JiraFilterPermission {
+    id?: number;
+    type: "global" | "project" | "group" | "user" | "loggedin" | "project-unknown";
+    project?: {
+        id: string;
+        key?: string;
+        name?: string;
+    };
+    group?: {
+        name: string;
+    };
+    user?: JiraUser;
+}
+
+// export: JiraIssue
+export interface JiraIssue {
+    id: string;
+    key: string;
+    self: string;
+    fields: JiraIssueFields;
+    changelog?: {
+        histories: JiraChangelogEntry[];
+    };
+}
+
+// export: JiraIssueFields
+export interface JiraIssueFields {
+    summary: string;
+    description?: AdfDocument | string | null;
+    issuetype: JiraIssueType;
+    project: {
+        id: string;
+        key: string;
+        name?: string;
+    };
+    status: JiraStatus;
+    priority?: JiraPriority;
+    assignee?: JiraUser | null;
+    reporter?: JiraUser;
+    creator?: JiraUser;
+    created?: string;
+    updated?: string;
+    resolutiondate?: string;
+    resolution?: JiraResolution | null;
+    duedate?: string | null;
+    labels?: string[];
+    components?: JiraComponent[];
+    fixVersions?: JiraVersion[];
+    versions?: JiraVersion[];
+    parent?: JiraIssueRef;
+    subtasks?: JiraIssueRef[];
+    issuelinks?: JiraIssueLink[];
+    timetracking?: {
+        originalEstimate?: string;
+        remainingEstimate?: string;
+        timeSpent?: string;
+        originalEstimateSeconds?: number;
+        remainingEstimateSeconds?: number;
+        timeSpentSeconds?: number;
+    };
+    [key: `customfield_${number}`]: unknown;
+}
+
+// export: JiraIssueLink
+export interface JiraIssueLink {
+    id: string;
+    type: JiraIssueLinkType;
+    inwardIssue?: JiraIssueRef;
+    outwardIssue?: JiraIssueRef;
+}
+
+// export: JiraIssueLinkType
+export interface JiraIssueLinkType {
+    id: string;
+    name: string;
+    inward: string;
+    outward: string;
+}
+
+// export: JiraIssueRef
+export interface JiraIssueRef {
+    id: string;
+    key: string;
+    fields?: {
+        summary?: string;
+        status?: JiraStatus;
+        issuetype?: JiraIssueType;
+    };
+}
+
+// export: JiraIssueType
+export interface JiraIssueType {
+    id: string;
+    name: string;
+    description?: string;
+    subtask: boolean;
+    iconUrl?: string;
+    hierarchyLevel?: number;
+}
+
+// export: JiraPriority
+export interface JiraPriority {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+}
+
+// export: JiraProject
+export interface JiraProject {
+    id: string;
+    key: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    url?: string;
+    projectTypeKey?: string;
+    style?: string;
+    avatarUrls?: Record<string, string>;
+    simplified?: boolean;
+}
+
+// export: JiraProjectCategory
+export interface JiraProjectCategory {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraRemoteLink
+export interface JiraRemoteLink {
+    id?: number;
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+        status?: {
+            resolved?: boolean;
+            icon?: {
+                url16x16?: string;
+                title?: string;
+                link?: string;
+            };
+        };
+    };
+}
+
+// export: JiraResolution
+export interface JiraResolution {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraSearchResults
+// @deprecated JiraSearchResults.startAt — Use nextPageToken for pagination
+export interface JiraSearchResults {
+    issues: JiraIssue[];
+    startAt: number;
+    maxResults: number;
+    total: number;
+    nextPageToken?: string;
+}
+
+// export: JiraSprint
+export interface JiraSprint {
+    id: number;
+    name: string;
+    state: "future" | "active" | "closed";
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    goal?: string;
+    boardId?: number;
+}
+
+// export: JiraStatus
+export interface JiraStatus {
+    id: string;
+    name: string;
+    description?: string;
+    statusCategory?: {
+        id: number;
+        key: string;
+        name: string;
+        colorName?: string;
+    };
+}
+
+// export: JiraTemplate
+export interface JiraTemplate {
+    name: string;
+    description?: string;
+    createdAt: string;
+    sourceIssue?: string;
+    tags?: string[];
+    fields: JiraTemplateFields;
+    source?: JiraTemplateSource;
+}
+
+// export: JiraTemplateFields
+export interface JiraTemplateFields {
+    issuetype: {
+        name: string;
+    } | {
+        id: string;
+    };
+    summary: string;
+    description?: AdfDocument | string | null;
+    priority?: {
+        name: string;
+    } | {
+        id: string;
+    };
+    labels?: string[];
+    components?: Array<{
+        name: string;
+    }>;
+    fixVersions?: Array<{
+        name: string;
+    }>;
+    duedate?: string;
+    [key: string]: unknown;
+}
+
+// export: JiraTemplateFilter
+export interface JiraTemplateFilter {
+    level?: "global" | "profile" | "project";
+    profile?: string;
+    project?: string;
+    tags?: string[];
+    search?: string;
+    issueType?: string;
+    includeOverridden?: boolean;
+}
+
+// export: JiraTemplateInfo
+export interface JiraTemplateInfo {
+    name: string;
+    description?: string;
+    createdAt: string;
+    sourceIssue?: string;
+}
+
+// export: JiraTemplateResolver
+export declare class JiraTemplateResolver {
+    private global;
+    private profile?;
+    private project?;
+    constructor(global: GlobalJiraTemplateStorage, profile?: ProfileJiraTemplateStorage | undefined, project?: ProjectJiraTemplateStorage | undefined);
+    resolve(name: string): Promise<JiraTemplate | null>;
+    listAll(filter?: JiraTemplateFilter): Promise<JiraTemplateSummary[]>;
+    getTemplateLocations(name: string): Promise<JiraTemplateSummary[]>;
+    getStorage(level: "global" | "profile" | "project"): JiraTemplateStorage | undefined;
+}
+
+// export: JiraTemplateSource
+export interface JiraTemplateSource {
+    level: "global" | "profile" | "project";
+    profile?: string;
+    project?: string;
+    path: string;
+}
+
+// export: JiraTemplateStorage
+export interface JiraTemplateStorage {
+    list(filter?: JiraTemplateFilter): Promise<JiraTemplateSummary[]>;
+    get(name: string): Promise<JiraTemplate | null>;
+    save(template: JiraTemplate): Promise<void>;
+    delete(name: string): Promise<void>;
+    exists(name: string): Promise<boolean>;
+    rename(oldName: string, newName: string): Promise<void>;
+}
+
+// export: JiraTemplateSummary
+export interface JiraTemplateSummary {
+    name: string;
+    description?: string;
+    level: "global" | "profile" | "project";
+    profile?: string;
+    project?: string;
+    issueType: string;
+    fieldCount: number;
+    tags?: string[];
+    createdAt: string;
+    sourceIssue?: string;
+    overrides?: JiraTemplateSource;
+}
+
+// export: JiraTransition
+export interface JiraTransition {
+    id: string;
+    name: string;
+    to: JiraStatus;
+    fields?: Record<string, JiraTransitionField>;
+}
+
+// export: JiraTransitionField
+export interface JiraTransitionField {
+    required: boolean;
+    name: string;
+    fieldId: string;
+    allowedValues?: unknown[];
+}
+
+// export: JiraUser
+export interface JiraUser {
+    accountId?: string;
+    name?: string;
+    displayName: string;
+    emailAddress?: string;
+    avatarUrls?: Record<string, string>;
+    active?: boolean;
+}
+
+// export: JiraVersion
+export interface JiraVersion {
+    id: string;
+    name: string;
+    description?: string;
+    released?: boolean;
+    releaseDate?: string;
+    startDate?: string;
+    archived?: boolean;
+}
+
+// export: JiraWebhookEventType
+export type JiraWebhookEventType = "jira:issue_created" | "jira:issue_updated" | "jira:issue_deleted" | "comment_created" | "comment_updated" | "comment_deleted" | "attachment_created" | "attachment_deleted" | "issuelink_created" | "issuelink_deleted" | "worklog_created" | "worklog_updated" | "worklog_deleted" | "sprint_created" | "sprint_updated" | "sprint_started" | "sprint_closed" | "sprint_deleted" | "board_created" | "board_updated" | "board_deleted";
+
+// export: JiraWebhookHandler
+export type JiraWebhookHandler = (payload: JiraWebhookPayload) => void | Promise<void>;
+
+// export: JiraWebhookPayload
+export interface JiraWebhookPayload {
+    timestamp: number;
+    webhookEvent: JiraWebhookEventType;
+    issue?: {
+        id: string;
+        key: string;
+        fields: {
+            summary: string;
+            status: {
+                name: string;
+            };
+            issuetype: {
+                name: string;
+            };
+            priority?: {
+                name: string;
+            };
+            assignee?: {
+                displayName: string;
+                accountId: string;
+            } | null;
+            project: {
+                key: string;
+                name: string;
+            };
+        };
+    };
+    comment?: {
+        id: string;
+        author: {
+            displayName: string;
+            accountId: string;
+        };
+        body: string;
+        created: string;
+        updated: string;
+    };
+    changelog?: {
+        id: string;
+        items: Array<{
+            field: string;
+            fromString: string | null;
+            toString: string | null;
+        }>;
+    };
+    user?: {
+        accountId: string;
+        displayName: string;
+    };
+    sprint?: {
+        id: number;
+        name: string;
+        state: string;
+    };
+}
+
+// export: JiraWebhookServer
+export declare class JiraWebhookServer {
+    private server;
+    private handlers;
+    private options;
+    constructor(options: JiraWebhookServerOptions);
+    on(handler: JiraWebhookHandler): void;
+    off(handler: JiraWebhookHandler): void;
+    start(): void;
+    stop(): void;
+    isRunning(): boolean;
+    getUrl(): string | null;
+    getPort(): number;
+    private handleWebhook;
+    private validateSignature;
+}
+
+// export: JiraWebhookServerOptions
+export interface JiraWebhookServerOptions {
+    port: number;
+    path?: string;
+    secret?: string;
+    filterProjects?: Set<string>;
+    filterEvents?: Set<string>;
+}
+
+// export: JiraWorklog
+export interface JiraWorklog {
+    id: string;
+    author: JiraUser;
+    updateAuthor?: JiraUser;
+    comment?: AdfDocument | string;
+    created: string;
+    updated: string;
+    started: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    issueId: string;
+}
+
+// export: listTemplates
+// @deprecated listTemplates — Use JiraTemplateResolver.listAll() instead
+export declare function listTemplates(): Promise<JiraTemplateInfo[]>;
+
+// export: loadTemplate
+// @deprecated loadTemplate — Use JiraTemplateResolver.resolve() instead
+export declare function loadTemplate(name: string): Promise<JiraTemplate>;
+
+// export: loadTimer
+export declare function loadTimer(): TimerState | null;
+
+// export: migrateTemplates
+export declare function migrateTemplates(): Promise<{
+    migrated: string[];
+    skipped: string[];
+    errors: string[];
+}>;
+
+// export: parseCsv
+export declare function parseCsv(content: string): ImportIssue[];
+
+// export: parseDateInput
+export declare function parseDateInput(input: string): Date;
+
+// export: parseImportFile
+export declare function parseImportFile(filePath: string): Promise<ImportIssue[]>;
+
+// export: parseJson
+export declare function parseJson(content: string): ImportIssue[];
+
+// export: parseRelativeDuration
+export declare function parseRelativeDuration(input: string): Date;
+
+// export: parseRoundingInterval
+export declare function parseRoundingInterval(input: string): number;
+
+// export: parseStartedDate
+export declare function parseStartedDate(input: string): Date;
+
+// export: parseTimeToSeconds
+export declare function parseTimeToSeconds(input: string, config?: TimeConfig): number;
+
+// export: ProfileJiraTemplateStorage
+export declare class ProfileJiraTemplateStorage extends BaseJiraTemplateStorage {
+    private profileName;
+    constructor(profileName: string);
+    protected getDir(): string;
+    protected getSource(path: string): JiraTemplateSource;
+    protected getLevel(): "profile";
+    protected getProfile(): string;
+}
+
+// export: ProjectJiraTemplateStorage
+export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage {
+    private projectKey;
+    constructor(projectKey: string);
+    protected getDir(): string;
+    protected getSource(path: string): JiraTemplateSource;
+    protected getLevel(): "project";
+    protected getProject(): string;
+}
+
+// export: roundTime
+export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
+
+// export: saveTemplate
+// @deprecated saveTemplate — Use JiraTemplateStorage.save() instead
+export declare function saveTemplate(template: JiraTemplate, options?: {
+    force?: boolean;
+}): Promise<void>;
+
+// export: saveTimer
+export declare function saveTimer(state: TimerState): void;
+
+// export: secondsToHuman
+export declare function secondsToHuman(seconds: number): string;
+
+// export: secondsToJiraFormat
+export declare function secondsToJiraFormat(seconds: number, config?: TimeConfig): string;
+
+// export: SprintMetrics
+export interface SprintMetrics {
+    sprintId: number;
+    sprintName: string;
+    state: string;
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    committedPoints: number;
+    completedPoints: number;
+    totalIssues: number;
+    completedIssues: number;
+    incompleteIssues: number;
+    addedDuringSprint: number;
+    removedDuringSprint: number;
+    scopeChangePercent: number;
+    sayDoRatio: number;
+}
+
+// export: startTimer
+export declare function startTimer(issueKey: string, profile: string, comment?: string): TimerState;
+
+// export: stopTimer
+export declare function stopTimer(): {
+    timer: TimerState;
+    elapsedSeconds: number;
+};
+
+// export: templateExists
+// @deprecated templateExists — Use JiraTemplateStorage.exists() instead
+export declare function templateExists(name: string): Promise<boolean>;
+
+// export: templateToCreateInput
+export declare function templateToCreateInput(template: JiraTemplate, projectKey: string, overrides?: {
+    summary?: string;
+    description?: string;
+    assignee?: string;
+}): {
+    fields: Record<string, unknown>;
+};
+
+// export: TimeConfig
+export interface TimeConfig {
+    hoursPerDay: number;
+    daysPerWeek: number;
+}
+
+// export: TimerState
+export interface TimerState {
+    issueKey: string;
+    startedAt: string;
+    profile: string;
+    comment?: string;
+}
+
+// export: toWorklogWithIssue
+export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
+
+// export: TransitionIssueInput
+export interface TransitionIssueInput {
+    transition: {
+        id: string;
+    } | {
+        name: string;
+    };
+    fields?: Record<string, unknown>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: UpdateFilterInput
+export interface UpdateFilterInput {
+    name?: string;
+    description?: string;
+    jql?: string;
+    favourite?: boolean;
+}
+
+// export: UpdateIssueInput
+export interface UpdateIssueInput {
+    fields?: Partial<CreateIssueInput["fields"]>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: VelocityTrend
+export interface VelocityTrend {
+    boardId: number;
+    boardName: string;
+    sprints: Array<{
+        id: number;
+        name: string;
+        velocity: number;
+        completedIssues: number;
+    }>;
+    averageVelocity: number;
+    trend: number;
+}
+
+// export: WorklogReport
+export interface WorklogReport {
+    user: string;
+    userId?: string;
+    dateRange: {
+        from: string;
+        to: string;
+    };
+    summary: {
+        totalTimeSeconds: number;
+        totalTimeHuman: string;
+        worklogCount: number;
+        issueCount: number;
+        averagePerDay: string;
+    };
+    worklogs: WorklogWithIssue[];
+    byIssue?: Record<string, WorklogWithIssue[]>;
+    byDate?: Record<string, WorklogWithIssue[]>;
+}
+
+// export: WorklogWithIssue
+export interface WorklogWithIssue {
+    issueKey: string;
+    issueSummary: string;
+    worklogId: string;
+    author: string;
+    authorId?: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    started: string;
+    comment?: string;
+}
+
+// export: writeExportFile
+export declare function writeExportFile(data: ExportData, options: ExportOptions): Promise<void>;
+```
+
+### Entry point `./browser`
+
+```ts
+// export: AdfDocument
+export interface AdfDocument {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    content?: AdfNode[];
+    text?: string;
+    attrs?: Record<string, unknown>;
+    marks?: Array<{
+        type: string;
+        attrs?: Record<string, unknown>;
+    }>;
+}
+
+// export: BulkCreateResult
+export interface BulkCreateResult {
+    issues: Array<{
+        id: string;
+        key: string;
+        self: string;
+    }>;
+    errors: Array<{
+        status: number;
+        elementErrors?: {
+            errors: Record<string, string>;
+            errorMessages: string[];
+        };
+    }>;
+}
+
+// export: BulkOperationResult
+export interface BulkOperationResult {
+    taskId: string;
+    status: string;
+}
+
+// export: BulkOperationSummary
+export interface BulkOperationSummary {
+    total: number;
+    successful: number;
+    failed: number;
+    errors: Array<{
+        key: string;
+        error: string;
+    }>;
+}
+
+// export: BurndownDataPoint
+export interface BurndownDataPoint {
+    date: string;
+    remaining: number;
+    ideal: number;
+    completed: number;
+}
+
+// export: CreateFilterInput
+export interface CreateFilterInput {
+    name: string;
+    description?: string;
+    jql: string;
+    favourite?: boolean;
+}
+
+// export: CreateIssueInput
+export interface CreateIssueInput {
+    fields: {
+        project: {
+            key: string;
+        } | {
+            id: string;
+        };
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        summary: string;
+        description?: AdfDocument | string;
+        priority?: {
+            name: string;
+        } | {
+            id: string;
+        };
+        assignee?: {
+            accountId: string;
+        } | {
+            name: string;
+        };
+        labels?: string[];
+        components?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        fixVersions?: Array<{
+            name: string;
+        } | {
+            id: string;
+        }>;
+        parent?: {
+            key: string;
+        } | {
+            id: string;
+        };
+        duedate?: string;
+        [key: string]: unknown;
+    };
+}
+
+// export: CreateRemoteLinkInput
+export interface CreateRemoteLinkInput {
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+    };
+}
+
+// export: ExportData
+export interface ExportData {
+    exportedAt: string;
+    query: string;
+    issues: ExportedIssue[];
+}
+
+// export: ExportedAttachment
+export interface ExportedAttachment {
+    filename: string;
+    content: string;
+    size: number;
+    mimeType: string;
+}
+
+// export: ExportedComment
+export interface ExportedComment {
+    author: string;
+    body: string;
+    created: string;
+}
+
+// export: ExportedIssue
+export interface ExportedIssue {
+    key: string;
+    fields: Record<string, unknown>;
+    comments?: ExportedComment[];
+    attachments?: ExportedAttachment[];
+}
+
+// export: ExportOptions
+export interface ExportOptions {
+    format: "csv" | "json";
+    includeComments?: boolean;
+    includeAttachments?: boolean;
+    outputPath: string;
+}
+
+// export: ImportIssue
+export interface ImportIssue {
+    fields: {
+        summary: string;
+        issuetype: {
+            name: string;
+        } | {
+            id: string;
+        };
+        [key: string]: unknown;
+    };
+    comments?: Array<{
+        body: string;
+    }>;
+    attachments?: Array<{
+        filename: string;
+        content: string;
+    }>;
+}
+
+// export: ImportResult
+export interface ImportResult {
+    total: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    issues: Array<{
+        key?: string;
+        summary: string;
+        status: "created" | "skipped" | "failed";
+        error?: string;
+    }>;
+}
+
+// export: JiraAttachment
+export interface JiraAttachment {
+    id: string;
+    filename: string;
+    author: JiraUser;
+    created: string;
+    size: number;
+    mimeType: string;
+    content: string;
+}
+
+// export: JiraBoard
+export interface JiraBoard {
+    id: number;
+    name: string;
+    type: "scrum" | "kanban" | "simple";
+    location?: {
+        projectId?: number;
+        projectKey?: string;
+        projectName?: string;
+    };
+}
+
+// export: JiraChangelogEntry
+export interface JiraChangelogEntry {
+    id: string;
+    author: JiraUser;
+    created: string;
+    items: Array<{
+        field: string;
+        fieldtype: string;
+        from: string | null;
+        fromString: string | null;
+        to: string | null;
+        toString: string | null;
+    }>;
+}
+
+// export: JiraClient
+export declare class JiraClient {
+    private baseUrl;
+    private authHeader;
+    private useSession;
+    private maxRetries;
+    private baseDelayMs;
+    private isCloud;
+    private tlsOptions;
+    private sessionRedirectPolicy;
+    constructor(profile: Profile);
+    private get apiPath();
+    private get agilePath();
+    private sleep;
+    private applyFetchOptions;
+    private request;
+    getCurrentUser(): Promise<JiraUser>;
+    listProjects(options?: {
+        startAt?: number;
+        maxResults?: number;
+        orderBy?: string;
+        query?: string;
+        typeKey?: string;
+        expand?: string;
+    }): Promise<{
+        values: JiraProject[];
+        total: number;
+    }>;
+    getProject(keyOrId: string): Promise<JiraProject>;
+    createProject(params: {
+        key: string;
+        name: string;
+        projectTypeKey: "software" | "service_desk" | "business";
+        projectTemplateKey?: string;
+        description?: string;
+        leadAccountId?: string;
+        url?: string;
+        assigneeType?: "PROJECT_LEAD" | "UNASSIGNED";
+    }): Promise<JiraProject>;
+    getProjectIssueTypes(keyOrId: string): Promise<JiraIssueType[]>;
+    private parseProject;
+    getProjectComponents(projectKeyOrId: string): Promise<JiraComponent[]>;
+    getComponent(id: string): Promise<JiraComponent>;
+    createComponent(input: {
+        project: string;
+        name: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    updateComponent(id: string, input: {
+        name?: string;
+        description?: string;
+        leadAccountId?: string;
+    }): Promise<JiraComponent>;
+    deleteComponent(id: string): Promise<void>;
+    getProjectVersions(projectKeyOrId: string): Promise<JiraVersion[]>;
+    getVersion(id: string): Promise<JiraVersion>;
+    createVersion(input: {
+        projectId: string;
+        name: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+    }): Promise<JiraVersion>;
+    updateVersion(id: string, input: {
+        name?: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+        released?: boolean;
+        archived?: boolean;
+    }): Promise<JiraVersion>;
+    deleteVersion(id: string): Promise<void>;
+    getFields(): Promise<JiraField[]>;
+    getPriorities(): Promise<Array<{
+        id: string;
+        name: string;
+        description?: string;
+        iconUrl?: string;
+    }>>;
+    detectStoryPointsField(): Promise<string | null>;
+    getFieldContexts(fieldId: string): Promise<{
+        values: Array<{
+            id: string;
+            name: string;
+            isGlobalContext: boolean;
+            isAnyIssueType: boolean;
+        }>;
+    }>;
+    getFieldContextOptions(fieldId: string, contextId: string): Promise<{
+        values: Array<{
+            id: string;
+            value: string;
+            disabled?: boolean;
+        }>;
+    }>;
+    getFieldOptions(fieldId: string): Promise<Array<{
+        id: string;
+        value: string;
+        disabled?: boolean;
+    }>>;
+    listFilters(options?: {
+        filterName?: string;
+        startAt?: number;
+        maxResults?: number;
+        expand?: string;
+        favourite?: boolean;
+    }): Promise<{
+        values: JiraFilter[];
+        total: number;
+    }>;
+    getFavouriteFilters(): Promise<JiraFilter[]>;
+    getFilter(id: string, options?: {
+        expand?: string;
+    }): Promise<JiraFilter>;
+    createFilter(input: CreateFilterInput): Promise<JiraFilter>;
+    updateFilter(id: string, input: UpdateFilterInput): Promise<JiraFilter>;
+    deleteFilter(id: string): Promise<void>;
+    addFilterPermission(id: string, permission: {
+        type: "global" | "project" | "group" | "user";
+        projectId?: string;
+        groupname?: string;
+        accountId?: string;
+    }): Promise<JiraFilterPermission>;
+    getFilterPermissions(id: string): Promise<JiraFilterPermission[]>;
+    deleteFilterPermission(filterId: string, permissionId: number): Promise<void>;
+    getIssue(keyOrId: string, options?: {
+        fields?: string[];
+        expand?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraIssue>;
+    createIssue(input: CreateIssueInput): Promise<JiraIssue>;
+    createIssuesBulk(issues: CreateIssueInput[]): Promise<BulkCreateResult>;
+    updateIssue(keyOrId: string, input: UpdateIssueInput, options?: {
+        notifyUsers?: boolean;
+    }): Promise<void>;
+    deleteIssue(keyOrId: string, options?: {
+        deleteSubtasks?: boolean;
+    }): Promise<void>;
+    getTransitions(keyOrId: string): Promise<JiraTransition[]>;
+    transitionIssue(keyOrId: string, input: TransitionIssueInput): Promise<void>;
+    assignIssue(keyOrId: string, assignee: {
+        accountId: string;
+    } | {
+        name: string;
+    } | null): Promise<void>;
+    search(jql: string, options?: {
+        maxResults?: number;
+        fields?: string[];
+        expand?: string;
+        nextPageToken?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    searchGet(jql: string, options?: {
+        maxResults?: number;
+        fields?: string;
+        signal?: AbortSignal;
+    }): Promise<JiraSearchResults>;
+    getComments(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        comments: JiraComment[];
+        total: number;
+    }>;
+    addComment(keyOrId: string, body: AdfDocument | string): Promise<JiraComment>;
+    getWorklogs(keyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<{
+        worklogs: JiraWorklog[];
+        total: number;
+    }>;
+    getWorklog(keyOrId: string, worklogId: string): Promise<JiraWorklog>;
+    addWorklog(keyOrId: string, timeSpentSeconds: number, options?: {
+        started?: string;
+        comment?: string;
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        reduceBy?: string;
+    }): Promise<JiraWorklog>;
+    updateWorklog(keyOrId: string, worklogId: string, updates: {
+        timeSpentSeconds?: number;
+        started?: string;
+        comment?: string;
+    }): Promise<JiraWorklog>;
+    deleteWorklog(keyOrId: string, worklogId: string, options?: {
+        adjustEstimate?: "auto" | "leave" | "manual" | "new";
+        newEstimate?: string;
+        increaseBy?: string;
+    }): Promise<void>;
+    addLabels(keyOrId: string, labels: string[]): Promise<void>;
+    removeLabels(keyOrId: string, labels: string[]): Promise<void>;
+    createIssueLink(params: {
+        type: {
+            name: string;
+        } | {
+            id: string;
+        };
+        inwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        outwardIssue: {
+            key: string;
+        } | {
+            id: string;
+        };
+        comment?: {
+            body: AdfDocument | string;
+        };
+    }): Promise<void>;
+    deleteIssueLink(linkId: string): Promise<void>;
+    getIssueLinkTypes(): Promise<{
+        issueLinkTypes: Array<{
+            id: string;
+            name: string;
+            inward: string;
+            outward: string;
+        }>;
+    }>;
+    getRemoteLinks(keyOrId: string): Promise<JiraRemoteLink[]>;
+    getRemoteLink(keyOrId: string, linkId: number): Promise<JiraRemoteLink>;
+    createRemoteLink(keyOrId: string, input: CreateRemoteLinkInput): Promise<{
+        id: number;
+        self: string;
+    }>;
+    deleteRemoteLink(keyOrId: string, linkId: number): Promise<void>;
+    deleteRemoteLinkByGlobalId(keyOrId: string, globalId: string): Promise<void>;
+    listBoards(options?: {
+        startAt?: number;
+        maxResults?: number;
+        type?: "scrum" | "kanban" | "simple";
+        name?: string;
+        projectKeyOrId?: string;
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            type: string;
+        }>;
+        total: number;
+    }>;
+    getBoard(boardId: number): Promise<{
+        id: number;
+        name: string;
+        type: string;
+        location?: {
+            projectKey?: string;
+        };
+    }>;
+    listSprints(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        state?: "future" | "active" | "closed";
+    }): Promise<{
+        values: Array<{
+            id: number;
+            name: string;
+            state: string;
+            startDate?: string;
+            endDate?: string;
+        }>;
+        total: number;
+    }>;
+    getBoardBacklog(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    getBoardIssues(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    createSprint(params: {
+        name: string;
+        originBoardId: number;
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    getSprint(sprintId: number): Promise<JiraSprint>;
+    updateSprint(sprintId: number, params: {
+        name?: string;
+        state?: "future" | "active" | "closed";
+        startDate?: string;
+        endDate?: string;
+        completeDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    startSprint(sprintId: number, params?: {
+        startDate?: string;
+        endDate?: string;
+        goal?: string;
+    }): Promise<JiraSprint>;
+    closeSprint(sprintId: number, completeDate?: string): Promise<JiraSprint>;
+    deleteSprint(sprintId: number): Promise<void>;
+    getSprintIssues(sprintId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        jql?: string;
+        fields?: string[];
+    }): Promise<JiraSearchResults>;
+    moveIssuesToSprint(sprintId: number, issues: string[]): Promise<void>;
+    moveIssuesToBacklog(issues: string[]): Promise<void>;
+    getEpicIssues(epicKeyOrId: string, options?: {
+        startAt?: number;
+        maxResults?: number;
+    }): Promise<JiraSearchResults>;
+    moveIssuesToEpic(epicKeyOrId: string, issues: string[]): Promise<void>;
+    removeIssuesFromEpic(issues: string[]): Promise<void>;
+    listBoardEpics(boardId: number, options?: {
+        startAt?: number;
+        maxResults?: number;
+        done?: boolean;
+    }): Promise<{
+        values: JiraEpic[];
+        total: number;
+    }>;
+    getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    downloadAttachment(contentUrl: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Buffer>;
+    uploadAttachment(keyOrId: string, filename: string, data: Buffer): Promise<JiraAttachment[]>;
+    getWatchers(keyOrId: string): Promise<{
+        watchers: JiraUser[];
+        watchCount: number;
+        isWatching: boolean;
+    }>;
+    addWatcher(keyOrId: string, accountId: string): Promise<void>;
+    removeWatcher(keyOrId: string, accountId: string): Promise<void>;
+    registerWebhooks(webhooks: Array<{
+        jqlFilter: string;
+        events: string[];
+    }>, url: string): Promise<{
+        webhookRegistrationResult: Array<{
+            createdWebhookId?: number;
+            errors?: string[];
+        }>;
+    }>;
+    getWebhooks(startAt?: number, maxResults?: number): Promise<{
+        values: Array<{
+            id: number;
+            jqlFilter: string;
+            fieldIdsFilter?: string[];
+            issuePropertyKeysFilter?: string[];
+            events: string[];
+            expirationDate?: string;
+        }>;
+        startAt: number;
+        maxResults: number;
+        total: number;
+    }>;
+    deleteWebhooks(webhookIds: number[]): Promise<void>;
+    refreshWebhooks(webhookIds: number[]): Promise<{
+        expirationDate: string;
+    }>;
+    textToAdf(text: string): AdfDocument;
+    adfToText(adf: AdfDocument | string | null | undefined): string;
+}
+
+// export: JiraComment
+export interface JiraComment {
+    id: string;
+    author: JiraUser;
+    body: AdfDocument | string;
+    created: string;
+    updated: string;
+    updateAuthor?: JiraUser;
+}
+
+// export: JiraComponent
+export interface JiraComponent {
+    id: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    assigneeType?: string;
+}
+
+// export: JiraEpic
+export interface JiraEpic {
+    id: number;
+    key: string;
+    name: string;
+    summary: string;
+    done: boolean;
+    color?: {
+        key: string;
+    };
+}
+
+// export: JiraErrorResponse
+export interface JiraErrorResponse {
+    errorMessages?: string[];
+    errors?: Record<string, string>;
+    status?: number;
+}
+
+// export: JiraField
+export interface JiraField {
+    id: string;
+    key?: string;
+    name: string;
+    custom: boolean;
+    orderable?: boolean;
+    navigable?: boolean;
+    searchable?: boolean;
+    clauseNames?: string[];
+    schema?: {
+        type: string;
+        system?: string;
+        custom?: string;
+        customId?: number;
+    };
+}
+
+// export: JiraFilter
+export interface JiraFilter {
+    id: string;
+    name: string;
+    description?: string;
+    jql: string;
+    favourite: boolean;
+    owner?: JiraUser;
+    self?: string;
+    sharePermissions?: JiraFilterPermission[];
+    viewUrl?: string;
+    searchUrl?: string;
+}
+
+// export: JiraFilterPermission
+export interface JiraFilterPermission {
+    id?: number;
+    type: "global" | "project" | "group" | "user" | "loggedin" | "project-unknown";
+    project?: {
+        id: string;
+        key?: string;
+        name?: string;
+    };
+    group?: {
+        name: string;
+    };
+    user?: JiraUser;
+}
+
+// export: JiraIssue
+export interface JiraIssue {
+    id: string;
+    key: string;
+    self: string;
+    fields: JiraIssueFields;
+    changelog?: {
+        histories: JiraChangelogEntry[];
+    };
+}
+
+// export: JiraIssueFields
+export interface JiraIssueFields {
+    summary: string;
+    description?: AdfDocument | string | null;
+    issuetype: JiraIssueType;
+    project: {
+        id: string;
+        key: string;
+        name?: string;
+    };
+    status: JiraStatus;
+    priority?: JiraPriority;
+    assignee?: JiraUser | null;
+    reporter?: JiraUser;
+    creator?: JiraUser;
+    created?: string;
+    updated?: string;
+    resolutiondate?: string;
+    resolution?: JiraResolution | null;
+    duedate?: string | null;
+    labels?: string[];
+    components?: JiraComponent[];
+    fixVersions?: JiraVersion[];
+    versions?: JiraVersion[];
+    parent?: JiraIssueRef;
+    subtasks?: JiraIssueRef[];
+    issuelinks?: JiraIssueLink[];
+    timetracking?: {
+        originalEstimate?: string;
+        remainingEstimate?: string;
+        timeSpent?: string;
+        originalEstimateSeconds?: number;
+        remainingEstimateSeconds?: number;
+        timeSpentSeconds?: number;
+    };
+    [key: `customfield_${number}`]: unknown;
+}
+
+// export: JiraIssueLink
+export interface JiraIssueLink {
+    id: string;
+    type: JiraIssueLinkType;
+    inwardIssue?: JiraIssueRef;
+    outwardIssue?: JiraIssueRef;
+}
+
+// export: JiraIssueLinkType
+export interface JiraIssueLinkType {
+    id: string;
+    name: string;
+    inward: string;
+    outward: string;
+}
+
+// export: JiraIssueRef
+export interface JiraIssueRef {
+    id: string;
+    key: string;
+    fields?: {
+        summary?: string;
+        status?: JiraStatus;
+        issuetype?: JiraIssueType;
+    };
+}
+
+// export: JiraIssueType
+export interface JiraIssueType {
+    id: string;
+    name: string;
+    description?: string;
+    subtask: boolean;
+    iconUrl?: string;
+    hierarchyLevel?: number;
+}
+
+// export: JiraPriority
+export interface JiraPriority {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+}
+
+// export: JiraProject
+export interface JiraProject {
+    id: string;
+    key: string;
+    name: string;
+    description?: string;
+    lead?: JiraUser;
+    url?: string;
+    projectTypeKey?: string;
+    style?: string;
+    avatarUrls?: Record<string, string>;
+    simplified?: boolean;
+}
+
+// export: JiraProjectCategory
+export interface JiraProjectCategory {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraRemoteLink
+export interface JiraRemoteLink {
+    id?: number;
+    globalId?: string;
+    application?: {
+        type?: string;
+        name?: string;
+    };
+    relationship?: string;
+    object: {
+        url: string;
+        title: string;
+        summary?: string;
+        icon?: {
+            url16x16?: string;
+            title?: string;
+        };
+        status?: {
+            resolved?: boolean;
+            icon?: {
+                url16x16?: string;
+                title?: string;
+                link?: string;
+            };
+        };
+    };
+}
+
+// export: JiraResolution
+export interface JiraResolution {
+    id: string;
+    name: string;
+    description?: string;
+}
+
+// export: JiraSearchResults
+// @deprecated JiraSearchResults.startAt — Use nextPageToken for pagination
+export interface JiraSearchResults {
+    issues: JiraIssue[];
+    startAt: number;
+    maxResults: number;
+    total: number;
+    nextPageToken?: string;
+}
+
+// export: JiraSprint
+export interface JiraSprint {
+    id: number;
+    name: string;
+    state: "future" | "active" | "closed";
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    goal?: string;
+    boardId?: number;
+}
+
+// export: JiraStatus
+export interface JiraStatus {
+    id: string;
+    name: string;
+    description?: string;
+    statusCategory?: {
+        id: number;
+        key: string;
+        name: string;
+        colorName?: string;
+    };
+}
+
+// export: JiraTransition
+export interface JiraTransition {
+    id: string;
+    name: string;
+    to: JiraStatus;
+    fields?: Record<string, JiraTransitionField>;
+}
+
+// export: JiraTransitionField
+export interface JiraTransitionField {
+    required: boolean;
+    name: string;
+    fieldId: string;
+    allowedValues?: unknown[];
+}
+
+// export: JiraUser
+export interface JiraUser {
+    accountId?: string;
+    name?: string;
+    displayName: string;
+    emailAddress?: string;
+    avatarUrls?: Record<string, string>;
+    active?: boolean;
+}
+
+// export: JiraVersion
+export interface JiraVersion {
+    id: string;
+    name: string;
+    description?: string;
+    released?: boolean;
+    releaseDate?: string;
+    startDate?: string;
+    archived?: boolean;
+}
+
+// export: JiraWorklog
+export interface JiraWorklog {
+    id: string;
+    author: JiraUser;
+    updateAuthor?: JiraUser;
+    comment?: AdfDocument | string;
+    created: string;
+    updated: string;
+    started: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    issueId: string;
+}
+
+// export: SprintMetrics
+export interface SprintMetrics {
+    sprintId: number;
+    sprintName: string;
+    state: string;
+    startDate?: string;
+    endDate?: string;
+    completeDate?: string;
+    committedPoints: number;
+    completedPoints: number;
+    totalIssues: number;
+    completedIssues: number;
+    incompleteIssues: number;
+    addedDuringSprint: number;
+    removedDuringSprint: number;
+    scopeChangePercent: number;
+    sayDoRatio: number;
+}
+
+// export: TransitionIssueInput
+export interface TransitionIssueInput {
+    transition: {
+        id: string;
+    } | {
+        name: string;
+    };
+    fields?: Record<string, unknown>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: UpdateFilterInput
+export interface UpdateFilterInput {
+    name?: string;
+    description?: string;
+    jql?: string;
+    favourite?: boolean;
+}
+
+// export: UpdateIssueInput
+export interface UpdateIssueInput {
+    fields?: Partial<CreateIssueInput["fields"]>;
+    update?: Record<string, Array<{
+        set?: unknown;
+        add?: unknown;
+        remove?: unknown;
+    }>>;
+}
+
+// export: VelocityTrend
+export interface VelocityTrend {
+    boardId: number;
+    boardName: string;
+    sprints: Array<{
+        id: number;
+        name: string;
+        velocity: number;
+        completedIssues: number;
+    }>;
+    averageVelocity: number;
+    trend: number;
+}
+
+// export: WorklogReport
+export interface WorklogReport {
+    user: string;
+    userId?: string;
+    dateRange: {
+        from: string;
+        to: string;
+    };
+    summary: {
+        totalTimeSeconds: number;
+        totalTimeHuman: string;
+        worklogCount: number;
+        issueCount: number;
+        averagePerDay: string;
+    };
+    worklogs: WorklogWithIssue[];
+    byIssue?: Record<string, WorklogWithIssue[]>;
+    byDate?: Record<string, WorklogWithIssue[]>;
+}
+
+// export: WorklogWithIssue
+export interface WorklogWithIssue {
+    issueKey: string;
+    issueSummary: string;
+    worklogId: string;
+    author: string;
+    authorId?: string;
+    timeSpent: string;
+    timeSpentSeconds: number;
+    started: string;
+    comment?: string;
+}
+```
+
+### Entry point `./node`
 
 ```ts
 // export: AdfDocument

@@ -129,6 +129,18 @@ export interface ScanResult {
    */
   stylerefStyleNames: string[];
   /**
+   * Distinct docxtpl/Jinja placeholder forms found in the TEMPLATE's own text
+   * (spec 010 W3-D) — placeholder syntax this engine will never fill. Inventory
+   * ONLY: `exportDocx` turns a non-empty list into a `warning`-level
+   * `template-foreign-placeholders` note. Whitespace-normalized for display,
+   * first-seen order, capped at {@link MAX_FOREIGN_PLACEHOLDERS} distinct forms.
+   *
+   * OPTIONAL for the same additive-API reason as
+   * {@link ScanResult.riskyFieldInstructions}; always populated by
+   * {@link scanZip}, so read it as `?? []`.
+   */
+  foreignPlaceholders?: string[];
+  /**
    * Audited field-instruction keywords found anywhere in the template (spec 011):
    * `INCLUDETEXT` and `INCLUDEPICTURE`. Inventory ONLY — `exportDocx` turns a
    * non-empty list into a `template-field-instruction-risk` report note. These
@@ -183,6 +195,56 @@ export function collectStylerefFields(xml: string): string[] {
  * body/header/footer preprocessor.
  */
 export const PLACEHOLDER_RE = /\$scroll\.[A-Za-z]+(?:\.[A-Za-z]+)*(?:\.?\([^)]*\))?|\$adhocState/g;
+
+/**
+ * docxtpl/Jinja placeholder syntax — `{{ … }}` (variable) and `{% … %}` (tag,
+ * which covers docxtpl's paragraph/row/cell forms `{%p …%}` / `{%tr …%}` /
+ * `{%tc …%}`).
+ *
+ * This engine fills `$scroll.*` only. A docxtpl template handed to `--engine ts`
+ * therefore renders its placeholders as VISIBLE LITERAL TEXT: the export flow
+ * swaps docxtemplater's delimiters for a Unicode Private-Use pair precisely so
+ * that a customer's own braces are never treated as tags, which means `{{ title }}`
+ * survives the render intact and lands in the finished document. That is the
+ * silent failure this pattern exists to name — a 62-page `.docx` shipped with
+ * seven unfilled `{{ … }}` placeholders in the body and a report that said
+ * nothing about them.
+ *
+ * Bounded and newline-anchored: a placeholder never spans a hard break (
+ * {@link import("./ooxml-text.js").paragraphText} renders `<w:br/>`/`<w:tab/>` as
+ * `\n`), and the 200-char ceiling keeps a document full of stray braces from
+ * degenerating into quadratic backtracking. Non-greedy, so `{{ {'a': 1} }}`
+ * closes at its own `}}`.
+ */
+export const FOREIGN_PLACEHOLDER_RE = /\{\{[^\n]{1,200}?\}\}|\{%[^\n]{1,200}?%\}/g;
+
+/**
+ * How many DISTINCT foreign placeholder forms a scan records. The note only ever
+ * shows a handful; the cap keeps a pathological template from carrying an
+ * unbounded array through the report.
+ */
+export const MAX_FOREIGN_PLACEHOLDERS = 20;
+
+/**
+ * The docxtpl/Jinja placeholder forms in one paragraph's text, whitespace-
+ * normalized for display (Word's run splitting and `xml:space` handling make the
+ * raw spacing meaningless). Pure; see {@link FOREIGN_PLACEHOLDER_RE}.
+ *
+ * Call this with TEMPLATE text only. Page content is scanned nowhere: `scanZip`
+ * runs on the template archive before the exported body is injected, so a page
+ * that legitimately documents Jinja can never trigger the note.
+ */
+export function collectForeignPlaceholders(text: string): string[] {
+  if (!text.includes("{")) return [];
+  const found: string[] = [];
+  FOREIGN_PLACEHOLDER_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = FOREIGN_PLACEHOLDER_RE.exec(text)) !== null) {
+    const normalized = m[0].replace(/\s+/g, " ").trim();
+    if (!found.includes(normalized)) found.push(normalized);
+  }
+  return found;
+}
 
 /**
  * The document parts a scan/preprocess must cover:
@@ -757,6 +819,7 @@ export function scanZip(zip: PizZip): ScanResult {
   let hasContent = false;
   const stylerefStyleNames: string[] = [];
   const riskyFieldInstructions: string[] = [];
+  const foreignPlaceholders: string[] = [];
 
   for (const part of parts) {
     const xml = readPartText(zip, part);
@@ -770,6 +833,15 @@ export function scanZip(zip: PizZip): ScanResult {
     // (mc:Choice + mc:Fallback) and drawing-adjacent occurrences — so the panel's
     // supported-list matches what preprocessScrollText actually resolves.
     for (const text of collectParagraphTexts(xml)) {
+      // Foreign (docxtpl/Jinja) syntax inventory. Runs on the SAME run-merged
+      // paragraph text as the `$scroll.*` walk — Word routinely splits
+      // `{{ title }}` across three runs, so a raw-XML regex would miss it.
+      if (foreignPlaceholders.length < MAX_FOREIGN_PLACEHOLDERS) {
+        for (const raw of collectForeignPlaceholders(text)) {
+          if (foreignPlaceholders.length >= MAX_FOREIGN_PLACEHOLDERS) break;
+          if (!foreignPlaceholders.includes(raw)) foreignPlaceholders.push(raw);
+        }
+      }
       if (!text.includes("$scroll") && !text.includes("$adhocState")) continue;
       let m: RegExpExecArray | null;
       PLACEHOLDER_RE.lastIndex = 0;
@@ -817,6 +889,7 @@ export function scanZip(zip: PizZip): ScanResult {
     hasContentPlaceholder: hasContent,
     stylerefStyleNames,
     riskyFieldInstructions,
+    foreignPlaceholders,
   };
 }
 

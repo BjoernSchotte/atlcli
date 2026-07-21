@@ -6,7 +6,9 @@
  * CLI re-exports them here so existing imports and their regression tests
  * keep working against the single shared implementation.
  */
-import type { ExportMentionLookup } from "@atlcli/confluence";
+import type { ExportMentionLookup, ExportNote } from "@atlcli/confluence";
+import type { TemplateMeta } from "@atlcli/docx";
+import { BUNDLED_TEMPLATE_EPOCH, bundledDefaultTemplate } from "@atlcli/export-node";
 
 export {
   createAssetByteCache,
@@ -14,6 +16,71 @@ export {
   type AssetByteCache,
   type AssetClient,
 } from "@atlcli/export-node";
+
+/**
+ * The name reported for the bundled default template. Not a path — nothing on
+ * disk corresponds to it — but a `TemplateMeta.name` is what `$scroll.templatename`
+ * resolves to, so it has to read like a template identity rather than a blank.
+ */
+export const BUNDLED_TEMPLATE_NAME = "bundled-default.docx";
+
+/** A template's bytes plus the metadata the engine and the report need. */
+export interface LoadedExportTemplate {
+  bytes: Uint8Array;
+  meta: TemplateMeta;
+  /** `info` note when the bundled default stood in; empty when a path was given. */
+  notes: ExportNote[];
+}
+
+/**
+ * Resolve the ts engine's template: the file at `resolvedTemplatePath`, or —
+ * when no `--template` was given — the bundled default from
+ * `@atlcli/export-node` (spec 010 W3-D).
+ *
+ * `--template` used to be mandatory for every DOCX export, which is precisely
+ * what pushed a first-time `--engine ts` user toward whatever `.docx` happened
+ * to be at hand; one such grab (a docxtpl fixture) produced a 62-page document
+ * full of unfilled `{{ … }}`. The bundled default emits correct `$scroll.title`
+ * / `$scroll.exportdate` / `$scroll.content` placeholders, so the zero-template
+ * path is guaranteed to leave nothing unfilled.
+ *
+ * `--engine python` deliberately keeps requiring the flag — docxtpl has no
+ * bundled default to fall back to.
+ *
+ * The fallback ALWAYS emits its note: an output whose template the user never
+ * named must not be a mystery. `info`, not `warning` — nothing is wrong with
+ * this export, and it must not fail `--strict`.
+ */
+export async function loadExportTemplate(
+  resolvedTemplatePath: string | undefined
+): Promise<LoadedExportTemplate> {
+  if (!resolvedTemplatePath) {
+    return {
+      bytes: bundledDefaultTemplate(),
+      meta: { name: BUNDLED_TEMPLATE_NAME, modificationDate: BUNDLED_TEMPLATE_EPOCH },
+      notes: [
+        {
+          level: "info",
+          code: "template-default-used",
+          message:
+            "No --template was given; exported with the bundled default template " +
+            "(page title, export date, page body). Pass --template to use your own.",
+        },
+      ],
+    };
+  }
+  const { basename } = await import("node:path");
+  const { readFile, stat } = await import("node:fs/promises");
+  const [bytes, info] = await Promise.all([
+    readFile(resolvedTemplatePath),
+    stat(resolvedTemplatePath),
+  ]);
+  return {
+    bytes: new Uint8Array(bytes),
+    meta: { name: basename(resolvedTemplatePath), modificationDate: info.mtime },
+    notes: [],
+  };
+}
 
 interface MentionClient {
   getUsersBulk(accountIds: string[]): Promise<Map<string, { displayName: string | null } | null>>;

@@ -23,6 +23,7 @@ import { resolveMacroBlocks, type MacroExportContext } from "@atlcli/export-macr
 import {
   buildSessionMacroResolutionOptions,
   classifySessionPortError,
+  createSessionMacroPorts,
   createSessionMacroState,
   sessionExportViewPort,
   sessionJiraIssuePort,
@@ -483,6 +484,93 @@ describe("JiraIssuePort is a thin adapter over JiraClient", () => {
     const err = await port.getIssue("ATL-1").then(() => undefined, (e: unknown) => e);
     expect((err as Error).name).toBe("AbortError");
   });
+
+  /**
+   * Spec 010 wave 2 gave `JiraClient.getIssue`/`.search` an `AbortSignal`
+   * option. Before it existed this port could only probe `signal.aborted`
+   * AFTER the call settled, so a large JQL search ran to completion long after
+   * the user pressed Cancel. These two cases pin that the signal now reaches
+   * the client — which is the only thing that makes the teardown real.
+   */
+  it("threads the export signal INTO the client, on both methods", async () => {
+    const controller = new AbortController();
+    const seen: Array<AbortSignal | undefined> = [];
+    const client: JiraClientLike = {
+      async getIssue(_key, options) {
+        seen.push(options?.signal);
+        return { key: "ATL-1", fields: {} };
+      },
+      async search(_jql, options) {
+        seen.push(options?.signal);
+        return { issues: [] };
+      },
+    };
+    const port = sessionJiraIssuePort(client, SITE, {
+      state: createSessionMacroState(),
+      signal: controller.signal,
+    });
+    await port.getIssue("ATL-1");
+    await port.searchJql("project = ATL", { columns: ["key"], maximumIssues: 5 });
+    expect(seen).toEqual([controller.signal, controller.signal]);
+  });
+
+  it("an in-flight abort surfaces as AbortError, not as a degraded macro", async () => {
+    const controller = new AbortController();
+    const state = createSessionMacroState();
+    // A client that behaves like the real one: it rejects when the signal it
+    // was handed fires, rather than resolving and being discarded afterwards.
+    const client: JiraClientLike = {
+      async getIssue(_key, options) {
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("The operation was aborted.", "AbortError")),
+            { once: true }
+          );
+        });
+      },
+      async search() {
+        return { issues: [] };
+      },
+    };
+    const port = sessionJiraIssuePort(client, SITE, { state, signal: controller.signal });
+    const pending = port.getIssue("ATL-1");
+    controller.abort();
+    const err = await pending.then(() => undefined, (e: unknown) => e);
+    expect((err as Error).name).toBe("AbortError");
+    // An abort is NOT a session expiry: the latch must stay closed.
+    expect(state.expired).toBe(false);
+  });
+
+  /**
+   * Wave 2 gave `packages/jira` a typed `JiraSessionAuthError`. The message
+   * below carries NO `(NNN)` status and NONE of the phrases the Confluence
+   * fallback matches, so only the exact `name` check can classify it — which is
+   * the point: the classification no longer depends on a string staying
+   * byte-compatible across two packages.
+   */
+  it("latches on the typed JiraSessionAuthError by NAME, not by message", () => {
+    const state = createSessionMacroState();
+    const typed = new Error("bounced");
+    typed.name = "JiraSessionAuthError";
+    const err = (() => {
+      try {
+        classifySessionPortError(typed, "jira", state);
+      } catch (e) {
+        return e as { kind: string; message: string };
+      }
+    })();
+    expect(err?.kind).toBe("permission");
+    expect(err?.message).toBe(SESSION_EXPIRED_MESSAGE);
+    expect(state.expired).toBe(true);
+    expect(codes(state.notes())).toEqual(["auth-error"]);
+  });
+
+  it("an ordinary error with the same message is NOT a session expiry", () => {
+    const state = createSessionMacroState();
+    expect(() => classifySessionPortError(new Error("bounced"), "jira", state)).toThrow();
+    expect(state.expired).toBe(false);
+  });
 });
 
 describe("classifySessionPortError", () => {
@@ -538,5 +626,89 @@ describe("ExportViewPort abort", () => {
     controller.abort();
     const err = await port.renderMacroHtml(ROOT_ID, "m1").then(() => undefined, (e: unknown) => e);
     expect((err as Error).name).toBe("AbortError");
+  });
+});
+
+/**
+ * Jira is wired by default (spec 010 T5.4, plan owner's ruling).
+ *
+ * Until the extension declared `@atlcli/jira`, `createSessionMacroPorts` built
+ * NO Jira port, so every Jira macro fell straight through to the `export_view`
+ * stage while the CLI — which always constructs a client — rendered a real
+ * issue table for the same page. The parity was claimed, not delivered. These
+ * cases pin that the panel now issues the same request the CLI does.
+ *
+ * Still no HTTP mocking: the request below is produced by the REAL `JiraClient`
+ * over a hand-constructed real `Response`.
+ */
+describe("the session ports carry a real JiraClient", () => {
+  const issueJson = (key: string): Response =>
+    new Response(
+      JSON.stringify({
+        key,
+        fields: { summary: "Ship it", status: { name: "Done", statusCategory: { colorName: "green" } } },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+
+  it("builds a Jira port from the tab's session profile with no client passed", async () => {
+    const log = installFetch((url) => issueJson(url.split("/").pop() ?? "ATL-1"));
+    const ports = createSessionMacroPorts({ pageUrl: PAGE_URL });
+
+    const ref = await ports.jira.getIssue("ATL-1");
+
+    // The URL is JiraClient's own Cloud v3 path on the SAME origin Confluence
+    // uses — covered by the manifest's existing `*://*.atlassian.net/*`.
+    expect(log.urls).toHaveLength(1);
+    expect(log.urls[0]).toStartWith(`${SITE}/rest/api/3/issue/ATL-1`);
+    // Session fingerprint, inherited from the client rather than re-implemented.
+    expect(log.inits[0].credentials).toBe("include");
+    expect(log.inits[0].redirect).toBe("manual");
+    // …and the row is the SHARED mapping, so the panel and the CLI render the
+    // same table from the same issue.
+    expect(ref).toMatchObject({
+      key: "ATL-1",
+      summary: "Ship it",
+      status: "Done",
+      statusColor: "green",
+      url: `${SITE}/browse/ATL-1`,
+    });
+  });
+
+  it("an explicit client still overrides it (the test seam)", async () => {
+    const log = installFetch(() => issueJson("ATL-9"));
+    const calls: string[] = [];
+    const ports = createSessionMacroPorts({
+      pageUrl: PAGE_URL,
+      jiraClient: {
+        async getIssue(key) {
+          calls.push(key);
+          return { key, fields: {} };
+        },
+        async search() {
+          return { issues: [] };
+        },
+      },
+    });
+    await ports.jira.getIssue("ATL-9");
+    expect(calls).toEqual(["ATL-9"]);
+    expect(log.urls).toEqual([]);
+  });
+
+  it("a Jira macro renders through the chain without any client being supplied", async () => {
+    const log = installFetch((url) => {
+      if (url.includes("/rest/api/3/issue/")) return issueJson("ATL-1");
+      return exportViewJson("m1", "<p>should not be needed</p>");
+    });
+    const built = buildSessionMacroResolutionOptions({
+      pageUrl: PAGE_URL,
+      targetEngine: "pdf",
+    });
+    const ctx = built.options.contextFor({ id: ROOT_ID, version: 3, spaceKey: "DOCSY" });
+    // The context the resolver hands every renderer carries a Jira port — the
+    // field whose absence used to make the Jira renderer decline silently.
+    expect(ctx.jira).toBeDefined();
+    await ctx.jira!.getIssue("ATL-1");
+    expect(log.urls.some((u) => u.includes("/rest/api/3/issue/ATL-1"))).toBe(true);
   });
 });

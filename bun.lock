@@ -76,6 +76,7 @@
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-wiring": "workspace:*",
+        "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
         "class-variance-authority": "^0.7.1",
