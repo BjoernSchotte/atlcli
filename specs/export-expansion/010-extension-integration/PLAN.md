@@ -2352,9 +2352,13 @@ parity, not the panel chrome). Execute and check off before each release, with
 the same profile-equivalent browser session (logged in to the `mayflower`
 site):
 
-**All 17 boxes below are open, and that is the expected state.** This is a
-per-release checklist and no release has been cut — none of these has been run
-against a loaded unpacked build. (T5.5's *docs* have since landed; its *release*
+**Two of the 17 boxes below are now ticked; the other 15 are open, and that is
+the expected state.** This is a per-release checklist and no release has been
+cut. The first real run against a loaded unpacked build happened on 2026-07-21
+and got as far as loading the panel and driving the preview viewer — which was
+enough to surface three defects (see "What the first manual run found"). Every
+box that needs the DOCSY fixture tree is still untouched, because that tree does
+not exist yet. (T5.5's *docs* have since landed; its *release*
 box has not, and never will be ticked automatically — CLAUDE.md: "Never release
 automatically.") They are listed under "not verified" in any status report
 rather than under "missing work". Two of them are load-bearing beyond the
@@ -2368,8 +2372,18 @@ measurement T5.6's first task still owes). This session's run of the last box
 docs site building at 75 pages — but it stays open because it is a gate to
 re-run against the release build, not a one-time fact.
 
-- [ ] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
+**First real run of this protocol: 2026-07-21.** Two boxes below are ticked; the
+rest are untouched. It found **three defects in one sitting**, all fixed on this
+branch, and all of them invisible to a green 4300-test suite — see
+"What the first manual run found" after the list.
+
+- [x] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
       Chrome (≥ 116); open the side panel on a DOCSY page.
+
+      *(Built and loaded unpacked; the panel came up and detected the page,
+      including the German locale. **Caveat that keeps the boxes below open:**
+      the page used was in space `TTSG`, not `DOCSY`, so nothing here verifies
+      the DOCSY fixture tree the tree/space/template/macro boxes call for.)*
 - [ ] Single page: export PDF + DOCX; files download; reports show no
       unexpected warnings.
 - [ ] Tree scope: select "Page + children" on the DOCSY test root, exclude
@@ -2392,9 +2406,23 @@ re-run against the release build, not a one-time fact.
       completes without waiting for a queued preview to finish and without a
       visible cold-init pause (job-kind priority + no worker termination on
       supersession, T5.3).
-- [ ] Preview viewer: page forward/back, fit-width and zoom work in the 400 px
+- [x] Preview viewer: page forward/back, fit-width and zoom work in the 400 px
       panel; "Open large preview" opens the tab viewer showing the **same**
       document; the panel stays usable while the tab is open.
+
+      *(Verified 2026-07-21, but only **after** three fixes this box produced —
+      it failed on first contact. Evidence: paging observed at "Seite 3 von 4"
+      and "Seite 1 von 5"; fit-width confirmed working by the reporter; zoom is
+      proven by construction, because the fit-width control is disabled at zoom
+      1, so exercising it at all required zooming first; the large-preview tab
+      renders the same document (`260717 Jour Fixe`, 5 pages) at full tab width,
+      with the panel still live beside it in the same screenshot.*
+
+      *Still not covered by this box and left for a later run: whether the tab
+      view survives a reload of the tab itself, and window-resize re-fitting —
+      the resize path is deliberately untested in the suite too, because
+      happy-dom has no layout engine and any assertion there would pass whether
+      the observer were wired or deleted (see `preview-screen.test.tsx`).)*
 - [ ] Preview→download identity: on a **single page**, preview, then Download
       — the download completes without a second compile (no visible compile
       phase) and the file matches what the viewer showed. Then on a **tree**
@@ -2436,6 +2464,56 @@ re-run against the release build, not a one-time fact.
 - [ ] **Delete the DOCSY pages/templates created during the protocol.**
 - [ ] `bun run typecheck` + full `bun test` green before commit/push
       (workflow rules).
+
+### What the first manual run found (2026-07-21)
+
+Three defects in one sitting, all in the preview path, all shipped green by a
+4300-test suite. They are recorded together because **they are one bug three
+times**, and that is the finding worth keeping:
+
+> An option exists, is typed, is documented, and is read by nobody for the
+> thing it names.
+
+| # | Defect | The dead option | Fix |
+|---|--------|-----------------|-----|
+| 1 | "Fit width" did nothing, at any zoom | `renderPage`'s `containerWidth` — **zero** production call sites, so it fell back to `canvas.clientWidth`, which `renderPage` itself had just written. The fit basis was the previous render's own output, making `zoom: 1` a multiplication by one | `f795ab7` — `containerWidth` made required; the screen measures a padding-free frame |
+| 2 | The large-preview tab showed nothing | — (a design gap, not a dead option): opening the tab activates it, which the observer read as "the user navigated away", nulling the window's entity. It destroyed its own precondition **and** blanked the side panel behind it | `9f60ae9` — the extension's own pages are no longer a page change |
+| 3 | The large preview rendered at side-panel width | `PreviewShellConfig.layout: "compact" \| "full"`, whose docstring said the shells differ "only in a layout value". It decided one button's visibility and a `data-layout` attribute — never a width | `4af16ad` — width is a shell prop; `AppShell`'s `max-w-[400px]` is no longer a constant |
+
+Why the suite could not see #1 and #3: in both cases the *pure* function was
+well tested — but only in a configuration production never used, because the
+test supplied the argument itself. For #1 the fake was literally
+`async renderPage(pageNumber)`, discarding the options object, so the only zoom
+test could prove a re-render happened and nothing about its scale.
+
+**The countermeasure now used for all three: a consumption-site test.** Each fix
+ships a guard that reads the *caller* and fails if it stops passing the value —
+`background.ts` for `ownOrigin`, `entrypoints/preview/App.tsx` for
+`layout="full"`. Weaker than a behavioural test, and deliberately so: these are
+closures inside entrypoints with nothing to import and drive. A weaker real
+check beats a strong imaginary one.
+
+This is the same shape as the CLI findings in
+`specs/SUPPORT-CLI-FLAG-AUDIT.md` ("two code paths behind one help line, and
+only one honours the flag"). **Open follow-up:** run that audit's method over
+`apps/extension` — every optional parameter whose production call-site count is
+zero. Three hits in one session is not a coincidence.
+
+### Open findings from the same run
+
+- [ ] **PDF.js falls back to its "fake worker" in the side panel.** Console:
+      `Warning: Setting up fake worker.` from `assets/pdf.min-*.mjs`. The stack
+      ends in the `worker.addEventListener("error", …)` branch of
+      `PDFWorker.#initialize`, so the worker was *constructed* and then failed
+      to load — not a constructor throw (that logs "The worker has been
+      disabled." instead). Impact is degradation, not breakage: pdf.js runs the
+      worker code on the main thread, so every page render blocks the panel.
+      Leading hypothesis is the `.mjs` extension's MIME type under the
+      `chrome-extension:` protocol, on the circumstantial evidence that our own
+      compiler worker is emitted as `.js` and works in the same page under the
+      same CSP; the alternative is pdf.js wrapping the worker in a `blob:` URL
+      that MV3's CSP then refuses. **Not yet diagnosed** — needs the one console
+      line immediately before the warning. Do not "fix" this speculatively.
 
 ## Definition of Done
 
