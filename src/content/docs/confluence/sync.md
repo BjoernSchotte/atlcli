@@ -264,20 +264,42 @@ Download pages from Confluence to local markdown files:
 atlcli wiki docs pull ./docs
 ```
 
-The path argument is optional and defaults to the current directory. Pass the same path you used for `init` (or `cd` into it and omit the path) so files land where the state expects them.
+The path argument is optional and defaults to the current directory. Pass the same path you used for `init` (or `cd` into it and omit the path) so files land where the state expects them. `--dir <path>` does the same thing as the positional argument and is the spelling to use from scripts.
 
 Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path; use it when running from elsewhere) |
+| `--out <path>` | Legacy alias for `--dir` |
 | `--space` | Filter by space key |
 | `--page-id` | Pull specific page |
 | `--ancestor` | Pull page tree |
 | `--label` | Filter by label |
-| `--force` | Overwrite local modifications |
+| `--force` | Overwrite local modifications - markdown **and** attachments |
 | `--comments` | Export comments to sidecar files |
 | `--no-attachments` | Skip downloading attachments |
 | `--limit <n>` | Maximum pages to pull |
+
+### Local modifications are never overwritten silently
+
+Pull compares each file it is about to write against the hash recorded at the
+last sync. Anything you changed locally is left alone and reported:
+
+```
+Skipping architecture.md (local modifications, use --force)
+Skipping architecture.attachments/diagram.png (local modifications, use --force)
+```
+
+This applies to markdown files and to attachments alike. Skipped attachments are
+counted as `attachmentsSkipped` in `--json` output. Use `--force` to discard the
+local version and take the remote one.
+
+:::caution[`--force` discards local edits]
+`--force` overwrites locally modified markdown files *and* attachments,
+including attachments currently in conflict. Run `atlcli wiki docs status`
+first to see what you would lose.
+:::
 
 ### Examples
 
@@ -285,13 +307,16 @@ Options:
 # Pull using saved scope from init
 atlcli wiki docs pull ./docs
 
+# Pull into ./docs from an unrelated working directory
+atlcli wiki docs pull --dir ./docs
+
 # Pull pages with specific label
 atlcli wiki docs pull ./docs --label api-docs
 
 # Pull with comments exported
 atlcli wiki docs pull ./docs --comments
 
-# Force pull (overwrite local changes)
+# Force pull (overwrite local changes, attachments included)
 atlcli wiki docs pull ./docs --force
 
 # Pull without attachments
@@ -325,8 +350,9 @@ Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path) |
 | `--page-id <id>` | Push specific page by ID |
-| `--validate` | Run validation before push |
+| `--validate` | Validate the files being pushed before pushing |
 | `--strict` | Treat warnings as errors |
 | `--json` | JSON output |
 
@@ -369,9 +395,18 @@ Pre-push validation checks for:
 | Unclosed macros | Error | `:::info` without closing `:::` |
 | Page size | Warning | Content exceeds 500KB |
 
+`--validate` checks exactly what the push will send: the single file for
+`push <file>` or `push --page-id <id>`, and the collected (ignore-filtered) set
+for a directory push. Errors in files you are not pushing do not block the push,
+and `--validate` works outside an initialized tree too - it validates the named
+file rather than doing nothing.
+
 ```bash
 # Run validation separately
 atlcli wiki docs check ./docs
+
+# From an unrelated working directory
+atlcli wiki docs check --dir ./docs
 
 # Strict mode (warnings are errors)
 atlcli wiki docs check ./docs --strict
@@ -379,6 +414,12 @@ atlcli wiki docs check ./docs --strict
 # JSON output for CI/scripts
 atlcli wiki docs check ./docs --json
 ```
+
+:::note[`check` never passes by checking nothing]
+If the resolved path contains no markdown files, `check` exits non-zero with
+"nothing was validated" instead of reporting a green run. A missing path fails
+the same way.
+:::
 
 ## Add
 
@@ -514,21 +555,37 @@ Sync status for ./docs:
   remote-modified: 1 files
   conflict:        1 files
   untracked:       3 files
+  folders:         2
+
+Attachments:
+  synced:          8
+  local-modified:  1
+  conflict:        0
+  missing:         0
 
 Last sync: 2025-01-14T10:30:00Z
 
 Modified:
   api-reference.md (local changes)
   getting-started.md (remote changes)
+  architecture.attachments/diagram.png (attachment local changes)
 
 Conflicts:
   troubleshooting.md
 ```
 
+The file counters cover markdown only. Attachments are counted separately (they
+have their own base hashes) and appear in `--json` output under
+`attachmentStats`; individual files show up in `modified` with the type
+`attachment local changes`, or `attachment deleted locally` when the file is
+gone.
+
 Options:
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Target directory (same as the positional path) |
+| `--links` | Analyze link changes vs stored links |
 | `--json` | JSON output |
 
 ## Ignore Patterns

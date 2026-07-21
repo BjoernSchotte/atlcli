@@ -50,8 +50,23 @@ Summary: 2 errors, 1 warning in 3 files (21 passed)
 
 | Flag | Description |
 |------|-------------|
+| `--dir <path>` | Directory or file to check (same as the positional path; use it when running from elsewhere) |
 | `--strict` | Treat warnings as errors (exit code 1 for warnings) |
 | `--json` | Output results as JSON |
+
+The path argument and `--dir` are interchangeable:
+
+```bash
+cd /anywhere
+atlcli wiki docs check --dir ~/work/docs --strict
+```
+
+:::caution[An empty check is a failure, not a pass]
+If the resolved path contains no markdown files, `check` exits **1** with
+"nothing was validated" rather than printing "0 errors" and exiting 0. A path
+that does not exist fails the same way. This keeps a mistyped CI path from
+turning into a green gate that validated nothing.
+:::
 
 ## Validation Rules
 
@@ -115,7 +130,7 @@ atlcli wiki docs check ./docs --strict
 Exit codes:
 
 - `0` - No errors (and no warnings in strict mode)
-- `1` - Errors found (or warnings in strict mode)
+- `1` - Errors found (or warnings in strict mode), no files to validate, or path not found
 
 ## JSON Output
 
@@ -130,7 +145,15 @@ Use the `--validate` flag with push to run checks before pushing:
 ```bash
 atlcli wiki docs push ./docs --validate
 atlcli wiki docs push ./docs --validate --strict  # Fail on warnings
+atlcli wiki docs push ./docs/api.md --validate    # Validates that one file
+atlcli wiki docs push --page-id 12345 --validate  # Validates the resolved file
 ```
+
+`--validate` covers exactly the files being pushed, not the whole tree: a single
+file for a file/`--page-id` push, and the collected (ignore-filtered) set for a
+directory push. An unrelated file's errors will not block your push, and the
+flag works outside an initialized directory too - it validates the named file
+rather than silently doing nothing.
 
 ## CI Integration
 

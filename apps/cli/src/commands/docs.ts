@@ -392,7 +392,7 @@ function buildConversionOptions(baseUrl?: string): ConversionOptions {
  * Creates .atlcli/ with config.json, state.json, and cache/ directory.
  */
 async function handleInit(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const dir = args[0] || ".";
+  const dir = args[0] ?? getFlag(flags, "dir") ?? ".";
 
   if (isInitialized(dir)) {
     fail(opts, 1, ERROR_CODES.USAGE, `Directory already initialized: ${dir}/.atlcli/`);
@@ -483,7 +483,10 @@ async function handleInit(args: string[], flags: Record<string, string | boolean
 }
 
 async function handlePull(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const outDirArg = args[0] || getFlag(flags, "out") || ".";
+  // Target directory precedence: positional > --dir > --out (legacy alias) > cwd.
+  // `--dir` is the spelling the help preamble promises for every subcommand;
+  // `--out` predates it and is kept working (and documented) for scripts.
+  const outDirArg = args[0] ?? getFlag(flags, "dir") ?? getFlag(flags, "out") ?? ".";
   const outDir = resolve(outDirArg); // Resolve to absolute path
   const limit = Number(getFlag(flags, "limit") ?? 50);
   const force = hasFlag(flags, "force");
@@ -922,6 +925,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   // Check if attachments are enabled (default: true)
   const pullAttachments = !hasFlag(flags, "no-attachments");
   let attachmentsPulled = 0;
+  /** Attachments left untouched because of local modifications (needs --force). */
+  let attachmentsSkipped = 0;
+  /** Attachments where local and remote both changed; remote saved alongside. */
+  let attachmentsConflicted = 0;
 
   // Check if comments should be pulled
   const pullComments = hasFlag(flags, "comments");
@@ -1005,6 +1012,13 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     const pageFilename = basename(relativePath);
     const pageDir = dirname(filePath);
 
+    /**
+     * Attachment IDs whose local bytes were deliberately kept (skipped or
+     * conflicted). Their state must NOT be refreshed from disk below, or the
+     * next pull would treat the local edit as the new base and overwrite it.
+     */
+    const attachmentsPreserved = new Set<string>();
+
     // Fetch and download attachments if enabled
     let attachments: AttachmentInfo[] = [];
     if (pullAttachments) {
@@ -1036,44 +1050,89 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
           try {
             const data = await client.downloadAttachment(attachment);
             const attachmentPath = join(attachmentsDir, attachment.filename);
+            const attachmentLabel = join(getAttachmentsDirName(pageFilename), attachment.filename);
             const remoteHash = hashContent(Buffer.from(data).toString("base64"));
 
-            // Check for conflict with local changes
+            // Compare the file on disk against the recorded base, exactly as the
+            // markdown half does. Without this the download below overwrote a
+            // locally edited attachment with no warning and no --force.
             const existingAttState = state?.pages[detail.id]?.attachments?.[attachment.id];
-            if (existingAttState && existsSync(attachmentPath)) {
-              // Read local file to get current hash
+            if (existsSync(attachmentPath) && !force) {
               const localData = await readFile(attachmentPath);
               const localHash = hashContent(localData.toString("base64"));
+              const baseHash = existingAttState?.baseHash;
 
-              const syncState = computeAttachmentSyncState(
-                localHash,
-                remoteHash,
-                existingAttState.baseHash
-              );
+              if (baseHash) {
+                const syncState = computeAttachmentSyncState(localHash, remoteHash, baseHash);
 
-              if (syncState === "conflict") {
-                // Both local and remote changed - save remote as conflict file
-                const conflictFilename = generateConflictFilename(attachment.filename);
-                const conflictPath = join(attachmentsDir, conflictFilename);
-                await writeFile(conflictPath, data);
+                if (syncState === "conflict") {
+                  // Both local and remote changed - save remote as conflict file
+                  const conflictFilename = generateConflictFilename(attachment.filename);
+                  const conflictPath = join(attachmentsDir, conflictFilename);
+                  await writeFile(conflictPath, data);
 
-                if (!opts.json) {
-                  output(`Conflict: ${attachment.filename} - saved remote as ${conflictFilename}`, opts);
+                  if (!opts.json) {
+                    output(`Conflict: ${attachment.filename} - saved remote as ${conflictFilename}`, opts);
+                  }
+
+                  // Update state to mark as conflict
+                  if (state) {
+                    updateAttachmentState(state, detail.id, attachment.id, {
+                      localHash,
+                      remoteHash,
+                      syncState: "conflict",
+                      lastSyncedAt: new Date().toISOString(),
+                    });
+                  }
+                  attachmentsPreserved.add(attachment.id);
+                  attachmentsConflicted++;
+                  continue; // Don't overwrite local file
                 }
 
-                // Update state to mark as conflict
-                if (state) {
-                  updateAttachmentState(state, detail.id, attachment.id, {
-                    remoteHash,
-                    syncState: "conflict",
-                    lastSyncedAt: new Date().toISOString(),
+                if (syncState === "local-modified") {
+                  // Local edits, remote unchanged: the markdown path skips here,
+                  // so the attachment path must too.
+                  if (!opts.json) {
+                    output(`Skipping ${attachmentLabel} (local modifications, use --force)`, opts);
+                  }
+                  if (state) {
+                    updateAttachmentState(state, detail.id, attachment.id, {
+                      localHash,
+                      remoteHash,
+                      syncState: "local-modified",
+                    });
+                  }
+                  attachmentsPreserved.add(attachment.id);
+                  attachmentsSkipped++;
+                  getLogger().sync({
+                    eventType: "status",
+                    file: attachmentLabel,
+                    pageId: detail.id,
+                    title: `Skipped attachment: local modifications`,
                   });
+                  continue;
                 }
-                continue; // Don't overwrite local file
+              } else if (localHash !== remoteHash) {
+                // A file sits at the destination but nothing recorded a base for
+                // it (never tracked, state reset, or replaced remotely under a
+                // new attachment ID). Modified-vs-stale is indistinguishable
+                // here, so keep the bytes and let the user decide.
+                if (!opts.json) {
+                  output(`Skipping ${attachmentLabel} (untracked local file, use --force)`, opts);
+                }
+                attachmentsPreserved.add(attachment.id);
+                attachmentsSkipped++;
+                getLogger().sync({
+                  eventType: "status",
+                  file: attachmentLabel,
+                  pageId: detail.id,
+                  title: `Skipped attachment: untracked local file`,
+                });
+                continue;
               }
             }
 
-            // No conflict - write normally
+            // No local modifications (or --force) - write normally
             await writeFile(attachmentPath, data);
             attachmentsPulled++;
           } catch (err) {
@@ -1142,6 +1201,10 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
       // Update attachment state
       for (const attachment of attachments) {
+        // Skipped/conflicted attachments keep the state written when they were
+        // preserved; re-hashing the local file here would silently promote the
+        // local edit to "synced" and lose the signal `status` reports.
+        if (attachmentsPreserved.has(attachment.id)) continue;
         try {
           const attachmentPath = join(pageDir, getAttachmentsDirName(pageFilename), attachment.filename);
           const attachmentData = await readFile(attachmentPath);
@@ -1500,6 +1563,12 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   if (pullAttachments && attachmentsPulled > 0) {
     pullResults.attachments = attachmentsPulled;
   }
+  if (pullAttachments && attachmentsSkipped > 0) {
+    pullResults.attachmentsSkipped = attachmentsSkipped;
+  }
+  if (pullAttachments && attachmentsConflicted > 0) {
+    pullResults.attachmentsConflicted = attachmentsConflicted;
+  }
   if (pullComments && commentsPulled > 0) {
     pullResults.comments = commentsPulled;
   }
@@ -1540,6 +1609,53 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     },
     opts
   );
+}
+
+/**
+ * @internal
+ * Validate exactly the files a push is about to send.
+ *
+ * `validateDirectory` walks a directory itself, which ignores both the file
+ * argument and the .atlcliignore filtering already applied to the push set.
+ * This aggregates per-file results the same way so the report shape stays
+ * identical, but over the real target list.
+ *
+ * Unreadable files are left out; the push itself reports those.
+ */
+export async function validatePushTargets(
+  files: string[],
+  state: AtlcliState | null,
+  atlcliDir: string | null,
+  options: Parameters<typeof validateFile>[4] = {}
+): Promise<ValidationResult> {
+  const results = [];
+
+  for (const filePath of files) {
+    let content: string;
+    try {
+      content = await readTextFile(filePath);
+    } catch {
+      continue;
+    }
+    results.push(validateFile(filePath, content, state, atlcliDir, options));
+  }
+
+  const totalErrors = results.reduce(
+    (sum, r) => sum + r.issues.filter((i) => i.severity === "error").length,
+    0
+  );
+  const totalWarnings = results.reduce(
+    (sum, r) => sum + r.issues.filter((i) => i.severity === "warning").length,
+    0
+  );
+
+  return {
+    files: results,
+    filesChecked: results.length,
+    totalErrors,
+    totalWarnings,
+    passed: totalErrors === 0,
+  };
 }
 
 async function handlePush(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
@@ -1614,10 +1730,17 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   }
 
 
-  // Run validation if --validate flag is set
-  if (hasFlag(flags, "validate") && atlcliDir) {
+  // Run validation if --validate flag is set.
+  //
+  // Validation covers exactly the files this push will send - a single file for
+  // `push <file>` / `--page-id`, the collected (ignore-filtered) set for a
+  // directory push. It used to validate the whole `.atlcli` tree regardless of
+  // the argument, so a clean file could be blocked by an unrelated file's
+  // errors, and it was gated on `atlcliDir` so `--validate` outside an
+  // initialized tree silently did nothing at all.
+  if (hasFlag(flags, "validate")) {
     const strict = hasFlag(flags, "strict");
-    const result = await validateDirectory(atlcliDir, state ?? null, atlcliDir, {
+    const result = await validatePushTargets(files, state ?? null, atlcliDir, {
       checkBrokenLinks: true,
       checkMacroSyntax: true,
       checkPageSize: true,
@@ -2786,6 +2909,19 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     untracked: 0,
   };
 
+  /**
+   * Attachments are tracked separately from markdown files: they have their own
+   * base hashes in state, and reporting them inside the file counters would
+   * make "N files" wrong. Before this existed, `status` answered "synced" for a
+   * tree whose attachment had local edits - right before `pull` destroyed them.
+   */
+  const attachmentStats = {
+    synced: 0,
+    localModified: 0,
+    conflict: 0,
+    missing: 0,
+  };
+
   const conflicts: { file: string; id?: string }[] = [];
   const modified: { file: string; type: string }[] = [];
   const untracked: string[] = [];
@@ -2859,6 +2995,35 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       // Has frontmatter but no state - assume synced
       stats.synced++;
     }
+
+    // Attachment state for this page (same base-hash comparison as pages).
+    if (pageState?.attachments) {
+      for (const att of Object.values(pageState.attachments)) {
+        if (!att?.localPath) continue;
+        const attAbsolute = join(dirname(filePath), toPlatformPath(att.localPath));
+        const attRelative = atlcliDir ? getRelativePath(atlcliDir, attAbsolute) : attAbsolute;
+
+        if (!existsSync(attAbsolute)) {
+          attachmentStats.missing++;
+          modified.push({ file: attRelative, type: "attachment deleted locally" });
+          continue;
+        }
+
+        const attLocalHash = hashContent((await readFile(attAbsolute)).toString("base64"));
+        if (att.syncState === "conflict") {
+          // Deliberately not added to `conflicts`: that list feeds `docs
+          // resolve`, which only understands markdown files. An attachment
+          // conflict is resolved by picking one of the two files on disk.
+          attachmentStats.conflict++;
+          modified.push({ file: attRelative, type: "attachment conflict" });
+        } else if (att.baseHash && attLocalHash !== att.baseHash) {
+          attachmentStats.localModified++;
+          modified.push({ file: attRelative, type: "attachment local changes" });
+        } else {
+          attachmentStats.synced++;
+        }
+      }
+    }
   }
 
   // Detect link changes if --links flag is set
@@ -2912,6 +3077,7 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
       schemaVersion: "1",
       dir,
       stats,
+      attachmentStats,
       folderCount,
       editorFormat: editorStats,
       legacyPages: legacyPages.length > 0 ? legacyPages : undefined,
@@ -2947,6 +3113,19 @@ async function handleStatus(args: string[], flags: Record<string, string | boole
     output(`  conflict:        ${stats.conflict} files`, opts);
     output(`  untracked:       ${stats.untracked} files`, opts);
     output(`  folders:         ${folderCount}`, opts);
+
+    const totalAttachments =
+      attachmentStats.synced +
+      attachmentStats.localModified +
+      attachmentStats.conflict +
+      attachmentStats.missing;
+    if (totalAttachments > 0) {
+      output(`\nAttachments:`, opts);
+      output(`  synced:          ${attachmentStats.synced}`, opts);
+      output(`  local-modified:  ${attachmentStats.localModified}`, opts);
+      output(`  conflict:        ${attachmentStats.conflict}`, opts);
+      output(`  missing:         ${attachmentStats.missing}`, opts);
+    }
 
     // Editor format stats
     const totalEditorPages = editorStats.v2 + editorStats.v1 + editorStats.unknown;
@@ -3190,11 +3369,15 @@ async function handleDocsDiff(args: string[], flags: Record<string, string | boo
 }
 
 async function handleCheck(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  const targetPath = args[0] || ".";
+  const targetPath = args[0] ?? getFlag(flags, "dir") ?? ".";
   const strict = hasFlag(flags, "strict");
 
   // Resolve to absolute path
   const absPath = resolve(targetPath);
+
+  if (!existsSync(absPath)) {
+    fail(opts, 1, ERROR_CODES.USAGE, `Path not found: ${absPath}`, { path: absPath });
+  }
 
   // Find .atlcli directory if it exists
   const atlcliDir = findAtlcliDir(absPath);
@@ -3215,6 +3398,19 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     checkPageSize: true,
     maxPageSizeKb: 500,
   });
+
+  // Validating nothing is never a pass. A `check` that walked an empty (or
+  // wrong) directory used to print "Checking 0 files... 0 errors" and exit 0,
+  // which makes a CI gate green by validating nothing at all.
+  if (result.filesChecked === 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `No markdown files found in ${absPath} - nothing was validated. Pass the directory explicitly (path argument or --dir).`,
+      { path: absPath, filesChecked: 0 }
+    );
+  }
 
   // Run folder validation
   const folderIssues = validateFolders(absPath);
@@ -3282,7 +3478,7 @@ async function handleDocsConvert(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const targetPath = args[0] || ".";
+  const targetPath = args[0] ?? getFlag(flags, "dir") ?? ".";
   const toNewEditor = hasFlag(flags, "to-new-editor");
   const toLegacyEditor = hasFlag(flags, "to-legacy-editor");
   const dryRun = hasFlag(flags, "dry-run");
@@ -3419,7 +3615,7 @@ Commands:
   status [dir] [--links]                             Show sync state (--links for link analysis)
   resolve <file> --accept local|remote|merged        Resolve conflicts
   diff <file>                                        Compare local vs remote
-  check [path] [--strict] [--json]                   Validate markdown files
+  check [path] [--strict] [--json]                   Validate markdown files (fails if nothing to check)
   convert <path> --to-new-editor [--dry-run]         Convert to new editor (v2)
   convert <path> --to-legacy-editor [--confirm]      Convert to legacy editor (v1)
 
@@ -3430,12 +3626,15 @@ Scope options (one required for init/pull/sync):
 
 Options:
   --profile <name>   Use a specific auth profile
+  --dir <path>       Target directory (alias for the positional path argument;
+                     accepted by init/pull/push/watch/sync/status/check/convert)
+  --out <path>       Legacy alias for --dir on pull
   --json             JSON output (watch/sync emit JSON lines)
-  --force            Overwrite local modifications
+  --force            Overwrite local modifications, including attachments
   --label <label>    Only sync pages with this label
   --comments         Pull page comments to .comments.json files
   --no-attachments   Skip downloading attachments
-  --validate         Run validation before push (fail on errors)
+  --validate         Validate the files being pushed before pushing (fail on errors)
   --strict           Treat warnings as errors (for check and --validate)
   --delete-folders   Confirm deletion of folders removed locally (push)
   --no-auto-create-folders  Don't auto-create folders for directories without index.md
@@ -3468,6 +3667,7 @@ Examples:
   atlcli wiki docs init ./docs --page-id 67890           Initialize for single page
   atlcli wiki docs pull                                  Pull into the current directory
   atlcli wiki docs pull ./docs                           Pull into ./docs
+  atlcli wiki docs pull --dir ./docs                     Same, from an unrelated cwd
   atlcli wiki docs pull ./docs --ancestor 99999          Override scope for this pull
   atlcli wiki docs pull ./docs --label architecture      Pull only pages with label
   atlcli wiki docs pull ./docs --comments                Pull pages with comments
@@ -3479,6 +3679,7 @@ Examples:
   atlcli wiki docs push --validate --strict              Fail on warnings too
   atlcli wiki docs diff ./docs/page.md                   Show local vs remote diff
   atlcli wiki docs check ./docs                          Check for broken links
+  atlcli wiki docs check --dir ./docs                    Same, from an unrelated cwd
   atlcli wiki docs check ./docs --strict                 Treat warnings as errors
   atlcli wiki docs check ./docs --json                   JSON output for CI/agents
   atlcli wiki docs convert ./docs/page.md --to-new-editor Convert single page
