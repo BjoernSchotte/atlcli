@@ -344,8 +344,9 @@ wiring stays in thin components and entrypoints.
    fit-width, later text selection/search/thumbnails/outline, and identical
    behavior across Chrome and Firefox. The cost is accepted knowingly and is
    tracked in Risks (bundle weight next to the ≥ 20 MB Typst WASM artifact, a
-   new upstream to watch for advisories, and the `DYNAMIC_CODE_RES` exemption
-   in Architecture point 8).
+   new upstream to watch for advisories; note that the `DYNAMIC_CODE_RES`
+   exemption Architecture point 8 originally planned turned out to be
+   unnecessary — see that point).
 
    **Truncation is scope-dependent.** For `scope: page` — the case
    CONFCLOUD-84742 actually describes — the preview compiles the **whole**
@@ -475,34 +476,60 @@ wiring stays in thin components and entrypoints.
    where a hard build gate is relaxed and therefore needs explicit review
    attention.
 
-   `apps/extension/scripts/check-output-build.ts` scans the **built bundle as
-   text** for string-to-code constructors — `new Function(`, `Function("`,
-   `eval(` (`DYNAMIC_CODE_RES`, `check-output-build.ts:48-52`) — and exits
-   non-zero on a hit, because MV3's extension-page CSP forbids them. PDF.js
-   ships those tokens (its PostScript function evaluator constructs compiled
-   functions). PDF.js's own `isEvalSupported: false` option prevents them from
-   ever *executing*, but that is a **runtime** flag and this gate is a
-   **static text scan** — the flag does not and cannot satisfy it. The two
-   facts must not be conflated when implementing.
+   **SUPERSEDED BY MEASUREMENT (2026-07-21). No exemption was added, and none
+   is needed.** This point was written on the assumption that PDF.js ships
+   string-to-code constructors. That assumption was **measured against the
+   actual dependency and is false** for `pdfjs-dist@6.1.200` (Apache-2.0), the
+   version this folder vendors:
 
-   Contract:
-   - **Path-scoped exemption only.** `DYNAMIC_CODE_RES` gains an exemption
-     keyed on the vendored PDF.js chunk's emitted path pattern — never a
-     global suppression, never a per-token allowlist that other bundle files
-     could also match. Every other file in `.output/chrome-mv3` stays under
-     the unchanged rule.
-   - **Runtime assertion, not just a comment.** The viewer constructs PDF.js
+   - `new Function(` / `Function("` / `eval(` in `build/pdf.min.mjs` and
+     `build/pdf.worker.min.mjs`: **zero occurrences** (verified by scanning the
+     emitted artifacts, and independently re-verified by the orchestrator).
+   - The `isEvalSupported` option **no longer exists** in v6 — 0 occurrences in
+     `pdf.mjs`/`pdf.worker.mjs`. v6 replaced the `Function`-based PostScript
+     evaluator with a WebAssembly one (`buildPostScriptWasmFunction`).
+
+   So the premise below ("PDF.js ships those tokens") described PDF.js v3/v4,
+   not the vendored version. **Adding a path-scoped exemption would have
+   loosened a security gate for a threat that does not exist**, and asserting
+   `isEvalSupported: false` as the compensating control would have asserted a
+   no-op. Neither was done. `DYNAMIC_CODE_RES` remains unchanged and applies to
+   every file in `.output/chrome-mv3`, PDF.js included.
+
+   **The gate was instead STRENGTHENED, because the audit found a real hole:**
+   - The scan walked only `.js`/`.html`. The vendored `.mjs` artifacts were
+     therefore **invisible to every rule** — not just this one. `.mjs` is now
+     scanned.
+   - Both PDF.js artifacts are added to `REQUIRED_PDF_ARTIFACTS`, sha256-pinned.
+     This is only meaningful because they are vendored with `?url&no-inline`
+     (emitted verbatim, not bundled): a rolldown chunk hash changes on every
+     unrelated edit, and worse, a path rule over a *chunk* name could silently
+     start covering our own code if the chunker merges modules.
+   - A scope test seeds `new Function(` into the real emitted PDF.js artifact
+     and asserts the real CLI **fails** — proving the path is not exempt — and
+     a second seeding elsewhere proves `.mjs` is not a way around the gate.
+     Adding a simulated exemption turns those tests red, so one cannot be
+     slipped in later without the suite noticing.
+   - `isEvalSupported: false` is still passed at the construction site,
+     documented as **inert in v6**, with a test that fails if PDF.js
+     reintroduces the option — so the situation is re-read rather than assumed.
+
+   What is load-bearing at the construction site today: `enableXfa: false`,
+   `useSystemFonts: false`, and the deliberate absence of
+   `wasmUrl`/`cMapUrl`/`standardFontDataUrl` (nothing is fetched at runtime).
+
+   ~~Original contract, retained for review history:~~
+   - ~~**Path-scoped exemption only.** `DYNAMIC_CODE_RES` gains an exemption
+     keyed on the vendored PDF.js chunk's emitted path pattern.~~
+   - ~~**Runtime assertion, not just a comment.** The viewer constructs PDF.js
      with `isEvalSupported: false` and a unit test asserts that option is set
-     at the single construction site, so the exemption never silently becomes
-     "PDF.js may eval in production".
-   - **The exemption is itself tested.** A gate test fails if the exemption
-     matches any path outside the PDF.js chunk (see Tests) — the mechanism
-     that keeps this from becoming a precedent for the next dependency that
-     trips the scan.
-   - **Rationale is documented in the module.** `check-output-build.ts`'s
+     at the single construction site.~~
+   - ~~**The exemption is itself tested.** A gate test fails if the exemption
+     matches any path outside the PDF.js chunk.~~
+   - ~~**Rationale is documented in the module.** `check-output-build.ts`'s
      docstring records *why* one dependency is exempt and what compensates
-     for it, so a future reader does not read the exemption as "this gate is
-     advisory".
+     for it.~~ *(Superseded: the docstring instead records the measurement and
+     what would reopen the question — there is no exemption to justify.)*
 
    Conversely the gate also *helps* here: `REQUIRED_PDF_ARTIFACTS`
    (`check-output-build.ts:61`) pins required local artifacts by path pattern
@@ -648,7 +675,9 @@ amount of abstraction helps.
       sidebar, so there is **no shared UI package** — sharing happens at the
       contract layer. Verify Radix/Tailwind output does not trip
       `check-output-build.ts`'s `DYNAMIC_CODE_RES`; if it does, question the
-      dependency before widening the exemption (Architecture point 8).
+      dependency before relaxing the gate (Architecture point 8 — note the
+      gate ended up **not** being relaxed at all, so there is no existing
+      exemption to widen; any relaxation would be the first).
 - [ ] **i18n from the first component**, DE + EN. A typed message dictionary
       plus React context — deliberately **not** `chrome.i18n`, which would not
       port. Retrofitting i18n later would touch every component; the design's
@@ -952,14 +981,17 @@ is a single-file change if the preview turns out to be v3.
       `tests/manifest.test.ts`). If this task needs to fork the component per
       shell, the Phase 0 screen model is wrong and should be fixed there
       instead.
-- [ ] `apps/extension/scripts/check-output-build.ts` (build gate, Architecture
-      point 8): add a **path-scoped** exemption to `DYNAMIC_CODE_RES` for the
-      vendored PDF.js chunk only — never a global suppression — and add the
-      PDF.js viewer + worker chunks to `REQUIRED_PDF_ARTIFACTS` so local
-      bundling is mechanically enforced. Document in the module docstring why
-      exactly one dependency is exempt and what compensates for it
-      (`isEvalSupported: false` + the exemption-scope test), so the exemption
-      does not read as precedent for the next dependency that trips the scan.
+- [x] `apps/extension/scripts/check-output-build.ts` (build gate, Architecture
+      point 8): **no exemption added — the premise was measured and is false.**
+      `pdfjs-dist@6.1.200` contains zero `eval`/`new Function` tokens (v6 uses a
+      WebAssembly PostScript evaluator) and no longer offers `isEvalSupported`,
+      so an exemption would have loosened the gate against a threat that does
+      not exist. Delivered instead: `.mjs` added to the scanned extensions (the
+      vendored artifacts were previously invisible to **every** rule — a real
+      pre-existing hole), both PDF.js artifacts sha256-pinned in
+      `REQUIRED_PDF_ARTIFACTS`, vendored with `?url&no-inline` so the pins are
+      stable and no rolldown chunk name is ever pattern-matched, and the module
+      docstring records the measurement plus what would reopen the question.
 - [ ] Debounce + coalescing: settings-form and scope changes trigger a
       preview recompile after ~400 ms of quiet; each new trigger supersedes
       the in-flight preview per the `kind: "preview"` coalescing rule above
@@ -1299,11 +1331,13 @@ Component/unit (new):
       construction site passes `isEvalSupported: false` and a local
       `workerSrc` — the runtime half of Architecture point 8's contract, which
       the static build scan cannot check.
-- [ ] `apps/extension/tests/output-scan.test.ts` (extend): the new
-      `DYNAMIC_CODE_RES` exemption is **path-scoped** — a fixture file placed
-      outside the PDF.js chunk path containing `new Function(` still fails the
-      scan. This is the test that keeps the exemption from silently widening
-      into a general suppression.
+- [x] `apps/extension/tests/output-scan.test.ts` (extend): **inverted, because
+      no exemption was added.** Instead of proving an exemption is narrow, the
+      tests prove the gate covers PDF.js at all: seeding `new Function(` into
+      the real emitted PDF.js artifact must FAIL the real CLI, and a `.mjs`
+      leak elsewhere must fail too (`.mjs` was previously unscanned). Adding a
+      simulated path-scoped exemption turns those tests red — so one cannot be
+      introduced later without the suite objecting.
 - [ ] **Real-browser render coverage belongs in Playwright, not happy-dom.**
       PDF.js rendering is `<canvas>` + a real Worker; happy-dom cannot
       meaningfully execute it, so the unit tests above deliberately cover the
@@ -1524,10 +1558,14 @@ site):
 - Download reuses cached preview bytes **only** for a non-truncated entry whose
   `sourceIdentity` + settings hash match exactly; a truncated preview can never
   be downloaded as if it were the full document.
-- The `DYNAMIC_CODE_RES` exemption in `check-output-build.ts` is path-scoped to
-  the PDF.js chunk, compensated by an asserted `isEvalSupported: false` at the
-  single construction site, and guarded by a test that fails if the exemption
-  matches anything outside that path. No other gate is relaxed.
+- **No gate is relaxed at all.** The planned `DYNAMIC_CODE_RES` exemption was
+  dropped after measurement: `pdfjs-dist@6.1.200` contains zero
+  `eval`/`new Function` tokens and no longer offers `isEvalSupported` (v6 uses a
+  WebAssembly PostScript evaluator). The gate is instead *stronger* than before —
+  it now scans `.mjs` (previously unscanned, so the vendored artifacts were
+  invisible to every rule), both PDF.js artifacts are sha256-pinned in
+  `REQUIRED_PDF_ARTIFACTS`, and a scope test fails if a future exemption is
+  introduced. See Architecture point 8.
 - Actual PDF.js render coverage lives in the real-browser Playwright harness;
   no unit test simulates a canvas and claims render coverage.
 - The panel and docs state plainly that the preview shows the last published
@@ -1597,13 +1635,13 @@ site):
   preview, and the sha256 pins in `REQUIRED_PDF_ARTIFACTS` make version bumps a
   visible, reviewed event rather than a silent drift — but it is still a new
   upstream to track for security advisories.
-- **A relaxed dynamic-code gate is a standing risk, not a solved problem.**
-  The path-scoped exemption (Architecture point 8) is the smallest change that
-  unblocks PDF.js, but it does mean one bundle path is no longer covered by a
-  gate that exists to enforce an MV3 CSP invariant. Compensating controls
-  (runtime `isEvalSupported: false`, exemption-scope test, documented
-  rationale) are specified — if any of them is dropped during implementation,
-  the exemption should be reconsidered rather than kept unguarded.
+- ~~**A relaxed dynamic-code gate is a standing risk.**~~ **Resolved, not
+  mitigated (2026-07-21):** no exemption exists. The vendored PDF.js version
+  ships no string-to-code constructors, so the gate stayed intact — see
+  Architecture point 8. Residual risk moves to *version drift*: a future
+  `pdfjs-dist` upgrade could reintroduce those tokens. That is caught
+  mechanically, because the artifacts are sha256-pinned and now actually
+  scanned, so a bump is a visible, reviewed event rather than silent drift.
 - **`export_view` markup drift** (BASELINE-DESIGN E1 risk): the HTML fallback
   is unversioned upstream; the DOCSY E2E in folders 002/008 is the canary, the
   extension inherits whatever the shared converter does — no extension-side
