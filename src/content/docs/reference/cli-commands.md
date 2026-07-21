@@ -111,7 +111,10 @@ atlcli wiki docs push <dir>                  # Push to Confluence
 atlcli wiki docs push <dir> --dry-run        # Preview changes
 atlcli wiki docs push <dir> --force          # Force overwrite
 atlcli wiki docs push <dir> --legacy-editor  # Use legacy editor (v1)
-atlcli wiki docs sync <dir> --watch          # Watch and sync
+atlcli wiki docs sync <dir> --page-id <id>   # Start the bidirectional sync daemon
+atlcli wiki docs sync <dir> --dry-run        # Report the plan; changes nothing on disk
+atlcli wiki docs sync <dir> --on-conflict remote  # Conflicts: merge (default) | local | remote
+atlcli wiki docs sync --help                 # Full sync option list
 atlcli wiki docs status <dir>                # Show sync status
 atlcli wiki docs add <dir> --template <name> # Add page from template
 atlcli wiki docs diff <dir>                  # Show local vs remote diff (title only for folders)

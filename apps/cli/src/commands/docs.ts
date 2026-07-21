@@ -297,11 +297,26 @@ export async function findMarkdownFileByFrontmatterId(
 }
 
 
+/**
+ * Subcommands that render their own `--help` text instead of the shared
+ * `docsHelp()` overview.
+ *
+ * `sync` has ~15 options of its own (`--dry-run`, `--on-conflict`,
+ * `--poll-interval`, the webhook flags …) documented in `syncHelp()`. This
+ * dispatcher used to swallow `--help` for every subcommand, so `atlcli wiki
+ * docs sync --help` — the command `docsHelp()` itself tells users to run —
+ * printed the overview and `syncHelp()` was dead code. None of those flags were
+ * discoverable from the CLI.
+ */
+const SELF_DOCUMENTING_SUBCOMMANDS = new Set(["sync"]);
+
 export async function handleDocs(args: string[], flags: Record<string, string | boolean | string[]>, opts: OutputOptions): Promise<void> {
-  // Show help if --help or -h flag is set
+  // Show help if --help or -h flag is set, unless the subcommand documents itself
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
-    output(docsHelp(), opts);
-    return;
+    if (!args[0] || !SELF_DOCUMENTING_SUBCOMMANDS.has(args[0])) {
+      output(docsHelp(), opts);
+      return;
+    }
   }
 
   const sub = args[0];
