@@ -400,8 +400,10 @@ atlcli jira worklog delete --issue <key> --id <id> --confirm
 # Timer mode
 atlcli jira worklog timer start <key>
 atlcli jira worklog timer start <key> --comment <text>
+atlcli jira worklog timer start <key> --profile <name>  # Record a specific profile
 atlcli jira worklog timer stop           # Stop and log time
 atlcli jira worklog timer stop --round 15m
+atlcli jira worklog timer stop --profile <name>  # Override the recorded profile
 atlcli jira worklog timer status         # Show running timer
 atlcli jira worklog timer cancel         # Cancel without logging
 
@@ -519,6 +521,17 @@ atlcli jira template import --file <path> --project <key>  # To project level
 - Global: `~/.atlcli/templates/jira/global/`
 - Profile: `~/.atlcli/templates/jira/profiles/{name}/`
 - Project: `~/.atlcli/templates/jira/projects/{key}/`
+
+**Choosing a level** — `save`, `import`, `delete` and `list` all use the same rule:
+
+1. an explicit `--level <global|profile|project>` always wins;
+2. otherwise `--project <key>` selects project storage;
+3. otherwise `--profile <name>` selects profile storage;
+4. otherwise global.
+
+`--profile` is primarily the auth-profile flag, so it is the weakest storage
+signal. An unrecognised `--level` value is rejected rather than silently
+falling back to another level.
 
 ### Bulk Operations
 

@@ -40,6 +40,19 @@ atlcli jira worklog timer stop --round 15m
 atlcli jira worklog timer cancel
 ```
 
+### Profiles
+
+`timer start` records the auth profile that is active at the time — either the
+one named with `--profile`, or the current profile from your config. `timer stop`
+logs the worklog with that recorded profile.
+
+Pass `--profile <name>` to `stop` to override it, for example after renaming a
+profile:
+
+```bash
+atlcli jira worklog timer stop --profile work
+```
+
 ### Timer State
 
 Timer state is stored in `~/.atlcli/timer.json`:
@@ -47,10 +60,21 @@ Timer state is stored in `~/.atlcli/timer.json`:
 ```json
 {
   "issueKey": "PROJ-123",
-  "startTime": "2025-01-14T09:00:00Z",
+  "startedAt": "2026-01-14T09:00:00.000Z",
+  "profile": "work",
   "comment": "Working on feature"
 }
 ```
+
+:::note[Your tracked time is safe if `stop` fails]
+The timer file is only deleted once Jira has confirmed the worklog. If `stop`
+fails — an unparseable `--round`, an unknown profile, an expired token, a network
+error or a Jira 5xx — the elapsed time is preserved and the error says so. Fix
+the cause and run `atlcli jira worklog timer stop` again; the worklog is still
+logged from the original start time.
+
+Use `atlcli jira worklog timer cancel` if you want to discard it instead.
+:::
 
 ## Direct Entry
 
