@@ -185,6 +185,22 @@ function formatTimeAgo(isoDate: string): string {
 }
 
 /**
+ * Machine-readable form of a validation run, shared by `docs check --json` and
+ * `docs push --validate --json` so both report issues in the same shape.
+ */
+function validationPayload(result: ValidationResult): Record<string, unknown> {
+  const filesWithIssues = result.files.filter((f) => f.issues.length > 0);
+  return {
+    passed: result.passed,
+    totalErrors: result.totalErrors,
+    totalWarnings: result.totalWarnings,
+    filesChecked: result.filesChecked,
+    filesWithIssues: filesWithIssues.length,
+    files: filesWithIssues.map((f) => ({ path: f.path, issues: f.issues })),
+  };
+}
+
+/**
  * Check if a path is inside the atlcli source tree.
  * Used to warn about stale test data that might interfere with operations.
  */
@@ -988,7 +1004,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     // Get computed path for this page
     const computed = pathMap.get(detail.id);
     if (!computed) {
-      output(`Warning: Could not compute path for page ${detail.id}`, opts);
+      if (!opts.json) {
+        output(`Warning: Could not compute path for page ${detail.id}`, opts);
+      }
       skipped++;
       continue;
     }
@@ -1051,7 +1069,9 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
 
         if (localHash !== existingState.baseHash) {
           // Local has modifications, skip unless --force
-          output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
+          if (!opts.json) {
+            output(`Skipping ${relativePath} (local modifications, use --force)`, opts);
+          }
           skipped++;
           getLogger().sync({
             eventType: "status",
@@ -1791,6 +1811,10 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
   }
 
 
+  // Validation carried into the final push document so `--json` consumers see
+  // the warnings we pushed through instead of a stray human-readable report.
+  let validation: Record<string, unknown> | null = null;
+
   // Run validation if --validate flag is set.
   //
   // Validation covers exactly the files this push will send - a single file for
@@ -1808,19 +1832,32 @@ async function handlePush(args: string[], flags: Record<string, string | boolean
       maxPageSizeKb: 500,
     });
 
+    // In JSON mode the report goes into the single result/error document, never
+    // as its own stringified document ahead of it.
+    const reportIfHuman = () => {
+      if (!opts.json) output(formatValidationReport(result), opts);
+    };
+
     if (!result.passed) {
-      output(formatValidationReport(result), opts);
-      fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed - push aborted");
+      reportIfHuman();
+      fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed - push aborted", validationPayload(result));
     }
 
     if (result.totalWarnings > 0) {
-      output(formatValidationReport(result), opts);
+      reportIfHuman();
       if (strict) {
-        fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors) - push aborted");
+        fail(
+          opts,
+          1,
+          ERROR_CODES.VALIDATION,
+          "Validation failed (strict mode: warnings are errors) - push aborted",
+          validationPayload(result)
+        );
       }
       if (!opts.json) {
         output("Proceeding with push despite warnings...\n", opts);
       }
+      validation = validationPayload(result);
     }
   }
 
@@ -1975,7 +2012,7 @@ atlcli:
     const result = updated > 0 ? "updated" : created > 0 ? "created" : "skipped";
     output(
       opts.json
-        ? { schemaVersion: "1", file: files[0], result }
+        ? { schemaVersion: "1", file: files[0], result, ...(validation ? { validation } : {}) }
         : `${basename(files[0])}: ${result}`,
       opts
     );
@@ -1988,6 +2025,7 @@ atlcli:
       {
         schemaVersion: "1",
         results,
+        ...(validation ? { validation } : {}),
         note: "Frontmatter stripped before push. State saved to .atlcli/",
       },
       opts
@@ -3295,12 +3333,17 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
                      content.includes(">>>>>>> REMOTE");
 
   if (!hasMarkers) {
-    if (isEnhancedMeta(meta) && meta.syncState === "conflict") {
-      // No markers but marked as conflict - might have been manually edited
-      output("File was marked as conflict but has no conflict markers.", opts);
-    } else {
-      output("File has no conflicts to resolve.", opts);
-    }
+    // No markers but marked as conflict - might have been manually edited
+    const staleConflict = isEnhancedMeta(meta) && meta.syncState === "conflict";
+    const message = staleConflict
+      ? "File was marked as conflict but has no conflict markers."
+      : "File has no conflicts to resolve.";
+    output(
+      opts.json
+        ? { schemaVersion: "1", file: filePath, resolved: false, staleConflict, message }
+        : message,
+      opts
+    );
     return;
   }
 
@@ -3325,6 +3368,11 @@ async function handleResolve(args: string[], flags: Record<string, string | bool
       localHash: hashContent(normalizeMarkdown(resolved)),
     };
     await writeMeta(filePath, updatedMeta);
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", file: filePath, resolved: true, accept }, opts);
+    return;
   }
 
   output(`Resolved conflicts in ${filePath} using ${accept} version.`, opts);
@@ -3495,33 +3543,33 @@ async function handleCheck(args: string[], flags: Record<string, string | boolea
     }
   }
 
-  // JSON output
+  // Reason for a non-zero exit, if any: errors always fail, warnings only in
+  // strict mode.
+  const failureMessage = !result.passed
+    ? "Validation failed"
+    : strict && result.totalWarnings > 0
+      ? "Validation failed (strict mode: warnings are errors)"
+      : null;
+
+  // JSON output. The error is folded into the report so `--json` always emits
+  // exactly one document that JSON.parse() can read - calling fail() here would
+  // print a second, separate {"error": ...} document to the same stream.
   if (opts.json) {
     output({
       schemaVersion: "1",
-      passed: result.passed,
-      totalErrors: result.totalErrors,
-      totalWarnings: result.totalWarnings,
-      filesChecked: result.filesChecked,
-      filesWithIssues: result.files.filter((f) => f.issues.length > 0).length,
-      files: result.files.filter((f) => f.issues.length > 0).map((f) => ({
-        path: f.path,
-        issues: f.issues,
-      })),
+      ...validationPayload(result),
+      ...(failureMessage
+        ? { error: { code: ERROR_CODES.VALIDATION, message: failureMessage, details: {} } }
+        : {}),
     }, opts);
-  } else {
-    // Human-readable output
-    output(formatValidationReport(result), opts);
+    if (failureMessage) process.exit(1);
+    return;
   }
 
-  // Exit with error if validation failed
-  if (!result.passed) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed");
-  }
-
-  // Exit with error in strict mode if there are warnings
-  if (strict && result.totalWarnings > 0) {
-    fail(opts, 1, ERROR_CODES.VALIDATION, "Validation failed (strict mode: warnings are errors)");
+  // Human-readable output
+  output(formatValidationReport(result), opts);
+  if (failureMessage) {
+    fail(opts, 1, ERROR_CODES.VALIDATION, failureMessage);
   }
 }
 

@@ -767,7 +767,11 @@ atlcli represents folders as directories with an `index.md` file containing `typ
 
 ## JSON Output
 
-Most commands support `--json` for scripting:
+Most commands support `--json` for scripting. Apart from the two streaming
+commands noted below, `--json` writes **exactly one JSON document** to stdout —
+`JSON.parse(stdout)` is always safe. Progress notes, skip messages and warnings
+are suppressed in this mode; the counters in the result document report the same
+information (a skipped file shows up in `results.skipped`, not as a log line).
 
 ```bash
 atlcli wiki docs status ./docs --json
@@ -788,7 +792,11 @@ atlcli wiki docs status ./docs --json
 }
 ```
 
-Sync command emits JSON lines (one event per line):
+### Streaming commands
+
+`sync` and `watch` are the exception: they run until done (or until you stop
+them) and emit **JSON Lines** — one complete document per line. Parse these line
+by line, not as a whole.
 
 ```bash
 atlcli wiki docs sync ./docs --json
@@ -799,6 +807,12 @@ atlcli wiki docs sync ./docs --json
 {"schemaVersion":"1","type":"pull","file":"api-reference.md","pageId":"12345","message":"Pulled: API Reference"}
 {"schemaVersion":"1","type":"push","file":"guide.md","pageId":"12346","message":"Pushed: Guide"}
 ```
+
+### Failures
+
+A command that exits non-zero reports the reason in an `error` object. For
+`docs check` this is folded into the report document so there is still only one
+document to parse — see [Validation](validation.md#json-output).
 
 ## Best Practices
 
