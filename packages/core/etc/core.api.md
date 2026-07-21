@@ -1733,6 +1733,78 @@ export type TokenResolver = (profile: Profile) => string | null;
 export declare function verifyTemplateBytes(entry: TemplateLibraryEntry, bytes: Uint8Array): Promise<void>;
 ```
 
+### Entry point `./internal`
+
+```ts
+// export: ATLASSIAN_LOGIN_HOSTS
+export declare const ATLASSIAN_LOGIN_HOSTS: readonly string[];
+
+// export: ATLASSIAN_MEDIA_HOST
+export declare const ATLASSIAN_MEDIA_HOST = "media.atlassian.com";
+
+// export: AtlassianSessionRedirectPolicyOptions
+export interface AtlassianSessionRedirectPolicyOptions {
+    siteOrigin: string;
+    allowedOrigins?: readonly string[];
+}
+
+// export: createAtlassianSessionRedirectPolicy
+export declare function createAtlassianSessionRedirectPolicy(options: AtlassianSessionRedirectPolicyOptions): SessionRedirectPolicy;
+
+// export: fetchSessionBinaryFollowingRedirects
+export declare function fetchSessionBinaryFollowingRedirects(url: string, init: RequestInit, policy: SessionRedirectPolicy, options: SessionBinaryFetchOptions): Promise<Response>;
+
+// export: isAtlassianLoginTarget
+export declare function isAtlassianLoginTarget(target: URL): boolean;
+
+// export: isAtlassianMediaTarget
+export declare function isAtlassianMediaTarget(target: URL): boolean;
+
+// export: isSessionRedirectBlockedError
+export declare function isSessionRedirectBlockedError(err: unknown): err is SessionRedirectBlockedError;
+
+// export: parseRetryAfterMs
+export declare function parseRetryAfterMs(header: string | null | undefined, options?: {
+    now?: number;
+}): number | undefined;
+
+// export: redactRedirectTarget
+export declare function redactRedirectTarget(target: string): string;
+
+// export: RETRY_AFTER_MAX_MS
+export declare const RETRY_AFTER_MAX_MS = 60000;
+
+// export: RETRY_AFTER_MIN_MS
+export declare const RETRY_AFTER_MIN_MS = 1000;
+
+// export: SESSION_REDIRECT_MAX_HOPS
+export declare const SESSION_REDIRECT_MAX_HOPS = 5;
+
+// export: SessionBinaryFetchLike
+export type SessionBinaryFetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+// export: SessionBinaryFetchOptions
+export interface SessionBinaryFetchOptions {
+    fetchFn?: SessionBinaryFetchLike;
+    maxRedirects?: number;
+    loginRedirectError(status: number): Error;
+    blockedRedirectError(target: string, reason: string): Error;
+}
+
+// export: SessionRedirectBlockedError
+export declare class SessionRedirectBlockedError extends Error {
+    readonly target: string;
+    readonly reason: string;
+    constructor(label: string, target: string, reason: string);
+}
+
+// export: SessionRedirectPolicy
+export interface SessionRedirectPolicy {
+    isLoginTarget(target: URL): boolean;
+    isAllowedTarget(target: URL): boolean;
+}
+```
+
 ### Entry point `./node`
 
 ```ts

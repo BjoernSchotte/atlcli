@@ -56,6 +56,11 @@ import {
   type ScopeReportFields,
 } from "./export-request.js";
 import { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup } from "./export-internals.js";
+import {
+  defaultExternalAssetFetcher,
+  defaultExternalAssetPolicy,
+  trustRoutingPdfAssetResolver,
+} from "@atlcli/export-wiring";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
   PdfUsageError,
@@ -108,6 +113,35 @@ export function cliPdfAssetResolver(
       };
     },
   };
+}
+
+/**
+ * The resolver the PDF export env actually gets: {@link cliPdfAssetResolver}
+ * with the spec-004 trust router already composed around it.
+ *
+ * **Every `PdfExportEnv.assets` the CLI builds goes through here** — that is the
+ * whole point of the function existing rather than the two lines being inlined
+ * at the `runPdfExport` call. `trustRoutingPdfAssetResolver` had been written,
+ * unit-tested, and then wired NOWHERE: only the DOCX path composed its sibling,
+ * and this path handed `runPdfExport` a bare token resolver. That was harmless
+ * only because the CLI PDF path resolves no macros yet, so nothing could mint a
+ * `trust: "export-view"` ref — a latent gap that becomes a live SSRF the day
+ * `macros` is passed here. Composing it unconditionally costs nothing today
+ * (refs without that trust marker take the identical path) and cannot be
+ * forgotten tomorrow.
+ *
+ * `apps/cli/src/commands/export-pdf-assets.test.ts` pins both halves: the
+ * router is present, and no other construction site bypasses it.
+ */
+export function cliPdfAssets(
+  client: ConfluenceClient,
+  baseUrl: string,
+  options: { noCache?: boolean } = {}
+): PdfAssetResolver {
+  return trustRoutingPdfAssetResolver(
+    cliPdfAssetResolver(client, baseUrl, options),
+    defaultExternalAssetFetcher(defaultExternalAssetPolicy(baseUrl))
+  );
 }
 
 /**
@@ -351,7 +385,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         onProgress: progress.report,
       },
       {
-        assets: cliPdfAssetResolver(client, baseUrl, { noCache: args.noCache }),
+        assets: cliPdfAssets(client, baseUrl, { noCache: args.noCache }),
         compiler,
         output: filePdfOutputSink(outputPath, { force: args.force }),
       }

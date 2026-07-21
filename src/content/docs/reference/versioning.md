@@ -66,6 +66,7 @@ rules keep applying to the rest. A registry publish remains deferred either way.
 | `@atlcli/plugin-api` | 0.6.0 | no | Never API-reviewed |
 | `@atlcli/template-pack` | 0.6.0 | no | Spec 007 did not decide public-API status; the byte format has its own manifest versioning |
 | `@atlcli/export-node` | 0.6.0 | no | Days old; convenience surface should harden against real consumers first |
+| `@atlcli/export-wiring` | 0.1.0 | no | Created in spec 010 by promoting the CLI's host-wiring module so the extension stops carrying a second copy; its shape still follows the hosts |
 
 ## What counts as breaking
 
