@@ -11,7 +11,9 @@
  */
 import {
   composeChapters,
+  pageBodyToBlocks,
   storageToBlocks,
+  type BlocksResult,
   type ComposeResult,
   type ConfluencePageDetails,
   type ExportBlock,
@@ -103,6 +105,143 @@ export const PDF_METADATA: PdfExportMetadata = {
 };
 
 export const PDF_FILENAME = "Browser Harness PDF.pdf";
+
+// ---------------------------------------------------------------------------
+// ADF-primary browser conformance fixture
+// ---------------------------------------------------------------------------
+
+/**
+ * Real ADF input for the browser conformance harness. This deliberately starts
+ * before the representation-neutral boundary: the case must validate and
+ * decode ADF in the packed browser, then feed the resulting blocks to both
+ * renderers. It mixes native semantics with visible, diagnosed degradations.
+ */
+export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
+  version: 1,
+  type: "doc",
+  content: [
+    {
+      type: "heading",
+      attrs: { level: 1 },
+      content: [{ type: "text", text: "ADF browser conformance" }],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "INLINE_TOKEN", marks: [{ type: "code" }] },
+        { type: "text", text: " remains literal; " },
+        { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
+        { type: "text", text: " " },
+        {
+          type: "inlineCard",
+          attrs: {
+            data: {
+              url: "https://example.invalid/adf-card",
+              name: "Local card title",
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "info" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],
+    },
+    {
+      type: "table",
+      content: [{
+        type: "tableRow",
+        content: [
+          {
+            type: "tableHeader",
+            attrs: { colspan: 1, rowspan: 1, background: "#AABBCC", colwidth: [240] },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
+          },
+          {
+            type: "tableCell",
+            attrs: { colspan: 1, rowspan: 1, colwidth: [360] },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
+          },
+        ],
+      }],
+    },
+    {
+      type: "layoutSection",
+      content: [{
+        type: "layoutColumn",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Flattened layout content" }] }],
+      }],
+    },
+    {
+      type: "expand",
+      attrs: { title: "Expanded title" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Expanded body" }] }],
+    },
+    {
+      type: "bodiedExtension",
+      attrs: {
+        extensionType: "com.example.synthetic",
+        extensionKey: "visible-extension",
+        localId: "editor-local-only",
+        parameters: { mode: "compact" },
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Extension body" }] }],
+    },
+    {
+      type: "mediaSingle",
+      content: [
+        { type: "media", attrs: { type: "file", id: "unresolved-media", alt: "Visible media fallback" } },
+        { type: "caption", content: [{ type: "paragraph", content: [{ type: "text", text: "Media caption" }] }] },
+      ],
+    },
+  ],
+});
+
+export const ADF_CONFORMANCE_DETAILS: ConfluencePageDetails = {
+  id: "adf-conformance-page",
+  title: "ADF Browser Conformance",
+  url: "https://example.invalid/wiki/spaces/TEST/pages/adf-conformance-page",
+  version: 1,
+  spaceKey: "TEST",
+  storage: "",
+  created: "2026-07-22T08:00:00.000Z",
+  modified: "2026-07-22T08:00:00.000Z",
+  createdBy: { displayName: "Harness Author" },
+  modifiedBy: { displayName: "Harness Author" },
+  labels: ["browser-conformance"],
+};
+
+export const ADF_CONFORMANCE_METADATA: PdfExportMetadata = {
+  title: "ADF Browser Conformance",
+  space: "TEST",
+  version: 1,
+  author: "Harness Author",
+  exporter: "atlcli browser harness",
+  language: "en",
+  region: "GB",
+  exportedAt: new Date("2026-07-22T08:00:00.000Z"),
+};
+
+/** Decode the real ADF fixture through the production representation dispatcher. */
+export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
+  return pageBodyToBlocks(
+    {
+      primary: { representation: "atlas_doc_format", value: ADF_CONFORMANCE_SOURCE },
+      sourceVersion: 1,
+    },
+    {
+      exporter,
+      pageContext: {
+        id: ADF_CONFORMANCE_DETAILS.id,
+        title: ADF_CONFORMANCE_DETAILS.title,
+        url: ADF_CONFORMANCE_DETAILS.url,
+        version: ADF_CONFORMANCE_DETAILS.version,
+        spaceKey: ADF_CONFORMANCE_DETAILS.spaceKey,
+      },
+    },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Spec 007 — PDF settings / watermark conformance fixture

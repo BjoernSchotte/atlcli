@@ -735,10 +735,10 @@ Exit:
 
 Tasks:
 
-- [ ] Add one browser conformance case that begins with real ADF, not hand-built blocks.
+- [x] Add one browser conformance case that begins with real ADF, not hand-built blocks.
 - [ ] Run paired ADF/Storage semantic differential tests for the feature zoo.
 - [ ] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
-- [ ] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
+- [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
 - [ ] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
 - [ ] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
 - [ ] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
@@ -746,6 +746,8 @@ Tasks:
 - [ ] Ship ADF-primary behind one export-source feature flag until the gates below pass.
 - [ ] Make rollback switch representation choice at the source adapter; do not fork render engines.
 - [ ] After one stable release window, plan lazy Storage-sidecar reads as a separate optimization.
+
+Partial WP9 evidence recorded on 2026-07-22: the packed browser harness now owns a real ADF-primary case that invokes the production representation dispatcher before either renderer. It proves target-neutral blocks and diagnostics, then structurally asserts DOCX inline-code font treatment, Unicode emoji, tables, local Smart Link title/target, extension body, and visible unresolved-media content; the PDF output passes tagged-document validation. The production browser build, output-integrity check, manifest drift guard, focused fixture test, browser-harness typecheck, and the complete 15-case Playwright conformance run passed.
 
 Default-enable gates:
 
