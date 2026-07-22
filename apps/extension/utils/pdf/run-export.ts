@@ -140,6 +140,12 @@ export interface RunPdfExportDeps {
   /** Injectable `TreeSource` seam; see `utils/confluence/export-composition.ts`. */
   createTreeSource?: ExportCompositionDeps["createTreeSource"];
   /**
+   * Composition seam used by the bounded preview path. Production exports use
+   * {@link resolveExportComposition} unchanged; previews wrap it only to select
+   * a chapter prefix after the shared tree walk has completed.
+   */
+  resolveComposition: typeof resolveExportComposition;
+  /**
    * Macro-resolution factory. Returning `undefined` reproduces the pre-T5.4
    * behaviour exactly (unresolved macros stay placeholders with a report note).
    */
@@ -242,6 +248,7 @@ const defaultDeps: RunPdfExportDeps = {
   now: () => Date.now(),
   locale: runtimeLocale,
   resolveMentions: defaultResolveMentions,
+  resolveComposition: resolveExportComposition,
   createMacros: defaultCreateMacros,
   createCompilePort: (options) => extensionPdfCompilePort(options),
   updateJobProgress: (jobId, progress) => updatePdfJobProgress(jobId, progress).then(() => undefined),
@@ -438,7 +445,7 @@ export async function runPdfExport(
 
   // Scope resolution FIRST: the abort signal reaches the walk, not only the
   // compile, so a Cancel on page 37 of 210 stops fetching immediately.
-  const composition: ExportComposition = await resolveExportComposition(
+  const composition: ExportComposition = await deps.resolveComposition(
     {
       root: {
         id: input.page.details.id,

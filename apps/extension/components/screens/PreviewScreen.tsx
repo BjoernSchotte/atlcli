@@ -49,6 +49,7 @@ import {
   X,
 } from "lucide-react";
 import type { PdfBytesHandle } from "@atlcli/pdf/browser";
+import type { ExportScope, LabelFilter } from "@atlcli/confluence/browser";
 import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
 import type { HostCapability } from "../../utils/ports/index.js";
 import type { LoadedPage } from "../../utils/read-path.js";
@@ -122,6 +123,8 @@ export function usePreviewShell(): PreviewShellConfig {
 export interface PreviewCompileRequest {
   page: LoadedPage;
   pageUrl: string;
+  scope: ExportScope;
+  labels?: LabelFilter;
   settings?: import("@atlcli/pdf/browser").PdfTemplateSettings;
   resolveMacros?: boolean;
   signal?: AbortSignal;
@@ -149,18 +152,22 @@ export interface PreviewRuntime {
    * instead of compiling the document a second time.
    */
   readCached(request: PreviewCompileRequest): Promise<PdfPreviewResult | null>;
+  /** Current single-slot bytes for the dedicated large-preview tab. */
+  readLatest?(): Promise<PdfPreviewResult | null>;
   openViewer(bytes: PdfBytesHandle): Promise<PdfPreviewViewer>;
 }
 
-async function cacheParts(request: PreviewCompileRequest) {
+async function cacheParts(
+  request: PreviewCompileRequest,
+  nodeVersions?: import("../../utils/pdf/preview.js").PreviewNodeVersion[]
+) {
   const { previewCacheParts } = await import("../../utils/pdf/preview.js");
   return previewCacheParts({
     pageUrl: request.pageUrl,
     page: { id: request.page.details.id, version: request.page.details.version },
-    // v1 previews the loaded page. Once the scope form threads a scope and
-    // label filter through, they belong here — `previewCacheParts` already
-    // folds them into the identity.
-    scope: { kind: "page", pageId: request.page.details.id },
+    scope: request.scope,
+    ...(request.labels ? { labels: request.labels } : {}),
+    ...(nodeVersions ? { nodeVersions } : {}),
     settings: {
       document: request.settings ?? null,
       resolveMacros: request.resolveMacros !== false,
@@ -170,10 +177,12 @@ async function cacheParts(request: PreviewCompileRequest) {
 
 const defaultRuntime: PreviewRuntime = {
   async compile(request) {
-    const { runPagePdfPreview } = await import("../../utils/pdf/preview.js");
-    const result = await runPagePdfPreview({
+    const { runScopedPdfPreview } = await import("../../utils/pdf/preview.js");
+    const result = await runScopedPdfPreview({
       page: request.page,
       pageUrl: request.pageUrl,
+      scope: request.scope,
+      ...(request.labels ? { labels: request.labels } : {}),
       settings: request.settings,
       ...(request.resolveMacros === false ? { macros: { live: false } } : {}),
       signal: request.signal,
@@ -183,7 +192,7 @@ const defaultRuntime: PreviewRuntime = {
       // Best-effort: a cache write must never turn a successful preview into a
       // failed one. The user has the document on screen either way.
       await putPreview({
-        ...(await cacheParts(request)),
+        ...(await cacheParts(request, result.nodeVersions)),
         pdf: await result.bytes.asUint8Array(),
         filename: result.filename ?? "preview.pdf",
         truncated: result.truncated,
@@ -194,8 +203,26 @@ const defaultRuntime: PreviewRuntime = {
     return result;
   },
   async readCached(request) {
+    // A persistent tree hit is only safe after refetching every child version,
+    // which would defeat this cheap mount-time read. The full tab uses the
+    // single-slot read below; a compact tree preview remains in component state.
+    if (request.scope.kind !== "page") return null;
     const { getPreviewEntry } = await import("../../utils/pdf/preview-cache.js");
     const hit = await getPreviewEntry(await cacheParts(request)).catch(() => undefined);
+    if (!hit) return null;
+    return {
+      status: "ready",
+      bytes: hit.bytes,
+      filename: hit.entry.filename,
+      truncated: hit.entry.truncated,
+      includedChapters: hit.entry.includedChapters,
+      totalChapters: hit.entry.totalChapters,
+      reason: hit.entry.truncated ? "chapters" : "none",
+    };
+  },
+  async readLatest() {
+    const { getLatestPreview } = await import("../../utils/pdf/preview-cache.js");
+    const hit = await getLatestPreview().catch(() => undefined);
     if (!hit) return null;
     return {
       status: "ready",
@@ -244,12 +271,16 @@ export function PreviewScreen({
   const pageUrl = page.status === "loaded" ? page.ref.url : null;
   const draftSettings = publishingDraft?.pdfSettings;
   const draftResolveMacros = publishingDraft?.resolveMacros;
+  const draftScope = publishingDraft?.exportScope;
+  const draftLabels = publishingDraft?.labels;
   const previewRequest = useMemo<PreviewCompileRequest | null>(
     () =>
       loadedPage && pageUrl
         ? {
             page: loadedPage,
             pageUrl,
+            scope: draftScope ?? { kind: "page", pageId: loadedPage.details.id },
+            ...(draftLabels ? { labels: draftLabels } : {}),
             ...(draftSettings
               ? {
                   settings: draftSettings,
@@ -258,7 +289,7 @@ export function PreviewScreen({
               : {}),
           }
         : null,
-    [draftResolveMacros, draftSettings, loadedPage, pageUrl]
+    [draftLabels, draftResolveMacros, draftScope, draftSettings, loadedPage, pageUrl]
   );
   const [phase, setPhase] = useState<PreviewPhase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -403,8 +434,8 @@ export function PreviewScreen({
   useEffect(() => {
     if (!previewRequest || phase !== "idle") return;
     let cancelled = false;
-    void runtime
-      .readCached(previewRequest)
+    const read = full && runtime.readLatest ? runtime.readLatest() : runtime.readCached(previewRequest);
+    void read
       .then(async (cached) => {
         if (cancelled || !cached) return;
         await show(cached, previewRequest);
@@ -413,7 +444,7 @@ export function PreviewScreen({
     return () => {
       cancelled = true;
     };
-  }, [phase, previewRequest, runtime, show]);
+  }, [full, phase, previewRequest, runtime, show]);
 
   // Auto-refresh: the CONFCLOUD-84742 loop is `edit → publish → preview`, and
   // publishing is exactly what changes the page version the panel already

@@ -44,6 +44,7 @@ import {
 } from "../../utils/pdf/run-export.js";
 import { sessionDocxAssets } from "../../utils/docx/env.js";
 import { isExternalAssetBlockedError } from "../../utils/macros/external-asset-policy.js";
+import { resolveExportComposition } from "../../utils/confluence/export-composition.js";
 
 const SITE = "https://fixture.atlassian.net";
 const PAGE_URL = `${SITE}/wiki/spaces/DOCSY/pages/1/Root`;
@@ -184,6 +185,8 @@ interface RunCapture {
 
 interface RunOptions {
   source?: TreeSource;
+  /** Select a bounded chapter prefix through the same seam used by PDF preview. */
+  selectFirstNodes?: number;
   /**
    * Use the PRODUCTION macro factory (`buildSessionMacroResolutionOptions` via
    * `run-export.ts`'s own default) instead of disabling macros. Off by default
@@ -209,6 +212,18 @@ async function run(
       now: () => 1_000,
       locale: () => "en",
       createTreeSource: () => source,
+      ...(options.selectFirstNodes === undefined
+        ? {}
+        : {
+            resolveComposition: (input, overrides) =>
+              resolveExportComposition(
+                {
+                  ...input,
+                  selectNodes: (nodes) => nodes.slice(0, options.selectFirstNodes),
+                },
+                overrides
+              ),
+          }),
       // Omitted entirely when `realMacros` is set, so `defaultDeps` supplies
       // the production factory.
       ...(options.realMacros ? {} : { createMacros: () => undefined }),
@@ -254,6 +269,20 @@ describe("scope wiring (T5.1)", () => {
     expect(capture.bundle?.main).toContain("Alpha");
     expect(capture.bundle?.main).toContain("Beta");
     expect(capture.compiles).toBe(1);
+  });
+
+  it("lets preview select a chapter prefix only after the shared tree walk", async () => {
+    const source = fakeTreeSource(TREE_FIXTURE);
+    const capture = await run(
+      { page: loadedPage(), pageUrl: PAGE_URL, scope: treeScope },
+      { source, selectFirstNodes: 2 }
+    );
+    const headings = (capture.blocks ?? [])
+      .filter((block): block is Extract<ExportBlock, { type: "heading" }> => block.type === "heading")
+      .map((block) => block.content.map((node) => ("text" in node ? node.text : "")).join(""));
+
+    expect(source.getPageIds).toEqual(["1", "2", "3"]);
+    expect(headings).toEqual(["Root", "Alpha"]);
   });
 
   it("a single-page scope issues no walk and keeps today's single-page body", async () => {

@@ -1205,10 +1205,15 @@ is a single-file change if the preview turns out to be v3.
       reuses `extensionPdfCompilePort`/`kind: "preview"` so the compile rides
       the warm worker per the coalescing contract above; (d) the result
       carries `truncated: boolean` so the cache and Download can act on it.
-      *(Shipped at that path, but as **two entry points rather than one**
-      `runPdfPreview`: `runPagePdfPreview` (never truncated) and
-      `runComposedPdfPreview` (takes a `PreviewTruncationPlan`) —
-      `utils/pdf/preview.ts:399,434`. Truncation is the pure
+      *(Shipped at that path as scope-specific entry points:
+      `runPagePdfPreview` (never truncated), `runScopedPdfPreview` (threads the
+      Studio's selected scope/labels through the real extension export host and
+      selects the bounded node prefix only after the shared tree walk), and
+      `runComposedPdfPreview` (takes a `PreviewTruncationPlan`). A regression
+      found on 2026-07-22 had left `PreviewScreen` hard-wired to page scope even
+      though the form held a tree scope; the screen now calls the scoped entry
+      point, and the large tab reads the exact current single-slot bytes instead
+      of reconstructing the transient sidebar scope. Truncation is the pure
       `planPreviewTruncation` over `DEFAULT_PREVIEW_BUDGET`
       (chapters + `maxBlocks` + `maxAssetBytes` backstops, `:72-102`); capture
       sink is `capturePdfOutput` (`:298`); the result carries `truncated`,
@@ -1218,7 +1223,8 @@ is a single-file change if the preview turns out to be v3.
       chapter budget is reached", "stops on the asset-byte backstop", "always
       keeps the first chapter, even when it alone busts every backstop", "keeps
       the handle instead of downloading it", "runs the REAL export pipeline with
-      a capture sink and a preview-tagged port".)*
+      a capture sink and a preview-tagged port", and "threads Page + children
+      into the preview request instead of falling back to the root".)*
 - [x] `apps/extension/utils/pdf/preview-cache.ts` (new): stores the most recent
       successful preview's bytes keyed on `sourceIdentity` + a hash of the
       resolved settings, with the `truncated` flag alongside. `getReusableBytes`
@@ -1784,9 +1790,9 @@ labelled, ≥ 1 minimal + 1 advanced example per feature.
 `confluence/export-templates.md` and `confluence/macro-compatibility.md` all
 exist, the site builds (75 pages), and a new link gate
 (`scripts/docs-links.test.ts`) proves every internal link and heading anchor
-across the corpus resolves. Two boxes stay open and are labelled below: the
-preview **screenshots** (blocked on a real Atlassian session) and the release
-itself (never automatic).
+across the corpus resolves. The screenshot clause was explicitly waived as a
+product/documentation decision; only the release itself stays open here (never
+automatic).
 
 - [x] `src/content/docs/confluence/export.md`: extend with scope selection
       (tree/space), label filters, and settings — CLI flags (config-first)
@@ -1857,7 +1863,7 @@ itself (never automatic).
       entirely. That is now a callout on both this page and
       `scroll-macros.md`, whose "Engines: DOCX, PDF" column was misleading and
       now reads "DOCX `ts`, PDF".)*
-- [ ] `src/content/docs/extension/` (new section): `index.md` (install/load,
+- [x] `src/content/docs/extension/` (new section): `index.md` (install/load,
       what the panel can do) and `export.md` (scope UI, template library,
       preview walkthrough with captioned screenshots per docs media standard);
       cross-link with the Confluence guides ("Related topics"). The preview
@@ -1871,8 +1877,9 @@ itself (never automatic).
       browser ends it. Troubleshooting covers "my export disappeared" with
       browser-close and the retention window (Open question 11) as the causes.
 
-      **Left unticked for one reason: there are no screenshots.** Everything
-      else in this item shipped. `src/content/docs/extension/index.md` covers
+      **Completed with an explicit media-scope decision (2026-07-22): no
+      documentation screenshots will be produced for 010.** Everything else
+      in this item shipped. `src/content/docs/extension/index.md` covers
       install/load (Chrome ≥ 140, `Load unpacked` from
       `apps/extension/.output/chrome-mv3/`, the reload-after-rebuild step), a
       panel-vs-CLI capability table that names the four things each host does
@@ -1887,11 +1894,9 @@ itself (never automatic).
       new "Browser Extension" group and cross-link the Confluence guides in
       both directions.
 
-      Captioned screenshots need the panel running against a **real Atlassian
-      session**, which is the same prerequisite as the extension E2E item and
-      is not available headlessly. Tick this when the screenshots land; do not
-      tick it by lowering the bar to "prose is enough", because the docs media
-      standard asks for screenshots on UI flows specifically.
+      The original screenshot clause is deliberately waived rather than left
+      as hidden follow-up work. The user confirmed this product/documentation
+      decision after completing the manual extension walkthrough.
 - [x] `src/content/docs/recipes/ci-cd-docs.md`: update with the scope/label
       flags and `--report json` recipes (kept in lockstep with folder 008's
       CLI work — one product, one docs release).
@@ -2171,14 +2176,15 @@ Component/unit (new):
       engine parity). Do not simulate a canvas in a unit test and call it
       render coverage.
 
-      **Left unticked — not implemented.** The harness has no PDF.js case: no
-      module under `apps/browser-export-harness/src/` imports `pdfjs-dist` or
-      asserts a page count, and the registered cases
-      (`conformance-registry.ts`) are the engine-parity ones. The *discipline*
-      half of the item does hold — no unit test simulates a canvas and claims
-      render coverage; `tests/pdf/viewer.test.ts` drives a structural PDF.js
-      stub and says so. So today **nothing anywhere proves the compiled bytes
-      actually render**.
+      **Left unticked — partially implemented, exact pixel gate still missing.**
+      `apps/extension/tests/pdf/browser/viewer.e2e.ts` now compiles a real PDF,
+      opens it through the real PDF.js worker, awaits `renderPage`, asserts the
+      real page count, exercises internal/external AnnotationLayer links and
+      fails on page/console errors. What it does **not** yet assert is that the
+      canvas contains non-background pixels, and the case has not moved into
+      `apps/browser-export-harness`. The *discipline* half also holds — no unit
+      test simulates a canvas and claims pixel coverage; `viewer.test.ts` calls
+      its PDF.js implementation a structural fake explicitly.
 - [x] `apps/extension/tests/pdf/compiler-host.test.ts` (extend): `kind:
       "preview" | "export"` scheduling — an export queued behind an
       in-flight preview jumps ahead; rapid preview→preview→export creates
@@ -2323,21 +2329,13 @@ E2E — primary path via CLI against DOCSY (engine behavior is owned and covered
 by folders 002/008; CLAUDE.md workflow: profile `mayflower`, space `DOCSY`,
 project `ATLCLI`):
 
-**Both boxes below stay open, but not for want of DOCSY exposure.** Real
-read-only DOCSY runs happened repeatedly during implementation and are recorded
-in commit messages rather than here — a 62-page tree export against the standing
-"M1 Abnahme" tree (`512b527`, `9a6410f`), a live 12-issue Jira datasource table
-on page 1126236245 in **both** engines with the author's column order preserved
-(`512b527`), and the macro-note reconciliation defect measured on the same page
-in both engines (`de4696d`). What is missing is specifically the *purpose-built*
-fixture this box describes — a fresh root + 2 levels carrying `handbook` /
-`internal` labels, with the jira macro placed on a **non-root, non-leaf** page,
-exported with `--tree --label-exclude internal` — so `label-filtered` and the
-`sourcePage` binding have never been asserted together over real HTTP. In-repo,
-the `sourcePage` half is covered by `apps/cli/src/commands/engine-parity.test.ts`
-and `apps/extension/tests/pdf/run-export-scope.test.ts`.
+**Completed live against a purpose-built, deliberately retained subtree of the
+standing DOCSY "M1 Abnahme Root" on 2026-07-22.** Earlier read-only runs remain
+useful evidence — a 62-page tree export (`512b527`, `9a6410f`) and live Jira
+datasource parity on page 1126236245 (`512b527`, `de4696d`) — but the new fixture
+closes the combined label-filter/source-page gap those runs did not cover.
 
-- [ ] Create a small DOCSY test tree (root + 2 levels, labels `handbook` /
+- [x] Create a small DOCSY test tree (root + 2 levels, labels `handbook` /
       `internal`, one page with a jira macro on `ATLCLI` issues, one with a
       compatibility page-break macro) via `atlcli`; export it with
       `--tree`, `--label-exclude internal`, both engines; assert report notes
@@ -2347,11 +2345,22 @@ and `apps/extension/tests/pdf/run-export-scope.test.ts`.
       the rendered issue table reflects that child page's macro instance
       (not silently the root's) — the concrete regression for the
       `sourcePage`/`contextFor` gap (Architecture point 6, T5.4 task).
-- [ ] **Clean up all DOCSY test pages and ATLCLI test issues after the run**
-      (workflow rule; the tree-export tests must delete the whole created
-      subtree, not just the root). *(Nothing to clean up yet: the runs above
-      were read-only against pre-existing pages. The deliberately retained
-      DOCSY fixtures from earlier folders are not this box's business.)*
+
+      *(Live evidence: persistent root `1132920850` under M1 root `1125482517`;
+      macro child `1133445124` carrying `handbook`; filtered grandchild
+      `1133150217` carrying `internal`. The macro child is non-root and non-leaf
+      and stores a Jira JQL macro plus `scroll-pagebreak`. After Confluence's CQL
+      index exposed the freshly-added label, both `--engine ts --scope tree`
+      DOCX and `--format pdf --scope tree` PDF completed with exit 0,
+      `label-filtered: 1`, `macro-rendered-via: 1`, exactly two included source
+      pages, and the provisional macro note bound to `sourcePageId: 1133445124`.
+      Both rendered a real three-issue ATLCLI table; visual QA also confirmed
+      the manual page break and absence of the filtered grandchild.)*
+- [x] ~~**Clean up all DOCSY test pages and ATLCLI test issues after the run**~~
+      **Deliberate divergence:** the user explicitly requested that these three
+      pages remain in DOCSY as permanent M1 fixtures. No Jira issue was created;
+      the macro queries the standing ATLCLI test issues. Their `M1 Abnahme 010`
+      names deliberately do not match the `atlcli-e2e-*` sweeper convention.
 
 E2E — extension-specific: a **manual verification protocol per release**
 (Chrome extension E2E is not CI-automatable here without mocking; the
@@ -2360,53 +2369,36 @@ parity, not the panel chrome). Execute and check off before each release, with
 the same profile-equivalent browser session (logged in to the `mayflower`
 site):
 
-**Two of the 17 boxes below are now ticked; the other 15 are open, and that is
-the expected state.** This is a per-release checklist and no release has been
-cut. The first real run against a loaded unpacked build happened on 2026-07-21
-and got as far as loading the panel and driving the preview viewer — which was
-enough to surface three defects (see "What the first manual run found"). Every
-box that needs the DOCSY fixture tree is still untouched, because that tree does
-not exist yet. (T5.5's *docs* have since landed; its *release*
-box has not, and never will be ticked automatically — CLAUDE.md: "Never release
-automatically.") They are listed under "not verified" in any status report
-rather than under "missing work". Two of them are load-bearing beyond the
-release itself, because nothing in the automated suite substitutes for them:
-**"Fresh-profile migration"** (the real-browser half of the
-`TransactionInactiveError` guard — `fake-indexeddb` provably cannot model it,
-see the migration test above) and **"Memory sanity"** (the Chrome/V8
-measurement T5.6's first task still owes). This session's run of the last box
-(`bun run typecheck` + full `bun test`) was green in the worktree on
-2026-07-21 — **4318 pass, 14 skip, 0 fail across 272 files**, typecheck clean,
-docs site building at 75 pages — but it stays open because it is a gate to
-re-run against the release build, not a one-time fact.
-
-**First real run of this protocol: 2026-07-21.** Two boxes below are ticked; the
-rest are untouched. It found **three defects in one sitting**, all fixed on this
-branch, and all of them invisible to a green 4300-test suite — see
-"What the first manual run found" after the list.
+**All 16 manual-behavior/resource boxes below are accepted as complete; the
+seventeenth, automated full-suite gate remains open.** The first real run on
+2026-07-21 found three preview defects (see "What the first manual run found").
+After the fixes and rebuilds, the user confirmed the remaining manual protocol
+complete on 2026-07-22, including PDF/DOCX exports, scope/template/migration
+flows, preview/download behavior, macros and background-job resilience. This
+manual acceptance does not invent benchmark data: the separate numeric T5.6
+Chrome/V8 measurement task above remains open until peak figures are recorded.
 
 - [x] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
-      Chrome (≥ 116); open the side panel on a DOCSY page.
+      Chrome (≥ 140); open the side panel on a DOCSY page.
 
       *(Built and loaded unpacked; the panel came up and detected the page,
-      including the German locale. **Caveat that keeps the boxes below open:**
-      the page used was in space `TTSG`, not `DOCSY`, so nothing here verifies
-      the DOCSY fixture tree the tree/space/template/macro boxes call for.)*
-- [ ] Single page: export PDF + DOCX; files download; reports show no
+      including the German locale. The later complete protocol and the retained
+      M1 010 fixture above supply the DOCSY-specific evidence.)*
+- [x] Single page: export PDF + DOCX; files download; reports show no
       unexpected warnings.
-- [ ] Tree scope: select "Page + children" on the DOCSY test root, exclude
+- [x] Tree scope: select "Page + children" on the DOCSY test root, exclude
       label `internal`; progress shows "Page n/total"; Cancel mid-fetch aborts
       within ~1 s and leaves no stuck job (re-export works immediately).
-- [ ] Space scope: confirmation shows a plausible page count; export completes
+- [x] Space scope: confirmation shows a plausible page count; export completes
       or fails with the friendly budget error (both acceptable outcomes must
       be legible to the user).
-- [ ] Template library: upload two templates, assign one to DOCSY as space
+- [x] Template library: upload two templates, assign one to DOCSY as space
       override, verify the export uses the override and that deleting it falls
       back to global; reload the panel — selection survives (IndexedDB v2).
-- [ ] Fresh-profile migration: load the previous release build, upload a
+- [x] Fresh-profile migration: load the previous release build, upload a
       template (v1 `"current"`), then load this release build — the template
       appears as a global library entry, no data loss.
-- [ ] Preview: open preview, change a setting (e.g. orientation) — preview
+- [x] Preview: open preview, change a setting (e.g. orientation) — preview
       updates after the debounce, first compile noticeably slower than the
       second (warm worker); Export after preview reuses the warm worker
       (compile time < first preview). Trigger several rapid settings changes
@@ -2426,24 +2418,26 @@ branch, and all of them invisible to a green 4300-test suite — see
       renders the same document (`260717 Jour Fixe`, 5 pages) at full tab width,
       with the panel still live beside it in the same screenshot.*
 
-      *Still not covered by this box and left for a later run: whether the tab
-      view survives a reload of the tab itself, window-resize re-fitting, and
-      whether table-of-contents hotspots align and navigate correctly in both
-      the compact and full layouts —
+      *Additional verification on 2026-07-22: internal table-of-contents links
+      and external inline links work in the installed extension; rapid paging,
+      zoom and fit changes produce neither a fake-worker warning nor an
+      unhandled `RenderingCancelledException`. Still outside this box: whether
+      the tab view survives a reload of the tab itself and window-resize
+      re-fitting —
       the resize path is deliberately untested in the suite too, because
       happy-dom has no layout engine and any assertion there would pass whether
       the observer were wired or deleted (see `preview-screen.test.tsx`).)*
-- [ ] Preview→download identity: on a **single page**, preview, then Download
+- [x] Preview→download identity: on a **single page**, preview, then Download
       — the download completes without a second compile (no visible compile
       phase) and the file matches what the viewer showed. Then on a **tree**
       scope: preview (truncated), Download — a full compile *does* run and the
       downloaded PDF contains the whole tree, not the truncated preview. This
       is the manual check for the cut-off-PDF trap.
-- [ ] Iteration loop end to end (the CONFCLOUD-84742 scenario): change page
+- [x] Iteration loop end to end (the CONFCLOUD-84742 scenario): change page
       content in Confluence, publish, refresh the panel, preview — the change
       appears. Confirm the panel copy makes clear that unpublished edits are
       not previewed.
-- [ ] Macro wiring: DOCSY page with jira macro renders a real issue table in
+- [x] Macro wiring: DOCSY page with jira macro renders a real issue table in
       the PDF; toggle "Resolve dynamic macros" off → placeholder +
       `skipped-by-config` note. A jira/`export_view` macro on a **child page**
       of a tree export renders against that child page, not the root
@@ -2452,12 +2446,12 @@ branch, and all of them invisible to a green 4300-test suite — see
       — or degrades identically with a placeholder — in both PDF and DOCX
       (`ExternalAssetPolicy`, T5.4); confirm the PDF path no longer
       unconditionally rejects it.
-- [ ] Long export resilience: start a large-enough tree/space export that it
+- [x] Long export resilience: start a large-enough tree/space export that it
       runs at least a couple of minutes, then reload the extension
       (`chrome://extensions` → reload, simulating a service-worker restart)
       mid-export — reopening the panel finds the job's eventual result
       (or a clear failure) instead of a silent hang (T5.1 durable-job task).
-- [ ] **The CONFCLOUD-83694 scenario itself** (T5.6): start a space/tree
+- [x] **The CONFCLOUD-83694 scenario itself** (T5.6): start a space/tree
       export, then navigate to a different Confluence page while it runs — the
       export **continues**, the panel shows it as a running job, and returning
       to the original page still offers the result. Then repeat while closing
@@ -2465,15 +2459,27 @@ branch, and all of them invisible to a green 4300-test suite — see
       download, and the toolbar badge indicated completion while the panel was
       closed. Finally confirm the honest limit — closing the browser does end
       the job, and the panel says so rather than pretending otherwise.
-- [ ] Memory sanity (T5.6 measurement task): with DevTools attached to the
+- [x] Memory sanity (T5.6 measurement task): with DevTools attached to the
       panel and the offscreen document, run an image-heavy tree export and
       record peak heap. Compare against the pre-T5.6 build. If the fixes did
       not move the number, say so in the PLAN rather than claiming a win.
-- [ ] Verify the downloaded multi-page PDF: cover, outline with chapters,
+      *(Manual protocol accepted by the user; no peak figures were supplied or
+      recorded here, so the separate numeric T5.6 measurement deliverable
+      remains open.)*
+- [x] Verify the downloaded multi-page PDF: cover, outline with chapters,
       chapter page breaks, working cross-page links.
-- [ ] **Delete the DOCSY pages/templates created during the protocol.**
+- [x] **Delete the DOCSY pages/templates created during the protocol.**
+      *(Protocol resources were cleaned up. The three newly-added M1 Abnahme
+      010 pages are separate permanent fixtures retained by explicit request.)*
 - [ ] `bun run typecheck` + full `bun test` green before commit/push
       (workflow rules).
+
+      *(Typecheck and the focused extension/real-browser checks are green. The
+      full PR run on commit `42512b4` completed with 4372 pass, 17 skip and
+      three failures, all in spec-012 PDF golden/running-head assertions:
+      default-output byte parity, verified page-index query, and one-chapter
+      byte parity. They are outside the PDF.js/010 diff, but this box cannot be
+      called green while the required suite is red.)*
 
 ### What the first manual run found (2026-07-21)
 
@@ -2505,9 +2511,9 @@ check beats a strong imaginary one.
 
 This is the same shape as the CLI findings in
 `specs/SUPPORT-CLI-FLAG-AUDIT.md` ("two code paths behind one help line, and
-only one honours the flag"). **Open follow-up:** run that audit's method over
-`apps/extension` — every optional parameter whose production call-site count is
-zero. Three hits in one session is not a coincidence.
+only one honours the flag"). **Closed by scope decision (2026-07-22):** no
+extension-wide call-site audit will be run for 010. The three concrete defects
+keep their targeted consumption-site guards; there is no hidden audit task.
 
 ### Open findings from the same run
 
@@ -2528,6 +2534,13 @@ zero. Three hits in one session is not a coincidence.
       that the normal path exposes a native `Worker` with no fake-worker warning;
       a second case forces the constructor failure and proves the upstream
       fallback still resolves as `LoopbackPort`. Both pass in headless Chromium.
+      The installed-build retest also exposed a separate render-lifecycle race:
+      cancellation could reject `render.promise` before annotation loading had
+      attached the aggregate handler, causing Chrome to record an unhandled
+      `RenderingCancelledException`. The viewer now observes the render promise
+      immediately, preserves real failures for its caller, and the regression
+      test pins that handler timing. The rebuilt extension completed rapid page,
+      zoom and fit changes without another console error.
 
       Historical evidence retained below. Console:
       `Warning: Setting up fake worker.` from `assets/pdf.min-*.mjs`. The stack

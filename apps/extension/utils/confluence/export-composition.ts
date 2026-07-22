@@ -35,6 +35,7 @@ import {
   type ComposeOptions,
   type CompletenessMode,
   type ExportBlock,
+  type ExportNode,
   type ExportNote,
   type ExportScope,
   type LabelFilter,
@@ -83,6 +84,13 @@ export interface ExportCompositionInput {
   signal?: AbortSignal;
   /** `{ fetched, total, currentTitle }` — one call per fetched page body. */
   onProgress?: (progress: TreeFetchProgress) => void;
+  /**
+   * Optional post-fetch node selection used by bounded previews. The full tree
+   * is still fetched first so traversal, label filtering and version checks
+   * remain identical to an export; only the chapters handed to composition are
+   * selected. Ordinary exports leave this absent.
+   */
+  selectNodes?: (nodes: readonly ExportNode[]) => readonly ExportNode[];
 }
 
 export interface ExportCompositionDeps {
@@ -205,7 +213,18 @@ export async function resolveExportComposition(
   });
   input.signal?.throwIfAborted();
 
-  const composed = composeChapters(tree.nodes, {
+  const selectedNodes = input.selectNodes ? input.selectNodes(tree.nodes) : tree.nodes;
+  const selectedPageIds = new Set(
+    selectedNodes.flatMap((node) => (node.kind === "page" ? [node.pageId] : []))
+  );
+  const treeNotes =
+    selectedNodes.length === tree.nodes.length
+      ? tree.notes
+      : tree.notes.filter(
+          (note) => note.source?.pageId === undefined || selectedPageIds.has(note.source.pageId)
+        );
+
+  const composed = composeChapters(selectedNodes, {
     resolveExternalUrl: externalUrlResolver(profile),
   });
 
@@ -213,7 +232,7 @@ export async function resolveExportComposition(
   // the resolved homepage, which is generally NOT the tab the panel is sitting
   // on. Falling back to the loaded page keeps a degenerate (folder-only) walk
   // from producing a title-less document.
-  const rootNode = tree.nodes.find((node) => node.kind === "page");
+  const rootNode = selectedNodes.find((node) => node.kind === "page");
   const root = rootNode
     ? {
         id: rootNode.pageId,
@@ -231,10 +250,10 @@ export async function resolveExportComposition(
   return {
     kind: "tree",
     blocks: composed.blocks,
-    notes: [...tree.notes, ...composed.notes],
-    complete: tree.complete,
+    notes: [...treeNotes, ...composed.notes],
+    complete: tree.complete && selectedNodes.length === tree.nodes.length,
     root,
     chapterAnchorById: composed.chapterAnchorById,
-    pageCount: tree.nodes.filter((node) => node.kind === "page").length,
+    pageCount: selectedNodes.filter((node) => node.kind === "page").length,
   };
 }

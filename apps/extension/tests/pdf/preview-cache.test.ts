@@ -4,6 +4,7 @@ import {
   PREVIEW_CACHE_MAX_AGE_MS,
   PREVIEW_CACHE_MAX_BYTES,
   clearPreview,
+  getLatestPreview,
   getPreviewEntry,
   getReusableExportBytes,
   hashPreviewSettings,
@@ -121,6 +122,19 @@ describe("preview cache storage", () => {
     const hit = await getPreviewEntry(parts, { factory });
     expect(hit?.entry.filename).toBe("doc.pdf");
     expect(await hit!.bytes.asUint8Array()).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+  });
+
+  it("lets the dedicated large-view tab read the current single slot without rebuilding scope state", async () => {
+    await put({
+      sourceIdentity: "tree-preview",
+      truncated: true,
+      includedChapters: 3,
+      totalChapters: 8,
+    });
+    const hit = await getLatestPreview({ factory });
+    expect(hit?.entry.sourceIdentity).toBe("tree-preview");
+    expect(hit?.entry.includedChapters).toBe(3);
+    expect(hit?.entry.totalChapters).toBe(8);
   });
 
   it("returns nothing for a request whose key differs", async () => {

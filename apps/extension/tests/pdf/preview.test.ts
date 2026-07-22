@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock, ExportNode, ExportScope } from "@atlcli/confluence/browser";
+import type { ExportBlock, ExportNode, ExportScope, TreeSource } from "@atlcli/confluence/browser";
 import { pdfBytesFromUint8Array, type PdfExportReport } from "@atlcli/pdf/browser";
 import { PREVIEW_SUPERSEDED_ERROR } from "../../utils/pdf/compiler-host.js";
 import type { RunPdfExportInput } from "../../utils/pdf/run-export.js";
@@ -14,6 +14,7 @@ import {
   previewCacheParts,
   previewNodeVersions,
   runPagePdfPreview,
+  runScopedPdfPreview,
 } from "../../utils/pdf/preview.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 
@@ -289,6 +290,105 @@ describe("runPagePdfPreview", () => {
         }
       )
     ).rejects.toThrow("Typst exploded");
+  });
+});
+
+describe("runScopedPdfPreview", () => {
+  it("passes the selected tree scope and label filter to the real export host", async () => {
+    const capturedInputs: RunPdfExportInput[] = [];
+    await runScopedPdfPreview(
+      {
+        page: loadedPage,
+        pageUrl: "https://x.atlassian.net/wiki/p/1",
+        scope: TREE_SCOPE,
+        labels: { exclude: ["internal"] },
+      },
+      {
+        runExport: async (input, overrides) => {
+          capturedInputs.push(input);
+          await overrides?.output?.emit("T.pdf", pdfBytesFromUint8Array(new Uint8Array([1])));
+          return report;
+        },
+      }
+    );
+
+    expect(capturedInputs[0]?.scope).toEqual(TREE_SCOPE);
+    expect(capturedInputs[0]?.labels).toEqual({ exclude: ["internal"] });
+  });
+
+  it("walks the selected tree and composes the bounded chapter prefix", async () => {
+    const ids = ["1", "2", "3", "4", "5", "6"];
+    const source: TreeSource = {
+      async getPage(id) {
+        return {
+          id,
+          title: `Page ${id}`,
+          storage: `<p>Body ${id}</p>`,
+          version: Number(id),
+          labels: [],
+          spaceKey: "DOCSY",
+        };
+      },
+      async getPageVersion(id) {
+        return { version: Number(id), title: `Page ${id}` };
+      },
+      async getChildren(node) {
+        if (node.id !== "1") return [];
+        return ids.slice(1).map((id, position) => ({
+          id,
+          title: `Page ${id}`,
+          kind: "page" as const,
+          position,
+          observedVersion: Number(id),
+        }));
+      },
+      async getSpaceHomepageId() {
+        return "1";
+      },
+    };
+    let composedHeadings: string[] = [];
+    const result = await runScopedPdfPreview(
+      {
+        page: loadedPage,
+        pageUrl: "https://x.atlassian.net/wiki/spaces/DOCSY/pages/1/T",
+        scope: TREE_SCOPE,
+      },
+      {
+        runExport: async (input, overrides) => {
+          const composition = await overrides!.resolveComposition!(
+            {
+              root: {
+                id: input.page.details.id,
+                title: input.page.details.title,
+                version: input.page.details.version,
+                spaceKey: input.page.details.spaceKey,
+                storage: input.page.details.storage,
+              },
+              pageUrl: input.pageUrl,
+              exporter: "pdf",
+              scope: input.scope,
+            },
+            { createTreeSource: () => source }
+          );
+          composedHeadings = composition.blocks
+            .filter(
+              (block): block is Extract<ExportBlock, { type: "heading" }> =>
+                block.type === "heading"
+            )
+            .map((block) =>
+              block.content.map((node) => ("text" in node ? node.text : "")).join("")
+            );
+          await overrides?.output?.emit("T.pdf", pdfBytesFromUint8Array(new Uint8Array([1])));
+          return report;
+        },
+      }
+    );
+
+    expect(composedHeadings).toEqual(["Page 1", "Page 2", "Page 3", "Page 4", "Page 5"]);
+    expect(result.truncated).toBe(true);
+    expect(result.includedChapters).toBe(5);
+    expect(result.totalChapters).toBe(6);
+    expect(result.nodeVersions).toHaveLength(6);
   });
 });
 

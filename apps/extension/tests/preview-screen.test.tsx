@@ -412,6 +412,13 @@ function EmbeddedDraftPreview({
       >
         Change setting
       </button>
+      <button
+        type="button"
+        data-testid="change-preview-scope-tree"
+        onClick={() => draft.dispatchScope({ type: "set-kind", kind: "tree" })}
+      >
+        Include children
+      </button>
       <PreviewScreen {...props} embedded />
     </>
   );
@@ -484,6 +491,33 @@ describe("PreviewScreen", () => {
     expect(find("preview-status").getAttribute("data-status")).toBe("stale");
     // The old preview remains reviewable until the user deliberately refreshes it.
     expect(maybeFind("preview-document")).not.toBeNull();
+  });
+
+  it("threads Page + children into the preview request instead of falling back to the root", async () => {
+    const requests: Parameters<PreviewRuntime["compile"]>[0][] = [];
+    const runtime: PreviewRuntime = {
+      async compile(request) {
+        requests.push(request);
+        return ready({ includedChapters: 3, totalChapters: 3 });
+      },
+      async readCached() {
+        return null;
+      },
+      async openViewer() {
+        return fakeViewer();
+      },
+    };
+    await mountEmbeddedDraft(loadedState(), runtime);
+    await click("change-preview-scope-tree");
+    await click("preview-generate");
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.scope).toEqual({
+      kind: "tree",
+      rootPageId: "42",
+      includeRoot: true,
+      maxDepth: 5,
+    });
   });
 
   it("navigates page by page without re-compiling", async () => {
@@ -718,6 +752,33 @@ describe("PreviewScreen — cached bytes", () => {
     expect(compiles).toBe(0);
     expect(find("preview-canvas")).toBeDefined();
     expect(viewer.renders).toEqual([1]);
+  });
+
+  it("the large tab reads the exact latest slot instead of rebuilding the sidebar scope", async () => {
+    let requestReads = 0;
+    let latestReads = 0;
+    const runtime: PreviewRuntime = {
+      async compile() {
+        throw new Error("must not compile");
+      },
+      async readCached() {
+        requestReads += 1;
+        return null;
+      },
+      async readLatest() {
+        latestReads += 1;
+        return ready({ truncated: true, includedChapters: 3, totalChapters: 8 });
+      },
+      async openViewer() {
+        return fakeViewer();
+      },
+    };
+    await mount(loadedState(), runtime, "full", null);
+
+    expect(latestReads).toBe(1);
+    expect(requestReads).toBe(0);
+    expect(find("preview-scope").textContent).toContain("3");
+    expect(find("preview-scope").textContent).toContain("8");
   });
 
   it("keeps the truncation label of a cached entry", async () => {

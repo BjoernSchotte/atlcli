@@ -57,6 +57,7 @@ import {
 } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../read-path.js";
 import { exportScopeIdentity } from "../scope-state.js";
+import { resolveExportComposition } from "../confluence/export-composition.js";
 import { extensionPdfCompilePort } from "./compile-port.js";
 import { isPreviewSupersededError } from "./compiler-host.js";
 import {
@@ -274,10 +275,14 @@ export async function previewCacheParts(input: {
   settings?: unknown;
   /** Resolved tree nodes. Omit for `scope: page` — the root page stands alone. */
   nodes?: readonly ExportNode[];
+  /** Precomputed equivalent used when the tree walk lives inside the runner. */
+  nodeVersions?: readonly PreviewNodeVersion[];
 }): Promise<PreviewCacheKeyParts> {
-  const versions = input.nodes
-    ? previewNodeVersions(input.nodes)
-    : [{ id: input.page.id, version: input.page.version ?? null }];
+  const versions = input.nodeVersions
+    ? [...input.nodeVersions]
+    : input.nodes
+      ? previewNodeVersions(input.nodes)
+      : [{ id: input.page.id, version: input.page.version ?? null }];
   const [settingsHash, treeVersionHash] = await Promise.all([
     hashPreviewSettings(input.settings ?? null),
     hashTreeVersions(versions),
@@ -330,6 +335,8 @@ export interface PdfPreviewResult {
   includedChapters: number;
   totalChapters: number;
   reason: PreviewTruncationReason;
+  /** Full resolved scope fingerprint used by the persistent preview cache. */
+  nodeVersions?: PreviewNodeVersion[];
 }
 
 /**
@@ -349,6 +356,12 @@ export interface PdfPagePreviewInput {
   profile?: PdfProfile;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
+}
+
+/** Scope-aware preview request from the Publishing Studio. */
+export interface PdfScopedPreviewInput extends PdfPagePreviewInput {
+  scope?: ExportScope;
+  labels?: LabelFilter;
 }
 
 /**
@@ -434,6 +447,93 @@ export async function runPagePdfPreview(
     };
   } catch (error) {
     if (isPreviewSupersededError(error)) return supersededResult(UNTRUNCATED);
+    throw error;
+  }
+}
+
+/**
+ * Preview the Studio's selected scope through the same host pipeline as
+ * Download. Tree/space scopes fetch the complete shared tree, then compose only
+ * the bounded chapter prefix; page scope stays on the cheap loaded-page path.
+ */
+export async function runScopedPdfPreview(
+  input: PdfScopedPreviewInput,
+  overrides: Partial<PdfPreviewDeps> = {}
+): Promise<PdfPreviewResult> {
+  const scope: ExportScope = input.scope ?? {
+    kind: "page",
+    pageId: input.page.details.id,
+  };
+  if (scope.kind === "page") return runPagePdfPreview(input, overrides);
+
+  const deps = { ...defaultDeps, ...overrides };
+  const captured = capturePdfOutput();
+  let truncation: PreviewTruncationPlan | undefined;
+  let nodeVersions: PreviewNodeVersion[] | undefined;
+
+  try {
+    const report = await deps.runExport(
+      {
+        page: input.page,
+        pageUrl: input.pageUrl,
+        scope,
+        ...(input.labels ? { labels: input.labels } : {}),
+        settings: input.settings,
+        macros: input.macros,
+        theme: input.theme,
+        profile: input.profile,
+        signal: input.signal,
+        onPhase: input.onPhase,
+      },
+      {
+        output: captured.sink,
+        createCompilePort: deps.createCompilePort,
+        now: deps.now,
+        resolveComposition: async (compositionInput, compositionOverrides) =>
+          resolveExportComposition(
+            {
+              ...compositionInput,
+              selectNodes(nodes) {
+                nodeVersions = previewNodeVersions(nodes);
+                truncation = planPreviewTruncation(nodes, scope);
+                return truncation.nodes;
+              },
+            },
+            compositionOverrides
+          ),
+      }
+    );
+    const resolvedPlan =
+      truncation ??
+      ({
+        nodes: [],
+        truncated: false,
+        includedChapters: 0,
+        totalChapters: 0,
+        reason: "none",
+      } satisfies PreviewTruncationPlan);
+    return {
+      status: "ready",
+      bytes: captured.bytes,
+      report,
+      filename: captured.filename,
+      truncated: resolvedPlan.truncated,
+      includedChapters: resolvedPlan.includedChapters,
+      totalChapters: resolvedPlan.totalChapters,
+      reason: resolvedPlan.reason,
+      ...(nodeVersions ? { nodeVersions } : {}),
+    };
+  } catch (error) {
+    const plan =
+      truncation ??
+      ({
+        nodes: [],
+        truncated: false,
+        includedChapters: 0,
+        totalChapters: 0,
+        reason: "none",
+      } satisfies PreviewTruncationPlan);
+    if (isPreviewSupersededError(error)) return supersededResult(plan);
     throw error;
   }
 }

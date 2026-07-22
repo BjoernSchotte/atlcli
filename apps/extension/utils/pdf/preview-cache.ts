@@ -299,6 +299,24 @@ export async function getPreviewEntry(
 }
 
 /**
+ * The single-slot preview most recently written by the side panel.
+ *
+ * Used only by the dedicated large-preview tab: that tab is opened from the
+ * current preview and does not own the side panel's transient scope form, so it
+ * must render the cached bytes themselves instead of reconstructing a request
+ * that would silently fall back to single-page scope.
+ */
+export async function getLatestPreview(
+  options: { now?: number; factory?: IDBFactory } = {}
+): Promise<PreviewCacheHit | undefined> {
+  const row = await readRow(options.factory, options.now ?? Date.now());
+  if (!row) return undefined;
+  const { pdf, id: _id, ...entry } = row;
+  void _id;
+  return { entry, bytes: pdfBytesFromUint8Array(pdf) };
+}
+
+/**
  * Bytes **Download** may reuse.
  *
  * Refuses a `truncated` entry on purpose: those bytes are a prefix of the
