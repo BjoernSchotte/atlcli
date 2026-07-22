@@ -64,6 +64,18 @@ export function ExportScreen(props: ScreenProps): React.JSX.Element {
 }
 
 function ExportScreenBody({ ports, page, retry, navigate }: ScreenProps): React.JSX.Element {
+  if (page.status !== "loaded") {
+    return (
+      <div className="flex flex-col gap-3" data-testid="publishing-studio">
+        <PageSummary state={page} onRetry={retry} />
+      </div>
+    );
+  }
+
+  return <LoadedExportScreenBody ports={ports} page={page} retry={retry} navigate={navigate} />;
+}
+
+function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): React.JSX.Element {
   const t = useT();
   const loadedPage = page.status === "loaded" ? page.page : null;
   const pageUrl = page.status === "loaded" ? page.ref.url : null;
