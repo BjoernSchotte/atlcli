@@ -74,6 +74,7 @@ export type AdfCoverageProvenance =
   | "observed-cloud"
   | "legacy-observed";
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
 
 export interface AdfCoverageRow {
   kind: "node" | "mark";
@@ -85,37 +86,78 @@ export interface AdfCoverageRow {
   provenance: readonly AdfCoverageProvenance[];
 }
 
-const nativeNodes = new Set<string>([
-  "blockquote", "bulletList", "doc", "hardBreak", "heading", "listItem",
-  "paragraph", "rule", "tableHeader", "tableRow", "text",
-]);
-const partialNodes = new Set<string>([
-  "blockCard", "bodiedExtension", "caption", "codeBlock", "date", "emoji",
-  "expand", "extension", "inlineCard", "layoutColumn", "layoutSection",
-  "media", "mediaSingle", "mention", "orderedList", "panel", "status",
-  "table", "tableCell", "taskItem", "taskList",
-]);
-const fallbackNodes = new Set<string>([
-  "bodiedSyncBlock", "decisionItem", "decisionList", "embedCard",
-  "inlineExtension", "mediaGroup", "nestedExpand", "placeholder",
-]);
+/** Exhaustive implementation classification consumed by the ADF decoder. */
+export const ADF_NODE_DECODE_MODES = Object.freeze({
+  blockCard: "approximation",
+  blockTaskItem: "approximation",
+  blockquote: "native",
+  bodiedExtension: "approximation",
+  bodiedSyncBlock: "visible-fallback",
+  bulletList: "native",
+  caption: "approximation",
+  codeBlock: "native",
+  date: "approximation",
+  decisionItem: "approximation",
+  decisionList: "approximation",
+  doc: "native",
+  embedCard: "approximation",
+  emoji: "approximation",
+  expand: "approximation",
+  extension: "approximation",
+  hardBreak: "native",
+  heading: "native",
+  inlineCard: "approximation",
+  inlineExtension: "approximation",
+  layoutColumn: "approximation",
+  layoutSection: "approximation",
+  listItem: "native",
+  media: "visible-fallback",
+  mediaGroup: "visible-fallback",
+  mediaInline: "visible-fallback",
+  mediaSingle: "visible-fallback",
+  mention: "native",
+  nestedExpand: "approximation",
+  orderedList: "approximation",
+  panel: "approximation",
+  paragraph: "native",
+  placeholder: "visible-fallback",
+  rule: "native",
+  status: "native",
+  syncBlock: "visible-fallback",
+  table: "approximation",
+  tableCell: "approximation",
+  tableHeader: "approximation",
+  tableRow: "native",
+  taskItem: "approximation",
+  taskList: "approximation",
+  text: "native",
+} as const satisfies Record<PinnedAdfNodeType, AdfDecoderMode>);
 
-const nativeMarks = new Set<string>([
-  "backgroundColor", "em", "strike", "strong", "subsup", "textColor", "underline",
-]);
-const partialMarks = new Set<string>(["code", "link"]);
+/** Exhaustive implementation classification consumed by the mark normalizer. */
+export const ADF_MARK_DECODE_MODES = Object.freeze({
+  alignment: "visible-fallback",
+  annotation: "visible-fallback",
+  backgroundColor: "native",
+  border: "visible-fallback",
+  breakout: "visible-fallback",
+  code: "native",
+  dataConsumer: "visible-fallback",
+  em: "native",
+  fontSize: "visible-fallback",
+  fragment: "visible-fallback",
+  indentation: "visible-fallback",
+  link: "native",
+  strike: "native",
+  strong: "native",
+  subsup: "native",
+  textColor: "native",
+  underline: "native",
+} as const satisfies Record<PinnedAdfMarkType, AdfDecoderMode>);
 
-function nodeLevel(type: string): AdfCoverageLevel {
-  if (nativeNodes.has(type)) return "native";
-  if (partialNodes.has(type)) return "partial";
-  if (fallbackNodes.has(type)) return "fallback";
-  return "missing";
-}
-
-function markLevel(type: string): AdfCoverageLevel {
-  if (nativeMarks.has(type)) return "native";
-  if (partialMarks.has(type)) return "partial";
-  return "missing";
+function coverageLevel(mode: AdfDecoderMode): AdfCoverageLevel {
+  if (mode === "native") return "native";
+  if (mode === "approximation") return "partial";
+  return "fallback";
 }
 
 export const ADF_COVERAGE: readonly AdfCoverageRow[] = Object.freeze([
@@ -123,18 +165,18 @@ export const ADF_COVERAGE: readonly AdfCoverageRow[] = Object.freeze([
     kind: "node",
     type,
     parser: "validated",
-    decoder: nodeLevel(type),
-    docx: type === "doc" ? "not-applicable" : nodeLevel(type),
-    pdf: type === "doc" ? "not-applicable" : nodeLevel(type),
+    decoder: coverageLevel(ADF_NODE_DECODE_MODES[type]),
+    docx: type === "doc" ? "not-applicable" : coverageLevel(ADF_NODE_DECODE_MODES[type]),
+    pdf: type === "doc" ? "not-applicable" : coverageLevel(ADF_NODE_DECODE_MODES[type]),
     provenance: ["schema-only"],
   })),
   ...PINNED_ADF_MARK_TYPES.map((type): AdfCoverageRow => ({
     kind: "mark",
     type,
     parser: "validated",
-    decoder: markLevel(type),
-    docx: markLevel(type),
-    pdf: markLevel(type),
+    decoder: coverageLevel(ADF_MARK_DECODE_MODES[type]),
+    docx: coverageLevel(ADF_MARK_DECODE_MODES[type]),
+    pdf: coverageLevel(ADF_MARK_DECODE_MODES[type]),
     provenance: ["schema-only"],
   })),
 ]);

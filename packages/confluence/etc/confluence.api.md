@@ -10,6 +10,74 @@
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "visible-fallback";
+    readonly annotation: "visible-fallback";
+    readonly backgroundColor: "native";
+    readonly border: "visible-fallback";
+    readonly breakout: "visible-fallback";
+    readonly code: "native";
+    readonly dataConsumer: "visible-fallback";
+    readonly em: "native";
+    readonly fontSize: "visible-fallback";
+    readonly fragment: "visible-fallback";
+    readonly indentation: "visible-fallback";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "approximation";
+    readonly blockTaskItem: "approximation";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bulletList: "native";
+    readonly caption: "approximation";
+    readonly codeBlock: "native";
+    readonly date: "approximation";
+    readonly decisionItem: "approximation";
+    readonly decisionList: "approximation";
+    readonly doc: "native";
+    readonly embedCard: "approximation";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "approximation";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "approximation";
+    readonly layoutSection: "approximation";
+    readonly listItem: "native";
+    readonly media: "visible-fallback";
+    readonly mediaGroup: "visible-fallback";
+    readonly mediaInline: "visible-fallback";
+    readonly mediaSingle: "visible-fallback";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "approximation";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "visible-fallback";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "visible-fallback";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "approximation";
+    readonly taskList: "approximation";
+    readonly text: "native";
+}>;
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -26,6 +94,9 @@ export interface AdfCoverageRow {
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
 }
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
 
 // export: AdfDiagnostic
 export interface AdfDiagnostic {
@@ -57,6 +128,13 @@ export interface AdfMark {
     attrs?: Record<string, AdfJsonValue>;
 }
 
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfNode
 export interface AdfNode {
     type: string;
@@ -76,6 +154,21 @@ export interface AdfParseBudget {
     maxMarks: number;
     maxAttributeValues: number;
     maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
 // export: AdfValidationError
@@ -783,6 +876,10 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -1804,6 +1901,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
 
 // export: validateAdf
 export declare function validateAdf(input: string | unknown, options?: {
@@ -1853,6 +1953,74 @@ export interface XmlText {
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "visible-fallback";
+    readonly annotation: "visible-fallback";
+    readonly backgroundColor: "native";
+    readonly border: "visible-fallback";
+    readonly breakout: "visible-fallback";
+    readonly code: "native";
+    readonly dataConsumer: "visible-fallback";
+    readonly em: "native";
+    readonly fontSize: "visible-fallback";
+    readonly fragment: "visible-fallback";
+    readonly indentation: "visible-fallback";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "approximation";
+    readonly blockTaskItem: "approximation";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bulletList: "native";
+    readonly caption: "approximation";
+    readonly codeBlock: "native";
+    readonly date: "approximation";
+    readonly decisionItem: "approximation";
+    readonly decisionList: "approximation";
+    readonly doc: "native";
+    readonly embedCard: "approximation";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "approximation";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "approximation";
+    readonly layoutSection: "approximation";
+    readonly listItem: "native";
+    readonly media: "visible-fallback";
+    readonly mediaGroup: "visible-fallback";
+    readonly mediaInline: "visible-fallback";
+    readonly mediaSingle: "visible-fallback";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "approximation";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "visible-fallback";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "visible-fallback";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "approximation";
+    readonly taskList: "approximation";
+    readonly text: "native";
+}>;
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -1869,6 +2037,9 @@ export interface AdfCoverageRow {
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
 }
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
 
 // export: AdfDiagnostic
 export interface AdfDiagnostic {
@@ -1900,6 +2071,13 @@ export interface AdfMark {
     attrs?: Record<string, AdfJsonValue>;
 }
 
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfNode
 export interface AdfNode {
     type: string;
@@ -1919,6 +2097,21 @@ export interface AdfParseBudget {
     maxMarks: number;
     maxAttributeValues: number;
     maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
 // export: AdfValidationError
@@ -2626,6 +2819,10 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -3647,6 +3844,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
 
 // export: validateAdf
 export declare function validateAdf(input: string | unknown, options?: {
@@ -3696,6 +3896,74 @@ export interface XmlText {
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "visible-fallback";
+    readonly annotation: "visible-fallback";
+    readonly backgroundColor: "native";
+    readonly border: "visible-fallback";
+    readonly breakout: "visible-fallback";
+    readonly code: "native";
+    readonly dataConsumer: "visible-fallback";
+    readonly em: "native";
+    readonly fontSize: "visible-fallback";
+    readonly fragment: "visible-fallback";
+    readonly indentation: "visible-fallback";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "approximation";
+    readonly blockTaskItem: "approximation";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bulletList: "native";
+    readonly caption: "approximation";
+    readonly codeBlock: "native";
+    readonly date: "approximation";
+    readonly decisionItem: "approximation";
+    readonly decisionList: "approximation";
+    readonly doc: "native";
+    readonly embedCard: "approximation";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "approximation";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "approximation";
+    readonly layoutSection: "approximation";
+    readonly listItem: "native";
+    readonly media: "visible-fallback";
+    readonly mediaGroup: "visible-fallback";
+    readonly mediaInline: "visible-fallback";
+    readonly mediaSingle: "visible-fallback";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "approximation";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "visible-fallback";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "visible-fallback";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "approximation";
+    readonly taskList: "approximation";
+    readonly text: "native";
+}>;
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -3712,6 +3980,9 @@ export interface AdfCoverageRow {
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
 }
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
 
 // export: AdfDiagnostic
 export interface AdfDiagnostic {
@@ -3743,6 +4014,13 @@ export interface AdfMark {
     attrs?: Record<string, AdfJsonValue>;
 }
 
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfNode
 export interface AdfNode {
     type: string;
@@ -3762,6 +4040,21 @@ export interface AdfParseBudget {
     maxMarks: number;
     maxAttributeValues: number;
     maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
 // export: AdfValidationError
@@ -4469,6 +4762,10 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -5490,6 +5787,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
 
 // export: validateAdf
 export declare function validateAdf(input: string | unknown, options?: {
@@ -6322,6 +6622,10 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -8046,6 +8350,74 @@ export interface XmlText {
 // export: ADF_COVERAGE
 export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "visible-fallback";
+    readonly annotation: "visible-fallback";
+    readonly backgroundColor: "native";
+    readonly border: "visible-fallback";
+    readonly breakout: "visible-fallback";
+    readonly code: "native";
+    readonly dataConsumer: "visible-fallback";
+    readonly em: "native";
+    readonly fontSize: "visible-fallback";
+    readonly fragment: "visible-fallback";
+    readonly indentation: "visible-fallback";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "approximation";
+    readonly blockTaskItem: "approximation";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bulletList: "native";
+    readonly caption: "approximation";
+    readonly codeBlock: "native";
+    readonly date: "approximation";
+    readonly decisionItem: "approximation";
+    readonly decisionList: "approximation";
+    readonly doc: "native";
+    readonly embedCard: "approximation";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "approximation";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "approximation";
+    readonly layoutSection: "approximation";
+    readonly listItem: "native";
+    readonly media: "visible-fallback";
+    readonly mediaGroup: "visible-fallback";
+    readonly mediaInline: "visible-fallback";
+    readonly mediaSingle: "visible-fallback";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "approximation";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "visible-fallback";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "visible-fallback";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "approximation";
+    readonly taskList: "approximation";
+    readonly text: "native";
+}>;
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -8062,6 +8434,9 @@ export interface AdfCoverageRow {
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
 }
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
 
 // export: AdfDiagnostic
 export interface AdfDiagnostic {
@@ -8093,6 +8468,13 @@ export interface AdfMark {
     attrs?: Record<string, AdfJsonValue>;
 }
 
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfNode
 export interface AdfNode {
     type: string;
@@ -8112,6 +8494,21 @@ export interface AdfParseBudget {
     maxMarks: number;
     maxAttributeValues: number;
     maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
 // export: AdfValidationError
@@ -8819,6 +9216,10 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -9840,6 +10241,9 @@ export interface UserInfo {
     isActive: boolean;
     profilePicture: string | null;
 }
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
 
 // export: validateAdf
 export declare function validateAdf(input: string | unknown, options?: {

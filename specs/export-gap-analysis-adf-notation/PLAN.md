@@ -509,35 +509,37 @@ Tests:
 
 Tasks:
 
-- [ ] Implement `adfToBlocks(raw, options)` on validated ADF.
-- [ ] Preserve `exporter`, `exportControls`, `pageContext`, source paths, and notes behavior from the Storage adapter.
-- [ ] Implement the mappings in section 5.1.
-- [ ] Preserve visible child content for unsupported block and inline nodes.
-- [ ] Add reviewed generic unsupported variants only if an existing type cannot express a safe visible fallback.
-- [ ] Sanitize links through the existing central safe-link policy.
-- [ ] Normalize marks deterministically; mark-array order must not change output semantics.
-- [ ] Keep literal editor shorthand as ordinary text.
-- [ ] Map ADF extensions to existing `unknown` macro blocks with structured parameters, recursive body, `sourcePage`, and identity fields only after correlation is proven.
-- [ ] Map media to the existing attachment source only after stable ID-to-attachment resolution; otherwise emit a visible fallback.
-- [ ] Cap, deduplicate, and summarize degradation diagnostics.
-- [ ] Add note codes and cross-engine traversal/report coverage.
+- [x] Implement `adfToBlocks(raw, options)` on validated ADF.
+- [x] Preserve `exporter`, `exportControls`, `pageContext`, source paths, and notes behavior from the Storage adapter.
+- [x] Implement the mappings in section 5.1.
+- [x] Preserve visible child content for unsupported block and inline nodes.
+- [x] Add reviewed generic unsupported variants only if an existing type cannot express a safe visible fallback.
+- [x] Sanitize links through the existing central safe-link policy.
+- [x] Normalize marks deterministically; mark-array order must not change output semantics.
+- [x] Keep literal editor shorthand as ordinary text.
+- [x] Map ADF extensions to existing `unknown` macro blocks with structured parameters, recursive body, `sourcePage`, and identity fields only after correlation is proven.
+- [x] Map media to the existing attachment source only after stable ID-to-attachment resolution; otherwise emit a visible fallback.
+- [x] Cap, deduplicate, and summarize degradation diagnostics.
+- [x] Add note codes and cross-engine traversal/report coverage.
 
 Required semantic cases:
 
-- [ ] nested marks, code identifiers, whitespace, punctuation, and final newline;
-- [ ] H1–H6, mixed/nested lists, task state, and non-1 ordered-list approximation note;
-- [ ] tables including spans, background, widths, and dropped ADF-only attributes;
-- [ ] safe/unsafe external, page, attachment, anchor, and card links;
-- [ ] Unicode emoji, missing text, custom emoji, and literal colon text;
-- [ ] user/team/unresolved mentions;
-- [ ] known, unknown, bodied, and inline extensions;
-- [ ] media with correlated and uncorrelated IDs;
-- [ ] unknown block/inline/mark with visible fallback and provenance;
-- [ ] deterministic output independent of object key order.
+- [x] nested marks, code identifiers, whitespace, punctuation, and final newline;
+- [x] H1–H6, mixed/nested lists, task state, and non-1 ordered-list approximation note;
+- [x] tables including spans, background, widths, and dropped ADF-only attributes;
+- [x] safe/unsafe external, page, attachment, anchor, and card links;
+- [x] Unicode emoji, missing text, custom emoji, and literal colon text;
+- [x] user/team/unresolved mentions;
+- [x] known, unknown, bodied, and inline extensions;
+- [x] media with correlated and uncorrelated IDs;
+- [x] unknown block/inline/mark with visible fallback and provenance;
+- [x] deterministic output independent of object key order.
 
 Exit:
 
 - A valid ADF document always produces typed blocks or an explicit visible degradation; no schema row silently disappears.
+
+Evidence recorded on 2026-07-22: `adfToBlocks()` decodes the pinned schema-valid feature fixture and has an exhaustive implementation mode for all 43 nodes and 17 marks. Focused tests cover native mappings, visible fallbacks, marks, source paths, Storage-compatible export controls, links, tables, emoji, mentions, extensions, correlated/unresolved media, deterministic ordering, and diagnostic caps. The complete repository suite passed with 4,740 tests, 13 intentional skips, and zero failures; public API/closure guards, pinned-coverage guard, existing Storage walker/composition/mention regressions, full typecheck, browser-isomorphism, and the full build passed as well. An anonymized live create/read/decode/cleanup probe confirmed ADF-primary input, literal colon-text preservation, inline-code marks, and complete cleanup; the live creation route did not materialize a standalone emoji node, so that node remains proven by the pinned schema-valid fixture rather than the live probe.
 
 ### WP4 — Common dispatcher and differential fixtures
 

@@ -21,6 +21,7 @@ export * from "./page-body.js";
 export * from "./adf-types.js";
 export * from "./adf-coverage.js";
 export * from "./adf-validate.js";
+export * from "./adf-to-blocks.js";
 export * from "./markdown.js";
 export * from "./asset-budget.js";
 export * from "./compose-document.js";

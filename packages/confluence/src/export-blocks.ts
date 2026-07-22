@@ -285,6 +285,12 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  // ADF adapter degradations. These are representation facts shared by every
+  // host/renderer; DOCX and PDF receive the same notes with the same paths.
+  "adf-node-degraded",
+  "adf-mark-degraded",
+  "adf-attribute-dropped",
+  "adf-media-unresolved",
   // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
   // for the Jira table macro). Every degradation is typed and visible: the
   // pre-change behaviour was a raw percent-encoded URL in the body with an
