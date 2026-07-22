@@ -1,7 +1,12 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { storageToBlocks, type ExportBlock } from "@atlcli/confluence/browser";
+import {
+  composeChapters,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNode,
+} from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import { formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
@@ -13,6 +18,7 @@ import {
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
 
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
@@ -43,6 +49,53 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
 
 function sourceBundle(main: string): PdfSourceBundle {
   return { main, template: ATLCLI_TYPST_TEMPLATE, assets: [], sourceMap: [], notes: [] };
+}
+
+function chapterNodes(count: number): ExportNode[] {
+  return Array.from({ length: count }, (_, index) => ({
+    kind: "page" as const,
+    pageId: `chapter-${index + 1}`,
+    title: `Chapter ${index + 1}`,
+    depth: 0,
+    effectiveDepth: 0,
+    parentId: null,
+    position: index,
+    blocks: [
+      {
+        type: "heading" as const,
+        level: 2 as const,
+        content: [{ type: "text" as const, text: `Topic ${index + 1}` }],
+      },
+      {
+        type: "paragraph" as const,
+        content: [
+          {
+            type: "text" as const,
+            text: `This is deterministic source content for chapter ${index + 1}. `.repeat(8),
+          },
+        ],
+      },
+    ],
+    notes: [],
+    meta: { labels: [], spaceKey: "TEST" },
+  }));
+}
+
+async function chapterBundle(count: number, title: string): Promise<PdfSourceBundle> {
+  const composed = composeChapters(chapterNodes(count));
+  const prepared = await preparePdfDocument(composed.blocks, {
+    resolve: async () => {
+      throw new Error("no assets in fixture");
+    },
+  });
+  return serializePdfDocument(prepared, {
+    metadata: {
+      title,
+      language: "en",
+      exporter: "atlcli",
+      exportedAt: new Date("2026-07-22T00:00:00Z"),
+    },
+  });
 }
 
 function anonymousText(length: number, special: Record<number, string> = {}): string {
@@ -1055,4 +1108,50 @@ This is a real PDF.
     expect(second.diagnostics).toEqual([]);
     expect(second.pdf).toEqual(first.pdf);
   }, 30_000);
+
+  it("compiles a preview and the full export with one real warm compiler instance", async () => {
+    const compiler = await createCompiler();
+    const previewBundle = await chapterBundle(1, "Warm preview");
+    const exportBundle = await chapterBundle(6, "Warm full export");
+
+    const preview = await compiler.compile(previewBundle);
+    const exported = await compiler.compile(exportBundle);
+
+    expect(preview.diagnostics).toEqual([]);
+    expect(exported.diagnostics).toEqual([]);
+    expect(preview.pdf).toBeDefined();
+    expect(exported.pdf).toBeDefined();
+
+    const previewInspection = validatePdfOutput(preview.pdf!);
+    const exportInspection = validatePdfOutput(exported.pdf!);
+    expect(previewInspection.tagged).toBe(true);
+    expect(exportInspection.tagged).toBe(true);
+    expect(exportInspection.pageCount).toBeGreaterThan(previewInspection.pageCount);
+  }, 60_000);
+
+  it("compiles a real multi-chapter bundle within the production scaled timeout", async () => {
+    const chapterCount = 12;
+    const compiler = await createCompiler();
+    const bundle = await chapterBundle(chapterCount, "Scaled multi-chapter export");
+    const timeoutContract = new ChromeWorkerCompilerHost({
+      createWorker: () => {
+        throw new Error("timeout calculation must not create a worker");
+      },
+    });
+    const budgetMs = timeoutContract.timeoutForPages(chapterCount);
+
+    const startedAt = performance.now();
+    const result = await compiler.compile(bundle);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(elapsedMs).toBeLessThan(budgetMs);
+    const inspection = validatePdfOutput(result.pdf!);
+    expect(inspection).toMatchObject({
+      tagged: true,
+      hasOutline: true,
+    });
+    expect(inspection.pageCount).toBeGreaterThanOrEqual(chapterCount);
+  }, 90_000);
 });

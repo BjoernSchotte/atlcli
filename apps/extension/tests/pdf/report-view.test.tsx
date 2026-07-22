@@ -49,4 +49,32 @@ describe("PdfReportView", () => {
     expect(html).toContain("Compile 1.0 s");
     expect(html).toContain("Download 200 ms");
   });
+
+  it("surfaces macro outcomes before the collapsed detail notes", () => {
+    const html = renderToStaticMarkup(
+      <PdfReportView report={{
+        filename: "Macros.pdf",
+        profile: "tagged",
+        compilerVersion: "test",
+        embeddedImages: 0,
+        renderedDiagrams: 0,
+        skippedAssets: 0,
+        notes: [
+          { level: "info", code: "macro-rendered-via", message: "Rendered A" },
+          { level: "info", code: "macro-rendered-via", message: "Rendered B" },
+          { level: "warning", code: "macro-degraded", message: "Used a placeholder" },
+          { level: "info", code: "macro-skipped-by-config", message: "Live rendering off" },
+        ],
+        complete: true,
+        timings: { prepareMs: 1, compileMs: 2, emitMs: 1, totalMs: 4 },
+      }} />
+    );
+
+    expect(html).toContain("Live rendered: 2");
+    expect(html).toContain("Degraded: 1");
+    expect(html).toContain("Skipped by setting: 1");
+    expect(html).toContain("Rendered A");
+    expect(html).toContain("Used a placeholder");
+    expect(html.indexOf("macro-outcome-summary")).toBeLessThan(html.indexOf("<details"));
+  });
 });

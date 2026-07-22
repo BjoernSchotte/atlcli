@@ -255,6 +255,11 @@ const en = {
   "preview.failed": "The preview could not be compiled: {message}",
   "preview.diagnostics": "Compiler diagnostics ({count})",
 
+  "report.macros.label": "Macro rendering outcomes",
+  "report.macros.renderedVia": "Live rendered: {count}",
+  "report.macros.degraded": "Degraded: {count}",
+  "report.macros.skippedByConfig": "Skipped by setting: {count}",
+
   "docx.title": "Word template",
   "docx.upload": "Upload .docx template",
   "docx.scanning": "Scanning…",
@@ -278,6 +283,7 @@ const en = {
   "docx.scan.notSupported": "Not supported",
   "docx.scan.contentFound": "Content insertion point: ✓ found ($scroll.content)",
   "docx.scan.contentMissing": "No $scroll.content found — the page body will be appended before the final section break.",
+  "docx.scan.previewExplanation": "Word renders the final document. This scan shows which template fields will be filled before export.",
   "docx.report.title": "Export complete",
   "docx.report.resolved": "{count} placeholder(s) resolved",
   "docx.report.unsupported": "{count} unsupported: {names}",
@@ -532,6 +538,11 @@ const de: MessageCatalog = {
   "preview.failed": "Die Vorschau konnte nicht kompiliert werden: {message}",
   "preview.diagnostics": "Compiler-Meldungen ({count})",
 
+  "report.macros.label": "Ergebnisse der Makro-Darstellung",
+  "report.macros.renderedVia": "Live gerendert: {count}",
+  "report.macros.degraded": "Degradiert: {count}",
+  "report.macros.skippedByConfig": "Per Einstellung übersprungen: {count}",
+
   "docx.title": "Word-Vorlage",
   "docx.upload": ".docx-Vorlage hochladen",
   "docx.scanning": "Wird geprüft…",
@@ -555,6 +566,7 @@ const de: MessageCatalog = {
   "docx.scan.notSupported": "Nicht unterstützt",
   "docx.scan.contentFound": "Einfügepunkt für den Inhalt: ✓ gefunden ($scroll.content)",
   "docx.scan.contentMissing": "Kein $scroll.content gefunden — der Seiteninhalt wird vor dem letzten Abschnittswechsel angehängt.",
+  "docx.scan.previewExplanation": "Die endgültige Darstellung entsteht in Word. Diese Prüfung zeigt vor dem Export, welche Vorlagenfelder befüllt werden.",
   "docx.report.title": "Export abgeschlossen",
   "docx.report.resolved": "{count} Platzhalter aufgelöst",
   "docx.report.unsupported": "{count} nicht unterstützt: {names}",

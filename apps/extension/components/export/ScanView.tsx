@@ -20,7 +20,13 @@ import { useT } from "../../utils/i18n/context.js";
 import type { MessageKey } from "../../utils/i18n/messages.js";
 import { cn } from "../ui/utils.js";
 
-export function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
+export function ScanView({
+  scan,
+  explainWordRendering = false,
+}: {
+  scan: ScanResult;
+  explainWordRendering?: boolean;
+}): React.JSX.Element {
   const t = useT();
   const { supported, unsupported, never, hasContentPlaceholder } = scan;
   return (
@@ -37,6 +43,14 @@ export function ScanView({ scan }: { scan: ScanResult }): React.JSX.Element {
       >
         {hasContentPlaceholder ? t("docx.scan.contentFound") : t("docx.scan.contentMissing")}
       </div>
+      {explainWordRendering && (
+        <p
+          className="m-0 mt-1.5 leading-4 text-muted-foreground"
+          data-testid="docx-preview-explanation"
+        >
+          {t("docx.scan.previewExplanation")}
+        </p>
+      )}
     </div>
   );
 }

@@ -192,7 +192,7 @@ export function DocxExportPanel({
               </span>
             </div>
 
-            <ScanView scan={template.scan} />
+            <ScanView scan={template.scan} explainWordRendering />
 
             <div className="mt-2.5 flex items-center gap-2">
               <Button

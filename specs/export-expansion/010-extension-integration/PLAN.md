@@ -1351,21 +1351,25 @@ is a single-file change if the preview turns out to be v3.
       pause: back-to-back previews never leave the timer armed while
       compiling", "does not re-arm under an overlapping job" — the second and
       third are the "idle close still happens" half.)*
-- [ ] Honest DOCX story: no fake Word preview. `TemplateSection.tsx` keeps the
+- [x] Honest DOCX story: no fake Word preview. `TemplateSection.tsx` keeps the
       scan report (placeholder verdicts) as the DOCX "preview"; add one line
       of copy explaining why ("Word rendering happens in Word — the scan
       shows exactly what will be filled in"). No task may add an HTML
       approximation of the DOCX output.
 
-      **Left unticked: the negative half holds, the copy line does not exist.**
-      No DOCX preview of any kind ships — `previewScreenDefinition` is
-      PDF-only and nothing renders an HTML approximation — and the scan report
-      survives (`components/export/ScanView.tsx`, messages `docx.scan.*` in
-      `utils/i18n/messages.ts:240-245`). But there is **no message explaining
-      why there is no Word preview**: the only DOCX/PDF asymmetry the catalogue
-      states is `templates.docxOnly` ("Word templates only. PDF uses the
-      built-in atlcli document design."), which is about template upload, not
-      about preview. One `i18n` key plus its DE translation would close this.
+      *(Implemented in `components/export/ScanView.tsx` behind the explicit
+      `explainWordRendering` presentation flag, enabled only by
+      `components/export/DocxExportPanel.tsx`. The English/German
+      `docx.scan.previewExplanation` copy states that Word creates the final
+      rendering and the scan reports which fields will be populated; compact
+      template-library scans do not repeat it. Regression coverage:
+      `tests/docx/scan-view.test.tsx` — "explains in English that the scan is not
+      a simulated Word rendering", "ships the same explanation in German",
+      "does not repeat the explanation in compact scan-only contexts". The
+      actual panel connection is pinned by `tests/docx/export-panel.test.tsx` —
+      "places the Word-rendering explanation beside the persisted template
+      scan". The PDF-only `previewScreenDefinition` remains unchanged and no
+      HTML DOCX approximation was added.)*
 
 ### Macro renderer wiring (T5.4)
 
@@ -1520,20 +1524,22 @@ is a single-file change if the preview turns out to be v3.
       skipped-by-config without a single port call";
       `tests/pdf/run-export-scope.test.ts` — "`resolveMacros: false` makes no
       port call at all".)*
-- [ ] Report surfacing: `PdfReportView` (`PdfSection.tsx`) and the DOCX report
+- [x] Report surfacing: `PdfReportView` (`PdfSection.tsx`) and the DOCX report
       view group the new note classes (`rendered-via`, `degraded`,
       `skipped-by-config`) so "3 macros rendered live, 1 degraded" is visible
       without expanding all notes.
 
-      **Left unticked — not implemented.** The engine emits the codes
-      (`packages/export-macros/src/resolve.ts:38-40` —
-      `macro-rendered-via` / `macro-degraded` / `macro-skipped-by-config`), but
-      neither panel view groups by them: `components/export/PdfReportView.tsx:42`
-      renders `report.notes` as one flat `<ul>` inside a collapsed `<details>`,
-      and `components/export/DocxReportView.tsx:27-32` groups by note *level*
-      (`warning`/`info`), not by code. So "3 macros rendered live, 1 degraded"
-      is exactly what a user still has to count by hand — the condition this
-      task exists to remove.
+      *(Implemented once in
+      `components/export/MacroOutcomeSummary.tsx#summarizeMacroOutcomes` from
+      the three exported canonical codes. Both `PdfReportView` and
+      `DocxReportView` render the same compact, always-visible non-zero outcome
+      counts above their retained detail notes. The labels deliberately count
+      rendering outcomes rather than claiming unique macro instances because a
+      renderer may emit more than one terminal note. Regression coverage:
+      `tests/macro-outcome-summary.test.tsx`,
+      `tests/pdf/report-view.test.tsx` — "surfaces macro outcomes before the
+      collapsed detail notes", and `tests/docx/report-view.test.tsx` — "shows
+      the same macro outcome summary while retaining level groups".)*
 - [x] Verify `apps/extension/wxt.config.ts` host permissions cover the Jira
       REST calls on Cloud sites (`*://*.atlassian.net/*` — same origin) and
       assert it in `apps/extension/tests/manifest.test.ts`; no new
@@ -2223,19 +2229,21 @@ Component/unit (new):
       asserted from the engine side in `tests/pdf/run-export-scope.test.ts` —
       `describe("cross-engine policy parity over the shared fixtures")`, with
       guard-the-guard cases showing an unwrapped resolver fails the assertion.)*
-- [ ] `apps/extension/tests/pdf/compiler.test.ts` (extend): warm-worker
+- [x] `apps/extension/tests/pdf/compiler.test.ts` (extend): warm-worker
       preview-then-export sequence compiles both from one compiler instance;
       multi-chapter bundle compile stays under the scaled timeout.
 
-      **Left unticked — neither assertion was added to this file.**
-      `tests/pdf/compiler.test.ts` still ends at the pre-existing "produces
-      byte-identical output on a warm repeat compile"; there is no
-      preview-then-export sequence and no multi-chapter timeout case in it. The
-      *scheduling* property is covered against a fake worker in
-      `tests/pdf/compiler-host.test.ts` ("creates exactly ONE worker across a
-      rapid preview → preview → export sequence"), which is what makes this
-      cheap to leave — but the point of putting it here was to prove it against
-      the **real wasm compiler**, and that is not proven.
+      *(At that path: "compiles a preview and the full export with one real warm
+      compiler instance" creates one real `BrowserPdfCompiler`, compiles a
+      one-chapter preview followed by a six-chapter full export, validates both
+      PDFs and proves the full result grows beyond the preview. "compiles a
+      real multi-chapter bundle within the production scaled timeout" composes
+      twelve real chapters, compiles them through wasm, compares elapsed time
+      with `ChromeWorkerCompilerHost.timeoutForPages(12)`, and validates the
+      tagged outlined result and page count. The scheduling/one-worker property
+      remains independently covered against the fake worker in
+      `tests/pdf/compiler-host.test.ts`; this item supplies the missing real-wasm
+      half.)*
 - [x] `apps/extension/tests/pdf/job-durability.test.ts` (new): re-instantiate
       the background router mid-job (simulating a service-worker restart —
       drop and rebuild `activePdfJobs`/message listeners without touching the

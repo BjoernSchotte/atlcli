@@ -16,6 +16,7 @@ import type { ExportReport } from "@atlcli/docx/browser";
 import { useT } from "../../utils/i18n/context.js";
 import type { MessageKey } from "../../utils/i18n/messages.js";
 import { cn } from "../ui/utils.js";
+import { MacroOutcomeSummary } from "./MacroOutcomeSummary.js";
 
 const NOTE_LEVELS = [
   { level: "warning", labelKey: "docx.report.warnings", className: "text-warning" },
@@ -62,6 +63,8 @@ export function ReportView({ report }: { report: ExportReport }): React.JSX.Elem
         )}
         <li>{t("docx.report.duration", { ms: report.durationMs })}</li>
       </ul>
+
+      <MacroOutcomeSummary notes={report.notes} />
 
       {NOTE_LEVELS.map(({ level, labelKey, className }) => {
         const notes = groups.get(level);

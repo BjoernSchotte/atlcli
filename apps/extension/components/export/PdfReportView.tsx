@@ -10,6 +10,7 @@ import React from "react";
 import type { PdfExportReport } from "@atlcli/pdf/browser";
 import { useT } from "../../utils/i18n/context.js";
 import { formatDuration } from "./format.js";
+import { MacroOutcomeSummary } from "./MacroOutcomeSummary.js";
 
 export function PdfReportView({ report }: { report: PdfExportReport }): React.JSX.Element {
   const t = useT();
@@ -33,6 +34,7 @@ export function PdfReportView({ report }: { report: PdfExportReport }): React.JS
           emit: formatDuration(report.timings.emitMs),
         })}
       </div>
+      <MacroOutcomeSummary notes={report.notes} />
       {report.notes.length > 0 && (
         <details className="mt-1">
           <summary className="cursor-pointer">

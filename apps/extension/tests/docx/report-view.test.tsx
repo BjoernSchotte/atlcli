@@ -83,4 +83,25 @@ describe("ReportView — notes rendering (#15)", () => {
     expect(html).not.toContain("report-notes-warning");
     expect(html).not.toContain("report-notes-info");
   });
+
+  it("shows the same macro outcome summary while retaining level groups", () => {
+    const html = renderToStaticMarkup(
+      <ReportView
+        report={makeReport([
+          { level: "info", code: "macro-rendered-via", message: "Rendered A" },
+          { level: "info", code: "macro-rendered-via", message: "Rendered B" },
+          { level: "warning", code: "macro-degraded", message: "Fallback used" },
+          { level: "info", code: "macro-skipped-by-config", message: "Live rendering off" },
+        ])}
+      />
+    );
+
+    expect(html).toContain("Live rendered: 2");
+    expect(html).toContain("Degraded: 1");
+    expect(html).toContain("Skipped by setting: 1");
+    expect(html).toContain("report-notes-warning");
+    expect(html).toContain("report-notes-info");
+    expect(html).toContain("Fallback used");
+    expect(html).toContain("Rendered A");
+  });
 });
