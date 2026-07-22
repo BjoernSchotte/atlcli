@@ -114,6 +114,59 @@ describe("storageToBlocks — links & mentions", () => {
     ]);
   });
 
+  test("Confluence ri:url link preserves its target and rich display text", () => {
+    const out = blocks(
+      '<p>See <ac:link><ri:url ri:value="https://x.test/y"/>' +
+        '<ac:link-body>the <strong>guide</strong></ac:link-body></ac:link>.</p>'
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toEqual([
+      { type: "text", text: "See " },
+      {
+        type: "link",
+        target: { kind: "external", href: "https://x.test/y" },
+        content: [
+          { type: "text", text: "the " },
+          { type: "text", text: "guide", marks: ["bold"] },
+        ],
+      },
+      { type: "text", text: "." },
+    ]);
+  });
+
+  test("Confluence ri:url link falls back to its visible URL inside a table", () => {
+    const href = "https://x.test/a/very/long/path/that/can/wrap/in/a/narrow/table/cell";
+    const out = blocks(
+      `<table><tbody><tr><td><p><ac:link><ri:url ri:value="${href}"/></ac:link></p></td></tr></tbody></table>`
+    );
+    const table = out[0] as Extract<ExportBlock, { type: "table" }>;
+    const paragraph = table.rows[0]!.cells[0]!.content[0] as Extract<
+      ExportBlock,
+      { type: "paragraph" }
+    >;
+    expect(paragraph.content).toEqual([
+      {
+        type: "link",
+        target: { kind: "external", href },
+        content: [{ type: "text", text: href }],
+      },
+    ]);
+  });
+
+  test("Confluence ri:url emits only the sanitized target and fallback text", () => {
+    const out = blocks(
+      '<p><ac:link><ri:url ri:value="https://exa&#x9;mple.com/path"/></ac:link></p>'
+    );
+    const content = (out[0] as { content: InlineNode[] }).content;
+    expect(content).toEqual([
+      {
+        type: "link",
+        target: { kind: "external", href: "https://example.com/path" },
+        content: [{ type: "text", text: "https://example.com/path" }],
+      },
+    ]);
+  });
+
   test("page link carries title + space + anchor", () => {
     const out = blocks(
       '<p><ac:link ac:anchor="sec"><ri:page ri:content-title="Target" ri:space-key="DOCSY"/><ac:plain-text-link-body>see</ac:plain-text-link-body></ac:link></p>'

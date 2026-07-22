@@ -215,8 +215,11 @@ function maybeFind(testId: string): HTMLElement | null {
 }
 
 async function click(testId: string): Promise<void> {
+  await clickElement(find(testId));
+}
+
+async function clickElement(element: Element): Promise<void> {
   const { act } = await import("react");
-  const element = find(testId);
   await act(async () => {
     element.dispatchEvent(
       new (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent("click", {
@@ -301,12 +304,30 @@ function fakeViewer(pageCount = 4): PdfPreviewViewer & {
         containerHeight: options.containerHeight,
         fit: options.fit,
       });
+      options.annotationLayer.replaceChildren();
+      if (pageNumber === 1) {
+        const internalSection = options.annotationLayer.ownerDocument.createElement("section");
+        internalSection.className = "linkAnnotation";
+        internalSection.setAttribute("data-internal-link", "");
+        const internal = options.annotationLayer.ownerDocument.createElement("a");
+        internal.href = "#chapter-three";
+        internal.onclick = () => {
+          options.onNavigate(3);
+          return false;
+        };
+        internalSection.append(internal);
+
+        const externalSection = options.annotationLayer.ownerDocument.createElement("section");
+        externalSection.className = "linkAnnotation";
+        const external = options.annotationLayer.ownerDocument.createElement("a");
+        external.href = "https://example.com/docs";
+        external.target = "_blank";
+        external.rel = "noopener noreferrer";
+        externalSection.append(external);
+        options.annotationLayer.append(internalSection, externalSection);
+      }
       return {
         fit: options.fit === "auto" ? "height" : options.fit ?? "width",
-        internalLinks:
-          pageNumber === 1
-            ? [{ pageNumber: 3, left: 10, top: 20, width: 120, height: 18 }]
-            : [],
       };
     },
     async destroy() {
@@ -477,23 +498,34 @@ describe("PreviewScreen", () => {
     expect(viewer.renders).toEqual([1, 2, 1]);
   });
 
-  it("follows a table-of-contents hotspot without re-compiling", async () => {
+  it("consumes PDF.js AnnotationLayer links without re-compiling or retaining stale DOM", async () => {
     const viewer = fakeViewer(4);
     const runtime = runtimeFor(ready(), viewer);
     await mount(loadedState(), runtime);
     await click("preview-generate");
 
-    const link = find("preview-internal-link-0");
-    expect(link.getAttribute("aria-label")).toContain("3");
-    expect(link.getAttribute("style")).toContain("left: 10px");
-    await click("preview-internal-link-0");
+    const annotationLayer = find("preview-annotation-layer");
+    const internal = annotationLayer.querySelector(
+      "section.linkAnnotation[data-internal-link] > a"
+    );
+    const external = annotationLayer.querySelector(
+      "section.linkAnnotation:not([data-internal-link]) > a"
+    ) as HTMLAnchorElement | null;
+    expect(internal).not.toBeNull();
+    expect(external?.href).toBe("https://example.com/docs");
+    expect(external?.target).toBe("_blank");
+    expect(external?.rel).toBe("noopener noreferrer");
+    // The screen consumes PDF.js' own annotation DOM; there is no custom
+    // geometry/button layer to keep in sync with canvas scale.
+    expect(maybeFind("preview-internal-link-0")).toBeNull();
+    await clickElement(internal!);
 
     expect(viewer.renders).toEqual([1, 3]);
     expect(find("preview-page-label").textContent).toContain("3");
     expect(runtime.compiles).toBe(1);
-    // The target page has no link in this fake, so the old TOC hotspot cannot
-    // linger over the newly rendered page.
-    expect(maybeFind("preview-internal-link-0")).toBeNull();
+    // Page three has no annotations in this fake. The page-one links must not
+    // linger over the newly rendered canvas.
+    expect(find("preview-annotation-layer").childElementCount).toBe(0);
   });
 
   it("re-renders the same page at a new zoom without re-compiling", async () => {

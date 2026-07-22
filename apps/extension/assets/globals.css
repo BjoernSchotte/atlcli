@@ -167,3 +167,42 @@ html.theme-dark {
     display: none;
   }
 }
+
+/*
+ * Minimal PDF.js AnnotationLayer structure. The full pdf_viewer stylesheet is
+ * intentionally not imported: this preview enables only filtered link
+ * annotations, no forms, comments, editors, popups, or scripting surfaces.
+ * PDF.js owns every section's percentage geometry; this CSS only establishes
+ * the positioned layer and full-size focusable anchors.
+ */
+.pdf-annotation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.pdf-annotation-layer section {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+  transform-origin: 0 0;
+  user-select: none;
+}
+
+.pdf-annotation-layer .linkAnnotation > a {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.pdf-annotation-layer .linkAnnotation > a:hover {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+}
+
+.pdf-annotation-layer .linkAnnotation > a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

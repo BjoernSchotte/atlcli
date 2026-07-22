@@ -493,6 +493,14 @@ function effectiveCellTextColor(sourceColor: string | undefined, context: Render
   return preservePdfSourceCellColor(sourceColor, cell.background, cell.theme) ?? cell.foreground;
 }
 
+/** External PDF links remain recognizable in print-like document designs. */
+function styledExternalLink(link: string, context: RenderContext): string {
+  const color =
+    effectiveCellTextColor(context.design.branding.accent, context) ??
+    context.design.branding.accent;
+  return `#text(fill: rgb(${typstString(color)}))[#underline[${link}]]`;
+}
+
 function styledText(value: string, node: TextInlineNode, context: RenderContext): string {
   let out = literalText(value);
   for (const mark of node.marks ?? []) {
@@ -615,10 +623,13 @@ function serializeInline(
             const label = plainUnmarkedText(node.content);
             const denseLabels = label === null ? null : denseRawUrlLabels(href, label);
             if (denseLabels !== null) {
-              return `#dense-link(${context.availableWidth}, ${typstString(href)}, ${typstString(label!)}, ${typstString(denseLabels.compact)}, ${typstString(denseLabels.host)})`;
+              return styledExternalLink(
+                `#dense-link(${context.availableWidth}, ${typstString(href)}, ${typstString(label!)}, ${typstString(denseLabels.compact)}, ${typstString(denseLabels.host)})`,
+                context
+              );
             }
           }
-          return `#link(${typstString(href)})[${content}]`;
+          return styledExternalLink(`#link(${typstString(href)})[${content}]`, context);
         }
         default: {
           const exhaustive: never = node;

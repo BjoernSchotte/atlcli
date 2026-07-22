@@ -10,15 +10,15 @@
  *      the logic worth testing — stay importable in unit tests, and lets the
  *      viewer reach these URLs through a dynamic `import()` only on the real
  *      code path.
- *   2. It makes the vendoring decision a single, greppable file: both runtime
- *      files come from `pdfjs-dist/build/` and are emitted **verbatim**, which
- *      is what makes their sha256 pins in `scripts/check-output-build.ts`
- *      meaningful.
+ *   2. It makes the runtime entry URLs greppable. The viewer asset is emitted
+ *      verbatim here. `PDFJS_WORKER_URL` points at a small local bootstrap;
+ *      that bootstrap separately emits/imports the verbatim upstream worker,
+ *      whose sha256 remains pinned by `scripts/check-output-build.ts`.
  */
 import pdfjsModuleUrl from "pdfjs-dist/build/pdf.min.mjs?url&no-inline";
-import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline";
+import pdfjsWorkerBootstrapUrl from "./pdfjs-worker-bootstrap.ts?worker&url";
 
 /** Emitted URL of the PDF.js library (unmodified upstream bytes). */
 export const PDFJS_MODULE_URL: string = pdfjsModuleUrl;
-/** Emitted URL of the PDF.js worker (unmodified upstream bytes). */
-export const PDFJS_WORKER_URL: string = pdfjsWorkerUrl;
+/** Emitted URL of the local bootstrap that loads the pinned upstream worker. */
+export const PDFJS_WORKER_URL: string = pdfjsWorkerBootstrapUrl;

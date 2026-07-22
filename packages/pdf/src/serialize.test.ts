@@ -588,6 +588,43 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.notes.find((note) => note.code === "unsafe-link-skipped")?.level).toBe("warning");
   });
 
+  it("styles external links with the document accent and underline without changing internal links", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "anchor", name: "chapter" },
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "link",
+            target: { kind: "external", href: "https://example.com/docs" },
+            content: [{ type: "text", text: "External" }],
+          },
+          { type: "text", text: " / " },
+          {
+            type: "link",
+            target: { kind: "anchor", anchor: "chapter" },
+            content: [{ type: "text", text: "Internal" }],
+          },
+        ],
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata,
+      settings: { accentColor: "#0052CC" },
+    });
+
+    expect(bundle.main).toContain(
+      '#text(fill: rgb("#0052CC"))[#underline[#link("https://example.com/docs")[#text("External")]]]'
+    );
+    expect(bundle.main).toContain('#link(<chapter>)[#text("Internal")]');
+    expect(bundle.main).not.toContain("#underline[#link(<chapter>)");
+  });
+
   it("maps generated main.typ lines to the most specific nested block", async () => {
     const blocks: ExportBlock[] = [
       {

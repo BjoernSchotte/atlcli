@@ -89,6 +89,7 @@
         "tailwind-merge": "^3.6.0",
       },
       "devDependencies": {
+        "@playwright/test": "1.55.0",
         "@tailwindcss/postcss": "^4.3.3",
         "@types/chrome": "^0.2.2",
         "@types/react": "^19.2.0",
@@ -97,6 +98,7 @@
         "fake-indexeddb": "^6.2.5",
         "happy-dom": "^20.0.2",
         "tailwindcss": "^4.3.3",
+        "vite": "8.1.4",
         "wxt": "^0.20.27",
       },
     },

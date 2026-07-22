@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { ExportBlock } from "@atlcli/confluence/browser";
+import { storageToBlocks, type ExportBlock } from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import { formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
@@ -398,6 +398,64 @@ This is a real PDF.
       expect(targets).toHaveLength(2);
       expect(new Set(targets.map((target) => target.targetPage)).size).toBe(2);
       expect(targets.every((target) => target.targetPage > target.sourcePage)).toBe(true);
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("compiles Confluence ri:url links in table prose into external PDF annotations", async () => {
+    const visibleUrl =
+      "https://obi.atlassian.net/wiki/x/ImKFFg/a/long/path/that/wraps/in/a/narrow/table/cell";
+    const labelledUrl = "https://obi.atlassian.net/wiki/x/CACFFg";
+    const storage =
+      '<table><tbody><tr><td><p>Integration Platform Team: ' +
+      `<ac:link><ri:url ri:value="${visibleUrl}"/>` +
+      `<ac:plain-text-link-body><![CDATA[${visibleUrl}]]></ac:plain-text-link-body></ac:link></p>` +
+      '<p>Documentation: <ac:link>' +
+      `<ri:url ri:value="${labelledUrl}"/>` +
+      '<ac:link-body>Platform <strong>documentation</strong></ac:link-body></ac:link></p>' +
+      "</td></tr></tbody></table>";
+    const walked = storageToBlocks(storage, { exporter: "pdf" });
+    expect(walked.notes).toEqual([]);
+
+    const prepared = await preparePdfDocument(walked.blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Inline link regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toMatch(
+      /#text\(fill: rgb\("#[0-9A-F]{6}"\)\)\[#underline\[#dense-link\(/
+    );
+    expect(bundle.main).toContain(`[#underline[#link("${labelledUrl}")`);
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    // Verify actual compiled bytes rather than only checking for Typst
+    // `#link(...)` source: PDF.js must expose both URI annotations.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const external: string[] = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        for (const annotation of await page.getAnnotations({ intent: "display" })) {
+          if (annotation.subtype === "Link" && typeof annotation.url === "string") {
+            external.push(annotation.url);
+          }
+        }
+      }
+      expect(external).toEqual(expect.arrayContaining([visibleUrl, labelledUrl]));
     } finally {
       await task.destroy();
     }

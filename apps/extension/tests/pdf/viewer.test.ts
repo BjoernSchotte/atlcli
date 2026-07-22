@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Window } from "happy-dom";
 import { pdfBytesFromUint8Array } from "@atlcli/pdf/browser";
 import { scanText } from "../../scripts/check-output-build.js";
 import {
@@ -11,9 +12,12 @@ import {
   computeRenderScale,
   openPdfViewer,
   pdfjsSourceFor,
+  safePdfPreviewAnnotations,
+  safePdfPreviewExternalHref,
   type PdfjsDocument,
   type PdfjsModule,
   type PdfjsPage,
+  type PdfPreviewViewer,
 } from "../../utils/pdf/viewer.js";
 import { EXTENSION_ROOT } from "../build-helper.js";
 
@@ -26,38 +30,41 @@ afterEach(() => __resetPdfjsModule());
 interface Recorded {
   params: Record<string, unknown>[];
   rendered: { scale: number; canvas: unknown }[];
+  annotationRenders: Array<{
+    annotations: unknown[];
+    renderForms: boolean;
+    enableScripting: boolean;
+    hasJSActions: boolean;
+  }>;
 }
 
 function fakePdfjs(
   pages = 3,
   options: {
     annotations?: unknown[];
+    annotationsByPage?: Record<number, unknown[]>;
     destinations?: Record<string, unknown[]>;
     pageWidth?: number;
     pageHeight?: number;
   } = {}
 ): { module: PdfjsModule; recorded: Recorded } {
-  const recorded: Recorded = { params: [], rendered: [] };
+  const recorded: Recorded = { params: [], rendered: [], annotationRenders: [] };
   const pageWidth = options.pageWidth ?? 600;
   const pageHeight = options.pageHeight ?? 800;
-  const page: PdfjsPage = {
+  const pageFor = (pageNumber: number): PdfjsPage => ({
     getViewport: ({ scale }) => ({
       width: pageWidth * scale,
       height: pageHeight * scale,
-      // PDF coordinates start at the bottom-left; viewport coordinates start
-      // at the top-left. Keeping that flip in the fake makes the link geometry
-      // assertion discriminate between PDF points and CSS pixels.
-      convertToViewportPoint: (x, y) => [x * scale, (pageHeight - y) * scale],
     }),
-    getAnnotations: async () => options.annotations ?? [],
+    getAnnotations: async () => options.annotationsByPage?.[pageNumber] ?? options.annotations ?? [],
     render: ({ viewport, canvas }) => {
       recorded.rendered.push({ scale: viewport.width / pageWidth, canvas });
       return { promise: Promise.resolve(), cancel: () => undefined };
     },
-  };
+  });
   const document: PdfjsDocument = {
     numPages: pages,
-    getPage: async () => page,
+    getPage: async (pageNumber) => pageFor(pageNumber),
     getDestination: async (id) => options.destinations?.[id] ?? null,
     getPageIndex: async (ref) => {
       const pageIndex = (ref as { pageIndex?: unknown }).pageIndex;
@@ -68,12 +75,79 @@ function fakePdfjs(
   };
   const module: PdfjsModule = {
     GlobalWorkerOptions: { workerSrc: "" },
+    AnnotationLayer: class FakeAnnotationLayer {
+      private readonly div: HTMLDivElement;
+
+      constructor(params: { div: HTMLDivElement }) {
+        this.div = params.div;
+      }
+
+      async render(params: {
+        annotations: unknown[];
+        renderForms: false;
+        enableScripting: false;
+        hasJSActions: false;
+        linkService: {
+          addLinkAttributes(link: HTMLAnchorElement, url: string): void;
+          getDestinationHash(destination: unknown): string;
+          goToDestination(destination: unknown): Promise<void>;
+        };
+      }) {
+        recorded.annotationRenders.push({
+          annotations: params.annotations,
+          renderForms: params.renderForms,
+          enableScripting: params.enableScripting,
+          hasJSActions: params.hasJSActions,
+        });
+        for (const candidate of params.annotations) {
+          const annotation = candidate as { id?: string; subtype?: string; url?: string; dest?: unknown };
+          if (annotation.subtype !== "Link") continue;
+          const section = this.div.ownerDocument.createElement("section");
+          section.className = "linkAnnotation";
+          section.setAttribute("data-annotation-id", annotation.id ?? "link");
+          const link = this.div.ownerDocument.createElement("a");
+          if (annotation.url) {
+            params.linkService.addLinkAttributes(link, annotation.url);
+          } else if (annotation.dest != null) {
+            section.setAttribute("data-internal-link", "");
+            link.href = params.linkService.getDestinationHash(annotation.dest);
+            link.onclick = () => {
+              void params.linkService.goToDestination(annotation.dest);
+              return false;
+            };
+          }
+          section.append(link);
+          this.div.append(section);
+        }
+      }
+
+      destroy() {
+        /* fake owns no resources */
+      }
+    } as unknown as PdfjsModule["AnnotationLayer"],
     getDocument: (params) => {
       recorded.params.push(params);
       return { promise: Promise.resolve(document), destroy: async () => undefined };
     },
   };
   return { module, recorded };
+}
+
+function fakeAnnotationHost(): HTMLDivElement {
+  const window = new Window();
+  return window.document.createElement("div") as unknown as HTMLDivElement;
+}
+
+type RenderOptions = Parameters<PdfPreviewViewer["renderPage"]>[2];
+
+function renderOptions(overrides: Partial<RenderOptions> = {}): RenderOptions {
+  return {
+    containerWidth: 300,
+    containerHeight: 700,
+    annotationLayer: fakeAnnotationHost(),
+    onNavigate: () => undefined,
+    ...overrides,
+  };
 }
 
 function fakeCanvas(): HTMLCanvasElement {
@@ -138,9 +212,17 @@ describe("PDF.js construction site", () => {
    */
   it("sources both runtime files from the vendored package, emitted verbatim", () => {
     const source = readFileSync(join(EXTENSION_ROOT, "utils", "pdf", "pdfjs-assets.ts"), "utf8");
+    const workerBootstrap = readFileSync(
+      join(EXTENSION_ROOT, "utils", "pdf", "pdfjs-worker-bootstrap.ts"),
+      "utf8"
+    );
     expect(source).toContain('"pdfjs-dist/build/pdf.min.mjs?url&no-inline"');
-    expect(source).toContain('"pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline"');
+    expect(source).toContain('"./pdfjs-worker-bootstrap.ts?worker&url"');
+    expect(workerBootstrap).toContain(
+      '"pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline"'
+    );
     expect(source).not.toMatch(/https?:\/\//);
+    expect(workerBootstrap).not.toMatch(/https?:\/\//);
   });
 });
 
@@ -269,6 +351,75 @@ describe("computeRenderScale", () => {
   });
 });
 
+describe("PDF preview annotation policy", () => {
+  it("allows only absolute web and mail links", () => {
+    expect(safePdfPreviewExternalHref("https://example.com/docs")).toBe(
+      "https://example.com/docs"
+    );
+    expect(safePdfPreviewExternalHref("mailto:docs@example.com")).toBe(
+      "mailto:docs@example.com"
+    );
+    for (const blocked of [
+      "/relative",
+      "javascript:alert(1)",
+      "data:text/html,hello",
+      "file:///tmp/report.pdf",
+      "tel:+49123",
+      "not a url",
+    ]) {
+      expect(safePdfPreviewExternalHref(blocked)).toBeNull();
+    }
+  });
+
+  it("passes only links to AnnotationLayer and strips every action field", () => {
+    expect(
+      safePdfPreviewAnnotations([
+        {
+          id: "internal",
+          subtype: "Link",
+          dest: "chapter",
+          url: "https://attacker.example",
+          action: "Launch",
+          actions: { U: "JavaScript" },
+        },
+        {
+          id: "external",
+          subtype: "Link",
+          url: "https://example.com/docs",
+          action: "NextPage",
+          attachment: { filename: "payload" },
+        },
+        { id: "named", subtype: "Link", action: "NextPage" },
+        { id: "unsafe", subtype: "Link", url: "javascript:alert(1)" },
+        { id: "widget", subtype: "Widget", url: "https://example.com" },
+      ])
+    ).toEqual([
+      {
+        id: "internal",
+        subtype: "Link",
+        dest: "chapter",
+        url: undefined,
+        action: undefined,
+        actions: undefined,
+        attachment: undefined,
+        resetForm: undefined,
+        setOCGState: undefined,
+      },
+      {
+        id: "external",
+        subtype: "Link",
+        url: "https://example.com/docs",
+        dest: undefined,
+        action: undefined,
+        actions: undefined,
+        attachment: undefined,
+        resetForm: undefined,
+        setOCGState: undefined,
+      },
+    ]);
+  });
+});
+
 describe("openPdfViewer", () => {
   it("renders only the requested page and clamps out-of-range numbers", async () => {
     const { module, recorded } = fakePdfjs(3);
@@ -278,44 +429,35 @@ describe("openPdfViewer", () => {
       getContext: () => ({}),
     });
     expect(viewer.pageCount).toBe(3);
-    await viewer.renderPage(2, fakeCanvas(), {
-      containerWidth: 300,
-      containerHeight: 700,
-      devicePixelRatio: 1,
-    });
+    await viewer.renderPage(2, fakeCanvas(), renderOptions({ devicePixelRatio: 1 }));
     // One page rendered — never the whole document.
     expect(recorded.rendered).toHaveLength(1);
-    await viewer.renderPage(99, fakeCanvas(), {
-      containerWidth: 300,
-      containerHeight: 700,
-      devicePixelRatio: 1,
-    });
+    await viewer.renderPage(99, fakeCanvas(), renderOptions({ devicePixelRatio: 1 }));
     expect(recorded.rendered).toHaveLength(2);
     await viewer.destroy();
     await expect(
-      viewer.renderPage(1, fakeCanvas(), { containerWidth: 300, containerHeight: 700 })
+      viewer.renderPage(1, fakeCanvas(), renderOptions())
     ).rejects.toThrow(/destroyed/);
   });
 
-  it("projects internal PDF links into CSS pixels and resolves their target pages", async () => {
-    const { module } = fakePdfjs(5, {
+  it("delegates internal and external links to PDF.js AnnotationLayer", async () => {
+    const { module, recorded } = fakePdfjs(5, {
       annotations: [
         {
+          id: "internal",
           subtype: "Link",
           rect: [60, 700, 180, 740],
           dest: "chapter-three",
         },
         {
+          id: "external",
           subtype: "Link",
           rect: [240, 600, 360, 640],
-          dest: [1, { name: "XYZ" }],
+          url: "https://example.com/docs",
         },
-        // External links and malformed internal destinations are deliberately
-        // inert in the reduced preview surface.
-        { subtype: "Link", rect: [0, 0, 10, 10], url: "https://example.com" },
-        { subtype: "Link", rect: [0, 0, 10, 10], dest: "missing" },
-        { subtype: "Link", rect: [0, 0, 10, 10], dest: [99, { name: "XYZ" }] },
-        { subtype: "Link", rect: [0, 0, 0, 10], dest: [1, { name: "XYZ" }] },
+        { id: "unsafe", subtype: "Link", rect: [0, 0, 10, 10], url: "javascript:alert(1)" },
+        { id: "named-action", subtype: "Link", rect: [0, 0, 10, 10], action: "NextPage" },
+        { id: "form", subtype: "Widget", rect: [0, 0, 10, 10] },
       ],
       destinations: { "chapter-three": [{ pageIndex: 2 }, { name: "XYZ" }] },
     });
@@ -325,19 +467,69 @@ describe("openPdfViewer", () => {
       getContext: () => ({}),
     });
 
-    const rendered = await viewer.renderPage(2, fakeCanvas(), {
-      containerWidth: 300,
-      containerHeight: 700,
-      devicePixelRatio: 2,
-    });
+    const annotationLayer = fakeAnnotationHost();
+    const navigated: number[] = [];
+    const rendered = await viewer.renderPage(
+      2,
+      fakeCanvas(),
+      renderOptions({
+        annotationLayer,
+        onNavigate: (page) => navigated.push(page),
+        devicePixelRatio: 2,
+      })
+    );
 
-    // Fit width is 0.5 CSS px per PDF point. The backing canvas renders at
-    // deviceScale 1 here, but the hotspots MUST stay in CSS pixels.
-    expect(rendered.internalLinks).toEqual([
-      { pageNumber: 3, left: 30, top: 30, width: 60, height: 20 },
-      { pageNumber: 2, left: 120, top: 80, width: 60, height: 20 },
-    ]);
+    expect(recorded.annotationRenders).toHaveLength(1);
+    expect(recorded.annotationRenders[0]).toMatchObject({
+      renderForms: false,
+      enableScripting: false,
+      hasJSActions: false,
+    });
+    expect(recorded.annotationRenders[0]!.annotations).toHaveLength(2);
+
+    const internal = annotationLayer.querySelector(
+      'section[data-annotation-id="internal"] > a'
+    ) as HTMLAnchorElement | null;
+    const external = annotationLayer.querySelector(
+      'section[data-annotation-id="external"] > a'
+    ) as HTMLAnchorElement | null;
+    expect(internal).not.toBeNull();
+    expect(external?.href).toBe("https://example.com/docs");
+    expect(external?.target).toBe("_blank");
+    expect(external?.rel).toBe("noopener noreferrer");
+    expect(external?.getAttribute("aria-label")).toBe("https://example.com/docs");
+    expect(annotationLayer.querySelector('[data-annotation-id="unsafe"]')).toBeNull();
+    expect(annotationLayer.querySelector('[data-annotation-id="named-action"]')).toBeNull();
+    expect(annotationLayer.querySelector('[data-annotation-id="form"]')).toBeNull();
+
+    internal!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(navigated).toEqual([3]);
     expect(rendered.fit).toBe("width");
+  });
+
+  it("replaces stale annotation DOM when another page renders and clears it on destroy", async () => {
+    const { module } = fakePdfjs(2, {
+      annotationsByPage: {
+        1: [{ id: "page-one", subtype: "Link", url: "https://example.com/one" }],
+        2: [{ id: "page-two", subtype: "Link", url: "https://example.com/two" }],
+      },
+    });
+    const viewer = await openPdfViewer(pdfBytesFromUint8Array(new Uint8Array([1])), {
+      importModule: async () => module,
+      workerSrc: "w.mjs",
+      getContext: () => ({}),
+    });
+    const annotationLayer = fakeAnnotationHost();
+
+    await viewer.renderPage(1, fakeCanvas(), renderOptions({ annotationLayer }));
+    expect(annotationLayer.querySelector('[data-annotation-id="page-one"]')).not.toBeNull();
+    await viewer.renderPage(2, fakeCanvas(), renderOptions({ annotationLayer }));
+    expect(annotationLayer.querySelector('[data-annotation-id="page-one"]')).toBeNull();
+    expect(annotationLayer.querySelector('[data-annotation-id="page-two"]')).not.toBeNull();
+
+    await viewer.destroy();
+    expect(annotationLayer.childElementCount).toBe(0);
   });
 
   it("uses the real page orientation when auto-fit is requested", async () => {
@@ -346,12 +538,12 @@ describe("openPdfViewer", () => {
       pdfBytesFromUint8Array(new Uint8Array([1])),
       { importModule: async () => portrait.module, workerSrc: "w.mjs", getContext: () => ({}) }
     );
-    const portraitRender = await portraitViewer.renderPage(1, fakeCanvas(), {
+    const portraitRender = await portraitViewer.renderPage(1, fakeCanvas(), renderOptions({
       containerWidth: 1200,
       containerHeight: 400,
       fit: "auto",
       devicePixelRatio: 1,
-    });
+    }));
     expect(portraitRender.fit).toBe("height");
     expect(portrait.recorded.rendered[0]!.scale).toBeCloseTo(0.5);
     await portraitViewer.destroy();
@@ -362,12 +554,12 @@ describe("openPdfViewer", () => {
       pdfBytesFromUint8Array(new Uint8Array([2])),
       { importModule: async () => landscape.module, workerSrc: "w.mjs", getContext: () => ({}) }
     );
-    const landscapeRender = await landscapeViewer.renderPage(1, fakeCanvas(), {
+    const landscapeRender = await landscapeViewer.renderPage(1, fakeCanvas(), renderOptions({
       containerWidth: 400,
       containerHeight: 1200,
       fit: "auto",
       devicePixelRatio: 1,
-    });
+    }));
     expect(landscapeRender.fit).toBe("width");
     expect(landscape.recorded.rendered[0]!.scale).toBeCloseTo(0.5);
   });

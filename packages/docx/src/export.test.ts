@@ -146,6 +146,35 @@ describe("exportDocx — full pipeline", () => {
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("turns a Confluence ac:link / ri:url from page storage into a Word HYPERLINK field", async () => {
+    const href = "https://obi.atlassian.net/wiki/x/CACFFg";
+    const linkedDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<table><tbody><tr><td><p>Documentation: <ac:link>' +
+        `<ri:url ri:value="${href}"/>` +
+        '<ac:plain-text-link-body><![CDATA[Platform documentation]]></ac:plain-text-link-body>' +
+        "</ac:link></p></td></tr></tbody></table>",
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details: linkedDetails,
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps,
+    });
+
+    // `fullTemplate` contains no link fields: this field instruction and its
+    // visible result can only have come from the ri:url page body above.
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(` HYPERLINK "${href}" `);
+    expect(doc).toContain("Platform documentation");
+    expect(doc).toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(doc).toContain('<w:fldChar w:fldCharType="separate"/>');
+    expect(doc).toContain('<w:fldChar w:fldCharType="end"/>');
+    assertBalancedXml(doc);
+  });
+
   it("stamps outline levels on injected headings so a TOC \\o collects them on a custom-heading-style template", async () => {
     // Regression (spec 004 E2E): a customer template whose only heading style is
     // a custom name (`Heading1TOC`, no `Heading 1/2/3`) yielded an empty

@@ -2205,14 +2205,15 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
 }
 
 /**
- * Resolve an `<ac:link>` to inline node(s): user mention, page link, attachment
- * link, or in-page anchor. Body text comes from `<ac:plain-text-link-body>` or
- * `<ac:link-body>`.
+ * Resolve an `<ac:link>` to inline node(s): user mention, page, attachment,
+ * external URL, or in-page anchor. Body text comes from
+ * `<ac:plain-text-link-body>` or `<ac:link-body>`.
  */
 function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const user = childByName(el, "ri:user");
   const page = childByName(el, "ri:page");
   const attachment = childByName(el, "ri:attachment");
+  const url = childByName(el, "ri:url");
   const anchorAttr = el.attrs["ac:anchor"];
 
   const plainBody = childByName(el, "ac:plain-text-link-body");
@@ -2247,6 +2248,33 @@ function walkAcLink(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     const filename = attachment.attrs["ri:filename"] ?? "";
     const content = hasMeaningfulInline(bodyInline) ? bodyInline : [{ type: "text" as const, text: filename }];
     return [{ type: "link", target: { kind: "attachment", filename }, content }];
+  }
+
+  // Confluence represents pasted / editor-created external links as
+  // `<ac:link><ri:url ri:value="…"/>…</ac:link>` as well as ordinary HTML
+  // `<a href="…">`. Without this branch the target element was ignored and
+  // only `bodyInline` survived, so both PDF and DOCX received plain text even
+  // though the link was clickable on the source page.
+  if (url) {
+    const href = url.attrs["ri:value"] ?? "";
+    const verdict = sanitizeLinkHref(href);
+    if (!verdict.safe) {
+      const content = hasMeaningfulInline(bodyInline)
+        ? bodyInline
+        : [{ type: "text" as const, text: href }];
+      ctx.notes.push(
+        withSource(ctx, {
+          level: "warning",
+          code: UNSAFE_LINK_NOTE_CODE,
+          message: unsafeLinkMessage(verdict, inlineText(content)),
+        })
+      );
+      return content;
+    }
+    const content = hasMeaningfulInline(bodyInline)
+      ? bodyInline
+      : [{ type: "text" as const, text: verdict.href }];
+    return [{ type: "link", target: { kind: "external", href: verdict.href }, content }];
   }
 
   if (anchorAttr) {

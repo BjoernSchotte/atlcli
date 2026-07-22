@@ -54,7 +54,6 @@ import type { HostCapability } from "../../utils/ports/index.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 import type { PdfPreviewResult } from "../../utils/pdf/preview.js";
 import type {
-  PdfPreviewInternalLink,
   PdfPreviewFit,
   ResolvedPdfPreviewFit,
   PdfPreviewViewer,
@@ -230,7 +229,7 @@ export function PreviewScreen({
 }: ScreenProps & { embedded?: boolean }): React.JSX.Element {
   const { t } = useI18n();
   // `useI18n` deliberately provides a no-Provider fallback whose function
-  // identity is not stable. The page-render effect writes link-layer state on
+  // identity is not stable. The page-render effect writes render state on
   // success, so depending on that function would turn the fallback path into a
   // render loop. Keep the latest translator for the error branch without
   // making successful annotation renders depend on its identity.
@@ -272,7 +271,7 @@ export function PreviewScreen({
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [fitMode, setFitMode] = useState<PdfPreviewFit>(full ? "auto" : "width");
-  const [linkLayer, setLinkLayer] = useState<{
+  const [pageRender, setPageRender] = useState<{
     viewer: PdfPreviewViewer;
     pageNumber: number;
     zoom: number;
@@ -280,12 +279,12 @@ export function PreviewScreen({
     frameHeight: number;
     requestedFit: PdfPreviewFit;
     resolvedFit: ResolvedPdfPreviewFit;
-    links: readonly PdfPreviewInternalLink[];
   } | null>(null);
 
   const [auto, setAuto] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const annotationLayerRef = useRef<HTMLDivElement | null>(null);
   const fullscreenRootRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<PdfPreviewViewer | null>(null);
   viewerRef.current = viewer;
@@ -370,7 +369,7 @@ export function PreviewScreen({
       setResult(next);
       setViewer(opened);
       setRenderedRequest(shownRequest);
-      setLinkLayer(null);
+      setPageRender(null);
       setPageNumber(1);
       setZoom(1);
       setFitMode(full ? "auto" : "width");
@@ -443,11 +442,13 @@ export function PreviewScreen({
   // document.
   useEffect(() => {
     const canvas = canvasRef.current;
+    const annotationLayer = annotationLayerRef.current;
     // A zero relevant extent means the frame has not been laid out yet.
     // Rendering anyway would fit the page to nothing; measurement re-runs this.
     if (
       !viewer ||
       !canvas ||
+      !annotationLayer ||
       frameWidth <= 0 ||
       (fitMode !== "width" && frameHeight <= 0)
     ) return;
@@ -458,10 +459,12 @@ export function PreviewScreen({
         fit: fitMode,
         containerWidth: frameWidth,
         containerHeight: frameHeight,
+        annotationLayer,
+        onNavigate: setPageNumber,
       })
-      .then(({ fit, internalLinks }) => {
+      .then(({ fit }) => {
         if (!cancelled) {
-          setLinkLayer({
+          setPageRender({
             viewer,
             pageNumber,
             zoom,
@@ -469,7 +472,6 @@ export function PreviewScreen({
             frameHeight,
             requestedFit: fitMode,
             resolvedFit: fit,
-            links: internalLinks,
           });
         }
       })
@@ -488,15 +490,14 @@ export function PreviewScreen({
   // its render is still settling. The render identity makes stale async results
   // invisible even before the effect cleanup runs.
   const visibleRender =
-    linkLayer?.viewer === viewer &&
-    linkLayer.pageNumber === pageNumber &&
-    linkLayer.zoom === zoom &&
-    linkLayer.frameWidth === frameWidth &&
-    linkLayer.frameHeight === frameHeight &&
-    linkLayer.requestedFit === fitMode
-      ? linkLayer
+    pageRender?.viewer === viewer &&
+    pageRender.pageNumber === pageNumber &&
+    pageRender.zoom === zoom &&
+    pageRender.frameWidth === frameWidth &&
+    pageRender.frameHeight === frameHeight &&
+    pageRender.requestedFit === fitMode
+      ? pageRender
       : null;
-  const visibleLinks = visibleRender?.links ?? [];
   const activeFit =
     visibleRender?.resolvedFit ?? (fitMode === "auto" ? null : fitMode);
   const scopeLabel = result?.truncated
@@ -880,27 +881,14 @@ export function PreviewScreen({
                 <div className="relative inline-block align-top" data-testid="preview-page">
                   <canvas className="block" ref={canvasRef} data-testid="preview-canvas" />
                   <div
-                    className="pointer-events-none absolute inset-0"
-                    data-testid="preview-link-layer"
-                  >
-                    {visibleLinks.map((link, index) => (
-                      <button
-                        key={`${link.pageNumber}:${link.left}:${link.top}:${index}`}
-                        type="button"
-                        aria-label={t("preview.goToPage", { page: link.pageNumber })}
-                        title={t("preview.goToPage", { page: link.pageNumber })}
-                        data-testid={`preview-internal-link-${index}`}
-                        className="pointer-events-auto absolute cursor-pointer rounded-sm border-0 bg-transparent p-0 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        style={{
-                          left: `${link.left}px`,
-                          top: `${link.top}px`,
-                          width: `${link.width}px`,
-                          height: `${link.height}px`,
-                        }}
-                        onClick={() => setPageNumber(link.pageNumber)}
-                      />
-                    ))}
-                  </div>
+                    ref={annotationLayerRef}
+                    className={cn(
+                      "pdf-annotation-layer",
+                      !visibleRender && "invisible pointer-events-none"
+                    )}
+                    aria-hidden={visibleRender ? undefined : "true"}
+                    data-testid="preview-annotation-layer"
+                  />
                 </div>
               </div>
             </div>

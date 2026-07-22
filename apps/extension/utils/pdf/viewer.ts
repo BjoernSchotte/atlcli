@@ -10,10 +10,11 @@
  *
  * ## How PDF.js is vendored, and why it is not bundled
  *
- * Both `pdf.min.mjs` and `pdf.worker.min.mjs` are imported with Vite's
- * `?url&no-inline` and loaded at runtime through a dynamic `import()`. They are
- * therefore emitted **verbatim**, byte-identical to the npm package, instead of
- * being merged into a rolldown chunk. Three consequences, all deliberate:
+ * Both `pdf.min.mjs` and `pdf.worker.min.mjs` are emitted with Vite's
+ * `?url&no-inline`, so the upstream assets remain **verbatim** and
+ * byte-identical to the npm package. The viewer imports the library asset
+ * directly; a small local worker bootstrap installs required modern built-ins
+ * before importing the separately emitted upstream worker. Consequences:
  *
  *   - the emitted paths are stable and contain *only* upstream code, so the
  *     sha256 pin in `scripts/check-output-build.ts` is meaningful and cannot be
@@ -34,7 +35,9 @@
  * back to `data`, and then with an explicit **copy**. The borrowed array is
  * never passed through as-is. Pinned by `tests/pdf/viewer.test.ts`.
  */
+import { sanitizeLinkHref } from "@atlcli/confluence/browser";
 import type { PdfBytesHandle } from "@atlcli/pdf/browser";
+import { ensurePdfjsModernBuiltins } from "./pdfjs-modern-builtins.js";
 
 // ---------------------------------------------------------------------------
 // Structural PDF.js surface — only what this module uses
@@ -43,7 +46,6 @@ import type { PdfBytesHandle } from "@atlcli/pdf/browser";
 export interface PdfjsViewport {
   width: number;
   height: number;
-  convertToViewportPoint(x: number, y: number): readonly number[];
 }
 
 export interface PdfjsRenderTask {
@@ -77,7 +79,39 @@ export interface PdfjsLoadingTask {
 
 export interface PdfjsModule {
   GlobalWorkerOptions: { workerSrc: string };
+  AnnotationLayer: PdfjsAnnotationLayerConstructor;
   getDocument(params: Record<string, unknown>): PdfjsLoadingTask;
+}
+
+interface PdfjsAnnotationLayerRenderParams {
+  viewport: PdfjsViewport;
+  div: HTMLDivElement;
+  annotations: unknown[];
+  page: PdfjsPage;
+  linkService: PdfjsAnnotationLinkService;
+  renderForms: false;
+  enableScripting: false;
+  hasJSActions: false;
+}
+
+interface PdfjsAnnotationLayerInstance {
+  render(params: PdfjsAnnotationLayerRenderParams): Promise<void>;
+  destroy(): void;
+}
+
+interface PdfjsAnnotationLayerConstructor {
+  new (params: {
+    div: HTMLDivElement;
+    page: PdfjsPage;
+    viewport: PdfjsViewport;
+    linkService: PdfjsAnnotationLinkService;
+    accessibilityManager?: undefined;
+    annotationCanvasMap?: undefined;
+    annotationEditorUIManager?: undefined;
+    annotationStorage?: undefined;
+    commentManager?: undefined;
+    structTreeLayer?: undefined;
+  }): PdfjsAnnotationLayerInstance;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +253,7 @@ export function __resetPdfjsModule(): void {
  * per call would be both wasteful and a race between two viewers.
  */
 export function loadPdfjs(overrides: Partial<PdfjsLoaderDeps> = {}): Promise<PdfjsModule> {
+  ensurePdfjsModernBuiltins();
   if (!modulePromise) {
     const load = overrides.importModule;
     modulePromise = (async () => {
@@ -251,32 +286,40 @@ export async function pdfjsSourceFor(bytes: PdfBytesHandle): Promise<Record<stri
   return { data: new Uint8Array(await bytes.asUint8Array()) };
 }
 
-/** One safe, internal PDF link projected into CSS pixels over the page canvas. */
-export interface PdfPreviewInternalLink {
-  /** One-based page number, matching the preview controls. */
-  pageNumber: number;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
 export interface PdfPreviewPageRender {
   /** Concrete fit used for this page; useful when the caller requested `auto`. */
   fit: ResolvedPdfPreviewFit;
-  /** Internal destinations only. External URLs and PDF actions are never activated here. */
-  internalLinks: readonly PdfPreviewInternalLink[];
 }
 
 interface PdfjsLinkAnnotation {
   subtype?: unknown;
-  rect?: unknown;
   dest?: unknown;
+  url?: unknown;
 }
 
-function finiteRect(value: unknown): [number, number, number, number] | null {
-  if (!Array.isArray(value) || value.length !== 4 || !value.every(Number.isFinite)) return null;
-  return value as [number, number, number, number];
+/**
+ * Reduce a PDF URI annotation to an absolute URL the extension may open.
+ * The shared policy removes controls and blocks active schemes first; the
+ * standalone preview is deliberately narrower and refuses relative / native
+ * protocol targets because it has no trustworthy document base URL.
+ */
+export function safePdfPreviewExternalHref(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const verdict = sanitizeLinkHref(value);
+  if (!verdict.safe) return null;
+  if (!/^(?:https?:\/\/|mailto:)/i.test(verdict.href)) return null;
+  try {
+    const url = new URL(verdict.href);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.hostname ? url.href : null;
+    }
+    if (url.protocol === "mailto:") {
+      return url.pathname ? url.href : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function destinationPageNumber(
@@ -310,44 +353,97 @@ async function destinationPageNumber(
   return pageNumber >= 1 && pageNumber <= document.numPages ? pageNumber : null;
 }
 
-async function internalLinksForPage(
-  page: PdfjsPage,
+/** Only link annotations cross into PDF.js' DOM renderer; every PDF action is discarded. */
+export function safePdfPreviewAnnotations(annotations: readonly unknown[]): object[] {
+  const safe: object[] = [];
+  for (const candidate of annotations) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const annotation = candidate as PdfjsLinkAnnotation;
+    if (annotation.subtype !== "Link") continue;
+    if (annotation.dest != null) {
+      safe.push({
+        ...candidate,
+        url: undefined,
+        action: undefined,
+        actions: undefined,
+        attachment: undefined,
+        resetForm: undefined,
+        setOCGState: undefined,
+      });
+      continue;
+    }
+    const href = safePdfPreviewExternalHref(annotation.url);
+    if (!href) continue;
+    safe.push({
+      ...candidate,
+      url: href,
+      dest: undefined,
+      action: undefined,
+      actions: undefined,
+      attachment: undefined,
+      resetForm: undefined,
+      setOCGState: undefined,
+    });
+  }
+  return safe;
+}
+
+interface PdfjsAnnotationLinkService {
+  eventBus?: undefined;
+  addLinkAttributes(link: HTMLAnchorElement, url: string): void;
+  getDestinationHash(destination: unknown): string;
+  getAnchorUrl(anchor: string): string;
+  goToDestination(destination: unknown): Promise<void>;
+  executeNamedAction(action: string): void;
+  executeSetOCGState(action: object): Promise<void>;
+  getAttachmentContent(id: string): Promise<null>;
+}
+
+function annotationLinkService(
   document: PdfjsDocument,
-  viewport: PdfjsViewport
-): Promise<PdfPreviewInternalLink[]> {
-  // Annotation extraction is an enhancement over an already rendered page. A
-  // malformed annotation must not turn a readable preview into an error state.
-  const annotations = await page.getAnnotations({ intent: "display" }).catch(() => []);
-  const links = await Promise.all(
-    annotations.map(async (candidate): Promise<PdfPreviewInternalLink | null> => {
-      if (!candidate || typeof candidate !== "object") return null;
-      const annotation = candidate as PdfjsLinkAnnotation;
-      if (annotation.subtype !== "Link" || annotation.dest == null) return null;
-      const rect = finiteRect(annotation.rect);
-      if (!rect) return null;
+  onNavigate: (pageNumber: number) => void
+): PdfjsAnnotationLinkService {
+  return {
+    eventBus: undefined,
+    addLinkAttributes(link, value) {
+      const href = safePdfPreviewExternalHref(value);
+      if (!href) return;
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = href;
+      // URL-only keeps this infrastructure layer locale-neutral while still
+      // giving the otherwise empty annotation anchor an accessible name.
+      link.setAttribute("aria-label", href);
+    },
+    getDestinationHash() {
+      return "#";
+    },
+    getAnchorUrl() {
+      return "#";
+    },
+    async goToDestination(destination) {
+      const pageNumber = await destinationPageNumber(document, destination);
+      if (pageNumber !== null) onNavigate(pageNumber);
+    },
+    executeNamedAction() {
+      // Named / Launch actions are filtered before AnnotationLayer sees them.
+    },
+    async executeSetOCGState() {
+      // Optional-content actions are outside this reduced preview surface.
+    },
+    async getAttachmentContent() {
+      return null;
+    },
+  };
+}
 
-      const pageNumber = await destinationPageNumber(document, annotation.dest);
-      if (pageNumber === null) return null;
-      const first = viewport.convertToViewportPoint(rect[0], rect[1]);
-      const second = viewport.convertToViewportPoint(rect[2], rect[3]);
-      if (first.length < 2 || second.length < 2) return null;
-      const [x1, y1] = first;
-      const [x2, y2] = second;
-      if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
-
-      const width = Math.abs(x2! - x1!);
-      const height = Math.abs(y2! - y1!);
-      if (width <= 0 || height <= 0) return null;
-      return {
-        pageNumber,
-        left: Math.min(x1!, x2!),
-        top: Math.min(y1!, y2!),
-        width,
-        height,
-      };
-    })
-  );
-  return links.filter((link): link is PdfPreviewInternalLink => link !== null);
+function commitAnnotationLayer(target: HTMLDivElement, staging: HTMLDivElement): void {
+  target.replaceChildren(...staging.childNodes);
+  target.style.cssText = staging.style.cssText;
+  const rotation = staging.getAttribute("data-main-rotation");
+  if (rotation === null) target.removeAttribute("data-main-rotation");
+  else target.setAttribute("data-main-rotation", rotation);
 }
 
 export interface PdfPreviewViewer {
@@ -374,6 +470,10 @@ export interface PdfPreviewViewer {
     options: {
       containerWidth: number;
       containerHeight: number;
+      /** PDF.js-native annotation host; contains both internal and external links. */
+      annotationLayer: HTMLDivElement;
+      /** Receives resolved one-based internal destination pages. */
+      onNavigate: (pageNumber: number) => void;
       fit?: PdfPreviewFit;
       zoom?: number;
       devicePixelRatio?: number;
@@ -404,6 +504,9 @@ export async function openPdfViewer(
   const document = await task.promise;
 
   let inFlight: PdfjsRenderTask | null = null;
+  let activeAnnotationLayer: PdfjsAnnotationLayerInstance | null = null;
+  let activeAnnotationHost: HTMLDivElement | null = null;
+  let renderGeneration = 0;
   let destroyed = false;
 
   return {
@@ -412,6 +515,12 @@ export async function openPdfViewer(
     },
     async renderPage(pageNumber, canvas, options) {
       if (destroyed) throw new Error("PDF preview viewer was destroyed.");
+      const generation = ++renderGeneration;
+      activeAnnotationLayer?.destroy();
+      activeAnnotationLayer = null;
+      activeAnnotationHost?.replaceChildren();
+      activeAnnotationHost = options.annotationLayer;
+      options.annotationLayer.replaceChildren();
       const clamped = Math.min(Math.max(1, Math.floor(pageNumber)), document.numPages);
       const page = await document.getPage(clamped);
       const base = page.getViewport({ scale: 1 });
@@ -427,9 +536,8 @@ export async function openPdfViewer(
           options.devicePixelRatio ??
           (typeof globalThis.devicePixelRatio === "number" ? globalThis.devicePixelRatio : 1),
       });
-      // Annotation overlays live in CSS pixels, while the canvas backing store
-      // uses the independently capped device scale. Mixing the two shifts every
-      // TOC hotspot on HiDPI displays and at non-default zoom levels.
+      // AnnotationLayer receives the CSS viewport; only the canvas backing
+      // store uses deviceScale. PDF.js remains the sole geometry authority.
       const cssViewport = page.getViewport({ scale: cssScale });
       const viewport = page.getViewport({ scale: deviceScale });
       canvas.width = Math.max(1, Math.floor(viewport.width));
@@ -443,12 +551,54 @@ export async function openPdfViewer(
         : canvas.getContext("2d");
       const render = page.render({ canvasContext: context, viewport, canvas });
       inFlight = render;
+      const annotations = await page.getAnnotations({ intent: "display" }).catch(() => []);
+      const staging = options.annotationLayer.ownerDocument.createElement("div");
+      staging.className = "pdf-annotation-layer";
+      staging.style.setProperty("--total-scale-factor", String(cssScale));
+      staging.style.setProperty("--scale-round-x", "1px");
+      staging.style.setProperty("--scale-round-y", "1px");
+      const linkService = annotationLinkService(document, options.onNavigate);
+      const annotationLayer = new pdfjs.AnnotationLayer({
+        div: staging,
+        page,
+        viewport: cssViewport,
+        linkService,
+        accessibilityManager: undefined,
+        annotationCanvasMap: undefined,
+        annotationEditorUIManager: undefined,
+        annotationStorage: undefined,
+        commentManager: undefined,
+        structTreeLayer: undefined,
+      });
       try {
-        const [, internalLinks] = await Promise.all([
+        await Promise.all([
           render.promise,
-          internalLinksForPage(page, document, cssViewport),
+          annotationLayer.render({
+            viewport: cssViewport,
+            div: staging,
+            annotations: safePdfPreviewAnnotations(annotations),
+            page,
+            linkService,
+            renderForms: false,
+            enableScripting: false,
+            hasJSActions: false,
+          }),
         ]);
-        return { fit, internalLinks };
+        if (!destroyed && generation === renderGeneration) {
+          // `setLayerDimensions` uses viewer-wide CSS variables in upstream;
+          // this reduced viewer owns one page, so pin the already-resolved CSS
+          // viewport explicitly before moving PDF.js' DOM into the live host.
+          staging.style.width = `${cssViewport.width}px`;
+          staging.style.height = `${cssViewport.height}px`;
+          commitAnnotationLayer(options.annotationLayer, staging);
+          activeAnnotationLayer = annotationLayer;
+        } else {
+          annotationLayer.destroy();
+        }
+        return { fit };
+      } catch (cause) {
+        annotationLayer.destroy();
+        throw cause;
       } finally {
         if (inFlight === render) inFlight = null;
         page.cleanup?.();
@@ -456,8 +606,13 @@ export async function openPdfViewer(
     },
     async destroy() {
       destroyed = true;
+      renderGeneration += 1;
       inFlight?.cancel();
       inFlight = null;
+      activeAnnotationLayer?.destroy();
+      activeAnnotationLayer = null;
+      activeAnnotationHost?.replaceChildren();
+      activeAnnotationHost = null;
       bytes.release();
       await document.destroy().catch(() => undefined);
     },

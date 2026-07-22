@@ -11,6 +11,8 @@
     "build": "wxt build",
     "prepdf:fixture": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
     "pdf:fixture": "bun scripts/render-pdf-fixture.ts",
+    "pretest:viewer-browser": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
+    "test:viewer-browser": "playwright test --config tests/pdf/browser/playwright.config.ts",
     "postinstall": "wxt prepare",
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",
@@ -34,6 +36,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/chrome": "^0.2.2",
     "@types/react": "^19.2.0",
@@ -42,6 +45,7 @@
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.0.2",
     "tailwindcss": "^4.3.3",
+    "vite": "8.1.4",
     "wxt": "^0.20.27"
   }
 }
