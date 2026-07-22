@@ -44,6 +44,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: false,
   },
   {
+    id: "docx-job-parity",
+    title: "DOCX direct vs background-job parity (013)",
+    folderTaskIds: ["013/T7.2"],
+    engines: ["docx"],
+    mediaPolicy: "exact",
+    emitsDigests: false,
+  },
+  {
     id: "pdf",
     title: "PDF warm-repeat",
     folderTaskIds: ["harness/pdf"],
@@ -138,7 +146,7 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * (`assert-case-manifest.ts`) fails if the manifest's id set diverges — an
  * unregistered or duplicated case is caught before merge.
  *
- * The general `docx`/`pdf`/`pdf-abort` contracts, the PDF job parity gate (013),
+ * The general `docx`/`pdf`/`pdf-abort` contracts, the DOCX/PDF job parity gates (013),
  * the `pdf-settings` (007)
  * feature case, and all six feature-lane cases 001–006 (`blocks`, `scope`,
  * `content-compat`, `macros`, `placeholders`, `docx-quality`) have landed now
@@ -152,6 +160,7 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-abort",
   "docx",
+  "docx-job-parity",
   "pdf",
   "pdf-job-parity",
   "pdf-settings",

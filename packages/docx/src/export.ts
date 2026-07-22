@@ -56,6 +56,9 @@ import {
   PLACEHOLDER_RE,
   scanZip,
   unzipDocx,
+  assertArchiveBudget,
+  assertNoActiveContent,
+  DocxError,
   type FieldRefreshOptions,
   type ScanResult,
 } from "./scan.js";
@@ -284,6 +287,44 @@ export interface ExportInput {
 }
 
 /**
+ * The large, single-attempt portion of a ready-to-render DOCX checkpoint.
+ *
+ * {@link renderPreparedDocxExport} takes ownership of this object before it
+ * opens the archive. A retry must therefore materialize a fresh clone from the
+ * durable checkpoint instead of reusing an archive that docxtemplater may have
+ * partially mutated.
+ */
+export interface PreparedDocxRenderStateV1 {
+  archiveBytes: Uint8Array;
+  bodyXml: string;
+  includes: Array<[key: string, xml: string]>;
+}
+
+/** Complete, browser-serializable state at the DOCX ready-to-render boundary. */
+export interface PreparedDocxExportV1 {
+  schema: "atlcli.prepared-docx-export/1";
+  renderState: PreparedDocxRenderStateV1 | undefined;
+  filename: string;
+  complete: boolean;
+  updateFields: NonNullable<ExportInput["updateFields"]>;
+  trustedSeqSequenceNames: string[];
+  resolvedCount: number;
+  unsupportedNames: string[];
+  embeddedImages: number;
+  renderedDiagrams: number;
+  scan: ScanResult;
+  sourceNotes: ExportNote[];
+  baseNotes: ExportNote[];
+  timings: ExportTimings;
+  startedAt: number;
+}
+
+/** Per-attempt state deliberately excluded from the durable checkpoint. */
+export interface RenderPreparedDocxExportInput {
+  signal?: AbortSignal;
+}
+
+/**
  * docxtemplater delimiter pair from the Unicode Private Use Area (U+E000,
  * U+E001), built from code points so no control byte lives in this source. These
  * code points are reserved for private agreement and carry no character
@@ -341,6 +382,15 @@ export function toDownloadFilename(title: string): string {
   return `${base || "export"}.docx`;
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+}
+
+function rethrowCancellation(error: unknown, signal?: AbortSignal): void {
+  throwIfAborted(signal);
+  if (error instanceof Error && error.name === "AbortError") throw error;
+}
+
 /**
  * Run the full export. Returns the `.docx` bytes and a report.
  * Throws {@link import("./scan.js").DocxError} on a truly fatal template problem
@@ -351,7 +401,26 @@ export function toDownloadFilename(title: string): string {
  * parse error.
  */
 export async function exportDocx(input: ExportInput): Promise<ExportResult> {
+  const prepared = await prepareDocxExport(input);
+  return renderPreparedDocxExport(prepared, { signal: input.signal });
+}
+
+/**
+ * Resolve, fetch, rasterize, and deterministically compose a DOCX export up to
+ * the ready-to-render boundary. The returned value contains no host callbacks,
+ * promises, AbortSignals, DOM values, or Node-only objects and can therefore be
+ * cloned/persisted by every supported host shape.
+ *
+ * This is a HEAVY engine operation: it creates and mutates PizZip state,
+ * rasterizes assets, and freezes the prepared archive into bytes. A queued job
+ * executor MUST acquire the one cross-format heavy-render reservation before it
+ * calls this function and keep that reservation through
+ * {@link renderPreparedDocxExport}. The legacy direct API has no scheduler and
+ * composes the two functions in-process, preserving its existing behavior.
+ */
+export async function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1> {
   const start = Date.now();
+  throwIfAborted(input.signal);
   const exportDate = input.exportDate ?? new Date();
   const timings: ExportTimings = {
     resolveMs: 0,
@@ -471,7 +540,14 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     : undefined;
   const diagrams =
     embedder && input.rasterizer
-      ? diagramSeam(embedder, input.rasterizer, input.diagramTheme, timings, budget)
+      ? diagramSeam(
+          embedder,
+          input.rasterizer,
+          input.diagramTheme,
+          timings,
+          budget,
+          input.signal
+        )
       : undefined;
 
   // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
@@ -483,6 +559,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
     assets: input.assets,
     getSpaceLogo: input.deps?.getSpaceLogo,
     spaceKey: input.details.spaceKey,
+    signal: input.signal,
   }).then((s) => {
     timings.logoFetchMs = Date.now() - start;
     return s;
@@ -563,7 +640,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       message:
         `Template uses Jinja/docxtpl placeholders (${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}); ` +
         `the ts engine fills $scroll.* placeholders and will leave these in the document as literal text. ` +
-        `Rewrite them as $scroll.* placeholders, or export this template with --engine python.`,
+        `Rewrite them as $scroll.* placeholders; deprecated Python/docxtpl export is not available as a fallback.`,
     });
   }
 
@@ -617,34 +694,20 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   const resolved = await resolvedPromise;
   preprocessScrollText(zip, resolved.values);
 
-  // 5. Render with docxtemplater: the rawxml tag expands to the serialized body,
-  //    inserted VERBATIM (the body is a DATA value, never re-parsed for tags), so
-  //    literal braces / $scroll text in the page pass through unchanged. PUA
-  //    delimiters guarantee the customer's own `{…}` is never a tag.
-  const renderStart = Date.now();
-  const rendered = renderContent(zip, body.xml, includes);
-
-  // 5b. A page body ENDING in an orientation region leaves its region-closing
-  //     sectPr paragraph directly before the template's body-level sectPr —
-  //     an empty final section that renders as a spurious blank page. Merge
-  //     the two: the region's sectPr BECOMES the body-level sectPr, so the
-  //     document simply ends with the region (spec 003 C6 review fix).
-  mergeTrailingRegionSectPr(rendered);
-
-  // 6. Synthesize the code/caption styles if the body OR any included page
+  // 5. Synthesize the code/caption styles if the body OR any included page
   //    referenced them; force TOC refresh. An included page can be the only
   //    thing carrying a code macro or a captioned figure (spec 005 D1).
   const includeXml = [...includes.values()].join("");
   const styledXml = body.xml + includeXml;
-  if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(rendered);
-  if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(rendered);
+  if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(zip);
+  if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(zip);
   // Native list numbering (spec 006 G2): write word/numbering.xml (+ content
   // type + relationship) only when a list actually acquired an id, and
   // synthesize the fallback ListParagraph style if the body OR an included
   // page referenced it (an include can be the only content carrying a list).
   if (numbering.isUsed) {
-    ensureNumberingPart(rendered, numbering);
-    if (styledXml.includes(`w:pStyle w:val="${LIST_PARAGRAPH_STYLE_ID}"`)) ensureListParagraphStyle(rendered);
+    ensureNumberingPart(zip, numbering);
+    if (styledXml.includes(`w:pStyle w:val="${LIST_PARAGRAPH_STYLE_ID}"`)) ensureListParagraphStyle(zip);
     if (numbering.capExceeded) {
       flowNotes.push({
         level: "warning",
@@ -654,54 +717,157 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       });
     }
   }
-  // 6b. Field-refresh flag. NOT unconditional: `<w:updateFields w:val="true"/>`
-  //     makes Word ask to refresh on every open, and asking a reader to refresh
-  //     116 static HYPERLINK fields — the shape of a real 62-page tree export
-  //     with no TOC — accomplishes nothing. Set it only when a field in the
-  //     FINISHED document would show something different afterwards, which is
-  //     why this runs on `rendered` (the body's own caption SEQ fields exist
-  //     only now) rather than on the template scan.
-  //
-  //     The one thing `rendered` cannot answer is WHOSE caption SEQ fields those
-  //     are, so that question is answered here, from the pre-injection parts.
-  const refreshNote = applyFieldRefreshPolicy(rendered, input.updateFields ?? "auto", {
-    trustedSeqSequences: trustedSeqSequences(scan, body.xml, includeXml, contentPart),
-  });
-  if (refreshNote) flowNotes.push(refreshNote);
-
-  const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
-  timings.renderMs = Date.now() - renderStart;
-
-  // `walkNotes` already carries `input.sourceNotes` (merged above, then
-  // reconciled by the macro resolver) — listing them again here is what made a
-  // live-rendered macro show up twice in the report.
-  const notes = [
+  // Everything below this point is small, serializable report/checkpoint data.
+  // The mutable PizZip archive itself is frozen into bytes so a worker crash
+  // cannot leave a durable checkpoint pointing at a half-mutated object.
+  throwIfAborted(input.signal);
+  const archiveBytes = zip.generate({
+    type: "uint8array",
+    compression: "DEFLATE",
+  }) as unknown as Uint8Array;
+  const sourceNotes = walkNotes;
+  const baseNotes = [
     ...walkNotes,
     ...resolved.notes,
     ...body.notes,
     ...imageAuditNotes,
     ...flowNotes,
-    timingNote(timings, Date.now() - start),
   ];
-  // Every image-skip note kind counts toward the report's skipped-image total:
-  // serializer `image-skipped`/`image-embed-failed`, walker `image-unresolved`
-  // and `inline-image-skipped`.
-  const skippedImages = notes.filter((n) => IMAGE_SKIP_CODES.has(n.code)).length;
+  return {
+    schema: "atlcli.prepared-docx-export/1",
+    renderState: {
+      archiveBytes,
+      bodyXml: body.xml,
+      includes: [...includes.entries()],
+    },
+    filename: toDownloadFilename(input.details.title),
+    complete: input.complete ?? true,
+    updateFields: input.updateFields ?? "auto",
+    trustedSeqSequenceNames: [...trustedSeqSequences(scan, body.xml, includeXml, contentPart)],
+    resolvedCount: resolved.resolvedCount,
+    unsupportedNames: resolved.unsupportedNames,
+    embeddedImages: embedder?.embeddedCount ?? 0,
+    renderedDiagrams: embedder?.diagramCount ?? 0,
+    scan,
+    sourceNotes,
+    baseNotes,
+    timings,
+    startedAt: start,
+  };
+}
+
+const PREPARED_DOCX_MAX_BYTES = 80 * 1024 * 1024;
+const PREPARED_DOCX_ARCHIVE_BUDGET = {
+  maxEntryCount: 4096,
+  maxUncompressedBytes: 256 * 1024 * 1024,
+  maxSingleEntryUncompressedBytes: 96 * 1024 * 1024,
+};
+
+/** Re-open a trusted-but-durable prepared archive with explicit corruption limits. */
+function openPreparedDocxArchive(bytes: Uint8Array): PizZip {
+  if (bytes.byteLength > PREPARED_DOCX_MAX_BYTES) {
+    throw new DocxError(
+      "too-large",
+      `Prepared DOCX archive exceeds the ${PREPARED_DOCX_MAX_BYTES} byte limit.`
+    );
+  }
+  let zip: PizZip;
+  try {
+    zip = new PizZip(bytes);
+  } catch (error) {
+    throw new DocxError(
+      "not-zip",
+      `Prepared DOCX checkpoint is not a valid zip: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  assertArchiveBudget(zip, PREPARED_DOCX_ARCHIVE_BUDGET);
+  if (!zip.file("word/document.xml")) {
+    throw new DocxError("not-docx", "Prepared DOCX checkpoint has no word/document.xml part.");
+  }
+  assertNoActiveContent(zip);
+  return zip;
+}
+
+/**
+ * Consume and render one fresh materialization of a ready-to-render checkpoint.
+ * The render state is cleared synchronously before PizZip/docxtemplater touch it,
+ * so a thrown render can never accidentally be retried with a mutated archive.
+ */
+export async function renderPreparedDocxExport(
+  prepared: PreparedDocxExportV1,
+  input: RenderPreparedDocxExportInput = {}
+): Promise<ExportResult> {
+  if (prepared.schema !== "atlcli.prepared-docx-export/1") {
+    throw new Error("Unsupported prepared DOCX export schema.");
+  }
+  throwIfAborted(input.signal);
+  const renderState = prepared.renderState;
+  if (!renderState) {
+    throw new Error("Prepared DOCX render state was already consumed.");
+  }
+  prepared.renderState = undefined;
+
+  let archiveBytes: Uint8Array | undefined = renderState.archiveBytes;
+  let bodyXml: string | undefined = renderState.bodyXml;
+  let includes: Map<string, string> | undefined = new Map(renderState.includes);
+  // Break the large object's direct references before PizZip starts allocating
+  // its mutable archive. The zip may retain compressed views internally, but
+  // the checkpoint clone itself no longer pins a second archive reference.
+  renderState.archiveBytes = new Uint8Array();
+  renderState.bodyXml = "";
+  renderState.includes.length = 0;
+
+  const renderStart = Date.now();
+  let rendered: PizZip | undefined;
+  try {
+    rendered = renderContent(
+      openPreparedDocxArchive(archiveBytes),
+      bodyXml,
+      includes
+    );
+  } finally {
+    archiveBytes = undefined;
+    bodyXml = undefined;
+    includes?.clear();
+    includes = undefined;
+  }
+
+  // A page body ENDING in an orientation region leaves its region-closing
+  // sectPr paragraph directly before the template's body-level sectPr — merge
+  // it only after docxtemplater has inserted the body.
+  mergeTrailingRegionSectPr(rendered);
+  const flowNotes: ExportNote[] = [];
+  const refreshNote = applyFieldRefreshPolicy(rendered, prepared.updateFields, {
+    trustedSeqSequences: new Set(prepared.trustedSeqSequenceNames),
+  });
+  if (refreshNote) flowNotes.push(refreshNote);
+
+  throwIfAborted(input.signal);
+  const bytes = rendered.generate({
+    type: "uint8array",
+    compression: "DEFLATE",
+  }) as unknown as Uint8Array;
+  rendered = undefined;
+  throwIfAborted(input.signal);
+  const timings = { ...prepared.timings, renderMs: Date.now() - renderStart };
+  const durationMs = Date.now() - prepared.startedAt;
+  const notes = [...prepared.baseNotes, ...flowNotes, timingNote(timings, durationMs)];
+  const skippedImages = notes.filter((note) => IMAGE_SKIP_CODES.has(note.code)).length;
 
   return {
     bytes,
     report: {
-      resolvedCount: resolved.resolvedCount,
-      unsupportedNames: resolved.unsupportedNames,
+      resolvedCount: prepared.resolvedCount,
+      unsupportedNames: prepared.unsupportedNames,
       skippedImages,
-      embeddedImages: embedder?.embeddedCount ?? 0,
-      renderedDiagrams: embedder?.diagramCount ?? 0,
-      durationMs: Date.now() - start,
-      filename: toDownloadFilename(input.details.title),
+      embeddedImages: prepared.embeddedImages,
+      renderedDiagrams: prepared.renderedDiagrams,
+      durationMs,
+      filename: prepared.filename,
       notes,
-      sourceNotes: walkNotes,
-      complete: input.complete ?? true,
-      scan,
+      sourceNotes: prepared.sourceNotes,
+      complete: prepared.complete,
+      scan: prepared.scan,
       timings,
     },
   };
@@ -913,6 +1079,7 @@ interface LogoPassInput {
   assets?: AssetFetcher;
   getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
   spaceKey?: string;
+  signal?: AbortSignal;
 }
 
 interface LogoOccurrence {
@@ -940,11 +1107,12 @@ interface LogoPassState {
  * (it fires only when a template actually uses a logo placeholder), but the
  * returned promise is started EARLY by the caller so the chain (icon lookup →
  * asset fetch) overlaps the export's other work. Touches nothing in the zip
- * and never rejects; every failure becomes a `skip` outcome that
- * {@link finishLogoPass} turns into the same notes as before.
+ * and turns every ordinary failure into a `skip` outcome that
+ * {@link finishLogoPass} turns into the same notes as before. Cancellation is
+ * control flow for the whole export and is the one failure that still rejects.
  */
 async function startLogoPass(zip: PizZip, input: LogoPassInput): Promise<LogoPassState | null> {
-  const { embedder, assets, getSpaceLogo, spaceKey } = input;
+  const { embedder, assets, getSpaceLogo, spaceKey, signal } = input;
 
   const occurrences: LogoOccurrence[] = [];
   for (const part of documentPartNames(zip)) {
@@ -970,9 +1138,13 @@ async function startLogoPass(zip: PizZip, input: LogoPassInput): Promise<LogoPas
 
   try {
     const ref = await getSpaceLogo(spaceKey);
+    throwIfAborted(signal);
     if (!ref) return skip(`space "${spaceKey}" has no logo; rendered empty.`, "info");
-    return state({ kind: "bytes", bytes: await assets.fetch(ref) });
+    const bytes = await assets.fetch(ref, signal ? { signal } : {});
+    throwIfAborted(signal);
+    return state({ kind: "bytes", bytes });
   } catch (err) {
+    rethrowCancellation(err, signal);
     return skip(
       `the space logo could not be fetched (${err instanceof Error ? err.message : String(err)}); rendered empty.`
     );
@@ -1229,6 +1401,7 @@ function imageSeam(
       try {
         bytes = await fetchBytes(block);
       } catch (err) {
+        rethrowCancellation(err, signal);
         reportDone(name);
         return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
       }
@@ -1320,8 +1493,13 @@ function imageSeam(
     }
     let png: Uint8Array;
     try {
-      png = await rasterizer.rasterize(source, raster);
+      throwIfAborted(signal);
+      png = await rasterizer.rasterize(source, raster, signal ? { signal } : {});
+      throwIfAborted(signal);
     } catch (err) {
+      // Cancellation is a control-flow signal for the whole export, never an
+      // image-level degradation to a report note.
+      rethrowCancellation(err, signal);
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
     }
     // Account the PNG against the shared budget (the SVG bytes were already
@@ -1369,6 +1547,7 @@ function diagramSeam(
   theme: DiagramTheme | undefined,
   timings: ExportTimings,
   budget: AssetBudget,
+  signal?: AbortSignal,
   // Target part for the embedded svgBlip/PNG relationships (spec 005 D1) — same
   // rationale as {@link imageSeam}'s `partPath`. Omitted → `word/document.xml`.
   partPath?: string
@@ -1424,7 +1603,9 @@ function diagramSeam(
         }
         try {
           const rasterStart = Date.now();
-          const png = await rasterizer.rasterize(rendered.svg, target);
+          throwIfAborted(signal);
+          const png = await rasterizer.rasterize(rendered.svg, target, signal ? { signal } : {});
+          throwIfAborted(signal);
           timings.diagramRasterMs += Date.now() - rasterStart;
           return {
             kind: "ready",
@@ -1434,6 +1615,10 @@ function diagramSeam(
             heightPx: rendered.heightPx,
           };
         } catch (err) {
+          // An aborted host operation terminates the whole export. Treating it
+          // as a diagram fallback would let docxtemplater render and emit after
+          // the user cancelled.
+          rethrowCancellation(err, signal);
           return { kind: "failed", reason: err instanceof Error ? err.message : String(err) };
         }
       };
@@ -1719,7 +1904,15 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
         : undefined;
     const diagrams =
       pass.embedder && pass.rasterizer
-        ? diagramSeam(pass.embedder, pass.rasterizer, pass.diagramTheme, pass.timings, pass.budget, occ.part)
+        ? diagramSeam(
+            pass.embedder,
+            pass.rasterizer,
+            pass.diagramTheme,
+            pass.timings,
+            pass.budget,
+            input.signal,
+            occ.part
+          )
         : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,

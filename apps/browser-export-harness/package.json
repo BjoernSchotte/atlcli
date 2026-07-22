@@ -13,7 +13,7 @@
     "assert:cases": "bun scripts/assert-case-manifest.ts",
     "precheck:parity": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
     "check:parity": "bun scripts/check-parity.ts",
-    "test:unit": "bun test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts tests/pdf-job-parity.test.ts scripts/check-parity.test.ts",
+    "test:unit": "bun test tests/boundaries.test.ts tests/output-scan.test.ts tests/pdf-worker-client.test.ts tests/pdf-job-parity.test.ts tests/docx-job-parity.test.ts scripts/check-parity.test.ts",
     "pretest:e2e": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst",
     "test:e2e": "playwright test"
   },

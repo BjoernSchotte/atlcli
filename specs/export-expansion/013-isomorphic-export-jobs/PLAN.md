@@ -1407,16 +1407,16 @@ Exit: contract review is complete before any second host schema is committed.
 
 - [x] Add `@atlcli/export-wiring/jobs` subpath.
 - [x] Add the separate `PdfExportJobRequestV1` validator.
-- [ ] Add the separate `DocxExportJobRequestV1` validator.
+- [x] Add the separate `DocxExportJobRequestV1` validator.
 - [x] Add the PDF executor using a capture artifact sink.
-- [ ] Add the DOCX executor using a capture artifact sink.
+- [x] Add the DOCX executor using a capture artifact sink.
 - [x] Add ordered discovery/page/block checkpoint seams beside the current
       all-in-memory tree API.
 - [x] Add bounded page and asset spool pipeline with cancellation and backpressure.
 - [x] Add render estimation/reservation hooks.
 - [x] Prove direct-vs-job PDF output and report parity in Node and the browser
       harness.
-- [ ] Prove direct-vs-job DOCX output and report parity in Node and the browser
+- [x] Prove direct-vs-job DOCX output and report parity in Node and the browser
       harness.
 
 Exit: the second vertical slice is real before Chrome migration.
@@ -1553,7 +1553,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     user-visible compile job is introduced.
 
 - [ ] **PR-D — TypeScript DOCX job executor** (`T7.2`)
-  - PR: `TBD`
+  - PR: [#82](https://github.com/BjoernSchotte/atlcli/pull/82)
   - Scope: `createTypescriptDocxExportJobExecutor`, pinned template refs, capture
     sink, ordered PizZip/docxtemplater render, raster ports, reservation,
     cancellation, and render restart without host UI code.

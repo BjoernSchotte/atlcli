@@ -32,3 +32,31 @@ await runExport(
 
 Full engine reference: [DOCX export engine](https://atlcli.sh/reference/docx-engine/).
 Versioning: [package versioning](https://atlcli.sh/reference/versioning/).
+
+## Queued export engine seam
+
+Hosts with a durable background queue split the same TypeScript engine at its
+ready-to-render boundary:
+
+```ts
+import { prepareDocxExport, renderPreparedDocxExport } from "@atlcli/docx";
+
+// The queue holds its one cross-format heavy-render reservation before prepare.
+const prepared = await prepareDocxExport(input);
+await checkpointStore.commit(structuredClone(prepared));
+
+// Every attempt materializes a fresh clone. Rendering consumes renderState.
+const result = await renderPreparedDocxExport(prepared, { signal });
+```
+
+`prepareDocxExport` is itself heavy: template PizZip mutation, asset/diagram
+rasterization, and prepared-archive generation all happen there. A queued host
+must acquire its global DOCX/PDF heavy reservation before calling it and retain
+the reservation through `renderPreparedDocxExport`. The prepared value contains
+only browser-serializable data. It deliberately excludes host callbacks and the
+attempt's `AbortSignal`; rendering clears `renderState` before docxtemplater can
+mutate the archive, so a retry must start from a fresh durable clone.
+
+`TemplateSource.getBytes` and `SvgRasterizer.rasterize` receive an optional
+`HostCallContext`. Hosts should honor its cancellation signal so cancellation
+during template load, image fetch, or rasterization cannot reach final output.

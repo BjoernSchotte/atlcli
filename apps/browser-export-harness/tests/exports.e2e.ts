@@ -56,6 +56,19 @@ test("every registered conformance case passes from nested production output", a
   expect(docx.byteLength).toBeGreaterThan(1_000);
   expect(docx.mediaParts.length).toBeGreaterThan(0);
 
+  const docxJobParity = JSON.parse(
+    (await page.getByTestId("docx-job-parity-result").textContent()) ?? "null",
+  );
+  expect(docxJobParity.partsIdentical).toBe(true);
+  expect(docxJobParity.mediaIdentical).toBe(true);
+  expect(docxJobParity.reportIdentical).toBe(true);
+  expect(docxJobParity.usedRealExecutor).toBe(true);
+  expect(docxJobParity.usedIndependentRasterizers).toBe(true);
+  expect(docxJobParity.ownedIndependentBytes).toBe(true);
+  expect(docxJobParity.renderAttempts).toBe(1);
+  expect(docxJobParity.reservationReleased).toBe(true);
+  expect(docxJobParity.templateResolutions).toBe(1);
+
   const pdf = JSON.parse((await page.getByTestId("pdf-result").textContent()) ?? "null");
   expect(pdf.byteIdenticalWarmRepeat).toBe(true);
   expect(pdf.tagged).toBe(true);

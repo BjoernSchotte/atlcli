@@ -392,6 +392,171 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
     now?: () => number;
 }
 
+// export: createTypescriptDocxExportJobExecutor
+export declare function createTypescriptDocxExportJobExecutor(options: CreateTypescriptDocxExportJobExecutorOptionsV1): ExportJobExecutor<DocxExportJobRequestV1>;
+
+// export: CreateTypescriptDocxExportJobExecutorOptionsV1
+export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
+    resolveInput(request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<TypescriptDocxExportJobEngineInputV1>;
+    estimateRender(input: TypescriptDocxExportJobEngineInputV1, request: DocxExportJobRequestV1): ResourceEstimateV1;
+    templates: DocxPinnedTemplatePortV1;
+    readyToRender: DocxReadyToRenderStoreV1;
+    renderReservations: DocxRenderReservationPortV1;
+    results: DocxExportResultStoreV1;
+    now?: () => number;
+}
+
+// export: DocxExportResultIntentV1
+export interface DocxExportResultIntentV1 {
+    schema: "atlcli.docx-result-intent/1";
+    key: DocxExportResultRecoveryKeyV1;
+    artifact: {
+        mediaType: typeof DOCX_MEDIA_TYPE;
+        filename: string;
+        byteLength: number;
+        sha256: string;
+    };
+    reportRef: string;
+    reportSha256: string;
+    reportSummary: ExportReportSummaryV1;
+}
+
+// export: DocxExportResultRecoveryKeyV1
+export interface DocxExportResultRecoveryKeyV1 {
+    schema: "atlcli.docx-result-key/1";
+    ref: string;
+    jobId: string;
+    requestId: string;
+    requestKey: string;
+    requestSha256: string;
+    checkpointRef: string;
+    preparedByteLength: number;
+    preparedSha256: string;
+    template: DocxTemplateBindingV1;
+    estimate: ResourceEstimateV1;
+}
+
+// export: DocxExportResultStoreV1
+export interface DocxExportResultStoreV1 {
+    recover(key: DocxExportResultRecoveryKeyV1, context: ExportJobExecutionContext): Promise<DocxRecoveredExportResultV1 | undefined>;
+    prepare(input: {
+        intent: DocxExportResultIntentV1;
+        report: ExportReport;
+    }, context: ExportJobExecutionContext): Promise<DocxExportResultIntentV1>;
+    stage(input: {
+        intent: DocxExportResultIntentV1;
+        artifact: PendingArtifactV1;
+    }, context: ExportJobExecutionContext): Promise<ExportJobExecutionResultV1>;
+}
+
+// export: DocxPinnedTemplatePortV1
+export interface DocxPinnedTemplatePortV1 {
+    resolve(input: {
+        recordKey: string;
+        expectedSha256: string;
+        signal: AbortSignal;
+    }): Promise<DocxPinnedTemplateV1>;
+}
+
+// export: DocxPinnedTemplateV1
+export interface DocxPinnedTemplateV1 {
+    recordKey: string;
+    bytes: Uint8Array;
+}
+
+// export: DocxPreparedPayloadBindingV1
+export interface DocxPreparedPayloadBindingV1 {
+    byteLength: number;
+    sha256: string;
+}
+
+// export: DocxReadyToRenderCheckpointV1
+export interface DocxReadyToRenderCheckpointV1 {
+    schema: "atlcli.docx-ready-to-render/1";
+    ref: string;
+    jobId: string;
+    requestId: string;
+    requestKey: string;
+    preparedRef: string;
+    preparedByteLength: number;
+    preparedSha256: string;
+    template: DocxTemplateBindingV1;
+    estimate: ResourceEstimateV1;
+    renderAttempts: number;
+}
+
+// export: DocxReadyToRenderStoreV1
+export interface DocxReadyToRenderStoreV1 {
+    load(input: {
+        jobId: string;
+        request: DocxExportJobRequestV1;
+        signal: AbortSignal;
+    }): Promise<DocxReadyToRenderCheckpointV1 | undefined>;
+    commit(input: {
+        jobId: string;
+        leaseEpoch: number;
+        request: DocxExportJobRequestV1;
+        prepared: PreparedDocxExportV1;
+        binding: DocxPreparedPayloadBindingV1;
+        template: DocxTemplateBindingV1;
+        estimate: ResourceEstimateV1;
+        signal: AbortSignal;
+    }): Promise<DocxReadyToRenderCheckpointV1>;
+    materialize(input: {
+        checkpoint: DocxReadyToRenderCheckpointV1;
+        jobId: string;
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<PreparedDocxExportV1>;
+    beginRenderAttempt(input: {
+        checkpoint: DocxReadyToRenderCheckpointV1;
+        jobId: string;
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<DocxReadyToRenderCheckpointV1>;
+}
+
+// export: DocxRecoveredExportResultV1
+export interface DocxRecoveredExportResultV1 {
+    intent: DocxExportResultIntentV1;
+    result: ExportJobExecutionResultV1;
+}
+
+// export: DocxRenderReservationPortV1
+export interface DocxRenderReservationPortV1 {
+    acquire(input: {
+        jobId: string;
+        leaseEpoch: number;
+        estimate: ResourceEstimateV1;
+        signal: AbortSignal;
+    }): Promise<DocxRenderReservationV1>;
+}
+
+// export: DocxRenderReservationV1
+export interface DocxRenderReservationV1 {
+    reconcile(input: {
+        templateBytes?: number;
+        preparedBytes?: number;
+        assetBytes?: number;
+        outputBytes?: number;
+        rasterPixels?: number;
+        signal: AbortSignal;
+    }): Promise<void>;
+    release(): void | Promise<void>;
+}
+
+// export: DocxRenderRestartLimitError
+export declare class DocxRenderRestartLimitError extends Error {
+    constructor();
+}
+
+// export: DocxTemplateBindingV1
+export interface DocxTemplateBindingV1 {
+    recordKey: string;
+    byteLength: number;
+    sha256: string;
+}
+
 // export: ExportAssetResponseV1
 export interface ExportAssetResponseV1 {
     contentLength?: number;
@@ -606,4 +771,7 @@ export interface StreamedExportAssetResultV1<Result> {
     byteLength: number;
     chunkCount: number;
 }
+
+// export: TypescriptDocxExportJobEngineInputV1
+export type TypescriptDocxExportJobEngineInputV1 = Omit<ExportInput, "templateBytes" | "signal" | "onProgress">;
 ```

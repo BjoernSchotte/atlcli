@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "bun:test";
-import { parsePdfExportJobRequestV1 } from "./index.js";
+import { parseDocxExportJobRequestV1, parsePdfExportJobRequestV1 } from "./index.js";
 import type {
   DocxExportJobRequestV1,
   ExportJobEventV1,
@@ -68,5 +68,6 @@ describe("version-1 export job contracts", () => {
     expectTypeOf<ExportJobExecutionResultV1>().toHaveProperty("stagedArtifact");
     expectTypeOf<ExportJobHostCapabilityV1>().toHaveProperty("canRerun");
     expectTypeOf(parsePdfExportJobRequestV1).returns.toEqualTypeOf<PdfExportJobRequestV1>();
+    expectTypeOf(parseDocxExportJobRequestV1).returns.toEqualTypeOf<DocxExportJobRequestV1>();
   });
 });

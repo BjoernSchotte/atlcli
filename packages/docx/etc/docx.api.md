@@ -186,6 +186,46 @@ export interface PageOwner {
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    filename: string;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
+
 // export: ResolveDeps
 export interface ResolveDeps {
     getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
@@ -231,7 +271,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -242,7 +282,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 ```
 
@@ -437,6 +477,46 @@ export interface PageOwner {
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    filename: string;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
+
 // export: ResolveDeps
 export interface ResolveDeps {
     getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
@@ -492,7 +572,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -503,7 +583,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: unsupportedAssetFetcher
@@ -692,6 +772,46 @@ export interface PageOwner {
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    filename: string;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
+
 // export: ResolveDeps
 export interface ResolveDeps {
     getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
@@ -737,7 +857,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -748,7 +868,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 ```
 
@@ -1467,6 +1587,38 @@ export type PlaceholderDependency = "none" | "space" | "currentUser" | "owner" |
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    filename: string;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
 // export: preprocessScrollText
 export declare function preprocessScrollText(zip: PizZip, values: Map<string, string>): void;
 
@@ -1484,6 +1636,14 @@ export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
 
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
 
 // export: resolveCaptionLang
 export declare function resolveCaptionLang(raw: string | undefined): {
@@ -1851,6 +2011,46 @@ export interface PageOwner {
 // export: PlaceholderStatus
 export type PlaceholderStatus = "supported" | "unsupported" | "never";
 
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    filename: string;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
+
 // export: ResolveDeps
 export interface ResolveDeps {
     getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
@@ -1906,7 +2106,7 @@ export interface SvgRasterizer {
     rasterize(svg: string, target: {
         widthPx: number;
         heightPx: number;
-    }): Promise<Uint8Array>;
+    }, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: TemplateMeta
@@ -1917,7 +2117,7 @@ export interface TemplateMeta {
 
 // export: TemplateSource
 export interface TemplateSource {
-    getBytes(id: string): Promise<Uint8Array>;
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
 }
 
 // export: unsupportedAssetFetcher

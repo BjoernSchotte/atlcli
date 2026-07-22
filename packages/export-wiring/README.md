@@ -16,7 +16,7 @@ each.
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
-| Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline, bounded asset streaming, and the host-neutral PDF job executor |
+| Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline, bounded asset streaming, and separate host-neutral TypeScript DOCX/PDF job executors |
 | Parity contract | `@atlcli/export-wiring/fixtures` |
 
 ## Minimal example
@@ -94,6 +94,28 @@ report as one recoverable execution result before the executor returns.
 The ready-to-render store must atomically fence `beginRenderAttempt` by job and
 lease epoch. One initial render plus one recovery render are allowed; source and
 asset preparation are not repeated after a compiler-worker loss.
+
+## Background TypeScript DOCX execution
+
+`createTypescriptDocxExportJobExecutor` applies the same durable lifecycle to
+the browser-safe `@atlcli/docx` engine without combining the two format
+contracts. The host resolves a structural engine input, a pinned template
+`recordKey` plus SHA-256, durable ready-to-render state, one cross-format heavy
+reservation, and a crash-recoverable result store. The executor never resolves
+an active-template alias and never imports or falls back to the deprecated
+Python exporter.
+
+Admission happens before template bytes are materialized and before PizZip,
+asset fetch/decode, rasterization, or archive generation starts. Template,
+prepared payload, estimate, request, artifact, and report identities are bound
+by hashes. The final DOCX byte array is borrowed only until result staging has
+consumed it; delivery remains a later host operation.
+
+The ready store must return a fresh prepared-state clone for every render
+attempt and fence the atomic attempt increment by job and lease epoch. A
+partially mutated archive is never replayed. One initial render plus one
+recovery render are allowed, and an uncertain staged-result return recovers in
+O(1) from metadata without reading or copying artifact bytes.
 
 ## Related
 
