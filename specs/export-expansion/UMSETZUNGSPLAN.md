@@ -25,6 +25,7 @@ gegen den Confluence-Space `DOCSY`, Profil `mayflower` — nie mocken):
 | [`010-extension-integration/`](010-extension-integration/PLAN.md) | T5.1–T5.5 Scope-UI, Library-UI, Vorschau, Docs | nach M1 |
 | [`011-quality-gates/`](011-quality-gates/PLAN.md) | T4.3–T4.9 Harness, Benchmarks, PDF/UA, Security | wächst mit |
 | [`012-pdf-template-migration/`](012-pdf-template-migration/PLAN.md) | T6.1–T6.5 Design-Token-Migration, Bindings, zweites Template | nach 007 (Parity-Gate T6.4 setzt 011s `check-parity.ts`-Harness voraus — 011 selbst läuft "wächst mit", nicht erst ab M1; 012 kann also vor M1 starten, sobald sowohl 007 als auch 011s PDF-Settings-Konformitätsfall gemergt sind) |
+| [`013-isomorphic-export-jobs/`](013-isomorphic-export-jobs/PLAN.md) | T7.1–T7.7 Gemeinsame DOCX/PDF-Job-Lifecycle-Contracts, begrenzter Spool, Activity/Monitor und Host-Projektionen | nach 010; Qualitäts- und Last-Gates wachsen in 011 mit |
 
 Leitidee: **Parallelisierung durch Datei-Ownership.** Jede Lane besitzt eine
 disjunkte Menge von Paketen/Dateien; Lanes ohne gemeinsame Dateien laufen
