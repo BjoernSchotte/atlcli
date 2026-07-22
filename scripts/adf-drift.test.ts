@@ -197,38 +197,96 @@ describe("ADF pinned drift guard", () => {
     expect(report).toMatchObject({ ok: true, skipped: true, classification: "no-drift" });
   });
 
-  test("observed-Cloud output contains structural signatures but no raw content or identifiers", async () => {
+  test("the singular observed-Cloud page secret remains a fallback when the plural secret is empty", async () => {
+    let fetched = false;
     const [baselineRaw, schemaRaw] = await Promise.all([
       readFile(ADF_BASELINE_PATH, "utf8"),
       readFile(ADF_SCHEMA_PATH, "utf8"),
     ]);
     const baseline = JSON.parse(baselineRaw) as AdfUpstreamBaseline;
-    const sentinel = "RAW-CONTENT-MUST-NOT-SURVIVE";
-    const opaqueId = "opaque-fixture-id";
     const report = await checkObservedCloud({
       env: {
         ADF_WATCH_BASE_URL: "https://tenant.example.invalid",
         ADF_WATCH_EMAIL: "fixture@example.invalid",
         ADF_WATCH_API_TOKEN: "fixture-token",
-        ADF_WATCH_PAGE_ID: opaqueId,
+        ADF_WATCH_PAGE_IDS: "",
+        ADF_WATCH_PAGE_ID: "legacy-opaque-fixture",
       },
-      fetch: async () => new Response(JSON.stringify({
-        id: opaqueId,
-        version: { number: 7 },
-        body: {
-          atlas_doc_format: {
-            representation: "atlas_doc_format",
-            value: JSON.stringify({
-              version: 1,
-              type: "doc",
-              content: [{
-                type: "paragraph",
-                content: [{ type: "text", text: sentinel, marks: [{ type: "strong" }] }],
-              }],
-            }),
+      fetch: async () => {
+        fetched = true;
+        return new Response(JSON.stringify({
+          version: { number: 1 },
+          body: {
+            atlas_doc_format: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({ version: 1, type: "doc", content: [] }),
+            },
           },
-        },
-      }), { status: 200, headers: { "content-type": "application/json" } }),
+        }), { status: 200 });
+      },
+      observeSchema: async () => ({
+        packageVersion: baseline.package.version,
+        packageMetadata: baseline.package,
+        canonicalSchema: schemaRaw,
+        versionedSchema: schemaRaw,
+        packageSchema: schemaRaw,
+        canonicalRedirects: [baseline.canonicalUrl],
+        canonicalFinalUrl: baseline.resolvedVersionedUrl,
+        referenceIndex: baseline.referenceIndex,
+        restContractOk: true,
+      }),
+    });
+    expect(fetched).toBe(true);
+    expect(report).toMatchObject({ ok: true, skipped: false, pageCount: 1 });
+    expect(JSON.stringify(report)).not.toContain("legacy-opaque-fixture");
+  });
+
+  test("observed-Cloud aggregates retained pages against pinned and current schemas without content or identifiers", async () => {
+    const [baselineRaw, schemaRaw] = await Promise.all([
+      readFile(ADF_BASELINE_PATH, "utf8"),
+      readFile(ADF_SCHEMA_PATH, "utf8"),
+    ]);
+    const baseline = JSON.parse(baselineRaw) as AdfUpstreamBaseline;
+    const sentinels = ["RAW-CONTENT-ONE-MUST-NOT-SURVIVE", "RAW-CONTENT-TWO-MUST-NOT-SURVIVE"];
+    const opaqueIds = ["opaque-fixture-one", "opaque-fixture-two"];
+    const fetchedPaths: string[] = [];
+    const report = await checkObservedCloud({
+      env: {
+        ADF_WATCH_BASE_URL: "https://tenant.example.invalid",
+        ADF_WATCH_EMAIL: "fixture@example.invalid",
+        ADF_WATCH_API_TOKEN: "fixture-token",
+        ADF_WATCH_PAGE_IDS: opaqueIds.join(","),
+      },
+      fetch: async (input) => {
+        const url = new URL(String(input));
+        fetchedPaths.push(url.pathname);
+        const second = url.pathname.endsWith(opaqueIds[1]!);
+        return new Response(JSON.stringify({
+          id: second ? opaqueIds[1] : opaqueIds[0],
+          version: { number: second ? 3 : 7 },
+          body: {
+            atlas_doc_format: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                version: 1,
+                type: "doc",
+                content: second
+                  ? [
+                    { type: "rule" },
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: sentinels[1], marks: [{ type: "code" }] }],
+                    },
+                  ]
+                  : [{
+                    type: "paragraph",
+                    content: [{ type: "text", text: sentinels[0], marks: [{ type: "strong" }] }],
+                  }],
+              }),
+            },
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      },
       observeSchema: async () => ({
         packageVersion: baseline.package.version,
         packageMetadata: baseline.package,
@@ -244,13 +302,95 @@ describe("ADF pinned drift guard", () => {
     expect(report).toMatchObject({
       ok: true,
       skipped: false,
-      nodeTypes: ["doc", "paragraph", "text"],
-      markTypes: ["strong"],
+      pageCount: 2,
+      pageVersions: [3, 7],
+      pinnedSchemaValid: true,
+      currentSchemaValid: true,
+      nodeTypes: ["doc", "paragraph", "rule", "text"],
+      markTypes: ["code", "strong"],
+    });
+    expect(fetchedPaths).toHaveLength(2);
+    const serialized = JSON.stringify(report);
+    for (const sentinel of sentinels) expect(serialized).not.toContain(sentinel);
+    for (const opaqueId of opaqueIds) expect(serialized).not.toContain(opaqueId);
+    expect(serialized).not.toContain("fixture-token");
+    expect(serialized).not.toContain("tenant.example.invalid");
+  });
+
+  test("observed-Cloud bounds the secret-backed fixture set without echoing references", async () => {
+    const pageIds = Array.from({ length: 17 }, (_, index) => `opaque-${index}`);
+    const report = await checkObservedCloud({
+      env: {
+        ADF_WATCH_BASE_URL: "https://tenant.example.invalid",
+        ADF_WATCH_EMAIL: "fixture@example.invalid",
+        ADF_WATCH_API_TOKEN: "fixture-token",
+        ADF_WATCH_PAGE_IDS: pageIds.join(","),
+      },
+    });
+    expect(report).toMatchObject({
+      ok: false,
+      skipped: false,
+      classification: "watch-unavailable",
     });
     const serialized = JSON.stringify(report);
-    expect(serialized).not.toContain(sentinel);
-    expect(serialized).not.toContain(opaqueId);
-    expect(serialized).not.toContain("fixture-token");
+    for (const pageId of pageIds) expect(serialized).not.toContain(pageId);
+  });
+
+  test("observed-Cloud reports a current-schema constraint mismatch independently of the pinned schema", async () => {
+    const [baselineRaw, schemaRaw] = await Promise.all([
+      readFile(ADF_BASELINE_PATH, "utf8"),
+      readFile(ADF_SCHEMA_PATH, "utf8"),
+    ]);
+    const baseline = JSON.parse(baselineRaw) as AdfUpstreamBaseline;
+    const currentSchema = JSON.parse(schemaRaw) as {
+      definitions: Record<string, {
+        required?: string[];
+        properties?: { attrs?: { required?: string[] } };
+      }>;
+    };
+    const paragraph = currentSchema.definitions.paragraph_node!;
+    paragraph.required = ["type", "attrs"];
+    paragraph.properties!.attrs!.required = ["localId"];
+    const report = await checkObservedCloud({
+      env: {
+        ADF_WATCH_BASE_URL: "https://tenant.example.invalid",
+        ADF_WATCH_EMAIL: "fixture@example.invalid",
+        ADF_WATCH_API_TOKEN: "fixture-token",
+        ADF_WATCH_PAGE_IDS: "opaque-fixture",
+      },
+      fetch: async () => new Response(JSON.stringify({
+        version: { number: 1 },
+        body: {
+          atlas_doc_format: {
+            representation: "atlas_doc_format",
+            value: JSON.stringify({
+              version: 1,
+              type: "doc",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "private" }] }],
+            }),
+          },
+        },
+      }), { status: 200 }),
+      observeSchema: async () => ({
+        packageVersion: "candidate-test",
+        packageMetadata: baseline.package,
+        canonicalSchema: JSON.stringify(currentSchema),
+        versionedSchema: JSON.stringify(currentSchema),
+        packageSchema: JSON.stringify(currentSchema),
+        canonicalRedirects: [baseline.canonicalUrl],
+        canonicalFinalUrl: baseline.resolvedVersionedUrl,
+        referenceIndex: baseline.referenceIndex,
+        restContractOk: true,
+      }),
+    });
+    expect(report).toMatchObject({
+      ok: false,
+      classification: "definition-changed",
+      pinnedSchemaValid: true,
+      currentSchemaValid: false,
+    });
+    expect(JSON.stringify(report)).not.toContain("private");
+    expect(JSON.stringify(report)).not.toContain("opaque-fixture");
   });
 
   test("the weekly workflow is schedule/manual only and remains outside release gates", async () => {
@@ -263,6 +403,7 @@ describe("ADF pinned drift guard", () => {
     expect(workflow).not.toMatch(/\n\s*(push|pull_request):/);
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).toContain("permissions:\n  contents: read");
+    expect(workflow).toContain("ADF_WATCH_PAGE_IDS: ${{ secrets.ADF_WATCH_PAGE_IDS }}");
 
     const reusableQuality = await readFile(
       new URL("../.github/workflows/reusable-quality.yml", import.meta.url),

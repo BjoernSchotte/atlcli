@@ -65,6 +65,7 @@ jobs:
       ADF_WATCH_BASE_URL: ${{ secrets.ADF_WATCH_BASE_URL }}
       ADF_WATCH_EMAIL: ${{ secrets.ADF_WATCH_EMAIL }}
       ADF_WATCH_API_TOKEN: ${{ secrets.ADF_WATCH_API_TOKEN }}
+      ADF_WATCH_PAGE_IDS: ${{ secrets.ADF_WATCH_PAGE_IDS }}
       ADF_WATCH_PAGE_ID: ${{ secrets.ADF_WATCH_PAGE_ID }}
     steps:
       - uses: actions/checkout@v6
@@ -77,7 +78,7 @@ jobs:
       - name: Install pinned dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Inventory structural signatures only
+      - name: Inventory aggregate structural signatures only
         run: >-
           bun --conditions=development scripts/adf-drift.ts check-observed-cloud
           --out-dir=artifacts/adf-drift

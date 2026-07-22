@@ -483,6 +483,8 @@ For mutable upstream sources, retry and compare results within the same run befo
 
 Add an optional authenticated `observed-cloud` job, still weekly and read-only, using dedicated synthetic retained fixture pages. It inventories only structural signatures—node/mark names, attribute-key sets, extension/media shape categories, page version, and hashes—and never uploads raw ADF or page text. This catches product rollout drift that may precede or differ from the global schema. Missing credentials skip this job with an explicit summary; configured credentials that stop working produce `watch-unavailable`.
 
+The retained fixture set is configured only through repository secrets: `ADF_WATCH_PAGE_IDS` contains a comma-separated, bounded list of page references, while the singular `ADF_WATCH_PAGE_ID` remains a backwards-compatible fallback. Neither references, tenant origin, credentials, raw ADF, nor page text may enter the JSON/Markdown report. The job aggregates signatures and sorted page versions across the set, validates every observed document against both the committed pin and the schema discovered during the same run, and reports only counts, booleans, structural names/categories, package version, and a canonical structural hash.
+
 Alerting v1 is the failed scheduled Actions run plus its job summary/artifacts. A deduplicated GitHub issue may be added later behind an explicit repository decision; the schema monitor itself starts with `contents: read` only.
 
 Exit:
@@ -737,7 +739,7 @@ Tasks:
 
 - [x] Add one browser conformance case that begins with real ADF, not hand-built blocks.
 - [x] Run paired ADF/Storage semantic differential tests for the feature zoo.
-- [ ] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
+- [x] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
 - [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
 - [ ] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
 - [x] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
@@ -756,6 +758,8 @@ The unrestricted full regression suite then passed with 4,774 tests, 13 intentio
 Direct-coverage evidence recorded on 2026-07-22: an exhaustive compile-time fixture map now has one real ADF document per pinned node and mark row. Child-only nodes are exercised in their smallest meaningful parent context; every case passes through the production validator/decoder, must produce visible blocks, and every `visible-fallback` mapping must emit a diagnostic with page/path provenance. The guard covers exactly 43 nodes and 17 marks, so adding or removing an upstream classification fails until the direct fixture set changes deliberately. All 61 direct-fixture assertions passed.
 
 Differential evidence recorded on 2026-07-22: the paired ADF/Storage semantic feature zoo covers headings, inline bold/code/line-break/emoji semantics, blockquotes, bullet and ordered lists, task state, table spans/background, panels, status and rules. Both source adapters produce byte-for-byte equal neutral block trees with the expected ten-block shape. The only note difference is explicitly allowlisted to ADF's observable non-default ordered-list start, with page and block-path provenance.
+
+Observed-Cloud evidence recorded on 2026-07-22: the weekly optional job now accepts up to 16 retained feature-zoo pages through a secret-only list, aggregates their structural signatures, and fully validates each ADF document against both the committed schema pin and the package schema discovered in that run. Focused tests proved multi-page aggregation, independent current-schema constraint drift, bounded configuration, backwards-compatible skip behavior, and absence of raw content, page references, credentials, and tenant origin from reports. A sanitized live run created one marked temporary feature-zoo page, observed 11 node types and two mark types with `no-drift`, passed both schema validators, and deleted the page with zero cleanup failures. Full build, typecheck, docs, API/closure, browser-isomorphism, browser-output and offline pin gates passed; the complete repository suite passed with 4,838 tests, 13 intentional skips and zero failures across 307 files.
 
 Default-enable gates:
 
@@ -934,7 +938,7 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 - [ ] Runtime validator is bounded, iterative, isomorphic, and adversarially tested.
 - [ ] Pinned schema/coverage CI classifies all 43 nodes and 17 marks.
 - [ ] Weekly online schema/reference/REST drift watch runs independently of PR and release gates and produces JSON/Markdown evidence.
-- [ ] Optional weekly observed-Cloud inventory uses synthetic read-only fixtures and publishes no page content.
+- [x] Optional weekly observed-Cloud inventory uses synthetic read-only fixtures and publishes no page content.
 - [ ] `adfToBlocks()` covers all semantics already representable by the neutral model.
 - [ ] Unsupported semantics preserve visible content or a visible placeholder and emit bounded notes.
 - [ ] `pageBodyToBlocks()` is the only representation dispatch used by new export hosts.

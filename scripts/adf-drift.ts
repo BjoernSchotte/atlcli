@@ -167,7 +167,11 @@ export interface AdfObservedCloudReport {
     | "mark-added"
     | "definition-changed";
   detail: string;
-  pageVersion?: number;
+  pageCount?: number;
+  pageVersions?: number[];
+  currentUpstreamVersion?: string;
+  pinnedSchemaValid?: boolean;
+  currentSchemaValid?: boolean;
   structuralHash?: string;
   nodeTypes?: string[];
   markTypes?: string[];
@@ -175,6 +179,15 @@ export interface AdfObservedCloudReport {
   markAttributeKeys?: Record<string, string[]>;
   extensionCategories?: string[];
   mediaCategories?: string[];
+}
+
+interface AdfStructuralSignature {
+  nodeTypes: string[];
+  markTypes: string[];
+  nodeAttributeKeys: Record<string, string[]>;
+  markAttributeKeys: Record<string, string[]>;
+  extensionCategories: string[];
+  mediaCategories: string[];
 }
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -187,6 +200,7 @@ const allowedWatchHosts = new Set([
 ]);
 
 const MAX_SCHEMA_BYTES = 2 * 1024 * 1024;
+const MAX_OBSERVED_CLOUD_PAGES = 16;
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 const MAX_HTML_BYTES = 8 * 1024 * 1024;
 const MAX_TARBALL_BYTES = 12 * 1024 * 1024;
@@ -588,7 +602,7 @@ export function renderUpstreamMarkdown(report: AdfUpstreamReport): string {
 function collectStructuralSignature(document: {
   type: string;
   content: unknown[];
-}): Omit<AdfObservedCloudReport, "ok" | "skipped" | "checkedAt" | "classification" | "detail" | "pageVersion" | "structuralHash"> {
+}): AdfStructuralSignature {
   const nodeTypes = new Set<string>();
   const markTypes = new Set<string>();
   const nodeAttributes = new Map<string, Set<string>>();
@@ -645,6 +659,64 @@ function collectStructuralSignature(document: {
   };
 }
 
+function mergeStructuralSignatures(signatures: AdfStructuralSignature[]): AdfStructuralSignature {
+  const nodeTypes = new Set<string>();
+  const markTypes = new Set<string>();
+  const nodeAttributeKeys = new Map<string, Set<string>>();
+  const markAttributeKeys = new Map<string, Set<string>>();
+  const extensionCategories = new Set<string>();
+  const mediaCategories = new Set<string>();
+  const mergeAttributes = (
+    target: Map<string, Set<string>>,
+    source: Record<string, string[]>,
+  ): void => {
+    for (const [type, keys] of Object.entries(source)) {
+      const merged = target.get(type) ?? new Set<string>();
+      for (const key of keys) merged.add(key);
+      target.set(type, merged);
+    }
+  };
+  for (const signature of signatures) {
+    for (const type of signature.nodeTypes) nodeTypes.add(type);
+    for (const type of signature.markTypes) markTypes.add(type);
+    mergeAttributes(nodeAttributeKeys, signature.nodeAttributeKeys);
+    mergeAttributes(markAttributeKeys, signature.markAttributeKeys);
+    for (const category of signature.extensionCategories) extensionCategories.add(category);
+    for (const category of signature.mediaCategories) mediaCategories.add(category);
+  }
+  const sortedAttributes = (source: Map<string, Set<string>>): Record<string, string[]> => Object.fromEntries(
+    [...source.entries()].sort(([left], [right]) => left.localeCompare(right)).map(
+      ([type, keys]) => [type, [...keys].sort()],
+    ),
+  );
+  return {
+    nodeTypes: [...nodeTypes].sort(),
+    markTypes: [...markTypes].sort(),
+    nodeAttributeKeys: sortedAttributes(nodeAttributeKeys),
+    markAttributeKeys: sortedAttributes(markAttributeKeys),
+    extensionCategories: [...extensionCategories].sort(),
+    mediaCategories: [...mediaCategories].sort(),
+  };
+}
+
+function observedPageIds(env: Record<string, string | undefined>): string[] {
+  const configured = env.ADF_WATCH_PAGE_IDS?.trim() || env.ADF_WATCH_PAGE_ID || "";
+  const pageIds = [...new Set(configured.split(",").map((value) => value.trim()).filter(Boolean))];
+  if (pageIds.length > MAX_OBSERVED_CLOUD_PAGES) {
+    throw new Error(`Observed-Cloud watch accepts at most ${MAX_OBSERVED_CLOUD_PAGES} pages.`);
+  }
+  if (pageIds.some((pageId) => pageId.length > 256)) {
+    throw new Error("Observed-Cloud watch received an invalid page reference.");
+  }
+  return pageIds;
+}
+
+function compileAdfSchema(schema: unknown): (document: unknown) => boolean {
+  const ajv = new AjvDraft04({ allErrors: true, strict: false, validateSchema: true });
+  const validate = ajv.compile(schema as object);
+  return (document: unknown): boolean => Boolean(validate(document));
+}
+
 export async function checkObservedCloud(options: {
   env?: Record<string, string | undefined>;
   fetch?: FetchLike;
@@ -654,9 +726,20 @@ export async function checkObservedCloud(options: {
   const baseUrl = env.ADF_WATCH_BASE_URL;
   const email = env.ADF_WATCH_EMAIL;
   const token = env.ADF_WATCH_API_TOKEN;
-  const pageId = env.ADF_WATCH_PAGE_ID;
   const checkedAt = new Date().toISOString();
-  if (!baseUrl || !email || !token || !pageId) {
+  let pageIds: string[];
+  try {
+    pageIds = observedPageIds(env);
+  } catch (error) {
+    return {
+      ok: false,
+      skipped: false,
+      checkedAt,
+      classification: "watch-unavailable",
+      detail: error instanceof Error ? error.message : "Observed-Cloud page configuration is invalid.",
+    };
+  }
+  if (!baseUrl || !email || !token || pageIds.length === 0) {
     return {
       ok: true,
       skipped: true,
@@ -668,49 +751,77 @@ export async function checkObservedCloud(options: {
   try {
     const origin = new URL(baseUrl);
     if (origin.protocol !== "https:") throw new Error("Observed-Cloud base URL must use HTTPS.");
-    const url = new URL(`/wiki/api/v2/pages/${encodeURIComponent(pageId)}`, origin);
-    url.searchParams.set("body-format", "atlas_doc_format");
-    const response = await (options.fetch ?? globalThis.fetch)(url, {
-      method: "GET",
-      redirect: "error",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${Buffer.from(`${email}:${token}`, "utf8").toString("base64")}`,
-      },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) throw new Error(`Observed-Cloud page read failed with HTTP ${response.status}.`);
-    const bytes = await readBoundedBody(response, MAX_SCHEMA_BYTES * 4);
-    const payload = JSON.parse(decodeUtf8(bytes)) as unknown;
-    if (!isRecord(payload) || !isRecord(payload.version) || !Number.isInteger(payload.version.number)) {
-      throw new Error("Observed-Cloud response has no valid version envelope.");
-    }
-    if (!isRecord(payload.body) || !isRecord(payload.body.atlas_doc_format)) {
-      throw new Error("Observed-Cloud response has no ADF body envelope.");
-    }
-    const body = payload.body.atlas_doc_format;
-    if (body.representation !== "atlas_doc_format" || typeof body.value !== "string") {
-      throw new Error("Observed-Cloud response has an unexpected body representation.");
-    }
-    const validated = validateAdf(body.value);
-    const signature = collectStructuralSignature(validated.document);
     const upstream = await (options.observeSchema ?? (() => observeUpstream()))();
-    const candidateInventory = inventoryAdfSchema(JSON.parse(upstream.packageSchema) as unknown);
+    const pinnedSchemaRaw = await readFile(ADF_SCHEMA_PATH, "utf8");
+    const pinnedSchema = JSON.parse(pinnedSchemaRaw) as unknown;
+    const currentSchema = JSON.parse(upstream.packageSchema) as unknown;
+    const candidateInventory = inventoryAdfSchema(currentSchema);
+    const validatePinnedSchema = compileAdfSchema(pinnedSchema);
+    const validateCurrentSchema = compileAdfSchema(currentSchema);
+    const signatures: AdfStructuralSignature[] = [];
+    const pageVersions: number[] = [];
+    const diagnostics: ReturnType<typeof validateAdf>["diagnostics"] = [];
+    let pinnedSchemaValid = true;
+    let currentSchemaValid = true;
+    for (const pageId of pageIds) {
+      const url = new URL(`/wiki/api/v2/pages/${encodeURIComponent(pageId)}`, origin);
+      url.searchParams.set("body-format", "atlas_doc_format");
+      let response: Response;
+      try {
+        response = await (options.fetch ?? globalThis.fetch)(url, {
+          method: "GET",
+          redirect: "error",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Basic ${Buffer.from(`${email}:${token}`, "utf8").toString("base64")}`,
+          },
+          signal: AbortSignal.timeout(20_000),
+        });
+      } catch {
+        throw new Error("Observed-Cloud page read failed before receiving a response.");
+      }
+      if (!response.ok) throw new Error(`Observed-Cloud page read failed with HTTP ${response.status}.`);
+      const bytes = await readBoundedBody(response, MAX_SCHEMA_BYTES * 4);
+      let payload: unknown;
+      try {
+        payload = JSON.parse(decodeUtf8(bytes)) as unknown;
+      } catch {
+        throw new Error("Observed-Cloud response is not valid JSON.");
+      }
+      if (!isRecord(payload) || !isRecord(payload.version) || !Number.isInteger(payload.version.number)) {
+        throw new Error("Observed-Cloud response has no valid version envelope.");
+      }
+      if (!isRecord(payload.body) || !isRecord(payload.body.atlas_doc_format)) {
+        throw new Error("Observed-Cloud response has no ADF body envelope.");
+      }
+      const body = payload.body.atlas_doc_format;
+      if (body.representation !== "atlas_doc_format" || typeof body.value !== "string") {
+        throw new Error("Observed-Cloud response has an unexpected body representation.");
+      }
+      const validated = validateAdf(body.value);
+      signatures.push(collectStructuralSignature(validated.document));
+      pageVersions.push(payload.version.number as number);
+      diagnostics.push(...validated.diagnostics);
+      pinnedSchemaValid = validatePinnedSchema(validated.document) && pinnedSchemaValid;
+      currentSchemaValid = validateCurrentSchema(validated.document) && currentSchemaValid;
+    }
+    const signature = mergeStructuralSignatures(signatures);
     const pinnedNodes = new Set<string>(PINNED_ADF_NODE_TYPES);
     const pinnedMarks = new Set<string>(PINNED_ADF_MARK_TYPES);
     const candidateNodes = new Set(candidateInventory.nodes);
     const candidateMarks = new Set(candidateInventory.marks);
-    const unknownNodes = (signature.nodeTypes ?? []).filter((type) => !pinnedNodes.has(type) || !candidateNodes.has(type));
-    const unknownMarks = (signature.markTypes ?? []).filter((type) => !pinnedMarks.has(type) || !candidateMarks.has(type));
-    const unknownAttributes = validated.diagnostics.filter(({ kind }) => kind === "unknown-attribute");
+    const unknownNodes = signature.nodeTypes.filter((type) => !pinnedNodes.has(type) || !candidateNodes.has(type));
+    const unknownMarks = signature.markTypes.filter((type) => !pinnedMarks.has(type) || !candidateMarks.has(type));
+    const unknownAttributes = diagnostics.filter(({ kind }) => kind === "unknown-attribute");
     const classification = unknownNodes.length > 0
       ? "node-added"
       : unknownMarks.length > 0
         ? "mark-added"
-        : unknownAttributes.length > 0
+        : unknownAttributes.length > 0 || !pinnedSchemaValid || !currentSchemaValid
           ? "definition-changed"
           : "no-drift";
-    const structuralHash = sha256(canonicalJson({ pageVersion: payload.version.number, ...signature }));
+    pageVersions.sort((left, right) => left - right);
+    const structuralHash = sha256(canonicalJson({ pageVersions, ...signature }));
     return {
       ok: classification === "no-drift",
       skipped: false,
@@ -719,9 +830,13 @@ export async function checkObservedCloud(options: {
       detail: classification === "no-drift"
         ? "Observed Cloud structures are covered by both pinned and current upstream inventories."
         : classification === "definition-changed"
-          ? `Observed attribute keys outside the reviewed runtime shapes: ${unknownAttributes.map(({ attribute }) => attribute).filter(Boolean).join(", ")}.`
-          : `Observed structures outside both inventories: ${[...unknownNodes, ...unknownMarks].join(", ")}.`,
-      pageVersion: payload.version.number as number,
+          ? "At least one observed structure does not validate against both reviewed schema contracts."
+          : `Observed structures are not covered by both inventories: ${[...unknownNodes, ...unknownMarks].join(", ")}.`,
+      pageCount: pageIds.length,
+      pageVersions,
+      currentUpstreamVersion: upstream.packageVersion,
+      pinnedSchemaValid,
+      currentSchemaValid,
       structuralHash,
       ...signature,
     };
@@ -731,7 +846,9 @@ export async function checkObservedCloud(options: {
       skipped: false,
       checkedAt,
       classification: "watch-unavailable",
-      detail: error instanceof Error ? error.message : String(error),
+      detail: error instanceof Error && error.message.startsWith("Observed-Cloud")
+        ? error.message
+        : "Observed-Cloud watch failed before a safe structural report could be produced.",
     };
   }
 }
@@ -744,6 +861,10 @@ export function renderObservedMarkdown(report: AdfObservedCloudReport): string {
     `- Classification: \`${report.classification}\``,
     `- Checked: ${report.checkedAt}`,
     `- Detail: ${report.detail}`,
+    ...(report.pageCount !== undefined ? [`- Pages inventoried: ${report.pageCount}`] : []),
+    ...(report.currentUpstreamVersion ? [`- Current upstream package: ${report.currentUpstreamVersion}`] : []),
+    ...(report.pinnedSchemaValid !== undefined ? [`- Pinned schema valid: ${report.pinnedSchemaValid}`] : []),
+    ...(report.currentSchemaValid !== undefined ? [`- Current schema valid: ${report.currentSchemaValid}`] : []),
     ...(report.structuralHash ? [`- Structural hash: \`${report.structuralHash}\``] : []),
     "",
   ].join("\n");
