@@ -1561,8 +1561,8 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     harness; template mismatch fails closed; no deprecated Python exporter is
     imported, registered, or used as fallback.
 
-- [ ] **PR-E — CLI journal, queue, monitor, and commands** (`T7.3`)
-  - PR: `TBD`
+- [x] **PR-E — CLI journal, queue, monitor, and commands** (`T7.3`)
+  - PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: file journal/spool/artifact/locks, ordinary DOCX/PDF routing, TTY and
     JSONL monitor, `list/show/watch/cancel/retry/rerun/clear`, output delivery,
     stale-process reconciliation, and removal of the Python default/fallback.
