@@ -80,6 +80,11 @@ export interface AssetBudgetOptions {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -103,6 +108,14 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
 }
 
 // export: BulkOperationResult
@@ -182,6 +195,8 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
@@ -206,6 +221,9 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -218,6 +236,9 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -445,6 +466,11 @@ export type ConfluenceDetailedSearchResults = {
     totalSize?: number;
 };
 
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -468,6 +494,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -909,6 +942,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -943,6 +996,9 @@ export declare class ExportScopeError extends Error {
     readonly code: "export-scope-invalid";
     constructor(message: string);
 }
+
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -1200,6 +1256,18 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: PageBodyToBlocksOptions
+export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -1361,10 +1429,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
@@ -1665,6 +1730,11 @@ export interface AssetBudgetOptions {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -1688,6 +1758,14 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
 }
 
 // export: BulkOperationResult
@@ -1767,6 +1845,8 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
@@ -1791,6 +1871,9 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -1803,6 +1886,9 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -2030,6 +2116,11 @@ export type ConfluenceDetailedSearchResults = {
     totalSize?: number;
 };
 
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -2053,6 +2144,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -2494,6 +2592,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -2528,6 +2646,9 @@ export declare class ExportScopeError extends Error {
     readonly code: "export-scope-invalid";
     constructor(message: string);
 }
+
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -2785,6 +2906,18 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: PageBodyToBlocksOptions
+export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -2946,10 +3079,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
@@ -3250,6 +3380,11 @@ export interface AssetBudgetOptions {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -3273,6 +3408,14 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
 }
 
 // export: BulkOperationResult
@@ -3352,6 +3495,8 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
@@ -3376,6 +3521,9 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -3388,6 +3536,9 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -3615,6 +3766,11 @@ export type ConfluenceDetailedSearchResults = {
     totalSize?: number;
 };
 
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -3638,6 +3794,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -4079,6 +4242,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -4113,6 +4296,9 @@ export declare class ExportScopeError extends Error {
     readonly code: "export-scope-invalid";
     constructor(message: string);
 }
+
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -4370,6 +4556,18 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: PageBodyToBlocksOptions
+export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -4531,10 +4729,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
@@ -4997,6 +5192,8 @@ export interface ConflictRegion {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
@@ -5021,6 +5218,9 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -5033,6 +5233,9 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -6864,10 +7067,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
@@ -7337,6 +7537,11 @@ export interface AssetBudgetOptions {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -7360,6 +7565,14 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
 }
 
 // export: BulkOperationResult
@@ -7439,6 +7652,8 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
@@ -7463,6 +7678,9 @@ export declare class ConfluenceClient {
     getPage(id: string): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -7475,6 +7693,9 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -7702,6 +7923,11 @@ export type ConfluenceDetailedSearchResults = {
     totalSize?: number;
 };
 
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -7725,6 +7951,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -8166,6 +8399,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -8200,6 +8453,9 @@ export declare class ExportScopeError extends Error {
     readonly code: "export-scope-invalid";
     constructor(message: string);
 }
+
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -8457,6 +8713,18 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: PageBodyToBlocksOptions
+export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -8618,10 +8886,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;

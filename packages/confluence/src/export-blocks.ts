@@ -28,6 +28,7 @@ import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
+import type { BlocksResult } from "./page-body.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -552,10 +553,7 @@ export interface ExportNote {
 }
 
 /** Result of {@link storageToBlocks}: the block tree plus report notes. */
-export interface StorageToBlocksResult {
-  blocks: ExportBlock[];
-  notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 /** Options for {@link storageToBlocks}. */
 export interface StorageToBlocksOptions {

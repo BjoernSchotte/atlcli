@@ -17,6 +17,7 @@
  */
 
 export * from "./client.js";
+export * from "./page-body.js";
 export * from "./markdown.js";
 export * from "./asset-budget.js";
 export * from "./compose-document.js";

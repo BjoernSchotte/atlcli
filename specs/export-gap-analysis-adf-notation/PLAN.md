@@ -348,16 +348,16 @@ Production files:
 
 Tasks:
 
-- [ ] Add `PageBody`, `ExportPageSource`, `ConfluenceExportPageDetails`, `BlocksResult`, and options types.
-- [ ] Keep `ConfluencePageDetails.storage` unchanged.
-- [ ] Add `logBody: "meta-only"` to `requestV2()` and use it for ADF reads.
-- [ ] Add `getPageAdf(id, {signal})` using `body-format=atlas_doc_format`.
-- [ ] Add `getExportPageDetails(id, {signal})` with parallel Cloud dual-read and explicit Data Center Storage-primary behavior.
-- [ ] Validate response representation/value/version without `any`-casting it into a trusted document.
-- [ ] Require version equality across ADF and v1 details/Storage.
-- [ ] Classify only proven capability absence as `adf-representation-unavailable`.
-- [ ] Thread cancellation into both reads and cancel the sibling operation after terminal failure.
-- [ ] Cache deployment capability by normalized site origin; never cache auth or page-level denial as a platform capability.
+- [x] Add `PageBody`, `ExportPageSource`, `ConfluenceExportPageDetails`, `BlocksResult`, and options types.
+- [x] Keep `ConfluencePageDetails.storage` unchanged.
+- [x] Add `logBody: "meta-only"` to `requestV2()` and use it for ADF reads.
+- [x] Add `getPageAdf(id, {signal})` using `body-format=atlas_doc_format`.
+- [x] Add `getExportPageDetails(id, {signal})` with parallel Cloud dual-read and explicit Data Center Storage-primary behavior.
+- [x] Validate response representation/value/version without `any`-casting it into a trusted document.
+- [x] Require version equality across ADF and v1 details/Storage.
+- [x] Classify only proven capability absence as `adf-representation-unavailable`.
+- [x] Thread cancellation into both reads and cancel the sibling operation after terminal failure.
+- [x] Cache deployment capability by normalized site origin; never cache auth or page-level denial as a platform capability.
 
 Tests:
 
@@ -366,19 +366,21 @@ Tests:
 
 Required cases:
 
-- [ ] correct Cloud v2 path and query;
-- [ ] ADF value preserved as an opaque string until validation;
-- [ ] wrong/missing response representation or value;
-- [ ] matching and mismatching versions;
-- [ ] AbortSignal and sibling cancellation;
-- [ ] 401/403/429/5xx/login-page behavior without fallback;
-- [ ] explicit Data Center path with zero v2 ADF calls;
-- [ ] capability cache isolation by origin;
-- [ ] logs contain metadata but not distinctive ADF text.
+- [x] correct Cloud v2 path and query;
+- [x] ADF value preserved as an opaque string until validation;
+- [x] wrong/missing response representation or value;
+- [x] matching and mismatching versions;
+- [x] AbortSignal and sibling cancellation;
+- [x] 401/403/429/5xx/login-page behavior without fallback;
+- [x] explicit Data Center path with zero v2 ADF calls;
+- [x] capability cache isolation by origin;
+- [x] logs contain metadata but not distinctive ADF text.
 
 Exit:
 
 - The client can produce an export-specific dual source without affecting existing client consumers or leaking body content.
+
+Evidence recorded on 2026-07-22: focused ADF/Storage tests, existing client regressions, public API/closure guards, full typecheck, browser-isomorphism check, full build, and an anonymized read-only Cloud contract probe all passed. The live probe emitted only representation and structural booleans; it emitted no environment or content identifiers.
 
 ### WP2 — Runtime validator, schema coverage baseline, and drift watchguard
 
