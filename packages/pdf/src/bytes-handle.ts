@@ -27,16 +27,21 @@
  *   (i)  a Chrome IndexedDB `Blob` stays out-of-heap on `get()`; and
  *   (ii) PDF.js range-/chunk-loads from a `blob:` URL rather than buffering it.
  *
- * **Both are UNVERIFIED.** They cannot be answered from a Bun/`fake-indexeddb`
- * harness — the polyfill has no out-of-line blob store, and PDF.js is not
- * loaded there (see the measurement task's report). The PLAN is explicit about
- * what happens in that case: the seam still stands, but the storage decision
- * *reverts to `Uint8Array` and is recorded as such*. That is what
- * {@link pdfBytesFromUint8Array} is.
+ * The real Chrome/V8 harness (`bun run bench:memory-chrome`) answered both on
+ * Chrome 140. Reading a 16 MiB IndexedDB `Blob` added no V8 backing storage,
+ * while the same `Uint8Array` added 16 MiB: (i) is confirmed. Chrome also
+ * served a 64 KiB `Range` request against a `blob:` URL with `206`, but the
+ * newly-created PDF.js worker retained 10.83 MiB of backing storage for an
+ * 8.30 MiB PDF: (ii)'s chunk-only-retention premise is not confirmed.
+ *
+ * The PLAN requires both assumptions before changing the durable format. The
+ * seam therefore stands, but storage remains `Uint8Array` and the Blob-store
+ * migration is explicitly dropped. That is what
+ * {@link pdfBytesFromUint8Array} represents.
  *
  * The seam is what makes that reversible. {@link pdfBytesFromBlob} already
- * exists, so if someone later attaches DevTools and confirms (i) and (ii), the
- * change is a different factory at the storage boundary — no consumer moves.
+ * exists, so a future PDF.js/runtime change can be remeasured and adopted by
+ * changing the factory at the storage boundary — no consumer moves.
  *
  * ## Why every accessor is async
  *
@@ -203,8 +208,7 @@ function handle(
 /**
  * The default factory: a handle over bytes already in the JS heap.
  *
- * This is the storage format of record (see the module comment) until the two
- * assumptions behind a `Blob`-backed store are actually measured in Chrome.
+ * This is the measured storage format of record; see the module comment.
  */
 export function pdfBytesFromUint8Array(
   source: Uint8Array,
@@ -225,9 +229,10 @@ export function pdfBytesFromUint8Array(
  * A handle over a `Blob` — for a host that already has one (a `fetch` response,
  * an IndexedDB `Blob` value) and should not pay to flatten it into the heap.
  *
- * Not used by the extension host today: the storage-format decision reverted to
- * `Uint8Array` because the out-of-heap assumption is unverified. It exists so
- * that decision is a one-line change if someone verifies it.
+ * Not used by the extension host today: Chrome keeps the Blob out of V8's
+ * backing store, but the measured PDF.js worker did not demonstrate
+ * chunk-only retention. It exists so a future remeasurement can change that
+ * decision at one boundary.
  */
 export function pdfBytesFromBlob(source: Blob, options: { mimeType?: string } = {}): PdfBytesHandle {
   const mimeType = options.mimeType ?? source.type ?? PDF_MIME;

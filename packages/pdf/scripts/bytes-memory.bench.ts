@@ -28,12 +28,9 @@
  *  - `Bun.gc(true)` is forced before every sample, and every allocation is
  *    still **reachable** when sampled — a peak that is immediately collectable
  *    is still a peak.
- *  - The two assumptions the PLAN flags as gating the storage-format decision —
- *    (i) does a Chrome IndexedDB `Blob` stay out-of-heap on `get()`, and
- *    (ii) does PDF.js chunk-load from a `blob:` URL — are **not answerable
- *    here** and this script does not pretend to answer them. `fake-indexeddb`
- *    is a pure-JS in-memory model with no out-of-line blob store, and PDF.js is
- *    not loaded. See the closing note.
+ *  - The two assumptions the PLAN flags as gating the storage-format decision
+ *    are **not answerable here**. They are now covered by the real MV3
+ *    Chrome/V8 harness: `bun run bench:memory-chrome`. See the closing note.
  */
 
 import { heapStats } from "bun:jsc";
@@ -471,24 +468,24 @@ const SCENARIOS: Record<string, { title: string; run: () => void | Promise<void>
 
 const UNVERIFIABLE = `
 ${"=".repeat(78)}
-NOT MEASURED — the two assumptions that gate the storage-format decision
+NOT MEASURED BY THIS BUN/JSC HARNESS — use the Chrome/V8 harness
 ${"=".repeat(78)}
 
   (i)  "A Chrome IndexedDB Blob stays out-of-heap on get()."
        fake-indexeddb is a pure-JS in-memory model with no out-of-line blob
        store — a Blob round-tripped through it is structured-cloned like any
        other value, so a "pass" here would measure the polyfill, not Chrome.
-       Answering this needs a real Chrome profile plus a DevTools heap snapshot.
-       UNVERIFIED.
+       The real harness now measures this with a Chrome profile and CDP.
 
   (ii) "PDF.js range-/chunk-loads from a blob: URL rather than buffering it
-       whole." PDF.js is not loaded here, and a blob: URL supports no HTTP Range
-       requests, so the answer is very likely NO — but that is reasoning from
-       the spec, not a measurement. UNVERIFIED.
+       whole." PDF.js is not loaded here, so this process cannot answer it.
 
-  Per PLAN Architecture point 9: with both unverified, the PdfBytesHandle seam
-  still stands, but the STORAGE FORMAT DECISION REVERTS TO Uint8Array and is
-  recorded as such.
+  Run: bun run bench:memory-chrome
+
+  Recorded Chrome 140 result: an IndexedDB Blob stays out of V8 backing
+  storage, but the PDF.js worker did not demonstrate chunk-only retention.
+  Per PLAN Architecture point 9, the PdfBytesHandle seam remains and the
+  STORAGE FORMAT stays Uint8Array.
 `;
 
 const requested = process.argv[2];

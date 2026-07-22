@@ -17,6 +17,14 @@ export interface BrowserPdfCompilerAssets {
   fonts: Uint8Array[];
 }
 
+const MEMORY_PROBE_AFTER_VFS_LOADED = Symbol.for(
+  "atlcli.pdf-compiler-browser.memory-probe.after-vfs-loaded"
+);
+
+interface MemoryProbeHost {
+  [MEMORY_PROBE_AFTER_VFS_LOADED]?: () => void | Promise<void>;
+}
+
 interface RawPdfDiagnostic {
   package?: string;
   path?: string;
@@ -58,6 +66,14 @@ export class BrowserPdfCompiler {
       compiler.add_source("/main.typ", bundle.main);
       compiler.add_source("/atlcli.typ", bundle.template);
       for (const asset of bundle.assets) compiler.map_shadow(`/${asset.path}`, asset.bytes);
+      // The Symbol.for hook keeps benchmark instrumentation out of the public
+      // package API. Normal hosts never install it; the Chrome/V8 harness
+      // pauses here to sample the otherwise-unobservable Typst VFS peak.
+      const memoryProbe = (globalThis as MemoryProbeHost)[MEMORY_PROBE_AFTER_VFS_LOADED];
+      // Do not `await undefined`: production must not gain a microtask yield
+      // between VFS population and compile, because typst.ts' access model is
+      // process-global and another compiler instance could interleave there.
+      if (memoryProbe) await memoryProbe();
       const result = compiler.compile("/main.typ", [], "pdf", 3) as {
         result?: Uint8Array;
         diagnostics?: RawPdfDiagnostic[];

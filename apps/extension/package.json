@@ -15,6 +15,8 @@
     "test:viewer-browser": "playwright test --config tests/pdf/browser/playwright.config.ts",
     "pretest:worker-extension-browser": "bun run build",
     "test:worker-extension-browser": "playwright test --config tests/pdf/extension-worker/playwright.config.ts",
+    "prebench:memory-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/pdf/memory/vite.config.ts",
+    "bench:memory-chrome": "playwright test --config tests/pdf/memory/playwright.config.ts",
     "postinstall": "wxt prepare",
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",

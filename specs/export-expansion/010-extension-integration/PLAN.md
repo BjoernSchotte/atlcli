@@ -59,8 +59,9 @@ notes referenced per task below).
   Apache-2.0 — compatible with this repo's Apache-2.0 licensing). Bundled
   locally, never from a CDN: MV3 forbids remotely hosted extension code, and
   `check-output-build.ts`'s remote-origin scan enforces it mechanically.
-- Docs: `src/content/docs/` (docs standards in `CLAUDE.md`). Release:
-  `scripts/release.ts` (`--dry-run` first), `CHANGELOG.md`.
+- Docs: `src/content/docs/` (docs standards in `CLAUDE.md`). A product release
+  is deliberately outside this folder while the extension continues to gain
+  features.
 
 ## Goal & user value
 
@@ -111,8 +112,9 @@ baseline, because the panel is where non-CI users live:
   Confluence Cloud's own space export fails if the user leaves the export page.
   Includes the byte-handling and memory prerequisites this makes unavoidable
   (Architecture points 9 and 10).
-- **Documented and released as one product** (T5.5): docs/ updated in the same
-  release, CHANGELOG, release checklist.
+- **Documented as one product** (T5.5): extension and CLI documentation stays
+  aligned in this PR. Release orchestration is deferred until the broader
+  extension feature set is ready.
 
 **Task-numbering divergence (crossPlanImpact).** `UMSETZUNGSPLAN.md` lists this
 track as T5.1–T5.5. **T5.6 is introduced by this folder** in response to
@@ -556,9 +558,10 @@ wiring stays in thin components and entrypoints.
    features in this folder multiply how many PDF/asset byte copies are alive at
    once: tree/space bundles (T5.1), a preview cache (T5.3), and retained
    background-job records (T5.6). A code-level trace of the byte path found the
-   following. **None of it is measured** — there is no memory benchmark for the
-   PDF path in this repo — so the *first* task under T5.6 is a heap snapshot of
-   a real image-heavy DOCSY export. Nothing below gets optimized on suspicion.
+   following. It started as an unmeasured trace; T5.6 now has both the original
+   Bun/JSC diagnostic and a real Chrome/V8 MV3 benchmark. The reproducible
+   Chrome figures and resulting storage decision are recorded in the execution
+   checklist below. Nothing below gets optimized on suspicion.
 
    **The transport is already right and must stay that way**: zero bytes cross
    `chrome.runtime.sendMessage`; IndexedDB is the byte channel (verified —
@@ -602,12 +605,14 @@ wiring stays in thin components and entrypoints.
    handle-shaped cache costs almost no heap, survives a panel close, and makes
    `URL.createObjectURL()` O(1) — exactly what both the preview cache (T5.3)
    and retained background jobs (T5.6) need, and it removes the extra copy
-   `download.ts:19` makes today. **Two assumptions here are unverified and gate
-   the design**: (i) that Chrome IDB Blobs really behave out-of-heap under this
-   access pattern, and (ii) that PDF.js range-/chunk-loads from a `blob:` URL
-   rather than buffering it whole. Both are measured in T5.6's first task; if
-   either fails, the handle seam still stands but the storage format decision
-   reverts to `Uint8Array` and is recorded as such.
+   `download.ts:19` makes today. **Two assumptions gate the design**: (i) that
+   Chrome IDB Blobs really behave out-of-heap under this access pattern, and
+   (ii) that PDF.js range-/chunk-loads from a `blob:` URL rather than buffering
+   it whole. The Chrome/V8 measurement confirmed (i), but did **not** confirm
+   (ii): the protocol supports 206 Range responses, while the newly-created
+   PDF.js worker retained 10.83 MiB of backing storage for an 8.30 MiB PDF.
+   Therefore the handle seam stands and the storage format remains
+   `Uint8Array`; a Blob migration is explicitly dropped.
 
    **Scope honesty:** several of these live in `packages/pdf`, not
    `apps/extension/`. That stretches this folder beyond pure host integration.
@@ -1568,7 +1573,7 @@ is a single-file change if the preview turns out to be v3.
 Ordered: the measurement gates the storage decision, the two defect fixes are
 independent of it, and the size-metadata split blocks the retention UI.
 
-- [ ] **Measurement first (blocks the rest of T5.6).** Heap snapshot of a real
+- [x] **Measurement first (blocks the rest of T5.6).** Heap snapshot of a real
       image-heavy DOCSY tree export in the panel and the offscreen worker at
       the four suspected peaks (`job-store.ts:118` / `:200` `getAll`,
       `validate.ts:48` decode, `compiler.ts:60-63` VFS handoff,
@@ -1579,31 +1584,53 @@ independent of it, and the size-metadata split blocks the retention UI.
       write that down and drop the corresponding fix** — this task exists to
       prevent optimizing on suspicion.
 
-      **Left unticked: a benchmark shipped, the measurement this task asks for
-      did not.** What exists is `packages/pdf/scripts/bytes-memory.bench.ts` — a
-      re-runnable harness covering all four suspected peaks as named scenarios
-      (`validate-32`/`validate-64`/`live-whole`/`live-chunked`, `getall`,
-      `status`, `blob`, `hash`), sampling `bun:jsc`'s `heapStats()` with a
-      forced `Bun.gc(true)` because `process.memoryUsage().heapUsed` reports
-      +0.0 MiB for a 64 MiB string under Bun. Three gaps against the task as
-      written:
-      1. **It runs under Bun/JavaScriptCore, not Chrome/V8**, and it is a
-         synthetic PDF, not "a real image-heavy DOCSY tree export in the panel
-         and the offscreen worker". The script says so itself (`:18-24`).
-      2. **No numbers are recorded in this PLAN.** The harness prints them; the
-         plan still has no figures to cite, so nothing here can be quoted as
-         measured.
-      3. **Both gating assumptions remain UNVERIFIED**, and the script states
-         that explicitly rather than faking a result (`:485-497`):
-         `fake-indexeddb` has no out-of-line blob store, so a Chrome IDB `Blob`
-         round-trip cannot be measured there; PDF.js is not loaded, and a
-         `blob:` URL supports no HTTP Range requests anyway. Per Architecture
-         point 9 the consequence was taken correctly — the seam stands and **the
-         storage format reverted to `Uint8Array`** — but that is reasoning from
-         the spec, not the measurement the task ordered.
-      Closing this needs a DevTools heap snapshot against a real Chrome
-      profile; it is the same work as the "Memory sanity (T5.6 measurement
-      task)" item in the manual release protocol below.
+      **Measured 2026-07-22 with `bun run bench:memory-chrome`.** The new
+      `apps/extension/tests/pdf/memory/` harness builds a test-only unpacked
+      MV3 extension and runs the production serializer, IndexedDB job store,
+      browser compiler, Typst WASM, validator, byte handle and PDF.js viewer in
+      Chrome 140.0.7339.16 / V8 14.0.365.1. Its deterministic DOCSY-shaped
+      fixture has six chapters, two high-entropy PNGs, an 8.33 MiB source
+      bundle and an 8.30 MiB compiled PDF. It contains no customer content and
+      replaces only the Confluence network fetch; the byte path being measured
+      is the real one. CDP forces GC and records V8 `usedSize`, embedder heap
+      and external backing storage separately.
+
+      Retained deltas from the successful run (MiB; `used / backing`):
+
+      | Context / peak | V8 used | backing storage | Finding |
+      |---|---:|---:|---|
+      | Panel-equivalent extension page: prepare | 0.22 | 8.31 | the two image assets dominate, as expected |
+      | Metadata-only `getAll()` | 0.02 | 0.00 | the split store avoids materializing payloads |
+      | Read compiled result from IDB | 0.02 | 8.30 | one PDF-sized typed-array backing store |
+      | `validatePdfOutput` retained | 0.02 | 0.00 | chunked validation leaves no PDF-sized copy; sampled allocations were 0.03 MiB at the 32 KiB interval |
+      | Download `Blob` over the live result | 0.00 | 0.00 | Chrome does not create another V8-visible PDF-sized backing store |
+      | Open PDF.js preview | 0.64 | 0.86 | panel-side retained increase stays sub-document-sized |
+      | Compiler worker: bundle read | 0.05 | 8.31 | one bundle-sized backing store |
+      | Compiler worker: Typst VFS loaded | 0.07 | 25.06 | VFS/WASM handoff is the first material peak |
+      | Compiler worker: compiled PDF held | 0.34 | 88.36 | the real peak; it is in the isolated compiler worker |
+      | Compiler worker: job completed | 0.31 | 71.75 | releasing the source/output handles drops 16.61 MiB, but the warm Typst runtime remains resident |
+
+      The two gating probes now have concrete answers:
+
+      1. **Chrome IndexedDB `Blob`: confirmed out of V8 backing storage for
+         this access pattern.** Reading a 16 MiB `Uint8Array` added exactly
+         16.00 MiB backing storage; reading the same payload as a `Blob` added
+         0.00 MiB used and 0.00 MiB backing storage.
+      2. **PDF.js chunk-only retention: not confirmed, so the proposed storage
+         migration is dropped.** A direct 64 KiB `Range` request against the
+         real `blob:` URL returned `206` and
+         `Content-Range: bytes 0-65535/8703548`, proving Chrome's Blob protocol
+         can range-read. Chrome does not surface the worker's internal Blob
+         reads as CDP `Network.*` events, but the newly-created PDF.js worker
+         retained 10.83 MiB of backing storage for the 8.30 MiB document
+         (plus 1.73 MiB V8 used). That does not justify claiming PDF.js keeps
+         only chunks resident. Architecture point 9 requires both assumptions,
+         therefore the durable store remains `Uint8Array`-backed while the
+         `PdfBytesHandle` seam is retained.
+
+      The older `packages/pdf/scripts/bytes-memory.bench.ts` remains useful for
+      cheap Bun/JSC diagnostics. It is no longer the evidence for this box; the
+      Chrome harness README records its measurement model and limitations.
 - [x] `apps/extension/entrypoints/sidepanel/PdfSection.tsx`: identity change
       **stops watching**, never aborts (defect (a), Architecture point 3).
       `AbortController` stays bound to the explicit Cancel button only.
@@ -1779,7 +1806,7 @@ independent of it, and the size-metadata split blocks the retention UI.
       Troubleshooting carries "**My export disappeared**" with browser-close and
       the 24-hour retention window as its two causes.)*
 
-### Docs & release (T5.5)
+### Docs (T5.5; release deferred)
 
 Docs are first-class (CLAUDE.md): same PR as the features, per-page template
 (intro → prerequisites → steps → options → examples → troubleshooting →
@@ -1791,8 +1818,8 @@ labelled, ≥ 1 minimal + 1 advanced example per feature.
 exist, the site builds (75 pages), and a new link gate
 (`scripts/docs-links.test.ts`) proves every internal link and heading anchor
 across the corpus resolves. The screenshot clause was explicitly waived as a
-product/documentation decision; only the release itself stays open here (never
-automatic).
+product/documentation decision. A release is no longer a 010 deliverable: more
+extension features will land before the next product release.
 
 - [x] `src/content/docs/confluence/export.md`: extend with scope selection
       (tree/space), label filters, and settings — CLI flags (config-first)
@@ -1920,14 +1947,6 @@ automatic).
       The item is satisfied by the *commits* carrying the right Conventional
       Commit scopes, which they do. There is no `[Unreleased]` section to
       maintain.
-- [ ] Release: `bun scripts/release.ts <type> --dry-run` first, never
-      automatic; post-release verify GitHub release page, Homebrew tap
-      (`brew info atlcli`), CHANGELOG.md; run the manual extension
-      verification protocol (Tests section) against the release build before
-      tagging.
-
-      **Open by design.** CLAUDE.md: "Never release automatically." This is the
-      user's call, not a task to complete here.
 - [x] **Added this pass, not in the original item: a docs link gate.**
       `scripts/docs-links.test.ts` resolves every internal link and every
       heading anchor across `src/content/docs/` against the source markdown
@@ -2375,8 +2394,8 @@ seventeenth, automated full-suite gate remains open.** The first real run on
 After the fixes and rebuilds, the user confirmed the remaining manual protocol
 complete on 2026-07-22, including PDF/DOCX exports, scope/template/migration
 flows, preview/download behavior, macros and background-job resilience. This
-manual acceptance does not invent benchmark data: the separate numeric T5.6
-Chrome/V8 measurement task above remains open until peak figures are recorded.
+manual acceptance did not invent benchmark data; the separate reproducible
+Chrome/V8 harness now provides and records those peak figures above.
 
 - [x] `bun run build`, load `apps/extension/.output/chrome-mv3` unpacked in
       Chrome (≥ 140); open the side panel on a DOCSY page.
@@ -2463,9 +2482,12 @@ Chrome/V8 measurement task above remains open until peak figures are recorded.
       panel and the offscreen document, run an image-heavy tree export and
       record peak heap. Compare against the pre-T5.6 build. If the fixes did
       not move the number, say so in the PLAN rather than claiming a win.
-      *(Manual protocol accepted by the user; no peak figures were supplied or
-      recorded here, so the separate numeric T5.6 measurement deliverable
-      remains open.)*
+      *(The user accepted the manual protocol. The separately reproducible
+      Chrome/V8 run now supplies the missing numeric evidence: Chrome
+      140.0.7339.16 / V8 14.0.365.1, 8.33 MiB source, 8.30 MiB PDF, and an
+      88.36 MiB backing-storage peak in the compiler worker. The full table and
+      storage decision are recorded under "Durable background jobs & byte
+      handling" above.)*
 - [x] Verify the downloaded multi-page PDF: cover, outline with chapters,
       chapter page breaks, working cross-page links.
 - [x] **Delete the DOCSY pages/templates created during the protocol.**
@@ -2474,11 +2496,15 @@ Chrome/V8 measurement task above remains open until peak figures are recorded.
 - [ ] `bun run typecheck` + full `bun test` green before commit/push
       (workflow rules).
 
-      *(Typecheck and the focused extension/real-browser checks are green. The
-      full PR run on commit `42512b4` completed with 4372 pass, 17 skip and
-      three failures, all in spec-012 PDF golden/running-head assertions:
+      *(Typecheck and the focused extension/real-browser checks are green. A
+      fresh unsandboxed full run completed with 4382 pass and 13 skip before a
+      benchmark-only scheduling defect was corrected. That fourth failure was
+      caused by an accidental `await undefined` after Typst VFS population;
+      the no-probe path no longer yields there and its affected accessibility
+      file is green in a focused rerun (8/8). The three remaining failures are
+      the same spec-012 PDF golden/running-head assertions as before:
       default-output byte parity, verified page-index query, and one-chapter
-      byte parity. They are outside the PDF.js/010 diff, but this box cannot be
+      byte parity. They are outside the 010 memory diff, but this box cannot be
       called green while the required suite is red.)*
 
 ### What the first manual run found (2026-07-21)

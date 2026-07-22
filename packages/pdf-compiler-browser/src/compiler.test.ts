@@ -158,6 +158,25 @@ describe("BrowserPdfCompiler package", () => {
     expect(second.pdf).toEqual(first.pdf);
   }, 30_000);
 
+  it("exposes the real post-VFS measurement point before Typst compiles", async () => {
+    const compiler = await createCompiler();
+    let hookRan = false;
+    const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.after-vfs-loaded");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, (() => void) | undefined>;
+    host[hook] = () => {
+      hookRan = true;
+    };
+    let result: Awaited<ReturnType<BrowserPdfCompiler["compile"]>>;
+    try {
+      result = await compiler.compile(bundle("= Measured compile"));
+    } finally {
+      delete host[hook];
+    }
+    expect(hookRan).toBe(true);
+    expect(result.pdf?.byteLength).toBeGreaterThan(0);
+  }, 30_000);
+
   it("contains no host-specific asset or extension imports", async () => {
     const source = await Bun.file(new URL("./compiler.ts", import.meta.url)).text();
     expect(source).not.toMatch(/\?url|chrome|indexedDB|wxt|apps\/extension/);
