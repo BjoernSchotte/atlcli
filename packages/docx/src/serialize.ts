@@ -239,6 +239,7 @@ function styleFromInline(
     subscript: marks.includes("subscript"),
     superscript: marks.includes("superscript"),
     color: node.color ?? defaultTextColor,
+    backgroundColor: node.backgroundColor,
   };
 }
 

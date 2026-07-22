@@ -62,7 +62,15 @@ export type LinkTarget =
  * pre-renders formatting into strings.
  */
 export type InlineNode =
-  | { type: "text"; text: string; marks?: InlineMark[]; color?: string }
+  | {
+      type: "text";
+      text: string;
+      marks?: InlineMark[];
+      /** Canonical foreground color (`#RRGGBB`), when Confluence supplied one. */
+      color?: string;
+      /** Canonical inline highlight/background color (`#RRGGBB`). */
+      backgroundColor?: string;
+    }
   | { type: "link"; target: LinkTarget; content: InlineNode[] }
   /**
    * A user mention. Carries `accountId` always; `displayName` is optional and is
@@ -2134,10 +2142,13 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "br") return [{ type: "lineBreak" }];
 
   if (name === "span") {
-    const colorMatch = (el.attrs.style ?? "").match(/color:\s*([^;]+)/i);
-    const color = colorMatch ? colorMatch[1].trim() : undefined;
+    const style = el.attrs.style ?? "";
+    const color = inlineCssColor(style, "color");
+    const backgroundColor = inlineCssColor(style, "background-color");
     const inner = walkInline(el.children, ctx);
-    return color ? inner.map((n) => (n.type === "text" ? { ...n, color } : n)) : inner;
+    return color || backgroundColor
+      ? applyInlineColors(inner, { color, backgroundColor })
+      : inner;
   }
 
   if (name === "a") {
@@ -2384,6 +2395,34 @@ function addMark(nodes: InlineNode[], mark: InlineMark): InlineNode[] {
     }
     if (node.type === "link") {
       return { ...node, content: addMark(node.content, mark) };
+    }
+    return node;
+  });
+}
+
+function inlineCssColor(style: string, property: "color" | "background-color"): string | undefined {
+  const escaped = property.replace("-", "\\-");
+  const value = style.match(new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, "i"))?.[1];
+  return normalizeExportColor(value);
+}
+
+/** Apply span colors to every nested text run, including link labels. */
+function applyInlineColors(
+  nodes: InlineNode[],
+  colors: { color?: string; backgroundColor?: string }
+): InlineNode[] {
+  return nodes.map((node) => {
+    if (node.type === "text") {
+      return {
+        ...node,
+        ...(colors.color && !node.color ? { color: colors.color } : {}),
+        ...(colors.backgroundColor && !node.backgroundColor
+          ? { backgroundColor: colors.backgroundColor }
+          : {}),
+      };
+    }
+    if (node.type === "link") {
+      return { ...node, content: applyInlineColors(node.content, colors) };
     }
     return node;
   });

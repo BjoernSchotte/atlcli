@@ -146,7 +146,7 @@ export function createAtlcliTypstTemplate(
           let chapters = query(heading.where(level: 1)).filter(h => h.outlined)
           let opening = chapters.filter(h => h.location().page() == here().page())
           let running = chapters.filter(h => h.location().page() < here().page())
-          let chapter-head = if opening.len() > 0 { opening.first().body } else if running.len() > 0 { running.last().body } else { meta.title }
+          let chapter-head = if opening.len() > 0 { atlcli-outline-title.at(opening.first().location()) } else if running.len() > 0 { atlcli-outline-title.at(running.last().location()) } else { meta.title }
           grid(columns: (1fr, auto), chapter-head, meta.space)`
       : String.raw`          grid(columns: (1fr, auto), meta.title, meta.space)`;
 
@@ -169,6 +169,12 @@ export function createAtlcliTypstTemplate(
     numbering(pattern, current),
   )
 }
+
+// Keep the document heading's rich inline presentation separate from the
+// plain navigation label used by outlines and running heads. Typst's default
+// outline entry reuses the heading body verbatim, which would otherwise copy
+// Confluence highlights and foreground colors into the table of contents.
+#let atlcli-outline-title = state("atlcli-outline-title", none)
 
 // Rotated text layer drawn under the content via set page(background: ...),
 // which makes it a page Artifact in the tagged PDF by Typst's own
@@ -347,6 +353,17 @@ ${headerResolution}
   }
   set page(fill: white)
   if outline-config.at("enabled", default: ${outlineDefault}) {
+    show outline.entry: it => context {
+      let title = atlcli-outline-title.at(it.element.location())
+      link(
+        it.element.location(),
+        it.indented(it.prefix(), [
+          #title
+          #box(width: 1fr, it.fill)
+          #it.page()
+        ]),
+      )
+    }
     outline(title: contents-label, depth: outline-config.at("depth", default: ${outlineDepthDefault}))
     pagebreak()
   }

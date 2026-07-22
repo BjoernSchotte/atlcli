@@ -22,14 +22,18 @@ function diagramSeamOver(
 }
 
 describe("serializeInline", () => {
-  it("emits marks and colors as run properties", () => {
+  it("emits marks, foreground colors, and arbitrary background colors as run properties", () => {
     const xml = serializeInline([
       { type: "text", text: "bold", marks: ["bold"] },
       { type: "text", text: "red", color: "#ff0000" },
+      { type: "text", text: "highlighted", backgroundColor: "#BAF3DB" },
       { type: "lineBreak" },
     ]);
     expect(xml).toContain("<w:b/>");
     expect(xml).toContain('<w:color w:val="FF0000"/>');
+    expect(xml).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="BAF3DB"/>'
+    );
     expect(xml).toContain("<w:br/>");
   });
 

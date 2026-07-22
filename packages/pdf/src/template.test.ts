@@ -31,7 +31,14 @@ describe("atlcli Typst template settings rendering", () => {
     const guard = template.match(/if outline-config\.at\("enabled", default: true\) \{[\s\S]*?\n {2}\}/)?.[0];
     expect(guard).toBeDefined();
     expect(guard).toContain('outline(title: contents-label, depth: outline-config.at("depth", default: 3))');
+    expect(guard).toContain("show outline.entry: it => context");
+    expect(guard).toContain("atlcli-outline-title.at(it.element.location())");
+    expect(guard).toContain("#box(width: 1fr, it.fill)");
     expect(guard).toContain("pagebreak()");
+  });
+
+  it("keeps rich headings separate from their plain navigation titles", () => {
+    expect(template).toContain('#let atlcli-outline-title = state("atlcli-outline-title", none)');
   });
 
   it("keeps the intervening white page fill unconditional", () => {

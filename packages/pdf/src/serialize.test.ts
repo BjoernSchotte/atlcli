@@ -49,7 +49,7 @@ describe("PDF preparation and serialization", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain("#heading(level: 1");
+    expect(bundle.main).toContain('#atlcli-outline-title.update("Overview")#heading(level: 1');
     expect(bundle.main).toContain('#status-badge("DONE"');
     expect(bundle.main).toContain('#callout(kind: "info"');
     expect(bundle.main).toContain("#list(");
@@ -200,7 +200,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('#set text(fill: rgb("#FCFBF8"))');
     expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#strong[');
     expect(bundle.main).toContain('#text(fill: rgb("#FCFBF8"))[#text("@');
-    expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#dense-token(available-width, [#text(fill: rgb("#FCFBF8"))');
+    expect(bundle.main).toContain('#atlcli-outline-title.update("Nested heading")#heading(level: 1, outlined: true)[#dense-token(available-width, [#text(fill: rgb("#FCFBF8"))');
     expect(bundle.main).not.toContain('#text(fill: rgb("#172B4D"))[#strong[');
     expect(bundle.notes).toContainEqual(expect.objectContaining({ code: "pdf-table-cell-contrast-low" }));
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
@@ -625,6 +625,39 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).not.toContain("#underline[#link(<chapter>)");
   });
 
+  it("preserves arbitrary inline background colors as breakable Typst highlights", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Green highlight", backgroundColor: "#BAF3DB" },
+            { type: "text", text: " " },
+            {
+              type: "text",
+              text: "Purple highlight",
+              marks: ["bold"],
+              color: "#403294",
+              backgroundColor: "#EED7FC",
+            },
+          ],
+        },
+      ],
+      {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }
+    );
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain(
+      '#highlight(fill: rgb("#BAF3DB"))[#text("Green highlight")]'
+    );
+    expect(bundle.main).toContain(
+      '#highlight(fill: rgb("#EED7FC"))[#text(fill: rgb("#403294"))[#strong[#text("Purple highlight")]]]'
+    );
+  });
+
   it("maps generated main.typ lines to the most specific nested block", async () => {
     const blocks: ExportBlock[] = [
       {
@@ -852,7 +885,7 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
       { metadata }
     );
     // minHeadingLevel recursed into the region → the lone H2 promotes to level 1.
-    expect(bundle.main).toContain("#heading(level: 1, outlined: true)");
+    expect(bundle.main).toContain('#atlcli-outline-title.update("Wide Section")#heading(level: 1, outlined: true)');
     // collectHeadingLabels recursed into the region → the internal link resolves
     // to the heading's <wide-section> label instead of degrading to plain text.
     expect(bundle.main).toContain("<wide-section>");
@@ -900,8 +933,8 @@ describe("PDF serialize — new ExportBlock variants (T0 no-op renderings)", () 
     );
     // Offset 0: the level-1 Root chapter stays level 1, the level-2 Child chapter
     // stays level 2 (a nonzero offset would collapse them).
-    expect(bundle.main).toContain('#heading(level: 1, outlined: true)[#text("Root")]');
-    expect(bundle.main).toContain('#heading(level: 2, outlined: true)[#text("Child")]');
+    expect(bundle.main).toContain('#atlcli-outline-title.update("Root")#heading(level: 1, outlined: true)[#text("Root")]');
+    expect(bundle.main).toContain('#atlcli-outline-title.update("Child")#heading(level: 2, outlined: true)[#text("Child")]');
   });
 
   it("emits chapter labels, a resolved cross-page #link, and a chapter #pagebreak (T1.3 engine golden)", async () => {

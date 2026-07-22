@@ -455,7 +455,12 @@ function denseHostLabel(value: string): string {
 function plainUnmarkedText(nodes: InlineNode[]): string | null {
   if (nodes.length !== 1) return null;
   const [node] = nodes;
-  if (node?.type !== "text" || node.color || (node.marks?.length ?? 0) > 0) return null;
+  if (
+    node?.type !== "text" ||
+    node.color ||
+    node.backgroundColor ||
+    (node.marks?.length ?? 0) > 0
+  ) return null;
   return node.text;
 }
 
@@ -534,6 +539,10 @@ function styledText(value: string, node: TextInlineNode, context: RenderContext)
   }
   const color = effectiveCellTextColor(node.color, context);
   if (color) out = `#text(fill: rgb(${typstString(color)}))[${out}]`;
+  const backgroundColor = node.backgroundColor ? safeColor(node.backgroundColor) : undefined;
+  if (backgroundColor) {
+    out = `#highlight(fill: rgb(${typstString(backgroundColor)}))[${out}]`;
+  }
   return out;
 }
 
@@ -871,7 +880,8 @@ function serializeBlock(
   let summary: string | undefined;
   switch (block.type) {
     case "heading": {
-      summary = inlinePlainText(block.content);
+      const navigationTitle = inlinePlainText(block.content);
+      summary = navigationTitle;
       // Explicit anchor (spec 002) → the heading emits the sanitized, deduped
       // label the collect pass assigned (the same one links resolve to).
       // Anchor-less headings keep the text-slug label + dedup counter, so
@@ -886,7 +896,8 @@ function serializeBlock(
         label = count === 1 ? base : `${base}-${count}`;
       }
       const level = Math.max(1, Math.min(6, block.level - writer.headingOffset));
-      const heading = (content: string): string => `#heading(level: ${level}, outlined: true)[${content}]`;
+      const heading = (content: string): string =>
+        `#atlcli-outline-title.update(${typstString(navigationTitle)})#heading(level: ${level}, outlined: true)[${content}]`;
       if (context.inTable) {
         const availableWidth = "available-width";
         const content = serializeInline(block.content, writer.labels, writer.notes, {
@@ -1238,7 +1249,7 @@ export function serializePdfDocument(
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
-  const main = String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
+  const main = String.raw`#import "atlcli.typ": atlcli-doc, atlcli-outline-title, callout, status-badge, table-par, dense-token, dense-link, dense-status-badge, task-item
 
 #show: atlcli-doc.with(meta: (
   title: ${typstString(meta.title)},

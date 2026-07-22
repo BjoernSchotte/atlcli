@@ -156,6 +156,8 @@ export interface RunStyle {
   superscript?: boolean;
   /** Hex color without leading `#`. */
   color?: string;
+  /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
+  backgroundColor?: string;
 }
 
 function runPropsXml(style: RunStyle): string {
@@ -168,6 +170,11 @@ function runPropsXml(style: RunStyle): string {
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
   if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
+  if (style.backgroundColor) {
+    parts.push(
+      `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(style.backgroundColor)}"/>`
+    );
+  }
   return parts.length ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 }
 

@@ -135,6 +135,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -791,6 +792,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -1447,6 +1449,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;

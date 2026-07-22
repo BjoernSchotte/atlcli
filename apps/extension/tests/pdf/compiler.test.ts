@@ -51,6 +51,22 @@ function anonymousText(length: number, special: Record<number, string> = {}): st
   return characters.join("");
 }
 
+function pdfOperatorColorHex(value: unknown): string | null {
+  const candidate = Array.isArray(value) && value.length === 1 ? value[0] : value;
+  if (typeof candidate === "string") {
+    const match = candidate.match(/^#([0-9a-f]{6})$/i);
+    return match ? `#${match[1]!.toUpperCase()}` : null;
+  }
+  if (!Array.isArray(candidate) && !ArrayBuffer.isView(candidate)) return null;
+  const channels = Array.from(candidate as ArrayLike<number>);
+  if (channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel))) return null;
+  const multiplier = channels.every((channel) => channel >= 0 && channel <= 1) ? 255 : 1;
+  return `#${channels
+    .map((channel) => Math.round(channel * multiplier).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
 const DENSE_TABLE_LINK =
   "https://docs.example.com/platform/integration/deployment-guide?environment=staging&source=pdf-test";
 const CUSTOM_LABEL_LINK = "https://docs.example.com/platform/overview";
@@ -456,6 +472,126 @@ This is a real PDF.
         }
       }
       expect(external).toEqual(expect.arrayContaining([visibleUrl, labelledUrl]));
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("compiles Confluence inline background colors into painted PDF highlights", async () => {
+    const storage =
+      '<p><span style="background-color: #12AB34;">Green highlight</span> ' +
+      '<span style="color: #403294; background-color: #FEDCBA"><strong>Warm highlight</strong></span></p>';
+    const walked = storageToBlocks(storage, { exporter: "pdf" });
+    expect(walked.notes).toEqual([]);
+
+    const prepared = await preparePdfDocument(walked.blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Inline background regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toContain('#highlight(fill: rgb("#12AB34"))');
+    expect(bundle.main).toContain('#highlight(fill: rgb("#FEDCBA"))');
+
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    // Inspect the actual page-paint operators. This catches a serializer that
+    // merely emits accepted Typst syntax but loses the requested fills before
+    // they reach the compiled PDF bytes.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const colors = new Set<string>();
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const operators = await page.getOperatorList();
+        for (let index = 0; index < operators.fnArray.length; index += 1) {
+          if (operators.fnArray[index] !== pdfjs.OPS.setFillRGBColor) continue;
+          const color = pdfOperatorColorHex(operators.argsArray[index]);
+          if (color) colors.add(color);
+        }
+      }
+      expect(colors).toContain("#12AB34");
+      expect(colors).toContain("#FEDCBA");
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("keeps highlighted heading colors out of the PDF table of contents", async () => {
+    const highlight = "#12AB34";
+    const title = "Highlighted navigation title";
+    const blocks: ExportBlock[] = [
+      {
+        type: "heading",
+        level: 1,
+        content: [{ type: "text", text: title, color: "#403294", backgroundColor: highlight }],
+      },
+      { type: "paragraph", content: [{ type: "text", text: "Body text." }] },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Clean contents regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toContain(
+      '#atlcli-outline-title.update("Highlighted navigation title")#heading(level: 1, outlined: true)[#highlight(fill: rgb("#12AB34"))'
+    );
+
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const occurrences: Array<{ pageNumber: number; colors: Set<string> }> = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const textContent = await page.getTextContent();
+        const text = textContent.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ");
+        if (!text.includes(title)) continue;
+
+        const colors = new Set<string>();
+        const operators = await page.getOperatorList();
+        for (let index = 0; index < operators.fnArray.length; index += 1) {
+          if (operators.fnArray[index] !== pdfjs.OPS.setFillRGBColor) continue;
+          const color = pdfOperatorColorHex(operators.argsArray[index]);
+          if (color) colors.add(color);
+        }
+        occurrences.push({ pageNumber, colors });
+      }
+
+      expect(occurrences).toHaveLength(2);
+      const [contentsPage, documentPage] = occurrences;
+      expect(contentsPage!.pageNumber).toBeLessThan(documentPage!.pageNumber);
+      expect(contentsPage!.colors).not.toContain(highlight);
+      expect(contentsPage!.colors).not.toContain("#403294");
+      expect(documentPage!.colors).toContain(highlight);
+      expect(documentPage!.colors).toContain("#403294");
     } finally {
       await task.destroy();
     }

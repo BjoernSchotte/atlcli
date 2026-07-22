@@ -1553,6 +1553,7 @@ export interface RunStyle {
     subscript?: boolean;
     superscript?: boolean;
     color?: string;
+    backgroundColor?: string;
 }
 
 // export: ScanHit

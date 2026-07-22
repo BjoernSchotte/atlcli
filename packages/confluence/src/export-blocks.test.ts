@@ -66,6 +66,41 @@ describe("storageToBlocks — paragraphs & marks", () => {
     expect(content).toEqual([{ type: "text", text: "both", marks: ["italic", "bold"] }]);
   });
 
+  test("preserves inline foreground and background colors without confusing the two properties", () => {
+    const out = blocks(
+      '<p><span style="background-color: rgb(186, 243, 219);">green</span> ' +
+        '<span style="color: #403294; background-color: #EED7FC"><strong>purple</strong></span> ' +
+        '<span style="background-color: #FFF0B3"><a href="https://example.com">linked</a></span> ' +
+        '<span style="background-color: #DEEBFF"><span style="background-color: #FDD0EC">inner</span></span></p>'
+    );
+    const content = (out[0] as Extract<ExportBlock, { type: "paragraph" }>).content;
+    expect(content).toContainEqual({
+      type: "text",
+      text: "green",
+      backgroundColor: "#BAF3DB",
+    });
+    expect(content).toContainEqual({
+      type: "text",
+      text: "purple",
+      marks: ["bold"],
+      color: "#403294",
+      backgroundColor: "#EED7FC",
+    });
+    expect(content).toContainEqual({
+      type: "link",
+      target: { kind: "external", href: "https://example.com" },
+      content: [{ type: "text", text: "linked", backgroundColor: "#FFF0B3" }],
+    });
+    expect(content).toContainEqual({
+      type: "text",
+      text: "inner",
+      backgroundColor: "#FDD0EC",
+    });
+    expect(content).not.toContainEqual(
+      expect.objectContaining({ text: "green", color: expect.anything() })
+    );
+  });
+
   test("line breaks become lineBreak nodes", () => {
     const out = blocks("<p>a<br/>b</p>");
     const content = (out[0] as { content: InlineNode[] }).content;

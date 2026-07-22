@@ -175,6 +175,34 @@ describe("exportDocx — full pipeline", () => {
     assertBalancedXml(doc);
   });
 
+  it("preserves Confluence inline background colors as arbitrary Word run shading", async () => {
+    const highlightedDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<p><span style="background-color: rgb(186, 243, 219);">Green highlight</span> ' +
+        '<span style="color: #403294; background-color: #EED7FC"><strong>Purple highlight</strong></span></p>',
+    };
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details: highlightedDetails,
+      template,
+      exportDate: new Date(2026, 6, 14, 9, 5),
+      deps,
+    });
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="BAF3DB"/>'
+    );
+    expect(doc).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="EED7FC"/>'
+    );
+    expect(doc).toContain('<w:color w:val="403294"/>');
+    expect(doc).toContain("Green highlight");
+    expect(doc).toContain("Purple highlight");
+    assertBalancedXml(doc);
+  });
+
   it("stamps outline levels on injected headings so a TOC \\o collects them on a custom-heading-style template", async () => {
     // Regression (spec 004 E2E): a customer template whose only heading style is
     // a custom name (`Heading1TOC`, no `Heading 1/2/3`) yielded an empty
