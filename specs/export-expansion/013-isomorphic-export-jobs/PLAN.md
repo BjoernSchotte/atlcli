@@ -1544,7 +1544,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     staged-artifact crash, and orphan-cleanup tests pass.
 
 - [ ] **PR-C — PDF job executor** (`T7.2`)
-  - PR: `TBD`
+  - PR: [#81](https://github.com/BjoernSchotte/atlcli/pull/81)
   - Scope: `createPdfExportJobExecutor`, capture sink, ready-to-render manifest,
     Typst render reservation, validation/report staging, cancellation, and render
     restart without Chrome-specific code.
