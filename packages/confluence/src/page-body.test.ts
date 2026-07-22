@@ -5,7 +5,7 @@ import type { ExportPageSource } from "./page-body.js";
 import { exportSourcePolicyFromFlag } from "./page-body.js";
 import { pageBodyToBlocks } from "./page-body-to-blocks.js";
 
-async function pairedFixture(): Promise<{ adf: string; storage: string }> {
+async function pairedFeatureZooFixture(): Promise<{ adf: string; storage: string }> {
   const root = new URL("../test-fixtures/adf-pairs/", import.meta.url);
   const [adf, storage] = await Promise.all([
     Bun.file(new URL("basic.adf.json", root)).text(),
@@ -15,8 +15,8 @@ async function pairedFixture(): Promise<{ adf: string; storage: string }> {
 }
 
 describe("pageBodyToBlocks", () => {
-  it("dispatches paired ADF and Storage fixtures to structurally identical blocks", async () => {
-    const fixture = await pairedFixture();
+  it("dispatches the paired semantic feature zoo to structurally identical blocks", async () => {
+    const fixture = await pairedFeatureZooFixture();
     const pageContext = { id: "page-7", title: "Synthetic pair", url: "https://example.invalid/page" };
     const adf = pageBodyToBlocks({
       primary: { representation: "atlas_doc_format", value: fixture.adf },
@@ -31,6 +31,22 @@ describe("pageBodyToBlocks", () => {
     expect(adf.representation).toBe("atlas_doc_format");
     expect(storage.representation).toBe("storage");
     expect(adf.blocks).toEqual(storage.blocks);
+    expect(adf.blocks.map((block) => block.type)).toEqual([
+      "heading",
+      "paragraph",
+      "blockquote",
+      "list",
+      "list",
+      "list",
+      "table",
+      "callout",
+      "paragraph",
+      "divider",
+    ]);
+    expect(JSON.stringify(adf.blocks)).toContain('"checked":true');
+    expect(JSON.stringify(adf.blocks)).toContain('"checked":false');
+    expect(JSON.stringify(adf.blocks)).toContain('"backgroundColor":"#AABBCC"');
+    expect(JSON.stringify(adf.blocks)).toContain('"type":"status"');
 
     const intentionalDifferences = [{
       gap: "orderedList.order",
@@ -49,7 +65,7 @@ describe("pageBodyToBlocks", () => {
   });
 
   it("preserves direct Storage output and adds no fallback note without an explicit reason", async () => {
-    const { storage } = await pairedFixture();
+    const { storage } = await pairedFeatureZooFixture();
     const direct = storageToBlocks(storage, { exporter: "word" });
     const dispatched = pageBodyToBlocks({ primary: { representation: "storage", value: storage } }, { exporter: "word" });
     expect(dispatched).toEqual({ ...direct, representation: "storage" });

@@ -736,7 +736,7 @@ Exit:
 Tasks:
 
 - [x] Add one browser conformance case that begins with real ADF, not hand-built blocks.
-- [ ] Run paired ADF/Storage semantic differential tests for the feature zoo.
+- [x] Run paired ADF/Storage semantic differential tests for the feature zoo.
 - [ ] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
 - [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
 - [ ] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
@@ -754,6 +754,8 @@ Rollout evidence recorded on 2026-07-22: `ATLCLI_EXPORT_SOURCE` is parsed once i
 The unrestricted full regression suite then passed with 4,774 tests, 13 intentional skips and zero failures across 306 files. This includes the dedicated Data Center no-v2-read contract and the complete existing Storage walker, renderer, scope, macro, include, asset and report corpus.
 
 Direct-coverage evidence recorded on 2026-07-22: an exhaustive compile-time fixture map now has one real ADF document per pinned node and mark row. Child-only nodes are exercised in their smallest meaningful parent context; every case passes through the production validator/decoder, must produce visible blocks, and every `visible-fallback` mapping must emit a diagnostic with page/path provenance. The guard covers exactly 43 nodes and 17 marks, so adding or removing an upstream classification fails until the direct fixture set changes deliberately. All 61 direct-fixture assertions passed.
+
+Differential evidence recorded on 2026-07-22: the paired ADF/Storage semantic feature zoo covers headings, inline bold/code/line-break/emoji semantics, blockquotes, bullet and ordered lists, task state, table spans/background, panels, status and rules. Both source adapters produce byte-for-byte equal neutral block trees with the expected ten-block shape. The only note difference is explicitly allowlisted to ADF's observable non-default ordered-list start, with page and block-path provenance.
 
 Default-enable gates:
 
