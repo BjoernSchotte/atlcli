@@ -1,4 +1,8 @@
-import type { ExportJobRequestV1, PdfExportJobRequestV1 } from "./request.js";
+import type {
+  DocxExportJobRequestV1,
+  ExportJobRequestV1,
+  PdfExportJobRequestV1,
+} from "./request.js";
 import type { ExportJobSnapshotV1 } from "./snapshot.js";
 import type { ExportJobEventV1 } from "./event.js";
 import type { ExportReportSummaryV1 } from "./statistics.js";
@@ -350,6 +354,15 @@ export function parsePdfExportJobRequestV1(value: unknown): PdfExportJobRequestV
   validatePdfExportJobRequestV1(request);
 
   return value as PdfExportJobRequestV1;
+}
+
+/** Validate and narrow a TypeScript-DOCX request at a format-specific persistence boundary. */
+export function parseDocxExportJobRequestV1(value: unknown): DocxExportJobRequestV1 {
+  const request = record(value, "request");
+  validateRequestBaseV1(request);
+  validateDocxExportJobRequestV1(request);
+
+  return value as DocxExportJobRequestV1;
 }
 
 /** Validate and narrow a value read at a request persistence boundary. */

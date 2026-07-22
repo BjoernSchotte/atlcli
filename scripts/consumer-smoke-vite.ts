@@ -97,7 +97,10 @@ import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { storageToBlocks } from "@atlcli/confluence";
-import { createPdfExportJobExecutor } from "@atlcli/export-wiring/jobs";
+import {
+  createPdfExportJobExecutor,
+  createTypescriptDocxExportJobExecutor,
+} from "@atlcli/export-wiring/jobs";
 
 const fontUrls: Record<string, string> = {
   "SourceSans3-Regular.ttf": sansRegularUrl,
@@ -118,7 +121,9 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   wasmUrl,
   fontUrls,
   expectedFonts: PDF_RUNTIME_ASSETS.fonts.map((font) => font.fileName),
-  jobsEntrypointLoaded: typeof createPdfExportJobExecutor === "function",
+  jobsEntrypointLoaded:
+    typeof createPdfExportJobExecutor === "function" &&
+    typeof createTypescriptDocxExportJobExecutor === "function",
   async compile(loadBytes: LoadBytes) {
     const wasm = await loadBytes(wasmUrl);
     const fonts = await Promise.all(
@@ -251,8 +256,15 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     throw new Error(`expected 10 hashed .ttf assets, found ${ttfAssets.length}: ${ttfAssets.join(", ")}`);
   }
 
-  const chunkName = assets.find((a) => a.endsWith(".js"));
-  if (!chunkName) throw new Error(`no built js chunk in ${assetsDir}`);
+  const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
+  const chunkName = javaScriptAssets.find((asset) =>
+    readFileSync(join(assetsDir, asset), "utf8").includes("__ATLCLI_VITE_SMOKE"),
+  );
+  if (!chunkName) {
+    throw new Error(
+      `no built entry chunk installed __ATLCLI_VITE_SMOKE; inspected: ${javaScriptAssets.join(", ")}`,
+    );
+  }
   const chunkPath = join(assetsDir, chunkName);
   const chunkSource = readFileSync(chunkPath, "utf8");
   // Nothing may fall through to a source path or workspace symlink: the
@@ -287,7 +299,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   };
   if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
   if (!hook.jobsEntrypointLoaded) {
-    throw new Error("packed @atlcli/export-wiring/jobs did not expose createPdfExportJobExecutor");
+    throw new Error(
+      "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
+    );
   }
 
   const resolveAsset = (url: string): string => {

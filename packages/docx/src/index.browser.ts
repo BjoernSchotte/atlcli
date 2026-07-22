@@ -28,8 +28,21 @@ export type {
 } from "./env.js";
 
 // --- Lower-level entry + report/input model (export.ts) ---
-export { exportDocx, DocxRenderError } from "./export.js";
-export type { ExportInput, ExportReport, ExportResult, ExportTimings } from "./export.js";
+export {
+  exportDocx,
+  prepareDocxExport,
+  renderPreparedDocxExport,
+  DocxRenderError,
+} from "./export.js";
+export type {
+  ExportInput,
+  ExportReport,
+  ExportResult,
+  ExportTimings,
+  PreparedDocxExportV1,
+  PreparedDocxRenderStateV1,
+  RenderPreparedDocxExportInput,
+} from "./export.js";
 
 // --- Types transitively required by the seams above (closure-enforced) but
 // whose implementation modules stay behind ./scan and ./internal. ---

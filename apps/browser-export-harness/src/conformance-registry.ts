@@ -9,6 +9,7 @@ import { CONFORMANCE_MANIFEST, type ConformanceCaseMeta } from "./conformance-ma
 import { runBlocksCase } from "./blocks-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
+import { runDocxJobParityCase } from "./docx-job-parity-case.js";
 import { runDocxQualityCase } from "./docx-quality-case.js";
 import { runM1Case } from "./m1-case.js";
 import { runMacroCase } from "./macro-case.js";
@@ -26,6 +27,7 @@ export interface ConformanceCase extends ConformanceCaseMeta {
 const RUNNERS: Record<string, () => Promise<unknown>> = {
   "pdf-abort": runPdfAbortCase,
   docx: runDocxCase,
+  "docx-job-parity": runDocxJobParityCase,
   pdf: runPdfCase,
   "pdf-job-parity": runPdfJobParityCase,
   "pdf-settings": runPdfSettingsCase,

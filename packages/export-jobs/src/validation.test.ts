@@ -8,6 +8,7 @@ import type {
 import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
 import {
   ExportJobValidationError,
+  parseDocxExportJobRequestV1,
   parseExportJobEventV1,
   parsePdfExportJobRequestV1,
   parseExportJobRequestV1,
@@ -214,6 +215,33 @@ describe("parsePdfExportJobRequestV1", () => {
     ["inline logo bytes", (request: any) => (request.settings.logo.bytes = [1, 2, 3])],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
+      ExportJobValidationError,
+    );
+  });
+});
+
+describe("parseDocxExportJobRequestV1", () => {
+  it("accepts and narrows the closed TypeScript-DOCX request contract", () => {
+    const request = docxRequest();
+
+    expect(parseDocxExportJobRequestV1(request)).toBe(request);
+  });
+
+  it("fails closed when passed a valid request for another format", () => {
+    expect(() => parseDocxExportJobRequestV1(pdfRequest())).toThrow(
+      "request.format: must be docx",
+    );
+  });
+
+  it.each([
+    ["unknown top-level field", (request: any) => (request.accessToken = "secret")],
+    ["mismatched renderer", (request: any) => (request.renderer = "pdf-typst")],
+    ["invalid template hash", (request: any) => (request.template.sha256 = "bad")],
+    ["inline template bytes", (request: any) => (request.template.bytes = [1, 2, 3])],
+    ["invalid update-fields mode", (request: any) => (request.options.updateFields = "later")],
+    ["unknown option", (request: any) => (request.options.pythonFallback = true)],
+  ])("rejects %s", (_name, mutate) => {
+    expect(() => parseDocxExportJobRequestV1(changed(docxRequest(), mutate))).toThrow(
       ExportJobValidationError,
     );
   });

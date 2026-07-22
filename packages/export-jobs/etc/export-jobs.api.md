@@ -1048,6 +1048,9 @@ export interface LabelFilter {
 // export: orderExportQueue
 export declare function orderExportQueue<T extends QueueJobV1>(jobs: readonly T[]): T[];
 
+// export: parseDocxExportJobRequestV1
+export declare function parseDocxExportJobRequestV1(value: unknown): DocxExportJobRequestV1;
+
 // export: parseExportJobEventV1
 export declare function parseExportJobEventV1(value: unknown): ExportJobEventV1;
 
