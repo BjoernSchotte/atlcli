@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "content": [{ "type": "text", "text": "Paired fixture" }]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Bold", "marks": [{ "type": "strong" }] },
+        { "type": "text", "text": " and " },
+        { "type": "text", "text": "code", "marks": [{ "type": "code" }] },
+        { "type": "hardBreak" },
+        { "type": "emoji", "attrs": { "shortName": ":warning:", "text": "⚠️" } }
+      ]
+    },
+    {
+      "type": "blockquote",
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Quoted" }] }]
+    },
+    {
+      "type": "bulletList",
+      "content": [{
+        "type": "listItem",
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Bullet" }] }]
+      }]
+    },
+    {
+      "type": "orderedList",
+      "attrs": { "order": 3 },
+      "content": [{
+        "type": "listItem",
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Number" }] }]
+      }]
+    },
+    {
+      "type": "taskList",
+      "content": [
+        {
+          "type": "taskItem",
+          "attrs": { "state": "DONE" },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Done" }] }]
+        },
+        {
+          "type": "taskItem",
+          "attrs": { "state": "TODO" },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Open" }] }]
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "content": [{
+        "type": "tableRow",
+        "content": [
+          {
+            "type": "tableHeader",
+            "attrs": { "colspan": 1, "rowspan": 1, "background": "#AABBCC" },
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Header" }] }]
+          },
+          {
+            "type": "tableCell",
+            "attrs": { "colspan": 2, "rowspan": 1 },
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Cell" }] }]
+          }
+        ]
+      }]
+    },
+    {
+      "type": "panel",
+      "attrs": { "panelType": "info" },
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Information" }] }]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "state: " },
+        { "type": "status", "attrs": { "text": "Done", "color": "green" } }
+      ]
+    },
+    { "type": "rule" }
+  ]
+}

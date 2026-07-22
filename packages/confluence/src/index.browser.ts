@@ -18,6 +18,7 @@
 
 export * from "./client.js";
 export * from "./page-body.js";
+export * from "./page-body-to-blocks.js";
 export * from "./adf-types.js";
 export * from "./adf-coverage.js";
 export * from "./adf-validate.js";

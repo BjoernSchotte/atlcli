@@ -1,0 +1,13 @@
+<h2>Paired fixture</h2>
+<p><strong>Bold</strong> and <code>code</code><br/><ac:emoticon ac:name="warning" ac:emoji-fallback="⚠️"/></p>
+<blockquote><p>Quoted</p></blockquote>
+<ul><li><p>Bullet</p></li></ul>
+<ol start="3"><li><p>Number</p></li></ol>
+<ac:task-list>
+  <ac:task><ac:task-status>complete</ac:task-status><ac:task-body>Done</ac:task-body></ac:task>
+  <ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>Open</ac:task-body></ac:task>
+</ac:task-list>
+<table><tbody><tr><th bgcolor="#abc">Header</th><td colspan="2">Cell</td></tr></tbody></table>
+<ac:structured-macro ac:name="info"><ac:rich-text-body><p>Information</p></ac:rich-text-body></ac:structured-macro>
+<p>state: <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">Done</ac:parameter></ac:structured-macro></p>
+<hr/>

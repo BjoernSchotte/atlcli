@@ -2,8 +2,14 @@ import type { ConfluencePageDetails } from "./client.js";
 import type {
   ExportBlock,
   ExportNote,
+  StorageParseBudget,
   StorageToBlocksOptions,
 } from "./export-blocks.js";
+import type {
+  AdfMediaReference,
+  AdfResolvedMediaAttachment,
+} from "./adf-to-blocks.js";
+import type { AdfParseBudget } from "./adf-types.js";
 
 /** A page body whose representation has been selected by the source adapter. */
 export type PageBody =
@@ -57,8 +63,15 @@ export interface BlocksResult {
   degraded?: boolean;
 }
 
-/** Options accepted by the representation dispatcher introduced in WP4. */
-export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+/** Options accepted by the representation-neutral decoder dispatcher. */
+export interface PageBodyToBlocksOptions
+  extends Omit<StorageToBlocksOptions, "parseBudget"> {
+  storageParseBudget?: StorageParseBudget;
+  adfParseBudget?: Partial<AdfParseBudget>;
+  resolveMediaAttachment?: (
+    reference: AdfMediaReference,
+  ) => AdfResolvedMediaAttachment | undefined;
+}
 
 /** Stable, body-free failure classification for export-specific page reads. */
 export type ExportPageReadErrorKind =

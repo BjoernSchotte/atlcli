@@ -880,6 +880,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -1463,8 +1464,15 @@ export type PageBody = {
     value: string;
 };
 
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
 // export: PageBodyToBlocksOptions
-export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+}
 
 // export: PageChangeInfo
 export interface PageChangeInfo {
@@ -2823,6 +2831,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -3406,8 +3415,15 @@ export type PageBody = {
     value: string;
 };
 
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
 // export: PageBodyToBlocksOptions
-export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+}
 
 // export: PageChangeInfo
 export interface PageChangeInfo {
@@ -4766,6 +4782,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -5349,8 +5366,15 @@ export type PageBody = {
     value: string;
 };
 
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
 // export: PageBodyToBlocksOptions
-export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+}
 
 // export: PageChangeInfo
 export interface PageChangeInfo {
@@ -6626,6 +6650,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -9220,6 +9245,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -9803,8 +9829,15 @@ export type PageBody = {
     value: string;
 };
 
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
 // export: PageBodyToBlocksOptions
-export type PageBodyToBlocksOptions = StorageToBlocksOptions;
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+}
 
 // export: PageChangeInfo
 export interface PageChangeInfo {

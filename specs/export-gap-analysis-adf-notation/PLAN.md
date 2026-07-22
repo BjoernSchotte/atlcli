@@ -546,6 +546,7 @@ Evidence recorded on 2026-07-22: `adfToBlocks()` decodes the pinned schema-valid
 Production files:
 
 - `packages/confluence/src/page-body.ts`
+- new `packages/confluence/src/page-body-to-blocks.ts`
 - `packages/confluence/src/index.browser.ts`
 
 Tests/fixtures:
@@ -555,16 +556,18 @@ Tests/fixtures:
 
 Tasks:
 
-- [ ] Implement exhaustive `pageBodyToBlocks()` dispatch.
-- [ ] Pass representation-specific budgets and common walker options correctly.
-- [ ] Preserve the existing Storage output byte-for-byte/structurally for unchanged fixtures.
-- [ ] Attach fallback notes only when the source was explicitly constructed as Storage-primary due to capability/deployment.
-- [ ] Compare paired ADF and Storage projections at `ExportBlock`/note/provenance level.
-- [ ] Keep an allowlist of intentional representation differences linked to exact gap-analysis rows.
+- [x] Implement exhaustive `pageBodyToBlocks()` dispatch.
+- [x] Pass representation-specific budgets and common walker options correctly.
+- [x] Preserve the existing Storage output byte-for-byte/structurally for unchanged fixtures.
+- [x] Attach fallback notes only when the source was explicitly constructed as Storage-primary due to capability/deployment.
+- [x] Compare paired ADF and Storage projections at `ExportBlock`/note/provenance level.
+- [x] Keep an allowlist of intentional representation differences linked to exact gap-analysis rows.
 
 Exit:
 
 - Hosts no longer choose a parser directly; they provide an `ExportPageSource` and receive one neutral result contract.
+
+Evidence recorded on 2026-07-22: the dispatcher has exhaustive ADF/Storage selection, independent parse budgets, common exporter/page options, impossible-state rejection, and no error-triggered ADF-to-Storage retry. A committed synthetic ADF/Storage pair produces identical block trees; the sole note difference is allowlisted to the exact `orderedList.order` gap and retains page/path provenance. Direct Storage output remains structurally unchanged, and fallback notes appear only for explicit deployment/capability reasons. The complete repository suite passed with 4,747 tests, 13 intentional skips, and zero failures; focused decoder/client/dispatcher, note-registry, API/closure, full typecheck, browser-isomorphism, and full-build gates passed as well. An anonymized live create/read/dispatch/cleanup probe selected ADF as primary, produced two neutral blocks without a fallback note, and removed its sole synthetic page.
 
 ### WP5 — Representation-neutral tree/source orchestration
 

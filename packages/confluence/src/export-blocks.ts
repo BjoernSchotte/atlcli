@@ -291,6 +291,7 @@ export const EXPORT_NOTE_CODES = [
   "adf-mark-degraded",
   "adf-attribute-dropped",
   "adf-media-unresolved",
+  "adf-storage-fallback",
   // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
   // for the Jira table macro). Every degradation is typed and visible: the
   // pre-change behaviour was a raw percent-encoded URL in the body with an
