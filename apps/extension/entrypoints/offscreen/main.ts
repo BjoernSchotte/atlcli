@@ -9,6 +9,12 @@
  */
 import { handleOffscreenMessage } from "../../utils/listeners.js";
 import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
+import { createExtensionQueueFoundation } from "../../utils/export-jobs/recovery.js";
+
+const exportQueue = createExtensionQueueFoundation();
+void exportQueue.startup().catch((error) =>
+  console.error("Common export queue recovery failed", error)
+);
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
@@ -32,5 +38,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },
     runPdfCancel: (jobId) => pdfHost.cancel(jobId),
+    runJobsWake: (jobIds) => exportQueue.wake(jobIds),
   })
 );

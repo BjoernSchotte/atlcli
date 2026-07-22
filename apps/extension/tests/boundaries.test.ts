@@ -51,6 +51,7 @@ const utilsFiles = sourceFiles(UTILS);
 const GUARDED_BARRELS: readonly string[] = [
   "packages/export-wiring/src/index.ts",
   "packages/export-macros/src/index.ts",
+  "packages/export-jobs/src/index.ts",
 ];
 
 /**
@@ -106,6 +107,8 @@ describe("extension host boundaries — no re-implementation of packages/* surfa
       "jiraIssueRef",
       "defaultRegistry",
       "resolveMacroBlocks",
+      "claimExportJob",
+      "ExportJobStore",
     ]) {
       expect([...guarded]).toContain(anchor);
     }
@@ -193,7 +196,7 @@ describe("extension host boundaries — no re-implementation of packages/* surfa
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
-    for (const dep of ["@atlcli/export-wiring", "@atlcli/export-macros", "@atlcli/jira"]) {
+    for (const dep of ["@atlcli/export-wiring", "@atlcli/export-macros", "@atlcli/export-jobs", "@atlcli/jira"]) {
       expect(manifest.dependencies[dep], `${dep} is imported but not declared`).toBe("workspace:*");
     }
   });

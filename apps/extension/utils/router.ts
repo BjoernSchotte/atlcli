@@ -31,6 +31,8 @@ export interface RouterDeps {
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Cancels a queued or active PDF job. */
   runPdfCancel: (jobId: string) => Promise<boolean>;
+  /** Wakes the common offscreen queue using opaque job ids only. */
+  runJobsWake?: (jobIds?: string[]) => Promise<string | undefined>;
 }
 
 /**
@@ -79,6 +81,20 @@ export async function routeMessage(
     case "pdf:cancel": {
       const cancelled = await deps.runPdfCancel(msg.jobId).catch(() => false);
       return { kind: "pdf:cancel-result", jobId: msg.jobId, cancelled };
+    }
+    case "jobs:wake": {
+      if (!deps.runJobsWake) {
+        return { kind: "jobs:wake-result", error: "Common export queue is not configured." };
+      }
+      try {
+        const claimedJobId = await deps.runJobsWake(msg.jobIds);
+        return { kind: "jobs:wake-result", ...(claimedJobId ? { claimedJobId } : {}) };
+      } catch (error) {
+        return {
+          kind: "jobs:wake-result",
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
     default: {
       // Exhaustiveness: adding a request kind without handling it fails typecheck.

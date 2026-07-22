@@ -9,6 +9,7 @@ const okDeps: RouterDeps = {
   getCurrentEntity: async () => noEntity,
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  runJobsWake: async (jobIds) => jobIds?.[0],
 };
 
 describe("routeMessage (pure router)", () => {
@@ -119,5 +120,20 @@ describe("routeMessage (pure router)", () => {
     expect(response).toEqual({
       kind: "pdf:compile-result", jobId, ok: false, error: "compiler offline",
     });
+  });
+
+  it("wakes the common queue with opaque ids only", async () => {
+    const jobId = "job-1";
+    expect(await routeMessage({ kind: "jobs:wake", jobIds: [jobId] }, okDeps)).toEqual({
+      kind: "jobs:wake-result",
+      claimedJobId: jobId,
+    });
+  });
+
+  it("returns a distinguishable common queue wake failure", async () => {
+    expect(await routeMessage(
+      { kind: "jobs:wake", jobIds: ["job-1"] },
+      { ...okDeps, runJobsWake: async () => { throw new Error("catalog blocked"); } },
+    )).toEqual({ kind: "jobs:wake-result", error: "catalog blocked" });
   });
 });

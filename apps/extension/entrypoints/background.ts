@@ -211,6 +211,19 @@ async function runPdfCancel(jobId: string): Promise<boolean> {
   );
 }
 
+async function runJobsWake(jobIds?: string[]): Promise<string | undefined> {
+  await ensureOffscreen();
+  const response = (await chrome.runtime.sendMessage({
+    kind: "offscreen:jobs-wake",
+    ...(jobIds ? { jobIds } : {}),
+  })) as OffscreenResponse | undefined;
+  if (!response || response.kind !== "offscreen:jobs-wake-result") {
+    throw new Error("Offscreen export queue returned no result.");
+  }
+  if (response.error !== undefined) throw new Error(response.error);
+  return response.claimedJobId;
+}
+
 /**
  * Push an `entity-changed` message to the panel (fire-and-forget). The panel may
  * be closed — `sendMessage` then rejects with "no receiving end"; swallow it.
@@ -298,6 +311,7 @@ export default defineBackground({
       getCurrentEntity,
       runPdfCompile,
       runPdfCancel,
+      runJobsWake,
     });
     if (handled) {
       // A panel-facing request means a panel is open and looking: the badge has

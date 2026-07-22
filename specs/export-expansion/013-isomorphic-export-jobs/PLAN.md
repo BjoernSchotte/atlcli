@@ -1440,14 +1440,17 @@ double-commit it.
 
 ### Phase 3 / T7.4 — Extension central catalog and legacy bridge
 
-- [ ] Add one cross-format job catalog and opaque request/checkpoint/artifact refs.
-- [ ] Decide chunked-IDB vs optional OPFS after the packed spike; preserve a
-      chunked-IDB fallback.
-- [ ] Dual-read legacy PDF rows in Activity for one retention/release window.
-- [ ] Do not copy live large legacy blobs into the new store.
-- [ ] Legacy in-flight PDF rows may finish under the legacy runtime; new
-      submissions use the new catalog.
-- [ ] A legacy compile subrecord used during transition is private/hidden and
+- [x] Add one cross-format job catalog and opaque request/checkpoint/artifact refs.
+- [x] Ship chunked IndexedDB as the mandatory portable backend. The PR-F packed
+      spike found no evidence that OPFS is required; keep OPFS deferred as an
+      optional optimization behind the same ports, never as a compatibility or
+      correctness dependency.
+- [x] Dual-read legacy PDF rows in Activity for one retention/release window.
+- [x] Do not copy live large legacy blobs into the new store.
+- [x] Legacy in-flight PDF rows may finish under the legacy runtime.
+- [ ] Route new PDF and DOCX submissions to the common catalog in PR-G and PR-H
+      respectively; PR-F deliberately introduces no half-migrated submission path.
+- [x] A legacy compile subrecord used during transition is private/hidden and
       never produces a second Activity row.
 
 Exit: Activity can project legacy PDF plus new common rows without schema loss.
@@ -1495,10 +1498,16 @@ Exit: PDF and DOCX expose the same lifecycle actions and Activity semantics.
 
 There is no external issue tracker for this work. This section is the execution
 tracker. Phase checkboxes above track capabilities; the ledger below tracks the
-reviewable PRs that deliver them. The owning PR fills in its URL and marks itself
-`[x]` only after every listed acceptance gate is green and review has made it
-mergeable. The checked state becomes authoritative when that PR lands on the
-target branch.
+reviewable delivery slices that implement them. PR-A through PR-D landed as
+separate prerequisite PRs. PR-E through PR-I are accumulated as reviewable,
+individually gated slices in the single large Draft PR
+[#85](https://github.com/BjoernSchotte/atlcli/pull/85); that Draft remains open
+and unmerged until the complete non-cleanup plan is implemented and verified.
+Each slice gets its own logical commits, recorded acceptance evidence, and
+checkbox. A slice is marked `[x]` only after every listed gate is green, even
+though the shared Draft PR has not landed yet. PR-J remains a separate deferred
+cleanup because its retention-plus-one-release precondition cannot truthfully be
+satisfied before PR #85 ships.
 
 ```mermaid
 flowchart LR
@@ -1518,10 +1527,11 @@ flowchart LR
   I --> J["PR-J legacy cleanup"]
 ```
 
-Independent arrows may be implemented in parallel, but each PR owns a disjoint
-file set or coordinates an explicitly named hot file. Combining slices is allowed
-only when the result remains reviewable and satisfies every combined gate.
-Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
+Independent arrows may be implemented in parallel, but each slice owns a
+disjoint file set or coordinates an explicitly named hot file. Combining slices
+inside PR #85 does not combine their acceptance gates: each slice remains
+separately reviewable and must satisfy its own gate. Splitting a slice into
+multiple commits is allowed, but its final commit must retain the slice's gate.
 
 #### Merge ledger
 
@@ -1571,18 +1581,29 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     double-render/commit; cross-process Cancel aborts the owner; successful Rerun
     creates a linked job and obeys output-conflict policy; no detach claim.
 
-- [ ] **PR-F — Extension catalog, storage, and recovery foundation** (`T7.4`)
-  - PR: `TBD`
-  - Scope: common IndexedDB catalog, selected chunked-IDB/OPFS implementation and
-    fallback, atomic claims/fencing, wakeup/recovery, legacy PDF dual-read, store
+- [x] **PR-F — Extension catalog, storage, and recovery foundation** (`T7.4`)
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
+  - Scope: common IndexedDB catalog, mandatory chunked-IDB storage (OPFS remains
+    a deferred optional optimization), atomic claims/fencing, wakeup/recovery, legacy PDF dual-read, store
     upgrades, quota behavior, and private legacy compile bridge.
   - Acceptance: packed extension proves duplicate wakeups yield one claim; worker
-    and offscreen loss reconstruct runnable jobs; `onblocked`, quota, and aborted
-    transactions leave no half record; runtime messages carry refs, never bytes;
+    and offscreen loss reconstruct runnable jobs; `onblocked`, a real browser
+    transaction abort, and the enforced browser-storage quota leave no half
+    record; native quota override is recorded as a capability probe where Chrome
+    does not apply it to extension origins; runtime messages carry refs, never bytes;
     legacy rows produce no duplicate Activity entry.
+  - Evidence (2026-07-22): `bun run test` passed outside the filesystem/network
+    sandbox; the focused extension suite passed 91/91; `bun run typecheck`,
+    `bun run check:browser`, and `bun run check:extension-output` passed; the
+    built MV3 Packed-Chromium gate passed 9/9, including independent selective
+    setup, real service-worker/offscreen target loss, blocked-upgrade timeout,
+    native transaction abort, productive Activity dual-read, and adapter quota.
+    Pinned Chromium accepted the CDP native-quota override for the extension
+    origin, so that result remains an annotated capability probe rather than a
+    false native-quota claim.
 
 - [ ] **PR-G — Full-pipeline PDF extension background migration** (`T7.5`)
-  - PR: `TBD`
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: persist request before discovery; move PDF fetch/compose/resolve/assets/
     prepare/render/validate/finalize outside the panel; split compiler transport
     from the legacy visible job wrapper; background artifact collection.
@@ -1591,7 +1612,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     truth; recovered output/report matches uninterrupted PDF execution.
 
 - [ ] **PR-H — DOCX extension background parity** (`T7.6`)
-  - PR: `TBD`
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: packed offscreen/worker execution, session fetch, dynamic chunks,
     PizZip/docxtemplater, canvas/SVG raster path, global heavy slot, retained
     artifact/report, and removal of panel-owned cancellation.
@@ -1601,7 +1622,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     uninterrupted TypeScript DOCX execution.
 
 - [ ] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
-  - PR: `TBD`
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: cross-format list/detail/filters/monitor, statistics/protocol, Retry,
     Run again, Resume, Acknowledge, Dismiss, Download/Reveal, retention/clear,
     active badge, completion/failure pulse, CLI/extension/operations/

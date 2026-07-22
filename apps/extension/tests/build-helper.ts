@@ -35,6 +35,8 @@ export const BUILD_INPUTS = [
   "../../packages/diagram/src",
   "../../packages/docx/src",
   "../../packages/docx/package.json",
+  "../../packages/export-jobs/src",
+  "../../packages/export-jobs/package.json",
   "../../packages/pdf/src",
   "../../packages/pdf-compiler-browser/src",
   "../../packages/pdf/scripts/ensure-fonts.ts",

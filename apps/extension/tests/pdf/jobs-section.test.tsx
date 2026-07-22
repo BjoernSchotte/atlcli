@@ -16,6 +16,7 @@ import React from "react";
 import { Window } from "happy-dom";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
+import type { DocxExportJobRequestV1 } from "@atlcli/export-jobs";
 import {
   cancelPdfJob,
   claimPdfJob,
@@ -28,7 +29,9 @@ import {
   putPdfJob,
   updatePdfJobProgress,
 } from "../../utils/pdf/job-store.js";
-import { createDurableJobsStore, type DurableJobsPort } from "../../utils/jobs/store.js";
+import { createDurableJobsStore, createExtensionDurableJobsStore, type DurableJobsPort } from "../../utils/jobs/store.js";
+import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
+import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { DurableJobsProvider } from "../../utils/jobs/context.js";
 import { JobsScreen, jobsScreenDefinition, siteOriginOf } from "../../components/screens/JobsScreen.js";
 import type { ScreenProps } from "../../utils/screens/registry.js";
@@ -58,6 +61,7 @@ const SITE = "https://example.atlassian.net";
 const OTHER_SITE = "https://staging.atlassian.net";
 const JOB_HERE = "123e4567-e89b-42d3-a456-426614174000";
 const JOB_ELSEWHERE = "223e4567-e89b-42d3-a456-426614174000";
+const COMMON_JOB = "common-docx-1";
 
 let saved: { key: string; descriptor: PropertyDescriptor | undefined }[] = [];
 let win: Window | null = null;
@@ -190,6 +194,42 @@ function port(): DurableJobsPort {
   });
 }
 
+function commonRequest(): DocxExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id: COMMON_JOB,
+    idempotencyKey: `idem:${COMMON_JOB}`,
+    format: "docx",
+    renderer: "docx-typescript",
+    source: {
+      kind: "confluence",
+      siteOrigin: SITE,
+      locator: { kind: "space-key", spaceKey: "DOCSY" },
+      scope: { kind: "space" },
+    },
+    authRef: "profile:default",
+    displayName: "Common DOCX export",
+    createdAt: 20,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" },
+    options: { embedImages: true, resolveMacros: true },
+  };
+}
+
+function unifiedPort(catalog: IndexedDbExportJobCatalog): DurableJobsPort {
+  return createExtensionDurableJobsStore({
+    catalog,
+    bytes: new IndexedDbExportByteStore({ factory }),
+    legacy: port(),
+    listLegacyPdf: () => listPdfJobMeta(factory),
+    emit: async (filename, bytes) => {
+      emitted.push({ filename, bytes: bytes.byteLength });
+    },
+    now: () => 30,
+  });
+}
+
 function loadedState(): PanelState {
   return {
     status: "loaded",
@@ -247,6 +287,23 @@ describe("the Jobs screen", () => {
     expect(find("job-scope").textContent).toBe("Tree");
     expect(find("job-cancel")).toBeDefined();
     expect(maybeFind("job-download")).toBeNull();
+  });
+
+  it("renders and routes actions for a common DOCX job through the productive Activity port", async () => {
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => 30 });
+    await catalog.create({ request: commonRequest() });
+    await render(
+      <DurableJobsProvider port={unifiedPort(catalog)}>
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>
+    );
+
+    expect(find("job-row").getAttribute("data-job-id")).toBe(`common:${COMMON_JOB}`);
+    expect(find("job-status").textContent).toBe("Queued");
+    expect(find("job-scope").textContent).toBe("DOCX");
+
+    await click("job-cancel");
+    expect((await catalog.get(COMMON_JOB))?.state).toBe("cancelled");
   });
 
   it("offers the download for a finished job, and consumes it when taken", async () => {

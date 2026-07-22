@@ -12,11 +12,13 @@ const okRouterDeps: RouterDeps = {
   getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  runJobsWake: async (jobIds) => jobIds?.[0],
 };
 const okOffscreenDeps: OffscreenListenerDeps = {
   runWasmAdd: async (a, b) => a + b,
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  runJobsWake: async (jobIds) => jobIds?.[0],
 };
 
 /**
@@ -101,6 +103,14 @@ describe("handleExtMessage (background listener adapter)", () => {
     await cap.called;
     expect(cap.values).toEqual([{ kind: "pdf:compile-result", jobId, ok: true }]);
   });
+
+  it("returns true and responds to a common queue wake", async () => {
+    const cap = captureResponse<ExtResponse>();
+    const jobId = "job-1";
+    expect(handleExtMessage({ kind: "jobs:wake", jobIds: [jobId] }, cap.sendResponse, okRouterDeps)).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{ kind: "jobs:wake-result", claimedJobId: jobId }]);
+  });
 });
 
 describe("handleOffscreenMessage (offscreen listener adapter)", () => {
@@ -156,5 +166,28 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     expect(ret).toBe(true);
     await cap.called;
     expect(cap.values).toEqual([{ kind: "offscreen:pdf-compile-result", jobId, ok: true }]);
+  });
+
+  it("returns true and responds to an offscreen queue wake", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const jobId = "job-1";
+    expect(handleOffscreenMessage(
+      { kind: "offscreen:jobs-wake", jobIds: [jobId] },
+      cap.sendResponse,
+      okOffscreenDeps,
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{ kind: "offscreen:jobs-wake-result", claimedJobId: jobId }]);
+  });
+
+  it("keeps an offscreen queue wake failure distinct from an empty queue", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    expect(handleOffscreenMessage(
+      { kind: "offscreen:jobs-wake", jobIds: ["job-1"] },
+      cap.sendResponse,
+      { ...okOffscreenDeps, runJobsWake: async () => { throw new Error("catalog blocked"); } },
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{ kind: "offscreen:jobs-wake-result", error: "catalog blocked" }]);
   });
 });
