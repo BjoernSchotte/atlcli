@@ -1,0 +1,1206 @@
+{
+  "schema": "atlcli.pre-queue-export-baseline/1",
+  "measuredAt": "2026-07-22T13:37:22.695Z",
+  "shape": "browser-extension-harness",
+  "state": "pre-queue",
+  "environment": {
+    "gitCommit": "5bc398ffa7cb44d19d14d0607efa322140133302",
+    "workingTreeDirty": true,
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/140.0.7339.16",
+      "revision": "@b50d93d6db089ce82ddf985f059aa524051fcb2a",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36",
+      "jsVersion": "14.0.365.1"
+    },
+    "playwright": "1.55.0",
+    "platform": "darwin",
+    "release": "25.4.0",
+    "architecture": "arm64",
+    "hostname": "Mac.wifi.wue.mayflower.zone",
+    "cpu": "Apple M5 Max",
+    "logicalCpuCount": 18,
+    "totalMemoryBytes": 137438953472
+  },
+  "configuration": {
+    "pages": [
+      50,
+      500
+    ],
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "repeat": 3,
+    "seed": 2654435769
+  },
+  "observability": {
+    "heapBuckets": "extension-page CDP Runtime.getHeapUsage checkpoints after forced V8 GC",
+    "rssBytes": null,
+    "rssPeakBytes": null,
+    "rssReason": "CDP Runtime.getHeapUsage does not expose process RSS",
+    "persistedInputBytes": null,
+    "persistedArtifactBytes": null,
+    "persistenceReason": "the measured direct PRE-QUEUE calls keep input/output in page memory and create no durable queue record",
+    "dedicatedWorkerHeap": null,
+    "offscreenWorkerHeap": null,
+    "workerHeapReason": "this harness measures the direct extension-page engine surface; no worker is used",
+    "wasmLinearMemoryBytes": null,
+    "wasmReason": "CDP Runtime.getHeapUsage does not expose the compiler WASM linear-memory bucket separately",
+    "artifactBytes": "exact emitted Uint8Array byteLength"
+  },
+  "results": [
+    {
+      "repetition": 1,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 11,
+      "corpusFingerprintMs": 7.899999976158142,
+      "format": "docx",
+      "exportMs": 106.60000002384186,
+      "artifactBytes": 157189,
+      "artifactSha256": "834865b0cec2634ce9532a99a5126164001a5b4482902ad70d7b85a8c2a0c258",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (50 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 5,
+        "embeddedImages": 10,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 5
+          }
+        ]
+      },
+      "reportSha256": "ff9357e8a476ae9720dfeb9b076a76b48b92695d70feac76545b3a9d8fb3c2f8",
+      "hashingMs": 0.6999999284744263,
+      "setupMs": 0,
+      "pageLoadMs": 123.18995800000016,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576464,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603028,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3050080,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 295400,
+            "backingStorageBytes": 1544476,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 5192684,
+            "jsHeapTotalBytes": 5996544,
+            "embedderHeapUsedBytes": 304768,
+            "backingStorageBytes": 20611966,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 9.299999952316284,
+      "corpusFingerprintMs": 6.700000047683716,
+      "format": "docx",
+      "exportMs": 85,
+      "artifactBytes": 157189,
+      "artifactSha256": "c6d8b2fa8cd69abfe8ebab8473830c81aa13a64bc595d09c7790256168c2a043",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (50 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 5,
+        "embeddedImages": 10,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 5
+          }
+        ]
+      },
+      "reportSha256": "ff9357e8a476ae9720dfeb9b076a76b48b92695d70feac76545b3a9d8fb3c2f8",
+      "hashingMs": 0.9000000953674316,
+      "setupMs": 0,
+      "pageLoadMs": 79.33387500000003,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603064,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3051740,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 295400,
+            "backingStorageBytes": 1544476,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 5194468,
+            "jsHeapTotalBytes": 5734400,
+            "embedderHeapUsedBytes": 304768,
+            "backingStorageBytes": 20611966,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 9.399999976158142,
+      "corpusFingerprintMs": 6.200000047683716,
+      "format": "docx",
+      "exportMs": 88.5,
+      "artifactBytes": 157189,
+      "artifactSha256": "92d41275e576bf9d3dfd41402148cc08c3253e378ca2abab1e43061230af94b9",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (50 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 5,
+        "embeddedImages": 10,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 5
+          }
+        ]
+      },
+      "reportSha256": "ff9357e8a476ae9720dfeb9b076a76b48b92695d70feac76545b3a9d8fb3c2f8",
+      "hashingMs": 0.5,
+      "setupMs": 0,
+      "pageLoadMs": 79.13087500000006,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576464,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603028,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3050100,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 295400,
+            "backingStorageBytes": 1544476,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 5192652,
+            "jsHeapTotalBytes": 5996544,
+            "embedderHeapUsedBytes": 304768,
+            "backingStorageBytes": 20611966,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 9.800000071525574,
+      "corpusFingerprintMs": 6.299999952316284,
+      "format": "pdf",
+      "exportMs": 468.3000000715256,
+      "artifactBytes": 561887,
+      "artifactSha256": "4423bb76cfdaf81545cd4b362b66f27380c931d26152ea0e80169e3dfea350ed",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-50.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 54,
+        "embeddedImages": 15,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "f160ee56be952c5a03230eac8880a56561f5771ac04d3f171112408e073341d7",
+      "hashingMs": 1.600000023841858,
+      "setupMs": 29.600000023841858,
+      "pageLoadMs": 105.32345899999973,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576580,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2612012,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 301016,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3060836,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 300592,
+            "backingStorageBytes": 32881190,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 4526604,
+            "jsHeapTotalBytes": 5226496,
+            "embedderHeapUsedBytes": 300944,
+            "backingStorageBytes": 119230461,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 9.200000047683716,
+      "corpusFingerprintMs": 6.5,
+      "format": "pdf",
+      "exportMs": 447.2000000476837,
+      "artifactBytes": 561887,
+      "artifactSha256": "4423bb76cfdaf81545cd4b362b66f27380c931d26152ea0e80169e3dfea350ed",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-50.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 54,
+        "embeddedImages": 15,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "f160ee56be952c5a03230eac8880a56561f5771ac04d3f171112408e073341d7",
+      "hashingMs": 1.5,
+      "setupMs": 21.299999952316284,
+      "pageLoadMs": 77.24020800000017,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576464,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294992,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2611896,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 301464,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3060612,
+            "jsHeapTotalBytes": 3964928,
+            "embedderHeapUsedBytes": 301056,
+            "backingStorageBytes": 32881190,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 4526388,
+            "jsHeapTotalBytes": 4964352,
+            "embedderHeapUsedBytes": 301408,
+            "backingStorageBytes": 119230461,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 9.799999952316284,
+      "corpusFingerprintMs": 6.399999976158142,
+      "format": "pdf",
+      "exportMs": 466.10000002384186,
+      "artifactBytes": 561887,
+      "artifactSha256": "4423bb76cfdaf81545cd4b362b66f27380c931d26152ea0e80169e3dfea350ed",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-50.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 54,
+        "embeddedImages": 15,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "f160ee56be952c5a03230eac8880a56561f5771ac04d3f171112408e073341d7",
+      "hashingMs": 1.5,
+      "setupMs": 21.899999976158142,
+      "pageLoadMs": 94.66241600000012,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2611932,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 301016,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3060612,
+            "jsHeapTotalBytes": 3964928,
+            "embedderHeapUsedBytes": 300592,
+            "backingStorageBytes": 32881190,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 4525788,
+            "jsHeapTotalBytes": 5226496,
+            "embedderHeapUsedBytes": 300944,
+            "backingStorageBytes": 119230461,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 50.39999997615814,
+      "corpusFingerprintMs": 60.700000047683716,
+      "format": "docx",
+      "exportMs": 224.40000009536743,
+      "artifactBytes": 1535755,
+      "artifactSha256": "072acfd3bb034ba79f1ebb6a9f8242463562dc559f1dcc6a25140db42eb7ad5e",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (500 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 50,
+        "embeddedImages": 100,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 50
+          }
+        ]
+      },
+      "reportSha256": "601cae3f9da1b8bf07f95428cbcffb817c6c2b75ef551b0cc4ec16bd16a48c44",
+      "hashingMs": 3.899999976158142,
+      "setupMs": 0,
+      "pageLoadMs": 82.4584589999995,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603064,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5475088,
+            "jsHeapTotalBytes": 6324224,
+            "embedderHeapUsedBytes": 300808,
+            "backingStorageBytes": 3061428,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 7706748,
+            "jsHeapTotalBytes": 8880128,
+            "embedderHeapUsedBytes": 310136,
+            "backingStorageBytes": 23507484,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 62.60000002384186,
+      "corpusFingerprintMs": 78.59999990463257,
+      "format": "docx",
+      "exportMs": 298.6999999284744,
+      "artifactBytes": 1535755,
+      "artifactSha256": "b0b4ad424de8fca6f8d5d2d310abe8127ad8662f6a234e41c105df2c3ec5134b",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (500 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 50,
+        "embeddedImages": 100,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 50
+          }
+        ]
+      },
+      "reportSha256": "601cae3f9da1b8bf07f95428cbcffb817c6c2b75ef551b0cc4ec16bd16a48c44",
+      "hashingMs": 5.300000071525574,
+      "setupMs": 0,
+      "pageLoadMs": 142.38837500000045,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603064,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5475148,
+            "jsHeapTotalBytes": 6848512,
+            "embedderHeapUsedBytes": 300808,
+            "backingStorageBytes": 3061428,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 7706780,
+            "jsHeapTotalBytes": 8617984,
+            "embedderHeapUsedBytes": 310136,
+            "backingStorageBytes": 23507484,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 69.39999997615814,
+      "corpusFingerprintMs": 90.30000007152557,
+      "format": "docx",
+      "exportMs": 325.7000000476837,
+      "artifactBytes": 1535755,
+      "artifactSha256": "ff81766a79659a054fa53259f5dd69dde87a09a602c6c1e9038490b81cfa4163",
+      "persistedArtifactBytes": null,
+      "compilerVersion": null,
+      "noteCodes": [
+        "image-svg-no-rasterizer",
+        "perf-timing"
+      ],
+      "reportSummary": {
+        "filename": "Large export baseline (500 pages).docx",
+        "resolvedCount": 1,
+        "unsupportedNames": [],
+        "skippedImages": 50,
+        "embeddedImages": 100,
+        "renderedDiagrams": 0,
+        "complete": true,
+        "notes": [
+          {
+            "code": "perf-timing",
+            "level": "info",
+            "count": 1
+          },
+          {
+            "code": "image-svg-no-rasterizer",
+            "level": "warning",
+            "count": 50
+          }
+        ]
+      },
+      "reportSha256": "601cae3f9da1b8bf07f95428cbcffb817c6c2b75ef551b0cc4ec16bd16a48c44",
+      "hashingMs": 5.900000095367432,
+      "setupMs": 0,
+      "pageLoadMs": 117.32358299999942,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2603064,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5474468,
+            "jsHeapTotalBytes": 6324224,
+            "embedderHeapUsedBytes": 300808,
+            "backingStorageBytes": 3061428,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 7706164,
+            "jsHeapTotalBytes": 8617984,
+            "embedderHeapUsedBytes": 310136,
+            "backingStorageBytes": 23507484,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 70.10000002384186,
+      "corpusFingerprintMs": 92.09999990463257,
+      "format": "pdf",
+      "exportMs": 2995.399999976158,
+      "artifactBytes": 5139189,
+      "artifactSha256": "364f3c453b76b7638e72b7262d25c1b23dfe56a48d636b17f1d2c802b41a588c",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-500.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 515,
+        "embeddedImages": 150,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "a4e518507c7295d454ce0185f03251b5b1642e8aa812bb6ecdad46f52ca39958",
+      "hashingMs": 19.200000047683716,
+      "setupMs": 49.59999990463257,
+      "pageLoadMs": 155.57020900000134,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2611932,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 301016,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5486400,
+            "jsHeapTotalBytes": 6324224,
+            "embedderHeapUsedBytes": 306000,
+            "backingStorageBytes": 34398142,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 6887392,
+            "jsHeapTotalBytes": 7585792,
+            "embedderHeapUsedBytes": 306352,
+            "backingStorageBytes": 465919715,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 65.29999995231628,
+      "corpusFingerprintMs": 79.80000007152557,
+      "format": "pdf",
+      "exportMs": 2888.2000000476837,
+      "artifactBytes": 5139189,
+      "artifactSha256": "364f3c453b76b7638e72b7262d25c1b23dfe56a48d636b17f1d2c802b41a588c",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-500.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 515,
+        "embeddedImages": 150,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "a4e518507c7295d454ce0185f03251b5b1642e8aa812bb6ecdad46f52ca39958",
+      "hashingMs": 19.200000047683716,
+      "setupMs": 28.899999976158142,
+      "pageLoadMs": 116.9555419999997,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 292416,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2611932,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 298928,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5484840,
+            "jsHeapTotalBytes": 6848512,
+            "embedderHeapUsedBytes": 303912,
+            "backingStorageBytes": 34398142,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 6886436,
+            "jsHeapTotalBytes": 7323648,
+            "embedderHeapUsedBytes": 304264,
+            "backingStorageBytes": 465919715,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "persistedInputBytes": null,
+      "corpusAndComposeMs": 72,
+      "corpusFingerprintMs": 89,
+      "format": "pdf",
+      "exportMs": 3101.6999999284744,
+      "artifactBytes": 5139189,
+      "artifactSha256": "364f3c453b76b7638e72b7262d25c1b23dfe56a48d636b17f1d2c802b41a588c",
+      "persistedArtifactBytes": null,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "noteCodes": [
+        "pdf-language-missing"
+      ],
+      "reportSummary": {
+        "filename": "large-export-500.pdf",
+        "profile": "tagged",
+        "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+        "pageCount": 515,
+        "embeddedImages": 150,
+        "renderedDiagrams": 0,
+        "skippedAssets": 0,
+        "complete": true,
+        "compilerDiagnosticCount": 0,
+        "notes": [
+          {
+            "code": "pdf-language-missing",
+            "level": "warning",
+            "count": 1
+          }
+        ]
+      },
+      "reportSha256": "a4e518507c7295d454ce0185f03251b5b1642e8aa812bb6ecdad46f52ca39958",
+      "hashingMs": 19.5,
+      "setupMs": 32.300000071525574,
+      "pageLoadMs": 122.29300000000148,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2576500,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 294504,
+            "backingStorageBytes": 1375910,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2611932,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 301016,
+            "backingStorageBytes": 32712624,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 5485460,
+            "jsHeapTotalBytes": 6324224,
+            "embedderHeapUsedBytes": 306000,
+            "backingStorageBytes": 34398142,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "artifactHeld": {
+            "jsHeapUsedBytes": 6887056,
+            "jsHeapTotalBytes": 8110080,
+            "embedderHeapUsedBytes": 306352,
+            "backingStorageBytes": 465919715,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenWorker": null,
+        "wasmLinearMemoryBytes": null
+      }
+    }
+  ]
+}
