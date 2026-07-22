@@ -1873,7 +1873,7 @@ itself (never automatic).
 
       **Left unticked for one reason: there are no screenshots.** Everything
       else in this item shipped. `src/content/docs/extension/index.md` covers
-      install/load (Chrome ≥ 116, `Load unpacked` from
+      install/load (Chrome ≥ 140, `Load unpacked` from
       `apps/extension/.output/chrome-mv3/`, the reload-after-rebuild step), a
       panel-vs-CLI capability table that names the four things each host does
       not do, "Where your data goes", and the limits table.
@@ -2511,19 +2511,39 @@ zero. Three hits in one session is not a coincidence.
 
 ### Open findings from the same run
 
-- [ ] **PDF.js falls back to its "fake worker" in the side panel.** Console:
+- [x] **PDF.js no longer falls back to its "fake worker" in the side panel.** The
+      original console finding was recorded at `6246190`; the later local
+      bootstrap had not fixed it safely because it exported no
+      `WorkerMessageHandler`, breaking PDF.js' own fallback as well. The first
+      proposed correction — PDF.js' official legacy pair — was rejected by the
+      unchanged MV3 output gate because that build contains a core-js
+      `Function(...)` constructor. No exemption was added. The shipped correction
+      keeps the clean, sha256-pinned modern assets and turns the local bootstrap
+      into a real ES module: it installs the two operations missing from the
+      tested Chrome baseline, top-level-awaits the upstream worker, and re-exports
+      `WorkerMessageHandler`. Chrome's declared floor is now 140, the oldest
+      browser exercised by this packed-extension test.
+      `tests/pdf/extension-worker/worker.e2e.ts` loads a temporary copy
+      of the real built MV3 extension and proves under `chrome-extension://`
+      that the normal path exposes a native `Worker` with no fake-worker warning;
+      a second case forces the constructor failure and proves the upstream
+      fallback still resolves as `LoopbackPort`. Both pass in headless Chromium.
+
+      Historical evidence retained below. Console:
       `Warning: Setting up fake worker.` from `assets/pdf.min-*.mjs`. The stack
       ends in the `worker.addEventListener("error", …)` branch of
       `PDFWorker.#initialize`, so the worker was *constructed* and then failed
       to load — not a constructor throw (that logs "The worker has been
       disabled." instead). Impact is degradation, not breakage: pdf.js runs the
       worker code on the main thread, so every page render blocks the panel.
-      Leading hypothesis is the `.mjs` extension's MIME type under the
-      `chrome-extension:` protocol, on the circumstantial evidence that our own
-      compiler worker is emitted as `.js` and works in the same page under the
-      same CSP; the alternative is pdf.js wrapping the worker in a `blob:` URL
-      that MV3's CSP then refuses. **Not yet diagnosed** — needs the one console
-      line immediately before the warning. Do not "fix" this speculatively.
+      The later diagnosis ruled out both recorded hypotheses: Chromium maps
+      `.mjs` to `text/javascript`, and PDF.js regards the local worker URL as the
+      same `chrome-extension://<id>` origin, so it does not create its CDN/blob
+      wrapper. The exact preceding error line from the historical run was not
+      retained. Independently confirmed defects were the unsupported
+      modern-runtime surface and the unsafe bootstrap subsequently added around
+      it; the corrected ES bootstrap and explicit Chrome floor remove both
+      variables without weakening the output gate.
 
 ## Definition of Done
 

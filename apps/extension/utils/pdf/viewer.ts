@@ -10,11 +10,12 @@
  *
  * ## How PDF.js is vendored, and why it is not bundled
  *
- * Both `pdf.min.mjs` and `pdf.worker.min.mjs` are emitted with Vite's
- * `?url&no-inline`, so the upstream assets remain **verbatim** and
- * byte-identical to the npm package. The viewer imports the library asset
- * directly; a small local worker bootstrap installs required modern built-ins
- * before importing the separately emitted upstream worker. Consequences:
+ * Both modern `pdf.min.mjs` and `pdf.worker.min.mjs` are emitted with Vite's
+ * `?url&no-inline`, so the upstream assets remain **verbatim** and byte-identical
+ * to the npm package. The viewer imports the library asset directly; a small
+ * local ES-module worker bootstrap installs the two compatibility operations
+ * missing from the tested Chrome 140 baseline, awaits the separately emitted
+ * upstream worker, and re-exports its fallback contract. Consequences:
  *
  *   - the emitted paths are stable and contain *only* upstream code, so the
  *     sha256 pin in `scripts/check-output-build.ts` is meaningful and cannot be
@@ -551,6 +552,19 @@ export async function openPdfViewer(
         : canvas.getContext("2d");
       const render = page.render({ canvasContext: context, viewport, canvas });
       inFlight = render;
+      // Observe the render promise immediately. `getAnnotations()` can take
+      // long enough for a following page/zoom render to cancel this task
+      // before the Promise.all below is installed. PDF.js then rejects with a
+      // RenderingCancelledException and Chrome reports it as an unhandled
+      // extension error even though the caller eventually catches it.
+      //
+      // Converting the rejection into a settled value closes that timing gap
+      // without swallowing real render failures: they are re-thrown after the
+      // annotation render has settled and still reach the caller normally.
+      const renderResult = render.promise.then(
+        () => ({ ok: true as const }),
+        (cause: unknown) => ({ ok: false as const, cause })
+      );
       const annotations = await page.getAnnotations({ intent: "display" }).catch(() => []);
       const staging = options.annotationLayer.ownerDocument.createElement("div");
       staging.className = "pdf-annotation-layer";
@@ -571,8 +585,8 @@ export async function openPdfViewer(
         structTreeLayer: undefined,
       });
       try {
-        await Promise.all([
-          render.promise,
+        const [canvasResult] = await Promise.all([
+          renderResult,
           annotationLayer.render({
             viewport: cssViewport,
             div: staging,
@@ -584,6 +598,7 @@ export async function openPdfViewer(
             hasJSActions: false,
           }),
         ]);
+        if (!canvasResult.ok) throw canvasResult.cause;
         if (!destroyed && generation === renderGeneration) {
           // `setLayerDimensions` uses viewer-wide CSS variables in upstream;
           // this reduced viewer owns one page, so pin the already-resolved CSS

@@ -31,7 +31,10 @@ export default defineConfig({
   manifest: {
     name: "atlcli",
     // MV3 side panel + offscreen APIs baseline (PLAN §6 risk 1).
-    minimum_chrome_version: "116",
+    // Chrome 140 is the oldest browser exercised by the real packed-extension
+    // PDF.js worker test. The modern runtime's two newer standard operations are
+    // supplied explicitly in both viewer and worker realms.
+    minimum_chrome_version: "140",
     permissions: ["sidePanel", "offscreen", "storage", "tabs"],
     // The toolbar button. Required by the `setPanelBehavior({
     // openPanelOnActionClick: true })` call the service worker already makes,
@@ -60,6 +63,20 @@ export default defineConfig({
       // packages to live src/ (their exports list the development condition
       // first), so `wxt dev` never serves stale dist/ output.
       conditions: ["development", "browser"],
+    },
+    // PDF.js imports workerSrc on the main thread for its LoopbackPort fallback.
+    // Preserve the bootstrap's WorkerMessageHandler export instead of emitting
+    // the default IIFE worker, which has no module namespace exports.
+    worker: {
+      format: "es",
+      plugins: () => [
+        {
+          name: "preserve-worker-entry-exports",
+          options(options) {
+            return { ...options, preserveEntrySignatures: "exports-only" };
+          },
+        },
+      ],
     },
     // Spec 004: PizZip / docxtemplater reference the Node `Buffer.*` globals,
     // which are undefined in the MV3 panel and rejected by the output-scan gate.

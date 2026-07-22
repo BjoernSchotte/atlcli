@@ -197,5 +197,8 @@ jobs:
       - name: Run browser export harness E2E
         run: bun run test:browser-export-harness
 
+      - name: Verify PDF.js worker in the built MV3 extension
+        run: bun run --cwd apps/extension test:worker-extension-browser
+
       - name: Shape-parity gate (harness vs CLI digests + report projection)
         run: bun run check:parity

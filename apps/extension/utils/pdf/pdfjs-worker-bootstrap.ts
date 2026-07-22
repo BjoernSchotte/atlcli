@@ -1,12 +1,18 @@
 /**
- * Local module-worker bootstrap for PDF.js' modern build.
+ * Local ES-module bootstrap for PDF.js' modern worker build.
  *
- * The upstream worker remains a verbatim `?url&no-inline` asset covered by the
- * output gate's SHA-256 pin. This small local module only installs the same
- * compatibility operations as the viewer realm before evaluating that asset.
+ * Top-level await makes bootstrap readiness identical to upstream-worker
+ * readiness: an import failure becomes a Worker error instead of an unobserved
+ * rejected promise. Re-exporting `WorkerMessageHandler` is equally important:
+ * PDF.js imports `workerSrc` on the main thread when it has to fall back to its
+ * LoopbackPort implementation.
  */
 import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline";
 import { ensurePdfjsModernBuiltins } from "./pdfjs-modern-builtins.js";
 
 ensurePdfjsModernBuiltins();
-void import(/* @vite-ignore */ pdfjsWorkerUrl);
+const workerModule = (await import(/* @vite-ignore */ pdfjsWorkerUrl)) as {
+  WorkerMessageHandler: unknown;
+};
+
+export const WorkerMessageHandler = workerModule.WorkerMessageHandler;

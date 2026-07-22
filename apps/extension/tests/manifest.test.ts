@@ -81,8 +81,8 @@ describe("built manifest.json", () => {
     expect(isNormativeCsp(csp)).toBe(true);
   });
 
-  it("pins a minimum chrome version for sidePanel/offscreen APIs", () => {
-    expect(manifest.minimum_chrome_version).toBe("116");
+  it("pins the oldest Chrome version exercised by the MV3 PDF.js worker test", () => {
+    expect(manifest.minimum_chrome_version).toBe("140");
   });
 });
 

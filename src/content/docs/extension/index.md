@@ -27,9 +27,9 @@ repeatable job.
 
 ## Prerequisites
 
-- **Google Chrome 116 or newer.** The panel uses the MV3 side panel and
+- **Google Chrome 140 or newer.** The panel uses the MV3 side panel and
   offscreen-document APIs; the manifest declares
-  `minimum_chrome_version: "116"`.
+  `minimum_chrome_version: "140"`.
 - **A Confluence Cloud site** you are logged in to. The extension requests host
   access to `*.atlassian.net` and to `api.media.atlassian.com` (the CDN that
   serves attachment downloads) and to nothing else. Confluence **Data Center**

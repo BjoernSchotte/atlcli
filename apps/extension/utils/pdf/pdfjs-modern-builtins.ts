@@ -1,6 +1,10 @@
 /**
- * Compatibility operations used by the modern PDF.js 6 build but not yet
- * present in every Chrome version supported by the extension.
+ * Compatibility operations used by PDF.js 6's modern build but not present in
+ * the Chrome 140 baseline exercised by the packed-extension browser test.
+ *
+ * Keep this list deliberately small and standards-shaped. Raising the manifest
+ * floor and running the real MV3 worker test is preferable to silently growing
+ * a second, project-owned "legacy build" here.
  */
 export function ensurePdfjsModernBuiltins(): void {
   const prototype = Map.prototype as Map<unknown, unknown> & {

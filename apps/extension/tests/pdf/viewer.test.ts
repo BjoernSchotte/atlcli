@@ -46,6 +46,8 @@ function fakePdfjs(
     destinations?: Record<string, unknown[]>;
     pageWidth?: number;
     pageHeight?: number;
+    getAnnotations?: (pageNumber: number) => Promise<unknown[]>;
+    renderTask?: (pageNumber: number) => { promise: Promise<void>; cancel(): void };
   } = {}
 ): { module: PdfjsModule; recorded: Recorded } {
   const recorded: Recorded = { params: [], rendered: [], annotationRenders: [] };
@@ -56,10 +58,15 @@ function fakePdfjs(
       width: pageWidth * scale,
       height: pageHeight * scale,
     }),
-    getAnnotations: async () => options.annotationsByPage?.[pageNumber] ?? options.annotations ?? [],
+    getAnnotations: () =>
+      options.getAnnotations?.(pageNumber) ??
+      Promise.resolve(options.annotationsByPage?.[pageNumber] ?? options.annotations ?? []),
     render: ({ viewport, canvas }) => {
       recorded.rendered.push({ scale: viewport.width / pageWidth, canvas });
-      return { promise: Promise.resolve(), cancel: () => undefined };
+      return options.renderTask?.(pageNumber) ?? {
+        promise: Promise.resolve(),
+        cancel: () => undefined,
+      };
     },
   });
   const document: PdfjsDocument = {
@@ -221,6 +228,9 @@ describe("PDF.js construction site", () => {
     expect(workerBootstrap).toContain(
       '"pdfjs-dist/build/pdf.worker.min.mjs?url&no-inline"'
     );
+    expect(workerBootstrap).toContain("await import(");
+    expect(workerBootstrap).toContain("export const WorkerMessageHandler");
+    expect(workerBootstrap).not.toContain("void import(");
     expect(source).not.toMatch(/https?:\/\//);
     expect(workerBootstrap).not.toMatch(/https?:\/\//);
   });
@@ -421,6 +431,42 @@ describe("PDF preview annotation policy", () => {
 });
 
 describe("openPdfViewer", () => {
+  it("observes the canvas render rejection before annotations finish loading", async () => {
+    let finishAnnotations!: (annotations: unknown[]) => void;
+    const annotationsPending = new Promise<unknown[]>((resolve) => {
+      finishAnnotations = resolve;
+    });
+    let finishRender!: () => void;
+    const renderPending = new Promise<void>((resolve) => {
+      finishRender = resolve;
+    });
+    let rejectionObserverAttached = false;
+    const nativeThen = renderPending.then.bind(renderPending);
+    renderPending.then = ((onFulfilled, onRejected) => {
+      if (typeof onRejected === "function") rejectionObserverAttached = true;
+      return nativeThen(onFulfilled, onRejected);
+    }) as typeof renderPending.then;
+
+    const { module } = fakePdfjs(1, {
+      getAnnotations: async () => annotationsPending,
+      renderTask: () => ({ promise: renderPending, cancel: () => undefined }),
+    });
+    const viewer = await openPdfViewer(pdfBytesFromUint8Array(new Uint8Array([1])), {
+      importModule: async () => module,
+      workerSrc: "w.mjs",
+      getContext: () => ({}),
+    });
+
+    const rendering = viewer.renderPage(1, fakeCanvas(), renderOptions());
+    await Promise.resolve();
+    expect(rejectionObserverAttached).toBe(true);
+
+    finishAnnotations([]);
+    finishRender();
+    await rendering;
+    await viewer.destroy();
+  });
+
   it("renders only the requested page and clamps out-of-range numbers", async () => {
     const { module, recorded } = fakePdfjs(3);
     const viewer = await openPdfViewer(pdfBytesFromUint8Array(new Uint8Array([1])), {

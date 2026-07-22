@@ -11,8 +11,8 @@ Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
 ## Prerequisites
 
 - `bun install` at the repo root (installs WXT, React, `@types/chrome`).
-- Google Chrome ≥ 116 (the manifest pins `minimum_chrome_version: "116"` for the
-  side panel + offscreen APIs).
+- Google Chrome ≥ 140 (the manifest pins `minimum_chrome_version: "140"`; this
+  is the oldest browser exercised by the built MV3 PDF.js worker test).
 
 ## Layout
 

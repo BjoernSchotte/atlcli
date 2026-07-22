@@ -27,7 +27,7 @@ which the CLI does not expose yet.
 
 ## Prerequisites
 
-- The extension [installed and loaded](/extension/) in Chrome 116+.
+- The extension [installed and loaded](/extension/) in Chrome 140+.
 - A Confluence Cloud page open in the active tab, in a session you are logged
   in to.
 - For Word export: a `.docx` template, or none — the engine falls back to a

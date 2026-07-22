@@ -11,7 +11,7 @@
  *      viewer reach these URLs through a dynamic `import()` only on the real
  *      code path.
  *   2. It makes the runtime entry URLs greppable. The viewer asset is emitted
- *      verbatim here. `PDFJS_WORKER_URL` points at a small local bootstrap;
+ *      verbatim here. `PDFJS_WORKER_URL` points at a local ES-module bootstrap;
  *      that bootstrap separately emits/imports the verbatim upstream worker,
  *      whose sha256 remains pinned by `scripts/check-output-build.ts`.
  */
@@ -20,5 +20,5 @@ import pdfjsWorkerBootstrapUrl from "./pdfjs-worker-bootstrap.ts?worker&url";
 
 /** Emitted URL of the PDF.js library (unmodified upstream bytes). */
 export const PDFJS_MODULE_URL: string = pdfjsModuleUrl;
-/** Emitted URL of the local bootstrap that loads the pinned upstream worker. */
+/** Emitted URL of the local ES-module bootstrap for the pinned upstream worker. */
 export const PDFJS_WORKER_URL: string = pdfjsWorkerBootstrapUrl;
