@@ -75,6 +75,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-fixtures": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-wiring": "workspace:*",
         "@atlcli/jira": "workspace:*",
@@ -162,6 +163,10 @@
         "@atlcli/template-pack": "workspace:*",
         "pizzip": "^3.2.0",
       },
+    },
+    "packages/export-jobs": {
+      "name": "@atlcli/export-jobs",
+      "version": "0.1.0",
     },
     "packages/export-macros": {
       "name": "@atlcli/export-macros",
@@ -305,6 +310,8 @@
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
 
     "@atlcli/export-fixtures": ["@atlcli/export-fixtures@workspace:packages/export-fixtures"],
+
+    "@atlcli/export-jobs": ["@atlcli/export-jobs@workspace:packages/export-jobs"],
 
     "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
 

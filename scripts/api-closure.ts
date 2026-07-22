@@ -89,6 +89,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "construction, origin allowlists, session latching are all still moving); freeze it only " +
       "once a third shell — Forge or Tauri — has consumed it unchanged.",
   },
+  "@atlcli/export-jobs": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: the versioned lifecycle contracts begin in spec 013, but the reducers, " +
+      "host stores, and second engine/host consumers have not landed yet. Keep the package " +
+      "experimental until DOCX and PDF both pass CLI and packed-browser parity/recovery gates.",
+  },
   "@atlcli/export-node": {
     version: "0.x",
     frozen: false,

@@ -367,6 +367,11 @@ boundaries requires a plan update.
 ```ts
 export type ExportFormat = "docx" | "pdf";
 
+export type ExportScope =
+  | { kind: "page" }
+  | { kind: "tree"; includeRoot?: boolean; maxDepth?: number }
+  | { kind: "space" };
+
 export interface ExportSourceV1 {
   kind: "confluence";
   siteOrigin: string;
@@ -410,7 +415,19 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
   format: "pdf";
   renderer: "pdf-typst";
   template: { id: string; manifestVersion: string };
-  settings: Record<string, string | number | boolean | null>;
+  settings: {
+    page?: "a4" | "letter";
+    orientation?: "portrait" | "landscape";
+    cover?: boolean;
+    outline?: boolean;
+    headerText?: string;
+    footerText?: string;
+    accentColor?: string;
+    organizationName?: string;
+    watermark?: { text: string; color?: string; opacity?: number; angle?: number; size?: number };
+    logo?: { assetRef: string; sha256: string; byteLength: number; mediaType: "image/png" | "image/svg+xml"; alt: string };
+    custom?: Record<string, string | number | boolean | null>;
+  };
   options: { resolveMacros: boolean; profile?: string };
 }
 
@@ -426,11 +443,16 @@ Rules:
 - `locator` stores the unresolved CLI/UI input. Resolving `SPACE:Title`, a space
   root, page metadata, or an output filename is part of the claimed job and
   therefore happens after the record commit.
+- `scope` describes only page/tree/space intent and traversal options. It never
+  requires a remotely resolved page or space identifier before submission.
 - `displayName` and `requestedFilename` are locally derived hints. Resolved
   title, page id, space key, version, and filename are checkpointed later.
 - `authRef` names a host-local credential/session lookup. It is not a credential.
 - A DOCX job pins immutable template identity and hash. Replacing the active
   template after submission cannot change queued output.
+- A PDF logo is a pinned, hashed host-asset ref rather than inline bytes; its
+  retention follows the replay-safe request. Built-in structured settings and
+  manifest-declared scalar `custom` settings remain distinct.
 - Settings and option objects are validated before `JobStore.create()` commits.
 - The format/renderer discriminator is closed: DOCX accepts only
   `docx-typescript`; PDF accepts only `pdf-typst` in this contract version.
@@ -499,6 +521,8 @@ export interface ExportJobSnapshotV1 {
   waiting?: { reason: "queue" | "backoff" | "auth" | "quota" | "host"; until?: number };
   attempt: number;
   recoveryCount: number;
+  /** Last allocated fencing epoch, retained while queued/waiting/terminal. */
+  leaseEpoch: number;
   lease?: ExportJobLeaseV1;
   cancelRequestedAt?: number;
   checkpointRef?: string;
@@ -513,7 +537,13 @@ export interface ExportJobSnapshotV1 {
   deliveredAt?: number;
   acknowledgedAt?: number;
   dismissedAt?: number;
-  derivedFrom?: { jobId: string; relation: "retry" | "rerun" };
+  derivedFrom?: ExportJobDerivationV1;
+}
+
+export interface ExportJobDerivationV1 {
+  jobId: string;
+  relation: "retry" | "rerun";
+  actionKey: string;
 }
 ```
 
@@ -533,6 +563,23 @@ export interface ExportArtifactV1 {
   byteLength: number;
   sha256: string;
   committedAt: number;
+}
+
+export interface StagedArtifactV1 {
+  ref: string;
+  mediaType: ExportArtifactV1["mediaType"];
+  filename: string;
+  byteLength: number;
+  sha256: string;
+  jobId: string;
+  leaseEpoch: number;
+  stagedAt: number;
+}
+
+export interface ExportJobExecutionResultV1 {
+  stagedArtifact: StagedArtifactV1;
+  reportRef?: string;
+  reportSummary?: ExportReportSummaryV1;
 }
 ```
 
@@ -611,25 +658,57 @@ The durable event log is bounded:
 ### 6.6 Structural ports
 
 ```ts
+export type ExportJobUpdateV1 =
+  | { kind: "transition"; id: string; expectedRevision: number; to: "waiting" | "cancelling" | "failed" | "interrupted" | "cancelled"; at: number; leaseEpoch?: number; waiting?: ExportJobSnapshotV1["waiting"]; checkpointRef?: string; error?: ExportJobErrorV1 }
+  | { kind: "heartbeat"; id: string; expectedRevision: number; ownerId: string; leaseEpoch: number; now: number; leaseDurationMs: number }
+  | { kind: "progress"; id: string; expectedRevision: number; leaseEpoch: number; progress: ExportJobProgressV1 }
+  | { kind: "reclaim-expired"; id: string; expectedRevision: number; now: number }
+  | { kind: "checkpoint"; id: string; expectedRevision: number; leaseEpoch: number; at: number; checkpointRef: string }
+  | { kind: "stats"; id: string; expectedRevision: number; leaseEpoch: number; at: number; stats: ExportJobStatsV1 };
+
+export interface ExportJobEventAppendV1 {
+  expectedRevision: number;
+  leaseEpoch?: number;
+  event: ExportJobEventV1;
+}
+
 export interface ExportJobStore {
-  create(request: ExportJobRequestV1): Promise<ExportJobSnapshotV1>;
+  create(input: {
+    request: ExportJobRequestV1;
+    derivedFrom?: ExportJobDerivationV1;
+  }): Promise<ExportJobSnapshotV1>;
   get(id: string): Promise<ExportJobSnapshotV1 | undefined>;
-  getRequest(id: string): Promise<ExportJobRequestV1 | undefined>;
+  getRequest(requestRef: string): Promise<ExportJobRequestV1 | undefined>;
   list(query?: ExportJobQueryV1): Promise<ExportJobSnapshotV1[]>;
   compareAndSet(update: ExportJobUpdateV1): Promise<ExportJobSnapshotV1>;
   claimNext(claim: ExportJobClaimV1): Promise<ExportJobSnapshotV1 | undefined>;
-  appendEvent(id: string, event: ExportJobEventV1, leaseEpoch?: number): Promise<void>;
+  appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
   finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
   acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
   dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
+  deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
+  /** Succeeded jobs without `deliveredAt` or `dismissedAt` are never eligible. */
   deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+}
+
+export interface SpoolRefV1 {
+  jobId: string;
+  leaseEpoch: number;
+  namespace: string;
+  key: string;
 }
 
 export interface ExportSpoolStore {
   put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1): Promise<SpoolObjectV1>;
   read(ref: SpoolRefV1, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array>;
   stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
-  deleteNamespace(jobId: string): Promise<void>;
+  deleteNamespace(jobId: string, leaseEpoch: number): Promise<void>;
+}
+
+export interface ExportJobSpool {
+  put(ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1): Promise<SpoolObjectV1>;
+  read(ref: SpoolRefV1, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array>;
+  stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
 }
 
 export interface ExportArtifactStore {
@@ -639,14 +718,39 @@ export interface ExportArtifactStore {
   deleteStaged(ref: string): Promise<void>;
 }
 
+export interface ExportJobArtifacts {
+  stage(artifact: PendingArtifactV1): Promise<StagedArtifactV1>;
+  getStaged(): Promise<StagedArtifactV1 | undefined>;
+}
+
 export interface ExportJobExecutor<Request> {
   readonly format: ExportFormat;
-  execute(request: Request, context: ExportJobExecutionContext): Promise<ExportArtifactV1>;
+  execute(request: Request, context: ExportJobExecutionContext): Promise<ExportJobExecutionResultV1>;
 }
 ```
 
 Host adapters may add optimized methods, but conformance tests target these
 semantics.
+
+`compareAndSet()` accepts only the discriminated commands above, never a
+`Partial<ExportJobSnapshotV1>`. The adapter dispatches each command to the same
+pure transition, heartbeat, progress, statistics, expired-lease-reclaim, or checkpoint
+reducer used by conformance tests. This prevents a host from bypassing revision,
+lease-epoch, expiry, monotonic-progress, or terminal-immutability checks with an
+arbitrary field patch. Event appends carry the expected snapshot revision and
+active lease epoch where applicable. `deliver()` sets `deliveredAt` and, if still unread,
+`acknowledgedAt` once without deleting the artifact or history; repeated or
+stale delivery attempts cannot rewrite either timestamp.
+
+The execution context receives only `ExportJobSpool` and `ExportJobArtifacts`
+facades bound by the host to its immutable `(jobId, leaseEpoch)`. Executor code
+cannot choose a future epoch or delete another epoch's namespace. The lower-level
+stores remain host-owned for retention and recovery.
+
+Creation atomically enforces uniqueness for both request `idempotencyKey` and,
+when present, `(derivedFrom.jobId, relation, actionKey)`. A lost Retry/Run-again
+response therefore returns the existing derived job rather than creating a
+second export.
 
 Artifact finalization is a fenced two-step protocol:
 
@@ -663,8 +767,9 @@ recovery protocol or discards them before rendering again. Delivery occurs only
 from the finalized snapshot and is separately idempotent; it is never part of
 the engine transaction.
 
-`deleteTerminal()` first writes a deletion tombstone containing every owned
-artifact, report, event, and spool ref. Physical deletion is idempotent; only
+`deleteTerminal()` first writes a deletion tombstone containing the request
+idempotency key, optional derivation action key, and every owned artifact,
+report, event, and spool ref. Physical deletion is idempotent; only
 after all refs are gone may metadata/tombstone cleanup finish. A crash can leak
 temporarily reclaimable bytes, but cannot leave an untracked ref or resurrect a
 job.
@@ -705,9 +810,8 @@ stateDiagram-v2
   queued --> running: fenced lease acquired
   queued --> cancelled: cancel requested
   running --> waiting: backoff/auth/quota/host
-  waiting --> running: condition resolved, same lease or reclaim
+  waiting --> running: condition resolved and a new lease is claimed
   waiting --> cancelled: cancel requested while no work is active
-  waiting --> cancelling: cancel requested while work is still leased
   running --> cancelling: cancel requested
   cancelling --> cancelled: executor stopped and temp refs released
   running --> queued: lease expired at safe checkpoint
@@ -720,10 +824,11 @@ stateDiagram-v2
   interrupted --> [*]
 ```
 
-Terminal states are immutable except for `deliveredAt`, `acknowledgedAt`, and
-retention deletion. Manual **Retry** creates a new queued job related as `retry`
-to a failed, interrupted, or cancelled job. **Run again** creates a new queued
-job related as `rerun` to a succeeded job.
+Terminal states are immutable except for `deliveredAt`, `acknowledgedAt`,
+`dismissedAt`, report/artifact-retention metadata, and retention deletion. Manual
+**Retry** creates a new queued job related as `retry` to a failed, interrupted,
+or cancelled job. **Run again** creates a new queued job related as `rerun` to a
+succeeded job.
 
 Both operations copy the retained replay-safe request into a new request with a
 new job id, idempotency key, and `createdAt`. They do not copy state, progress,
@@ -732,12 +837,22 @@ credentials, source permissions, quotas, and output-conflict policy are evaluate
 again. Retry uses `priority: "retry"`; an explicit user Run again uses
 `priority: "interactive"`. The original job and artifact remain unchanged.
 
+Retry and Run again each require a caller-stable `actionKey`. Repeating the same
+`(sourceJobId, relation, actionKey)` after a lost response returns the existing
+derived job; a deliberate second action uses a new key and creates a new job.
+
 ### 7.2 Claims, leases, and fencing
 
 - `claimNext()` is atomic in the metadata store.
 - Every claim increments a monotonic lease epoch.
+- Entering `waiting` atomically checkpoints and releases the execution lease.
+  Waiting jobs never retain a lease in contract v1; becoming runnable requires a
+  fresh claim/epoch.
 - Heartbeat, progress, checkpoint, artifact commit, and terminal writes include
   the current epoch.
+- Lease expiry is evaluated against the adapter/store transaction clock, never
+  only against an executor-supplied payload timestamp. A message created before
+  expiry but persisted after expiry fails closed, including heartbeat and commit.
 - A write from an expired epoch fails closed.
 - Lease duration is longer than the heartbeat interval and independent of the
   compile timeout.
@@ -796,7 +911,7 @@ with an actionable error.
 ### 7.6 Cancellation
 
 - `cancelRequestedAt` is committed first.
-- Queued jobs and unleased waiting jobs transition directly to `cancelled`.
+- Queued and waiting jobs transition directly to `cancelled`.
 - Running jobs transition to `cancelling`; the executor's current HTTP, backoff,
   raster, or renderer work receives a local `AbortSignal`.
 - Active PDF or DOCX render may be stopped by terminating its dedicated worker
@@ -931,7 +1046,10 @@ Use one policy across formats and preview cache occupants:
 History/report metadata is separate from artifact retention. Suggested initial
 policy to validate in UX:
 
-- artifacts: current 24-hour horizon unless delivered/dismissed earlier;
+- succeeded-undelivered artifacts: never auto-evicted; quota admission waits or
+  fails rather than deleting the user's only result;
+- delivered or dismissed artifacts: eligible for cleanup after the validated
+  24-hour artifact horizon (explicit destructive Clear may remove them earlier);
 - full bounded report and event protocol: 7 days, independent of the artifact
   byte horizon;
 - compact history/report summary: last 100 jobs or 30 days, whichever is smaller;
@@ -1061,7 +1179,7 @@ Acknowledgement, dismissal, and deletion are distinct:
 - viewing a terminal job detail, downloading/revealing its artifact, or choosing
   **Mark as read** sets `acknowledgedAt` and clears its unread badge contribution;
 - **Dismiss** sets `dismissedAt` and hides the row from the default view, but
-  does not immediately delete its retained artifact/report;
+  does not acknowledge it or immediately delete its retained artifact/report;
 - `jobs clear` or retention cleanup may delete only eligible terminal records
   and their owned refs. It never removes running work or a succeeded,
   undelivered artifact. Destructive CLI clear keeps its confirmation gate.
@@ -1268,15 +1386,20 @@ Landing order is normative.
 
 ### Phase 0 / T7.1 — Measurements and contract freeze
 
-- [ ] Record current TypeScript DOCX and Typst PDF direct-path output/report
+- [x] Record current TypeScript DOCX and Typst PDF direct-path output/report
       fixtures; the deprecated Python exporter is not a baseline.
-- [ ] Record 50-page and 500-page Node/Chrome memory, spool, and time baselines
+- [x] Record 50-page and 500-page Node/Chrome memory, spool, and time baselines
       with images and diagrams; distinguish side-panel heap, offscreen heap,
       dedicated worker heap, WASM, and persisted bytes where observable.
-- [ ] Add `@atlcli/export-jobs` with versioned schemas, pure reducer, transitions,
+- [x] Add `@atlcli/export-jobs` with versioned schemas, pure reducer, transitions,
       lease/fencing, retention, badge, and resource-policy decisions.
-- [ ] Add an in-memory reference store/spool/artifact implementation for tests.
-- [ ] Add API Extractor/package boundary and browser-build gates.
+- [x] Add an in-memory reference store/spool/artifact implementation for tests.
+- [x] Add API Extractor/package boundary and browser-build gates.
+
+Phase 0 freezes and tests byte ownership, quotas, fencing, and admission policy;
+it does not claim that an engine pipeline is already memory-bounded. Exact
+in-flight byte reservations, streaming windows, and backpressure are PR-B exit
+criteria.
 
 Exit: contract review is complete before any second host schema is committed.
 
@@ -1399,7 +1522,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
 #### Merge ledger
 
 - [ ] **PR-A — Contract kernel and measurements** (`T7.1`)
-  - PR: `TBD`
+  - PR: [#79](https://github.com/BjoernSchotte/atlcli/pull/79)
   - Scope: baseline artifacts; `@atlcli/export-jobs`; schemas, reducer, leases,
     fencing, scheduling, retention, badge projection, in-memory adapters, package
     and browser/API gates.
@@ -1572,11 +1695,15 @@ After merge:
 - Terminal states cannot return to running.
 - Lost submit acknowledgement plus same idempotency key creates one job.
 - Two executors claim one job; exactly one lease/epoch wins.
+- A transition to `waiting` clears the lease; resumption claims a strictly newer
+  epoch and stale waiting-era writes fail closed.
 - An expired worker attempts progress and artifact commit after reclaim; both are
   rejected.
 - Progress is monotonic within a stage and attempt.
 - Manual Retry of an unsuccessful job and Run again of a successful job each
   create a correctly related new job rather than mutating terminal history.
+- Repeating Retry/Run again with the same action key returns the same derived job;
+  a new deliberate action key creates a second derived job.
 - Run again copies only the replay-safe request, generates a new idempotency key,
   revalidates current credentials/permissions, and leaves the old artifact and
   report byte-for-byte untouched.
@@ -1592,6 +1719,7 @@ After merge:
 - Acknowledge changes unread projection only; Dismiss hides without immediate
   byte deletion; Clear tombstones and idempotently deletes only eligible terminal
   refs.
+- Failed/cancelled diagnostic grace starts at `finishedAt`, not `createdAt`.
 - Full-report expiry clears `reportRef` and leaves a renderable summary, never a
   dangling link.
 - Unsupported host metrics remain `null`/`unavailable` and Activity never
@@ -1813,8 +1941,10 @@ These require explicit decisions before their owning implementation phase:
 5. **Storage cap values:** retain today's 64/128 MiB physical caps, derive a cap
    from `navigator.storage.estimate()`, or introduce a larger fixed product cap?
    Do not decide without real quota/memory evidence.
-6. **Artifact/report/history retention:** are 24 hours for bytes, 7 days for the
-   full report, and 100 jobs/30 days for compact history acceptable defaults?
+6. **Artifact/report/history retention:** are 24 hours after delivery/dismissal
+   for artifact bytes, 7 days for the full report, and 100 jobs/30 days for
+   compact history acceptable defaults? Succeeded-undelivered bytes remain
+   protected regardless of that decision.
 7. **CLI history location and privacy:** exact state-directory path, file
     permissions, redaction, and multi-profile/site partitioning.
 8. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part

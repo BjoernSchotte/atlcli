@@ -26,6 +26,7 @@
         "packages/diagram/src/**/*.ts",
         "packages/export-macros/src/**/*.ts",
         "packages/export-wiring/src/**/*.ts",
+        "packages/export-jobs/src/**/*.ts",
         "packages/template-pack/src/**/*.ts"
       ]
     }
