@@ -660,18 +660,25 @@ describe("i18n reaches the rendered app", () => {
 });
 
 describe("page states render without a page", () => {
-  it("shows the idle state and still offers the Export screen", async () => {
+  it("shows only the idle state when the active tab is not an Atlassian page", async () => {
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), {
-          watchPageContext: fakePageContext({ url: null, entity: null, seq: 1 }),
+          watchPageContext: fakePageContext({
+            url: "https://www.heise.de/",
+            entity: null,
+            seq: 1,
+          }),
         })}
         localeCandidates={["en"]}
       />
     );
 
     expect(maybeFind("state-idle")).not.toBeNull();
-    expect((find("pdf-export") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(maybeFind("studio-step-01")).toBeNull();
+    expect(maybeFind("format-pdf")).toBeNull();
+    expect(maybeFind("pdf-export")).toBeNull();
+    expect(maybeFind("template-export")).toBeNull();
   });
 
   it("shows a classified error with a retry affordance", async () => {
