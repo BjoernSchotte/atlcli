@@ -117,7 +117,7 @@ ADF-Fallback), Word-Qualität, PDF-Settings — plus CLI als erster Konsument
 | T1.13 | G2 natives `w:numPr`/numbering.xml (Multilevel, List-Styles-Mapping) | T0.2 | M |
 | T1.14 | G3 `w:tblGrid` aus `columnWidths` | T0.2 | S |
 | T1.15 | G4 SVG-Embedding (svgBlip-Pfad aus `image.ts` wiederverwenden, Sanitizing aus `pdf/prepare.ts` teilen) | — | M |
-| T1.16 | G1 StyleRef-E2E-Test (Fixture + LibreOffice-Smoke im CI) | — | S |
+| T1.16 | G1 StyleRef-Verifikation (OOXML-Invarianten + LibreOffice-Paket/Header-Smoke; Feldsemantik manuell) | — | S |
 
 **Lane P — PDF-Template-System** (Owner: `packages/pdf`)
 | ID | Task | Abhängig von | Aufwand |

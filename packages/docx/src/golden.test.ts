@@ -32,6 +32,12 @@
  * template's own empty `<w:settings>` element. That is the ONE intended
  * behaviour change; every other entry stayed byte-identical, which is exactly
  * what a golden file is for. See `update-fields.test.ts`.
+ *
+ * `word/document.xml` recaptured 2026-07-22 after the in-test DOCX fixture
+ * builder was corrected to attach its existing header/footer relationships to
+ * the final section. The intended diff is limited to the `r` namespace plus
+ * `headerReference`/`footerReference`; without those references Word consumers
+ * are allowed to ignore the otherwise orphaned story parts.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
