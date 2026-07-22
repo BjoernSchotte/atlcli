@@ -22,7 +22,7 @@ import {
   composeChapters,
   confluenceTreeSource,
   fetchExportTree,
-  storageToBlocks,
+  pageBodyToBlocks,
   resolveExportMentions,
   type ComposeOptions,
   type ConfluenceClient,
@@ -200,7 +200,7 @@ function makePdfProgress(opts: OutputOptions): { report: ExportProgressCallback;
   return { report, clear: () => { if (!opts.json && dirty) process.stderr.write(`\r${" ".repeat(120)}\r`); } };
 }
 
-interface ResolvedScope {
+export interface ResolvedScope {
   metaPage: ConfluencePageDetails;
   blocks: ExportBlock[];
   sourceNotes: ExportNote[];
@@ -295,7 +295,7 @@ export interface ExportPdfArgs {
  * `composeChapters` orchestration and feeds the composed blocks straight into
  * the same `runPdfExport` call (artifact-cardinality contract: always one file).
  */
-async function resolveScope(
+export async function resolveScope(
   args: ExportPdfArgs,
   signal: AbortSignal,
   onProgress: ExportProgressCallback
@@ -304,11 +304,16 @@ async function resolveScope(
 
   if (request.scopeKind === "page") {
     const pageId = await resolvePageIdThrowing(client, request.pageRef!, signal);
-    const page = await client.getPageDetails(pageId, { signal });
+    const page = await client.getExportPageDetails(pageId, { signal });
     const spaceKey = page.spaceKey ?? "UNKNOWN";
-    const walked = storageToBlocks(page.storage, {
+    const walked = pageBodyToBlocks(page.exportSource, {
       exporter: "pdf",
-      pageContext: { id: pageId, ...(page.version ? { version: page.version } : {}), spaceKey },
+      pageContext: {
+        id: pageId,
+        title: page.title,
+        ...(page.exportSource.sourceVersion ? { version: page.exportSource.sourceVersion } : {}),
+        spaceKey,
+      },
     });
     const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
     const sourceNotes: ExportNote[] = [...walked.notes];
@@ -351,6 +356,7 @@ async function resolveScope(
     completenessMode: request.completenessMode,
     ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
     ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+    bodyOptions: { exporter: "pdf" },
     signal,
     onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
   });

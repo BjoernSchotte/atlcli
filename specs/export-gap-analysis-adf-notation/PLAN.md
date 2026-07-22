@@ -619,30 +619,32 @@ DOCX production files:
 
 Tasks:
 
-- [ ] Use `getExportPageDetails()` and `pageBodyToBlocks()` for single-page PDF.
-- [ ] Receive ADF automatically for tree/space PDF through the shared tree source.
-- [ ] Use the same export-specific read and dispatcher for the CLI TypeScript DOCX prewalk.
-- [ ] Continue passing precomposed blocks into `runExport()` so the engine does not re-walk Storage.
-- [ ] Keep the engine-internal Storage fallback for external `@atlcli/docx` consumers.
-- [ ] Convert include-page fetch/cache/walk to `ExportPageSource`/`BlocksResult`.
-- [ ] Make include budgets representation-neutral and add a separate bounded sidecar allowance.
-- [ ] Keep root/homepage Storage available for existing Page Properties/template resolvers in this wave.
-- [ ] Replace raw-Storage Mermaid/image heuristics with block-derived inspection where practical; otherwise document their temporary sidecar dependency.
-- [ ] Leave the Python/docxtpl path explicitly on `storageToMarkdown()`.
-- [ ] Preserve mention, macro, asset, report, strict-mode, and output behavior after the parser boundary.
+- [x] Use `getExportPageDetails()` and `pageBodyToBlocks()` for single-page PDF.
+- [x] Receive ADF automatically for tree/space PDF through the shared tree source.
+- [x] Use the same export-specific read and dispatcher for the CLI TypeScript DOCX prewalk.
+- [x] Continue passing precomposed blocks into `runExport()` so the engine does not re-walk Storage.
+- [x] Keep the engine-internal Storage fallback for external `@atlcli/docx` consumers.
+- [x] Convert include-page fetch/cache/walk to `ExportPageSource`/`BlocksResult`.
+- [x] Make include budgets representation-neutral and add a separate bounded sidecar allowance.
+- [x] Keep root/homepage Storage available for existing Page Properties/template resolvers in this wave.
+- [x] Replace raw-Storage Mermaid/image heuristics with block-derived inspection where practical; otherwise document their temporary sidecar dependency.
+- [x] Leave the Python/docxtpl path explicitly on `storageToMarkdown()`.
+- [x] Preserve mention, macro, asset, report, strict-mode, and output behavior after the parser boundary.
 
 Tests:
 
-- existing CLI engine parity tests with paired ADF input;
-- CLI PDF page/tree/space integration tests;
-- DOCX export/include/resolver/macro-wiring tests;
-- `--keep-ignored`, strict/partial, mention, image, and macro cases;
-- assertions that precomposed ADF blocks bypass the DOCX engine Storage walker;
-- report assertions for fallback/degradation and page provenance.
+- [x] existing CLI engine parity tests with paired ADF input;
+- [x] CLI PDF page/tree/space integration tests;
+- [x] DOCX export/include/resolver/macro-wiring tests;
+- [x] `--keep-ignored`, strict/partial, mention, image, and macro cases;
+- [x] assertions that precomposed ADF blocks bypass the DOCX engine Storage walker;
+- [x] report assertions for fallback/degradation and page provenance.
 
 Exit:
 
 - Cloud CLI TypeScript DOCX and PDF are ADF-primary with no regression in Storage/Data Center or the legacy Python path.
+
+Evidence recorded on 2026-07-22: single-page and tree/space CLI paths now select the version-bound export source and decode it before either renderer; the TypeScript DOCX engine receives precomposed blocks, while its public Storage fallback and the legacy Python path remain unchanged. Include-page lookup now carries the additive export source, caches neutral `BlocksResult` values, and accounts for primary-body and Storage-sidecar bytes independently. Focused tests prove ADF-primary PDF and DOCX source selection, ADF export-control passthrough, poisoned-sidecar avoidance, representation-neutral includes and budgets, report provenance, and existing macro/mention/image/strict-mode parity. Public API and closure reports show the additive include type with no reachable-but-unexported gaps. Full typecheck, the production build for all 16 packages, and the unrestricted complete repository suite passed; the latter covered 4,762 tests with 13 intentional skips and zero failures across 305 files. An anonymized live create/export/cleanup test confirmed a real ADF source with an inline-code mark, ADF-primary CLI DOCX and PDF without a Storage fallback note, DOCX monospace styling, a tagged PDF with embedded fonts, and complete cleanup of its sole temporary page.
 
 ### WP7 — Macro, media, card, emoji, and link parity gates
 

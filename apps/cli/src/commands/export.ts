@@ -26,10 +26,12 @@ import {
   composeChapters,
   confluenceTreeSource,
   fetchExportTree,
+  pageBodyToBlocks,
   resolveExportMentions,
   storageToBlocks,
   storageToMarkdown,
   type ComposeOptions,
+  type ConfluenceExportPageDetails,
   type ExportBlock,
   type ExportNote,
   type ExportProgressCallback,
@@ -285,7 +287,7 @@ export async function handleExport(
     // (bad page id) from surfacing as an unhandled rejection while local
     // setup is still running — the engine awaits the original promise and
     // reports the real error.
-    const pagePromise = client.getPageDetails(pageId);
+    const pagePromise = client.getExportPageDetails(pageId);
     pagePromise.catch(() => {});
     // Kernel boundary (spec 008 review): any error in the ts single-page path
     // becomes a classified atlcli.export-report/1 failure with the documented
@@ -1121,7 +1123,7 @@ async function resolveContentByLabel(
 interface TsEngineArgs {
   client: ConfluenceClient;
   profile: Profile;
-  pagePromise: Promise<ConfluencePageDetails>;
+  pagePromise: Promise<ConfluenceExportPageDetails>;
   pageId: string;
   baseUrl: string;
   /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
@@ -1198,6 +1200,25 @@ async function buildTsEngineMacroOptions(
   return { macros, wrapAssets };
 }
 
+/** Decode the selected page source before the TypeScript DOCX engine runs. */
+export function decodeTsPageSource(
+  page: ConfluenceExportPageDetails,
+  keepIgnored = false,
+) {
+  return pageBodyToBlocks(page.exportSource, {
+    exporter: "word",
+    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+    pageContext: {
+      id: page.id,
+      title: page.title,
+      ...(page.exportSource.sourceVersion !== undefined
+        ? { version: page.exportSource.sourceVersion }
+        : {}),
+      ...(page.spaceKey ? { spaceKey: page.spaceKey } : {}),
+    },
+  });
+}
+
 async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const {
     client,
@@ -1226,7 +1247,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const [
     { runExport, fileOutputSink },
     { buildGetIncludedPage },
-    { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
+    { createAssetByteCache, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     template,
   ] = await Promise.all([
     import("@atlcli/docx"),
@@ -1289,6 +1310,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     getSpaceHomepageStorage: spaceHomepage,
   });
 
+  const decodedPromise = pagePromise.then((page) => decodeTsPageSource(page, keepIgnored));
+  decodedPromise.catch(() => {});
+
   // Mermaid diagrams render via resvg-wasm (spec 005a), and SVG page
   // attachments rasterize their PNG fallback through the same rasterizer
   // (spec 006 G4). A missing rasterizer is not an error: the engine degrades
@@ -1296,9 +1320,8 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // EITHER a mermaid macro OR any image/attachment reference is present, so an
   // SVG-only page (no mermaid macro) still gets a rasterizer instead of
   // degrading with `image-svg-no-rasterizer`.
-  const rasterizerPromise = pagePromise.then(async (details) => {
-    const storage = details.storage ?? "";
-    if (!mightContainMermaid(storage) && !mightReferenceImage(storage)) {
+  const rasterizerPromise = decodedPromise.then(async (decoded) => {
+    if (!blocksNeedRasterizer(decoded.blocks)) {
       return { needed: false as const, rasterizer: null, error: undefined as string | undefined };
     }
     try {
@@ -1317,7 +1340,11 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     }
   });
   rasterizerPromise.catch(() => {});
-  const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
+  const [page, walked, rasterizerState] = await Promise.all([
+    pagePromise,
+    decodedPromise,
+    rasterizerPromise,
+  ]);
   const rasterizer = rasterizerState.rasterizer;
   if (rasterizerState.needed && !rasterizer) {
     cliNotes.push(
@@ -1328,8 +1355,8 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   }
 
   // Resolve @mentions to display names before serialization, matching the
-  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
-  // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
+  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Decode
+  // the selected export source here and hand the engine pre-resolved blocks; a getUsersBulk call
   // only happens when an account-id-only mention is actually present.
   //
   // `exportControls` MUST be threaded into this walk, not only into `runExport`
@@ -1338,10 +1365,6 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // dropped every `--keep-ignored` body (spec 003) from the moment this
   // pre-walk was added — the engine-level option at :1354 was addressing a walk
   // that no longer happened.
-  const walked = storageToBlocks(page.storage ?? "", {
-    exporter: "word",
-    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
-  });
   const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
   const tsSourceNotes = [...walked.notes];
   if (mention.unresolved > 0) {
@@ -1395,7 +1418,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         // Concurrency lives ONLY in the engine's include pool, so this loader
         // stays throttle-agnostic; the pool de-duplicates repeated refs.
         getIncludedPage: buildGetIncludedPage({
-          getPage: (id) => client.getPage(id),
+          getPage: (id) => client.getExportPageDetails(id),
           findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
           defaultSpaceKey: page.spaceKey,
         }),
@@ -1603,6 +1626,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       completenessMode: request.completenessMode,
       ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
       ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+      bodyOptions: { exporter: "word" },
       signal: controller.signal,
       onProgress: (p) =>
         onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),

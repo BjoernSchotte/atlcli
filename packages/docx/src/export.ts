@@ -42,7 +42,9 @@ import {
   AssetBudget,
   assertSafeSvg,
   decodeSvgSource,
+  pageBodyToBlocks,
   storageToBlocks,
+  type BlocksResult,
   type ConfluencePageDetails,
   type ExportBlock,
   type ExportNote,
@@ -89,7 +91,7 @@ import {
 } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
-import type { IncludeLookupOutcome } from "./resolver.js";
+import type { IncludeLookupOutcome, IncludePageDetails } from "./resolver.js";
 import type { AssetFetcher, AssetRef, HostCallContext, SvgRasterizer } from "./env.js";
 import {
   CAPTION_STYLE_ID,
@@ -1686,7 +1688,8 @@ const INCLUDE_TOKEN_RE = /\$scroll\.includepage(?:\.?\([^)]*\))?/;
  * (`includepage-budget-exceeded`), never an unbounded fan-out.
  */
 const INCLUDE_BUDGET_MAX_PAGES = 25;
-const INCLUDE_BUDGET_MAX_STORAGE_BYTES = 2 * 1024 * 1024;
+const INCLUDE_BUDGET_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES = 2 * 1024 * 1024;
 
 interface IncludeOccurrence {
   /** Stable index → rawxml key `scrollInclude<index>` (one per occurrence). */
@@ -1728,7 +1731,7 @@ interface IncludePassDeps {
  *    true multi-hop cycles are structurally impossible (included content is
  *    never re-scanned for further tokens).
  *  - **One fetch + one walk per unique target.** Fetches de-duplicate by
- *    canonical ref key through a bounded pool; `storageToBlocks` caches per
+ *    canonical ref key through a bounded pool; representation-neutral decode caches per
  *    resolved pageId. `serializeBlocks` still runs per OCCURRENCE so each
  *    occurrence's images/diagrams embed into ITS OWN target part's rels.
  */
@@ -1790,9 +1793,10 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
   };
 
   // 3. Render + budget state, keyed by the resolved pageId.
-  const blocksCache = new Map<string, ReturnType<typeof storageToBlocks>>();
+  const blocksCache = new Map<string, BlocksResult>();
   const acceptedPages = new Set<string>();
-  let cumulativeStorageBytes = 0;
+  let cumulativeBodyBytes = 0;
+  let cumulativeStorageSidecarBytes = 0;
   let budgetNoted = false;
 
   const note = (code: ExportNote["code"], message: string, level: "info" | "warning" = "warning"): void => {
@@ -1814,7 +1818,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
     }
 
     const outcome = await fetchRef(ref);
-    let page: ConfluencePageDetails;
+    let page: IncludePageDetails;
     switch (outcome.kind) {
       case "resolved":
         page = outcome.page;
@@ -1858,28 +1862,49 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
 
     // Budget: gate only NEW unique targets; already-accepted ones keep rendering.
     if (!acceptedPages.has(page.id)) {
-      const size = (page.storage ?? "").length;
+      const exportSource = page.exportSource;
+      const body = exportSource?.primary.value ?? page.storage ?? "";
+      const sidecar = exportSource?.storageSidecar ?? "";
+      const bodyBytes = new TextEncoder().encode(body).byteLength;
+      const sidecarBytes = new TextEncoder().encode(sidecar).byteLength;
       if (
         acceptedPages.size >= INCLUDE_BUDGET_MAX_PAGES ||
-        cumulativeStorageBytes + size > INCLUDE_BUDGET_MAX_STORAGE_BYTES
+        cumulativeBodyBytes + bodyBytes > INCLUDE_BUDGET_MAX_BODY_BYTES ||
+        cumulativeStorageSidecarBytes + sidecarBytes > INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES
       ) {
         if (!budgetNoted) {
           note(
             "includepage-budget-exceeded",
-            `Include budget exceeded (>${INCLUDE_BUDGET_MAX_PAGES} unique pages or >${INCLUDE_BUDGET_MAX_STORAGE_BYTES} bytes); further new includes rendered empty.`
+            `Include budget exceeded (>${INCLUDE_BUDGET_MAX_PAGES} unique pages, >${INCLUDE_BUDGET_MAX_BODY_BYTES} body bytes, or >${INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES} Storage-sidecar bytes); further new includes rendered empty.`
           );
           budgetNoted = true;
         }
         continue;
       }
       acceptedPages.add(page.id);
-      cumulativeStorageBytes += size;
+      cumulativeBodyBytes += bodyBytes;
+      cumulativeStorageSidecarBytes += sidecarBytes;
     }
 
     // Walk once per unique pageId (cached); collect walk notes only once.
     let walked = blocksCache.get(page.id);
     if (!walked) {
-      walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+      const exportSource = page.exportSource;
+      walked = exportSource
+        ? pageBodyToBlocks(exportSource, {
+            exporter: "word",
+            pageContext: {
+              id: page.id,
+              title: page.title,
+              ...(exportSource.sourceVersion !== undefined
+                ? { version: exportSource.sourceVersion }
+                : page.version !== undefined
+                  ? { version: page.version }
+                  : {}),
+              ...(page.spaceKey ? { spaceKey: page.spaceKey } : {}),
+            },
+          })
+        : storageToBlocks(page.storage ?? "", { exporter: "word" });
       blocksCache.set(page.id, walked);
       notes.push(...walked.notes);
     }

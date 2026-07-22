@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
 import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence";
 import { DocxRenderError, exportDocx } from "./export.js";
-import type { CurrentUser } from "./resolver.js";
+import type { CurrentUser, IncludePageDetails } from "./resolver.js";
 import {
   assertBalancedXml,
   buildDocx,
@@ -1639,6 +1639,72 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       expect(part).not.toContain("$scroll.");
       assertBalancedXml(part);
     }
+  });
+
+  it("decodes an ADF-primary include once and never walks its Storage sidecar", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfInclude", "<p>STORAGE_SIDECAR_POISON</p>"),
+      version: 4,
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "ADF_INCLUDE_SENTINEL" }],
+            }],
+          }),
+        },
+        storageSidecar: "<p>STORAGE_SIDECAR_POISON</p>",
+        sourceVersion: 4,
+      },
+    };
+    const { calls, getIncludedPage } = resolver({ AdfInclude: page });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfInclude)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("ADF_INCLUDE_SENTINEL");
+    expect(doc).not.toContain("STORAGE_SIDECAR_POISON");
+    expect(calls).toEqual([":AdfInclude"]);
+  });
+
+  it("bounds ADF include sidecars separately from primary body bytes", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("SidecarBudget"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "SMALL_ADF" }] }],
+          }),
+        },
+        storageSidecar: "x".repeat(2 * 1024 * 1024 + 1),
+        sourceVersion: 1,
+      },
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(SidecarBudget)"),
+      }),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: async () => ({ kind: "resolved", page }),
+      },
+    });
+    expect(readPart(bytes, "word/document.xml")).not.toContain("SMALL_ADF");
+    expect(report.notes.some((note) => note.code === "includepage-budget-exceeded")).toBe(true);
   });
 
   it("renders two occurrences of the same include in one part with one fetch", async () => {

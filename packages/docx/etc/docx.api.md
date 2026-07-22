@@ -114,11 +114,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -128,6 +128,11 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
 };
 
 // export: IncludePageRef
@@ -405,11 +410,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -419,6 +424,11 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
 };
 
 // export: IncludePageRef
@@ -700,11 +710,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -714,6 +724,11 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
 };
 
 // export: IncludePageRef
@@ -1392,7 +1407,7 @@ export interface ImageInfo {
 
 // export: IncludeLookupIo
 export interface IncludeLookupIo {
-    getPage: (id: string) => Promise<ConfluencePageDetails>;
+    getPage: (id: string) => Promise<IncludePageDetails>;
     findPagesByTitle: (title: string, spaceKey?: string) => Promise<Array<{
         id: string;
     }>>;
@@ -1402,11 +1417,11 @@ export interface IncludeLookupIo {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1416,6 +1431,11 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
 };
 
 // export: IncludePageRef
@@ -1939,11 +1959,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1953,6 +1973,11 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
 };
 
 // export: IncludePageRef

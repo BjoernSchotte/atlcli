@@ -17,14 +17,13 @@
  * string-literal escaping is involved: the title rides as a plain, URL-encoded
  * query parameter.
  */
-import type { ConfluencePageDetails } from "@atlcli/confluence";
 import type { IncludePageRef } from "./placeholder-map.js";
-import type { IncludeLookupOutcome } from "./resolver.js";
+import type { IncludeLookupOutcome, IncludePageDetails } from "./resolver.js";
 
 /** The host primitives {@link buildGetIncludedPage} composes. */
 export interface IncludeLookupIo {
-  /** Fetch a page (with `storage`) by id — the client's `getPage`. */
-  getPage: (id: string) => Promise<ConfluencePageDetails>;
+  /** Fetch page metadata plus either a selected export source or legacy Storage. */
+  getPage: (id: string) => Promise<IncludePageDetails>;
   /**
    * Look up pages by EXACT title (+ optional space) through the client's
    * DIRECT content endpoint (`ConfluenceClient.findPagesByTitle`), which reads

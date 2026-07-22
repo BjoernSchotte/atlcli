@@ -48,6 +48,7 @@ export type {
 // whose implementation modules stay behind ./scan and ./internal. ---
 export type {
   CurrentUser,
+  IncludePageDetails,
   IncludeLookupOutcome,
   PageOwner,
   ResolveDeps,

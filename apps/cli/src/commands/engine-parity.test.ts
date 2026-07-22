@@ -155,7 +155,12 @@ const MACRO_STORAGE =
   `<p>After</p>`;
 
 /** The one note ordering both engines must agree on, per source page. */
-const EXPECTED_SOURCE_PAGE_CODES = ["macro-degraded", "image-unresolved", "macro-rendered-via"];
+const EXPECTED_SOURCE_PAGE_CODES = [
+  "adf-storage-fallback",
+  "macro-degraded",
+  "image-unresolved",
+  "macro-rendered-via",
+];
 const MACRO_CODES = new Set([
   "unknown-macro",
   "macro-not-rendered",
