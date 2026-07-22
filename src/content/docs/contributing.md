@@ -11,8 +11,8 @@ Guidelines for contributing to atlcli.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) v1.0+
-- Node.js 18+ (for some tooling)
+- [Bun](https://bun.sh) 1.3.14 (the version declared in `package.json`)
+- Node.js 22.12+ (for documentation tooling)
 - An Atlassian Cloud account for testing
 
 ### Clone and Build
@@ -27,8 +27,31 @@ bun run build
 ### Run Tests
 
 ```bash
-bun test
+bun run test
 ```
+
+Always use the root script. It enables the `development` export condition so
+workspace imports resolve to live source instead of stale `dist/` output.
+
+### CI cadence
+
+CI classifies the changed paths before starting expensive jobs. Product,
+consumer-package, and documentation gates run only when their surface is
+affected; an unknown path or global build file deliberately enables every
+gate. The always-present **required** job aggregates the selected results and
+is the check that branch protection should require.
+
+| Cadence | Gates |
+|---------|-------|
+| Pull request | Affected product/platform gates, pinned consumer smoke, and documentation build |
+| Push to `main` | Affected product/platform gates, security attestation, and documentation deployment when relevant |
+| Daily | Blocking M1 cross-host acceptance, performance trend, and floating-Bun consumer canary |
+| Weekly | Full unfiltered CI matrix to detect routing drift |
+| Release tag | Shared SHA-bound quality preflight and attestation before binary publication |
+
+Superseded pull-request runs and Pages deployments are cancelled. Product CI
+on `main`, nightly runs, and release evidence are never cancelled by a newer
+commit.
 
 ### Project Structure
 
@@ -49,12 +72,17 @@ atlcli/
 
 ## E2E Resources
 
-End-to-end tests create real pages and issues in a shared Atlassian tenant.
+Live end-to-end tests create real pages and issues in an Atlassian tenant.
 These rules keep that tenant clean and make every resource's ownership
-decidable. They apply to CI **and** to local agent runs — they are the concrete
-form of the "clean up test resources" rule in `CLAUDE.md`.
+decidable. Live tenant tests are operator-controlled and local-only; GitHub
+Actions does not receive Atlassian credentials or run them remotely. They are
+the concrete form of the "clean up test resources" rule in `CLAUDE.md`.
 
 Helpers live in `apps/cli/src/e2e/`.
+
+Run live cases only against an explicitly selected sandbox or test tenant.
+Keep its profile and fixture IDs in the local environment; do not add them as
+GitHub repository secrets or variables.
 
 ### Naming convention
 
@@ -165,13 +193,12 @@ so they are rejected even if something stamps a valid-looking marker on them.
 That is a structural property of their names, not the contingent fact that they
 happen to carry no marker today.
 
-### Nightly workflow
+### Remote CI policy
 
-`.github/workflows/e2e-nightly.yml` runs the live cases on a schedule (and via
-`workflow_dispatch`), on `main` only, then runs the sweeper with `--force` under
-`if: always()` as recovery. It never runs per-PR and never on forks: live REST
-calls spend the tenant's rate budget and pollute space history, and the tenant
-token is a repository secret that must not be exposed to fork PRs.
+GitHub Actions does not run live Atlassian E2E cases or the recovery sweeper.
+The ordinary test suite keeps these cases disabled unless `ATLCLI_E2E=1` is
+set locally. This avoids storing a tenant profile in remote CI and prevents
+accidental requests against a non-sandbox instance.
 
 ## Coding Standards
 
@@ -264,8 +291,9 @@ bun scripts/release.ts major    # 0.16.0 → 1.0.0
 4. Generates the changelog with git-cliff, crediting contributors and issue reporters
 5. Creates commit and tag
 6. Pushes to origin (triggers GitHub release workflow)
-7. Waits for release artifacts
-8. Triggers Homebrew tap update
+7. Waits for the SHA-bound CI preflight and security attestation
+8. Waits for release artifacts
+9. Triggers Homebrew tap update
 
 ### Options
 

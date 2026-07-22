@@ -1,0 +1,69 @@
+name: Reusable consumer smoke
+
+on:
+  workflow_call:
+    inputs:
+      leg:
+        description: Pinned product gate or floating runtime canary
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  consumer-smoke:
+    name: consumer-smoke (${{ inputs.leg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: ${{ inputs.leg == 'latest' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate leg
+        env:
+          LEG: ${{ inputs.leg }}
+        run: |
+          if [[ "$LEG" != "pinned" && "$LEG" != "latest" ]]; then
+            echo "::error::Unsupported consumer-smoke leg: $LEG"
+            exit 1
+          fi
+
+      - name: Resolve the pinned Bun version
+        if: inputs.leg == 'pinned'
+        id: pin
+        run: echo "version=$(jq -r '.packageManager | ltrimstr("bun@")' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pinned Bun
+        if: inputs.leg == 'pinned'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.pin.outputs.version }}
+
+      - name: Setup latest Bun
+        if: inputs.leg == 'latest'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js (LTS floor)
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ inputs.leg }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Consumer smoke + install matrix
+        run: bun --conditions=development test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts
+        env:
+          ATLCLI_CONSUMER_SMOKE: "1"
