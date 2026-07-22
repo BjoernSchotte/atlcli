@@ -578,29 +578,31 @@ Production files:
 
 Tasks:
 
-- [ ] Extend `TreeSourcePage` additively to accept `ExportPageSource` while retaining a Storage-only compatibility form during migration.
-- [ ] Change the single body-walk site from `storageToBlocks(page.storage)` to `pageBodyToBlocks(source)`.
-- [ ] Generalize Storage-specific result/error names at the orchestration boundary without removing the Storage error types.
-- [ ] Route `AdfParseError` through the same strict/partial completeness policy as Storage parse-budget failure.
-- [ ] Keep discovery, ordering, concurrency, labels, version checks, progress, cancellation, and composition unchanged.
-- [ ] Aggregate representation counts/degradations without retaining raw bodies.
-- [ ] Ensure a page-version change between discovery and ADF read produces the existing page-version failure.
-- [ ] Bound simultaneous ADF + Storage sidecar reads under the existing page concurrency limit.
+- [x] Extend `TreeSourcePage` additively to accept `ExportPageSource` while retaining a Storage-only compatibility form during migration.
+- [x] Change the single body-walk site from `storageToBlocks(page.storage)` to `pageBodyToBlocks(source)`.
+- [x] Generalize Storage-specific result/error names at the orchestration boundary without removing the Storage error types.
+- [x] Route `AdfValidationError` through the same strict/partial completeness policy as Storage parse-budget failure.
+- [x] Keep discovery, ordering, concurrency, labels, version checks, progress, cancellation, and composition unchanged.
+- [x] Aggregate representation counts/degradations without retaining raw bodies.
+- [x] Ensure a page-version change between discovery and ADF read produces the existing page-version failure.
+- [x] Bound simultaneous ADF + Storage sidecar reads under the existing page concurrency limit.
 
 Tests in `packages/confluence/src/tree-fetch.test.ts`:
 
-- [ ] ADF-only, Storage-only, and mixed representation sources;
-- [ ] ADF strict/partial invalid and budget failures;
-- [ ] page-version race;
-- [ ] abort during ADF/sidecar read;
-- [ ] deterministic preorder despite parallel dual reads;
-- [ ] old Storage-only test sources remain valid during the compatibility window;
-- [ ] page provenance survives notes, unknown extensions, images, and links;
-- [ ] no body text appears in progress details.
+- [x] ADF-only, Storage-only, and mixed representation sources;
+- [x] ADF strict/partial invalid and budget failures;
+- [x] page-version race;
+- [x] abort during ADF/sidecar read;
+- [x] deterministic preorder despite parallel dual reads;
+- [x] old Storage-only test sources remain valid during the compatibility window;
+- [x] page provenance survives notes, unknown extensions, images, and links;
+- [x] no body text appears in progress details.
 
 Exit:
 
 - Tree and space exports are source-representation-neutral without changing their ordering/completeness semantics.
+
+Evidence recorded on 2026-07-22: `fetchExportTree()` now accepts the additive ADF/Storage source union and invokes only `pageBodyToBlocks()`; the Node adapter prefers the version-bound export read while legacy Storage-only ports remain valid. The current panel-owned browser host stays explicitly on that compatibility member until WP8 moves the complete dual-read lifecycle into the background resolver; it still compiles against and exercises the same browser-safe neutral port and dispatcher types. Focused tests prove ADF-only, Storage-only and mixed trees, body-free representation/degradation aggregation, strict and partial malformed/over-budget ADF behavior, source-version races, bounded concurrency, abort propagation, deterministic preorder, and provenance through notes, unknown extensions, images and typed page links. The unchanged Storage suite and the real `Response`-backed extension session-port suite pass, as do the reviewed API/closure reports, full typecheck, and production builds for the CLI, extension and browser harness. An anonymized live test created a two-page hierarchy, fetched both pages as ADF through the shared bounded tree pipeline, produced two ordered nodes, and removed both temporary pages successfully. The unrestricted complete repository suite passed with 4,756 tests, 13 intentional skips, and zero failures across 304 files.
 
 ### WP6 — CLI PDF and TypeScript DOCX
 

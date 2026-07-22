@@ -9,16 +9,23 @@
  * fetch, folder 010) reuse the logic unchanged. `confluenceTreeSource(client)`
  * is the Node adapter that maps the port 1:1 onto the existing client.
  *
- * Isomorphic: no `node:`/`bun:` specifiers — only `storageToBlocks` and the
- * shared limiter/scope helpers.
+ * Isomorphic: no `node:`/`bun:` specifiers — only the representation-neutral
+ * body dispatcher and shared limiter/scope helpers.
  */
 import {
   StorageParseError,
-  storageToBlocks,
   type ExportBlock,
   type ExportNote,
-  type StorageToBlocksResult,
 } from "./export-blocks.js";
+import { AdfValidationError } from "./adf-types.js";
+import { pageBodyToBlocks } from "./page-body-to-blocks.js";
+import type {
+  BlocksResult,
+  ConfluenceExportPageDetails,
+  ExportPageSource,
+  PageBody,
+  PageBodyToBlocksOptions,
+} from "./page-body.js";
 import {
   normalizeLabelFilter,
   type ExportScope,
@@ -42,15 +49,26 @@ export interface TreeNodeRef {
   kind: "page" | "folder";
 }
 
-/** A page fetched via {@link TreeSource.getPage}. */
-export interface TreeSourcePage {
+export interface TreeSourcePageMetadata {
   id: string;
   title: string;
-  storage: string;
   version?: number;
   labels?: string[];
   spaceKey?: string;
 }
+
+/**
+ * A page fetched via {@link TreeSource.getPage}.
+ *
+ * New sources provide an explicitly selected representation-neutral
+ * `exportSource`. The Storage-only member remains accepted during the host
+ * migration window so existing third-party/test ports keep compiling.
+ */
+export type TreeSourcePage = TreeSourcePageMetadata &
+  (
+    | { exportSource: ExportPageSource; storage?: string }
+    | { storage: string; exportSource?: undefined }
+  );
 
 /** A lightweight version snapshot via {@link TreeSource.getPageVersion}. */
 export interface TreeSourceVersion {
@@ -169,6 +187,16 @@ export interface TreeFetchOptions {
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
+  /** Common representation-neutral decoder options; page provenance is owned here. */
+  bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+}
+
+export interface TreeSourceSummary {
+  /** Pages whose version-bound body source was read, including parse failures. */
+  pagesRead: number;
+  representations: Readonly<Record<PageBody["representation"], number>>;
+  /** Successfully decoded pages that emitted one or more degradation notes. */
+  degradedPages: number;
 }
 
 export interface FetchExportTreeResult {
@@ -176,6 +204,8 @@ export interface FetchExportTreeResult {
   notes: ExportNote[];
   /** False when partial mode downgraded a completeness failure; true otherwise. */
   complete: boolean;
+  /** Aggregate only: raw ADF/Storage bodies never leave the body-fetch jobs. */
+  sourceSummary: TreeSourceSummary;
 }
 
 const DEFAULT_MAX_PAGES = 500;
@@ -749,13 +779,17 @@ export async function fetchExportTree(
     detail?: string;
   };
   type BodyResult =
-    | { ok: false; node: ExportPageNode; failure: BodyFailure }
+    | {
+        ok: false;
+        node: ExportPageNode;
+        failure: BodyFailure;
+        representation?: PageBody["representation"];
+      }
     | {
         ok: true;
         node: ExportPageNode;
         page: TreeSourcePage;
-        blocks: ExportBlock[];
-        notes: ExportNote[];
+        decoded: BlocksResult;
       };
 
   const jobs = pageNodes.map((node) =>
@@ -777,11 +811,15 @@ export async function fetchExportTree(
         throw error;
       }
 
-      // Version check: the body-fetch version must match the discovery snapshot.
+      const exportSource: ExportPageSource = page.exportSource ?? {
+        primary: { representation: "storage", value: page.storage },
+        ...(page.version !== undefined ? { sourceVersion: page.version } : {}),
+      };
+      const bodyVersion = exportSource.sourceVersion ?? page.version;
       if (
         node.meta.observedVersion !== undefined &&
-        page.version !== undefined &&
-        page.version !== node.meta.observedVersion
+        bodyVersion !== undefined &&
+        bodyVersion !== node.meta.observedVersion
       ) {
         return {
           ok: false,
@@ -790,39 +828,50 @@ export async function fetchExportTree(
             code: "page-version-changed",
             affected: [{ id: node.pageId, title: node.title }],
           },
+          representation: exportSource.primary.representation,
         };
       }
 
-      let walked: StorageToBlocksResult;
+      let decoded: BlocksResult;
       try {
-        walked = storageToBlocks(page.storage, {
+        decoded = pageBodyToBlocks(exportSource, {
+          ...opts.bodyOptions,
           pageContext: {
             id: node.pageId,
-            ...(page.version !== undefined ? { version: page.version } : {}),
+            title: node.title,
+            ...(bodyVersion !== undefined ? { version: bodyVersion } : {}),
             ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
           },
         });
       } catch (error) {
-        // A page whose storage blows the parse budget is UNREADABLE, not fatal
+        // A page whose selected body blows a validation/parse budget is
+        // UNREADABLE, not fatal
         // to the run (spec 011). Left uncaught this rejected the job, and the
         // rejection scan below re-throws it — so one pathological page aborted
         // the entire tree export. Routing it through the existing completeness
         // path means strict mode still aborts (the user asked for completeness)
         // while partial mode renders a placeholder chapter and keeps going,
         // which is exactly what the budget's own docs promise.
-        if (!(error instanceof StorageParseError)) throw error;
+        if (!(error instanceof StorageParseError) && !(error instanceof AdfValidationError)) {
+          throw error;
+        }
         throwIfAborted(signal);
+        const representation = exportSource.primary.representation;
+        const detail = error instanceof StorageParseError
+          ? `storage exceeded the parse budget: ${error.kind}`
+          : `ADF validation failed: ${error.code}`;
         return {
           ok: false,
           node,
           failure: {
             code: "page-unreadable",
             affected: [{ id: node.pageId, title: node.title }],
-            detail: `storage exceeded the parse budget: ${error.kind}`,
+            detail,
           },
+          representation,
         };
       }
-      return { ok: true, node, page, blocks: walked.blocks, notes: walked.notes };
+      return { ok: true, node, page, decoded };
     })
   );
 
@@ -843,9 +892,23 @@ export async function fetchExportTree(
     detail?: string;
   }> = [];
 
+  const representationCounts: Record<PageBody["representation"], number> = {
+    atlas_doc_format: 0,
+    storage: 0,
+  };
+  let pagesRead = 0;
+  let degradedPages = 0;
+
   settled.forEach((result, slot) => {
     if (result.status !== "fulfilled") return;
     const value = result.value;
+    const representation = value.ok
+      ? value.decoded.representation
+      : value.representation;
+    if (representation) {
+      representationCounts[representation] += 1;
+      pagesRead += 1;
+    }
     if (!value.ok) {
       strictFailures.push({
         slot,
@@ -857,9 +920,10 @@ export async function fetchExportTree(
     }
     fetched += 1;
     opts.onProgress?.({ fetched, total, currentTitle: value.node.title });
-    value.node.blocks = value.blocks;
-    value.node.notes = value.notes;
-    value.node.meta.version = value.page.version;
+    value.node.blocks = value.decoded.blocks;
+    value.node.notes = value.decoded.notes;
+    if (value.decoded.degraded) degradedPages += 1;
+    value.node.meta.version = value.page.exportSource?.sourceVersion ?? value.page.version;
     value.node.meta.labels = value.page.labels ?? [];
     value.node.meta.spaceKey = value.page.spaceKey;
   });
@@ -897,7 +961,16 @@ export async function fetchExportTree(
     partialComplete();
   }
 
-  return { nodes, notes: treeNotes, complete };
+  return {
+    nodes,
+    notes: treeNotes,
+    complete,
+    sourceSummary: {
+      pagesRead,
+      representations: representationCounts,
+      degradedPages,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -979,6 +1052,10 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  getExportPageDetails?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
   getPageDetails(
     id: string,
     options?: { signal?: AbortSignal }
@@ -1026,6 +1103,18 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
 
   return {
     async getPage(id, context) {
+      if (client.getExportPageDetails) {
+        const page = await client.getExportPageDetails(id, { signal: context.signal });
+        return {
+          id: page.id,
+          title: page.title,
+          storage: page.storage,
+          exportSource: page.exportSource,
+          version: page.version,
+          labels: page.labels,
+          spaceKey: page.spaceKey,
+        };
+      }
       const page = await client.getPageDetails(id, { signal: context.signal });
       return {
         id: page.id,

@@ -1217,6 +1217,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -1788,6 +1789,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
 }
 
 // export: TreeFetchProgress
@@ -1823,6 +1825,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -1872,13 +1877,28 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -3168,6 +3188,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -3739,6 +3760,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
 }
 
 // export: TreeFetchProgress
@@ -3774,6 +3796,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -3823,13 +3848,28 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -5119,6 +5159,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -5690,6 +5731,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
 }
 
 // export: TreeFetchProgress
@@ -5725,6 +5767,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -5774,13 +5819,28 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -9582,6 +9642,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -10153,6 +10214,7 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
 }
 
 // export: TreeFetchProgress
@@ -10188,6 +10250,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -10237,13 +10302,28 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion

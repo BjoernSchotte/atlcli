@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   fetchExportTree,
+  confluenceTreeSource,
   applyLabelFilter,
   nodeId,
   ExportCompletenessError,
@@ -14,6 +15,7 @@ import {
   type ExportPageNode,
   type TreeFetchProgress,
 } from "./tree-fetch.js";
+import type { ExportPageSource } from "./page-body.js";
 import type { ExportScope } from "./export-scope.js";
 import { composeChapters } from "./compose-document.js";
 import type { ExportBlock } from "./export-blocks.js";
@@ -960,5 +962,265 @@ describe("fetchExportTree — storage parse budget degradation", () => {
       completenessMode: "partial",
     }).catch((e) => e);
     expect(error).toBe(boom);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADF-primary representation-neutral body orchestration
+// ---------------------------------------------------------------------------
+
+function adfSource(
+  text: string,
+  version = 1,
+  content?: unknown[],
+): ExportPageSource {
+  return {
+    primary: {
+      representation: "atlas_doc_format",
+      value: JSON.stringify({
+        type: "doc",
+        version: 1,
+        content: content ?? [{ type: "paragraph", content: [{ type: "text", text }] }],
+      }),
+    },
+    storageSidecar: `<p>${text}</p>`,
+    sourceVersion: version,
+  };
+}
+
+describe("fetchExportTree — representation-neutral sources", () => {
+  const fixture: FixtureNode[] = [
+    { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+    { id: "a", kind: "page", title: "ADF", parent: "root", position: 0, observedVersion: 1 },
+    { id: "s", kind: "page", title: "Storage", parent: "root", position: 1, observedVersion: 1 },
+  ];
+
+  test("accepts ADF-only, Storage-only, and mixed pages with aggregate body-free counts", async () => {
+    const source = inMemoryTreeSource(fixture);
+    const original = source.getPage.bind(source);
+    source.getPage = async (id, context) => {
+      const page = await original(id, context);
+      if (id === "s") return page;
+      return {
+        id: page.id,
+        title: page.title,
+        version: page.version,
+        labels: page.labels,
+        spaceKey: page.spaceKey,
+        exportSource: adfSource(page.title, page.version),
+      };
+    };
+
+    const result = await fetchExportTree(source, tree("root"));
+    expect(titles(result)).toEqual(["Root", "ADF", "Storage"]);
+    expect(result.sourceSummary).toEqual({
+      pagesRead: 3,
+      representations: { atlas_doc_format: 2, storage: 1 },
+      degradedPages: 0,
+    });
+    expect((result.nodes[1] as ExportPageNode).blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "ADF" }] },
+    ]);
+    expect(JSON.stringify(result.sourceSummary)).not.toContain("<p>");
+  });
+
+  test("keeps ADF unknown-extension notes and visible content bound to page provenance", async () => {
+    const source = inMemoryTreeSource(fixture.slice(0, 1));
+    source.getPage = async () => ({
+      id: "root",
+      title: "Root",
+      version: 1,
+      labels: [],
+      spaceKey: "S",
+      exportSource: adfSource("ignored", 1, [
+        {
+          type: "extension",
+          attrs: { extensionKey: "example", extensionType: "com.example", localId: "local-1" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Visible" }] }],
+        },
+        {
+          type: "mediaSingle",
+          content: [{ type: "media", attrs: { type: "file", id: "media-1", alt: "Image" } }],
+        },
+        {
+          type: "paragraph",
+          content: [{
+            type: "text",
+            text: "Page",
+            marks: [{ type: "link", attrs: { href: "/wiki/spaces/S/pages/42/Linked+Page" } }],
+          }],
+        },
+      ]),
+    });
+
+    const result = await fetchExportTree(source, tree("root"), {
+      bodyOptions: {
+        resolveMediaAttachment: (reference) =>
+          reference.id === "media-1" ? { filename: "image.png" } : undefined,
+      },
+    });
+    const node = result.nodes[0] as ExportPageNode;
+    expect(node.blocks[0]?.type).toBe("unknown");
+    expect(node.blocks[0]).toMatchObject({ sourcePage: { id: "root", version: 1, spaceKey: "S" } });
+    expect(node.blocks[1]).toMatchObject({
+      type: "image",
+      source: { kind: "attachment", filename: "image.png", pageId: "root" },
+    });
+    expect(node.blocks[2]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "link", target: { kind: "page", contentId: "42" } }],
+    });
+    expect(node.notes.length).toBeGreaterThan(0);
+    expect(node.notes.every((note) => note.source?.pageId === "root")).toBe(true);
+    expect(node.notes.every((note) => note.source?.pageTitle === "Root")).toBe(true);
+    expect(result.sourceSummary.degradedPages).toBe(1);
+  });
+
+  for (const mode of ["strict", "partial"] as const) {
+    test(`${mode} routes malformed ADF through the established completeness policy`, async () => {
+      const source = inMemoryTreeSource(fixture.slice(0, 1));
+      source.getPage = async () => ({
+        id: "root",
+        title: "Root",
+        version: 1,
+        exportSource: {
+          primary: { representation: "atlas_doc_format", value: "not-json" },
+          sourceVersion: 1,
+        },
+      });
+      const outcome = await fetchExportTree(source, tree("root"), {
+        completenessMode: mode,
+      }).catch((error) => error);
+      if (mode === "strict") {
+        expect(outcome).toBeInstanceOf(ExportCompletenessError);
+        expect(outcome.code).toBe("page-unreadable");
+      } else {
+        expect(outcome.complete).toBe(false);
+        expect(outcome.notes[0]?.message).toContain("ADF validation failed: invalid-json");
+        expect(outcome.sourceSummary.representations.atlas_doc_format).toBe(1);
+      }
+    });
+  }
+
+  test("applies the ADF parse budget independently", async () => {
+    const source = inMemoryTreeSource(fixture.slice(0, 1));
+    source.getPage = async () => ({
+      id: "root",
+      title: "Root",
+      version: 1,
+      exportSource: adfSource("too many nodes"),
+    });
+    const result = await fetchExportTree(source, tree("root"), {
+      completenessMode: "partial",
+      bodyOptions: { adfParseBudget: { maxNodes: 1 } },
+    });
+    expect(result.complete).toBe(false);
+    expect(result.notes[0]?.message).toContain("node-budget-exceeded");
+  });
+
+  test("uses the representation source version for the discovery race", async () => {
+    const source = inMemoryTreeSource(fixture.slice(0, 1));
+    source.getPage = async () => ({
+      id: "root",
+      title: "Root",
+      version: 1,
+      exportSource: adfSource("newer", 2),
+    });
+    const error = await fetchExportTree(source, tree("root")).catch((value) => value);
+    expect(error).toBeInstanceOf(ExportCompletenessError);
+    expect(error.code).toBe("page-version-changed");
+  });
+
+  test("bounds representation reads and preserves preorder despite inverted latency", async () => {
+    const many: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      ...Array.from({ length: 7 }, (_, index): FixtureNode => ({
+        id: `p${index}`,
+        kind: "page",
+        title: `P${index}`,
+        parent: "root",
+        position: index,
+        observedVersion: 1,
+      })),
+    ];
+    const source = inMemoryTreeSource(many);
+    const original = source.getPage.bind(source);
+    let active = 0;
+    let peak = 0;
+    source.getPage = async (id, context) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        await abortableSleep(id === "root" ? 20 : 8 - Number(id.slice(1)), context.signal);
+        const page = await original(id, context);
+        return {
+          id: page.id,
+          title: page.title,
+          version: page.version,
+          exportSource: adfSource(page.title, page.version),
+        };
+      } finally {
+        active -= 1;
+      }
+    };
+
+    const result = await fetchExportTree(source, tree("root"), { concurrency: 2 });
+    expect(peak).toBeLessThanOrEqual(2);
+    expect(titles(result)).toEqual(["Root", "P0", "P1", "P2", "P3", "P4", "P5", "P6"]);
+  });
+
+  test("progress contains metadata only and abort reaches an ADF/sidecar source read", async () => {
+    const source = inMemoryTreeSource(fixture.slice(0, 1));
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    source.getPage = async (_id, context) => {
+      observedSignal = context.signal;
+      await abortableSleep(100, context.signal);
+      throw new Error("unreachable");
+    };
+    const progress: TreeFetchProgress[] = [];
+    const pending = fetchExportTree(source, tree("root"), {
+      signal: controller.signal,
+      onProgress: (event) => progress.push(event),
+    });
+    setTimeout(() => controller.abort(), 5);
+    await expect(pending).rejects.toThrow();
+    expect(observedSignal).toBe(controller.signal);
+    expect(progress).toEqual([]);
+  });
+
+  test("the Node adapter prefers export reads and retains old Storage clients", async () => {
+    const calls: string[] = [];
+    const baseClient = {
+      async getPageDetails(id: string) {
+        calls.push(`storage:${id}`);
+        return { id, title: "Title", storage: "<p>Storage</p>", version: 1 };
+      },
+      async getPageVersion() { return { title: "Title", version: 1 }; },
+      async getChildrenWithPosition() { return []; },
+      async getPageDirectChildren() { return []; },
+      async getFolderChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+      async searchPages() { return []; },
+    };
+    const legacy = await confluenceTreeSource(baseClient).getPage("1", {});
+    expect(legacy.storage).toBe("<p>Storage</p>");
+
+    const modern = confluenceTreeSource({
+      ...baseClient,
+      async getExportPageDetails(id: string) {
+        calls.push(`export:${id}`);
+        return {
+          id,
+          title: "Title",
+          storage: "<p>Sidecar</p>",
+          version: 1,
+          exportSource: adfSource("ADF"),
+        };
+      },
+    });
+    const page = await modern.getPage("2", {});
+    expect(page.exportSource?.primary.representation).toBe("atlas_doc_format");
+    expect(calls).toEqual(["storage:1", "export:2"]);
   });
 });
