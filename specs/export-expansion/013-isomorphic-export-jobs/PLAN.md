@@ -1553,7 +1553,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     user-visible compile job is introduced.
 
 - [ ] **PR-D — TypeScript DOCX job executor** (`T7.2`)
-  - PR: `TBD`
+  - PR: [#82](https://github.com/BjoernSchotte/atlcli/pull/82)
   - Scope: `createTypescriptDocxExportJobExecutor`, pinned template refs, capture
     sink, ordered PizZip/docxtemplater render, raster ports, reservation,
     cancellation, and render restart without host UI code.
