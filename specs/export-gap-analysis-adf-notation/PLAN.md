@@ -753,10 +753,12 @@ Rollout evidence recorded on 2026-07-22: `ATLCLI_EXPORT_SOURCE` is parsed once i
 
 The unrestricted full regression suite then passed with 4,774 tests, 13 intentional skips and zero failures across 306 files. This includes the dedicated Data Center no-v2-read contract and the complete existing Storage walker, renderer, scope, macro, include, asset and report corpus.
 
+Direct-coverage evidence recorded on 2026-07-22: an exhaustive compile-time fixture map now has one real ADF document per pinned node and mark row. Child-only nodes are exercised in their smallest meaningful parent context; every case passes through the production validator/decoder, must produce visible blocks, and every `visible-fallback` mapping must emit a diagnostic with page/path provenance. The guard covers exactly 43 nodes and 17 marks, so adding or removing an upstream classification fails until the direct fixture set changes deliberately. All 61 direct-fixture assertions passed.
+
 Default-enable gates:
 
 - [x] all 43 nodes and 17 marks classified in the coverage manifest;
-- [ ] every mapped row has a direct ADF fixture;
+- [x] every mapped row has a direct ADF fixture;
 - [x] no silent node/mark/attribute drops;
 - [x] no silent whole-page decoder fallback;
 - [x] macro and media correlation gates pass or remain visibly degraded;
