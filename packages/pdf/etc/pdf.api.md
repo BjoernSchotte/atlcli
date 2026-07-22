@@ -72,6 +72,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -136,6 +137,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -775,6 +783,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -839,6 +848,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -1478,6 +1494,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1542,6 +1559,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;

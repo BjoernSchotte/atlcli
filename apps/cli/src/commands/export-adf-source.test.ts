@@ -54,7 +54,7 @@ describe("CLI PDF source resolution is ADF-primary", () => {
       content: [{ type: "text", text: "ADF_PRIMARY" }],
     }]);
     const client = {
-      getExportPageDetails: async () => page,
+      getExportPageDetailsWithMedia: async () => page,
     } as unknown as ConfluenceClient;
 
     const result = await resolveScope(args(client), new AbortController().signal, () => undefined);
@@ -63,6 +63,28 @@ describe("CLI PDF source resolution is ADF-primary", () => {
     ]);
     expect(JSON.stringify(result.blocks)).not.toContain("STORAGE_POISON");
     expect(result.sourcePages[0]?.notes).toEqual([]);
+  });
+
+  it("correlates ADF media through prefetched v2 fileId metadata", async () => {
+    const page = {
+      ...adfPage([{
+        type: "mediaSingle",
+        content: [{ type: "media", attrs: { type: "file", id: "file-1", alt: "Diagram" } }],
+      }]),
+      mediaAttachments: [{ fileId: "file-1", filename: "diagram.png", pageId: "1" }],
+      mediaAttachmentsComplete: true,
+    };
+    const client = {
+      getExportPageDetailsWithMedia: async () => page,
+    } as unknown as ConfluenceClient;
+
+    const result = await resolveScope(args(client), new AbortController().signal, () => undefined);
+    expect(result.blocks).toEqual([{
+      type: "image",
+      source: { kind: "attachment", filename: "diagram.png", pageId: "1" },
+      alt: "Diagram",
+    }]);
+    expect(result.sourceNotes.map((note) => note.code)).not.toContain("adf-media-unresolved");
   });
 
   it("threads the PDF exporter identity through the shared tree source", async () => {
@@ -127,5 +149,19 @@ describe("CLI TypeScript DOCX prewalk is ADF-primary", () => {
     const kept = decodeTsPageSource(page, true);
     expect(JSON.stringify(kept.blocks)).toContain("IGNORED_BODY");
     expect(kept.notes.map((note) => note.code)).toContain("export-controls-passthrough");
+  });
+
+  it("uses the same v2 fileId correlation in the DOCX prewalk", () => {
+    const page = {
+      ...adfPage([{
+        type: "mediaSingle",
+        content: [{ type: "media", attrs: { type: "file", id: "file-2" } }],
+      }]),
+      mediaAttachments: [{ fileId: "file-2", filename: "docx-image.png", pageId: "1" }],
+    };
+    expect(decodeTsPageSource(page).blocks).toEqual([{
+      type: "image",
+      source: { kind: "attachment", filename: "docx-image.png", pageId: "1" },
+    }]);
   });
 });

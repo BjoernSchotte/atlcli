@@ -65,6 +65,7 @@ Official references:
 - [ADF document structure](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 - [Canonical ADF JSON schema](https://go.atlassian.com/adf-json-schema)
 - [ADF media node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/media/)
+- [Confluence REST v2 Attachment API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-attachment/)
 - [Confluence macro-body API](https://developer.atlassian.com/cloud/confluence/rest/v1/api-group-content---macro-body/)
 - [Forge macro `adfExport`](https://developer.atlassian.com/platform/forge/manifest-reference/modules/macro/)
 - [Confluence Cloud changelog](https://developer.atlassian.com/cloud/confluence/changelog/)
@@ -657,19 +658,21 @@ Production areas:
 
 Tasks:
 
-- [ ] Preserve `localId`, extension key, parameters, body, and source page separately; do not overload unproven IDs.
-- [ ] Prove macro-body/export-view lookup from ADF identity before enabling it.
-- [ ] Keep Storage-backed include/excerpt/multiexcerpt/Page Properties ports as sidecar consumers.
-- [ ] Avoid whole-page Storage parsing for one unresolved extension.
-- [ ] Resolve Media ID/collection to attachment metadata through a bounded, page-cached lookup.
-- [ ] If filename mapping is not reliable, add an `ImageSource` Media-ID variant and update both asset pipelines before defaulting ADF media.
-- [ ] Normalize ADF page links into typed `LinkTarget.page` so composed in-document links still become chapter anchors.
-- [ ] Preserve card URLs and visible titles without requiring remote Smart Link metadata.
-- [ ] Use ADF emoji `text` first; unresolved/custom emoji receives deterministic text/short-name fallback and a note.
+- [x] Preserve `localId`, extension key, parameters, body, and source page separately; do not overload unproven IDs.
+- [x] Prove macro-body/export-view lookup from ADF identity before enabling it. The available contract does not prove that ADF `localId` is a Storage `ac:macro-id`, so lookup remains deliberately disabled and regression-tested.
+- [x] Keep Storage-backed include/excerpt/multiexcerpt/Page Properties ports as sidecar consumers.
+- [x] Avoid whole-page Storage parsing for one unresolved extension.
+- [x] Resolve Media ID/collection to attachment metadata through a bounded, page-cached lookup.
+- [x] If filename mapping is not reliable, add an `ImageSource` Media-ID variant and update both asset pipelines before defaulting ADF media. Correlation was proven as ADF `attrs.id` to v2 attachment `fileId`, whose record supplies the current filename and page ID, so no wider source union was necessary.
+- [x] Normalize ADF page links into typed `LinkTarget.page` so composed in-document links still become chapter anchors.
+- [x] Preserve card URLs and visible titles without requiring remote Smart Link metadata.
+- [x] Use ADF emoji `text` first; unresolved/custom emoji receives deterministic text/short-name fallback and a note.
 
 Exit:
 
 - Existing live macro and asset features do not regress merely because the page body source changed.
+
+Evidence recorded on 2026-07-22: ADF block and inline extensions now retain their editor identity, structured parameters, visible body and source-page provenance without copying `localId` into the Storage macro-ID field. The macro resolver carries that identity but does not invoke macro-body/export-view with it; a regression test proves the unverified route remains closed. Media-bearing ADF pages lazily fetch a bounded, cursor-loop-guarded v2 attachment index with metadata-only logging, correlate only exact `fileId` values, and pass the resulting page/filename reference through the same neutral image source consumed by DOCX and PDF. Media-free pages make no attachment request, pagination/caps report incomplete results, and filename guessing is forbidden. Existing typed page links, emoji fallbacks and Storage sidecar consumers remain covered; Smart Links additionally preserve local JSON-LD titles without a remote metadata request. Focused client, decoder, tree, macro, CLI, DOCX and PDF tests passed, as did public API/closure checks, pinned-ADF coverage, full typecheck, the 20-entrypoint browser-isomorphism gate, extension/browser output checks and the full production build. The unrestricted complete repository suite passed with 4,771 tests, 13 intentional skips and zero failures across 305 files. An anonymized live create/upload/read/export/cleanup test proved ADF-primary `fileId` correlation, an embedded media part in the DOCX archive, an embedded image in the valid tagged/font-embedded PDF, no unresolved-media diagnostics, and complete cleanup of the sole temporary page.
 
 ### WP8 — Background-job/extension integration
 

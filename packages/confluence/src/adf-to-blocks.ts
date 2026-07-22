@@ -10,6 +10,7 @@ import { DEFAULT_ADF_PARSE_BUDGET } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
 import type {
   Caption,
+  AdfExtensionIdentity,
   ExportBlock,
   ExportNote,
   ExportNoteSource,
@@ -46,6 +47,29 @@ export interface AdfMediaReference {
 export interface AdfResolvedMediaAttachment {
   filename: string;
   pageId?: string;
+}
+
+/** Attachment metadata proven to correlate ADF media `id` with v2 `fileId`. */
+export interface AdfMediaAttachment {
+  fileId: string;
+  filename: string;
+  pageId: string;
+}
+
+/** Build an exact, synchronous decoder resolver from prefetched page metadata. */
+export function createAdfMediaAttachmentResolver(
+  attachments: readonly AdfMediaAttachment[] | undefined,
+): AdfToBlocksOptions["resolveMediaAttachment"] | undefined {
+  if (!attachments) return undefined;
+  const byFileId = new Map<string, AdfResolvedMediaAttachment>();
+  for (const attachment of attachments) {
+    const fileId = attachment.fileId.trim();
+    const filename = attachment.filename.trim();
+    const pageId = attachment.pageId.trim();
+    if (!fileId || !filename || !pageId || byFileId.has(fileId)) continue;
+    byFileId.set(fileId, { filename, pageId });
+  }
+  return (reference) => byFileId.get(reference.id);
 }
 
 interface DecodeContext {
@@ -371,7 +395,25 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       const controlled = decodeInlineExportControl(node, ctx, path);
       if (controlled) return controlled.content;
       addNodeNote(ctx, path, node.type, "was preserved as a visible inline extension label.");
-      return [{ type: "text", text: extensionLabel(node) }];
+      const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+      const params = extensionParams(node.attrs?.parameters);
+      return [{
+        type: "text",
+        text: extensionLabel(node),
+        adfExtension: {
+          extensionType: stringAttr(node, "extensionType") ?? "unknown",
+          extensionKey,
+          ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+        },
+        ...(params.length > 0 ? { extensionParams: params } : {}),
+        ...(ctx.pageContext ? {
+          sourcePage: {
+            id: ctx.pageContext.id,
+            ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+            ...(ctx.pageContext.spaceKey ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+          },
+        } : {}),
+      }];
     }
     case "mediaInline":
     case "media":
@@ -455,7 +497,7 @@ function linkTarget(href: string): LinkTarget {
 
 function cardInline(node: AdfNode, ctx: DecodeContext, path: string): InlineNode[] {
   const href = cardUrl(node);
-  const label = stringAttr(node, "text") ?? href ?? "[Smart link]";
+  const label = cardTitle(node) ?? href ?? "[Smart link]";
   addNodeNote(ctx, path, node.type, "appearance was approximated as a text link.");
   return href ? wrapLink(href, [{ type: "text", text: label }], ctx, path) : [{ type: "text", text: label }];
 }
@@ -474,9 +516,17 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
   const bodyCtx: DecodeContext = { ...ctx, notes: bodyCollector };
   const body = decodeBlockChildren(node.content, bodyCtx, `${path}.content`);
   const bodyNotes = bodyCollector.finish(sourceFor(bodyCtx, `${path}.content`));
+  const extensionType = stringAttr(node, "extensionType") ?? "unknown";
+  const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+  const adfExtension: AdfExtensionIdentity = {
+    extensionType,
+    extensionKey,
+    ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+  };
   return {
     type: "unknown",
-    macroName: stringAttr(node, "extensionKey") ?? "adf-extension",
+    macroName: extensionKey,
+    adfExtension,
     ...(params.length > 0 ? { params } : {}),
     ...(body.length > 0 ? { body } : {}),
     ...(bodyNotes.length > 0 ? { bodyNotes } : {}),
@@ -793,6 +843,14 @@ function cardUrl(node: AdfNode): string | undefined {
   const data = node.attrs?.data;
   if (!data || Array.isArray(data) || typeof data !== "object") return undefined;
   return stringJson(data.url);
+}
+
+function cardTitle(node: AdfNode): string | undefined {
+  const direct = stringAttr(node, "text");
+  if (direct) return direct;
+  const data = node.attrs?.data;
+  if (!data || Array.isArray(data) || typeof data !== "object") return undefined;
+  return stringJson(data.name) ?? stringJson(data.headline) ?? stringJson(data.title);
 }
 
 function markKey(mark: AdfMark): string {

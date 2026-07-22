@@ -12,7 +12,7 @@
 
 - exported symbols (36): AttachmentLookupPort, AttachmentMeta, ConfluenceContentPort, ConfluenceSearchHit, ConfluenceSearchHits, DefaultRegistryDeps, ExportViewPort, ExternalAssetFetcher, ExternalAssetPolicy, ExtractMacroBodyDep, HtmlToExportBlocksDep, JiraIssuePort, JiraIssueRef, MACRO_DEGRADED, MACRO_RENDERED_VIA, MACRO_SKIPPED_BY_CONFIG, MacroExportContext, MacroInstance, MacroInstanceId, MacroPageScope, MacroRenderResult, MacroRenderer, MacroRendererRegistry, MacroResolutionBudget, MacroResolutionOptions, ParsePagePropertiesDep, PortError, PortErrorKind, StorageToBlocksDep, UnknownBlock, createRegistry, defaultRegistry, isAbortError, isPortError, portError, resolveMacroBlocks
 - same-package closure references: 24
-- reaches `@atlcli/confluence` (frozen): ExportBlock, ExportNote, MacroParameter, StorageToBlocksResult
+- reaches `@atlcli/confluence` (frozen): AdfExtensionIdentity, ExportBlock, ExportNote, MacroParameter, StorageToBlocksResult
 - reachable-but-unexported gaps: none
 
 ### Entry point `./internal` — internal

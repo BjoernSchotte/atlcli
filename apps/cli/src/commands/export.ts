@@ -25,6 +25,7 @@ import {
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  createAdfMediaAttachmentResolver,
   fetchExportTree,
   pageBodyToBlocks,
   resolveExportMentions,
@@ -287,7 +288,7 @@ export async function handleExport(
     // (bad page id) from surfacing as an unhandled rejection while local
     // setup is still running — the engine awaits the original promise and
     // reports the real error.
-    const pagePromise = client.getExportPageDetails(pageId);
+    const pagePromise = client.getExportPageDetailsWithMedia(pageId);
     pagePromise.catch(() => {});
     // Kernel boundary (spec 008 review): any error in the ts single-page path
     // becomes a classified atlcli.export-report/1 failure with the documented
@@ -1207,6 +1208,7 @@ export function decodeTsPageSource(
 ) {
   return pageBodyToBlocks(page.exportSource, {
     exporter: "word",
+    resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
     ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
     pageContext: {
       id: page.id,
@@ -1418,7 +1420,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         // Concurrency lives ONLY in the engine's include pool, so this loader
         // stays throttle-agnostic; the pool de-duplicates repeated refs.
         getIncludedPage: buildGetIncludedPage({
-          getPage: (id) => client.getExportPageDetails(id),
+          getPage: (id) => client.getExportPageDetailsWithMedia(id),
           findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
           defaultSpaceKey: page.spaceKey,
         }),

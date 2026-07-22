@@ -18,6 +18,7 @@ import { basename, join, resolve } from "node:path";
 import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  createAdfMediaAttachmentResolver,
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
@@ -304,10 +305,11 @@ export async function resolveScope(
 
   if (request.scopeKind === "page") {
     const pageId = await resolvePageIdThrowing(client, request.pageRef!, signal);
-    const page = await client.getExportPageDetails(pageId, { signal });
+    const page = await client.getExportPageDetailsWithMedia(pageId, { signal });
     const spaceKey = page.spaceKey ?? "UNKNOWN";
     const walked = pageBodyToBlocks(page.exportSource, {
       exporter: "pdf",
+      resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
       pageContext: {
         id: pageId,
         title: page.title,

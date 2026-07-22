@@ -1676,6 +1676,47 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     expect(calls).toEqual([":AdfInclude"]);
   });
 
+  it("correlates an ADF include image by v2 fileId before asset embedding", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfMedia"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "mediaSingle",
+              content: [{ type: "media", attrs: { type: "file", id: "file-1", alt: "Included image" } }],
+            }],
+          }),
+        },
+        sourceVersion: 1,
+      },
+      mediaAttachments: [{ fileId: "file-1", filename: "included.png", pageId: "AdfMedia" }],
+      mediaAttachmentsComplete: true,
+    };
+    const fetched: Array<{ filename?: string; pageId?: string }> = [];
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfMedia)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ AdfMedia: page }).getIncludedPage },
+      assets: {
+        async fetch(ref) {
+          fetched.push({ filename: ref.filename, pageId: ref.pageId });
+          return pngFixtureBytes(120, 60);
+        },
+      },
+    });
+
+    expect(readPart(bytes, "word/document.xml")).toContain("<w:drawing>");
+    expect(fetched).toContainEqual({ filename: "included.png", pageId: "AdfMedia" });
+    expect(report.notes.map((note) => note.code)).not.toContain("adf-media-unresolved");
+  });
+
   it("bounds ADF include sidecars separately from primary body bytes", async () => {
     const page: IncludePageDetails = {
       ...includePage("SidecarBudget"),

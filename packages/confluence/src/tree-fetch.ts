@@ -18,6 +18,10 @@ import {
   type ExportNote,
 } from "./export-blocks.js";
 import { AdfValidationError } from "./adf-types.js";
+import {
+  createAdfMediaAttachmentResolver,
+  type AdfMediaAttachment,
+} from "./adf-to-blocks.js";
 import { pageBodyToBlocks } from "./page-body-to-blocks.js";
 import type {
   BlocksResult,
@@ -55,6 +59,9 @@ export interface TreeSourcePageMetadata {
   version?: number;
   labels?: string[];
   spaceKey?: string;
+  /** Exact v2 `fileId` metadata, prefetched only when the ADF references media. */
+  mediaAttachments?: AdfMediaAttachment[];
+  mediaAttachmentsComplete?: boolean;
 }
 
 /**
@@ -836,6 +843,9 @@ export async function fetchExportTree(
       try {
         decoded = pageBodyToBlocks(exportSource, {
           ...opts.bodyOptions,
+          resolveMediaAttachment:
+            createAdfMediaAttachmentResolver(page.mediaAttachments) ??
+            opts.bodyOptions?.resolveMediaAttachment,
           pageContext: {
             id: node.pageId,
             title: node.title,
@@ -1052,6 +1062,10 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  getExportPageDetailsWithMedia?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
   getExportPageDetails?(
     id: string,
     options?: { signal?: AbortSignal }
@@ -1103,8 +1117,9 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
 
   return {
     async getPage(id, context) {
-      if (client.getExportPageDetails) {
-        const page = await client.getExportPageDetails(id, { signal: context.signal });
+      const exportRead = client.getExportPageDetailsWithMedia ?? client.getExportPageDetails;
+      if (exportRead) {
+        const page = await exportRead.call(client, id, { signal: context.signal });
         return {
           id: page.id,
           title: page.title,
@@ -1113,6 +1128,8 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
           version: page.version,
           labels: page.labels,
           spaceKey: page.spaceKey,
+          mediaAttachments: page.mediaAttachments,
+          mediaAttachmentsComplete: page.mediaAttachmentsComplete,
         };
       }
       const page = await client.getPageDetails(id, { signal: context.signal });

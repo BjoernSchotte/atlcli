@@ -6,6 +6,7 @@ import type {
   StorageToBlocksOptions,
 } from "./export-blocks.js";
 import type {
+  AdfMediaAttachment,
   AdfMediaReference,
   AdfResolvedMediaAttachment,
 } from "./adf-to-blocks.js";
@@ -45,6 +46,10 @@ export interface ExportPageSource {
 /** Existing page metadata plus the export-specific representation choice. */
 export type ConfluenceExportPageDetails = ConfluencePageDetails & {
   exportSource: ExportPageSource;
+  /** Prefetched v2 attachment metadata for exact ADF media-id correlation. */
+  mediaAttachments?: AdfMediaAttachment[];
+  /** False only when the configured attachment metadata budget truncated. */
+  mediaAttachmentsComplete?: boolean;
 };
 
 /** Validated transport result of the Cloud v2 ADF page read. */

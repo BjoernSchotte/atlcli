@@ -149,6 +149,7 @@ async function resolveInstance(
     ...(block.body ? { body: block.body } : {}),
     ...(block.plainBody !== undefined ? { plainBody: block.plainBody } : {}),
     ...(block.macroId !== undefined ? { macroId: block.macroId } : {}),
+    ...(block.adfExtension !== undefined ? { adfExtension: block.adfExtension } : {}),
   };
 
   // Deadline check up front: a past-due instance degrades to skipped-by-config

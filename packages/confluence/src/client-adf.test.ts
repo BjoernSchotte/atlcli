@@ -152,6 +152,96 @@ describe("ConfluenceClient ADF page reads", () => {
     });
   });
 
+  test("prefetches exact v2 fileId metadata only when ADF contains media", async () => {
+    const calls: string[] = [];
+    const adf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [{ type: "mediaSingle", content: [{ type: "media", attrs: { id: "file-a", type: "file" } }] }],
+    });
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/attachments")) {
+        const cursor = new URL(url).searchParams.get("cursor");
+        return new Response(JSON.stringify(cursor
+          ? {
+              results: [
+                { id: "content-a-new-version", fileId: "file-a", title: "a.png" },
+                { id: "content-b", fileId: "file-b", title: "b.png" },
+              ],
+              _links: {},
+            }
+          : {
+              results: [{ id: "content-a", fileId: "file-a", title: "a.png" }],
+              _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=next" },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/rest/api/content/")) return storageResponse();
+      return adfResponse("123", 7, adf);
+    }) as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://media-index.example.invalid"),
+    ).getExportPageDetailsWithMedia("123");
+
+    expect(result.mediaAttachmentsComplete).toBe(true);
+    expect(result.mediaAttachments).toEqual([
+      { fileId: "file-a", filename: "a.png", pageId: "123" },
+      { fileId: "file-b", filename: "b.png", pageId: "123" },
+    ]);
+    expect(calls.filter((url) => url.includes("/attachments"))).toHaveLength(2);
+  });
+
+  test("does not add an attachment request to an ADF page without media", async () => {
+    const calls: string[] = [];
+    routeBodyReads({ calls });
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://media-free.example.invalid"),
+    ).getExportPageDetailsWithMedia("123");
+
+    expect(result.mediaAttachments).toBeUndefined();
+    expect(calls).toHaveLength(2);
+    expect(calls.some((url) => url.includes("/attachments"))).toBe(false);
+  });
+
+  test("bounds attachment metadata and marks a truncated index incomplete", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      results: [
+        { fileId: "file-a", title: "a.png" },
+        { fileId: "file-b", title: "b.png" },
+      ],
+      _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=more" },
+    }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://media-budget.example.invalid"),
+    ).listPageAttachmentMedia("123", { maxAttachments: 1 });
+
+    expect(result).toEqual({
+      attachments: [{ fileId: "file-a", filename: "a.png", pageId: "123" }],
+      complete: false,
+    });
+  });
+
+  test("keeps attachment filenames out of v2 metadata logs", async () => {
+    const sink = new CaptureSink();
+    const sentinel = "PRIVATE-MEDIA-FILENAME.png";
+    Logger.configure({ level: "debug", sink, enableGlobal: false, enableProject: false });
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      results: [{ fileId: "file-a", title: sentinel }],
+      _links: {},
+    }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://media-logging.example.invalid"),
+    ).listPageAttachmentMedia("123");
+
+    expect(result.attachments[0]?.filename).toBe(sentinel);
+    expect(JSON.stringify(sink.entries)).not.toContain(sentinel);
+  });
+
   test("fails visibly when the ADF and Storage versions differ", async () => {
     routeBodyReads({
       storage: () => storageResponse("123", 8),

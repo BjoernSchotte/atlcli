@@ -181,6 +181,7 @@ export interface MacroInstance {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
 }
 
 // export: MacroInstanceId

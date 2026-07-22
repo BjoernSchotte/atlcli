@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { adfToBlocks } from "./adf-to-blocks.js";
+import {
+  adfToBlocks,
+  createAdfMediaAttachmentResolver,
+} from "./adf-to-blocks.js";
 import {
   ADF_MARK_DECODE_MODES,
   ADF_NODE_DECODE_MODES,
@@ -189,6 +192,7 @@ describe("adfToBlocks", () => {
           { type: "mention", attrs: { id: "team-1", userType: "TEAM" } },
           { type: "status", attrs: { text: "READY", color: "GREEN" } },
           { type: "inlineCard", attrs: { url: "https://example.invalid/card" } },
+          { type: "inlineCard", attrs: { data: { url: "https://example.invalid/data-card", name: "Visible card title" } } },
         ],
       },
       { type: "blockCard", attrs: { url: "https://example.invalid/block" } },
@@ -203,6 +207,11 @@ describe("adfToBlocks", () => {
       { type: "mention", accountId: "team-1" },
       { type: "status", text: "READY", color: "green" },
       { type: "link", target: { kind: "external", href: "https://example.invalid/card" } },
+      {
+        type: "link",
+        target: { kind: "external", href: "https://example.invalid/data-card" },
+        content: [{ type: "text", text: "Visible card title" }],
+      },
     ] });
     expect(result.blocks[1]).toMatchObject({ type: "paragraph", content: [{ type: "link" }] });
     expect(result.notes.some((note) => note.message.includes("Unicode text"))).toBe(true);
@@ -232,6 +241,11 @@ describe("adfToBlocks", () => {
     expect(result.blocks[0]).toEqual({
       type: "unknown",
       macroName: "synthetic-macro",
+      adfExtension: {
+        extensionType: "com.atlassian.confluence.macro.core",
+        extensionKey: "synthetic-macro",
+        localId: "not-a-storage-macro-id",
+      },
       params: [{ name: "alpha", text: "one" }, { name: "zeta", text: "2" }],
       body: [{ type: "paragraph", content: [{ type: "mention", accountId: "user-2" }] }],
       sourcePage: { id: "page-1", version: 7, spaceKey: "TEST" },
@@ -281,16 +295,54 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
-  it("keeps block, bodied, and inline extensions visible without claiming unproven macro identity", () => {
+  it("builds an exact fileId resolver without guessing from filename or content id", () => {
+    const resolve = createAdfMediaAttachmentResolver([
+      { fileId: "media-file-id", filename: "diagram.png", pageId: "page-2" },
+      { fileId: "", filename: "ignored.png", pageId: "page-2" },
+    ]);
+    expect(resolve?.({ id: "media-file-id" })).toEqual({ filename: "diagram.png", pageId: "page-2" });
+    expect(resolve?.({ id: "diagram.png" })).toBeUndefined();
+    expect(resolve?.({ id: "content-id" })).toBeUndefined();
+  });
+
+  it("keeps block, bodied, and inline extensions visible without claiming a Storage macro id", () => {
     const result = adfToBlocks(doc([
       { type: "extension", attrs: { extensionType: "x", extensionKey: "block-extension", parameters: {} } },
       {
         type: "paragraph",
-        content: [{ type: "inlineExtension", attrs: { extensionType: "x", extensionKey: "inline-extension", text: "Inline extension" } }],
+        content: [{
+          type: "inlineExtension",
+          attrs: {
+            extensionType: "x",
+            extensionKey: "inline-extension",
+            localId: "inline-local",
+            text: "Inline extension",
+            parameters: { mode: "compact" },
+          },
+        }],
       },
-    ]));
-    expect(result.blocks[0]).toEqual({ type: "unknown", macroName: "block-extension" });
-    expect(result.blocks[1]).toEqual({ type: "paragraph", content: [{ type: "text", text: "Inline extension" }] });
+    ]), { pageContext: { id: "page-1", version: 3, spaceKey: "S" } });
+    expect(result.blocks[0]).toEqual({
+      type: "unknown",
+      macroName: "block-extension",
+      adfExtension: { extensionType: "x", extensionKey: "block-extension" },
+      sourcePage: { id: "page-1", version: 3, spaceKey: "S" },
+    });
+    expect(result.blocks[0]).not.toHaveProperty("macroId");
+    expect(result.blocks[1]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "Inline extension",
+        adfExtension: {
+          extensionType: "x",
+          extensionKey: "inline-extension",
+          localId: "inline-local",
+        },
+        extensionParams: [{ name: "mode", text: "compact" }],
+        sourcePage: { id: "page-1", version: 3, spaceKey: "S" },
+      }],
+    });
     expect(result.notes.map((note) => note.code)).toEqual(["adf-node-degraded", "adf-node-degraded"]);
   });
 

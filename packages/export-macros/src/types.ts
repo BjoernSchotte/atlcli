@@ -12,7 +12,12 @@
  * import from any `@atlcli/*` package, enforced by the browser-build gate
  * (`scripts/check-browser-build.ts`).
  */
-import type { ExportBlock, ExportNote, MacroParameter } from "@atlcli/confluence";
+import type {
+  AdfExtensionIdentity,
+  ExportBlock,
+  ExportNote,
+  MacroParameter,
+} from "@atlcli/confluence";
 
 /**
  * One macro instance the resolver hands to a renderer. Mirrors the enriched
@@ -25,6 +30,8 @@ export interface MacroInstance {
   body?: ExportBlock[];
   plainBody?: string;
   macroId?: string;
+  /** ADF editor identity, retained separately and never used as a macro REST id. */
+  adfExtension?: AdfExtensionIdentity;
 }
 
 /**

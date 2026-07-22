@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ExportBlock, ExportNote, StorageToBlocksResult } from "@atlcli/confluence";
 import { resolveMacroBlocks } from "./resolve.js";
 import { createRegistry } from "./registry.js";
+import { exportViewFallbackRenderer } from "./export-view.js";
 import { portError } from "./types.js";
 import type {
   JiraIssuePort,
@@ -49,6 +50,32 @@ function skipRenderer(id: string, macro: string, note?: ExportNote): MacroRender
 }
 
 describe("resolveMacroBlocks — fallback chain", () => {
+  test("never substitutes an ADF localId for the Storage macro-body id", async () => {
+    let calls = 0;
+    const renderer = exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({ blocks: [], notes: [] }),
+    });
+    const result = await renderer.render({
+      name: "synthetic-extension",
+      params: [],
+      adfExtension: {
+        extensionType: "com.atlassian.confluence.macro.core",
+        extensionKey: "synthetic-extension",
+        localId: "editor-instance-only",
+      },
+    }, ctx({
+      exportView: {
+        async renderMacroHtml() {
+          calls += 1;
+          return "<p>must not run</p>";
+        },
+      },
+    }));
+
+    expect(result).toEqual({ kind: "skip" });
+    expect(calls).toBe(0);
+  });
+
   test("first matching renderer wins", async () => {
     const registry = createRegistry([
       paraRenderer("first", "widget", "FIRST"),

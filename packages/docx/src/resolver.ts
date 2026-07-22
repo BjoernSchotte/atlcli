@@ -27,6 +27,7 @@ import {
   type ConfluencePageDetails,
   type ConfluenceSpace,
   type ExportPageSource,
+  type AdfMediaAttachment,
   type ExportNote,
   type PagePropertiesMacro,
 } from "@atlcli/confluence";
@@ -61,6 +62,8 @@ export interface ResolveContext {
 /** Include page metadata with an optional representation-neutral export source. */
 export type IncludePageDetails = ConfluencePageDetails & {
   exportSource?: ExportPageSource;
+  mediaAttachments?: AdfMediaAttachment[];
+  mediaAttachmentsComplete?: boolean;
 };
 
 /**

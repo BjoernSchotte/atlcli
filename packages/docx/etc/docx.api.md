@@ -133,6 +133,8 @@ export type IncludeLookupOutcome = {
 // export: IncludePageDetails
 export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -429,6 +431,8 @@ export type IncludeLookupOutcome = {
 // export: IncludePageDetails
 export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -729,6 +733,8 @@ export type IncludeLookupOutcome = {
 // export: IncludePageDetails
 export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1436,6 +1442,8 @@ export type IncludeLookupOutcome = {
 // export: IncludePageDetails
 export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1978,6 +1986,8 @@ export type IncludeLookupOutcome = {
 // export: IncludePageDetails
 export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: IncludePageRef

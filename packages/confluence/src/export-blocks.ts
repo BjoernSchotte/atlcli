@@ -71,6 +71,12 @@ export type InlineNode =
       color?: string;
       /** Canonical inline highlight/background color (`#RRGGBB`). */
       backgroundColor?: string;
+      /** Identity retained when this visible text approximates an ADF inline extension. */
+      adfExtension?: AdfExtensionIdentity;
+      /** Structured ADF inline-extension parameters, kept separate from identity. */
+      extensionParams?: MacroParameter[];
+      /** Source page of an approximated inline extension. */
+      sourcePage?: { id: string; version?: number; spaceKey?: string };
     }
   | { type: "link"; target: LinkTarget; content: InlineNode[] }
   /**
@@ -172,6 +178,20 @@ export interface MacroParameter {
 }
 
 /**
+ * Identity carried by an ADF extension node.
+ *
+ * `localId` identifies the editor extension instance. It is deliberately kept
+ * separate from Storage's `ac:macro-id`: Atlassian documents different
+ * purposes for those identifiers, and the macro-body REST API accepts only the
+ * latter.
+ */
+export interface AdfExtensionIdentity {
+  extensionType: string;
+  extensionKey: string;
+  localId?: string;
+}
+
+/**
  * Case-insensitive convenience lookup for a parameter's plain-text value only
  * (mirrors the internal `macroParam` helper). Returns `undefined` for
  * ref-only or absent parameters — callers that need `ri:*` data read `refs`
@@ -234,6 +254,8 @@ export type ExportBlock =
       plainBody?: string;
       /** The `ac:macro-id` attribute. */
       macroId?: string;
+      /** ADF editor-extension identity; never substituted for `macroId`. */
+      adfExtension?: AdfExtensionIdentity;
       /**
        * Notes the scratch walk of `body` produced but did NOT merge into the
        * top-level report — preserved on the block for a later consumer (Lane E,

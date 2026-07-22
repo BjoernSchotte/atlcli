@@ -18,8 +18,9 @@ import {
   type DeploymentType,
   TlsOptions,
 } from "@atlcli/core";
-import { drainPaginated } from "./pagination.js";
+import { drainPaginated, PaginationLoopError } from "./pagination.js";
 import { extractExportViewMacros as extractMacroFragments } from "./html-to-blocks.js";
+import type { AdfMediaAttachment } from "./adf-to-blocks.js";
 import {
   ExportPageReadError,
   type ConfluenceExportPageDetails,
@@ -339,6 +340,24 @@ export interface AttachmentInfo {
   url?: string;
   /** Comment/description for this version */
   comment?: string;
+}
+
+/** Bounded v2 attachment metadata used to correlate ADF media IDs. */
+export interface PageAttachmentMediaResult {
+  attachments: AdfMediaAttachment[];
+  /** False when a result/request budget stopped pagination early. */
+  complete: boolean;
+}
+
+const DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT = 1_000;
+const MAX_PAGE_ATTACHMENT_MEDIA_LIMIT = 5_000;
+const MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS = 20;
+
+function adfMayReferenceMedia(value: string): boolean {
+  // This gates an optional metadata request only; the bounded validator remains
+  // authoritative. Atlassian serializes node `type` names literally, while
+  // arbitrary whitespace is allowed between JSON tokens.
+  return /"type"\s*:\s*"(?:media|mediaInline)"/u.test(value);
 }
 
 /**
@@ -1195,6 +1214,29 @@ export class ConfluenceClient {
     } finally {
       cleanup();
     }
+  }
+
+  /**
+   * Read the version-bound export source and, only for ADF containing media
+   * nodes, prefetch the v2 attachment `fileId` index required by the decoder.
+   */
+  async getExportPageDetailsWithMedia(
+    id: string,
+    options: { signal?: AbortSignal; maxAttachments?: number } = {},
+  ): Promise<ConfluenceExportPageDetails> {
+    const page = await this.getExportPageDetails(id, options);
+    if (
+      page.exportSource.primary.representation !== "atlas_doc_format" ||
+      !adfMayReferenceMedia(page.exportSource.primary.value)
+    ) {
+      return page;
+    }
+    const media = await this.listPageAttachmentMedia(id, options);
+    return {
+      ...page,
+      mediaAttachments: media.attachments,
+      mediaAttachmentsComplete: media.complete,
+    };
   }
 
   /**
@@ -2133,6 +2175,59 @@ export class ConfluenceClient {
   }
 
   // ============ Attachment Operations ============
+
+  /**
+   * List the Cloud v2 attachment identity needed by ADF media nodes.
+   *
+   * ADF media `attrs.id` correlates to the attachment response's `fileId`, not
+   * the attachment content `id`. Pagination is bounded independently by item
+   * and request caps; filenames and response bodies stay out of logs.
+   */
+  async listPageAttachmentMedia(
+    pageId: string,
+    options: { maxAttachments?: number; signal?: AbortSignal } = {},
+  ): Promise<PageAttachmentMediaResult> {
+    const requested = options.maxAttachments ?? DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT;
+    const maxAttachments = Math.max(
+      1,
+      Math.min(MAX_PAGE_ATTACHMENT_MEDIA_LIMIT, Math.trunc(Number.isFinite(requested) ? requested : 0)),
+    );
+    const pageSize = Math.min(250, maxAttachments);
+    const attachments: AdfMediaAttachment[] = [];
+    const seenCursors = new Set<string>();
+    const seenFileIds = new Set<string>();
+    let cursor: string | undefined;
+
+    for (let request = 0; request < MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS; request += 1) {
+      options.signal?.throwIfAborted();
+      const data = (await this.requestV2(`/pages/${pageId}/attachments`, {
+        query: { limit: pageSize, cursor },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      for (const item of results) {
+        if (attachments.length >= maxAttachments) {
+          return { attachments, complete: false };
+        }
+        if (typeof item?.fileId !== "string" || typeof item?.title !== "string") continue;
+        const fileId = item.fileId.trim();
+        const filename = item.title.trim();
+        if (!fileId || !filename || seenFileIds.has(fileId)) continue;
+        seenFileIds.add(fileId);
+        attachments.push({ fileId, filename, pageId });
+      }
+
+      const next = extractCursor(data._links?.next, this.confluenceBaseUrl);
+      if (!next) return { attachments, complete: true };
+      if (attachments.length >= maxAttachments) return { attachments, complete: false };
+      if (seenCursors.has(next)) throw new PaginationLoopError(next);
+      seenCursors.add(next);
+      cursor = next;
+    }
+
+    return { attachments, complete: false };
+  }
 
   /**
    * List attachments for a page.

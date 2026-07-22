@@ -39,6 +39,7 @@
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
+  createAdfMediaAttachmentResolver,
   AssetBudget,
   assertSafeSvg,
   decodeSvgSource,
@@ -1893,6 +1894,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
       walked = exportSource
         ? pageBodyToBlocks(exportSource, {
             exporter: "word",
+            resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
             pageContext: {
               id: page.id,
               title: page.title,

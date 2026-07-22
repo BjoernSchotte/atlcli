@@ -117,6 +117,13 @@ export interface AdfDocument extends AdfNode {
     content: AdfNode[];
 }
 
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
 // export: AdfJsonValue
 export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
@@ -126,6 +133,13 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
 export interface AdfMark {
     type: string;
     attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
 }
 
 // export: AdfMediaReference
@@ -424,6 +438,10 @@ export declare class ConfluenceClient {
     getExportPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -523,6 +541,10 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
     }): Promise<AttachmentInfo[]>;
@@ -654,6 +676,8 @@ export type ConfluenceDetailedSearchResults = {
 // export: ConfluenceExportPageDetails
 export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -761,6 +785,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -1050,6 +1077,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1304,6 +1332,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -1455,6 +1490,12 @@ export declare function normalizeLinkHref(href: string): string;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
+
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -1825,6 +1866,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getExportPageDetails?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -1892,6 +1936,8 @@ export interface TreeSourcePageMetadata {
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -2088,6 +2134,13 @@ export interface AdfDocument extends AdfNode {
     content: AdfNode[];
 }
 
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
 // export: AdfJsonValue
 export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
@@ -2097,6 +2150,13 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
 export interface AdfMark {
     type: string;
     attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
 }
 
 // export: AdfMediaReference
@@ -2395,6 +2455,10 @@ export declare class ConfluenceClient {
     getExportPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -2494,6 +2558,10 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
     }): Promise<AttachmentInfo[]>;
@@ -2625,6 +2693,8 @@ export type ConfluenceDetailedSearchResults = {
 // export: ConfluenceExportPageDetails
 export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -2732,6 +2802,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -3021,6 +3094,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -3275,6 +3349,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -3426,6 +3507,12 @@ export declare function normalizeLinkHref(href: string): string;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
+
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -3796,6 +3883,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getExportPageDetails?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -3863,6 +3953,8 @@ export interface TreeSourcePageMetadata {
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -4059,6 +4151,13 @@ export interface AdfDocument extends AdfNode {
     content: AdfNode[];
 }
 
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
 // export: AdfJsonValue
 export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
@@ -4068,6 +4167,13 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
 export interface AdfMark {
     type: string;
     attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
 }
 
 // export: AdfMediaReference
@@ -4366,6 +4472,10 @@ export declare class ConfluenceClient {
     getExportPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -4465,6 +4575,10 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
     }): Promise<AttachmentInfo[]>;
@@ -4596,6 +4710,8 @@ export type ConfluenceDetailedSearchResults = {
 // export: ConfluenceExportPageDetails
 export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -4703,6 +4819,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -4992,6 +5111,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -5246,6 +5366,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -5397,6 +5524,12 @@ export declare function normalizeLinkHref(href: string): string;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
+
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -5767,6 +5900,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getExportPageDetails?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -5834,6 +5970,8 @@ export interface TreeSourcePageMetadata {
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -5925,6 +6063,13 @@ export type AdapterType = "sqlite" | "postgres" | "json";
 
 // export: addFrontmatter
 export declare function addFrontmatter(content: string, frontmatter: AtlcliFrontmatter): string;
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
 
 // export: AtlcliConfig
 export type AtlcliConfig = AtlcliConfigV1 | AtlcliConfigV2;
@@ -6199,6 +6344,10 @@ export declare class ConfluenceClient {
     getExportPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -6298,6 +6447,10 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
     }): Promise<AttachmentInfo[]>;
@@ -6880,6 +7033,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -7234,6 +7388,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -7550,6 +7711,12 @@ export declare function normalizeExportColor(value: string | undefined): string 
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
+
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
 
 // export: PageChangeInfo
 export interface PageChangeInfo {
@@ -8542,6 +8709,13 @@ export interface AdfDocument extends AdfNode {
     content: AdfNode[];
 }
 
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
 // export: AdfJsonValue
 export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
@@ -8551,6 +8725,13 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
 export interface AdfMark {
     type: string;
     attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
 }
 
 // export: AdfMediaReference
@@ -8849,6 +9030,10 @@ export declare class ConfluenceClient {
     getExportPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -8948,6 +9133,10 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
     }): Promise<AttachmentInfo[]>;
@@ -9079,6 +9268,8 @@ export type ConfluenceDetailedSearchResults = {
 // export: ConfluenceExportPageDetails
 export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -9186,6 +9377,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -9475,6 +9669,7 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -9729,6 +9924,13 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
 } | {
     type: "link";
     target: LinkTarget;
@@ -9880,6 +10082,12 @@ export declare function normalizeLinkHref(href: string): string;
 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
+
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -10250,6 +10458,9 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getExportPageDetails?(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceExportPageDetails>;
@@ -10317,6 +10528,8 @@ export interface TreeSourcePageMetadata {
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary

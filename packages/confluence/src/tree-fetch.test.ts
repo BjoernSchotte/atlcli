@@ -1051,17 +1051,21 @@ describe("fetchExportTree — representation-neutral sources", () => {
           }],
         },
       ]),
+      mediaAttachments: [{ fileId: "media-1", filename: "image.png", pageId: "root" }],
+      mediaAttachmentsComplete: true,
     });
 
-    const result = await fetchExportTree(source, tree("root"), {
-      bodyOptions: {
-        resolveMediaAttachment: (reference) =>
-          reference.id === "media-1" ? { filename: "image.png" } : undefined,
-      },
-    });
+    const result = await fetchExportTree(source, tree("root"));
     const node = result.nodes[0] as ExportPageNode;
     expect(node.blocks[0]?.type).toBe("unknown");
-    expect(node.blocks[0]).toMatchObject({ sourcePage: { id: "root", version: 1, spaceKey: "S" } });
+    expect(node.blocks[0]).toMatchObject({
+      adfExtension: {
+        extensionType: "com.example",
+        extensionKey: "example",
+        localId: "local-1",
+      },
+      sourcePage: { id: "root", version: 1, spaceKey: "S" },
+    });
     expect(node.blocks[1]).toMatchObject({
       type: "image",
       source: { kind: "attachment", filename: "image.png", pageId: "root" },
@@ -1189,7 +1193,7 @@ describe("fetchExportTree — representation-neutral sources", () => {
     expect(progress).toEqual([]);
   });
 
-  test("the Node adapter prefers export reads and retains old Storage clients", async () => {
+  test("the Node adapter prefers media-aware export reads and retains older source clients", async () => {
     const calls: string[] = [];
     const baseClient = {
       async getPageDetails(id: string) {
@@ -1221,6 +1225,29 @@ describe("fetchExportTree — representation-neutral sources", () => {
     });
     const page = await modern.getPage("2", {});
     expect(page.exportSource?.primary.representation).toBe("atlas_doc_format");
-    expect(calls).toEqual(["storage:1", "export:2"]);
+
+    const mediaAware = confluenceTreeSource({
+      ...baseClient,
+      async getExportPageDetails() {
+        throw new Error("less capable read must not win");
+      },
+      async getExportPageDetailsWithMedia(id: string) {
+        calls.push(`media:${id}`);
+        return {
+          id,
+          title: "Title",
+          storage: "<p>Sidecar</p>",
+          version: 1,
+          exportSource: adfSource("ADF"),
+          mediaAttachments: [{ fileId: "file-1", filename: "image.png", pageId: id }],
+          mediaAttachmentsComplete: true,
+        };
+      },
+    });
+    const mediaPage = await mediaAware.getPage("3", {});
+    expect(mediaPage.mediaAttachments).toEqual([
+      { fileId: "file-1", filename: "image.png", pageId: "3" },
+    ]);
+    expect(calls).toEqual(["storage:1", "export:2", "media:3"]);
   });
 });

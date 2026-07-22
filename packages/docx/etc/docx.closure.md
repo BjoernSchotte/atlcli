@@ -12,7 +12,7 @@
 
 - exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, renderPreparedDocxExport, runExport
 - same-package closure references: 27
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
@@ -21,7 +21,7 @@
 
 - exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
 - same-package closure references: 28
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
@@ -30,7 +30,7 @@
 
 - exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, renderPreparedDocxExport, runExport
 - same-package closure references: 27
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
@@ -51,7 +51,7 @@
 
 - exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
 - same-package closure references: 28
-- reaches `@atlcli/confluence` (frozen): ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
