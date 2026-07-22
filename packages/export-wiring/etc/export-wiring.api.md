@@ -27,6 +27,35 @@ export interface BuildMacroOptionsArgs {
 // export: buildMacroResolutionOptions
 export declare function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroResolutionOptions;
 
+// export: CheckpointedOrderedSourcePipelineOptionsV1
+export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
+    jobId: string;
+    requestKey: string;
+    source: OrderedSourcePortV1<Value, Cursor>;
+    concurrency: number;
+    maxResultSlots: number;
+    maxBufferedEntries: number;
+    signal?: AbortSignal;
+    resume?: PersistedOrderedSourceCheckpointV1<Cursor>;
+    process(source: Value, context: {
+        ordinal: number;
+        key: string;
+        signal: AbortSignal;
+    }): Promise<Result>;
+    commitCheckpoint(item: OrderedSourceCommitV1<Value, Result>, checkpoint: OrderedSourceCheckpointV1<Cursor>, context: {
+        signal: AbortSignal;
+    }): Promise<string>;
+    publishCheckpointRef?(ref: string, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
+// export: CheckpointedOrderedSourcePipelineResultV1
+export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
+    committedCount: number;
+    latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
+}
+
 // export: classifyClientError
 export declare function classifyClientError(err: unknown, service: string): never;
 
@@ -47,6 +76,19 @@ export declare function defaultExternalAssetFetcher(policy: ExternalAssetPolicy,
 
 // export: defaultExternalAssetPolicy
 export declare function defaultExternalAssetPolicy(siteBaseUrl: string): ExternalAssetPolicy;
+
+// export: ExportAssetResponseV1
+export interface ExportAssetResponseV1 {
+    contentLength?: number;
+    body: AsyncIterable<Uint8Array>;
+}
+
+// export: ExportAssetSourceV1
+export interface ExportAssetSourceV1<Reference> {
+    fetch(reference: Reference, context: {
+        signal: AbortSignal;
+    }): Promise<ExportAssetResponseV1>;
+}
 
 // export: exportViewPortFromClient
 export declare function exportViewPortFromClient(client: ConfluenceClient): ExportViewPort;
@@ -167,8 +209,84 @@ export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBa
 // export: jiraIssueRef
 export declare function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraIssueRef;
 
+// export: OrderedSourceCheckpointV1
+export interface OrderedSourceCheckpointV1<Cursor> {
+    version: 1;
+    jobId: string;
+    requestKey: string;
+    generation: number;
+    sourceCursor: Cursor;
+    nextCommitOrdinal: number;
+    committedCount: number;
+}
+
+// export: OrderedSourceCommitV1
+export interface OrderedSourceCommitV1<Value, Result> {
+    ordinal: number;
+    key: string;
+    source: Value;
+    result: Result;
+}
+
+// export: OrderedSourceDiscoveryV1
+export interface OrderedSourceDiscoveryV1<Value, Cursor> {
+    entries: readonly OrderedSourceEntryV1<Value, Cursor>[];
+    done: boolean;
+}
+
+// export: OrderedSourceEntryV1
+export interface OrderedSourceEntryV1<Value, Cursor> {
+    key: string;
+    value: Value;
+    cursorAfter: Cursor;
+}
+
+// export: OrderedSourcePortV1
+export interface OrderedSourcePortV1<Value, Cursor> {
+    discover(after: Cursor | undefined, context: {
+        limit: number;
+        signal: AbortSignal;
+    }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
+}
+
 // export: parseIpv6
 export declare function parseIpv6(value: string): number[] | undefined;
+
+// export: PersistedOrderedSourceCheckpointV1
+export interface PersistedOrderedSourceCheckpointV1<Cursor> {
+    checkpoint: OrderedSourceCheckpointV1<Cursor>;
+    ref: string;
+}
+
+// export: runCheckpointedOrderedSourcePipeline
+export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
+
+// export: streamBoundedExportAssetV1
+export declare function streamBoundedExportAssetV1<Reference, Result>(options: {
+    reference: Reference;
+    source: ExportAssetSourceV1<Reference>;
+    reservations: ByteReservationSemaphoreV1;
+    limits: StreamedExportAssetLimitsV1;
+    signal?: AbortSignal;
+    persist(body: AsyncIterable<Uint8Array>, context: {
+        declaredByteLength?: number;
+        maxByteLength: number;
+        signal: AbortSignal;
+    }): Promise<Result>;
+}): Promise<StreamedExportAssetResultV1<Result>>;
+
+// export: StreamedExportAssetLimitsV1
+export interface StreamedExportAssetLimitsV1 {
+    maxAssetBytes: number;
+    maxChunkBytes: number;
+}
+
+// export: StreamedExportAssetResultV1
+export interface StreamedExportAssetResultV1<Result> {
+    result: Result;
+    byteLength: number;
+    chunkCount: number;
+}
 
 // export: trustRoutingAssetFetcher
 export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: ExternalAssetFetcher): AssetFetcher;
@@ -223,4 +341,126 @@ export interface PrivateHostFixture {
 
 // export: TRUST_ROUTING_PROBE_REF
 export declare const TRUST_ROUTING_PROBE_REF: PdfAssetRef;
+```
+
+### Entry point `./jobs`
+
+```ts
+// export: CheckpointedOrderedSourcePipelineOptionsV1
+export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
+    jobId: string;
+    requestKey: string;
+    source: OrderedSourcePortV1<Value, Cursor>;
+    concurrency: number;
+    maxResultSlots: number;
+    maxBufferedEntries: number;
+    signal?: AbortSignal;
+    resume?: PersistedOrderedSourceCheckpointV1<Cursor>;
+    process(source: Value, context: {
+        ordinal: number;
+        key: string;
+        signal: AbortSignal;
+    }): Promise<Result>;
+    commitCheckpoint(item: OrderedSourceCommitV1<Value, Result>, checkpoint: OrderedSourceCheckpointV1<Cursor>, context: {
+        signal: AbortSignal;
+    }): Promise<string>;
+    publishCheckpointRef?(ref: string, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
+// export: CheckpointedOrderedSourcePipelineResultV1
+export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
+    committedCount: number;
+    latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
+}
+
+// export: ExportAssetResponseV1
+export interface ExportAssetResponseV1 {
+    contentLength?: number;
+    body: AsyncIterable<Uint8Array>;
+}
+
+// export: ExportAssetSourceV1
+export interface ExportAssetSourceV1<Reference> {
+    fetch(reference: Reference, context: {
+        signal: AbortSignal;
+    }): Promise<ExportAssetResponseV1>;
+}
+
+// export: OrderedSourceCheckpointV1
+export interface OrderedSourceCheckpointV1<Cursor> {
+    version: 1;
+    jobId: string;
+    requestKey: string;
+    generation: number;
+    sourceCursor: Cursor;
+    nextCommitOrdinal: number;
+    committedCount: number;
+}
+
+// export: OrderedSourceCommitV1
+export interface OrderedSourceCommitV1<Value, Result> {
+    ordinal: number;
+    key: string;
+    source: Value;
+    result: Result;
+}
+
+// export: OrderedSourceDiscoveryV1
+export interface OrderedSourceDiscoveryV1<Value, Cursor> {
+    entries: readonly OrderedSourceEntryV1<Value, Cursor>[];
+    done: boolean;
+}
+
+// export: OrderedSourceEntryV1
+export interface OrderedSourceEntryV1<Value, Cursor> {
+    key: string;
+    value: Value;
+    cursorAfter: Cursor;
+}
+
+// export: OrderedSourcePortV1
+export interface OrderedSourcePortV1<Value, Cursor> {
+    discover(after: Cursor | undefined, context: {
+        limit: number;
+        signal: AbortSignal;
+    }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
+}
+
+// export: PersistedOrderedSourceCheckpointV1
+export interface PersistedOrderedSourceCheckpointV1<Cursor> {
+    checkpoint: OrderedSourceCheckpointV1<Cursor>;
+    ref: string;
+}
+
+// export: runCheckpointedOrderedSourcePipeline
+export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
+
+// export: streamBoundedExportAssetV1
+export declare function streamBoundedExportAssetV1<Reference, Result>(options: {
+    reference: Reference;
+    source: ExportAssetSourceV1<Reference>;
+    reservations: ByteReservationSemaphoreV1;
+    limits: StreamedExportAssetLimitsV1;
+    signal?: AbortSignal;
+    persist(body: AsyncIterable<Uint8Array>, context: {
+        declaredByteLength?: number;
+        maxByteLength: number;
+        signal: AbortSignal;
+    }): Promise<Result>;
+}): Promise<StreamedExportAssetResultV1<Result>>;
+
+// export: StreamedExportAssetLimitsV1
+export interface StreamedExportAssetLimitsV1 {
+    maxAssetBytes: number;
+    maxChunkBytes: number;
+}
+
+// export: StreamedExportAssetResultV1
+export interface StreamedExportAssetResultV1<Result> {
+    result: Result;
+    byteLength: number;
+    chunkCount: number;
+}
 ```

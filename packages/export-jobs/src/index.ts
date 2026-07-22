@@ -39,8 +39,28 @@ export type {
   ExportJobSnapshotV1,
 } from "./snapshot.js";
 export type { ExportJobEventV1 } from "./event.js";
-export type { SpoolRefV1, SpoolWriteLimitsV1, SpoolObjectV1 } from "./spool.js";
+export type {
+  SpoolRefV1,
+  SpoolWriteLimitsV1,
+  SpoolObjectV1,
+  ExportByteCleanupResultV1,
+} from "./spool.js";
 export type { ResourceEstimateV1 } from "./resource.js";
+export {
+  EXPORT_RESOURCE_NAMES_V1,
+  ExportResourceReservationErrorV1,
+  InMemoryExportResourceReservationArbiterV1,
+} from "./resource-reservation.js";
+export type {
+  ExportResourceNameV1,
+  ExportResourceCapacitiesV1,
+  ExportResourceAmountsV1,
+  ExportResourceReservationOwnerV1,
+  ExportResourceReservationV1,
+  ExportResourceReservationSnapshotV1,
+  ExportResourceReclaimResultV1,
+  ExportResourceReservationErrorCodeV1,
+} from "./resource-reservation.js";
 export type { ExportJobHostCapabilityV1 } from "./capability.js";
 export type {
   ExportJobQueryV1,
@@ -57,6 +77,7 @@ export type {
   ExportJobFinalizeV1,
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
+  ExportJobTombstoneV1,
 } from "./store-contracts.js";
 export type {
   ExportJobStore,
@@ -128,6 +149,45 @@ export {
 } from "./validation.js";
 export { bindExportJobArtifacts, bindExportJobSpool } from "./bound-stores.js";
 export {
+  ByteReservationSemaphoreV1,
+  BoundedByteErrorV1,
+  consumeBoundedByteStreamV1,
+  copyExactOwnedBytesV1,
+} from "./bounded-stream.js";
+export type {
+  ByteReservationLimitsV1,
+  ByteReservationSnapshotV1,
+  ByteReservationV1,
+  BoundedByteErrorCodeV1,
+  BoundedByteStreamLimitsV1,
+  BoundedByteChunkContextV1,
+} from "./bounded-stream.js";
+export {
+  cleanupAbandonedExportAttempt,
+  cleanupTombstonedExportJob,
+  reconcileTombstonedExportJobCleanup,
+} from "./cleanup.js";
+export {
+  ExportArtifactFinalizationConflict,
+  InMemoryExportArtifactFinalizationJournal,
+  exportArtifactFinalizationRef,
+  prepareExportArtifactFinalizationIntent,
+  finalizeExportArtifactDurably,
+  resumePreparedExportArtifactFinalization,
+} from "./finalization.js";
+export type {
+  ExportArtifactFinalizationIntentV1,
+  ExportArtifactFinalizationJournal,
+  ExportArtifactFinalizationCommitter,
+  ExportJobFinalizationCommitter,
+  ExportArtifactFinalizationPorts,
+  ExportArtifactFinalizationFaultHooks,
+} from "./finalization.js";
+export type {
+  ExportOwnedByteStoresV1,
+  ExportOwnedByteCleanupSummaryV1,
+} from "./cleanup.js";
+export {
   InMemoryArtifactStore,
   InMemoryByteStoreConflict,
   InMemoryExportJobStore,
@@ -136,7 +196,6 @@ export {
 } from "./in-memory.js";
 export type {
   InMemoryExportStoreConflictCode,
-  ExportJobTombstoneV1,
   InMemoryExportJobStoreOptions,
   InMemoryByteStoreConflictCode,
   InMemorySpoolStoreOptions,

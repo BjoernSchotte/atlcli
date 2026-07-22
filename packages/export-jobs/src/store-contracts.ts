@@ -135,3 +135,23 @@ export interface ExportJobDeleteResultV1 {
   deletedJobIds: string[];
   tombstoneRefs: string[];
 }
+
+/** Durable deletion proof used to authorize host-owned byte cleanup. */
+export interface ExportJobTombstoneV1 {
+  ref: string;
+  jobId: string;
+  requestRef: string;
+  idempotencyKey: string;
+  derivationKey?: string;
+  finalState: Extract<
+    ExportJobState,
+    "succeeded" | "failed" | "cancelled" | "interrupted"
+  >;
+  finalRevision: number;
+  finishedAt: number;
+  deletedAt: number;
+  /** Logical owned refs retained so a host can audit or continue cleanup. */
+  ownedRefs: string[];
+  /** Set once only after idempotent physical cleanup has removed every owned byte. */
+  cleanupCompletedAt?: number;
+}

@@ -82,3 +82,7 @@ export { trustRoutingAssetFetcher, trustRoutingPdfAssetResolver } from "./trust-
 // --- Macro resolution options ---
 export { buildMacroResolutionOptions, createMacroRegistry } from "./macro-options.js";
 export type { BuildMacroOptionsArgs } from "./macro-options.js";
+
+// --- Background-export source orchestration ---
+export * from "./jobs/checkpointed-source-pipeline.js";
+export * from "./jobs/streamed-asset.js";

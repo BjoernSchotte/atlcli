@@ -14,7 +14,59 @@ export type BadgeJobV1 = Pick<ExportJobSnapshotV1, "state" | "acknowledgedAt" | 
 export declare function bindExportJobArtifacts(store: ExportArtifactStore, jobId: string, leaseEpoch: number): ExportJobArtifacts;
 
 // export: bindExportJobSpool
-export declare function bindExportJobSpool(store: ExportSpoolStore, jobId: string, leaseEpoch: number): ExportJobSpool;
+export declare function bindExportJobSpool(store: ExportSpoolStore, jobId: string, leaseEpoch: number, limits: SpoolWriteLimitsV1): ExportJobSpool;
+
+// export: BoundedByteChunkContextV1
+export interface BoundedByteChunkContextV1 {
+    index: number;
+    observedBytes: number;
+}
+
+// export: BoundedByteErrorCodeV1
+export type BoundedByteErrorCodeV1 = "invalid-limit" | "invalid-byte-length" | "reservation-too-large" | "chunk-too-large" | "stream-too-large" | "invalid-chunk";
+
+// export: BoundedByteErrorV1
+export declare class BoundedByteErrorV1 extends Error {
+    readonly code: BoundedByteErrorCodeV1;
+    constructor(code: BoundedByteErrorCodeV1, message: string);
+}
+
+// export: BoundedByteStreamLimitsV1
+export interface BoundedByteStreamLimitsV1 {
+    maxChunkBytes: number;
+    maxTotalBytes: number;
+}
+
+// export: ByteReservationLimitsV1
+export interface ByteReservationLimitsV1 {
+    maxBytes: number;
+    maxReservations: number;
+}
+
+// export: ByteReservationSemaphoreV1
+export declare class ByteReservationSemaphoreV1 {
+    #private;
+    readonly limits: Readonly<ByteReservationLimitsV1>;
+    constructor(limits: ByteReservationLimitsV1);
+    get snapshot(): ByteReservationSnapshotV1;
+    reserve(byteLength: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ByteReservationV1>;
+}
+
+// export: ByteReservationSnapshotV1
+export interface ByteReservationSnapshotV1 {
+    reservedBytes: number;
+    activeReservations: number;
+    queuedReservations: number;
+}
+
+// export: ByteReservationV1
+export interface ByteReservationV1 {
+    readonly byteLength: number;
+    readonly released: boolean;
+    release(): void;
+}
 
 // export: checkpointExportJob
 export declare function checkpointExportJob(snapshot: ExportJobSnapshotV1, input: ExportJobCheckpointInputV1): ExportJobSnapshotV1;
@@ -22,8 +74,27 @@ export declare function checkpointExportJob(snapshot: ExportJobSnapshotV1, input
 // export: claimExportJob
 export declare function claimExportJob(snapshot: ExportJobSnapshotV1, input: ExportJobClaimInputV1): ExportJobSnapshotV1;
 
+// export: cleanupAbandonedExportAttempt
+export declare function cleanupAbandonedExportAttempt(stores: ExportOwnedByteStoresV1, jobId: string, leaseEpoch: number, options?: {
+    preserveSpoolRefs?: readonly import("./spool.js").SpoolRefV1[];
+}): Promise<ExportOwnedByteCleanupSummaryV1>;
+
+// export: cleanupTombstonedExportJob
+export declare function cleanupTombstonedExportJob(stores: ExportOwnedByteStoresV1, tombstone: ExportJobTombstoneV1): Promise<ExportOwnedByteCleanupSummaryV1>;
+
 // export: CompletenessMode
 export type CompletenessMode = "strict" | "partial";
+
+// export: consumeBoundedByteStreamV1
+export declare function consumeBoundedByteStreamV1(source: AsyncIterable<Uint8Array>, semaphore: ByteReservationSemaphoreV1, limits: BoundedByteStreamLimitsV1, consume: (chunk: Uint8Array, context: BoundedByteChunkContextV1) => void | Promise<void>, options?: {
+    signal?: AbortSignal;
+}): Promise<{
+    byteLength: number;
+    chunkCount: number;
+}>;
+
+// export: copyExactOwnedBytesV1
+export declare function copyExactOwnedBytesV1(chunk: Uint8Array): Uint8Array;
 
 // export: decideResourceAdmission
 export declare function decideResourceAdmission(estimate: ResourceEstimateV1, available: ResourceCapacityV1, options: ResourceAdmissionOptionsV1): ResourceAdmissionDecisionV1;
@@ -59,12 +130,72 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
 // export: EvictionReasonV1
 export type EvictionReasonV1 = "expired-temp" | "regenerable-preview" | "released-terminal-artifact" | "terminal-diagnostic-grace-elapsed";
 
+// export: EXPORT_RESOURCE_NAMES_V1
+export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
+    "inFlightBytes",
+    "persistedSpoolBytes",
+    "outputBytes",
+    "rasterBytes",
+    "heavySlots"
+];
+
+// export: ExportArtifactFinalizationCommitter
+export interface ExportArtifactFinalizationCommitter {
+    commit(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactV1>;
+}
+
+// export: ExportArtifactFinalizationConflict
+export declare class ExportArtifactFinalizationConflict extends Error {
+    constructor(message: string);
+}
+
+// export: ExportArtifactFinalizationFaultHooks
+export interface ExportArtifactFinalizationFaultHooks {
+    afterIntentPrepared?(): void | Promise<void>;
+    afterArtifactCommitted?(): void | Promise<void>;
+    afterJobCommitted?(): void | Promise<void>;
+}
+
+// export: ExportArtifactFinalizationIntentV1
+export interface ExportArtifactFinalizationIntentV1 {
+    schema: "atlcli.export-artifact-finalization/1";
+    ref: string;
+    status: "prepared" | "completed";
+    finalize: ExportJobFinalizeV1;
+    artifact: ExportArtifactV1;
+    completedAt?: number;
+}
+
+// export: ExportArtifactFinalizationJournal
+export interface ExportArtifactFinalizationJournal {
+    prepare(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactFinalizationIntentV1>;
+    get(ref: string): Promise<ExportArtifactFinalizationIntentV1 | undefined>;
+    findPreparedByJob(jobId: string): Promise<ExportArtifactFinalizationIntentV1 | undefined>;
+    complete(ref: string, artifact: ExportArtifactV1, completedAt: number): Promise<void>;
+}
+
+// export: ExportArtifactFinalizationPorts
+export interface ExportArtifactFinalizationPorts {
+    journal: ExportArtifactFinalizationJournal;
+    artifacts: ExportArtifactFinalizationCommitter;
+    jobs: ExportJobFinalizationCommitter;
+}
+
+// export: exportArtifactFinalizationRef
+export declare function exportArtifactFinalizationRef(input: ExportJobFinalizeV1): string;
+
 // export: ExportArtifactStore
 export interface ExportArtifactStore {
-    stage(jobId: string, leaseEpoch: number, artifact: PendingArtifactV1): Promise<StagedArtifactV1>;
+    stage(jobId: string, leaseEpoch: number, artifact: PendingArtifactV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<StagedArtifactV1>;
     getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined>;
-    read(ref: string): AsyncIterable<Uint8Array>;
+    read(ref: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
     deleteStaged(ref: string): Promise<void>;
+    deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
 }
 
 // export: ExportArtifactV1
@@ -86,6 +217,12 @@ export interface ExportBadgeProjectionV1 {
     unreadSuccessCount: number;
 }
 
+// export: ExportByteCleanupResultV1
+export interface ExportByteCleanupResultV1 {
+    objectsDeleted: number;
+    bytesDeleted: number;
+}
+
 // export: ExportFormat
 export type ExportFormat = "docx" | "pdf";
 
@@ -99,7 +236,9 @@ export interface ExportIssueSourceV1 {
 
 // export: ExportJobArtifacts
 export interface ExportJobArtifacts {
-    stage(artifact: PendingArtifactV1): Promise<StagedArtifactV1>;
+    stage(artifact: PendingArtifactV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<StagedArtifactV1>;
     getStaged(): Promise<StagedArtifactV1 | undefined>;
 }
 
@@ -250,6 +389,11 @@ export interface ExportJobExecutionResultV1 {
 export interface ExportJobExecutor<Request> {
     readonly format: ExportFormat;
     execute(request: Request, context: ExportJobExecutionContext): Promise<ExportJobExecutionResultV1>;
+}
+
+// export: ExportJobFinalizationCommitter
+export interface ExportJobFinalizationCommitter {
+    commit(intent: ExportArtifactFinalizationIntentV1, artifact: ExportArtifactV1): Promise<void>;
 }
 
 // export: ExportJobFinalizeV1
@@ -453,7 +597,9 @@ export interface ExportJobSnapshotV1 {
 
 // export: ExportJobSpool
 export interface ExportJobSpool {
-    put(ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1): Promise<SpoolObjectV1>;
+    put(ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">, source: AsyncIterable<Uint8Array>, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpoolObjectV1>;
     read(ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">, options?: {
         signal?: AbortSignal;
     }): AsyncIterable<Uint8Array>;
@@ -559,6 +705,8 @@ export interface ExportJobStore {
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
+    markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
 }
 
 // export: ExportJobTerminalMetadataInputV1
@@ -576,11 +724,12 @@ export interface ExportJobTombstoneV1 {
     requestRef: string;
     idempotencyKey: string;
     derivationKey?: string;
-    finalState: Extract<ExportJobSnapshotV1["state"], "succeeded" | "failed" | "cancelled" | "interrupted">;
+    finalState: Extract<ExportJobState, "succeeded" | "failed" | "cancelled" | "interrupted">;
     finalRevision: number;
     finishedAt: number;
     deletedAt: number;
     ownedRefs: string[];
+    cleanupCompletedAt?: number;
 }
 
 // export: ExportJobTransitionConflict
@@ -612,6 +761,20 @@ export declare class ExportJobValidationError extends Error {
     constructor(path: string, message: string);
 }
 
+// export: ExportOwnedByteCleanupSummaryV1
+export interface ExportOwnedByteCleanupSummaryV1 {
+    spool: ExportByteCleanupResultV1;
+    artifacts: ExportByteCleanupResultV1;
+    objectsDeleted: number;
+    bytesDeleted: number;
+}
+
+// export: ExportOwnedByteStoresV1
+export interface ExportOwnedByteStoresV1 {
+    spool: ExportSpoolStore;
+    artifacts: ExportArtifactStore;
+}
+
 // export: ExportReportSummaryV1
 export interface ExportReportSummaryV1 {
     issues: {
@@ -625,6 +788,52 @@ export interface ExportReportSummaryV1 {
     }>;
     completeness: "complete" | "partial" | "unknown";
     failurePhase?: string;
+}
+
+// export: ExportResourceAmountsV1
+export type ExportResourceAmountsV1 = Readonly<Partial<Record<ExportResourceNameV1, number>>>;
+
+// export: ExportResourceCapacitiesV1
+export type ExportResourceCapacitiesV1 = Readonly<Record<ExportResourceNameV1, number>>;
+
+// export: ExportResourceNameV1
+export type ExportResourceNameV1 = (typeof EXPORT_RESOURCE_NAMES_V1)[number];
+
+// export: ExportResourceReclaimResultV1
+export interface ExportResourceReclaimResultV1 {
+    reservationsReclaimed: number;
+    resourcesReleased: ExportResourceCapacitiesV1;
+}
+
+// export: ExportResourceReservationErrorCodeV1
+export type ExportResourceReservationErrorCodeV1 = "invalid-capacity" | "invalid-amount" | "empty-request" | "invalid-owner" | "invalid-expiry" | "capacity-exceeded" | "reservation-not-found" | "ownership-mismatch" | "release-exceeds-reservation";
+
+// export: ExportResourceReservationErrorV1
+export declare class ExportResourceReservationErrorV1 extends Error {
+    readonly code: ExportResourceReservationErrorCodeV1;
+    readonly resource?: ExportResourceNameV1;
+    constructor(code: ExportResourceReservationErrorCodeV1, message: string, resource?: ExportResourceNameV1);
+}
+
+// export: ExportResourceReservationOwnerV1
+export interface ExportResourceReservationOwnerV1 {
+    jobId: string;
+    leaseEpoch: number;
+}
+
+// export: ExportResourceReservationSnapshotV1
+export interface ExportResourceReservationSnapshotV1 {
+    capacities: ExportResourceCapacitiesV1;
+    reserved: ExportResourceCapacitiesV1;
+    available: ExportResourceCapacitiesV1;
+    activeReservations: number;
+}
+
+// export: ExportResourceReservationV1
+export interface ExportResourceReservationV1 extends ExportResourceReservationOwnerV1 {
+    id: string;
+    expiresAt: number;
+    resources: ExportResourceCapacitiesV1;
 }
 
 // export: ExportScope
@@ -661,13 +870,21 @@ export interface ExportSourceV1 {
 
 // export: ExportSpoolStore
 export interface ExportSpoolStore {
-    put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1): Promise<SpoolObjectV1>;
+    put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpoolObjectV1>;
     read(ref: SpoolRefV1, options?: {
         signal?: AbortSignal;
     }): AsyncIterable<Uint8Array>;
     stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
-    deleteNamespace(jobId: string, leaseEpoch: number): Promise<void>;
+    deleteNamespace(jobId: string, leaseEpoch: number, options?: {
+        preserve?: readonly SpoolRefV1[];
+    }): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
 }
+
+// export: finalizeExportArtifactDurably
+export declare function finalizeExportArtifactDurably(ports: ExportArtifactFinalizationPorts, input: ExportJobFinalizeV1, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportArtifactV1>;
 
 // export: finalizeExportJobArtifact
 export declare function finalizeExportJobArtifact(snapshot: ExportJobSnapshotV1, input: ExportJobFinalizeV1): ExportJobSnapshotV1;
@@ -679,11 +896,19 @@ export declare function heartbeatExportJob(snapshot: ExportJobSnapshotV1, input:
 export declare class InMemoryArtifactStore implements ExportArtifactStore {
     #private;
     constructor(options?: InMemoryArtifactStoreOptions);
-    stage(jobId: string, leaseEpoch: number, artifact: PendingArtifactV1): Promise<StagedArtifactV1>;
+    get inFlightSnapshot(): ByteReservationSnapshotV1;
+    stage(jobId: string, leaseEpoch: number, artifact: PendingArtifactV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<StagedArtifactV1>;
     getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined>;
-    read(ref: string): AsyncIterable<Uint8Array>;
+    read(ref: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
     deleteStaged(ref: string): Promise<void>;
-    commitStaged(staged: StagedArtifactV1, committedAt: number): void;
+    deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
+    commitStaged(staged: StagedArtifactV1, committedAt: number): Promise<void>;
+    commitFinalization(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactV1>;
     deleteCommitted(ref: string): void;
     isCommitted(ref: string): boolean;
 }
@@ -693,6 +918,9 @@ export interface InMemoryArtifactStoreOptions {
     now?: () => number;
     maxArtifactBytes?: number;
     maxTotalBytes?: number;
+    maxInFlightBytes?: number;
+    maxConcurrentStages?: number;
+    digest?: (bytes: Uint8Array) => Promise<string>;
 }
 
 // export: InMemoryByteStoreConflict
@@ -703,6 +931,15 @@ export declare class InMemoryByteStoreConflict extends Error {
 
 // export: InMemoryByteStoreConflictCode
 export type InMemoryByteStoreConflictCode = "invalid-limit" | "object-limit" | "job-limit" | "total-limit" | "length-mismatch" | "digest-mismatch" | "ownership-mismatch" | "not-committed";
+
+// export: InMemoryExportArtifactFinalizationJournal
+export declare class InMemoryExportArtifactFinalizationJournal implements ExportArtifactFinalizationJournal {
+    #private;
+    prepare(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactFinalizationIntentV1>;
+    get(ref: string): Promise<ExportArtifactFinalizationIntentV1 | undefined>;
+    findPreparedByJob(jobId: string): Promise<ExportArtifactFinalizationIntentV1 | undefined>;
+    complete(ref: string, artifact: ExportArtifactV1, completedAt: number): Promise<void>;
+}
 
 // export: InMemoryExportJobStore
 export declare class InMemoryExportJobStore implements ExportJobStore {
@@ -723,11 +960,14 @@ export declare class InMemoryExportJobStore implements ExportJobStore {
     appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
     listEvents(id: string, limit?: number): Promise<ExportJobEventV1[]>;
     finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
+    finalizeArtifactWithFaults(finalize: ExportJobFinalizeV1, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportJobSnapshotV1>;
+    reconcilePreparedArtifactFinalization(jobId: string): Promise<ExportJobSnapshotV1 | undefined>;
     acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
     getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
+    markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<ExportJobTombstoneV1>;
 }
 
 // export: InMemoryExportJobStoreOptions
@@ -735,6 +975,29 @@ export interface InMemoryExportJobStoreOptions {
     now?: () => number;
     artifactStore?: InMemoryArtifactStore;
     tombstones?: readonly ExportJobTombstoneV1[];
+    finalizationJournal?: InMemoryExportArtifactFinalizationJournal;
+}
+
+// export: InMemoryExportResourceReservationArbiterV1
+export declare class InMemoryExportResourceReservationArbiterV1 {
+    #private;
+    readonly capacities: ExportResourceCapacitiesV1;
+    constructor(capacities: ExportResourceCapacitiesV1, options?: {
+        clock?: () => number;
+        idFactory?: () => string;
+    });
+    get snapshot(): ExportResourceReservationSnapshotV1;
+    acquire(owner: ExportResourceReservationOwnerV1, resources: ExportResourceAmountsV1, expiresAt: number): ExportResourceReservationV1;
+    grow(id: string, owner: ExportResourceReservationOwnerV1, additional: ExportResourceAmountsV1, options?: {
+        expiresAt?: number;
+    }): ExportResourceReservationV1;
+    transfer(id: string, owner: ExportResourceReservationOwnerV1, change: {
+        release?: ExportResourceAmountsV1;
+        acquire?: ExportResourceAmountsV1;
+        expiresAt?: number;
+    }): ExportResourceReservationV1;
+    release(id: string, owner: ExportResourceReservationOwnerV1): boolean;
+    reclaimExpired(at?: number): ExportResourceReclaimResultV1;
 }
 
 // export: InMemoryExportStoreConflict
@@ -750,17 +1013,26 @@ export type InMemoryExportStoreConflictCode = "duplicate-id" | "idempotency-conf
 export declare class InMemorySpoolStore implements ExportSpoolStore {
     #private;
     constructor(options?: InMemorySpoolStoreOptions);
-    put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1): Promise<SpoolObjectV1>;
+    get inFlightSnapshot(): ByteReservationSnapshotV1;
+    put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpoolObjectV1>;
     read(ref: SpoolRefV1, options?: {
         signal?: AbortSignal;
     }): AsyncIterable<Uint8Array>;
     stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
-    deleteNamespace(jobId: string, leaseEpoch: number): Promise<void>;
+    deleteNamespace(jobId: string, leaseEpoch: number, options?: {
+        preserve?: readonly SpoolRefV1[];
+    }): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
 }
 
 // export: InMemorySpoolStoreOptions
 export interface InMemorySpoolStoreOptions {
     now?: () => number;
+    maxInFlightBytes?: number;
+    maxConcurrentWrites?: number;
+    digest?: (bytes: Uint8Array) => Promise<string>;
 }
 
 // export: isExportJobTerminal
@@ -852,6 +1124,9 @@ export interface PlannedEvictionV1 {
 // export: planRetentionEviction
 export declare function planRetentionEviction(occupants: readonly RetentionOccupantV1[], policy: RetentionPolicyV1): RetentionEvictionPlanV1;
 
+// export: prepareExportArtifactFinalizationIntent
+export declare function prepareExportArtifactFinalizationIntent(input: ExportJobFinalizeV1): ExportArtifactFinalizationIntentV1;
+
 // export: projectExportBadge
 export declare function projectExportBadge(jobs: readonly BadgeJobV1[]): ExportBadgeProjectionV1;
 
@@ -860,6 +1135,12 @@ export type QueueJobV1 = Pick<ExportJobSnapshotV1, "id" | "queue">;
 
 // export: reclaimExpiredExportJobLease
 export declare function reclaimExpiredExportJobLease(snapshot: ExportJobSnapshotV1, input: ExportJobLeaseReclaimInputV1): ExportJobSnapshotV1;
+
+// export: reconcileTombstonedExportJobCleanup
+export declare function reconcileTombstonedExportJobCleanup(jobStore: ExportJobStore, stores: ExportOwnedByteStoresV1, jobId: string, completedAt: number): Promise<{
+    tombstone: ExportJobTombstoneV1;
+    cleanup: ExportOwnedByteCleanupSummaryV1;
+}>;
 
 // export: ResourceAdmissionDecisionV1
 export interface ResourceAdmissionDecisionV1 {
@@ -903,6 +1184,9 @@ export interface ResourceShortfallV1 {
     shortfall: number;
     reason: "capacity" | "reserved-for-export";
 }
+
+// export: resumePreparedExportArtifactFinalization
+export declare function resumePreparedExportArtifactFinalization(ports: ExportArtifactFinalizationPorts, jobId: string, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportArtifactV1 | undefined>;
 
 // export: RetentionEvictionPlanV1
 export interface RetentionEvictionPlanV1 {
