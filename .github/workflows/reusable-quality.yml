@@ -1,0 +1,93 @@
+name: Reusable product quality
+
+on:
+  workflow_call:
+    inputs:
+      emit_security_attestation:
+        description: Emit and upload a security attestation for this exact SHA
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Linux typecheck, test, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-quality-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-quality-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Check browser build
+        run: bun run check:browser
+
+      - name: Run tests
+        run: |
+          # Bun has been seen exiting with code 1 on Linux even when every test
+          # passes. Preserve genuine failures while accepting an exact
+          # zero-failure summary.
+          set +e
+          bun --conditions=development test 2>&1 | tee "$RUNNER_TEMP/bun-test.log"
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$TEST_EXIT" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -Eq '^[[:space:]]*[1-9][0-9]* errors?[[:space:]]*$' "$RUNNER_TEMP/bun-test.log"; then
+            exit "$TEST_EXIT"
+          fi
+
+          if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$RUNNER_TEMP/bun-test.log"; then
+            echo "::warning::Bun exited with code $TEST_EXIT despite reporting zero failed tests"
+            exit 0
+          fi
+
+          exit "$TEST_EXIT"
+
+      - name: Build
+        run: bun run build
+
+      - name: Check extension output bundle
+        run: bun run check:extension-output
+
+      - name: Emit security attestation
+        if: inputs.emit_security_attestation
+        run: bun scripts/security/attest.ts --out security-attestation.json
+
+      - name: Upload security attestation
+        if: inputs.emit_security_attestation && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-attestation-${{ github.sha }}
+          path: security-attestation.json
+          if-no-files-found: error

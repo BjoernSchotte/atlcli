@@ -1,39 +1,11 @@
 name: CLI Build & Test
 
-# NOTE: npm registry publishing is deferred (spec 009 — package publishing).
-# This workflow used to `npm publish` @atlcli/cli using a long-lived NPM_TOKEN,
-# bypassing every packaging quality gate (and shipping a bin that pointed at raw
-# TypeScript source). That publish path has been removed. What remains is a manual
-# build+test sanity check for the CLI. No job here publishes to any registry.
-
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      # Pinned, not `latest`: this job builds artifacts that feed a release,
-      # and build output must never come from a floating runtime. Read from
-      # package.json so it cannot drift from `packageManager`.
-      - name: Resolve the pinned Bun version
-        id: pin
-        run: echo "version=$(jq -r '.packageManager | ltrimstr("bun@")' package.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ steps.pin.outputs.version }}
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Run tests
-        run: bun --conditions=development test
-
-      - name: Build CLI
-        run: bun run build
+  quality:
+    uses: ./.github/workflows/reusable-quality.yml

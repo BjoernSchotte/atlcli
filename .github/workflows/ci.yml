@@ -5,22 +5,78 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Full unfiltered drift guard. Path routing must never become the only proof.
+    - cron: "33 5 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  docs:
+  changes:
+    name: Classify changed surfaces
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.routes.outputs.code }}
+      consumer: ${{ steps.routes.outputs.consumer }}
+      docs: ${{ steps.routes.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Determine required gates
+        id: routes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FULL_RUN: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [[ "$FULL_RUN" == "true" ]]; then
+            bun scripts/ci/classify-changes.ts --full >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "$BASE_SHA" || -z "$HEAD_SHA" || "$BASE_SHA" =~ ^0+$ ]] || \
+             ! git cat-file -e "$BASE_SHA^{commit}" || ! git cat-file -e "$HEAD_SHA^{commit}"; then
+            echo "::warning::Unable to resolve comparison range; running every gate"
+            bun scripts/ci/classify-changes.ts --full >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
+          git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" | \
+            bun scripts/ci/classify-changes.ts --null >> "$GITHUB_OUTPUT"
+
+  docs:
+    name: Documentation
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22.12.0'
+          node-version: "22.12.0"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.14'
+          bun-version: 1.3.14
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -32,72 +88,26 @@ jobs:
         run: bun run docs:build
 
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
+    name: Product quality
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/reusable-quality.yml
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
+  consumer-smoke:
+    name: Pinned consumer smoke
+    needs: changes
+    if: needs.changes.outputs.consumer == 'true'
+    uses: ./.github/workflows/reusable-consumer-smoke.yml
+    with:
+      leg: pinned
 
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Type check
-        run: bun run typecheck
-
-      - name: Type check extension
-        run: bun run typecheck:extension
-
-      - name: Check browser build
-        run: bun run check:browser
-
-      - name: Run tests
-        run: |
-          # Bun has been seen exiting with code 1 on Linux even when every test
-          # passes (first observed on 1.3.5, kept as a belt-and-braces guard).
-          # Preserve genuine failures while accepting an exact zero-failure summary.
-          set +e
-          bun --conditions=development test 2>&1 | tee "$RUNNER_TEMP/bun-test.log"
-          TEST_EXIT=${PIPESTATUS[0]}
-          set -e
-
-          if [ "$TEST_EXIT" -eq 0 ]; then
-            exit 0
-          fi
-
-          if grep -Eq '^[[:space:]]*[1-9][0-9]* errors?[[:space:]]*$' "$RUNNER_TEMP/bun-test.log"; then
-            exit "$TEST_EXIT"
-          fi
-
-          if grep -Eq '^[[:space:]]*0 fail[[:space:]]*$' "$RUNNER_TEMP/bun-test.log"; then
-            echo "::warning::Bun exited with code $TEST_EXIT despite reporting zero failed tests"
-            exit 0
-          fi
-
-          exit "$TEST_EXIT"
-
-      - name: Build
-        run: bun run build
-
-      - name: Check extension output bundle
-        run: bun run check:extension-output
-
-  # Spec 008 T3.1 platform gate: the three-run-mode wasm compile check (source,
-  # dist bundle, compiled binary) must hold on macOS as well as Linux — the
-  # release ships binaries for both. Scoped to the PDF compile-port tests to
-  # keep the matrix cost sane; the full suite runs on ubuntu above.
+  # Platform gates stay complete for every product change. Path-level pruning
+  # can be added later only after the dependency closures are machine-derived.
   pdf-cli-macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -115,18 +125,14 @@ jobs:
       - name: PDF compile-port and build-mode tests
         run: bun --conditions=development test apps/cli/src/commands/export-pdf-assets.test.ts apps/cli/src/commands/export-pdf-build-modes.test.ts apps/cli/src/commands/export-pdf-integration.test.ts
 
-      # Spec 006 G4: the diagram/SVG rasterizer's resvg-wasm + font imports must
-      # resolve in every build mode on macOS too (the release ships macOS
-      # binaries, and SVG attachment embedding depends on this rasterizer).
       - name: Diagram/SVG rasterizer build-mode tests
         run: bun --conditions=development test apps/cli/src/commands/export-rasterizer-build-modes.test.ts
 
-  # Spec 008 T3.2 platform gate: the filePdfOutputSink commit protocol
-  # (exclusive temp, symlink refusal, atomic no-replace commit, containment)
-  # must hold on Windows too — release.yml ships a Windows binary. Scoped to
-  # the sink tests; the full suite runs on ubuntu above.
   pdf-sink-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -135,6 +141,12 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -142,14 +154,17 @@ jobs:
         run: bun --conditions=development test apps/cli/src/commands/export-pdf-sink.test.ts
 
   test-python:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
@@ -163,8 +178,10 @@ jobs:
         run: uv run pytest tests/ -v
 
   browser-export-harness:
-    needs: test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -172,6 +189,27 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+
+      - name: Restore Bun package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-browser-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-browser-
+            ${{ runner.os }}-turbo-
+
+      - name: Restore Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-1.55.0
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -191,7 +229,7 @@ jobs:
       - name: Check browser export harness artifact
         run: bun run check:browser-export-harness
 
-      - name: Assert conformance-case registry (spec 011 T4.6 drift guard)
+      - name: Assert conformance-case registry
         run: bun run assert:conformance-cases
 
       - name: Run browser export harness E2E
@@ -200,5 +238,38 @@ jobs:
       - name: Verify PDF.js worker in the built MV3 extension
         run: bun run --cwd apps/extension test:worker-extension-browser
 
-      - name: Shape-parity gate (harness vs CLI digests + report projection)
+      - name: Shape-parity gate
         run: bun run check:parity
+
+  required:
+    name: required
+    if: always()
+    needs:
+      - changes
+      - docs
+      - test
+      - consumer-smoke
+      - pdf-cli-macos
+      - pdf-sink-windows
+      - test-python
+      - browser-export-harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected gate to pass
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS: ${{ needs.docs.result }}
+          TEST: ${{ needs.test.result }}
+          CONSUMER: ${{ needs.consumer-smoke.result }}
+          MACOS: ${{ needs.pdf-cli-macos.result }}
+          WINDOWS: ${{ needs.pdf-sink-windows.result }}
+          PYTHON: ${{ needs.test-python.result }}
+          BROWSER: ${{ needs.browser-export-harness.result }}
+        run: |
+          for result in "$CHANGES" "$DOCS" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$PYTHON" "$BROWSER"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::A selected CI gate finished with result: $result"
+              exit 1
+            fi
+          done

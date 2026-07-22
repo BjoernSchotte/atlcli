@@ -2,13 +2,9 @@ name: Security attestation
 
 # HEAD-bound security attestation artifact (spec 011).
 #
-# Produces `security-attestation.json` for exactly one commit — every push to
-# `main` and every release tag — and uploads it as a CI artifact a future
-# release-gate job can `needs:` on. It is a RECORD, not a publish gate: what
-# prevents an npm publish today is spec 009's fail-closed publish
-# classification (see scripts/publish-classification.test.ts), and wiring this
-# artifact as a hard gate is 009's job once it owns a live consolidated release
-# pipeline again.
+# Produces `security-attestation.json` for every push to `main`. Release tags
+# emit the same SHA-bound artifact inside release.yml's blocking preflight, so
+# publication cannot race ahead of this record.
 #
 # The job fails only on a check that was performed and FAILED. Checks that
 # cannot be performed on the runner (no pinned veraPDF binary yet) are recorded
@@ -18,12 +14,19 @@ name: Security attestation
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-attestation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   attest:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
