@@ -383,6 +383,25 @@ describe("ConfluenceClient ADF page reads", () => {
     });
   });
 
+  test("uses the one source-policy rollback switch without probing ADF", async () => {
+    const calls: string[] = [];
+    routeBodyReads({ calls, storage: () => storageResponse("123", 9, "<p>rollback</p>") });
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://source-policy.example.invalid"),
+      { exportSourcePolicy: "storage-primary" },
+    ).getExportPageDetails("123");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("/rest/api/content/123");
+    expect(calls[0]).not.toContain("/api/v2/");
+    expect(result.exportSource).toEqual({
+      primary: { representation: "storage", value: "<p>rollback</p>" },
+      sourceVersion: 9,
+      fallbackReason: "rollout-storage-primary",
+    });
+  });
+
   test("caches only a proven unavailable capability and isolates it by origin", async () => {
     const calls: string[] = [];
     const firstOrigin = "https://capability-a.example.invalid";

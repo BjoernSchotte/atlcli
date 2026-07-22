@@ -26,7 +26,23 @@ export type AtlasDocFormatPageBody = Extract<
 /** Why an export source deliberately uses Storage as its primary body. */
 export type ExportSourceFallbackReason =
   | "data-center"
-  | "adf-representation-unavailable";
+  | "adf-representation-unavailable"
+  | "rollout-storage-primary";
+
+/** Deployment policy at the export source adapter; never part of a job request. */
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+/**
+ * Parse the single rollout/rollback flag shared by export hosts.
+ *
+ * Hosts own where the value comes from (CLI environment, extension deployment
+ * configuration). Keeping parsing here prevents host-specific policy aliases.
+ */
+export function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy {
+  if (value === undefined || value.trim() === "" || value === "adf") return "adf-primary";
+  if (value === "storage") return "storage-primary";
+  throw new RangeError('ATLCLI_EXPORT_SOURCE must be either "adf" or "storage".');
+}
 
 /**
  * Representation-neutral source selected for one export page.

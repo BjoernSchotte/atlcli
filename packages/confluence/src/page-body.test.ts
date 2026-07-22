@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { AdfValidationError } from "./adf-types.js";
 import { storageToBlocks, StorageParseError } from "./export-blocks.js";
 import type { ExportPageSource } from "./page-body.js";
+import { exportSourcePolicyFromFlag } from "./page-body.js";
 import { pageBodyToBlocks } from "./page-body-to-blocks.js";
 
 async function pairedFixture(): Promise<{ adf: string; storage: string }> {
@@ -65,6 +66,10 @@ describe("pageBodyToBlocks", () => {
       fallbackReason: "adf-representation-unavailable",
     });
     const ordinary = pageBodyToBlocks({ primary: { representation: "storage", value: storage } });
+    const rollout = pageBodyToBlocks({
+      primary: { representation: "storage", value: storage },
+      fallbackReason: "rollout-storage-primary",
+    });
 
     expect(dataCenter.notes).toMatchObject([{
       level: "info",
@@ -72,7 +77,19 @@ describe("pageBodyToBlocks", () => {
       source: { pageId: "page-1", pageTitle: "Synthetic", blockPath: "blocks" },
     }]);
     expect(unavailable.notes.map((note) => note.code)).toEqual(["adf-storage-fallback"]);
+    expect(rollout.notes).toMatchObject([{
+      code: "adf-storage-fallback",
+      message: "Storage was selected by the export-source rollout policy.",
+    }]);
     expect(ordinary.notes).toEqual([]);
+  });
+
+  it("parses the single host-owned source flag fail-closed", () => {
+    expect(exportSourcePolicyFromFlag(undefined)).toBe("adf-primary");
+    expect(exportSourcePolicyFromFlag("")).toBe("adf-primary");
+    expect(exportSourcePolicyFromFlag("adf")).toBe("adf-primary");
+    expect(exportSourcePolicyFromFlag("storage")).toBe("storage-primary");
+    expect(() => exportSourcePolicyFromFlag("auto")).toThrow(/ATLCLI_EXPORT_SOURCE/);
   });
 
   it("never retries malformed or over-budget ADF through a valid Storage sidecar", () => {

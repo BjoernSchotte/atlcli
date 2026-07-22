@@ -402,7 +402,10 @@ export declare class ConfluenceClient {
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -1219,7 +1222,13 @@ export declare class ExportScopeError extends Error {
 }
 
 // export: ExportSourceFallbackReason
-export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -2419,7 +2428,10 @@ export declare class ConfluenceClient {
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -3236,7 +3248,13 @@ export declare class ExportScopeError extends Error {
 }
 
 // export: ExportSourceFallbackReason
-export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -4436,7 +4454,10 @@ export declare class ConfluenceClient {
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -5253,7 +5274,13 @@ export declare class ExportScopeError extends Error {
 }
 
 // export: ExportSourceFallbackReason
-export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
@@ -6308,7 +6335,10 @@ export declare class ConfluenceClient {
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -8994,7 +9024,10 @@ export declare class ConfluenceClient {
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -9811,7 +9844,13 @@ export declare class ExportScopeError extends Error {
 }
 
 // export: ExportSourceFallbackReason
-export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable";
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {

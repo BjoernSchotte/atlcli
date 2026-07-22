@@ -26,6 +26,7 @@ import {
   type ConfluenceExportPageDetails,
   type ConfluencePageAdf,
   type ExportSourceFallbackReason,
+  type ExportSourcePolicy,
 } from "./page-body.js";
 
 type V2FailureClassification = "adf-body-format-unsupported";
@@ -428,8 +429,12 @@ export class ConfluenceClient {
    * `JiraClient` instead of a per-client copy.
    */
   private sessionRedirectPolicy: SessionRedirectPolicy;
+  private exportSourcePolicy: ExportSourcePolicy;
 
-  constructor(profile: Profile) {
+  constructor(
+    profile: Profile,
+    options: { exportSourcePolicy?: ExportSourcePolicy } = {},
+  ) {
     this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
     this.deploymentType = resolveDeploymentType(profile);
     this.capabilityOrigin = new URL(this.confluenceBaseUrl).origin.toLowerCase();
@@ -445,6 +450,7 @@ export class ConfluenceClient {
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.confluenceBaseUrl,
     });
+    this.exportSourcePolicy = options.exportSourcePolicy ?? "adf-primary";
   }
 
   /** Get the Confluence instance base URL */
@@ -1151,6 +1157,11 @@ export class ConfluenceClient {
     if (this.deploymentType === "data-center") {
       const details = await this.getPageDetails(id, options);
       return storagePrimary(details, "data-center");
+    }
+
+    if (this.exportSourcePolicy === "storage-primary") {
+      const details = await this.getPageDetails(id, options);
+      return storagePrimary(details, "rollout-storage-primary");
     }
 
     if (ADF_UNAVAILABLE_ORIGINS.has(this.capabilityOrigin)) {

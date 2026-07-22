@@ -67,7 +67,9 @@ function storageFallbackNote(
     code: "adf-storage-fallback",
     message: reason === "data-center"
       ? "Storage was selected because this deployment does not expose the Cloud ADF page contract."
-      : "Storage was selected because the page API proved ADF representation unavailable for this capability.",
+      : reason === "rollout-storage-primary"
+        ? "Storage was selected by the export-source rollout policy."
+        : "Storage was selected because the page API proved ADF representation unavailable for this capability.",
     ...(pageContext ? {
       source: {
         pageId: pageContext.id,

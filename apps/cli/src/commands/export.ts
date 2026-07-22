@@ -26,6 +26,7 @@ import {
   composeChapters,
   confluenceTreeSource,
   createAdfMediaAttachmentResolver,
+  exportSourcePolicyFromFlag,
   fetchExportTree,
   pageBodyToBlocks,
   resolveExportMentions,
@@ -752,6 +753,13 @@ async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<{ client: ConfluenceClient; profile: any }> {
+  let exportSourcePolicy;
+  try {
+    exportSourcePolicy = exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE);
+  } catch (error) {
+    fail(opts, 1, ERROR_CODES.USAGE, error instanceof Error ? error.message : String(error));
+  }
+  const clientOptions = { exportSourcePolicy };
   // Fully ephemeral (CI) mode short-circuits before any config/keychain access.
   let ephemeral: Profile | null;
   try {
@@ -764,7 +772,7 @@ async function getClient(
   }
   if (ephemeral) {
     assertCliAuthSupported(ephemeral, opts);
-    return { client: new ConfluenceClient(ephemeral), profile: ephemeral };
+    return { client: new ConfluenceClient(ephemeral, clientOptions), profile: ephemeral };
   }
 
   const config = await loadConfig();
@@ -774,7 +782,7 @@ async function getClient(
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
   assertCliAuthSupported(profile, opts);
-  const client = new ConfluenceClient(profile);
+  const client = new ConfluenceClient(profile, clientOptions);
   return { client, profile };
 }
 

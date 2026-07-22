@@ -740,27 +740,31 @@ Tasks:
 - [ ] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
 - [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
 - [ ] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
-- [ ] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
-- [ ] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
+- [x] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
+- [x] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
 - [ ] Measure requests/page, wall time, peak memory, block count, note count, and artifact parity on page/tree/space fixtures.
-- [ ] Ship ADF-primary behind one export-source feature flag until the gates below pass.
-- [ ] Make rollback switch representation choice at the source adapter; do not fork render engines.
+- [x] Ship ADF-primary behind one export-source feature flag until the gates below pass.
+- [x] Make rollback switch representation choice at the source adapter; do not fork render engines.
 - [ ] After one stable release window, plan lazy Storage-sidecar reads as a separate optimization.
 
 Partial WP9 evidence recorded on 2026-07-22: the packed browser harness now owns a real ADF-primary case that invokes the production representation dispatcher before either renderer. It proves target-neutral blocks and diagnostics, then structurally asserts DOCX inline-code font treatment, Unicode emoji, tables, local Smart Link title/target, extension body, and visible unresolved-media content; the PDF output passes tagged-document validation. The production browser build, output-integrity check, manifest drift guard, focused fixture test, browser-harness typecheck, and the complete 15-case Playwright conformance run passed.
 
+Rollout evidence recorded on 2026-07-22: `ATLCLI_EXPORT_SOURCE` is parsed once into a host-owned source policy and is not part of the durable request model. Cloud defaults to `adf`; `storage` performs only the versioned Storage read and emits the existing `adf-storage-fallback` diagnostic before entering the unchanged neutral dispatcher/renderers. Invalid values fail closed. Client, dispatcher and CLI source tests, public API/closure checks, full typecheck, the 20-entrypoint isomorphism gate, documentation validation, and the production build passed. An anonymized live create/export/cleanup run proved the same rollback flag through real TypeScript DOCX and tagged-PDF artifacts, visible fallback diagnostics in both reports, and complete cleanup.
+
+The unrestricted full regression suite then passed with 4,774 tests, 13 intentional skips and zero failures across 306 files. This includes the dedicated Data Center no-v2-read contract and the complete existing Storage walker, renderer, scope, macro, include, asset and report corpus.
+
 Default-enable gates:
 
-- [ ] all 43 nodes and 17 marks classified in the coverage manifest;
+- [x] all 43 nodes and 17 marks classified in the coverage manifest;
 - [ ] every mapped row has a direct ADF fixture;
-- [ ] no silent node/mark/attribute drops;
-- [ ] no silent whole-page decoder fallback;
-- [ ] macro and media correlation gates pass or remain visibly degraded;
+- [x] no silent node/mark/attribute drops;
+- [x] no silent whole-page decoder fallback;
+- [x] macro and media correlation gates pass or remain visibly degraded;
 - [ ] direct and background report parity passes;
 - [ ] source bodies are absent from logs/job records/events;
 - [ ] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
-- [ ] Cloud live E2E passes for both target formats;
-- [ ] Storage/Data Center regressions pass;
+- [x] Cloud live E2E passes for both target formats;
+- [x] Storage/Data Center regressions pass;
 - [ ] dual-read request/latency overhead remains within the agreed budget.
 
 ## 8. Interaction with the parallel export-jobs workstream

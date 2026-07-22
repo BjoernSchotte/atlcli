@@ -14,6 +14,7 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
 - [Rendering engines](#rendering-engines)
+- [ADF source selection and rollback](#adf-source-selection-and-rollback)
 - [Tree and space export](#tree-and-space-export)
 - [Note codes](#note-codes-are-shared-across-formats) and [migrating retired codes](#migrating-retired-note-codes)
 - [Note severity and `--strict`](#note-severity-and---strict)
@@ -87,6 +88,33 @@ atlcli wiki export 12345678 --template corporate --output ./report.docx
 # Export using space:title format
 atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 ```
+
+## ADF source selection and rollback
+
+Cloud DOCX (TypeScript engine) and PDF exports read Atlas Doc Format (ADF) as
+their primary page body, validate it under bounded resource limits, and decode
+it into the same neutral document model used by both renderers. Data Center and
+the legacy Python DOCX path remain Storage-based. Storage is also retained as a
+Cloud sidecar for macros and definitions that do not yet have an ADF-native
+equivalent.
+
+`ATLCLI_EXPORT_SOURCE` is the single deployment rollback switch. It changes
+only the source adapter; it does not fork DOCX/PDF rendering, bypass version
+checks, or become part of a durable export-job request.
+
+| Variable | Type | Default | Required | Constraints |
+|----------|------|---------|----------|-------------|
+| `ATLCLI_EXPORT_SOURCE` | string enum | `adf` | No | Exactly `adf` or `storage`; any other value fails before a page read |
+
+Minimal rollback example:
+
+```bash
+ATLCLI_EXPORT_SOURCE=storage atlcli wiki export 12345678 --format pdf -o report.pdf
+```
+
+Use `storage` only as an operational rollback while investigating an ADF source
+regression. The export report emits `adf-storage-fallback`, making the policy
+choice visible. Remove the variable (or set it to `adf`) to restore the default.
 
 ## CLI: PDF export
 
