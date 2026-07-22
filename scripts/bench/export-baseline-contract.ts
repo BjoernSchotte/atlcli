@@ -64,4 +64,3 @@ export function logicalCorpusBytes(corpus: LargeExportCorpus): number {
     corpus.assets.reduce((sum, asset) => sum + asset.bytes.byteLength, 0)
   );
 }
-

@@ -11,4 +11,3 @@ export default defineConfig({
   retries: 0,
   reporter: "line",
 });
-

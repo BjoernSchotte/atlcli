@@ -74,4 +74,3 @@ describe("Chrome baseline resume provenance", () => {
     expect(() => selectResumableResults(report(tampered), current)).toThrow("different provenance");
   });
 });
-
