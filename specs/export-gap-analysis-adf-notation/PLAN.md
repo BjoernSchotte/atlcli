@@ -400,35 +400,35 @@ Test/build files:
 
 Tasks:
 
-- [ ] Check UTF-8/input byte length before `JSON.parse`.
-- [ ] Validate `type: "doc"`, supported ADF document version, and root content.
-- [ ] Walk nodes/marks iteratively and enforce all `AdfParseBudget` dimensions.
-- [ ] Reject dangerous/non-plain attribute structures and prototype-polluting keys.
-- [ ] Validate known node/mark shapes needed by the decoder.
-- [ ] Preserve unknown type names as drift while rejecting malformed shapes.
-- [ ] Generate or verify a coverage row for every pinned-schema node and mark.
-- [ ] Distinguish `schema-only`, `observed-cloud`, and `legacy-observed` fixture provenance.
-- [ ] Benchmark realistic and adversarial documents before fixing default budgets.
-- [ ] Store the reviewed schema's versioned URL, package version, npm integrity, raw/canonical hashes, node/mark inventories, and per-definition hashes in `upstream-baseline.json`.
-- [ ] Make the ordinary PR/release check consume only committed snapshots and baselines; it must make zero network calls.
-- [ ] Implement `adf-drift.ts check-pinned` for the deterministic offline relation: snapshot -> hashes/inventory -> coverage manifest -> fixtures.
-- [ ] Implement `adf-drift.ts check-upstream` for the online watchguard without mutating tracked files.
-- [ ] Make candidate baseline/schema updates an explicit local `update-candidate` operation whose diff must be reviewed and committed by a developer.
+- [x] Check UTF-8/input byte length before `JSON.parse`.
+- [x] Validate `type: "doc"`, supported ADF document version, and root content.
+- [x] Walk nodes/marks iteratively and enforce all `AdfParseBudget` dimensions.
+- [x] Reject dangerous/non-plain attribute structures and prototype-polluting keys.
+- [x] Validate known node/mark shapes needed by the decoder.
+- [x] Preserve unknown type names as drift while rejecting malformed shapes.
+- [x] Generate or verify a coverage row for every pinned-schema node and mark.
+- [x] Distinguish `schema-only`, `observed-cloud`, and `legacy-observed` fixture provenance.
+- [x] Benchmark realistic and adversarial documents before fixing default budgets.
+- [x] Store the reviewed schema's versioned URL, package version, npm integrity, raw/canonical hashes, node/mark inventories, and per-definition hashes in `upstream-baseline.json`.
+- [x] Make the ordinary PR/release check consume only committed snapshots and baselines; it must make zero network calls.
+- [x] Implement `adf-drift.ts check-pinned` for the deterministic offline relation: snapshot -> hashes/inventory -> coverage manifest -> fixtures.
+- [x] Implement `adf-drift.ts check-upstream` for the online watchguard without mutating tracked files.
+- [x] Make candidate baseline/schema updates an explicit local `update-candidate` operation whose diff must be reviewed and committed by a developer.
 
 Required tests:
 
-- [ ] minimal valid document;
-- [ ] invalid JSON/root/version/node/mark shapes;
-- [ ] max input, node, depth, text, attribute, and diagnostic budgets;
-- [ ] deeply nested document without call-stack overflow;
-- [ ] unknown node, mark, and attribute drift;
-- [ ] `__proto__`, `constructor`, cycles supplied as object input, and non-finite numbers;
-- [ ] all pinned 43 nodes and 17 marks classified exactly once;
-- [ ] schema update produces a failing coverage diff.
-- [ ] raw formatting-only schema changes are distinguished from canonical semantic changes;
-- [ ] modified definitions/constraints are detected even when node and mark counts stay unchanged;
-- [ ] redirect/package/CDN disagreement is reported as propagation mismatch;
-- [ ] the online checker cannot write a new baseline or tracked schema snapshot.
+- [x] minimal valid document;
+- [x] invalid JSON/root/version/node/mark shapes;
+- [x] max input, node, depth, text, attribute, and diagnostic budgets;
+- [x] deeply nested document without call-stack overflow;
+- [x] unknown node, mark, and attribute drift;
+- [x] `__proto__`, `constructor`, cycles supplied as object input, and non-finite numbers;
+- [x] all pinned 43 nodes and 17 marks classified exactly once;
+- [x] schema update produces a failing coverage diff.
+- [x] raw formatting-only schema changes are distinguished from canonical semantic changes;
+- [x] modified definitions/constraints are detected even when node and mark counts stay unchanged;
+- [x] redirect/package/CDN disagreement is reported as propagation mismatch;
+- [x] the online checker cannot write a new baseline or tracked schema snapshot.
 
 #### Weekly online watchguard
 
@@ -487,6 +487,8 @@ Alerting v1 is the failed scheduled Actions run plus its job summary/artifacts. 
 Exit:
 
 - Untrusted ADF cannot reach recursive decoders without bounded, validated structure; pinned-schema inconsistency cannot pass normal CI; and new upstream or observed-Cloud drift produces a weekly actionable report without blocking delivery.
+
+Evidence recorded on 2026-07-22: the offline pin check verified 43 nodes, 17 marks, 84 per-definition hashes, Draft-04 fixture expectations, coverage, and all three fixture provenance classes without network access. The complete repository suite passed with 4,724 tests, 13 intentional skips, and zero failures; full typecheck and the 20-entrypoint browser-isomorphism gate passed as well. A public read-only online run reported `no-drift` after resolving the canonical redirect, reconciling npm latest/exact metadata, verifying the SHA-512 package artifact, comparing package/CDN schema bytes, extracting reference slugs, and checking the Confluence page-read contract. The explicit candidate operation reproduced the pin in a temporary directory without touching tracked files. On Bun 1.3.14, the benchmark accepted 30,001 rich nodes in about 30 ms, 80,001 wide nodes in about 60 ms, and depth 128 in under 1 ms; depth 129 and an input one byte over 8 MiB failed at their intended budgets.
 
 ### WP3 — ADF-to-neutral decoder and diagnostics
 

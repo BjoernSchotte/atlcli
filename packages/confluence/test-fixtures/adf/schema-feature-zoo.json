@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "content": [
+        { "type": "text", "text": "Synthetic heading" }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Inline code", "marks": [{ "type": "code" }] },
+        { "type": "text", "text": " and emphasis", "marks": [{ "type": "em" }] },
+        { "type": "emoji", "attrs": { "shortName": ":warning:", "text": "⚠️" } }
+      ]
+    },
+    {
+      "type": "panel",
+      "attrs": { "panelType": "info" },
+      "content": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Synthetic panel" }] }
+      ]
+    }
+  ]
+}

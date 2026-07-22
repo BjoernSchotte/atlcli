@@ -7,6 +7,98 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -673,6 +765,9 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -1129,6 +1224,12 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
 
@@ -1333,6 +1434,86 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -1622,6 +1803,18 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -1657,6 +1850,98 @@ export interface XmlText {
 ### Entry point `. (default)`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -2323,6 +2608,9 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -2779,6 +3067,12 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
 
@@ -2983,6 +3277,86 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -3272,6 +3646,18 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -3307,6 +3693,98 @@ export interface XmlText {
 ### Entry point `./browser`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -3973,6 +4451,9 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -4429,6 +4910,12 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
 
@@ -4633,6 +5120,86 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -4922,6 +5489,18 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -7464,6 +8043,98 @@ export interface XmlText {
 ### Entry point `./node`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -8130,6 +8801,9 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
@@ -8586,6 +9260,12 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
 
@@ -8790,6 +9470,86 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -9079,6 +9839,18 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope

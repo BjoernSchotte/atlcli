@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "file": "minimal.json",
+      "provenance": "schema-only",
+      "schemaExpectation": "valid"
+    },
+    {
+      "file": "schema-feature-zoo.json",
+      "provenance": "schema-only",
+      "schemaExpectation": "valid"
+    },
+    {
+      "file": "observed-cloud-envelope.json",
+      "provenance": "observed-cloud",
+      "schemaExpectation": "valid"
+    },
+    {
+      "file": "legacy-observed-unsupported.json",
+      "provenance": "legacy-observed",
+      "schemaExpectation": "invalid"
+    }
+  ]
+}
