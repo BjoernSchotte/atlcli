@@ -16,6 +16,7 @@ each.
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
+| Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline and bounded asset streaming |
 | Parity contract | `@atlcli/export-wiring/fixtures` |
 
 ## Minimal example

@@ -19,15 +19,16 @@ export function bindExportJobSpool(
   store: ExportSpoolStore,
   jobId: string,
   leaseEpoch: number,
+  limits: SpoolWriteLimitsV1,
 ): ExportJobSpool {
   assertExecutionIdentity(jobId, leaseEpoch);
   return {
     put(
       ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">,
       source: AsyncIterable<Uint8Array>,
-      limits: SpoolWriteLimitsV1,
+      options?: { signal?: AbortSignal },
     ): Promise<SpoolObjectV1> {
-      return store.put({ ...ref, jobId, leaseEpoch }, source, limits);
+      return store.put({ ...ref, jobId, leaseEpoch }, source, limits, options);
     },
     read(ref, options) {
       return store.read({ ...ref, jobId, leaseEpoch }, options);
@@ -46,8 +47,11 @@ export function bindExportJobArtifacts(
 ): ExportJobArtifacts {
   assertExecutionIdentity(jobId, leaseEpoch);
   return {
-    stage(artifact: PendingArtifactV1): Promise<StagedArtifactV1> {
-      return store.stage(jobId, leaseEpoch, artifact);
+    stage(
+      artifact: PendingArtifactV1,
+      options?: { signal?: AbortSignal },
+    ): Promise<StagedArtifactV1> {
+      return store.stage(jobId, leaseEpoch, artifact, options);
     },
     getStaged(): Promise<StagedArtifactV1 | undefined> {
       return store.getStaged(jobId, leaseEpoch);

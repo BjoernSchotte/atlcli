@@ -21,3 +21,9 @@ export interface SpoolObjectV1 {
   sha256: string;
   committedAt: number;
 }
+
+/** Idempotent byte-store cleanup accounting for activity and retention reports. */
+export interface ExportByteCleanupResultV1 {
+  objectsDeleted: number;
+  bytesDeleted: number;
+}

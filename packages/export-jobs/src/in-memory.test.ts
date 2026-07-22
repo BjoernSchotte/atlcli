@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { PendingArtifactV1 } from "./artifact.js";
 import type { DocxExportJobRequestV1 } from "./request.js";
+import { reconcileTombstonedExportJobCleanup } from "./cleanup.js";
 import {
   InMemoryArtifactStore,
   InMemoryByteStoreConflict,
@@ -465,6 +466,35 @@ describe("InMemoryExportJobStore", () => {
     expect((await store.get("job"))?.state).toBe("running");
   });
 
+  it("reconciles the active reference adapter after bytes were promoted before metadata", async () => {
+    const artifacts = new InMemoryArtifactStore({ now: () => 110 });
+    let observedNow = 120;
+    const store = new InMemoryExportJobStore({ now: () => observedNow, artifactStore: artifacts });
+    await store.create({ request: request("job") });
+    const running = (await store.claimNext({ ownerId: "runner", now: 100, leaseDurationMs: 100 }))!;
+    const staged = await artifacts.stage("job", running.leaseEpoch, pendingArtifact());
+    const finalize = {
+      id: "job",
+      expectedRevision: running.revision,
+      leaseEpoch: running.leaseEpoch,
+      stagedArtifact: staged,
+      finishedAt: 120,
+    };
+
+    await expect(store.finalizeArtifactWithFaults(finalize, {
+      afterArtifactCommitted() {
+        throw new Error("simulated process crash");
+      },
+    })).rejects.toThrow("simulated process crash");
+    expect(artifacts.isCommitted(staged.ref)).toBe(true);
+    expect((await store.get("job"))?.state).toBe("running");
+
+    observedNow = 250;
+    const recovered = await store.reconcilePreparedArtifactFinalization("job");
+    expect(recovered).toMatchObject({ state: "succeeded", artifact: { ref: staged.ref } });
+    expect(await readAll(artifacts.read(staged.ref))).toEqual([97, 98, 99]);
+  });
+
   it("finalizes staged bytes atomically, delivers set-once, protects, then tombstones", async () => {
     const artifacts = new InMemoryArtifactStore({ now: () => 110 });
     let observedNow = 100;
@@ -506,7 +536,18 @@ describe("InMemoryExportJobStore", () => {
       idempotencyKey: "idem:job",
       ownedRefs: expect.arrayContaining(["request:job", "events:job", staged.ref]),
     });
+    expect(artifacts.isCommitted(staged.ref)).toBe(true);
+    const spool = new InMemorySpoolStore();
+    const cleaned = await reconcileTombstonedExportJobCleanup(
+      store,
+      { spool, artifacts },
+      "job",
+      1_001,
+    );
+    expect(cleaned.cleanup.artifacts).toEqual({ objectsDeleted: 1, bytesDeleted: 3 });
+    expect(cleaned.tombstone.cleanupCompletedAt).toBe(1_001);
     expect(artifacts.isCommitted(staged.ref)).toBe(false);
+    expect((await store.getTombstone("job"))?.cleanupCompletedAt).toBe(1_001);
     await expect(store.create({ request: request("job") })).rejects.toBeInstanceOf(
       InMemoryExportStoreConflict,
     );
@@ -596,6 +637,57 @@ describe("InMemorySpoolStore", () => {
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
   });
 
+  it("backpressures concurrent collectors before pulling beyond the in-flight byte budget", async () => {
+    const store = new InMemorySpoolStore({ maxInFlightBytes: 8, maxConcurrentWrites: 2 });
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let secondPulled = false;
+    const limits = { maxObjectBytes: 4, maxJobBytes: 8, maxTotalBytes: 8 };
+    const first = store.put(
+      { jobId: "job", leaseEpoch: 1, namespace: "pages", key: "first" },
+      (async function* () { await firstGate; yield Uint8Array.of(1); })(),
+      limits,
+    );
+    const second = store.put(
+      { jobId: "job", leaseEpoch: 1, namespace: "pages", key: "second" },
+      (async function* () { secondPulled = true; yield Uint8Array.of(2); })(),
+      limits,
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.inFlightSnapshot).toEqual({
+      reservedBytes: 8,
+      activeReservations: 1,
+      queuedReservations: 1,
+    });
+    expect(secondPulled).toBe(false);
+    releaseFirst();
+    await first;
+    await second;
+    expect(secondPulled).toBe(true);
+    expect(store.inFlightSnapshot.reservedBytes).toBe(0);
+  });
+
+  it("does not commit a spool object when cancellation wins during hashing", async () => {
+    const controller = new AbortController();
+    const store = new InMemorySpoolStore({
+      async digest() {
+        controller.abort(new DOMException("cancelled", "AbortError"));
+        return ABC_SHA256;
+      },
+    });
+    const ref = { jobId: "job", leaseEpoch: 1, namespace: "pages", key: "cancelled" };
+    const write = store.put(
+      ref,
+      chunks([97, 98, 99]),
+      { maxObjectBytes: 3, maxJobBytes: 3, maxTotalBytes: 3 },
+      { signal: controller.signal },
+    );
+    await expect(write).rejects.toMatchObject({ name: "AbortError" });
+    expect(await store.stat(ref)).toBeUndefined();
+  });
+
   it("scopes cleanup to one lease epoch", async () => {
     const spool = new InMemorySpoolStore();
     await spool.put(ref, chunks([1]), limits);
@@ -604,6 +696,19 @@ describe("InMemorySpoolStore", () => {
     await spool.deleteNamespace("job", 1);
     expect(await spool.stat(ref)).toBeUndefined();
     expect(await spool.stat(newer)).toBeDefined();
+  });
+
+  it("validates preserved refs before closing a spool epoch", async () => {
+    const store = new InMemorySpoolStore();
+    await expect(store.deleteNamespace("job", 1, {
+      preserve: [{ jobId: "other", leaseEpoch: 1, namespace: "checkpoints", key: "safe" }],
+    })).rejects.toMatchObject({ code: "ownership-mismatch" });
+    const ref = { jobId: "job", leaseEpoch: 1, namespace: "pages", key: "still-open" };
+    await expect(store.put(
+      ref,
+      chunks([1]),
+      { maxObjectBytes: 1, maxJobBytes: 1, maxTotalBytes: 1 },
+    )).resolves.toMatchObject({ ref });
   });
 });
 
@@ -621,10 +726,77 @@ describe("InMemoryArtifactStore", () => {
       code: "total-limit",
     });
     expect((await artifacts.getStaged("job", 1))?.ref).toBe(staged.ref);
-    expect(() =>
+    await expect(
       artifacts.commitStaged({ ...staged, leaseEpoch: 2 }, staged.stagedAt),
-    ).toThrow(InMemoryByteStoreConflict);
+    ).rejects.toBeInstanceOf(InMemoryByteStoreConflict);
     await artifacts.deleteStaged(staged.ref);
     expect(await artifacts.getStaged("job", 1)).toBeUndefined();
+  });
+
+  it("honors cancellation before artifact bytes become visible", async () => {
+    const store = new InMemoryArtifactStore({ maxArtifactBytes: 3, maxTotalBytes: 3 });
+    const controller = new AbortController();
+    controller.abort(new DOMException("cancelled", "AbortError"));
+    await expect(store.stage("job", 1, pendingArtifact(), {
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(await store.getStaged("job", 1)).toBeUndefined();
+  });
+
+  it("does not stage an artifact when cancellation wins during hashing", async () => {
+    const controller = new AbortController();
+    const store = new InMemoryArtifactStore({
+      maxArtifactBytes: 3,
+      maxTotalBytes: 3,
+      async digest() {
+        controller.abort(new DOMException("cancelled", "AbortError"));
+        return ABC_SHA256;
+      },
+    });
+    const stage = store.stage("job", 1, pendingArtifact(), { signal: controller.signal });
+    await expect(stage).rejects.toMatchObject({ name: "AbortError" });
+    expect(await store.getStaged("job", 1)).toBeUndefined();
+  });
+
+  it("backpressures concurrent artifact collectors before pulling beyond the byte budget", async () => {
+    const store = new InMemoryArtifactStore({
+      maxArtifactBytes: 3,
+      maxTotalBytes: 6,
+      maxInFlightBytes: 6,
+      maxConcurrentStages: 2,
+    });
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let secondPulled = false;
+    const first = store.stage("first", 1, pendingArtifact({
+      bytes: (async function* () { await gate; yield Uint8Array.from([97, 98, 99]); })(),
+    }));
+    const second = store.stage("second", 1, pendingArtifact({
+      bytes: (async function* () { secondPulled = true; yield Uint8Array.from([97, 98, 99]); })(),
+    }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.inFlightSnapshot).toEqual({
+      reservedBytes: 6,
+      activeReservations: 1,
+      queuedReservations: 1,
+    });
+    expect(secondPulled).toBe(false);
+    releaseFirst();
+    await first;
+    await second;
+    expect(secondPulled).toBe(true);
+    expect(store.inFlightSnapshot.reservedBytes).toBe(0);
+  });
+
+  it("serializes epoch cleanup ahead of a stale artifact promotion", async () => {
+    const store = new InMemoryArtifactStore();
+    const staged = await store.stage("job", 1, pendingArtifact());
+    const cleanup = store.deleteStagedEpoch("job", 1);
+    const staleCommit = store.commitStaged(staged, staged.stagedAt);
+
+    expect(await cleanup).toEqual({ objectsDeleted: 1, bytesDeleted: 3 });
+    await expect(staleCommit).rejects.toMatchObject({ code: "ownership-mismatch" });
+    expect(store.isCommitted(staged.ref)).toBe(false);
   });
 });

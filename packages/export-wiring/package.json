@@ -24,6 +24,11 @@
       "development": "./src/fixtures.ts",
       "types": "./dist/fixtures.d.ts",
       "default": "./dist/fixtures.js"
+    },
+    "./jobs": {
+      "development": "./src/jobs/index.ts",
+      "types": "./dist/jobs/index.d.ts",
+      "default": "./dist/jobs/index.js"
     }
   },
   "scripts": {
@@ -35,6 +40,7 @@
   "dependencies": {
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
+    "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/pdf": "workspace:*"
   }

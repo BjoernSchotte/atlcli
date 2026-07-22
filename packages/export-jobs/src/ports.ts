@@ -17,7 +17,12 @@ import type {
   ExportJobQueryV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
-import type { SpoolObjectV1, SpoolRefV1, SpoolWriteLimitsV1 } from "./spool.js";
+import type {
+  ExportByteCleanupResultV1,
+  SpoolObjectV1,
+  SpoolRefV1,
+  SpoolWriteLimitsV1,
+} from "./spool.js";
 
 /** Host-owned durable metadata and event store. */
 export interface ExportJobStore {
@@ -39,6 +44,12 @@ export interface ExportJobStore {
   deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
   /** Succeeded jobs without `deliveredAt` or `dismissedAt` are never eligible. */
   deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+  getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
+  markTombstoneCleanupComplete(
+    jobId: string,
+    tombstoneRef: string,
+    at: number,
+  ): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
 }
 
 /** Host-owned chunked byte storage for source and checkpoint payloads. */
@@ -47,11 +58,18 @@ export interface ExportSpoolStore {
     ref: SpoolRefV1,
     source: AsyncIterable<Uint8Array>,
     limits: SpoolWriteLimitsV1,
+    options?: { signal?: AbortSignal },
   ): Promise<SpoolObjectV1>;
   read(ref: SpoolRefV1, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array>;
   stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
   /** Delete only one executor epoch; stale cleanup cannot erase newer work. */
-  deleteNamespace(jobId: string, leaseEpoch: number): Promise<void>;
+  deleteNamespace(
+    jobId: string,
+    leaseEpoch: number,
+    options?: { preserve?: readonly SpoolRefV1[] },
+  ): Promise<ExportByteCleanupResultV1>;
+  /** Tombstone-authorized cleanup closes the whole job namespace against late writers. */
+  cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
 }
 
 /** Executor-visible spool surface with job identity and epoch bound by the host. */
@@ -59,7 +77,7 @@ export interface ExportJobSpool {
   put(
     ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">,
     source: AsyncIterable<Uint8Array>,
-    limits: SpoolWriteLimitsV1,
+    options?: { signal?: AbortSignal },
   ): Promise<SpoolObjectV1>;
   read(
     ref: Omit<SpoolRefV1, "jobId" | "leaseEpoch">,
@@ -74,15 +92,23 @@ export interface ExportArtifactStore {
     jobId: string,
     leaseEpoch: number,
     artifact: PendingArtifactV1,
+    options?: { signal?: AbortSignal },
   ): Promise<StagedArtifactV1>;
   getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined>;
-  read(ref: string): AsyncIterable<Uint8Array>;
+  read(ref: string, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array>;
   deleteStaged(ref: string): Promise<void>;
+  /** Recovery cleanup closes one abandoned executor epoch against late staging. */
+  deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1>;
+  /** Tombstone-authorized cleanup removes staged and committed job bytes. */
+  cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
 }
 
 /** Executor-visible artifact surface with job identity and epoch bound by the host. */
 export interface ExportJobArtifacts {
-  stage(artifact: PendingArtifactV1): Promise<StagedArtifactV1>;
+  stage(
+    artifact: PendingArtifactV1,
+    options?: { signal?: AbortSignal },
+  ): Promise<StagedArtifactV1>;
   getStaged(): Promise<StagedArtifactV1 | undefined>;
 }
 

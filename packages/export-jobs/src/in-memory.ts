@@ -1,4 +1,5 @@
 import type {
+  ExportArtifactV1,
   PendingArtifactV1,
   StagedArtifactV1,
 } from "./artifact.js";
@@ -13,16 +14,26 @@ import type {
   ExportJobEventAppendV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
+  ExportJobTombstoneV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
 import type { ExportJobSnapshotV1 } from "./snapshot.js";
-import type { SpoolObjectV1, SpoolRefV1, SpoolWriteLimitsV1 } from "./spool.js";
+import type {
+  ExportByteCleanupResultV1,
+  SpoolObjectV1,
+  SpoolRefV1,
+  SpoolWriteLimitsV1,
+} from "./spool.js";
 import type {
   ExportArtifactStore,
   ExportJobStore,
   ExportSpoolStore,
 } from "./ports.js";
 import { orderExportQueue } from "./policy.js";
+import {
+  ByteReservationSemaphoreV1,
+  type ByteReservationSnapshotV1,
+} from "./bounded-stream.js";
 import {
   parseExportJobEventV1,
   parseExportJobRequestV1,
@@ -46,6 +57,13 @@ import {
   type ExportJobStatsInputV1,
   type ExportJobStateTransitionV1,
 } from "./transitions.js";
+import {
+  InMemoryExportArtifactFinalizationJournal,
+  finalizeExportArtifactDurably,
+  resumePreparedExportArtifactFinalization,
+  type ExportArtifactFinalizationFaultHooks,
+  type ExportArtifactFinalizationIntentV1,
+} from "./finalization.js";
 
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
@@ -77,27 +95,11 @@ export class InMemoryExportStoreConflict extends Error {
   }
 }
 
-export interface ExportJobTombstoneV1 {
-  ref: string;
-  jobId: string;
-  requestRef: string;
-  idempotencyKey: string;
-  derivationKey?: string;
-  finalState: Extract<
-    ExportJobSnapshotV1["state"],
-    "succeeded" | "failed" | "cancelled" | "interrupted"
-  >;
-  finalRevision: number;
-  finishedAt: number;
-  deletedAt: number;
-  /** Logical owned refs retained so a host can audit or continue cleanup. */
-  ownedRefs: string[];
-}
-
 export interface InMemoryExportJobStoreOptions {
   now?: () => number;
   artifactStore?: InMemoryArtifactStore;
   tombstones?: readonly ExportJobTombstoneV1[];
+  finalizationJournal?: InMemoryExportArtifactFinalizationJournal;
 }
 
 function clone<T>(value: T): T {
@@ -202,10 +204,13 @@ export class InMemoryExportJobStore implements ExportJobStore {
   readonly #lastClaimedGroup = new Map<ExportJobSnapshotV1["queue"]["priority"], string>();
   readonly #now: () => number;
   readonly #artifacts: InMemoryArtifactStore;
+  readonly #finalizationJournal: InMemoryExportArtifactFinalizationJournal;
 
   constructor(options: InMemoryExportJobStoreOptions = {}) {
     this.#now = options.now ?? Date.now;
     this.#artifacts = options.artifactStore ?? new InMemoryArtifactStore({ now: this.#now });
+    this.#finalizationJournal =
+      options.finalizationJournal ?? new InMemoryExportArtifactFinalizationJournal();
     for (const tombstone of options.tombstones ?? []) {
       const retained = clone(tombstone);
       this.#tombstones.set(retained.jobId, retained);
@@ -528,17 +533,66 @@ export class InMemoryExportJobStore implements ExportJobStore {
   }
 
   async finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1> {
+    return this.finalizeArtifactWithFaults(finalize);
+  }
+
+  /** Fault-injectable reference path used to prove the real adapter's replay semantics. */
+  async finalizeArtifactWithFaults(
+    finalize: ExportJobFinalizeV1,
+    hooks: ExportArtifactFinalizationFaultHooks = {},
+  ): Promise<ExportJobSnapshotV1> {
     const current = this.#require(finalize.id);
-    const next = finalizeExportJobArtifact(current, {
+    const preparedFinalize: ExportJobFinalizeV1 = {
       ...finalize,
       observedAt: this.#now(),
-    });
+    };
+    // Fence before persisting the intent. The in-memory journal's prepare call
+    // executes synchronously in this same turn before its returned promise yields.
+    finalizeExportJobArtifact(current, preparedFinalize);
+    await finalizeExportArtifactDurably(
+      {
+        journal: this.#finalizationJournal,
+        artifacts: { commit: (intent) => this.#artifacts.commitFinalization(intent) },
+        jobs: { commit: (intent, artifact) => this.#commitFinalizationMetadata(intent, artifact) },
+      },
+      preparedFinalize,
+      hooks,
+    );
+    return clone(this.#require(finalize.id));
+  }
+
+  /** Recover a prepared intent by job id without deriving a new epoch-bound ref. */
+  async reconcilePreparedArtifactFinalization(
+    jobId: string,
+  ): Promise<ExportJobSnapshotV1 | undefined> {
+    const artifact = await resumePreparedExportArtifactFinalization(
+      {
+        journal: this.#finalizationJournal,
+        artifacts: { commit: (intent) => this.#artifacts.commitFinalization(intent) },
+        jobs: { commit: (intent, committed) => this.#commitFinalizationMetadata(intent, committed) },
+      },
+      jobId,
+    );
+    return artifact ? clone(this.#require(jobId)) : undefined;
+  }
+
+  async #commitFinalizationMetadata(
+    intent: ExportArtifactFinalizationIntentV1,
+    artifact: ExportArtifactV1,
+  ): Promise<void> {
+    const current = this.#require(intent.finalize.id);
+    if (current.state === "succeeded") {
+      if (canonical(current.artifact) === canonical(artifact)) return;
+      throw new InMemoryExportStoreConflict(
+        "revision-conflict",
+        "The job already references a different terminal artifact.",
+      );
+    }
+    const next = finalizeExportJobArtifact(current, intent.finalize);
     const persisted = clone(next);
     parseExportJobSnapshotV1(persisted);
-    this.#artifacts.commitStaged(finalize.stagedArtifact, finalize.finishedAt);
-    this.#jobs.set(finalize.id, persisted);
+    this.#jobs.set(intent.finalize.id, persisted);
     this.#recordStateTransition(current, persisted);
-    return clone(persisted);
   }
 
   async acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1> {
@@ -615,7 +669,6 @@ export class InMemoryExportJobStore implements ExportJobStore {
       this.#events.delete(job.id);
       this.#nextEventSeq.delete(job.id);
       this.#stateTransitions.delete(job.id);
-      if (job.artifact) this.#artifacts.deleteCommitted(job.artifact.ref);
       deletedJobIds.push(job.id);
       tombstoneRefs.push(ref);
     }
@@ -625,6 +678,31 @@ export class InMemoryExportJobStore implements ExportJobStore {
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> {
     const tombstone = this.#tombstones.get(jobId);
     return tombstone ? clone(tombstone) : undefined;
+  }
+
+  async markTombstoneCleanupComplete(
+    jobId: string,
+    tombstoneRef: string,
+    at: number,
+  ): Promise<ExportJobTombstoneV1> {
+    assertFiniteTime(at, "Tombstone cleanup time");
+    const tombstone = this.#tombstones.get(jobId);
+    if (!tombstone || tombstone.ref !== tombstoneRef) {
+      throw new InMemoryExportStoreConflict(
+        "job-not-found",
+        "The exact deletion tombstone was not found.",
+      );
+    }
+    if (at < tombstone.deletedAt) {
+      throw new InMemoryExportStoreConflict(
+        "retention-protected",
+        "Cleanup cannot complete before the deletion tombstone exists.",
+      );
+    }
+    if (tombstone.cleanupCompletedAt === undefined) {
+      tombstone.cleanupCompletedAt = at;
+    }
+    return clone(tombstone);
   }
 
   #require(id: string): ExportJobSnapshotV1 {
@@ -787,6 +865,10 @@ function refKey(ref: SpoolRefV1): string {
   return canonical([ref.jobId, ref.leaseEpoch, ref.namespace, ref.key]);
 }
 
+function epochKey(jobId: string, leaseEpoch: number): string {
+  return canonical([jobId, leaseEpoch]);
+}
+
 function assertByteLimit(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new InMemoryByteStoreConflict("invalid-limit", `${label} must be a non-negative safe integer.`);
@@ -796,10 +878,13 @@ function assertByteLimit(value: number, label: string): void {
 async function collectBytes(
   source: AsyncIterable<Uint8Array>,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let length = 0;
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   for await (const chunk of source) {
+    if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
     if (!(chunk instanceof Uint8Array)) throw new TypeError("Byte stores accept Uint8Array chunks.");
     if (!Number.isSafeInteger(length + chunk.byteLength) || length + chunk.byteLength > maxBytes) {
       throw new InMemoryByteStoreConflict("object-limit", "Object byte limit exceeded.");
@@ -807,6 +892,7 @@ async function collectBytes(
     chunks.push(chunk.slice());
     length += chunk.byteLength;
   }
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   const bytes = new Uint8Array(length);
   let offset = 0;
   for (const chunk of chunks) {
@@ -821,6 +907,10 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+}
+
 async function* bytesIterable(bytes: Uint8Array, signal?: AbortSignal): AsyncIterable<Uint8Array> {
   if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   yield bytes.slice();
@@ -833,22 +923,40 @@ interface StoredSpoolObject {
 
 export interface InMemorySpoolStoreOptions {
   now?: () => number;
+  /** Peak collection+consolidation bytes admitted across concurrent writes. */
+  maxInFlightBytes?: number;
+  maxConcurrentWrites?: number;
+  digest?: (bytes: Uint8Array) => Promise<string>;
 }
 
 /** Atomic, bounded in-memory spool reference adapter. */
 export class InMemorySpoolStore implements ExportSpoolStore {
   readonly #objects = new Map<string, StoredSpoolObject>();
+  readonly #closedJobs = new Set<string>();
+  readonly #closedEpochs = new Set<string>();
   readonly #now: () => number;
+  readonly #inFlight: ByteReservationSemaphoreV1;
+  readonly #digest: (bytes: Uint8Array) => Promise<string>;
   #commitTail: Promise<void> = Promise.resolve();
 
   constructor(options: InMemorySpoolStoreOptions = {}) {
     this.#now = options.now ?? Date.now;
+    this.#digest = options.digest ?? sha256Hex;
+    this.#inFlight = new ByteReservationSemaphoreV1({
+      maxBytes: options.maxInFlightBytes ?? Number.MAX_SAFE_INTEGER,
+      maxReservations: options.maxConcurrentWrites ?? 16,
+    });
+  }
+
+  get inFlightSnapshot(): ByteReservationSnapshotV1 {
+    return this.#inFlight.snapshot;
   }
 
   async put(
     ref: SpoolRefV1,
     source: AsyncIterable<Uint8Array>,
     limits: SpoolWriteLimitsV1,
+    options?: { signal?: AbortSignal },
   ): Promise<SpoolObjectV1> {
     assertNonEmpty(ref.jobId, "Spool job id");
     if (!Number.isSafeInteger(ref.leaseEpoch) || ref.leaseEpoch <= 0) {
@@ -862,43 +970,67 @@ export class InMemorySpoolStore implements ExportSpoolStore {
     assertByteLimit(limits.maxObjectBytes, "Object limit");
     assertByteLimit(limits.maxJobBytes, "Job limit");
     assertByteLimit(limits.maxTotalBytes, "Total limit");
-    const key = refKey(ref);
-    const bytes = await collectBytes(source, limits.maxObjectBytes);
-    const digest = await sha256Hex(bytes);
-    const metadata: SpoolObjectV1 = {
-      ref: clone(ref),
-      byteLength: bytes.byteLength,
-      sha256: digest,
-      committedAt: this.#now(),
-    };
-    return this.#commit(() => {
-      const existing = this.#objects.get(key);
-      if (existing) {
+    if (limits.maxObjectBytes > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+      throw new InMemoryByteStoreConflict(
+        "invalid-limit",
+        "Object limit is too large for bounded in-memory consolidation.",
+      );
+    }
+    // The collector temporarily owns source chunks plus the consolidated copy.
+    const reservation = await this.#inFlight.reserve(limits.maxObjectBytes * 2, {
+      signal: options?.signal,
+    });
+    try {
+      const key = refKey(ref);
+      const bytes = await collectBytes(source, limits.maxObjectBytes, options?.signal);
+      const digest = await this.#digest(bytes);
+      throwIfAborted(options?.signal);
+      const metadata: SpoolObjectV1 = {
+        ref: clone(ref),
+        byteLength: bytes.byteLength,
+        sha256: digest,
+        committedAt: this.#now(),
+      };
+      return await this.#commit(() => {
         if (
-          existing.metadata.byteLength !== bytes.byteLength ||
-          existing.metadata.sha256 !== digest
+          this.#closedJobs.has(ref.jobId) ||
+          this.#closedEpochs.has(epochKey(ref.jobId, ref.leaseEpoch))
         ) {
           throw new InMemoryByteStoreConflict(
             "ownership-mismatch",
-            "A committed spool ref cannot be replaced by different bytes.",
+            "The spool namespace is closed against late executor writes.",
           );
         }
-        return clone(existing.metadata);
-      }
-      const jobBytes = [...this.#objects.values()]
-        .filter((entry) => entry.metadata.ref.jobId === ref.jobId)
-        .reduce((sum, entry) => sum + entry.bytes.byteLength, 0) + bytes.byteLength;
-      const totalBytes = [...this.#objects.values()]
-        .reduce((sum, entry) => sum + entry.bytes.byteLength, 0) + bytes.byteLength;
-      if (jobBytes > limits.maxJobBytes) {
-        throw new InMemoryByteStoreConflict("job-limit", "Per-job spool byte limit exceeded.");
-      }
-      if (totalBytes > limits.maxTotalBytes) {
-        throw new InMemoryByteStoreConflict("total-limit", "Total spool byte limit exceeded.");
-      }
-      this.#objects.set(key, { metadata, bytes });
-      return clone(metadata);
-    });
+        const existing = this.#objects.get(key);
+        if (existing) {
+          if (
+            existing.metadata.byteLength !== bytes.byteLength ||
+            existing.metadata.sha256 !== digest
+          ) {
+            throw new InMemoryByteStoreConflict(
+              "ownership-mismatch",
+              "A committed spool ref cannot be replaced by different bytes.",
+            );
+          }
+          return clone(existing.metadata);
+        }
+        const jobBytes = [...this.#objects.values()]
+          .filter((entry) => entry.metadata.ref.jobId === ref.jobId)
+          .reduce((sum, entry) => sum + entry.bytes.byteLength, 0) + bytes.byteLength;
+        const totalBytes = [...this.#objects.values()]
+          .reduce((sum, entry) => sum + entry.bytes.byteLength, 0) + bytes.byteLength;
+        if (jobBytes > limits.maxJobBytes) {
+          throw new InMemoryByteStoreConflict("job-limit", "Per-job spool byte limit exceeded.");
+        }
+        if (totalBytes > limits.maxTotalBytes) {
+          throw new InMemoryByteStoreConflict("total-limit", "Total spool byte limit exceeded.");
+        }
+        this.#objects.set(key, { metadata, bytes });
+        return clone(metadata);
+      });
+    } finally {
+      reservation.release();
+    }
   }
 
   read(ref: SpoolRefV1, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array> {
@@ -912,15 +1044,50 @@ export class InMemorySpoolStore implements ExportSpoolStore {
     return stored ? clone(stored.metadata) : undefined;
   }
 
-  async deleteNamespace(jobId: string, leaseEpoch: number): Promise<void> {
+  async deleteNamespace(
+    jobId: string,
+    leaseEpoch: number,
+    options?: { preserve?: readonly SpoolRefV1[] },
+  ): Promise<ExportByteCleanupResultV1> {
+    return this.#commit(() => {
+      const preserved = new Set(
+        (options?.preserve ?? []).map((ref) => {
+          if (ref.jobId !== jobId || ref.leaseEpoch !== leaseEpoch) {
+            throw new InMemoryByteStoreConflict(
+              "ownership-mismatch",
+              "Preserved spool refs must belong to the cleaned epoch.",
+            );
+          }
+          return refKey(ref);
+        }),
+      );
+      this.#closedEpochs.add(epochKey(jobId, leaseEpoch));
+      return this.#deleteWhere(
+        (entry) =>
+          entry.metadata.ref.jobId === jobId &&
+          entry.metadata.ref.leaseEpoch === leaseEpoch &&
+          !preserved.has(refKey(entry.metadata.ref)),
+      );
+    });
+  }
+
+  async cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1> {
+    return this.#commit(() => {
+      this.#closedJobs.add(jobId);
+      return this.#deleteWhere((entry) => entry.metadata.ref.jobId === jobId);
+    });
+  }
+
+  #deleteWhere(predicate: (entry: StoredSpoolObject) => boolean): ExportByteCleanupResultV1 {
+    let objectsDeleted = 0;
+    let bytesDeleted = 0;
     for (const [key, entry] of this.#objects) {
-      if (
-        entry.metadata.ref.jobId === jobId &&
-        entry.metadata.ref.leaseEpoch === leaseEpoch
-      ) {
-        this.#objects.delete(key);
-      }
+      if (!predicate(entry)) continue;
+      objectsDeleted += 1;
+      bytesDeleted += entry.bytes.byteLength;
+      this.#objects.delete(key);
     }
+    return { objectsDeleted, bytesDeleted };
   }
 
   async #commit<T>(operation: () => T): Promise<T> {
@@ -947,75 +1114,134 @@ export interface InMemoryArtifactStoreOptions {
   now?: () => number;
   maxArtifactBytes?: number;
   maxTotalBytes?: number;
+  maxInFlightBytes?: number;
+  maxConcurrentStages?: number;
+  digest?: (bytes: Uint8Array) => Promise<string>;
 }
 
 /** In-memory two-phase artifact adapter: staged bytes are unreadable until commit. */
 export class InMemoryArtifactStore implements ExportArtifactStore {
   readonly #staged = new Map<string, StoredArtifact>();
   readonly #committed = new Map<string, StoredArtifact>();
+  readonly #closedJobs = new Set<string>();
+  readonly #closedEpochs = new Set<string>();
   readonly #now: () => number;
   readonly #maxArtifactBytes: number;
   readonly #maxTotalBytes: number;
+  readonly #inFlight: ByteReservationSemaphoreV1;
+  readonly #digest: (bytes: Uint8Array) => Promise<string>;
+  #commitTail: Promise<void> = Promise.resolve();
 
   constructor(options: InMemoryArtifactStoreOptions = {}) {
     this.#now = options.now ?? Date.now;
     this.#maxArtifactBytes = options.maxArtifactBytes ?? Number.MAX_SAFE_INTEGER;
     this.#maxTotalBytes = options.maxTotalBytes ?? Number.MAX_SAFE_INTEGER;
+    this.#digest = options.digest ?? sha256Hex;
     assertByteLimit(this.#maxArtifactBytes, "Artifact limit");
     assertByteLimit(this.#maxTotalBytes, "Artifact total limit");
+    this.#inFlight = new ByteReservationSemaphoreV1({
+      maxBytes: options.maxInFlightBytes ?? Number.MAX_SAFE_INTEGER,
+      maxReservations: options.maxConcurrentStages ?? 2,
+    });
+  }
+
+  get inFlightSnapshot(): ByteReservationSnapshotV1 {
+    return this.#inFlight.snapshot;
   }
 
   async stage(
     jobId: string,
     leaseEpoch: number,
     artifact: PendingArtifactV1,
+    options?: { signal?: AbortSignal },
   ): Promise<StagedArtifactV1> {
     assertNonEmpty(jobId, "Artifact job id");
     if (!Number.isSafeInteger(leaseEpoch) || leaseEpoch <= 0) {
       throw new InMemoryByteStoreConflict("ownership-mismatch", "Artifact lease epoch must be positive.");
     }
     assertByteLimit(artifact.byteLength, "Declared artifact length");
-    const bytes = await collectBytes(artifact.bytes, this.#maxArtifactBytes);
-    if (bytes.byteLength !== artifact.byteLength) {
-      throw new InMemoryByteStoreConflict("length-mismatch", "Artifact byte length does not match.");
+    if (artifact.byteLength > this.#maxArtifactBytes) {
+      throw new InMemoryByteStoreConflict("object-limit", "Artifact byte limit exceeded.");
     }
-    const digest = await sha256Hex(bytes);
-    if (digest.toLowerCase() !== artifact.sha256.toLowerCase()) {
-      throw new InMemoryByteStoreConflict("digest-mismatch", "Artifact SHA-256 does not match.");
+    if (artifact.byteLength > Math.floor(Number.MAX_SAFE_INTEGER / 2)) {
+      throw new InMemoryByteStoreConflict(
+        "invalid-limit",
+        "Artifact is too large for bounded in-memory consolidation.",
+      );
     }
-    const ref = `artifact:${jobId.length}:${jobId}:${leaseEpoch}`;
-    const existing = this.#staged.get(ref) ?? this.#committed.get(ref);
-    const total = this.#totalBytes() - (existing?.bytes.byteLength ?? 0) + bytes.byteLength;
-    if (total > this.#maxTotalBytes) {
-      throw new InMemoryByteStoreConflict("total-limit", "Total artifact byte limit exceeded.");
-    }
-    if (existing) {
-      if (
-        existing.metadata.jobId !== jobId ||
-        existing.metadata.leaseEpoch !== leaseEpoch ||
-        existing.metadata.sha256.toLowerCase() !== digest ||
-        existing.metadata.filename !== artifact.filename ||
-        existing.metadata.mediaType !== artifact.mediaType
-      ) {
+    const reservation = await this.#inFlight.reserve(artifact.byteLength * 2, {
+      signal: options?.signal,
+    });
+    try {
+      const bytes = await collectBytes(
+        artifact.bytes,
+        this.#maxArtifactBytes,
+        options?.signal,
+      );
+      if (bytes.byteLength !== artifact.byteLength) {
         throw new InMemoryByteStoreConflict(
-          "ownership-mismatch",
-          "A staged artifact ref cannot be replaced by different bytes or metadata.",
+          "length-mismatch",
+          "Artifact byte length does not match.",
         );
       }
-      return clone(existing.metadata);
+      const digest = await this.#digest(bytes);
+      throwIfAborted(options?.signal);
+      if (digest.toLowerCase() !== artifact.sha256.toLowerCase()) {
+        throw new InMemoryByteStoreConflict(
+          "digest-mismatch",
+          "Artifact SHA-256 does not match.",
+        );
+      }
+      return await this.#commit(() => {
+        if (
+          this.#closedJobs.has(jobId) ||
+          this.#closedEpochs.has(epochKey(jobId, leaseEpoch))
+        ) {
+          throw new InMemoryByteStoreConflict(
+            "ownership-mismatch",
+            "The artifact namespace is closed against late executor writes.",
+          );
+        }
+        const ref = `artifact:${jobId.length}:${jobId}:${leaseEpoch}`;
+        const existing = this.#staged.get(ref) ?? this.#committed.get(ref);
+        const total = this.#totalBytes() - (existing?.bytes.byteLength ?? 0) + bytes.byteLength;
+        if (total > this.#maxTotalBytes) {
+          throw new InMemoryByteStoreConflict(
+            "total-limit",
+            "Total artifact byte limit exceeded.",
+          );
+        }
+        if (existing) {
+          if (
+            existing.metadata.jobId !== jobId ||
+            existing.metadata.leaseEpoch !== leaseEpoch ||
+            existing.metadata.sha256.toLowerCase() !== digest ||
+            existing.metadata.filename !== artifact.filename ||
+            existing.metadata.mediaType !== artifact.mediaType
+          ) {
+            throw new InMemoryByteStoreConflict(
+              "ownership-mismatch",
+              "A staged artifact ref cannot be replaced by different bytes or metadata.",
+            );
+          }
+          return clone(existing.metadata);
+        }
+        const metadata: StagedArtifactV1 = {
+          ref,
+          mediaType: artifact.mediaType,
+          filename: artifact.filename,
+          byteLength: bytes.byteLength,
+          sha256: digest,
+          jobId,
+          leaseEpoch,
+          stagedAt: this.#now(),
+        };
+        this.#staged.set(ref, { metadata, bytes });
+        return clone(metadata);
+      });
+    } finally {
+      reservation.release();
     }
-    const metadata: StagedArtifactV1 = {
-      ref,
-      mediaType: artifact.mediaType,
-      filename: artifact.filename,
-      byteLength: bytes.byteLength,
-      sha256: digest,
-      jobId,
-      leaseEpoch,
-      stagedAt: this.#now(),
-    };
-    this.#staged.set(ref, { metadata, bytes });
-    return clone(metadata);
   }
 
   async getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined> {
@@ -1023,34 +1249,84 @@ export class InMemoryArtifactStore implements ExportArtifactStore {
     return stored ? clone(stored.metadata) : undefined;
   }
 
-  read(ref: string): AsyncIterable<Uint8Array> {
+  read(ref: string, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array> {
     const stored = this.#committed.get(ref);
     if (!stored) {
       throw new InMemoryByteStoreConflict("not-committed", "Artifact is not committed and visible.");
     }
-    return bytesIterable(stored.bytes);
+    return bytesIterable(stored.bytes, options?.signal);
   }
 
   async deleteStaged(ref: string): Promise<void> {
-    this.#staged.delete(ref);
+    await this.#commit(() => {
+      this.#staged.delete(ref);
+    });
+  }
+
+  async deleteStagedEpoch(
+    jobId: string,
+    leaseEpoch: number,
+  ): Promise<ExportByteCleanupResultV1> {
+    return this.#commit(() => {
+      this.#closedEpochs.add(epochKey(jobId, leaseEpoch));
+      return this.#deleteWhere(
+        this.#staged,
+        (entry) => entry.metadata.jobId === jobId && entry.metadata.leaseEpoch === leaseEpoch,
+      );
+    });
+  }
+
+  async cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1> {
+    return this.#commit(() => {
+      this.#closedJobs.add(jobId);
+      const staged = this.#deleteWhere(this.#staged, (entry) => entry.metadata.jobId === jobId);
+      const committed = this.#deleteWhere(
+        this.#committed,
+        (entry) => entry.metadata.jobId === jobId,
+      );
+      return {
+        objectsDeleted: staged.objectsDeleted + committed.objectsDeleted,
+        bytesDeleted: staged.bytesDeleted + committed.bytesDeleted,
+      };
+    });
   }
 
   /** Atomically promote an owned staged artifact; used by the reference job store finalizer. */
-  commitStaged(staged: StagedArtifactV1, committedAt: number): void {
+  async commitStaged(staged: StagedArtifactV1, committedAt: number): Promise<void> {
     assertFiniteTime(committedAt, "Artifact commit time");
-    const stored = this.#staged.get(staged.ref);
-    if (
-      !stored ||
-      canonical(stored.metadata) !== canonical(staged) ||
-      committedAt < stored.metadata.stagedAt
-    ) {
-      throw new InMemoryByteStoreConflict(
-        "ownership-mismatch",
-        "Only the exact owned staged artifact can be committed.",
-      );
-    }
-    this.#staged.delete(staged.ref);
-    this.#committed.set(staged.ref, stored);
+    await this.#commit(() => {
+      if (
+        this.#closedJobs.has(staged.jobId) ||
+        this.#closedEpochs.has(epochKey(staged.jobId, staged.leaseEpoch))
+      ) {
+        throw new InMemoryByteStoreConflict(
+          "ownership-mismatch",
+          "The artifact namespace is closed against late finalization.",
+        );
+      }
+      const alreadyCommitted = this.#committed.get(staged.ref);
+      if (alreadyCommitted && canonical(alreadyCommitted.metadata) === canonical(staged)) return;
+      const stored = this.#staged.get(staged.ref);
+      if (
+        !stored ||
+        canonical(stored.metadata) !== canonical(staged) ||
+        committedAt < stored.metadata.stagedAt
+      ) {
+        throw new InMemoryByteStoreConflict(
+          "ownership-mismatch",
+          "Only the exact owned staged artifact can be committed.",
+        );
+      }
+      this.#staged.delete(staged.ref);
+      this.#committed.set(staged.ref, stored);
+    });
+  }
+
+  async commitFinalization(
+    intent: ExportArtifactFinalizationIntentV1,
+  ): Promise<ExportArtifactV1> {
+    await this.commitStaged(intent.finalize.stagedArtifact, intent.artifact.committedAt);
+    return clone(intent.artifact);
   }
 
   /** Retention-only removal of already committed bytes. */
@@ -1067,5 +1343,34 @@ export class InMemoryArtifactStore implements ExportArtifactStore {
       (sum, entry) => sum + entry.bytes.byteLength,
       0,
     );
+  }
+
+  #deleteWhere(
+    objects: Map<string, StoredArtifact>,
+    predicate: (entry: StoredArtifact) => boolean,
+  ): ExportByteCleanupResultV1 {
+    let objectsDeleted = 0;
+    let bytesDeleted = 0;
+    for (const [ref, entry] of objects) {
+      if (!predicate(entry)) continue;
+      objectsDeleted += 1;
+      bytesDeleted += entry.bytes.byteLength;
+      objects.delete(ref);
+    }
+    return { objectsDeleted, bytesDeleted };
+  }
+
+  async #commit<T>(operation: () => T): Promise<T> {
+    const previous = this.#commitTail;
+    let release!: () => void;
+    this.#commitTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return operation();
+    } finally {
+      release();
+    }
   }
 }

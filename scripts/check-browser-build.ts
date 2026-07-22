@@ -84,6 +84,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/export-macros/src/internal.ts",
   "packages/export-wiring/src/index.ts",
   "packages/export-wiring/src/fixtures.ts",
+  "packages/export-wiring/src/jobs/index.ts",
   "packages/export-jobs/src/index.ts",
 ];
 

@@ -1405,13 +1405,13 @@ Exit: contract review is complete before any second host schema is committed.
 
 ### Phase 1 / T7.2 — Engine executors and bounded spool
 
-- [ ] Add `@atlcli/export-wiring/jobs` subpath.
+- [x] Add `@atlcli/export-wiring/jobs` subpath.
 - [ ] Add separate `DocxExportJobRequestV1` / `PdfExportJobRequestV1` validators.
 - [ ] Add separate DOCX/PDF executors using capture artifact sinks.
-- [ ] Add ordered discovery/page/block checkpoint seams beside the current
+- [x] Add ordered discovery/page/block checkpoint seams beside the current
       all-in-memory tree API.
-- [ ] Add bounded page and asset spool pipeline with cancellation and backpressure.
-- [ ] Add render estimation/reservation hooks.
+- [x] Add bounded page and asset spool pipeline with cancellation and backpressure.
+- [x] Add render estimation/reservation hooks.
 - [ ] Prove direct-vs-job output and report parity for both formats in Node and
       the browser harness.
 
