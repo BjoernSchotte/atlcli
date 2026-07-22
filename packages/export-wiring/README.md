@@ -16,7 +16,7 @@ each.
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
-| Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline and bounded asset streaming |
+| Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline, bounded asset streaming, and the host-neutral PDF job executor |
 | Parity contract | `@atlcli/export-wiring/fixtures` |
 
 ## Minimal example
@@ -76,6 +76,24 @@ Otherwise `<img src="http://169.254.169.254/…">` inside third-party
 `assertPolicyRoutedPdfAssets` in `@atlcli/export-wiring/fixtures` is the
 executable form of that rule; call it from the host's own test against the real
 env it builds.
+
+## Background PDF execution
+
+`createPdfExportJobExecutor` does not own credentials, persistence, or a UI. A
+host supplies source resolution, an opaque ready-to-render store, the Typst
+compiler transport, one heavy-render reservation, and report storage. The
+executor persists preparation before rendering, materializes the compiler
+bundle only after admission, captures the PDF instead of downloading it, and
+returns a staged artifact for the outer fenced job runtime to finalize.
+
+Admission happens before the Typst VFS is built. The reservation then reconciles
+the actual prepared and output byte counts. The checkpoint binds the materialized
+payload by byte length and SHA-256, and the result store journals artifact plus
+report as one recoverable execution result before the executor returns.
+
+The ready-to-render store must atomically fence `beginRenderAttempt` by job and
+lease epoch. One initial render plus one recovery render are allowed; source and
+asset preparation are not repeated after a compiler-worker loss.
 
 ## Related
 

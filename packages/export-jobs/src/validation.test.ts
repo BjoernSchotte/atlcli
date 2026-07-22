@@ -9,8 +9,10 @@ import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
 import {
   ExportJobValidationError,
   parseExportJobEventV1,
+  parsePdfExportJobRequestV1,
   parseExportJobRequestV1,
   parseExportJobSnapshotV1,
+  parseExportReportSummaryV1,
 } from "./validation.js";
 
 const HASH = "a".repeat(64);
@@ -193,6 +195,30 @@ describe("parseExportJobRequestV1", () => {
   });
 });
 
+describe("parsePdfExportJobRequestV1", () => {
+  it("accepts and narrows the closed PDF request contract", () => {
+    const request = pdfRequest();
+
+    expect(parsePdfExportJobRequestV1(request)).toBe(request);
+  });
+
+  it("fails closed when passed a valid request for another format", () => {
+    expect(() => parsePdfExportJobRequestV1(docxRequest())).toThrow("request.format: must be pdf");
+  });
+
+  it.each([
+    ["unknown top-level field", (request: any) => (request.accessToken = "secret")],
+    ["unknown settings field", (request: any) => (request.settings.paperTray = "unsafe")],
+    ["mismatched renderer", (request: any) => (request.renderer = "docx-typescript")],
+    ["non-scalar custom setting", (request: any) => (request.settings.custom.nested = [])],
+    ["inline logo bytes", (request: any) => (request.settings.logo.bytes = [1, 2, 3])],
+  ])("rejects %s", (_name, mutate) => {
+    expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
+      ExportJobValidationError,
+    );
+  });
+});
+
 describe("parseExportJobSnapshotV1", () => {
   it.each(["queued", "running", "waiting", "cancelling", "succeeded", "failed", "cancelled", "interrupted"] as const)(
     "accepts a valid %s snapshot",
@@ -315,6 +341,27 @@ describe("parseExportJobSnapshotV1", () => {
     expect(() => parseExportJobSnapshotV1(changed(snapshot("succeeded"), mutate))).toThrow(
       ExportJobValidationError,
     );
+  });
+});
+
+describe("parseExportReportSummaryV1", () => {
+  const valid = {
+    issues: { info: 1, warning: 0, error: 0 },
+    topCodes: [{ code: "pdf-note", count: 1 }],
+    completeness: "complete" as const,
+  };
+
+  it("returns a canonical valid report summary", () => {
+    expect(parseExportReportSummaryV1(valid)).toEqual(valid);
+  });
+
+  it("rejects malformed counters and unknown fields", () => {
+    expect(() =>
+      parseExportReportSummaryV1(changed(valid, (copy) => (copy.issues.warning = Number.NaN))),
+    ).toThrow("reportSummary.issues.warning");
+    expect(() =>
+      parseExportReportSummaryV1(changed(valid, (copy) => (copy.secret = true))),
+    ).toThrow("reportSummary.secret");
   });
 });
 

@@ -1406,14 +1406,18 @@ Exit: contract review is complete before any second host schema is committed.
 ### Phase 1 / T7.2 — Engine executors and bounded spool
 
 - [x] Add `@atlcli/export-wiring/jobs` subpath.
-- [ ] Add separate `DocxExportJobRequestV1` / `PdfExportJobRequestV1` validators.
-- [ ] Add separate DOCX/PDF executors using capture artifact sinks.
+- [x] Add the separate `PdfExportJobRequestV1` validator.
+- [ ] Add the separate `DocxExportJobRequestV1` validator.
+- [x] Add the PDF executor using a capture artifact sink.
+- [ ] Add the DOCX executor using a capture artifact sink.
 - [x] Add ordered discovery/page/block checkpoint seams beside the current
       all-in-memory tree API.
 - [x] Add bounded page and asset spool pipeline with cancellation and backpressure.
 - [x] Add render estimation/reservation hooks.
-- [ ] Prove direct-vs-job output and report parity for both formats in Node and
-      the browser harness.
+- [x] Prove direct-vs-job PDF output and report parity in Node and the browser
+      harness.
+- [ ] Prove direct-vs-job DOCX output and report parity in Node and the browser
+      harness.
 
 Exit: the second vertical slice is real before Chrome migration.
 
@@ -1540,7 +1544,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     staged-artifact crash, and orphan-cleanup tests pass.
 
 - [ ] **PR-C — PDF job executor** (`T7.2`)
-  - PR: `TBD`
+  - PR: [#81](https://github.com/BjoernSchotte/atlcli/pull/81)
   - Scope: `createPdfExportJobExecutor`, capture sink, ready-to-render manifest,
     Typst render reservation, validation/report staging, cancellation, and render
     restart without Chrome-specific code.

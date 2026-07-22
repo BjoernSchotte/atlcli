@@ -542,8 +542,37 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    profile: PdfProfile;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
@@ -554,6 +583,23 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+}
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
 }
 
 // export: ResolvedPdfDesign
@@ -1199,8 +1245,37 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    profile: PdfProfile;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
@@ -1211,6 +1286,23 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+}
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
 }
 
 // export: ResolvedPdfDesign
@@ -1856,8 +1948,37 @@ export interface PreparedPdfDocument {
     notes: ExportNote[];
 }
 
+// export: PreparedPdfExportV1
+export interface PreparedPdfExportV1 {
+    schema: "atlcli.prepared-pdf-export/1";
+    bundle: PdfSourceBundle | undefined;
+    filename: string;
+    profile: PdfProfile;
+    language?: string;
+    sourceNotes: ExportNote[];
+    bundleNotes: ExportNote[];
+    counts: {
+        images: number;
+        diagrams: number;
+        skipped: number;
+    };
+    complete: boolean;
+    startedAt: number;
+    prepareMs: number;
+}
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
+
+// export: preparePdfExport
+export declare function preparePdfExport(input: RunPdfExportInput, env: PreparePdfExportEnv): Promise<PreparedPdfExportV1>;
+
+// export: PreparePdfExportEnv
+export interface PreparePdfExportEnv {
+    assets: PdfAssetResolver;
+    now?: () => number;
+    macros?: MacroResolutionOptions;
+}
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
@@ -1868,6 +1989,23 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+}
+
+// export: renderPreparedPdfExport
+export declare function renderPreparedPdfExport(prepared: PreparedPdfExportV1, input: RenderPreparedPdfExportInput, env: RenderPreparedPdfExportEnv): Promise<PdfExportReport>;
+
+// export: RenderPreparedPdfExportEnv
+export interface RenderPreparedPdfExportEnv {
+    compiler: PdfCompilePort;
+    output: PdfOutputSink;
+    now?: () => number;
+}
+
+// export: RenderPreparedPdfExportInput
+export interface RenderPreparedPdfExportInput {
+    signal?: AbortSignal;
+    onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+    onProgress?: ExportProgressCallback;
 }
 
 // export: ResolvedPdfDesign

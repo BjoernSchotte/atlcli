@@ -34,6 +34,8 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-fixtures": "workspace:*",
+        "@atlcli/export-jobs": "workspace:*",
+        "@atlcli/export-wiring": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
@@ -192,6 +194,7 @@
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/export-jobs": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/pdf": "workspace:*",
       },

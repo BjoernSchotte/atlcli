@@ -1,6 +1,7 @@
-import type { ExportJobRequestV1 } from "./request.js";
+import type { ExportJobRequestV1, PdfExportJobRequestV1 } from "./request.js";
 import type { ExportJobSnapshotV1 } from "./snapshot.js";
 import type { ExportJobEventV1 } from "./event.js";
+import type { ExportReportSummaryV1 } from "./statistics.js";
 
 const MAX_TEXT_LENGTH = 16_384;
 const MAX_REF_LENGTH = 4_096;
@@ -271,9 +272,7 @@ function validateSettings(value: unknown, path: string): void {
   if (settings.custom !== undefined) validateScalarSettings(settings.custom, `${path}.custom`);
 }
 
-/** Validate and narrow a value read at a request persistence boundary. */
-export function parseExportJobRequestV1(value: unknown): ExportJobRequestV1 {
-  const request = record(value, "request");
+function validateRequestBaseV1(request: Record<string, unknown>): void {
   if (request.schema !== "atlcli.export-job-request/1") {
     fail("request.schema", "must be atlcli.export-job-request/1");
   }
@@ -290,46 +289,76 @@ export function parseExportJobRequestV1(value: unknown): ExportJobRequestV1 {
   onlyKeys(output, ["policy", "targetRef"], "request.output");
   choice(output.policy, ["collect", "path", "host"] as const, "request.output.policy");
   optionalText(output.targetRef, "request.output.targetRef", MAX_REF_LENGTH);
+}
 
-  const format = choice(request.format, ["docx", "pdf"] as const, "request.format");
+function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
+  if (request.format !== "pdf") fail("request.format", "must be pdf");
   onlyKeys(
     request,
     [
       "schema", "id", "idempotencyKey", "format", "renderer", "source", "authRef",
       "displayName", "requestedFilename", "createdAt", "priority", "output", "template",
-      "options", ...(format === "pdf" ? ["settings"] : []),
+      "options", "settings",
     ],
     "request",
   );
-  if (format === "docx") {
-    if (request.renderer !== "docx-typescript") {
-      fail("request.renderer", "DOCX requires docx-typescript");
-    }
-    const template = record(request.template, "request.template");
-    onlyKeys(template, ["recordKey", "sha256", "name"], "request.template");
-    text(template.recordKey, "request.template.recordKey", MAX_REF_LENGTH);
-    sha256(template.sha256, "request.template.sha256");
-    text(template.name, "request.template.name");
-    const options = record(request.options, "request.options");
-    onlyKeys(options, ["embedImages", "resolveMacros", "updateFields", "captionLang"], "request.options");
-    boolean(options.embedImages, "request.options.embedImages");
-    boolean(options.resolveMacros, "request.options.resolveMacros");
-    if (options.updateFields !== undefined) {
-      choice(options.updateFields, ["auto", "always", "never"] as const, "request.options.updateFields");
-    }
-    optionalText(options.captionLang, "request.options.captionLang", 256);
-  } else {
-    if (request.renderer !== "pdf-typst") fail("request.renderer", "PDF requires pdf-typst");
-    const template = record(request.template, "request.template");
-    onlyKeys(template, ["id", "manifestVersion"], "request.template");
-    text(template.id, "request.template.id", MAX_REF_LENGTH);
-    text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
-    validateSettings(request.settings, "request.settings");
-    const options = record(request.options, "request.options");
-    onlyKeys(options, ["resolveMacros", "profile"], "request.options");
-    boolean(options.resolveMacros, "request.options.resolveMacros");
-    optionalText(options.profile, "request.options.profile", MAX_REF_LENGTH);
+  if (request.renderer !== "pdf-typst") fail("request.renderer", "PDF requires pdf-typst");
+  const template = record(request.template, "request.template");
+  onlyKeys(template, ["id", "manifestVersion"], "request.template");
+  text(template.id, "request.template.id", MAX_REF_LENGTH);
+  text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
+  validateSettings(request.settings, "request.settings");
+  const options = record(request.options, "request.options");
+  onlyKeys(options, ["resolveMacros", "profile"], "request.options");
+  boolean(options.resolveMacros, "request.options.resolveMacros");
+  optionalText(options.profile, "request.options.profile", MAX_REF_LENGTH);
+}
+
+function validateDocxExportJobRequestV1(request: Record<string, unknown>): void {
+  if (request.format !== "docx") fail("request.format", "must be docx");
+  onlyKeys(
+    request,
+    [
+      "schema", "id", "idempotencyKey", "format", "renderer", "source", "authRef",
+      "displayName", "requestedFilename", "createdAt", "priority", "output", "template",
+      "options",
+    ],
+    "request",
+  );
+  if (request.renderer !== "docx-typescript") {
+    fail("request.renderer", "DOCX requires docx-typescript");
   }
+  const template = record(request.template, "request.template");
+  onlyKeys(template, ["recordKey", "sha256", "name"], "request.template");
+  text(template.recordKey, "request.template.recordKey", MAX_REF_LENGTH);
+  sha256(template.sha256, "request.template.sha256");
+  text(template.name, "request.template.name");
+  const options = record(request.options, "request.options");
+  onlyKeys(options, ["embedImages", "resolveMacros", "updateFields", "captionLang"], "request.options");
+  boolean(options.embedImages, "request.options.embedImages");
+  boolean(options.resolveMacros, "request.options.resolveMacros");
+  if (options.updateFields !== undefined) {
+    choice(options.updateFields, ["auto", "always", "never"] as const, "request.options.updateFields");
+  }
+  optionalText(options.captionLang, "request.options.captionLang", 256);
+}
+
+/** Validate and narrow a PDF request read at a format-specific persistence boundary. */
+export function parsePdfExportJobRequestV1(value: unknown): PdfExportJobRequestV1 {
+  const request = record(value, "request");
+  validateRequestBaseV1(request);
+  validatePdfExportJobRequestV1(request);
+
+  return value as PdfExportJobRequestV1;
+}
+
+/** Validate and narrow a value read at a request persistence boundary. */
+export function parseExportJobRequestV1(value: unknown): ExportJobRequestV1 {
+  const request = record(value, "request");
+  validateRequestBaseV1(request);
+  const format = choice(request.format, ["docx", "pdf"] as const, "request.format");
+  if (format === "pdf") validatePdfExportJobRequestV1(request);
+  else validateDocxExportJobRequestV1(request);
 
   return value as ExportJobRequestV1;
 }
@@ -471,7 +500,11 @@ function validateStats(value: unknown, path: string): void {
   integer(stats.errors, `${path}.errors`);
 }
 
-function validateReportSummary(value: unknown, path: string): void {
+/** Validate and narrow a format-neutral report summary at any persistence boundary. */
+export function parseExportReportSummaryV1(
+  value: unknown,
+  path = "reportSummary",
+): ExportReportSummaryV1 {
   const summary = record(value, path);
   onlyKeys(summary, ["issues", "topCodes", "completeness", "failurePhase"], path);
   const issues = record(summary.issues, `${path}.issues`);
@@ -490,6 +523,7 @@ function validateReportSummary(value: unknown, path: string): void {
   });
   choice(summary.completeness, ["complete", "partial", "unknown"] as const, `${path}.completeness`);
   optionalText(summary.failurePhase, `${path}.failurePhase`, MAX_REF_LENGTH);
+  return summary as unknown as ExportReportSummaryV1;
 }
 
 /** Validate and narrow a value read at a snapshot persistence boundary. */
@@ -582,7 +616,9 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
   optionalInteger(snapshot.cancelRequestedAt, "snapshot.cancelRequestedAt");
   optionalText(snapshot.checkpointRef, "snapshot.checkpointRef", MAX_REF_LENGTH);
   optionalText(snapshot.reportRef, "snapshot.reportRef", MAX_REF_LENGTH);
-  if (snapshot.reportSummary !== undefined) validateReportSummary(snapshot.reportSummary, "snapshot.reportSummary");
+  if (snapshot.reportSummary !== undefined) {
+    parseExportReportSummaryV1(snapshot.reportSummary, "snapshot.reportSummary");
+  }
   validateStats(snapshot.stats, "snapshot.stats");
   if (snapshot.error !== undefined) validateError(snapshot.error, "snapshot.error");
 

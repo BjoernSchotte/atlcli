@@ -1057,6 +1057,12 @@ export declare function parseExportJobRequestV1(value: unknown): ExportJobReques
 // export: parseExportJobSnapshotV1
 export declare function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1;
 
+// export: parseExportReportSummaryV1
+export declare function parseExportReportSummaryV1(value: unknown, path?: string): ExportReportSummaryV1;
+
+// export: parsePdfExportJobRequestV1
+export declare function parsePdfExportJobRequestV1(value: unknown): PdfExportJobRequestV1;
+
 // export: PdfExportJobRequestV1
 export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     format: "pdf";

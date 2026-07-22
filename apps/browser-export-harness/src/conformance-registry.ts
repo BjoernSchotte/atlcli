@@ -14,6 +14,7 @@ import { runM1Case } from "./m1-case.js";
 import { runMacroCase } from "./macro-case.js";
 import { runManuscriptCase } from "./manuscript-case.js";
 import { runPdfAbortCase, runPdfCase } from "./pdf-case.js";
+import { runPdfJobParityCase } from "./pdf-job-parity-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
 import { runScopeCase } from "./scope-case.js";
@@ -26,6 +27,7 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   "pdf-abort": runPdfAbortCase,
   docx: runDocxCase,
   pdf: runPdfCase,
+  "pdf-job-parity": runPdfJobParityCase,
   "pdf-settings": runPdfSettingsCase,
   blocks: runBlocksCase,
   scope: runScopeCase,

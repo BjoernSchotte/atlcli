@@ -63,6 +63,17 @@ test("every registered conformance case passes from nested production output", a
   expect(pdf.embeddedFontFiles).toBeGreaterThan(0);
   expect(pdf.diagnosticCount).toBeGreaterThan(0);
 
+  const pdfJobParity = JSON.parse(
+    (await page.getByTestId("pdf-job-parity-result").textContent()) ?? "null",
+  );
+  expect(pdfJobParity.byteIdentical).toBe(true);
+  expect(pdfJobParity.reportIdentical).toBe(true);
+  expect(pdfJobParity.usedRealExecutor).toBe(true);
+  expect(pdfJobParity.usedRealWorker).toBe(true);
+  expect(pdfJobParity.jobCompileCalls).toBe(1);
+  expect(pdfJobParity.renderAttempts).toBe(1);
+  expect(pdfJobParity.reservationReleased).toBe(true);
+
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));
 

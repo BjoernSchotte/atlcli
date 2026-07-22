@@ -52,6 +52,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: false,
   },
   {
+    id: "pdf-job-parity",
+    title: "PDF direct vs background-job parity (013)",
+    folderTaskIds: ["013/T7.2"],
+    engines: ["pdf"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "pdf-settings",
     title: "PDF settings & watermark (007)",
     folderTaskIds: ["007/T2.1", "007/T2.2", "007/T2.4"],
@@ -130,7 +138,8 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * (`assert-case-manifest.ts`) fails if the manifest's id set diverges — an
  * unregistered or duplicated case is caught before merge.
  *
- * The general `docx`/`pdf`/`pdf-abort` contracts, the `pdf-settings` (007)
+ * The general `docx`/`pdf`/`pdf-abort` contracts, the PDF job parity gate (013),
+ * the `pdf-settings` (007)
  * feature case, and all six feature-lane cases 001–006 (`blocks`, `scope`,
  * `content-compat`, `macros`, `placeholders`, `docx-quality`) have landed now
  * that every feature spec is merged. `manuscript` (012) landed once the second
@@ -144,6 +153,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-abort",
   "docx",
   "pdf",
+  "pdf-job-parity",
   "pdf-settings",
   "blocks",
   "scope",
