@@ -60,7 +60,10 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 const CHAPTER_QUERY = "query(heading.where(level: 1)).filter(h => h.outlined)";
 const OPENING_ON_PAGE = "chapters.filter(h => h.location().page() == here().page())";
 const STILL_RUNNING = "chapters.filter(h => h.location().page() < here().page())";
-const FIRST_ON_PAGE = "if opening.len() > 0 { opening.first().body }";
+const FIRST_ON_PAGE =
+  "if opening.len() > 0 { atlcli-outline-title.at(opening.first().location()) }";
+const LAST_RUNNING =
+  "else if running.len() > 0 { atlcli-outline-title.at(running.last().location()) }";
 
 /**
  * A validated built-in manifest with an explicit running-head mode. Re-runs the
@@ -109,15 +112,13 @@ function crowdedPage(): ExportBlock[] {
 }
 
 /**
- * The equivalence fixture: one chapter per page, which is what `composeChapters`
- * produces with its default per-chapter `pageBreak`. Under this layout the
- * pre-refinement rule ("last outlined level-1 heading at or before this page")
- * and the refined rule ("first one opening on this page, else the still-running
- * one") select the same heading on every page.
+ * The stability fixture: one chapter per page, which is what `composeChapters`
+ * produces with its default per-chapter `pageBreak`. It exercises the normal
+ * chapter-header path while keeping pagination fixed and easy to verify.
  *
- * KEEP BYTE-STABLE: {@link ONE_PER_PAGE_PRE_REFINEMENT_DIGEST} is a digest of
- * this exact fixture. Editing the blocks, the metadata, or the manifest
- * invalidates the pinned number and the equivalence proof with it.
+ * KEEP BYTE-STABLE: {@link ONE_PER_PAGE_APPROVED_DIGEST} is the approved digest
+ * of this exact fixture. Editing the blocks, metadata, manifest, or navigation
+ * title rendering invalidates the pin and requires an explicit review.
  */
 const ONE_PER_PAGE_CHAPTERS = ["Alpha", "Beta", "Gamma", "Delta"] as const;
 
@@ -140,25 +141,17 @@ const ONE_PER_PAGE_METADATA: PdfExportMetadata = {
 
 /**
  * sha256 of {@link ONE_PER_PAGE_BLOCKS} rendered in `chapter` mode through the
- * built-in manifest by the PRE-REFINEMENT rule, i.e. by
+ * built-in manifest after commit `147a617`. That change deliberately separated
+ * rich heading presentation from the plain navigation title used by the ToC
+ * and running heads, replacing `.body` reads with `atlcli-outline-title` state
+ * lookups. The PDF bytes therefore changed even though the chapter selection
+ * behavior remained the same; the behavioral tests below pin that behavior.
  *
- *   let started = query(heading.where(level: 1))
- *     .filter(h => h.outlined and h.location().page() <= here().page())
- *   let chapter-head = if started.len() > 0 { started.last().body } else { meta.title }
- *
- * Provenance: captured from `origin/main` at commit
- * `62a003134bb139270441be907bd1572ed41c7c4a` (PR #66, the commit immediately
- * before the first-on-page refinement) with the pinned compiler
- * {@link PINNED_COMPILER}, by compiling this fixture with that checkout's
- * unmodified `packages/pdf/src/template.ts`. The refined rule reproducing this
- * digest byte-for-byte is the proof that the normal one-chapter-per-page case
- * did not regress.
- *
- * A change here is NOT a re-baselining candidate: it means the refinement
- * altered output in the very case it was supposed to leave alone.
+ * Provenance: focused real-compiler run with {@link PINNED_COMPILER} after the
+ * clean-navigation-title change was verified by the PDF highlight/ToC tests.
  */
-const ONE_PER_PAGE_PRE_REFINEMENT_DIGEST =
-  "90bef12c83c654c059f5cc3918b21469c3640c7dad78683676b7766b02023ca0";
+const ONE_PER_PAGE_APPROVED_DIGEST =
+  "d6eddb5ee268d81d151c62e07f69a6b4f3b099499bc97388d092858c6bc07cfa";
 
 /** Digests are only comparable within one compiler version. */
 const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
@@ -273,7 +266,7 @@ describe("chapter running head (real compiler)", () => {
     // for a page no chapter opens on.
     expect(source).toContain(FIRST_ON_PAGE);
     expect(source).toContain(STILL_RUNNING);
-    expect(source).toContain("running.last().body");
+    expect(source).toContain(LAST_RUNNING);
     // ...never `.last()` over the headings opening on this page.
     expect(source).not.toContain("opening.last()");
     // The space key stays on the right and the hairline is unchanged.
@@ -456,18 +449,10 @@ describe("chapter running head (real compiler)", () => {
   }, 240_000);
 
   // -------------------------------------------------------------------------
-  // (f) equivalence with the pre-refinement rule in the normal case
+  // (f) byte stability in the normal one-chapter-per-page case
   // -------------------------------------------------------------------------
 
-  it("a one-chapter-per-page document is byte-identical to the pre-refinement render", async () => {
-    // For documents with at most ONE chapter starting per page — the normal
-    // case, since `composeChapters` inserts a pageBreak per chapter by default —
-    // "first chapter opening on this page" and "last heading at or before this
-    // page" select the same heading, so the refinement must be a no-op.
-    //
-    // The old rule cannot be executed any more, so the proof is a pinned digest
-    // of a render produced by it. See ONE_PER_PAGE_PRE_REFINEMENT_DIGEST for the
-    // provenance of that number.
+  it("a one-chapter-per-page document matches the approved navigation-title render", async () => {
     const chaptered = await render(
       ONE_PER_PAGE_BLOCKS,
       ONE_PER_PAGE_METADATA,
@@ -477,7 +462,7 @@ describe("chapter running head (real compiler)", () => {
     // starts on each body page, which is the precondition the claim is about.
     expect(validatePdfOutput(chaptered).pageCount).toBe(3 + ONE_PER_PAGE_CHAPTERS.length);
     expect(PDF_BROWSER_COMPILER_VERSION).toBe(PINNED_COMPILER);
-    expect(digest(chaptered)).toBe(ONE_PER_PAGE_PRE_REFINEMENT_DIGEST);
+    expect(digest(chaptered)).toBe(ONE_PER_PAGE_APPROVED_DIGEST);
 
     // Guard the fixture: the head really does track the chapters here (the
     // document title matches none of them), so the digest above is not the

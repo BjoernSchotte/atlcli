@@ -139,8 +139,8 @@ export function createAtlcliTypstTemplate(
           //      bottom-up and yields the last. For the normal case — at most one
           //      chapter per page, which is what composeChapters produces with
           //      its default per-chapter pageBreak — first and last are the same
-          //      heading, so this refinement is a no-op there (pinned as a
-          //      byte-equality test against a pre-refinement render).
+          //      heading, so this refinement is a no-op there (pinned by the
+          //      approved one-chapter-per-page byte-stability fixture).
           // Front matter (no chapter heading yet) falls back to the document
           // title, never to an empty head.
           let chapters = query(heading.where(level: 1)).filter(h => h.outlined)

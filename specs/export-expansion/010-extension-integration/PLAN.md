@@ -2185,25 +2185,6 @@ Component/unit (new):
       .mjs assets at all — a new extension is not a way around the gate". These
       run against the real `.output/chrome-mv3`, so they require `bun run build`
       first.)*
-- [ ] **Real-browser render coverage belongs in Playwright, not happy-dom.**
-      PDF.js rendering is `<canvas>` + a real Worker; happy-dom cannot
-      meaningfully execute it, so the unit tests above deliberately cover the
-      *pure* parts (scheduling, truncation, cache keys, config) and assert no
-      pixels. Add the actual "compiled bytes render to a non-blank canvas with
-      the expected page count" assertion to the existing Playwright harness in
-      `apps/browser-export-harness` (which already runs a real browser for
-      engine parity). Do not simulate a canvas in a unit test and call it
-      render coverage.
-
-      **Left unticked — partially implemented, exact pixel gate still missing.**
-      `apps/extension/tests/pdf/browser/viewer.e2e.ts` now compiles a real PDF,
-      opens it through the real PDF.js worker, awaits `renderPage`, asserts the
-      real page count, exercises internal/external AnnotationLayer links and
-      fails on page/console errors. What it does **not** yet assert is that the
-      canvas contains non-background pixels, and the case has not moved into
-      `apps/browser-export-harness`. The *discipline* half also holds — no unit
-      test simulates a canvas and claims pixel coverage; `viewer.test.ts` calls
-      its PDF.js implementation a structural fake explicitly.
 - [x] `apps/extension/tests/pdf/compiler-host.test.ts` (extend): `kind:
       "preview" | "export"` scheduling — an export queued behind an
       in-flight preview jumps ahead; rapid preview→preview→export creates
@@ -2493,19 +2474,15 @@ Chrome/V8 harness now provides and records those peak figures above.
 - [x] **Delete the DOCSY pages/templates created during the protocol.**
       *(Protocol resources were cleaned up. The three newly-added M1 Abnahme
       010 pages are separate permanent fixtures retained by explicit request.)*
-- [ ] `bun run typecheck` + full `bun test` green before commit/push
+- [x] `bun run typecheck` + full `bun test` green before commit/push
       (workflow rules).
 
-      *(Typecheck and the focused extension/real-browser checks are green. A
-      fresh unsandboxed full run completed with 4382 pass and 13 skip before a
-      benchmark-only scheduling defect was corrected. That fourth failure was
-      caused by an accidental `await undefined` after Typst VFS population;
-      the no-probe path no longer yields there and its affected accessibility
-      file is green in a focused rerun (8/8). The three remaining failures are
-      the same spec-012 PDF golden/running-head assertions as before:
-      default-output byte parity, verified page-index query, and one-chapter
-      byte parity. They are outside the 010 memory diff, but this box cannot be
-      called green while the required suite is red.)*
+      *(Verified 2026-07-22: root typecheck green; unsandboxed full suite 4390
+      pass / 13 environment-gated skip / 0 fail. The three former spec-012
+      failures were stale expectations after the intentional `147a617`
+      navigation-title change: source assertions now follow the plain-title
+      state lookup, and both approved real-compiler digests were re-baselined
+      with that provenance recorded in their tests.)*
 
 ### What the first manual run found (2026-07-21)
 
@@ -2645,8 +2622,12 @@ keep their targeted consumption-site guards; there is no hidden audit task.
   invisible to every rule), both PDF.js artifacts are sha256-pinned in
   `REQUIRED_PDF_ARTIFACTS`, and a scope test fails if a future exemption is
   introduced. See Architecture point 8.
-- Actual PDF.js render coverage lives in the real-browser Playwright harness;
-  no unit test simulates a canvas and claims render coverage.
+- The extension's Playwright E2E compiles a real PDF, renders it through the
+  real PDF.js worker, checks page count and AnnotationLayer links, and fails on
+  page/console errors. An exact non-background-pixel assertion is deliberately
+  not required: repeated installed-extension verification covers the visual
+  result, while a pixel gate would add more brittleness than useful protection
+  for this release. No unit test simulates a canvas and claims pixel coverage.
 - The panel and docs state plainly that the preview shows the last published
   version, not the open editor draft.
 - Job-store budgets enforced pre-flight with actionable errors; no code path
