@@ -365,6 +365,7 @@ import {
 import { resolveMacroBlocks } from "@atlcli/export-macros";
 import { packTemplate, unpackTemplate, type TemplateManifest } from "@atlcli/template-pack";
 import { nodePdfEnv, nodeDocxEnv, bundledDefaultTemplate } from "@atlcli/export-node";
+import { createPdfExportJobExecutor } from "@atlcli/export-wiring/jobs";
 // The remaining Node-compatible packages: type-check their barrels too, so
 // the skipLibCheck:false proof covers every package the engines matrix
 // marks Node-compatible (jira is deliberately absent — Bun-only).
@@ -410,6 +411,7 @@ const surfaces: unknown[] = [
   nodePdfEnv,
   nodeDocxEnv,
   bundledDefaultTemplate,
+  createPdfExportJobExecutor,
   pdfSink,
   emittedByteShape,
 ];

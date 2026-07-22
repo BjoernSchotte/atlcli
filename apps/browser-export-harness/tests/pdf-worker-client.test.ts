@@ -71,6 +71,17 @@ describe("HarnessPdfWorkerClient", () => {
     expect(worker.messages[0]!.bundle.assets[0]!.bytes.buffer).not.toBe(originalBuffer);
   });
 
+  it("terminates a successfully warmed Worker when disposed", async () => {
+    const worker = new FakeWorker();
+    const client = new HarnessPdfWorkerClient(() => worker);
+
+    await client.compile(bundle());
+    expect(worker.terminated).toBe(false);
+
+    client.dispose();
+    expect(worker.terminated).toBe(true);
+  });
+
   it("terminates an active Worker on abort and recreates it for the next request", async () => {
     const workers: FakeWorker[] = [];
     const client = new HarnessPdfWorkerClient(() => {

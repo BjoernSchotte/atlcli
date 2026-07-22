@@ -17,6 +17,7 @@ import type {
   PdfExportMetadata,
   PdfExportReport,
   PdfProfile,
+  PdfSourceBundle,
   PdfTemplateSettings,
   PdfThemeOptions,
   PreparedPdfBlock,
@@ -82,6 +83,50 @@ export interface PdfExportEnv {
    * phase before `preparePdfDocument`. Omitting it reproduces today's output.
    */
   macros?: MacroResolutionOptions;
+}
+
+/** Dependencies used before a PDF reaches its durable render checkpoint. */
+export interface PreparePdfExportEnv {
+  assets: PdfAssetResolver;
+  now?: () => number;
+  macros?: MacroResolutionOptions;
+}
+
+/** Complete engine state that can be persisted as a ready-to-render checkpoint. */
+export interface PreparedPdfExportV1 {
+  schema: "atlcli.prepared-pdf-export/1";
+  /**
+   * Complete Typst VFS for one render attempt.
+   *
+   * `renderPreparedPdfExport()` takes ownership by setting this field to
+   * `undefined` before it invokes the compiler. A durable checkpoint therefore
+   * remains the source of truth and must materialize a fresh clone for every
+   * retry; reusing an already-consumed value fails closed.
+   */
+  bundle: PdfSourceBundle | undefined;
+  filename: string;
+  profile: PdfProfile;
+  language?: string;
+  sourceNotes: ExportNote[];
+  bundleNotes: ExportNote[];
+  counts: { images: number; diagrams: number; skipped: number };
+  complete: boolean;
+  startedAt: number;
+  prepareMs: number;
+}
+
+/** Per-attempt hooks deliberately excluded from the durable checkpoint. */
+export interface RenderPreparedPdfExportInput {
+  signal?: AbortSignal;
+  onPhase?: (phase: Extract<PdfExportPhase, "compiling" | "validating" | "emitting">) => void;
+  onProgress?: ExportProgressCallback;
+}
+
+/** Dependencies materialized only after the host admits the heavy render. */
+export interface RenderPreparedPdfExportEnv {
+  compiler: PdfCompilePort;
+  output: PdfOutputSink;
+  now?: () => number;
 }
 
 export type PdfExportErrorPhase = "configuration" | "prepare" | "compile" | "validate" | "emit";
@@ -222,10 +267,10 @@ export function auditPdfLanguage(input: {
   return notes;
 }
 
-export async function runPdfExport(
+export async function preparePdfExport(
   input: RunPdfExportInput,
-  env: PdfExportEnv
-): Promise<PdfExportReport> {
+  env: PreparePdfExportEnv,
+): Promise<PreparedPdfExportV1> {
   const now = env.now ?? (() => Date.now());
   const startedAt = now();
   throwIfAborted(input.signal);
@@ -311,6 +356,44 @@ export async function runPdfExport(
   // the bundle itself.
   const bundleNotes = bundle!.notes;
 
+  return {
+    schema: "atlcli.prepared-pdf-export/1",
+    bundle: bundle!,
+    filename: input.filename,
+    profile: input.profile ?? "tagged",
+    ...(input.metadata.language !== undefined ? { language: input.metadata.language } : {}),
+    sourceNotes: resolvedNotes,
+    bundleNotes,
+    counts,
+    complete: input.complete ?? true,
+    startedAt,
+    prepareMs,
+  };
+}
+
+/** Compile, validate, and emit one already prepared PDF render attempt. */
+export async function renderPreparedPdfExport(
+  prepared: PreparedPdfExportV1,
+  input: RenderPreparedPdfExportInput,
+  env: RenderPreparedPdfExportEnv,
+): Promise<PdfExportReport> {
+  if (prepared.schema !== "atlcli.prepared-pdf-export/1") {
+    throw new PdfExportError("Unsupported prepared PDF export schema.", { phase: "compile" });
+  }
+  const now = env.now ?? (() => Date.now());
+  throwIfAborted(input.signal);
+  let bundle: PdfSourceBundle | undefined = prepared.bundle;
+  if (!bundle) {
+    throw new PdfExportError(
+      "Prepared PDF export was already consumed; materialize a fresh checkpoint value before retrying.",
+      { phase: "compile" },
+    );
+  }
+  // Move, do not borrow: while Typst/WASM and the resulting PDF are alive, the
+  // caller-visible prepared value must not keep a second route to the complete
+  // VFS. A retry rematerializes a fresh clone from the durable checkpoint.
+  prepared.bundle = undefined;
+
   input.onPhase?.("compiling");
   const compileStarted = now();
   let compiled;
@@ -350,43 +433,56 @@ export async function runPdfExport(
     // must not turn an already-written file into a reported failure, so there
     // is deliberately no post-emit abort re-check here.
     throwIfAborted(input.signal);
-    input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: input.filename });
-    await env.output.emit(input.filename, pdfBytesFromUint8Array(compiled.pdf), {
+    input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: prepared.filename });
+    await env.output.emit(prepared.filename, pdfBytesFromUint8Array(compiled.pdf), {
       signal: input.signal,
     });
-    input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: input.filename });
+    input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: prepared.filename });
   } catch (error) {
     wrapFailure(error, "emit");
   }
   const emitMs = now() - emitStarted;
 
   return {
-    filename: input.filename,
-    profile: input.profile ?? "tagged",
+    filename: prepared.filename,
+    profile: prepared.profile,
     compilerVersion: compiled.compilerVersion,
     pageCount: inspection.pageCount,
-    embeddedImages: counts.images,
-    renderedDiagrams: counts.diagrams,
-    skippedAssets: counts.skipped,
+    embeddedImages: prepared.counts.images,
+    renderedDiagrams: prepared.counts.diagrams,
+    skippedAssets: prepared.counts.skipped,
     notes: [
-      ...resolvedNotes,
-      ...bundleNotes,
+      ...prepared.sourceNotes,
+      ...prepared.bundleNotes,
       // PDF/UA language audit (spec 011). Appended after the compile because
       // one of its two inputs is a property of the produced FILE, not of the
       // request — `hasLang` comes from inspecting the real output bytes.
       ...auditPdfLanguage({
-        ...(input.metadata.language !== undefined ? { language: input.metadata.language } : {}),
+        ...(prepared.language !== undefined ? { language: prepared.language } : {}),
         hasLang: inspection.hasLang,
       }),
     ],
     // The host's source notes as the macro resolver left them (spec 010): a
     // per-source-page view rebuilt from the PRE-resolution walk contradicts this
     // aggregate — it still claims a live-rendered macro did not render.
-    sourceNotes: resolvedNotes,
-    complete: input.complete ?? true,
+    sourceNotes: prepared.sourceNotes,
+    complete: prepared.complete,
     // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
     // can fail `--strict` on real Typst warnings.
     compilerDiagnostics: compiled.diagnostics,
-    timings: { prepareMs, compileMs, emitMs, totalMs: now() - startedAt },
+    timings: {
+      prepareMs: prepared.prepareMs,
+      compileMs,
+      emitMs,
+      totalMs: now() - prepared.startedAt,
+    },
   };
+}
+
+export async function runPdfExport(
+  input: RunPdfExportInput,
+  env: PdfExportEnv,
+): Promise<PdfExportReport> {
+  const prepared = await preparePdfExport(input, env);
+  return renderPreparedPdfExport(prepared, input, env);
 }

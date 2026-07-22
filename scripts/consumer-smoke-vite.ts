@@ -12,9 +12,10 @@
  * `@atlcli/pdf/fonts/*.ttf?url` exactly like
  * apps/browser-export-harness/src/pdf-worker.ts, bundles the full compile
  * pipeline (runPdfExport + BrowserPdfCompiler + storageToBlocks) from the
- * installed packages, and exposes a hook on globalThis. After the build the
- * driver asserts the `?url` imports resolved to real hashed files in the
- * build output (nothing falling through to a src/ path or workspace
+ * installed packages, imports the background executor from the packed
+ * `@atlcli/export-wiring/jobs` subpath, and exposes a hook on globalThis. After
+ * the build the driver asserts the `?url` imports resolved to real hashed files
+ * in the build output (nothing falling through to a src/ path or workspace
  * symlink), then imports the PRODUCTION chunk under Bun (headless — a real
  * browser Worker adds nothing to the packaging proof) and compiles a fixture
  * to real, validated PDF bytes using the EMITTED wasm + font assets — through
@@ -40,9 +41,13 @@ import {
   type SmokeRunResult,
 } from "./consumer-smoke.js";
 
-/** pdf + pdf-compiler-browser roots; the transitive @atlcli closure is
- *  derived from the real manifests (never a hardcoded list). */
-const VITE_ROOTS = ["@atlcli/pdf", "@atlcli/pdf-compiler-browser"];
+/** PDF/compiler plus the background-wiring package; the transitive @atlcli
+ * closure is derived from the real manifests (never a hardcoded list). */
+const VITE_ROOTS = [
+  "@atlcli/pdf",
+  "@atlcli/pdf-compiler-browser",
+  "@atlcli/export-wiring",
+];
 
 const VITE_VERSION = "8.1.4"; // same major the harness builds with
 
@@ -92,6 +97,7 @@ import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { storageToBlocks } from "@atlcli/confluence";
+import { createPdfExportJobExecutor } from "@atlcli/export-wiring/jobs";
 
 const fontUrls: Record<string, string> = {
   "SourceSans3-Regular.ttf": sansRegularUrl,
@@ -112,6 +118,7 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   wasmUrl,
   fontUrls,
   expectedFonts: PDF_RUNTIME_ASSETS.fonts.map((font) => font.fileName),
+  jobsEntrypointLoaded: typeof createPdfExportJobExecutor === "function",
   async compile(loadBytes: LoadBytes) {
     const wasm = await loadBytes(wasmUrl);
     const fonts = await Promise.all(
@@ -262,6 +269,7 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     wasmUrl: string;
     fontUrls: Record<string, string>;
     expectedFonts: string[];
+    jobsEntrypointLoaded: boolean;
     compile(load: (url: string) => Promise<Uint8Array>): Promise<{
       byteLength: number;
       handleSize: number;
@@ -278,6 +286,9 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     }>;
   };
   if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
+  if (!hook.jobsEntrypointLoaded) {
+    throw new Error("packed @atlcli/export-wiring/jobs did not expose createPdfExportJobExecutor");
+  }
 
   const resolveAsset = (url: string): string => {
     // With base "./" Vite computes asset URLs at runtime relative to

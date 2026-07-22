@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock } from "@atlcli/confluence";
-import { auditPdfLanguage, PdfExportError, runPdfExport, type PdfExportPhase } from "./run-export.js";
+import {
+  auditPdfLanguage,
+  PdfExportError,
+  preparePdfExport,
+  renderPreparedPdfExport,
+  runPdfExport,
+  type PdfExportPhase,
+} from "./run-export.js";
 import { PdfSettingsError } from "./settings.js";
 
 const validPdf = new TextEncoder().encode(
@@ -11,6 +18,97 @@ const metadata = { title: "Test", exportedAt: new Date("2026-07-17T00:00:00Z") }
 const assets = { resolve: async () => { throw new Error("no assets"); } };
 
 describe("neutral runPdfExport", () => {
+  it("keeps the direct path exactly equal to the explicit prepare/render stages", async () => {
+    const clock = (): (() => number) => {
+      let tick = 0;
+      return () => tick++;
+    };
+    const compile = async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" });
+    const directReport = await runPdfExport(
+      { blocks, metadata, filename: "Test.pdf", sourceNotes: [] },
+      { assets, compiler: { compile }, output: { emit: async () => {} }, now: clock() },
+    );
+
+    const splitClock = clock();
+    const prepared = await preparePdfExport(
+      { blocks, metadata, filename: "Test.pdf", sourceNotes: [] },
+      { assets, now: splitClock },
+    );
+    const stagedReport = await renderPreparedPdfExport(
+      structuredClone(prepared),
+      {},
+      { compiler: { compile }, output: { emit: async () => {} }, now: splitClock },
+    );
+
+    expect(stagedReport).toEqual(directReport);
+    expect(prepared.schema).toBe("atlcli.prepared-pdf-export/1");
+  });
+
+  it("consumes each materialized render value and retries from a fresh durable clone", async () => {
+    let assetCalls = 0;
+    let compileCalls = 0;
+    const imageBlocks: ExportBlock[] = [{
+      type: "image",
+      source: { kind: "attachment", filename: "one.png" },
+      alt: "One",
+    }];
+    const durablePrepared = await preparePdfExport(
+      { blocks: imageBlocks, metadata, filename: "Test.pdf" },
+      {
+        assets: {
+          resolve: async () => {
+            assetCalls += 1;
+            return {
+              bytes: new Uint8Array([
+                0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+                0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+                0, 0, 0, 1, 0, 0, 0, 1,
+              ]),
+              mediaType: "image/png",
+            };
+          },
+        },
+      },
+    );
+    const compiler = {
+      compile: async () => {
+        compileCalls += 1;
+        expect(activeAttempt?.bundle).toBeUndefined();
+        if (compileCalls === 1) throw new Error("worker lost");
+        return { pdf: validPdf, diagnostics: [], compilerVersion: "test" };
+      },
+    };
+    let activeAttempt = structuredClone(durablePrepared);
+
+    await expect(
+      renderPreparedPdfExport(activeAttempt, {}, { compiler, output: { emit: async () => {} } }),
+    ).rejects.toMatchObject({ phase: "compile" });
+    expect(activeAttempt.bundle).toBeUndefined();
+    await expect(
+      renderPreparedPdfExport(activeAttempt, {}, { compiler, output: { emit: async () => {} } }),
+    ).rejects.toThrow("already consumed");
+
+    activeAttempt = structuredClone(durablePrepared);
+    const report = await renderPreparedPdfExport(
+      activeAttempt,
+      {},
+      {
+        compiler,
+        output: {
+          emit: async () => {
+            expect(activeAttempt.bundle).toBeUndefined();
+          },
+        },
+      },
+    );
+
+    expect(report.filename).toBe("Test.pdf");
+    expect(activeAttempt.bundle).toBeUndefined();
+    expect(durablePrepared.bundle).toBeDefined();
+    expect(compileCalls).toBe(2);
+    expect(assetCalls).toBe(1);
+  });
+
   it("orchestrates phases, preserves theme/profile and emits bytes", async () => {
     const phases: PdfExportPhase[] = [];
     let template = "";

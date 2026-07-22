@@ -143,9 +143,11 @@ export type {
 } from "./policy.js";
 export {
   ExportJobValidationError,
+  parsePdfExportJobRequestV1,
   parseExportJobRequestV1,
   parseExportJobSnapshotV1,
   parseExportJobEventV1,
+  parseExportReportSummaryV1,
 } from "./validation.js";
 export { bindExportJobArtifacts, bindExportJobSpool } from "./bound-stores.js";
 export {

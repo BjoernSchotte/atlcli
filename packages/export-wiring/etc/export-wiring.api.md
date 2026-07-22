@@ -375,6 +375,23 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
 }
 
+// export: createPdfExportJobExecutor
+export declare function createPdfExportJobExecutor(options: CreatePdfExportJobExecutorOptionsV1): ExportJobExecutor<PdfExportJobRequestV1>;
+
+// export: CreatePdfExportJobExecutorOptionsV1
+export interface CreatePdfExportJobExecutorOptionsV1 {
+    resolveInput(request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: PdfExportJobEngineInputV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    }>;
+    readyToRender: PdfReadyToRenderStoreV1;
+    estimateRender(input: PdfExportJobEngineInputV1, request: PdfExportJobRequestV1): ResourceEstimateV1;
+    compiler: PdfCompilePort;
+    renderReservations: PdfRenderReservationPortV1;
+    results: PdfExportResultStoreV1;
+    now?: () => number;
+}
+
 // export: ExportAssetResponseV1
 export interface ExportAssetResponseV1 {
     contentLength?: number;
@@ -426,6 +443,132 @@ export interface OrderedSourcePortV1<Value, Cursor> {
         limit: number;
         signal: AbortSignal;
     }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
+}
+
+// export: PdfExportJobEngineInputV1
+export type PdfExportJobEngineInputV1 = Omit<RunPdfExportInput, "signal" | "onPhase" | "onProgress">;
+
+// export: PdfExportResultIntentV1
+export interface PdfExportResultIntentV1 {
+    schema: "atlcli.pdf-result-intent/1";
+    key: PdfExportResultRecoveryKeyV1;
+    artifact: {
+        mediaType: "application/pdf";
+        filename: string;
+        byteLength: number;
+        sha256: string;
+    };
+    reportRef: string;
+    reportSha256: string;
+    reportSummary: ExportReportSummaryV1;
+}
+
+// export: PdfExportResultRecoveryKeyV1
+export interface PdfExportResultRecoveryKeyV1 {
+    schema: "atlcli.pdf-result-key/1";
+    ref: string;
+    jobId: string;
+    requestId: string;
+    requestKey: string;
+    requestSha256: string;
+    checkpointRef: string;
+    preparedByteLength: number;
+    preparedSha256: string;
+    estimate: ResourceEstimateV1;
+}
+
+// export: PdfExportResultStoreV1
+export interface PdfExportResultStoreV1 {
+    recover(key: PdfExportResultRecoveryKeyV1, context: ExportJobExecutionContext): Promise<PdfRecoveredExportResultV1 | undefined>;
+    prepare(input: {
+        intent: PdfExportResultIntentV1;
+        report: PdfExportReport;
+    }, context: ExportJobExecutionContext): Promise<PdfExportResultIntentV1>;
+    stage(input: {
+        intent: PdfExportResultIntentV1;
+        artifact: PendingArtifactV1;
+    }, context: ExportJobExecutionContext): Promise<ExportJobExecutionResultV1>;
+}
+
+// export: PdfPreparedPayloadBindingV1
+export interface PdfPreparedPayloadBindingV1 {
+    byteLength: number;
+    sha256: string;
+}
+
+// export: PdfReadyToRenderCheckpointV1
+export interface PdfReadyToRenderCheckpointV1 {
+    schema: "atlcli.pdf-ready-to-render/1";
+    ref: string;
+    jobId: string;
+    requestId: string;
+    requestKey: string;
+    preparedRef: string;
+    preparedByteLength: number;
+    preparedSha256: string;
+    estimate: ResourceEstimateV1;
+    renderAttempts: number;
+}
+
+// export: PdfReadyToRenderStoreV1
+export interface PdfReadyToRenderStoreV1 {
+    load(input: {
+        jobId: string;
+        request: PdfExportJobRequestV1;
+        signal: AbortSignal;
+    }): Promise<PdfReadyToRenderCheckpointV1 | undefined>;
+    commit(input: {
+        jobId: string;
+        leaseEpoch: number;
+        request: PdfExportJobRequestV1;
+        prepared: PreparedPdfExportV1;
+        binding: PdfPreparedPayloadBindingV1;
+        estimate: ResourceEstimateV1;
+        signal: AbortSignal;
+    }): Promise<PdfReadyToRenderCheckpointV1>;
+    materialize(input: {
+        checkpoint: PdfReadyToRenderCheckpointV1;
+        jobId: string;
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<PreparedPdfExportV1>;
+    beginRenderAttempt(input: {
+        checkpoint: PdfReadyToRenderCheckpointV1;
+        jobId: string;
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<PdfReadyToRenderCheckpointV1>;
+}
+
+// export: PdfRecoveredExportResultV1
+export interface PdfRecoveredExportResultV1 {
+    intent: PdfExportResultIntentV1;
+    result: ExportJobExecutionResultV1;
+}
+
+// export: PdfRenderReservationPortV1
+export interface PdfRenderReservationPortV1 {
+    acquire(input: {
+        jobId: string;
+        leaseEpoch: number;
+        estimate: ResourceEstimateV1;
+        signal: AbortSignal;
+    }): Promise<PdfRenderReservationV1>;
+}
+
+// export: PdfRenderReservationV1
+export interface PdfRenderReservationV1 {
+    reconcile(input: {
+        preparedBytes?: number;
+        outputBytes?: number;
+        signal: AbortSignal;
+    }): Promise<void>;
+    release(): void | Promise<void>;
+}
+
+// export: PdfRenderRestartLimitError
+export declare class PdfRenderRestartLimitError extends Error {
+    constructor();
 }
 
 // export: PersistedOrderedSourceCheckpointV1

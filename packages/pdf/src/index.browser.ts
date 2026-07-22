@@ -12,13 +12,23 @@
  */
 
 // --- Export runner (run-export.ts) ---
-export { runPdfExport, normalizePdfLocale, PdfExportError } from "./run-export.js";
+export {
+  runPdfExport,
+  preparePdfExport,
+  renderPreparedPdfExport,
+  normalizePdfLocale,
+  PdfExportError,
+} from "./run-export.js";
 export type {
   PdfExportEnv,
   PdfOutputSink,
   PdfExportPhase,
   PdfExportErrorPhase,
   RunPdfExportInput,
+  PreparePdfExportEnv,
+  PreparedPdfExportV1,
+  RenderPreparedPdfExportInput,
+  RenderPreparedPdfExportEnv,
 } from "./run-export.js";
 
 // --- Compiled-byte handle (bytes-handle.ts, spec 010 T5.6) ---
