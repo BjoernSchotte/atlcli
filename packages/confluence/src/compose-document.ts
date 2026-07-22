@@ -287,6 +287,18 @@ export interface ComposeOptions {
 export interface ComposeResult {
   blocks: ExportBlock[];
   notes: ExportNote[];
+  /**
+   * Page/folder id → the in-document anchor its chapter was given.
+   *
+   * Composition's own in-scope answer, published so consumers that run AFTER it
+   * can reach the same decision. The macro-resolution pass is exactly that
+   * consumer: both engines resolve macros on the already-composed tree, so a
+   * renderer listing other Confluence pages (the Confluence-list datasource)
+   * cannot emit `{ kind: "page" }` targets and expect them to be rewritten — it
+   * reads this map instead, linking into the document rather than out to the
+   * web. An id absent from the map is outside the export scope.
+   */
+  chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -768,7 +780,7 @@ export function composeChapters(
     }
   }
 
-  return { blocks, notes };
+  return { blocks, notes, chapterAnchorById: chapterDestById };
 }
 
 // Re-export the node types for consumers importing composition from one place.

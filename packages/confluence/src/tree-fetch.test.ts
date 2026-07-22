@@ -374,6 +374,11 @@ describe("fetchExportTree — cycles, folders, unsupported", () => {
     expect(titles(result)).toEqual(["Root", "Folder"]);
     const unsupported = result.notes.filter((n) => n.code === "unsupported-child-type");
     expect(unsupported.length).toBe(2);
+    // Dropping a child the user asked for is a WARNING, not an informational
+    // aside: note level drives issue severity and therefore `--strict`'s exit
+    // code, so `info` here would let a silent content loss pass CI. Contrast
+    // `label-filtered`, which stays `info` because the user asked for it.
+    expect(unsupported.every((n) => n.level === "warning")).toBe(true);
   });
 });
 

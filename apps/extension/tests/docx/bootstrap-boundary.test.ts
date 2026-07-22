@@ -7,8 +7,17 @@ const mainSource = readFileSync(
   join(extensionRoot, "entrypoints", "sidepanel", "main.tsx"),
   "utf8"
 );
+/**
+ * The lazy-load boundary moved with the code it guards: spec 010 Phase 0 took
+ * the DOCX effect half out of `TemplateSection.tsx` (now a compatibility
+ * re-export) and into the Chrome adapter, so that is where the dynamic imports
+ * now have to be. The invariant is unchanged — a static import of
+ * `@atlcli/docx/browser` or `/scan` would drag PizZip, docxtemplater and the
+ * OOXML serializer into the panel's initial chunk for every user, including the
+ * ones who never upload a template.
+ */
 const templateSource = readFileSync(
-  join(extensionRoot, "entrypoints", "sidepanel", "TemplateSection.tsx"),
+  join(extensionRoot, "entrypoints", "sidepanel", "ports", "docx.ts"),
   "utf8"
 );
 

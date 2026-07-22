@@ -464,3 +464,38 @@ describe("sanitizeAnchorId — registry goldens", () => {
     expect(ids).toContain("p9-foo-bar"); // first-wins keeps the clean id
   });
 });
+
+describe("composeChapters — the published chapter-anchor map", () => {
+  /**
+   * Macro resolution runs AFTER composition (both engines resolve macros on the
+   * already-composed tree), so a renderer that lists other Confluence pages can
+   * no longer have its `{ kind: "page" }` targets rewritten. This map is how it
+   * reaches composition's OWN in-scope answer instead of growing a second
+   * link-resolution path.
+   */
+  test("names every page AND folder, with the anchor its chapter actually carries", () => {
+    const result = composeChapters(fixtureTree(), { resolveExternalUrl });
+    expect([...result.chapterAnchorById.keys()].sort()).toEqual(["1", "2", "3", "4", "F1"]);
+
+    // The value must be the anchor the DOCUMENT uses, not a recomputed guess:
+    // pull the chapter headings' explicit anchors back out and compare.
+    const headingAnchors = result.blocks
+      .filter((b): b is Extract<ExportBlock, { type: "heading" }> => b.type === "heading")
+      .map((h) => h.explicitAnchor)
+      .filter((a): a is string => a !== undefined);
+    for (const anchor of result.chapterAnchorById.values()) {
+      expect(headingAnchors).toContain(anchor);
+    }
+  });
+
+  test("a page outside the export is simply absent — never a fabricated anchor", () => {
+    const result = composeChapters(fixtureTree(), { resolveExternalUrl });
+    expect(result.chapterAnchorById.get("999")).toBeUndefined();
+  });
+
+  test("is stable across runs, like the rest of composition", () => {
+    const a = composeChapters(fixtureTree(), { resolveExternalUrl });
+    const b = composeChapters(fixtureTree(), { resolveExternalUrl });
+    expect([...a.chapterAnchorById]).toEqual([...b.chapterAnchorById]);
+  });
+});

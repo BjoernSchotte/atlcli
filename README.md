@@ -118,7 +118,7 @@ See [Contributing Guide](https://atlcli.sh/contributing/) for detailed developme
 ### Documentation development
 
 The Astro documentation site requires Node.js 22.12.0 or newer. Use the
-repository's declared Bun version (`1.3.5`) to install dependencies and run the
+repository's declared Bun version (`1.3.14`) to install dependencies and run the
 documentation commands:
 
 ```bash

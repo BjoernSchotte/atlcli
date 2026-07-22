@@ -174,6 +174,19 @@ describe("storage walker — unsafe targets degrade to visible text + a note", (
     expect(notes.find((n) => n.code === UNSAFE_LINK_NOTE_CODE)).toBeUndefined();
   });
 
+  test("applies the same scheme policy to Confluence ac:link / ri:url targets", () => {
+    const { blocks, notes } = storageToBlocks(
+      '<p><ac:link><ri:url ri:value="javascript:alert(1)"/>' +
+        '<ac:plain-text-link-body><![CDATA[click me]]></ac:plain-text-link-body></ac:link></p>'
+    );
+    expect(firstLink(blocks)).toBeUndefined();
+    expect(notes.find((n) => n.code === UNSAFE_LINK_NOTE_CODE)).toMatchObject({
+      level: "warning",
+    });
+    const paragraph = blocks[0] as Extract<ExportBlock, { type: "paragraph" }>;
+    expect(paragraph.content).toEqual([{ type: "text", text: "click me" }]);
+  });
+
   test("POSITIVE CONTROL: a relative link survives (same-origin by construction)", () => {
     const { blocks, notes } = storageToBlocks(`<p><a href="/wiki/x">rel</a></p>`);
     expect(firstLink(blocks)?.target).toEqual({ kind: "external", href: "/wiki/x" });

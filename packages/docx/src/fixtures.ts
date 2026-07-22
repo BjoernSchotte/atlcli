@@ -33,16 +33,27 @@ const ROOT_RELS =
   `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>` +
   `</Relationships>`;
 
-function docRels(header: boolean, footer: boolean, settings: boolean): string {
+interface DocumentRelationships {
+  xml: string;
+  headerId?: string;
+  footerId?: string;
+}
+
+function docRels(header: boolean, footer: boolean, settings: boolean): DocumentRelationships {
   let rels = "";
   let n = 1;
-  if (header) rels += `<Relationship Id="rIdH${n++}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>`;
-  if (footer) rels += `<Relationship Id="rIdF${n++}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>`;
+  const headerId = header ? `rIdH${n++}` : undefined;
+  const footerId = footer ? `rIdF${n++}` : undefined;
+  if (headerId) rels += `<Relationship Id="${headerId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>`;
+  if (footerId) rels += `<Relationship Id="${footerId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>`;
   if (settings) rels += `<Relationship Id="rIdS${n++}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>`;
-  return (
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`
-  );
+  return {
+    xml:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`,
+    headerId,
+    footerId,
+  };
 }
 
 /**
@@ -59,10 +70,24 @@ export const OOXML_NS =
 
 /** Wrap body inner XML into a full `word/document.xml`. */
 export function documentXml(bodyInner: string): string {
+  return documentXmlWithStoryReferences(bodyInner, {});
+}
+
+function documentXmlWithStoryReferences(
+  bodyInner: string,
+  refs: Pick<DocumentRelationships, "headerId" | "footerId">
+): string {
+  const hasStoryReference = refs.headerId != null || refs.footerId != null;
+  const relationshipNamespace = hasStoryReference
+    ? ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
+    : "";
+  const sectionReferences =
+    (refs.headerId ? `<w:headerReference w:type="default" r:id="${refs.headerId}"/>` : "") +
+    (refs.footerId ? `<w:footerReference w:type="default" r:id="${refs.footerId}"/>` : "");
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-    `<w:document ${OOXML_NS}>` +
-    `<w:body>${bodyInner}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`
+    `<w:document ${OOXML_NS}${relationshipNamespace}>` +
+    `<w:body>${bodyInner}<w:sectPr>${sectionReferences}<w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>`
   );
 }
 
@@ -312,6 +337,7 @@ export function buildDocx(opts: BuildDocxOptions): Uint8Array {
   const hasHeader = opts.header != null;
   const hasFooter = opts.footer != null;
   const hasSettings = opts.settings !== null; // default: include settings
+  const relationships = docRels(hasHeader, hasFooter, hasSettings);
   // A pinned date makes the archive byte-reproducible (see BuildDocxOptions.date).
   // pizzip's runtime `file()` accepts a per-entry options bag (its documented
   // API, `date` included), but this repo's module resolution surfaces an older
@@ -322,8 +348,8 @@ export function buildDocx(opts: BuildDocxOptions): Uint8Array {
 
   addFile("[Content_Types].xml", CONTENT_TYPES({ header: hasHeader, footer: hasFooter, settings: hasSettings }));
   addFile("_rels/.rels", ROOT_RELS);
-  addFile("word/document.xml", documentXml(opts.body));
-  addFile("word/_rels/document.xml.rels", docRels(hasHeader, hasFooter, hasSettings));
+  addFile("word/document.xml", documentXmlWithStoryReferences(opts.body, relationships));
+  addFile("word/_rels/document.xml.rels", relationships.xml);
   addFile("word/styles.xml", opts.styles ?? stylesXml());
   if (hasSettings) {
     addFile(

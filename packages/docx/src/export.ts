@@ -15,7 +15,9 @@
  *      the serialized body VERBATIM — the page body is a DATA value, never
  *      re-parsed for tags, so literal braces and `$scroll.*` examples in the page
  *      survive (findings #7/#11);
- *   8. synthesize the code style, set `w:updateFields` so the TOC repaginates;
+ *   8. synthesize the code style, and set `w:updateFields` when — and only when —
+ *      the finished document carries a field whose refresh changes what the
+ *      reader sees (a TOC, a cross-reference, numbering this export does not own);
  *   9. emit bytes + a structured {@link ExportReport}.
  *
  * **Engine (PLAN Decision F1, Option A):** docxtemplater free is the rendering
@@ -47,7 +49,16 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
-import { documentPartNames, PLACEHOLDER_RE, scanZip, unzipDocx, type ScanResult } from "./scan.js";
+import {
+  collectSeqSequenceNames,
+  documentPartNames,
+  needsFieldRefresh,
+  PLACEHOLDER_RE,
+  scanZip,
+  unzipDocx,
+  type FieldRefreshOptions,
+  type ScanResult,
+} from "./scan.js";
 import {
   resolvePlaceholders,
   type CurrentUser,
@@ -134,6 +145,16 @@ export interface ExportReport {
   filename: string;
   /** All non-fatal notes (resolver + serializer + flow + compose/fetch). */
   notes: ExportNote[];
+  /**
+   * The SOURCE half of {@link notes} — the host's {@link ExportInput.sourceNotes}
+   * plus the engine's own storage-walk notes — AFTER dynamic-macro reconciliation
+   * (spec 010). A host that builds a per-source-page view of the report must
+   * project THIS rather than the notes it walked itself: the walker's
+   * `macro-not-rendered`/`unknown-macro` is provisional, and only this pass knows
+   * it became `macro-rendered-via`. Always set by `exportDocx`; optional so
+   * hand-built report literals stay additive.
+   */
+  sourceNotes?: ExportNote[];
   /**
    * False when the composed document omitted content (partial-mode unreadable
    * pages, spec 002). Single-page/normal exports are `true`. Carried from
@@ -239,6 +260,27 @@ export interface ExportInput {
    * keeps today's behavior byte-identical.
    */
   tableStyle?: { source: "template" | "confluence"; styleId?: string };
+  /**
+   * Whether the exported document asks Word to refresh its fields on open
+   * (`word/settings.xml` → `<w:updateFields w:val="…"/>`).
+   *
+   *  - `"auto"` (default) — set the flag only when the finished document
+   *    actually carries a field whose refresh changes what the reader sees
+   *    ({@link import("./scan.js").REFRESH_SENSITIVE_FIELDS}). A document whose
+   *    only fields are static `HYPERLINK`s gets no flag and opens without a
+   *    prompt; a document with a TOC, a caption `SEQ` or a `STYLEREF` running
+   *    head still gets it.
+   *  - `"never"` — suppress it, and pin a template's own `<w:updateFields>` to
+   *    `false` so the promise "Word will not prompt" actually holds. The CLI's
+   *    `--no-field-update-prompt` (alias `--no-toc-prompt`). A TOC then shows
+   *    placeholder text until the reader refreshes manually, which is why the
+   *    engine emits a `field-refresh-suppressed` note when it applies.
+   *  - `"always"` — the pre-`"auto"` behaviour, for a template carrying a field
+   *    type this engine does not classify.
+   *
+   * Defaults to `"auto"`.
+   */
+  updateFields?: "auto" | "always" | "never";
 }
 
 /**
@@ -256,6 +298,14 @@ const DELIM_END = String.fromCodePoint(0xe001);
 
 /** The rawxml data key whose value is the serialized page body OOXML. */
 const CONTENT_KEY = "scrollContent";
+
+/**
+ * How many foreign (docxtpl/Jinja) placeholder forms the
+ * `template-foreign-placeholders` note names. A bare COUNT is not actionable —
+ * the reader needs to recognise their own template — but the whole inventory
+ * would bury the sentence, so the note shows a sample and tallies the rest.
+ */
+const FOREIGN_PLACEHOLDER_SAMPLE = 5;
 
 /**
  * The paragraph we swap in for `$scroll.content` before render. Its ONLY text is
@@ -345,8 +395,28 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       });
   // Dynamic-macro resolution (spec 004): staged fallback chain between the
   // walker and the serializer. Runs once on the (possibly composed) block tree.
+  //
+  // The provisional walker notes the resolver takes ownership of are NOT always
+  // ours. A host that walks the storage itself — the CLI pre-resolves @mentions
+  // before calling us, the tree path composes chapters — hands us the blocks via
+  // `input.blocks` AND the notes describing them via `input.sourceNotes`, which
+  // left `walked.notes` empty. Handing that empty list to `resolveMacroBlocks`
+  // gave it nothing to reconcile, so every terminal `macro-rendered-via` was
+  // APPENDED next to the `macro-not-rendered` it was supposed to REPLACE, and
+  // the report claimed a live-rendered macro had not rendered.
+  //
+  // The two lists are concatenated host-first into the ONE list that both feeds
+  // the resolver and reaches the report, so the resolver's positional pairing
+  // (i-th walker macro note ↔ i-th unknown block, over the filtered macro-code
+  // subsequence) sees the notes of whichever walk produced `blocks`: at most one
+  // of the two can describe a given tree, because `walked.notes` is empty
+  // exactly when the host supplied the blocks. Non-macro notes ride through
+  // untouched — the resolver only ever replaces the macro-code subsequence.
   let blocks = walked.blocks;
-  let walkNotes = walked.notes;
+  let walkNotes: ExportNote[] =
+    input.sourceNotes && input.sourceNotes.length > 0
+      ? [...input.sourceNotes, ...walked.notes]
+      : walked.notes;
   if (input.macros) {
     const rootPage = {
       id: input.details.id,
@@ -442,7 +512,8 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
 
   // 3. Swap the $scroll.content paragraph for the rawxml tag paragraph. If the
   //    template has none, inject the tag before the body's final section break.
-  const contentFound = injectContentTag(zip);
+  const contentPart = injectContentTag(zip);
+  const contentFound = contentPart !== undefined;
   const flowNotes: ExportNote[] = [];
   if (captionLocale.note) flowNotes.push(captionLocale.note);
   if (tableStyleResolution.note) flowNotes.push(tableStyleResolution.note);
@@ -455,15 +526,44 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
   // outright by `unzipDocx`, but field instructions that reach outside the
   // document are legitimate often enough that refusing them would break real
   // templates. Surface them instead — `preprocessScrollText` leaves field
-  // instructions untouched and `ensureUpdateFields` (step 6) tells Word to
-  // refresh every field on open, so this note is the ONLY place the user learns
-  // the exported document will re-run them.
+  // instructions untouched, so the exported document carries them verbatim and
+  // any field refresh (the flag in step 6b, the reader pressing F9, printing)
+  // re-runs them. This note is the ONLY place the user learns that.
+  // `INCLUDETEXT`/`INCLUDEPICTURE` are also refresh-sensitive, so a template
+  // carrying one gets the flag as well — the note stands either way.
   const riskyFields = scan.riskyFieldInstructions ?? [];
   if (riskyFields.length > 0) {
     flowNotes.push({
       level: "warning",
       code: "template-field-instruction-risk",
       message: `The template contains field instructions that fetch content when Word refreshes fields (${riskyFields.join(", ")}); the exported document refreshes fields on open, so review the template if you did not author it.`,
+    });
+  }
+  // Foreign-placeholder audit (spec 010 W3-D): a docxtpl/Jinja template handed
+  // to this engine renders `{{ … }}` / `{% … %}` as LITERAL BODY TEXT — the PUA
+  // delimiter swap guarantees the customer's braces are never tags, so nothing
+  // fills them and nothing used to say so. A migrating user got a finished
+  // document with visible unfilled placeholders and a clean report.
+  //
+  // WARNING, not info: since note level drives issue severity, `info` would be
+  // invisible to `--strict` and repeat the bug. Not fatal either — a hybrid
+  // template that deliberately keeps Jinja for a later docxtpl pass is a real
+  // (if rare) workflow, and refusing it would break someone shipping today.
+  //
+  // TEMPLATE-only by construction: `scan` was taken from the template archive at
+  // the top of this function, long before the page body is rendered in at step
+  // 5, so a page that documents Jinja syntax cannot reach this list.
+  const foreignPlaceholders = scan.foreignPlaceholders ?? [];
+  if (foreignPlaceholders.length > 0) {
+    const shown = foreignPlaceholders.slice(0, FOREIGN_PLACEHOLDER_SAMPLE);
+    const rest = foreignPlaceholders.length - shown.length;
+    flowNotes.push({
+      level: "warning",
+      code: "template-foreign-placeholders",
+      message:
+        `Template uses Jinja/docxtpl placeholders (${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}); ` +
+        `the ts engine fills $scroll.* placeholders and will leave these in the document as literal text. ` +
+        `Rewrite them as $scroll.* placeholders, or export this template with --engine python.`,
     });
   }
 
@@ -554,15 +654,30 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       });
     }
   }
-  ensureUpdateFields(rendered);
+  // 6b. Field-refresh flag. NOT unconditional: `<w:updateFields w:val="true"/>`
+  //     makes Word ask to refresh on every open, and asking a reader to refresh
+  //     116 static HYPERLINK fields — the shape of a real 62-page tree export
+  //     with no TOC — accomplishes nothing. Set it only when a field in the
+  //     FINISHED document would show something different afterwards, which is
+  //     why this runs on `rendered` (the body's own caption SEQ fields exist
+  //     only now) rather than on the template scan.
+  //
+  //     The one thing `rendered` cannot answer is WHOSE caption SEQ fields those
+  //     are, so that question is answered here, from the pre-injection parts.
+  const refreshNote = applyFieldRefreshPolicy(rendered, input.updateFields ?? "auto", {
+    trustedSeqSequences: trustedSeqSequences(scan, body.xml, includeXml, contentPart),
+  });
+  if (refreshNote) flowNotes.push(refreshNote);
 
   const bytes = rendered.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
   timings.renderMs = Date.now() - renderStart;
 
+  // `walkNotes` already carries `input.sourceNotes` (merged above, then
+  // reconciled by the macro resolver) — listing them again here is what made a
+  // live-rendered macro show up twice in the report.
   const notes = [
-    ...(input.sourceNotes ?? []),
-    ...resolved.notes,
     ...walkNotes,
+    ...resolved.notes,
     ...body.notes,
     ...imageAuditNotes,
     ...flowNotes,
@@ -584,6 +699,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportResult> {
       durationMs: Date.now() - start,
       filename: toDownloadFilename(input.details.title),
       notes,
+      sourceNotes: walkNotes,
       complete: input.complete ?? true,
       scan,
       timings,
@@ -1659,18 +1775,28 @@ function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
   };
 }
 
-/** Replace the paragraph containing `$scroll.content` with the rawxml tag. */
-function injectContentTag(zip: PizZip): boolean {
+/**
+ * Replace the paragraph containing `$scroll.content` with the rawxml tag, and
+ * report WHICH part received it (`undefined` when the template has none).
+ *
+ * The part matters, not just the fact: the search runs over headers and footers
+ * too, so a template that puts `$scroll.content` in a header really does render
+ * the page body into a header — where it repeats on every page and any `SEQ`
+ * field in it is instantiated per page. Caption ordinals counted once, in
+ * document order, are then not what Word computes, so the caller withholds its
+ * numbering trust unless the body landed in `word/document.xml`.
+ */
+function injectContentTag(zip: PizZip): string | undefined {
   for (const part of documentPartNames(zip)) {
     const xml = zip.file(part)?.asText() ?? "";
     for (const para of splitParagraphs(xml)) {
       if (paragraphText(para).includes("$scroll.content")) {
         zip.file(part, xml.replace(para, CONTENT_TAG_PARA));
-        return true;
+        return part;
       }
     }
   }
-  return false;
+  return undefined;
 }
 
 /** Insert the rawxml tag before the body's final section break (fallback). */
@@ -1882,37 +2008,174 @@ export function readBodySectPr(zip: PizZip): string | undefined {
 }
 
 /**
- * Ensure `word/settings.xml` carries `<w:updateFields w:val="true"/>` so Word
- * offers to repaginate a TOC field on open. Creates settings.xml (+ content-type
- * + relationship) when a bare template lacks it.
+ * Apply the {@link ExportInput.updateFields} policy to the RENDERED archive and
+ * return the report note it owes the user, if any.
+ *
+ * Three decisions are recorded here, because each is a judgement rather than a
+ * mechanism:
+ *
+ * 1. **`"auto"` sets the flag only when a field would change.** See
+ *    {@link import("./scan.js").REFRESH_SENSITIVE_FIELDS} for the type-by-type
+ *    reasoning. A TOC is decisive: without the flag Word shows an EMPTY table of
+ *    contents until the reader refreshes by hand, which is a worse surprise than
+ *    a prompt — so the flag stays the default whenever one is present.
+ *
+ * 2. **A template's own `<w:updateFields>` is honoured under `"auto"`.** When
+ *    nothing in the finished document needs a refresh, `word/settings.xml` is
+ *    left EXACTLY as the template author wrote it — including a deliberate
+ *    `w:val="true"`. They may know about a field type this engine does not
+ *    classify (a formula, an add-in field), and silently deleting a setting
+ *    someone typed on purpose is how you turn a fix into a bug report. What
+ *    `"auto"` manages is the flag this exporter would otherwise INJECT.
+ *    A template `w:val="false"` is still normalized to `true` when the document
+ *    does need a refresh: at that point the template's setting is about a
+ *    document that no longer exists, and an empty TOC is the visible cost.
+ *
+ * 3. **`"never"` overrides the template.** An explicit host flag is a stronger,
+ *    more recent signal than a template default, and `--no-field-update-prompt`
+ *    promises in its help text that Word will not prompt. Honouring a template's
+ *    `true` here would make that text false again — the very class of defect
+ *    this change exists to remove. Pinning to `w:val="false"` (rather than
+ *    deleting the element) keeps the suppression legible to whoever opens the
+ *    package next.
  */
-export function ensureUpdateFields(zip: PizZip): void {
+function applyFieldRefreshPolicy(
+  zip: PizZip,
+  mode: NonNullable<ExportInput["updateFields"]>,
+  opts: FieldRefreshOptions = {}
+): ExportNote | undefined {
+  if (mode === "never") {
+    // Only rewrite what is already there: with no `<w:updateFields>` in the
+    // package, "do not refresh" is already the state, and injecting an explicit
+    // `false` into a template that never mentioned it is noise.
+    writeUpdateFields(zip, false, { create: false });
+    // The note is owed only when the suppression COSTS something. A document of
+    // static hyperlinks — or one whose only computed fields are captions this
+    // export numbered correctly — would not have carried the flag anyway, and
+    // saying so would be noise on every export.
+    if (!needsFieldRefresh(zip, opts)) return undefined;
+    return {
+      level: "info",
+      code: "field-refresh-suppressed",
+      message:
+        "Field refresh on open is suppressed, but this document contains computed fields " +
+        "(a table of contents, caption numbering or a cross-reference). They show placeholder " +
+        "or stale text until refreshed manually in Word (select all, then press F9).",
+    };
+  }
+  if (mode === "always" || needsFieldRefresh(zip, opts)) {
+    writeUpdateFields(zip, true, { create: true });
+  }
+  return undefined;
+}
+
+/**
+ * The `SEQ` sequences whose cached results in the finished document are known
+ * to be right — the trust set {@link needsFieldRefresh} subtracts from its
+ * sweep.
+ *
+ * A sequence qualifies when the SERIALIZED BODY numbers it (so every one of its
+ * fields came out of `captionParagraph` with an ordinal counted in document
+ * order) and nothing else in the package numbers the same name:
+ *
+ *  - **The template.** Word matches sequence names case-insensitively and
+ *    counts every `SEQ Figure` in the document as one sequence, so a caption the
+ *    template author inserted before the insertion point shifts all of ours by
+ *    one. `scan` was taken from the template BEFORE any injection, which is the
+ *    only moment the two are distinguishable — after render they are the same
+ *    XML. This is why the check cannot simply be "does the finished document
+ *    contain SEQ".
+ *  - **Included pages.** `runIncludePass` serializes each `$scroll.includepage`
+ *    occurrence through its OWN `serializeBlocks` call, so each restarts its
+ *    captions at 1 (and sits at an arbitrary position relative to the body).
+ *    Conservative rather than clever: a single include whose captions happen to
+ *    be the document's only ones is numbered correctly too, and still costs a
+ *    prompt here. Includes are rare; wrong numbers are not worth the special
+ *    case.
+ *
+ *  - **A body that did not land in the main story.** `$scroll.content` is looked
+ *    for in headers and footers too, so a template can genuinely render the page
+ *    body into a header — where it repeats per page and each repetition
+ *    re-instantiates its `SEQ` fields. Ordinals counted once, in document order,
+ *    are not what Word computes there, so nothing is trusted at all.
+ *
+ * A template `SEQ` of a sequence the body does NOT number (say `SEQ Chart`)
+ * stays untrusted as well, and that is deliberate rather than an oversight: our
+ * ordinals are unaffected by it, but nothing here knows whether the TEMPLATE's
+ * cached `Chart` number is right — it may be a header counter cached against a
+ * pagination that no longer exists, or hand-written XML Word never computed.
+ * The claim this function is willing to make is only ever "these numbers came
+ * out of `captionParagraph`, counted in document order"; everything else keeps
+ * the pre-existing, unconditional behaviour.
+ *
+ * Everything else — a `SEQ` with no readable sequence name, a `LISTNUM`, a TOC —
+ * is untouched by this and still earns the flag on its own.
+ */
+function trustedSeqSequences(
+  scan: ScanResult,
+  bodyXml: string,
+  includeXml: string,
+  contentPart: string | undefined
+): Set<string> {
+  // No `$scroll.content` at all ⇒ `injectContentTagAtEnd` put the body in the
+  // main story; an explicit anchor anywhere else forfeits the trust.
+  if (contentPart !== undefined && contentPart !== "word/document.xml") return new Set();
+  const template = new Set(scan.seqSequenceNames ?? []);
+  const included = new Set(collectSeqSequenceNames(includeXml));
+  return new Set(
+    collectSeqSequenceNames(bodyXml).filter((name) => !template.has(name) && !included.has(name))
+  );
+}
+
+/**
+ * Write `<w:updateFields w:val="…"/>` into `word/settings.xml`.
+ *
+ * Handles BOTH the self-closing (`<w:updateFields w:val="false"/>`) and the
+ * paired (`<w:updateFields w:val="false"></w:updateFields>`) forms — the paired
+ * form was once left as-is, so a template pinning the flag to false never
+ * refreshed. With `create: true` a missing settings.xml is synthesized and
+ * registered (content type + relationship); with `create: false` a package that
+ * declares no setting is left alone.
+ */
+function writeUpdateFields(zip: PizZip, value: boolean, opts: { create: boolean }): void {
   const path = "word/settings.xml";
+  const element = `<w:updateFields w:val="${value}"/>`;
   const existing = zip.file(path)?.asText();
   if (existing) {
     if (/<w:updateFields\b/.test(existing)) {
-      // Normalize BOTH the self-closing (`<w:updateFields w:val="false"/>`) and
-      // the paired (`<w:updateFields w:val="false"></w:updateFields>`) forms to a
-      // single self-closing `true` — the paired form was previously left as-is,
-      // so a template pinning the TOC to false never refreshed.
       const normalized = existing
-        .replace(/<w:updateFields\b[^>]*>[\s\S]*?<\/w:updateFields>/, '<w:updateFields w:val="true"/>')
-        .replace(/<w:updateFields\b[^>]*\/>/, '<w:updateFields w:val="true"/>');
+        .replace(/<w:updateFields\b[^>]*>[\s\S]*?<\/w:updateFields>/, element)
+        .replace(/<w:updateFields\b[^>]*\/>/, element);
       zip.file(path, normalized);
       return;
     }
+    if (!opts.create) return;
     // Insert as the first child of <w:settings …>.
-    const opened = existing.replace(/(<w:settings\b[^>]*>)/, '$1<w:updateFields w:val="true"/>');
-    zip.file(path, opened);
+    zip.file(path, existing.replace(/(<w:settings\b[^>]*>)/, `$1${element}`));
     return;
   }
+  if (!opts.create) return;
   // No settings.xml — synthesize one and register it.
   const settings =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
-    `<w:updateFields w:val="true"/></w:settings>`;
+    `${element}</w:settings>`;
   zip.file(path, settings);
   registerSettingsPart(zip);
+}
+
+/**
+ * Force `word/settings.xml` to carry `<w:updateFields w:val="true"/>`, creating
+ * settings.xml (+ content-type + relationship) when a bare template lacks it.
+ *
+ * This is the UNCONDITIONAL form, equivalent to `updateFields: "always"`. The
+ * export flow itself no longer calls it: since the field-refresh policy landed,
+ * `exportDocx` sets the flag only when a field in the finished document would
+ * actually change on refresh (see {@link applyFieldRefreshPolicy}). Retained as
+ * a named export for API stability, and as the primitive `"always"` uses.
+ */
+export function ensureUpdateFields(zip: PizZip): void {
+  writeUpdateFields(zip, true, { create: true });
 }
 
 function registerSettingsPart(zip: PizZip): void {

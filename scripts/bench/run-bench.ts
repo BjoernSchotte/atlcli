@@ -48,6 +48,8 @@ import {
   runPdfExport,
   type PdfCompilePort,
   type PdfExportMetadata,
+  type PdfBytesHandle,
+  type PdfOutputSink,
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../packages/pdf/scripts/ensure-fonts.js";
@@ -95,6 +97,18 @@ class MemorySink implements OutputSink {
   bytes: Uint8Array = new Uint8Array(0);
   async emit(_name: string, bytes: Uint8Array): Promise<void> {
     this.bytes = bytes;
+  }
+}
+
+/**
+ * The PDF sink split off from {@link MemorySink} (spec 010, T5.6): the two
+ * engines' sinks no longer share a signature, because `PdfOutputSink` now takes
+ * a `PdfBytesHandle` while the DOCX `OutputSink` still takes a `Uint8Array`.
+ */
+class PdfMemorySink implements PdfOutputSink {
+  bytes: Uint8Array = new Uint8Array(0);
+  async emit(_name: string, bytes: PdfBytesHandle): Promise<void> {
+    this.bytes = await bytes.asUint8Array();
   }
 }
 
@@ -166,7 +180,7 @@ async function serializePdf(
   compiler: PdfCompilePort,
   blocks: ExportBlock[],
 ): Promise<{ bytes: Uint8Array; noteCodes: string[] }> {
-  const output = new MemorySink();
+  const output = new PdfMemorySink();
   const report = await runPdfExport(
     { blocks, metadata: BENCH_METADATA, profile: "tagged", filename: "Engine Tier Benchmark.pdf" },
     { assets: benchPdfAssets, compiler, output, now: deterministicClock() },

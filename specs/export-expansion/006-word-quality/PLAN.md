@@ -576,12 +576,19 @@ column-width work; … out of Lane P").
       in `header1.xml` under
       `packages/docx/test-fixtures/styleref-template.docx`; add a unit
       test exporting through it.
-- [ ] Stage 2, LibreOffice render smoke (CI task): script that exports the
-      fixture, runs `soffice --headless --convert-to pdf out.docx`,
-      extracts text with `pdftotext`, and asserts the H1 chapter text
-      appears on page ≥ 2. Documented as a CI job (needs
-      `libreoffice`/`poppler-utils` in the runner image); skipped locally
-      when `soffice` is absent.
+- [x] Stage 2, LibreOffice package/header render smoke: export a
+      multi-page fixture with a static header, run
+      `soffice --headless --convert-to pdf out.docx`, extract text with
+      `pdftotext`, and assert that the header appears on pages 1 and 2.
+      The fixture builder emits schema-valid `headerReference` /
+      `footerReference` entries in the final `sectPr`; the smoke uses an
+      isolated LibreOffice profile and cleans its temporary directory.
+      Scope correction from measured evidence (2026-07-22): headless
+      LibreOffice does not refresh imported Word `STYLEREF` fields in the
+      available stable or development versions, regardless of custom vs.
+      builtin style and `fldSimple` vs. complex-field encoding. Therefore
+      this stage proves package consumption and header attachment, not
+      STYLEREF semantics. It skips when `soffice`/`pdftotext` is absent.
 - [ ] Stage 3, one-time manual Word protocol per release train: open in
       Word 365, confirm the header shows the last H1 per page after field
       refresh; record the checklist in `docs/` troubleshooting ("header
@@ -729,9 +736,10 @@ fixtures, real Confluence, or real LibreOffice.
   counters are exact (`embeddedImages`/`renderedDiagrams`/`skippedImages`)
   for a page mixing a diagram, a successful SVG attachment, and a
   no-rasterizer SVG attachment.
-- StyleRef verified at all three stages: unit invariants green,
-  LibreOffice smoke wired into CI, manual Word protocol executed once and
-  recorded in `docs/`; the field inventory (scan-time) and its validation
+- StyleRef structural invariants are green; LibreOffice independently proves
+  package consumption and header attachment without claiming unsupported
+  STYLEREF field refresh; the manual Word protocol is executed once and
+  recorded in `docs/`. The field inventory (scan-time) and its validation
   against actually-emitted heading styles (post-serialize, in `exportDocx`)
   are both implemented, distinguishing "style not in template" from
   "style in template but unused after promotion in this export."
@@ -745,9 +753,12 @@ fixtures, real Confluence, or real LibreOffice.
 - **Golden recapture is the expensive part of G2/G3** — an intentional
   break. Mitigation: single combined recapture PR, diff reviewed
   part-by-part.
-- **LibreOffice computes STYLEREF differently from Word** (known deviations
-  with column layouts): the soffice smoke is necessary but not sufficient
-  evidence; final truth remains the manual Word protocol.
+- **LibreOffice headless does not refresh imported Word STYLEREF fields** in
+  the versions measured on 2026-07-22: one retains the cached result, another
+  renders "Reference source not found". The OSS test suite therefore uses
+  LibreOffice only for package/header rendering. STYLEREF semantics remain
+  structural assertions plus the manual Word protocol; no proprietary Word
+  runner is part of CI.
 - **Heading promotion vs. STYLEREF**: a template field referencing
   "Scroll Heading 2" can dangle after promotion (`computeHeadingOffset`).
   Resolved (no longer open): validated post-serialize against actually

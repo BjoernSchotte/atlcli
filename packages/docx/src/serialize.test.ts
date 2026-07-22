@@ -22,14 +22,18 @@ function diagramSeamOver(
 }
 
 describe("serializeInline", () => {
-  it("emits marks and colors as run properties", () => {
+  it("emits marks, foreground colors, and arbitrary background colors as run properties", () => {
     const xml = serializeInline([
       { type: "text", text: "bold", marks: ["bold"] },
       { type: "text", text: "red", color: "#ff0000" },
+      { type: "text", text: "highlighted", backgroundColor: "#BAF3DB" },
       { type: "lineBreak" },
     ]);
     expect(xml).toContain("<w:b/>");
     expect(xml).toContain('<w:color w:val="FF0000"/>');
+    expect(xml).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="BAF3DB"/>'
+    );
     expect(xml).toContain("<w:br/>");
   });
 
@@ -854,11 +858,45 @@ describe("serializeBlocks — C6 orientation region", () => {
   });
 });
 
+/**
+ * Every caption SEQ field's SEQUENCE NAME and CACHED RESULT, in document order.
+ *
+ * The cached result is the number between `fldChar separate` and `fldChar end` —
+ * what Word shows before anyone presses F9, and the only number a consumer that
+ * reads `<w:t>` without evaluating fields (pandoc, python-docx, a search
+ * indexer) ever sees. Asserting on `toContain("SEQ Figure")` (what the caption
+ * tests did before) proves the field exists and says nothing about the number in
+ * it, which is how three tables came to read "Tabelle 1" three times.
+ */
+function seqCachedResults(xml: string): [sequence: string, cached: string][] {
+  // The gap-crossing guards matter: without them a field whose cached result is
+  // formatted differently lets the scan run on into the NEXT field's number and
+  // report a pairing that is not in the file.
+  const gap = String.raw`(?:(?!fldCharType="end")[\s\S])*?`;
+  const re = new RegExp(
+    String.raw`SEQ (\w+) \\\* ARABIC${gap}fldCharType="separate"${gap}<w:t[^>]*>(\d+)</w:t>`,
+    "g"
+  );
+  return [...xml.matchAll(re)].map((m) => [m[1], m[2]]);
+}
+
 describe("serializeBlocks — C3 captions", () => {
   const captionedImage = (): ExportBlock => ({
     type: "image",
     source: { kind: "attachment", filename: "arch.png" },
     caption: { kind: "figure", content: [{ type: "text", text: "Architecture" }] },
+  });
+
+  const captionedTable = (title: string): ExportBlock => ({
+    type: "table",
+    rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [] }] }],
+    caption: { kind: "table", content: [{ type: "text", text: title }] },
+  });
+
+  const captionedCode = (kind: "code" | "equation"): ExportBlock => ({
+    type: "codeBlock",
+    code: "x = 1",
+    caption: { kind, content: [{ type: "text", text: kind }] },
   });
 
   it("emits a Caption-styled SEQ paragraph for a table (English, above the table)", async () => {
@@ -923,6 +961,154 @@ describe("serializeBlocks — C3 captions", () => {
     expect(xml).toContain("[Image unavailable: arch.png]");
     expect(xml).toContain("SEQ Figure");
     expect(notes.map((n) => n.code)).toContain("image-skipped");
+  });
+
+  // -------------------------------------------------------------------------
+  // Caption ordinals — the SEQ field's CACHED RESULT
+  //
+  // Every caption used to cache `1`, so a document with three tables read
+  // "Tabelle 1" three times until the reader pressed F9 — and every export with
+  // a single caption paid an "update fields?" prompt to fix numbers that were
+  // wrong only because we wrote them wrong.
+  // -------------------------------------------------------------------------
+
+  it("numbers repeated captions of one sequence 1, 2, 3 — not 1, 1, 1", async () => {
+    const { xml } = await serializeBlocks(
+      [captionedTable("First"), captionedTable("Second"), captionedTable("Third")],
+      { styleNames: noStyles, captionLang: "de" }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+      ["Table", "3"],
+    ]);
+    // The FIELD survives: cross-references, a table of figures and a manual F9
+    // all still work — only the cached result changed.
+    expect(xml).toContain(' SEQ Table \\* ARABIC ');
+    expect(xml).toContain('<w:fldChar w:fldCharType="begin"/>');
+  });
+
+  it("counts each sequence independently, in document order", async () => {
+    const { xml } = await serializeBlocks(
+      [captionedImage(), captionedTable("T1"), captionedImage(), captionedTable("T2")],
+      {
+        styleNames: noStyles,
+        images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+      }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Table", "1"],
+      ["Figure", "2"],
+      ["Table", "2"],
+    ]);
+  });
+
+  it("shares ONE counter between code and equation captions (Word's SEQ scoping)", async () => {
+    // Both kinds emit `SEQ Listing`, so Word counts them together — the labels
+    // differ, the sequence does not. Counting per CaptionKind would cache 1, 1, 2
+    // where Word computes 1, 2, 3.
+    const { xml } = await serializeBlocks(
+      [captionedCode("code"), captionedCode("equation"), captionedCode("code")],
+      { styleNames: noStyles }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Listing", "1"],
+      ["Listing", "2"],
+      ["Listing", "3"],
+    ]);
+    expect(xml).toContain("Equation ");
+    expect(xml).toContain("Listing ");
+  });
+
+  it("restarts at 1 for the next document in the same process", async () => {
+    // A module-level counter would pass every test above and then number the
+    // SECOND export in a long-lived process from wherever the first stopped —
+    // exactly the shape of a tree export following a single-page one.
+    const blocks = [captionedTable("First"), captionedTable("Second")];
+    const first = await serializeBlocks(blocks, { styleNames: noStyles });
+    const second = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(seqCachedResults(first.xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+    expect(seqCachedResults(second.xml)).toEqual(seqCachedResults(first.xml));
+  });
+
+  it("numbers a caption nested in a callout in document order with the rest", async () => {
+    // Containers get a DERIVED context (`{ ...ctx, container: … }`), so the
+    // counters have to be a shared mutable reference — a plain number field
+    // would be copied and the nested caption would restart at 1.
+    const { xml } = await serializeBlocks(
+      [
+        captionedTable("Outer"),
+        { type: "callout", kind: "info", content: [captionedTable("Inside a callout")] },
+        captionedTable("Last"),
+      ],
+      { styleNames: noStyles }
+    );
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+      ["Table", "3"],
+    ]);
+  });
+
+  it("a figure that failed to embed still consumes its number", async () => {
+    // The degraded path emits the same caption paragraph, so the numbering the
+    // reader sees matches the numbering Word would compute on refresh.
+    let first = true;
+    const { xml } = await serializeBlocks([captionedImage(), captionedImage()], {
+      styleNames: noStyles,
+      images: {
+        embed: async () => {
+          const ok = !first;
+          first = false;
+          return ok ? { ok: true as const, xml: "<w:p>IMG</w:p>" } : { ok: false as const, reason: "404" };
+        },
+      },
+    });
+    expect(xml).toContain("[Image unavailable: arch.png]");
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Figure", "2"],
+    ]);
+  });
+
+  it("continues numbering across the pages of a composed tree document", async () => {
+    // A tree/space export is ONE document made of many pages, so its captions
+    // are one sequence: page 2's first table is "Table 2", not a second "Table 1".
+    const pageNode = (id: string, title: string): ExportNode => ({
+      kind: "page",
+      pageId: id,
+      title,
+      depth: 0,
+      effectiveDepth: 0,
+      parentId: null,
+      position: null,
+      blocks: [captionedTable(`${title} table`)],
+      notes: [],
+      meta: { labels: [], spaceKey: "ENG" },
+    });
+    const composed = composeChapters([pageNode("1", "Alpha"), pageNode("2", "Beta")]);
+    const { xml } = await serializeBlocks(composed.blocks, { styleNames: noStyles });
+    expect(seqCachedResults(xml)).toEqual([
+      ["Table", "1"],
+      ["Table", "2"],
+    ]);
+  });
+
+  it("localizes to German without changing the ordinals", async () => {
+    const { xml } = await serializeBlocks([captionedImage(), captionedImage()], {
+      styleNames: noStyles,
+      captionLang: "de",
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    expect(seqCachedResults(xml)).toEqual([
+      ["Figure", "1"],
+      ["Figure", "2"],
+    ]);
+    expect(xml).toContain("Abbildung ");
   });
 
   it("regression: scroll macros no longer reach the unknown-placeholder path in DOCX", async () => {

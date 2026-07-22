@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  PDFJS_ARTIFACT_PATTERNS,
   scanText,
   validatePdfArtifactInventory,
 } from "../scripts/check-output-build.js";
@@ -78,10 +79,25 @@ describe("scanText classification", () => {
     expect(scanText(text)).toContain(expected);
   });
 
+  // Spec 010: the same blind spot the repo-wide browser gate had. A type-only
+  // `import type { Server } from "bun"` erases, so NODE_BUN_RE sees no
+  // specifier — but the call survives and `Bun` is undefined in an extension
+  // page.
+  it.each([
+    ["Bun.serve", `const s = Bun.serve({ port: 0 });`],
+    ["Bun.file", `const f = Bun.file("x.txt");`],
+    ["minified spacing", `Bun.$\`ls\``],
+  ])("flags the Bun global via %s", (_label, source) => {
+    expect(scanText(source).some((finding) => finding.startsWith("Bun."))).toBe(true);
+  });
+
   it("does not flag look-alike identifiers that are not node globals", () => {
     // A property literally named `Buffer` or a `processEnv` variable must not trip.
     expect(scanText(`const myBuffer = new Uint8Array(4);`)).toEqual([]);
     expect(scanText(`const processEnvironment = cfg.processEnvironment;`)).toEqual([]);
+    // …nor an identifier ending in `Bun`, nor `Bun` as someone else's property.
+    expect(scanText(`const isBun = { serve() {} }; isBun.serve();`)).toEqual([]);
+    expect(scanText(`const v = runtimes.Bun.serve;`)).toEqual([]);
   });
 
   it.each([
@@ -112,6 +128,8 @@ describe("scanText classification", () => {
 describe("PDF artifact inventory", () => {
   const complete = [
     { path: "assets/pdf-compiler-abc.js", size: 30_000 },
+    { path: "assets/pdf.min-abc.mjs", size: 452_000, sha256: "4ba2f15599b03fde8755ad91349920c21dadd3e8fd6b6460a7663d46d4cf21b5" },
+    { path: "assets/pdf.worker.min-abc.mjs", size: 1_260_000, sha256: "2ab9e09667296dab1a618868b3ce6e6c23d5b8f48120ae7c5b34e7e335ed01fa" },
     { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 28_000_000, sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd" },
     { path: "assets/SourceSans3-Regular-abc.ttf", size: 100_000, sha256: "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f" },
     { path: "assets/SourceSans3-It-abc.ttf", size: 100_000, sha256: "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4" },
@@ -150,6 +168,65 @@ describe("PDF artifact inventory", () => {
       artifact.path.includes("SourceSans3-Regular") ? { ...artifact, sha256: "tampered" } : artifact
     );
     expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+  });
+
+  /**
+   * "Bundled locally, never a CDN" as a build assertion (spec 010 T5.3).
+   *
+   * The pin is only meaningful because both files are emitted **verbatim**
+   * (Vite `?url&no-inline`) rather than merged into a chunk — a bundled chunk's
+   * hash would change on every unrelated edit.
+   */
+  it.each([
+    ["PDF.js viewer runtime", "pdf.min-abc.mjs"],
+    ["PDF.js worker", "pdf.worker.min-abc.mjs"],
+  ])("requires %s to be present and unmodified", (label, file) => {
+    const missing = complete.filter((artifact) => !artifact.path.endsWith(file));
+    expect(validatePdfArtifactInventory(missing).join("\n")).toContain(label);
+
+    const tampered = complete.map((artifact) =>
+      artifact.path.endsWith(file) ? { ...artifact, sha256: "tampered" } : artifact
+    );
+    expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+  });
+});
+
+/**
+ * **The scope guarantee** (spec 010 T5.3, Architecture point 8).
+ *
+ * The plan expected the vendored PDF.js to force a path-scoped exemption from
+ * `DYNAMIC_CODE_RES`. Measured against `pdfjs-dist@6.1.200` it does not — v6
+ * replaced the `Function`-based PostScript evaluator with a WebAssembly one —
+ * so **no exemption was added and the gate was not loosened**.
+ *
+ * These tests are what keeps that honest in both directions: the PDF.js path
+ * enjoys no special treatment (a token seeded there fails like anywhere else),
+ * and `.mjs` is scanned at all, so vendoring a dependency under a new extension
+ * cannot become a way *around* the gate.
+ */
+describe("dynamic-code rule has no PDF.js exemption", () => {
+  it("flags a string-to-code constructor at the vendored PDF.js path like anywhere else", () => {
+    const seeded = `/* vendored */ const make = new Function("return 1");`;
+    expect(scanText(seeded).some((finding) => finding.includes("Function("))).toBe(true);
+  });
+
+  it("the emitted PDF.js paths are recognizable, and match nothing else in the bundle", () => {
+    const pdfjsPaths = ["assets/pdf.min-BZTU-uUE.mjs", "assets/pdf.worker.min-DEtVeC4l.mjs"];
+    const others = [
+      "chunks/viewer-Cgffbktj.js",
+      "chunks/run-export-DiaDTXR5.js",
+      "assets/pdf-compiler-DTGjm2tL.js",
+      "background.js",
+      "sidepanel.html",
+      "assets/pdf.min-BZTU-uUE.mjs.map",
+      "vendor/pdf.min-abc.mjs",
+    ];
+    for (const path of pdfjsPaths) {
+      expect(PDFJS_ARTIFACT_PATTERNS.some((pattern) => pattern.test(path))).toBe(true);
+    }
+    for (const path of others) {
+      expect(PDFJS_ARTIFACT_PATTERNS.some((pattern) => pattern.test(path))).toBe(false);
+    }
   });
 });
 
@@ -194,5 +271,47 @@ describe("check-output-build CLI (end-to-end)", () => {
     expect(code).not.toBe(0);
     expect(output).toContain("leaky.js");
     expect(output).toContain("node:os");
+  });
+
+  /**
+   * The PDF.js path is **not** exempt (spec 010 T5.3).
+   *
+   * Seeding a string-to-code constructor into the real emitted PDF.js file must
+   * fail the real gate. If someone later adds a path-scoped exemption for this
+   * dependency, this test goes red and the exemption has to be argued for
+   * rather than inherited.
+   */
+  it("fails when dynamic code is seeded into the vendored PDF.js file itself", () => {
+    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-pdfjs-"));
+    try {
+      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+      const assets = join(seedDir, "assets");
+      const target = readdirSync(assets).find(
+        (name) => name.startsWith("pdf.min-") && name.endsWith(".mjs")
+      );
+      expect(target).toBeDefined();
+      const path = join(assets, target!);
+      writeFileSync(path, `${readFileSync(path, "utf8")}\nconst x = new Function("return 1");\n`);
+
+      const { code, output } = runCheckCli(seedDir);
+      expect(code).not.toBe(0);
+      expect(output).toContain(target!);
+      expect(output).toContain("Function(");
+    } finally {
+      rmSync(seedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("scans .mjs assets at all — a new extension is not a way around the gate", () => {
+    const seedDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-mjs-"));
+    try {
+      cpSync(OUTPUT_DIR, seedDir, { recursive: true });
+      writeFileSync(join(seedDir, "sneaky.mjs"), `const value = eval("1 + 1");\n`);
+      const { code, output } = runCheckCli(seedDir);
+      expect(code).not.toBe(0);
+      expect(output).toContain("sneaky.mjs");
+    } finally {
+      rmSync(seedDir, { recursive: true, force: true });
+    }
   });
 });

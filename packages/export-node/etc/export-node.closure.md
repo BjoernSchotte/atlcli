@@ -10,4 +10,4 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (21): AssetByteCache, AssetClient, NodeDocxEnvOptions, NodePdfEnvOptions, bundledDefaultTemplate, confluenceTreeSource, createAssetByteCache, defaultTemplateSource, dirPdfOutputSink, fileOutputSink, fileTemplateSource, lazyNodePdfCompiler, loadNodePdfCompilerAssets, nodeDocxEnv, nodePdfCompiler, nodePdfEnv, nodeTemplateSource, resvgSvgRasterizer, tokenAssetFetcher, tokenPdfAssetResolver, unsupportedAssetFetcher
+- exported symbols (22): AssetByteCache, AssetClient, BUNDLED_TEMPLATE_EPOCH, NodeDocxEnvOptions, NodePdfEnvOptions, bundledDefaultTemplate, confluenceTreeSource, createAssetByteCache, defaultTemplateSource, dirPdfOutputSink, fileOutputSink, fileTemplateSource, lazyNodePdfCompiler, loadNodePdfCompilerAssets, nodeDocxEnv, nodePdfCompiler, nodePdfEnv, nodeTemplateSource, resvgSvgRasterizer, tokenAssetFetcher, tokenPdfAssetResolver, unsupportedAssetFetcher

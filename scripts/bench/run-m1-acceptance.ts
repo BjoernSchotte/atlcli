@@ -39,6 +39,8 @@ import {
   type PdfAssetResolver,
   type PdfCompilePort,
   type PdfExportMetadata,
+  type PdfBytesHandle,
+  type PdfOutputSink,
 } from "@atlcli/pdf";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { runExport, type OutputSink } from "@atlcli/docx";
@@ -96,6 +98,22 @@ class MemorySink implements OutputSink {
   }
 }
 
+/**
+ * The PDF sink split off from {@link MemorySink} (spec 010, T5.6): the two
+ * engines' sinks no longer share a signature, because `PdfOutputSink` now takes
+ * a `PdfBytesHandle` while the DOCX `OutputSink` still takes a `Uint8Array`.
+ */
+class PdfMemorySink implements PdfOutputSink {
+  readonly emissions: Array<{ name: string; bytes: Uint8Array }> = [];
+  async emit(name: string, bytes: PdfBytesHandle): Promise<void> {
+    this.emissions.push({ name, bytes: (await bytes.asUint8Array()).slice() });
+  }
+  get single(): Uint8Array {
+    if (this.emissions.length !== 1) throw new Error(`expected one output, got ${this.emissions.length}`);
+    return this.emissions[0]!.bytes;
+  }
+}
+
 async function packageBytes(specifier: string): Promise<Uint8Array> {
   const path = fileURLToPath(import.meta.resolve(specifier));
   return new Uint8Array(await Bun.file(path).arrayBuffer());
@@ -135,7 +153,7 @@ async function buildCompiler(): Promise<PdfCompilePort> {
 }
 
 async function exportPdf(compiler: PdfCompilePort, blocks: ExportBlock[]): Promise<{ bytes: Uint8Array; version: string; notes: string[] }> {
-  const output = new MemorySink();
+  const output = new PdfMemorySink();
   const report = await runPdfExport(
     { blocks, metadata: M1_METADATA, profile: "tagged", filename: "M1 Acceptance Handbook.pdf" },
     { assets: noAssets, compiler, output, now: deterministicClock() },

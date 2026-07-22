@@ -25,6 +25,19 @@
  * now yields a `logo-skipped` note (counted in `skippedImages`) instead of a
  * `placeholder-unsupported` entry. Every zip ENTRY was asserted byte-identical
  * across the recapture — only the report block changed.
+ *
+ * `word/settings.xml` amended 2026-07-21 for the field-refresh policy: this
+ * fixture's only fields are the body's static `HYPERLINK`s, so the export no
+ * longer injects `<w:updateFields w:val="true"/>` and the entry is the
+ * template's own empty `<w:settings>` element. That is the ONE intended
+ * behaviour change; every other entry stayed byte-identical, which is exactly
+ * what a golden file is for. See `update-fields.test.ts`.
+ *
+ * `word/document.xml` recaptured 2026-07-22 after the in-test DOCX fixture
+ * builder was corrected to attach its existing header/footer relationships to
+ * the final section. The intended diff is limited to the `r` namespace plus
+ * `headerReference`/`footerReference`; without those references Word consumers
+ * are allowed to ignore the otherwise orphaned story parts.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";

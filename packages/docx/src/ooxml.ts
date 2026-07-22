@@ -156,6 +156,8 @@ export interface RunStyle {
   superscript?: boolean;
   /** Hex color without leading `#`. */
   color?: string;
+  /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
+  backgroundColor?: string;
 }
 
 function runPropsXml(style: RunStyle): string {
@@ -168,6 +170,11 @@ function runPropsXml(style: RunStyle): string {
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
   if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
+  if (style.backgroundColor) {
+    parts.push(
+      `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(style.backgroundColor)}"/>`
+    );
+  }
   return parts.length ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 }
 
@@ -348,22 +355,47 @@ export function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string {
 
 /**
  * A caption paragraph: `<pStyle Caption>` + `"<Label> "` + a live SEQ field
- * (`SEQ <name> \* ARABIC`, so Word numbers it natively and it refreshes on
- * open via `ensureUpdateFields`) + `": "` + the caption's inline runs.
+ * (`SEQ <name> \* ARABIC`, so Word owns the numbering natively and a manual F9
+ * still produces the right answer) + `": "` + the caption's inline runs.
+ *
+ * `ordinal` is the field's CACHED RESULT — the number between `fldChar
+ * separate` and `fldChar end`. It used to be hard-coded to `1`, which made a
+ * document with three tables read "Table 1" three times until someone pressed
+ * F9, and made every export with a single caption ask its reader to refresh
+ * (see {@link import("./scan.js").REFRESH_SENSITIVE_FIELDS}).
+ *
+ * The cached result is not a cosmetic detail. It is what Word shows before any
+ * refresh, and it is all a consumer that reads `<w:t>` runs without evaluating
+ * fields ever sees — pandoc, python-docx, most search indexers. MEASURED on a
+ * real three-caption export: `pandoc -f docx -t plain` printed "Tabelle 1"
+ * three times from the old output and "Tabelle 1/2/3" from this one.
+ * LibreOffice is NOT such a consumer, and an earlier version of this comment
+ * wrongly named it: LibreOffice recomputes `SEQ` on import, and its converted
+ * PDF read correctly even from the old, all-`1` file.
+ *
+ * The FIELD stays: replacing it with a plain number would break cross-references
+ * (`REF`), Word's own caption tooling and a table of figures. Only the cached
+ * result changes. The caller ({@link import("./serialize.js").serializeBlocks})
+ * owns one counter per sequence name, incremented in document order.
  */
 export function captionParagraph(
   styleId: string,
   kind: CaptionKind,
   lang: CaptionLang,
-  contentRunsXml: string
+  contentRunsXml: string,
+  ordinal: number
 ): string {
   const label = captionSeqLabel(kind, lang);
   const seqName = captionSeqName(kind);
+  // A non-positive or non-finite ordinal would put `NaN`/`0`/`-1` in front of a
+  // reader as if it were a caption number. Fall back to Word's own first value
+  // rather than emit nonsense; the serializer never produces one.
+  const cached = Number.isFinite(ordinal) && ordinal >= 1 ? String(Math.trunc(ordinal)) : "1";
   const seqField =
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
     `<w:r><w:instrText xml:space="preserve"> SEQ ${esc(seqName)} \\* ARABIC </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
-    `<w:r><w:t>1</w:t></w:r>` +
+    `<w:r><w:t>${cached}</w:t></w:r>` +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
   return (
     `<w:p><w:pPr><w:pStyle w:val="${esc(styleId)}"/></w:pPr>` +

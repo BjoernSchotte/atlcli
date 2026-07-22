@@ -15,7 +15,8 @@
  */
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { buildConfluenceUrl, type OutputOptions } from "@atlcli/core";
+import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
+import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
   SpaceHomepageError,
   composeChapters,
@@ -46,7 +47,6 @@ import {
   noteToIssue,
   pdfReportContributions,
   type ExportOutcome,
-  type Issue,
   type SourcePageEntry,
 } from "./export-report.js";
 import {
@@ -56,6 +56,11 @@ import {
   type ScopeReportFields,
 } from "./export-request.js";
 import { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup } from "./export-internals.js";
+import {
+  defaultExternalAssetFetcher,
+  defaultExternalAssetPolicy,
+  trustRoutingPdfAssetResolver,
+} from "@atlcli/export-wiring";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
   PdfUsageError,
@@ -108,6 +113,35 @@ export function cliPdfAssetResolver(
       };
     },
   };
+}
+
+/**
+ * The resolver the PDF export env actually gets: {@link cliPdfAssetResolver}
+ * with the spec-004 trust router already composed around it.
+ *
+ * **Every `PdfExportEnv.assets` the CLI builds goes through here** — that is the
+ * whole point of the function existing rather than the two lines being inlined
+ * at the `runPdfExport` call. `trustRoutingPdfAssetResolver` had been written,
+ * unit-tested, and then wired NOWHERE: only the DOCX path composed its sibling,
+ * and this path handed `runPdfExport` a bare token resolver. That was harmless
+ * only because the CLI PDF path resolves no macros yet, so nothing could mint a
+ * `trust: "export-view"` ref — a latent gap that becomes a live SSRF the day
+ * `macros` is passed here. Composing it unconditionally costs nothing today
+ * (refs without that trust marker take the identical path) and cannot be
+ * forgotten tomorrow.
+ *
+ * `apps/cli/src/commands/export-pdf-assets.test.ts` pins both halves: the
+ * router is present, and no other construction site bypasses it.
+ */
+export function cliPdfAssets(
+  client: ConfluenceClient,
+  baseUrl: string,
+  options: { noCache?: boolean } = {}
+): PdfAssetResolver {
+  return trustRoutingPdfAssetResolver(
+    cliPdfAssetResolver(client, baseUrl, options),
+    defaultExternalAssetFetcher(defaultExternalAssetPolicy(baseUrl))
+  );
 }
 
 /**
@@ -173,18 +207,76 @@ interface ResolvedScope {
   complete: boolean;
   sourcePages: SourcePageEntry[];
   outNameKey: string;
-  mentionUnresolved: number;
+  /**
+   * Set ONLY for a single-page scope, to that page's id: the one
+   * {@link sourcePages} entry's notes are exactly the walker notes that go into
+   * the engine as {@link sourceNotes}, so the engine's reconciled list can be
+   * projected back onto it after the export (spec 010). A tree/space scope
+   * leaves this undefined — its per-page notes come from the per-page walk and
+   * never enter the engine, so there is nothing to project back.
+   */
+  reconcilablePageId?: string;
   /**
    * Scope traceability for the report (spec 002 A5), built by the shared
    * {@link buildScopeReportFields}. Tree/space only — a single-page export has
    * no scope resolution to trace, matching the DOCX single-page path.
    */
   scopeReport?: ScopeReportFields;
+  /**
+   * `composeChapters(...).chapterAnchorById` — tree/space only. Macro
+   * resolution runs after composition, so a renderer that links to other
+   * Confluence pages (the Confluence-list datasource) reads composition's own
+   * in-scope answer from here rather than resolving links a second way.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>;
+}
+
+/**
+ * Build the spec-004 macro-resolution options for the PDF env.
+ *
+ * The PDF path used to pass NO `macros`, so every dynamic macro on a page —
+ * Jira tables, includes, the `export_view` catch-all — degraded to a
+ * placeholder that the report described as "not rendered", while the very same
+ * page exported to DOCX with `--engine ts` rendered them live. That gap became
+ * user-visible with datasource smart links: the modern Jira table is *only*
+ * reachable through this chain, so without it a PDF export of a current-editor
+ * page can never show the table.
+ *
+ * Mirrors `buildTsEngineMacroOptions` in `export.ts` (same profile → clients →
+ * shared builder). The sink-side SSRF guard the chain requires is already in
+ * place here: {@link cliPdfAssets} composes `trustRoutingPdfAssetResolver`
+ * unconditionally, which is exactly the "cannot be forgotten tomorrow" it was
+ * written for.
+ */
+async function buildPdfMacroOptions(
+  profile: Profile,
+  client: ConfluenceClient,
+  chapterAnchorById?: ReadonlyMap<string, string>
+): Promise<MacroResolutionOptions> {
+  const [wiring, { JiraClient }] = await Promise.all([
+    import("./export-macros-wiring.js"),
+    import("@atlcli/jira"),
+  ]);
+  return wiring.buildMacroResolutionOptions({
+    profile,
+    confluence: client,
+    // Cloud shares one site between Confluence and Jira; if Jira is not
+    // accessible the chain degrades to a note, never a hard failure.
+    jira: new JiraClient(profile),
+    targetEngine: "pdf",
+    live: true,
+    ...(chapterAnchorById ? { chapterAnchorById } : {}),
+  });
 }
 
 export interface ExportPdfArgs {
   client: ConfluenceClient;
-  profile: { name?: string; email?: string };
+  /**
+   * The resolved auth profile. Widened from `{ name?, email? }` when the macro
+   * chain was wired in: the Jira port needs the real base URL + credentials,
+   * exactly as the DOCX ts path already does.
+   */
+  profile: Profile;
   request: ParsedExportRequest;
   baseUrl: string;
   outputPath?: string;
@@ -220,6 +312,12 @@ async function resolveScope(
     });
     const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
     const sourceNotes: ExportNote[] = [...walked.notes];
+    // `mention-unresolved` is the CROSS-HOST code (spec 010): the CLI's DOCX
+    // path (`export.ts`) and the extension's PDF host
+    // (`apps/extension/utils/pdf/run-export.ts`) report this same condition
+    // under this same code. Pinned from both ends —
+    // `engine-parity.test.ts` for the CLI, `apps/extension/tests/pdf/
+    // run-export.test.ts` for the extension.
     if (mention.unresolved > 0) {
       sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
     }
@@ -228,9 +326,13 @@ async function resolveScope(
       blocks: mention.blocks,
       sourceNotes,
       complete: true,
+      // Provisional: these are the PRE-macro-resolution walker notes. The
+      // engine owns the terminal outcome, so `exportPdf` projects its
+      // reconciled `sourceNotes` back onto this entry (see
+      // `reconcilablePageId`) before the report is built.
       sourcePages: [{ id: pageId, title: page.title, notes: walked.notes.map((n) => noteToIssue(n, "compose", pageId)) }],
       outNameKey: pageId,
-      mentionUnresolved: mention.unresolved,
+      reconcilablePageId: pageId,
     };
   }
 
@@ -290,10 +392,10 @@ async function resolveScope(
     complete: treeResult.complete,
     sourcePages,
     outNameKey: request.scopeKind === "space" ? request.spaceKey! : rootId,
-    mentionUnresolved: mention.unresolved,
     // Same builder the DOCX tree path uses — a `--scope space` request stays
     // traceable to the tree rooted at the resolved homepage id (spec 002 A5).
     scopeReport: buildScopeReportFields(request, scope),
+    chapterAnchorById: composed.chapterAnchorById,
   };
 }
 
@@ -340,6 +442,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
+    const macros = await buildPdfMacroOptions(args.profile, client, scope.chapterAnchorById);
     const report = await runPdfExport(
       {
         blocks: scope.blocks,
@@ -349,22 +452,48 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
         signal: controller.signal,
         complete: scope.complete,
         onProgress: progress.report,
+        page: {
+          id: scope.metaPage.id,
+          ...(scope.metaPage.version !== undefined ? { version: scope.metaPage.version } : {}),
+          ...(scope.metaPage.spaceKey !== undefined ? { spaceKey: scope.metaPage.spaceKey } : {}),
+        },
       },
       {
-        assets: cliPdfAssetResolver(client, baseUrl, { noCache: args.noCache }),
+        assets: cliPdfAssets(client, baseUrl, { noCache: args.noCache }),
         compiler,
         output: filePdfOutputSink(outputPath, { force: args.force }),
+        macros,
       }
     );
     progress.clear();
 
+    // `mention-unresolved` is deliberately NOT appended here. `resolveScope`
+    // already pushed it into `scope.sourceNotes`, which rides into the engine as
+    // `input.sourceNotes`, comes back on `report.notes`, and is projected onto an
+    // Issue by `pdfReportContributions` like every other note — same `prepare`
+    // phase, plus the message carrying the unresolved COUNT that a hand-built,
+    // message-less issue could not. Appending a second one made
+    // `notesByCode["mention-unresolved"]` read 2 on the PDF path where the DOCX
+    // ts path (which only maps `report.notes`) read 1, and inflated the
+    // `--strict` warning count for the same single fact.
     const { outputDetail, issues } = pdfReportContributions(report, outputPath, report.compilerDiagnostics ?? []);
-    const allIssues: Issue[] = [
-      ...issues,
-      ...(scope.mentionUnresolved > 0
-        ? [{ code: "mention-unresolved", severity: "warning" as const, phase: "prepare", retryable: false }]
-        : []),
-    ];
+
+    // Per-page provenance, reconciled (spec 010). For a single-page scope the
+    // one entry's notes ARE `scope.sourceNotes`, and macro resolution rewrote
+    // that list inside the engine — a provisional `macro-not-rendered` became
+    // `macro-rendered-via`. Projecting the engine's reconciled list back is what
+    // stops `sourcePages[].notes` from contradicting `notesByCode`, which said
+    // the macro rendered. Tree/space keeps its per-page walk: those notes never
+    // enter the engine, so there is no reconciled counterpart to project.
+    const sourcePages: SourcePageEntry[] =
+      scope.reconcilablePageId && report.sourceNotes
+        ? [
+            {
+              ...scope.sourcePages[0]!,
+              notes: report.sourceNotes.map((n) => noteToIssue(n, "compose", scope.reconcilablePageId!)),
+            },
+          ]
+        : scope.sourcePages;
 
     // Report-contract parity with the DOCX path. `complete` rides on EVERY
     // successful export (spec 002's completeness contract, which a CI consumer
@@ -374,9 +503,9 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     // `buildTreeExportReport`, which makes both REQUIRED at compile time.
     const common = {
       format,
-      sourcePages: scope.sourcePages,
+      sourcePages,
       outputDetails: [outputDetail],
-      issues: allIssues,
+      issues,
       timings: { ...report.timings, totalMs: Date.now() - startedAt },
       complete: report.complete,
       strict,

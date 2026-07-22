@@ -35,17 +35,26 @@ report, so "why is section X missing?" always has an answer.
 
 | Macro | Effect in export | Engines |
 |-------|------------------|---------|
-| `scroll-only` | Keep the body only for the matching exporter | DOCX, PDF |
-| `scroll-ignore` | Drop the body (for the matching exporter) | DOCX, PDF |
-| `scroll-only-inline` | Inline variant of `scroll-only` | DOCX, PDF |
-| `scroll-ignore-inline` | Inline variant of `scroll-ignore` | DOCX, PDF |
-| `scroll-pagebreak` | Insert a hard page break | DOCX, PDF |
-| `scroll-landscape` | Lay the region out in landscape orientation | DOCX, PDF |
-| `scroll-portrait` | Lay the region out in portrait orientation | DOCX, PDF |
-| `scroll-title` | Attach a numbered caption to a figure/table/code | DOCX, PDF |
+| `scroll-only` | Keep the body only for the matching exporter | DOCX `ts`, PDF |
+| `scroll-ignore` | Drop the body (for the matching exporter) | DOCX `ts`, PDF |
+| `scroll-only-inline` | Inline variant of `scroll-only` | DOCX `ts`, PDF |
+| `scroll-ignore-inline` | Inline variant of `scroll-ignore` | DOCX `ts`, PDF |
+| `scroll-pagebreak` | Insert a hard page break | DOCX `ts`, PDF |
+| `scroll-landscape` | Lay the region out in landscape orientation | DOCX `ts`, PDF |
+| `scroll-portrait` | Lay the region out in portrait orientation | DOCX `ts`, PDF |
+| `scroll-title` | Attach a numbered caption to a figure/table/code | DOCX `ts`, PDF |
 
 Any `scroll-*` macro atlcli does not recognize is preserved conservatively — its
 content is kept and a warning note is added, never silently dropped.
+
+:::caution[`--engine python` does not implement these macros]
+The "Engines" column means `--format pdf` and `--engine ts`. The legacy python
+engine converts the page to Markdown first, and every `scroll-*` macro becomes a
+placeholder line such as `*[scroll-title macro]*` — **taking the macro's body
+with it**. A table wrapped in `scroll-title` for its caption is not in the output
+at all. Use `--engine ts` (or PDF); see
+[Macro compatibility](/confluence/macro-compatibility/) for the whole picture.
+:::
 
 ## Export-control macros
 
@@ -137,8 +146,11 @@ lists, quotes, callouts, or table cells.
 block in its body. Numbering is native to the target format, so it stays correct
 as content moves:
 
-- **DOCX**: a `Caption`-styled paragraph with a live `SEQ` field. Word
-  renumbers captions when the document is opened.
+- **DOCX**: a `Caption`-styled paragraph with a live `SEQ` field, whose result is
+  already the correct ordinal. The document reads "Table 1, Table 2, Table 3" the
+  moment it opens — no refresh needed — and the field stays a field, so
+  cross-references and a table of figures keep working. See
+  [Caption numbering](/confluence/export/#caption-numbering).
 - **PDF**: a `#figure(caption: …, kind: …)` with Typst's own figure counters.
 
 Captions are placed **above** tables and **below** figures and code blocks.
@@ -191,11 +203,15 @@ available for `--scope tree/space` or the Python engine yet.
 | Content missing from the export | A `scroll-ignore` (or mismatched `scroll-only`) dropped it | Check the report for `scroll-ignore-applied` / `scroll-only-skipped-other-exporter`; use passthrough mode to confirm |
 | A page break did nothing | The break sits inside a table cell or callout | See the `pagebreak-suppressed-in-container` note; move the break to body level |
 | An orientation region did not flip | The region sits inside a table cell or callout | See the `orientation-suppressed-in-container` note |
-| A caption is not numbered in Word | Word numbers `SEQ` fields on open/print preview | Open the document (fields refresh automatically) |
+| Every caption reads "1" in Word | The template's own `SEQ` fields interleave with the exported ones, so the export cannot vouch for the numbers and asks Word to refresh | Answer **Yes** to the refresh prompt, or press **Ctrl+A** then **F9** — see [Caption numbering](/confluence/export/#caption-numbering) |
+| Captions vanished along with their tables | The export ran on `--engine python`, which does not implement these macros | Re-export with `--engine ts` or `--format pdf` |
 | A caption used the wrong label | The `scroll-title` `type` was unknown | See the `caption-kind-unknown` note; use `figure`, `table`, or `code` |
 
 ## Related topics
 
-- [Macros](/confluence/macros/) — the full macro support matrix
+- [Macro compatibility](/confluence/macro-compatibility/) — every macro, per engine
+- [Exporting pages with dynamic macros](/confluence/dynamic-macros/) — Jira tables, diagrams, includes
+- [DOCX and PDF Export](/confluence/export/) — the export commands
+- [Macros](/confluence/macros/) — macro handling in markdown *sync*
 - [Storage format](/confluence/storage/) — how storage XML maps to output
 - [Pages](/confluence/pages/) — creating and exporting pages

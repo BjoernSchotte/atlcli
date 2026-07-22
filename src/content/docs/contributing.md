@@ -338,5 +338,5 @@ atlcli is MIT licensed. By contributing, you agree your contributions will be un
 
 ## Related Topics
 
-- [Getting Started](getting-started.md) - Installation and setup
+- [Getting Started](/getting-started/) - Installation and setup
 - [Creating Plugins](plugins/creating-plugins.md) - Extend atlcli with plugins

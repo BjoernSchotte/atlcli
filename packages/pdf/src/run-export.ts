@@ -6,6 +6,7 @@ import {
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import type { TemplateManifest } from "@atlcli/template-pack";
+import { pdfBytesFromUint8Array, type PdfBytesHandle } from "./bytes-handle.js";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
 import { resolvePdfSettings } from "./settings.js";
@@ -23,7 +24,16 @@ import type {
 import { validatePdfOutput } from "./validate.js";
 
 export interface PdfOutputSink {
-  emit(name: string, bytes: Uint8Array, context?: { signal?: AbortSignal }): Promise<void>;
+  /**
+   * Commit one compiled document.
+   *
+   * Takes a {@link PdfBytesHandle} rather than a `Uint8Array` (spec 010, T5.6):
+   * a sink that wants a `Blob` asks the handle for one instead of building a
+   * second full copy of the document next to the first. Node sinks call
+   * `await bytes.asUint8Array()`, which for the default array-backed handle is
+   * the original buffer, not a copy.
+   */
+  emit(name: string, bytes: PdfBytesHandle, context?: { signal?: AbortSignal }): Promise<void>;
 }
 
 export type PdfExportPhase =
@@ -238,8 +248,16 @@ export async function runPdfExport(
 
   input.onPhase?.("preparing");
   const prepareStarted = now();
-  let prepared;
-  let bundle;
+  // `prepared` and `bundle` are declared `| undefined` and NULLED OUT the moment
+  // the last thing that needs them has been taken (spec 010, T5.6). They used to
+  // stay in scope through compile, validate AND emit, so an image-heavy export
+  // held its entire asset bundle — up to the shared 50 MiB
+  // `ASSET_MAX_TOTAL_BYTES` cap — alive at exactly the moment the compiler holds
+  // its own copy of the same bytes in WASM memory and the finished PDF is being
+  // written. Nothing below reads them again; the two facts the report still
+  // needs (`counts`, `bundle.notes`) are hoisted out first.
+  let prepared: Awaited<ReturnType<typeof preparePdfDocument>> | undefined;
+  let bundle: ReturnType<typeof serializePdfDocument> | undefined;
   let resolvedNotes: ExportNote[] = input.sourceNotes ?? [];
   try {
     // Dynamic-macro resolution (spec 004): staged fallback chain before layout.
@@ -285,16 +303,27 @@ export async function runPdfExport(
     wrapFailure(error, "prepare");
   }
   const prepareMs = now() - prepareStarted;
-  const counts = countPrepared(prepared.blocks);
+  const counts = countPrepared(prepared!.blocks);
+  // `prepared` is dead here: `counts` is the only thing downstream reads from
+  // it, and the bundle already holds its own serialized copy of the assets.
+  prepared = undefined;
+  // The notes are the only part of the bundle the report needs, so they survive
+  // the bundle itself.
+  const bundleNotes = bundle!.notes;
 
   input.onPhase?.("compiling");
   const compileStarted = now();
   let compiled;
   try {
-    compiled = await env.compiler.compile(bundle, { signal: input.signal });
+    compiled = await env.compiler.compile(bundle!, { signal: input.signal });
     throwIfAborted(input.signal);
   } catch (error) {
     wrapFailure(error, "compile");
+  } finally {
+    // Released in `finally`, not after the `await`: on a compile failure the
+    // error travels up through callers that may hold the frame alive, and there
+    // is no reason for the asset bundle to travel with it.
+    bundle = undefined;
   }
   const compileMs = now() - compileStarted;
   if (!compiled.pdf) {
@@ -322,7 +351,9 @@ export async function runPdfExport(
     // is deliberately no post-emit abort re-check here.
     throwIfAborted(input.signal);
     input.onProgress?.({ phase: "emit", done: 0, total: 1, detail: input.filename });
-    await env.output.emit(input.filename, compiled.pdf, { signal: input.signal });
+    await env.output.emit(input.filename, pdfBytesFromUint8Array(compiled.pdf), {
+      signal: input.signal,
+    });
     input.onProgress?.({ phase: "emit", done: 1, total: 1, detail: input.filename });
   } catch (error) {
     wrapFailure(error, "emit");
@@ -339,7 +370,7 @@ export async function runPdfExport(
     skippedAssets: counts.skipped,
     notes: [
       ...resolvedNotes,
-      ...bundle.notes,
+      ...bundleNotes,
       // PDF/UA language audit (spec 011). Appended after the compile because
       // one of its two inputs is a property of the produced FILE, not of the
       // request — `hasLang` comes from inspecting the real output bytes.
@@ -348,6 +379,10 @@ export async function runPdfExport(
         hasLang: inspection.hasLang,
       }),
     ],
+    // The host's source notes as the macro resolver left them (spec 010): a
+    // per-source-page view rebuilt from the PRE-resolution walk contradicts this
+    // aggregate — it still claims a live-rendered macro did not render.
+    sourceNotes: resolvedNotes,
     complete: input.complete ?? true,
     // Surface diagnostics even on a successful compile (spec 008 T3.4) so a host
     // can fail `--strict` on real Typst warnings.

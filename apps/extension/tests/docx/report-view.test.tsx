@@ -58,9 +58,9 @@ describe("ReportView — notes rendering (#15)", () => {
         ])}
       />
     );
-    expect(html).toContain("report-notes-warning");
+    expect(html).toContain("report-category-dynamic");
     expect(html).toContain("Could not load space");
-    expect(html).toContain("Warnings (1)");
+    expect(html).toContain("Warnings: 1");
   });
 
   it("groups info and warning notes separately", () => {
@@ -72,15 +72,37 @@ describe("ReportView — notes rendering (#15)", () => {
         ])}
       />
     );
-    expect(html).toContain("report-notes-warning");
-    expect(html).toContain("report-notes-info");
+    expect(html).toContain("report-category-dynamic");
+    expect(html).toContain("report-category-content");
     expect(html).toContain("user gone");
     expect(html).toContain("image X skipped");
   });
 
   it("omits the notes sections when there are no notes", () => {
     const html = renderToStaticMarkup(<ReportView report={makeReport([])} />);
-    expect(html).not.toContain("report-notes-warning");
-    expect(html).not.toContain("report-notes-info");
+    expect(html).not.toContain("report-category-");
+    expect(html).not.toContain("Export report");
+  });
+
+  it("shows the same macro outcome summary while retaining level groups", () => {
+    const html = renderToStaticMarkup(
+      <ReportView
+        report={makeReport([
+          { level: "info", code: "macro-rendered-via", message: "Rendered A" },
+          { level: "info", code: "macro-rendered-via", message: "Rendered B" },
+          { level: "warning", code: "macro-degraded", message: "Fallback used" },
+          { level: "info", code: "macro-skipped-by-config", message: "Live rendering off" },
+        ])}
+      />
+    );
+
+    expect(html).toContain("Live rendered: 2");
+    expect(html).toContain("Degraded: 1");
+    expect(html).toContain("Skipped by setting: 1");
+    expect(html).toContain("report-category-dynamic");
+    expect(html).toContain("Fallback used");
+    expect(html).toContain("Rendered A");
+    expect(html).toContain("Dynamic content rendered");
+    expect(html).toContain("×2");
   });
 });

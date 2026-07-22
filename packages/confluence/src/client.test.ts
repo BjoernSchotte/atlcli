@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, afterEach } from "bun:test";
+import { describe, test, expect, mock, afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import type { Profile } from "@atlcli/core";
 import { ConfluenceClient, escapeCqlValue } from "./client.js";
 
@@ -1273,5 +1273,294 @@ describe("ConfluenceClient", () => {
       expect(call).toBe(2);
       expect(hits.map((h) => h.id)).toEqual(["20", "10"]);
     });
+  });
+});
+
+describe("429 retry delay is bounded (spec 010 wave-1 review, B6)", () => {
+  const originalFetchLocal = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetchLocal;
+  });
+
+  test("does not retry immediately when Retry-After is unparseable", async () => {
+    // Proves the clamp is WIRED INTO the request loop, not merely exported:
+    // `parseInt("unavailable", 10) * 1000` is NaN, and `setTimeout(fn, NaN)`
+    // fires on the next tick, so the client used to answer a 429 with an
+    // instant second request.
+    const timestamps: number[] = [];
+    let callCount = 0;
+    globalThis.fetch = mock(() => {
+      timestamps.push(Date.now());
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response("Rate limited", {
+            status: 429,
+            headers: { "Retry-After": "unavailable" },
+          })
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: "123",
+            title: "Test",
+            body: { storage: { value: "<p>c</p>" } },
+            version: { number: 1 },
+            space: { key: "TEST" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new ConfluenceClient(mockProfile);
+    await client.getPage("123");
+
+    expect(callCount).toBe(2);
+    // Fell back to the 1 s exponential base rather than to NaN.
+    expect(timestamps[1]! - timestamps[0]!).toBeGreaterThanOrEqual(500);
+  });
+});
+
+/**
+ * Session-mode ATTACHMENT downloads: follow the redirect that delivers the bytes
+ * (spec 010 wave 2).
+ *
+ * The design gap: `applyFetchOptions` set `redirect: "manual"` for every session
+ * request and `requestBinary` treated any non-2xx as a download failure. Cloud
+ * answers `/download/attachments/…` with a 302 to `api.media.atlassian.com` BY
+ * DESIGN, so session-mode attachment downloads could not return bytes at all.
+ * Classification is by DESTINATION now: a login bounce still raises the same
+ * auth error (there are no attachment bytes at a login page), a media/site hop is
+ * followed with the session credential stripped, anything else is refused.
+ *
+ * Driven against real `Bun.serve` origins so the redirect is a real redirect. The
+ * only substitution is a DNS-style resolver mapping the production
+ * `https://api.media.atlassian.com` prefix onto the local media server — the
+ * hostname the POLICY judges is the production one.
+ */
+describe("ConfluenceClient session attachment redirects (spec 010 wave 2)", () => {
+  const MEDIA_PREFIX = "https://api.media.atlassian.com";
+  const realFetch = globalThis.fetch;
+
+  let site: ReturnType<typeof Bun.serve>;
+  let media: ReturnType<typeof Bun.serve>;
+  let third: ReturnType<typeof Bun.serve>;
+  let base = "";
+  let mediaBase = "";
+  let thirdBase = "";
+
+  const hits: string[] = [];
+  const mediaHeaders: Headers[] = [];
+  let inits: Array<{ url: string; init: RequestInit | undefined }> = [];
+
+  const BYTES = new Uint8Array([4, 5, 6]);
+
+  beforeAll(() => {
+    media = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        hits.push(`media${new URL(req.url).pathname}`);
+        mediaHeaders.push(req.headers);
+        return new Response(BYTES, { status: 200, headers: { "content-type": "image/png" } });
+      },
+    });
+    mediaBase = `http://127.0.0.1:${media.port}`;
+
+    third = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        hits.push(`third${new URL(req.url).pathname}`);
+        return new Response("owned", { status: 200 });
+      },
+    });
+    thirdBase = `http://127.0.0.1:${third.port}`;
+
+    site = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req) {
+        const { pathname } = new URL(req.url);
+        hits.push(`site${pathname}`);
+        const redirect = (to: string) =>
+          new Response(null, { status: 302, headers: { Location: to } });
+        switch (pathname) {
+          case "/wiki/download/attachments/1/media.png":
+            return redirect(`${MEDIA_PREFIX}/file/abc/binary?token=SECRET`);
+          // Server/DC shape: the login bounce is SAME-ORIGIN, so only the path
+          // distinguishes it from a legitimate hop.
+          case "/wiki/download/attachments/1/expired.png":
+            return redirect(`${base}/wiki/login.action?os_destination=%2Fx`);
+          case "/wiki/download/attachments/1/evil.png":
+            return redirect(`${thirdBase}/steal`);
+          case "/wiki/download/attachments/1/moved.png":
+            return redirect(`${base}/wiki/download/attachments/1/final.png`);
+          case "/wiki/download/attachments/1/final.png":
+            return new Response(BYTES, { status: 200 });
+          // A JSON endpoint bouncing to the media CDN must STILL be refused.
+          case "/wiki/rest/api/content/MEDIA-1":
+            return redirect(`${MEDIA_PREFIX}/file/abc/binary`);
+          case "/wiki/login.action":
+            return new Response("<html>login</html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            });
+          default:
+            if (pathname.startsWith("/wiki/loop/")) {
+              const n = Number(pathname.slice("/wiki/loop/".length)) || 0;
+              return redirect(`${base}/wiki/loop/${n + 1}`);
+            }
+            return new Response(BYTES, { status: 200 });
+        }
+      },
+    });
+    base = `http://127.0.0.1:${site.port}`;
+  });
+
+  afterAll(() => {
+    site.stop(true);
+    media.stop(true);
+    third.stop(true);
+  });
+
+  beforeEach(() => {
+    hits.length = 0;
+    mediaHeaders.length = 0;
+    inits = [];
+    globalThis.fetch = ((input: string, init: RequestInit) => {
+      const url = String(input);
+      inits.push({ url, init });
+      const target = url.startsWith(MEDIA_PREFIX)
+        ? `${mediaBase}${url.slice(MEDIA_PREFIX.length)}`
+        : url;
+      return realFetch(target, init);
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  // Cloud deployment => the client appends `/wiki` to the base URL.
+  const sessionProfile = (): Profile => ({
+    name: "session",
+    baseUrl: base,
+    auth: { type: "session" },
+  });
+  const tokenProfile = (): Profile => ({
+    name: "token",
+    baseUrl: base,
+    deploymentType: "cloud",
+    auth: { type: "apiToken", email: "test@example.com", token: "test-token" },
+  });
+
+  test("follows the media-CDN redirect and returns the attachment bytes", async () => {
+    const bytes = await new ConfluenceClient(sessionProfile()).downloadAttachment({
+      downloadUrl: "/download/attachments/1/media.png",
+    });
+
+    expect(bytes).toEqual(BYTES);
+    expect(hits).toEqual(["site/wiki/download/attachments/1/media.png", "media/file/abc/binary"]);
+  });
+
+  test("the media hop carries no session credential", async () => {
+    await new ConfluenceClient(sessionProfile()).downloadAttachment({
+      downloadUrl: "/download/attachments/1/media.png",
+    });
+
+    expect(mediaHeaders).toHaveLength(1);
+    expect(mediaHeaders[0]!.get("cookie")).toBeNull();
+    expect(mediaHeaders[0]!.get("authorization")).toBeNull();
+
+    expect(inits).toHaveLength(2);
+    expect(inits[0]!.init?.credentials).toBe("include");
+    expect(inits[1]!.url.startsWith(MEDIA_PREFIX)).toBe(true);
+    expect(inits[1]!.init?.credentials).toBe("omit");
+  });
+
+  test("a same-origin hop is followed and keeps the session credential", async () => {
+    const bytes = await new ConfluenceClient(sessionProfile()).downloadAttachment({
+      downloadUrl: "/download/attachments/1/moved.png",
+    });
+
+    expect(bytes).toEqual(BYTES);
+    expect(inits[1]!.init?.credentials).toBe("include");
+  });
+
+  test("a SAME-ORIGIN login bounce is still the auth error, with unchanged wording", async () => {
+    let err: unknown;
+    try {
+      await new ConfluenceClient(sessionProfile()).downloadAttachment({
+        downloadUrl: "/download/attachments/1/expired.png",
+      });
+    } catch (caught) {
+      err = caught;
+    }
+
+    // Byte-compatible with the JSON path's message: the extension detects
+    // session expiry by matching this text.
+    expect((err as Error).message).toBe(
+      "Confluence API error (302): authentication redirect to Atlassian login (session not logged in)"
+    );
+    // Never followed: no HTML login form could reach the export as image data.
+    expect(hits).toEqual(["site/wiki/download/attachments/1/expired.png"]);
+  });
+
+  test("a redirect to a non-allowlisted third party is refused before the request", async () => {
+    let err: unknown;
+    try {
+      await new ConfluenceClient(sessionProfile()).downloadAttachment({
+        downloadUrl: "/download/attachments/1/evil.png",
+      });
+    } catch (caught) {
+      err = caught;
+    }
+
+    expect((err as Error).name).toBe("SessionRedirectBlockedError");
+    expect((err as Error).message).toMatch(/non-allowlisted origin/);
+    expect(hits).toEqual(["site/wiki/download/attachments/1/evil.png"]);
+    expect((err as Error).message).not.toMatch(
+      /non-json|login page|authentication redirect|opaqueredirect/i
+    );
+  });
+
+  test("the redirect chain is bounded", async () => {
+    let err: unknown;
+    try {
+      await new ConfluenceClient(sessionProfile()).downloadAttachment({
+        downloadUrl: "/loop/0",
+      });
+    } catch (caught) {
+      err = caught;
+    }
+
+    expect((err as Error).message).toMatch(/more than 5 redirects/);
+    expect(hits).toHaveLength(6);
+  });
+
+  test("regression: JSON API calls keep the strict no-redirect rule, media CDN included", async () => {
+    let err: unknown;
+    try {
+      await new ConfluenceClient(sessionProfile()).getPage("MEDIA-1");
+    } catch (caught) {
+      err = caught;
+    }
+
+    expect((err as Error).message).toMatch(/authentication redirect to Atlassian login/);
+    expect(hits).toEqual(["site/wiki/rest/api/content/MEDIA-1"]);
+  });
+
+  test("regression: token auth still follows redirects itself, with no manual handling", async () => {
+    const bytes = await new ConfluenceClient(tokenProfile()).downloadAttachment({
+      downloadUrl: "/download/attachments/1/moved.png",
+    });
+
+    expect(bytes).toEqual(BYTES);
+    expect(inits).toHaveLength(1);
+    expect(inits[0]!.init?.redirect).toBeUndefined();
+    expect(inits[0]!.init?.credentials).toBeUndefined();
   });
 });

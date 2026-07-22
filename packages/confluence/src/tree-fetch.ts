@@ -624,7 +624,13 @@ export async function fetchExportTree(
       throwIfAborted(signal);
       if (child.kind === "unsupported") {
         treeNotes.push({
-          level: "info",
+          // `warning`, not `info`: content the user asked for is being DROPPED
+          // from the export. Once note levels drive issue severity (and with it
+          // `--strict`'s exit code), classifying a silent content loss as
+          // informational is exactly the false negative `--strict` exists to
+          // prevent. Contrast `label-filtered`, which is info because the user
+          // explicitly asked for that exclusion.
+          level: "warning",
           code: "unsupported-child-type",
           message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
         });
@@ -681,7 +687,13 @@ export async function fetchExportTree(
     for (const child of [...children].sort(compareChildren)) {
       if (child.kind === "unsupported") {
         treeNotes.push({
-          level: "info",
+          // `warning`, not `info`: content the user asked for is being DROPPED
+          // from the export. Once note levels drive issue severity (and with it
+          // `--strict`'s exit code), classifying a silent content loss as
+          // informational is exactly the false negative `--strict` exists to
+          // prevent. Contrast `label-filtered`, which is info because the user
+          // explicitly asked for that exclusion.
+          level: "warning",
           code: "unsupported-child-type",
           message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
         });

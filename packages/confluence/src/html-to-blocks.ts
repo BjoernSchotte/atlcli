@@ -30,6 +30,7 @@
  */
 import {
   parseXml,
+  normalizeExportColor,
   type ExportBlock,
   type ExportNote,
   type ImageSource,
@@ -367,9 +368,46 @@ function walkInlineElement(el: XmlElement, budget: Budget, marks: InlineMark[]):
     return content;
   }
 
+  if (name === "span") {
+    const style = attrsOf(el, budget).style ?? "";
+    const color = inlineCssColor(style, "color");
+    const backgroundColor = inlineCssColor(style, "background-color");
+    const content = walkInlineNodes(el.children, budget, marks);
+    return color || backgroundColor
+      ? applyInlineColors(content, { color, backgroundColor })
+      : content;
+  }
+
   const mark = INLINE_MARK[name];
   const nextMarks = mark ? [...marks, mark] : marks;
   return walkInlineNodes(el.children, budget, nextMarks);
+}
+
+function inlineCssColor(style: string, property: "color" | "background-color"): string | undefined {
+  const escaped = property.replace("-", "\\-");
+  const value = style.match(new RegExp(`(?:^|;)\\s*${escaped}\\s*:\\s*([^;]+)`, "i"))?.[1];
+  return normalizeExportColor(value);
+}
+
+function applyInlineColors(
+  nodes: InlineNode[],
+  colors: { color?: string; backgroundColor?: string }
+): InlineNode[] {
+  return nodes.map((node) => {
+    if (node.type === "text") {
+      return {
+        ...node,
+        ...(colors.color && !node.color ? { color: colors.color } : {}),
+        ...(colors.backgroundColor && !node.backgroundColor
+          ? { backgroundColor: colors.backgroundColor }
+          : {}),
+      };
+    }
+    if (node.type === "link") {
+      return { ...node, content: applyInlineColors(node.content, colors) };
+    }
+    return node;
+  });
 }
 
 // ---- Helpers --------------------------------------------------------------

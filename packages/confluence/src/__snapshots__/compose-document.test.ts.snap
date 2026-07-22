@@ -271,6 +271,15 @@ exports[`composeChapters — determinism golden snapshot of the reference fixtur
       "type": "paragraph",
     },
   ],
+  "chapterAnchorById": 
+Map {
+    "1" => "page-1",
+    "2" => "page-2",
+    "3" => "page-3",
+    "F1" => "page-f1",
+    "4" => "page-4",
+  }
+,
   "notes": [
     {
       "code": "heading-depth-clamped",

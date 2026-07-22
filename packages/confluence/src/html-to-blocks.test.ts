@@ -16,6 +16,31 @@ describe("htmlToExportBlocks — basic subset", () => {
     expect(p.content.some((n) => n.type === "text" && n.marks?.includes("italic"))).toBe(true);
   });
 
+  test("preserves arbitrary inline background colors from export_view HTML", () => {
+    const { blocks } = htmlToExportBlocks(
+      '<p><span style="background-color: rgb(186, 243, 219);">plain</span>' +
+        '<span style="color: #403294; background-color: #EED7FC"><a href="https://example.com">linked</a></span></p>'
+    );
+    const content = (blocks[0] as Extract<ExportBlock, { type: "paragraph" }>).content;
+    expect(content).toContainEqual({
+      type: "text",
+      text: "plain",
+      backgroundColor: "#BAF3DB",
+    });
+    expect(content).toContainEqual({
+      type: "link",
+      target: { kind: "external", href: "https://example.com" },
+      content: [
+        {
+          type: "text",
+          text: "linked",
+          color: "#403294",
+          backgroundColor: "#EED7FC",
+        },
+      ],
+    });
+  });
+
   test("tables with header cells", () => {
     const { blocks } = htmlToExportBlocks(
       `<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>C</td></tr></tbody></table>`

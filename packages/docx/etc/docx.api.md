@@ -68,6 +68,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -80,6 +81,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -219,7 +221,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -309,6 +313,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -321,6 +326,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -476,7 +482,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -566,6 +574,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -578,6 +587,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -717,7 +727,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -899,7 +911,7 @@ export declare const CAPTION_STYLE_ID = "Caption";
 export type CaptionLang = "en" | "de";
 
 // export: captionParagraph
-export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string): string;
+export declare function captionParagraph(styleId: string, kind: CaptionKind, lang: CaptionLang, contentRunsXml: string, ordinal: number): string;
 
 // export: captionSeqLabel
 export declare function captionSeqLabel(kind: CaptionKind, lang: CaptionLang): string;
@@ -939,8 +951,20 @@ export declare function codeStyleXml(): string;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
 
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
@@ -1107,6 +1131,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -1119,6 +1144,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1151,8 +1177,22 @@ export interface Fetched {
     homepageProperties?: PagePropertiesMacro[];
 }
 
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
+
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
 
 // export: formatDatePlaceholder
 export declare function formatDatePlaceholder(date: Date, argument?: string): DateFormatResult;
@@ -1304,6 +1344,9 @@ export interface LogoArgs {
 // export: MAX_CONTENT_WIDTH_PX
 export declare const MAX_CONTENT_WIDTH_PX = 600;
 
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
+
 // export: MAX_ILVL
 export declare const MAX_ILVL = 8;
 
@@ -1324,6 +1367,9 @@ export declare const MAX_TEMPLATE_BYTES: number;
 
 // export: mergeTrailingRegionSectPr
 export declare function mergeTrailingRegionSectPr(zip: PizZip): void;
+
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
 
 // export: normalizeColor
 export declare function normalizeColor(color: string): string;
@@ -1433,6 +1479,9 @@ export declare function readBodySectPr(zip: PizZip): string | undefined;
 // export: readPartText
 export declare function readPartText(zip: PizZip, part: string): string;
 
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
+
 // export: relsPathFor
 export declare function relsPathFor(partPath: string): string;
 
@@ -1504,6 +1553,7 @@ export interface RunStyle {
     subscript?: boolean;
     superscript?: boolean;
     color?: string;
+    backgroundColor?: string;
 }
 
 // export: ScanHit
@@ -1523,7 +1573,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -1534,6 +1586,9 @@ export declare function scanZip(zip: PizZip): ScanResult;
 
 // export: sectPrParagraph
 export declare function sectPrParagraph(sectPr: string): string;
+
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
 
 // export: serializeBlocks
 export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeContext): Promise<SerializeResult>;
@@ -1672,6 +1727,7 @@ export interface ExportInput {
         source: "template" | "confluence";
         styleId?: string;
     };
+    updateFields?: "auto" | "always" | "never";
 }
 
 // export: ExportReport
@@ -1684,6 +1740,7 @@ export interface ExportReport {
     durationMs: number;
     filename: string;
     notes: ExportNote[];
+    sourceNotes?: ExportNote[];
     complete: boolean;
     scan: ScanResult;
     timings: ExportTimings;
@@ -1839,7 +1896,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: SvgRasterizer
@@ -1895,8 +1954,20 @@ export declare function assertSafeDocxEntryName(name: string): void;
 // export: collectFieldInstructions
 export declare function collectFieldInstructions(xml: string, keywords?: ReadonlyArray<string>): string[];
 
+// export: collectFieldKeywords
+export declare function collectFieldKeywords(xml: string): string[];
+
+// export: collectFieldUses
+export declare function collectFieldUses(xml: string): FieldUse[];
+
+// export: collectForeignPlaceholders
+export declare function collectForeignPlaceholders(text: string): string[];
+
 // export: collectRiskyFieldInstructions
 export declare function collectRiskyFieldInstructions(xml: string): string[];
+
+// export: collectSeqSequenceNames
+export declare function collectSeqSequenceNames(xml: string): string[];
 
 // export: collectStylerefFields
 export declare function collectStylerefFields(xml: string): string[];
@@ -1917,20 +1988,43 @@ export declare class DocxError extends Error {
 // export: DocxErrorKind
 export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
+// export: FieldRefreshOptions
+export interface FieldRefreshOptions {
+    trustedSeqSequences?: ReadonlySet<string>;
+}
+
+// export: FieldUse
+export interface FieldUse {
+    keyword: string;
+    instruction: string;
+}
+
 // export: findActiveContentRelationship
 export declare function findActiveContentRelationship(relsXml: string): string | undefined;
+
+// export: FOREIGN_PLACEHOLDER_RE
+export declare const FOREIGN_PLACEHOLDER_RE: RegExp;
 
 // export: hasAltChunkRelationship
 export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
+// export: MAX_FOREIGN_PLACEHOLDERS
+export declare const MAX_FOREIGN_PLACEHOLDERS = 20;
+
 // export: MAX_TEMPLATE_BYTES
 export declare const MAX_TEMPLATE_BYTES: number;
+
+// export: needsFieldRefresh
+export declare function needsFieldRefresh(zip: PizZip, opts?: FieldRefreshOptions): boolean;
 
 // export: PLACEHOLDER_RE
 export declare const PLACEHOLDER_RE: RegExp;
 
 // export: readPartText
 export declare function readPartText(zip: PizZip, part: string): string;
+
+// export: REFRESH_SENSITIVE_FIELDS
+export declare const REFRESH_SENSITIVE_FIELDS: ReadonlySet<string>;
 
 // export: ScanHit
 export interface ScanHit {
@@ -1949,7 +2043,9 @@ export interface ScanResult {
     parts: string[];
     hasContentPlaceholder: boolean;
     stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
 }
 
 // export: scanTemplate
@@ -1957,6 +2053,9 @@ export declare function scanTemplate(bytes: Uint8Array): ScanResult;
 
 // export: scanZip
 export declare function scanZip(zip: PizZip): ScanResult;
+
+// export: seqSequenceName
+export declare function seqSequenceName(instruction: string): string | undefined;
 
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;

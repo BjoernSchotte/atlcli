@@ -117,11 +117,43 @@ test "$(jq '.warnings | length' report.json)" -eq 0
 
 # List every issue with its severity and phase
 jq -r '.issues[] | "\(.severity)\t\(.phase)\t\(.code)"' report.json
+
+# Informational notes (timings, label filters, macros that rendered fine) are
+# reported but never fail the build — they are not in `.warnings`
+jq -r '.issues[] | select(.severity == "info") | .code' report.json
+
+# Gate on ONE condition by code — the same code whichever format you export
+jq -e '(.notesByCode["image-missing-alt"] // 0) == 0' report.json
 ```
+
+`severity` is one of `error`, `warning` or `info`, and `--strict` trips on the first two
+only — see [Note severity and `--strict`](/confluence/export/#note-severity-and---strict).
+If you are upgrading from a release where **every** note was reported as a warning, expect
+`jq '.warnings | length'` to drop and a previously-always-`2` `--engine ts --strict` job to
+start passing.
 
 Exit codes let the pipeline branch without parsing at all: `0` success, `2` warnings under
 `--strict`, `3` auth, `4` remote/API (e.g. page not found), `5` compile failure. See the
 [full table](/confluence/export/#exit-codes).
+
+:::caution[If you gate on a specific note code, read this before upgrading]
+Note codes describe a condition on your **content**, so the same problem now carries
+the same code whether the job exports DOCX or PDF. Getting there retired three
+PDF-prefixed spellings:
+
+| Retired code | Emitted today |
+|--------------|---------------|
+| `pdf-image-missing-alt` | `image-missing-alt` |
+| `pdf-image-skipped` | `image-embed-failed` (**not** `image-skipped` — that is a different condition) |
+| `pdf-mention-unresolved` | `mention-unresolved` |
+
+A job that greps `notesByCode` for a retired code will stop matching — silently, since
+a missing key is indistinguishable from a clean export in most `jq` expressions. Update
+the expression, or use the transitional form in
+[Migrating retired note codes](/confluence/export/#migrating-retired-note-codes).
+Prefer `jq -e` with an explicit default (`// 0`) over `test -n`, so a renamed or absent
+key can never read as "nothing to report".
+:::
 
 ## Troubleshooting
 
@@ -136,4 +168,4 @@ Exit codes let the pipeline branch without parsing at all: `0` success, `2` warn
 
 - [DOCX and PDF Export](/confluence/export/) — full command reference
 - [CI/CD Documentation](/recipes/ci-cd-docs/) — publishing docs into Confluence from CI
-- [Authentication](/confluence/authentication/) — tokens and profiles
+- [Authentication](/authentication/) — tokens and profiles

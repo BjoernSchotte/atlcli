@@ -22,8 +22,13 @@ import { buildDocx, headingStyle, para, stylesXml } from "@atlcli/docx/fixtures"
  * default is a fixed asset, so its zip entry timestamps are pinned to a fixed
  * epoch (a reproducible build) rather than the wall clock — otherwise two
  * independent builds could differ by a few bytes across a 2-second boundary.
+ *
+ * Exported because a host that falls back to {@link bundledDefaultTemplate}
+ * still has to declare a `TemplateMeta.modificationDate` to the engine, and the
+ * bundled template's only meaningful date is this pin. Copying the literal into
+ * each host would be exactly the drift this constant prevents.
  */
-const BUNDLED_TEMPLATE_EPOCH = new Date("2020-01-01T00:00:00.000Z");
+export const BUNDLED_TEMPLATE_EPOCH = new Date("2020-01-01T00:00:00.000Z");
 
 export function bundledDefaultTemplate(): Uint8Array {
   const headingStyles = [1, 2, 3, 4, 5, 6]

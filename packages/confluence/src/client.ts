@@ -1,3 +1,11 @@
+import { decodeHTML } from "entities";
+import { parseRetryAfterMs } from "./retry-after.js";
+import {
+  SessionRedirectBlockedError,
+  createAtlassianSessionRedirectPolicy,
+  fetchSessionBinaryFollowingRedirects,
+  type SessionRedirectPolicy,
+} from "@atlcli/core/internal";
 import {
   Profile,
   getLogger,
@@ -70,6 +78,48 @@ export type ConfluenceSearchResult = {
   labels?: string[];
   creator?: string;
   created?: string;
+};
+
+/**
+ * One row of a {@link ConfluenceClient.searchDetailed} result — the fields a
+ * Confluence-list datasource table needs, from ONE request.
+ *
+ * Deliberately separate from {@link ConfluenceSearchResult}: that type is what
+ * `GET /content/search` can produce, and measurement (2026-07-21, Cloud) showed
+ * that endpoint returns **no excerpt at all** (with either `excerpt=indexed` or
+ * `excerpt=highlight`) and **no `totalSize`** — the two facts a datasource table
+ * cannot render without.
+ */
+export type ConfluenceSearchDetail = {
+  id: string;
+  title: string;
+  /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
+  type?: string;
+  /** Absolute URL of the content. */
+  url?: string;
+  spaceKey?: string;
+  /** The space's display NAME (the UI's space chip shows this, not the key). */
+  spaceName?: string;
+  /** Plain-text search excerpt (highlight markers stripped, entities decoded). */
+  excerpt?: string;
+  /** Display name of the content owner (`history.ownedBy`). */
+  ownedBy?: string;
+  /** ISO timestamp of the last update. */
+  lastModified?: string;
+  labels?: string[];
+  /** Content status: `current`, `draft`, `archived`, … */
+  status?: string;
+};
+
+/** A page of {@link ConfluenceClient.searchDetailed} results. */
+export type ConfluenceDetailedSearchResults = {
+  results: ConfluenceSearchDetail[];
+  /**
+   * The server's own count of ALL matches, not just this page. Load-bearing for
+   * a datasource table's truncation note, which must name the matched count and
+   * not merely "100+".
+   */
+  totalSize?: number;
 };
 
 /** Sync scope type for polling */
@@ -170,6 +220,23 @@ export function escapeCqlValue(value: string): string {
 }
 
 /**
+ * Turn a Confluence search excerpt into plain text.
+ *
+ * Confluence wraps matched terms in its own `@@@hl@@@…@@@endhl@@@` sentinels
+ * and entity-encodes the rest, so a raw excerpt renders as literal `&quot;` and
+ * marker noise in a document. The highlight is dropped rather than styled
+ * (spec SUPPORT-DATASOURCE-CONFLUENCE, open question 3): a Confluence list can
+ * have an EMPTY `searchString`, in which case the highlight refers to a search
+ * term that does not exist. Newlines collapse to spaces because the excerpt is
+ * a one-line table cell.
+ */
+function cleanExcerpt(raw: string): string {
+  return decodeHTML(raw.replace(/@@@hl@@@/g, "").replace(/@@@endhl@@@/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Extract the `cursor` query parameter from a v2 `_links.next` URL (which may be
  * relative), or `undefined` when there is no next link. Used as the pagination
  * token for cursor-based v2 endpoints.
@@ -187,6 +254,13 @@ export class ConfluenceClient {
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
+  /**
+   * Where a SESSION-mode binary download may be redirected to. Injected into
+   * `requestBinary`'s redirect follower rather than hardcoded there, so the
+   * allowlist stays one reviewable decision (`@atlcli/core/internal`) shared with
+   * `JiraClient` instead of a per-client copy.
+   */
+  private sessionRedirectPolicy: SessionRedirectPolicy;
 
   constructor(profile: Profile) {
     this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
@@ -199,6 +273,9 @@ export class ConfluenceClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
+      siteOrigin: this.confluenceBaseUrl,
+    });
   }
 
   /** Get the Confluence instance base URL */
@@ -255,10 +332,19 @@ export class ConfluenceClient {
       delete headers.Authorization;
       // `redirect: "manual"` (session only): an unauthenticated Atlassian API
       // call answers with a 3xx to `id.atlassian.com`. Manual redirect stops the
-      // browser from FOLLOWING that bounce with cookies to a foreign origin;
-      // instead the fetch resolves as an opaque redirect we classify as
-      // not-logged-in (spec 003 §2.3). CLI (token) mode keeps the default
-      // follow behavior — this branch never runs for it.
+      // browser from FOLLOWING that bounce; instead the fetch resolves as an
+      // opaque redirect we classify as not-logged-in (spec 003 §2.3). CLI
+      // (token) mode keeps the default follow behavior — this branch never runs
+      // for it.
+      //
+      // "Manual" means *we* decide, not "never follow". `request()` (JSON) never
+      // follows: an API endpoint has no legitimate redirect. `requestBinary`
+      // (attachment bytes) DOES follow, but only to a destination the session
+      // redirect policy allows — Cloud delivers attachment content by 302ing to
+      // `api.media.atlassian.com`, so refusing every redirect made session-mode
+      // downloads unreachable by construction (spec 010 wave 2). The cross-origin
+      // hop is re-issued with `credentials: "omit"`, so the ambient session never
+      // travels with it.
       result = { ...result, headers, credentials: "include", redirect: "manual" };
     }
     if (this.tlsOptions) {
@@ -268,22 +354,44 @@ export class ConfluenceClient {
   }
 
   /**
-   * Session-mode guard: a redirect on an API call means the ambient Atlassian
-   * session is missing/expired (the request is being bounced to the login host).
-   * With `redirect: "manual"` this surfaces as an opaque-redirect response
-   * (`type === "opaqueredirect"`, `status 0`); some environments expose the raw
-   * 3xx instead. Either way we throw an auth-redirect error (mapped to
-   * `not-logged-in` by the extension) rather than following it with credentials
-   * to a foreign origin. No-op for CLI/token auth.
+   * The one place this package spells the session-expiry message.
+   *
+   * The wording is load-bearing, not cosmetic: the extension classifies session
+   * expiry by matching `authentication redirect` against thrown client errors
+   * (`apps/extension/utils/read-path.ts`,
+   * `apps/extension/utils/macros/session-ports.ts`). Both the JSON guard below
+   * and the binary redirect follower in `requestBinary` build their error here so
+   * the two can never drift.
    */
-  private assertNotAuthRedirect(res: Response): void {
+  private authRedirectError(status: number): Error {
+    return new Error(
+      `Confluence API error (${status}): authentication redirect to Atlassian login (session not logged in)`
+    );
+  }
+
+  /**
+   * Session-mode guard for JSON API calls: a redirect means the ambient
+   * Atlassian session is missing/expired (the request is being bounced to the
+   * login host). With `redirect: "manual"` this surfaces as an opaque-redirect
+   * response (`type === "opaqueredirect"`, `status 0`); some environments expose
+   * the raw 3xx instead. Either way we throw an auth-redirect error (mapped to
+   * `not-logged-in` by the extension) rather than following it. No-op for
+   * CLI/token auth.
+   *
+   * JSON-only on purpose. An API endpoint has no legitimate reason to bounce
+   * anywhere, so "any redirect is a login redirect" holds here. It does NOT hold
+   * for attachment bytes, which Cloud delivers *via* a redirect to the media CDN
+   * — that path is classified by destination in `requestBinary` instead.
+   */
+  private assertNotAuthRedirect(res: { type?: string; status: number }): void {
     if (!this.useSession) return;
     const isRedirect =
       res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400);
     if (isRedirect) {
-      throw new Error(
-        "Confluence API error (302): authentication redirect to Atlassian login (session not logged in)"
-      );
+      // 302 is hardcoded (rather than `res.status`) because an opaque redirect
+      // reports status 0, which carries no information; this is the value the
+      // downstream `(\d{3})` classifiers have always seen here.
+      throw this.authRedirectError(302);
     }
   }
 
@@ -395,10 +503,9 @@ export class ConfluenceClient {
 
       // Handle rate limiting (429)
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs, options.signal);
@@ -531,10 +638,9 @@ export class ConfluenceClient {
       this.assertNotAuthRedirect(res);
 
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs, options.signal);
@@ -861,6 +967,90 @@ export class ConfluenceClient {
       totalSize: data.totalSize,
       hasMore: !!nextLink || (data.start ?? 0) + (data.size ?? results.length) < (data.totalSize ?? 0),
       nextLink,
+    };
+  }
+
+  /**
+   * CQL search through `GET /rest/api/search` (the SEARCH endpoint), returning
+   * the per-row detail a Confluence-list datasource table renders.
+   *
+   * Why a second search method rather than widening {@link search}: `search`
+   * drives `GET /content/search`, and measurement against Confluence Cloud
+   * (2026-07-21) showed that endpoint returns **no `excerpt`** — with
+   * `excerpt=indexed` *and* with `excerpt=highlight` — and **no `totalSize`**.
+   * The datasource table needs both (a `description` column, and a truncation
+   * note that names how many rows matched, not just "100+"). `/search` returns
+   * both plus owner and content status in the SAME response, so the whole
+   * eight-column table costs one request instead of one-plus-N.
+   *
+   * `contentStatuses` is a REQUEST parameter, not a CQL fragment: `status =
+   * "archived"` is a 400 on Cloud (measured), while `cqlcontext` carries the
+   * filter correctly.
+   */
+  async searchDetailed(
+    cql: string,
+    options: {
+      limit?: number;
+      /** `current` / `archived` / `draft`; sent via `cqlcontext`. */
+      contentStatuses?: string[];
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<ConfluenceDetailedSearchResults> {
+    const { limit = 25, contentStatuses, signal } = options;
+    const data = (await this.request("/search", {
+      query: {
+        cql,
+        limit,
+        expand: [
+          "content.space",
+          "content.version",
+          "content.history.lastUpdated",
+          "content.history.ownedBy",
+          "content.metadata.labels",
+        ].join(","),
+        ...(contentStatuses && contentStatuses.length > 0
+          ? { cqlcontext: JSON.stringify({ contentStatuses }) }
+          : {}),
+      },
+      signal,
+    })) as any;
+
+    const base: string = data._links?.base ?? "";
+    const results = Array.isArray(data.results) ? data.results : [];
+    return {
+      results: results.map((item: any) => this.parseSearchDetail(item, base)),
+      ...(typeof data.totalSize === "number" ? { totalSize: data.totalSize } : {}),
+    };
+  }
+
+  /** Map one `/search` result onto {@link ConfluenceSearchDetail}. */
+  private parseSearchDetail(item: any, base: string): ConfluenceSearchDetail {
+    const content = item.content ?? {};
+    const labels: string[] = Array.isArray(content.metadata?.labels?.results)
+      ? content.metadata.labels.results.map((l: any) => l.name).filter((n: unknown): n is string => typeof n === "string")
+      : [];
+    // `item.url` is site-relative (`/spaces/…`); `_links.base` is the wiki root.
+    const relative: string | undefined = item.url ?? content._links?.webui;
+    return {
+      id: String(content.id ?? item.id ?? ""),
+      // `item.title` may carry the search highlighter's markers; `content.title`
+      // is the raw stored title, so prefer it and clean the fallback.
+      title: typeof content.title === "string" ? content.title : cleanExcerpt(item.title ?? ""),
+      ...(content.type ? { type: String(content.type) } : {}),
+      ...(relative ? { url: base && relative.startsWith("/") ? `${base}${relative}` : relative } : {}),
+      ...(content.space?.key ? { spaceKey: String(content.space.key) } : {}),
+      ...(content.space?.name ? { spaceName: String(content.space.name) } : {}),
+      ...(item.excerpt ? { excerpt: cleanExcerpt(String(item.excerpt)) } : {}),
+      ...(content.history?.ownedBy?.displayName
+        ? { ownedBy: String(content.history.ownedBy.displayName) }
+        : {}),
+      ...(content.history?.lastUpdated?.when
+        ? { lastModified: String(content.history.lastUpdated.when) }
+        : item.lastModified
+          ? { lastModified: String(item.lastModified) }
+          : {}),
+      ...(labels.length > 0 ? { labels } : {}),
+      ...(content.status ? { status: String(content.status) } : {}),
     };
   }
 
@@ -1810,10 +2000,9 @@ export class ConfluenceClient {
       }));
 
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs);
@@ -1876,6 +2065,14 @@ export class ConfluenceClient {
 
   /**
    * Request helper for binary downloads.
+   *
+   * Session mode follows a redirect to an ALLOWLISTED destination (spec 010
+   * wave 2). Confluence Cloud answers `/download/attachments/…` with a 302 to
+   * the media CDN, so the previous blanket "a redirect means the session
+   * expired" rule made this method unusable for session profiles. The rule is
+   * now by destination: a login bounce still raises the same typed auth error
+   * (there are no attachment bytes at a login page), a media/site hop is
+   * followed with the session credential stripped, and anything else is refused.
    */
   private async requestBinary(
     downloadPath: string,
@@ -1902,19 +2099,32 @@ export class ConfluenceClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       options.signal?.throwIfAborted();
-      const res = await fetch(url.toString(), this.applyFetchOptions({
+      const init = this.applyFetchOptions({
         method: "GET",
         headers: {
           Authorization: this.authHeader,
         },
         signal: options.signal,
-      }));
+      });
+      // Token mode is untouched: no `redirect: "manual"` was set for it, so
+      // fetch keeps following redirects exactly as before.
+      const res = this.useSession
+        ? await fetchSessionBinaryFollowingRedirects(
+            url.toString(),
+            init,
+            this.sessionRedirectPolicy,
+            {
+              loginRedirectError: (status) => this.authRedirectError(status),
+              blockedRedirectError: (target, reason) =>
+                new SessionRedirectBlockedError("Confluence attachment download", target, reason),
+            }
+          )
+        : await fetch(url.toString(), init);
 
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs, options.signal);
@@ -2107,10 +2317,9 @@ export class ConfluenceClient {
       }));
 
       if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After");
-        const delayMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : this.baseDelayMs * Math.pow(2, attempt);
+        const delayMs =
+          parseRetryAfterMs(res.headers.get("Retry-After")) ??
+          this.baseDelayMs * Math.pow(2, attempt);
 
         if (attempt < this.maxRetries) {
           await this.sleep(delayMs);

@@ -43,6 +43,32 @@ export interface ConfluenceContentPort {
         id: string;
         title: string;
     }[]>;
+    searchContent?(cql: string, opts: {
+        maximumResults: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchHits>;
+}
+
+// export: ConfluenceSearchHit
+export interface ConfluenceSearchHit {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+}
+
+// export: ConfluenceSearchHits
+export interface ConfluenceSearchHits {
+    hits: ConfluenceSearchHit[];
+    totalSize?: number;
 }
 
 // export: createRegistry
@@ -135,6 +161,7 @@ export interface MacroExportContext {
     exportView?: ExportViewPort;
     attachments?: AttachmentLookupPort;
     externalAssets?: ExternalAssetFetcher;
+    pageScope?: MacroPageScope;
     depth: number;
     visited: Set<string>;
     signal?: AbortSignal;
@@ -158,6 +185,11 @@ export interface MacroInstance {
 
 // export: MacroInstanceId
 export type MacroInstanceId = string;
+
+// export: MacroPageScope
+export interface MacroPageScope {
+    chapterAnchorFor(pageId: string): string | undefined;
+}
 
 // export: MacroRenderer
 export interface MacroRenderer {
@@ -258,8 +290,29 @@ export type UnknownBlock = Extract<ExportBlock, {
 // export: childrenRenderer
 export declare function childrenRenderer(): MacroRenderer;
 
+// export: columnNotes
+export declare function columnNotes(columns: string[], hits: ConfluenceSearchHit[], macroName: string): ExportNote[];
+
+// export: confluenceListCellText
+export declare function confluenceListCellText(hit: ConfluenceSearchHit, column: string): string | undefined;
+
+// export: confluenceListRenderer
+export declare function confluenceListRenderer(): MacroRenderer;
+
+// export: confluenceListTable
+export declare function confluenceListTable(columns: string[], hits: ConfluenceSearchHit[], anchorFor?: (id: string) => string | undefined): ExportBlock;
+
 // export: cqlFromParams
 export declare function cqlFromParams(m: MacroInstance): string | undefined;
+
+// export: datasourceSiteVerdict
+export declare function datasourceSiteVerdict(args: {
+    datasourceUrl?: string;
+    siteBaseUrl?: string;
+}): DatasourceSiteVerdict;
+
+// export: DatasourceSiteVerdict
+export type DatasourceSiteVerdict = "same-site" | "cross-site" | "unprovable";
 
 // export: diagramMacroRenderer
 export declare function diagramMacroRenderer(): MacroRenderer;

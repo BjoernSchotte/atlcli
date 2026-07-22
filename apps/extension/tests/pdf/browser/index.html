@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF preview link harness</title>
+  </head>
+  <body>
+    <main data-testid="viewer-root" style="position: relative; width: 640px; min-height: 900px">
+      <canvas data-testid="viewer-canvas"></canvas>
+      <div data-testid="viewer-annotations" class="pdf-annotation-layer"></div>
+      <output data-testid="viewer-navigation">1</output>
+      <output data-testid="viewer-state">loading</output>
+    </main>
+    <script type="module" src="./viewer-app.ts"></script>
+  </body>
+</html>

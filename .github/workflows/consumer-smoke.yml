@@ -20,14 +20,39 @@ on:
 
 jobs:
   consumer-smoke:
+    # Two legs on purpose.
+    #
+    # `pinned` is the gate: it runs the Bun that `packageManager` declares and
+    # that `release.yml` bakes into the shipped binaries, so a red result means
+    # OUR code is wrong.
+    #
+    # `latest` is an early warning for the next Bun regression, and it does NOT
+    # block — because a blocking floating pin is indistinguishable from a real
+    # failure. Bun 1.3.5 crashed the Typst wasm compile on Linux and cost hours
+    # of diagnosis precisely because nothing separated "the runtime broke" from
+    # "we broke it". When the `latest` leg is red and `pinned` is green, that
+    # distinction reads straight off the checks list.
+    name: consumer-smoke (${{ matrix.leg }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.leg == 'latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [pinned, latest]
     steps:
       - uses: actions/checkout@v6
+
+      # The pinned leg reads the version from package.json rather than
+      # repeating it, so `bun-version-pin.test.ts` cannot drift from reality.
+      - name: Resolve the pinned Bun version
+        if: matrix.leg == 'pinned'
+        id: pin
+        run: echo "version=$(jq -r '.packageManager | ltrimstr("bun@")' package.json)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ matrix.leg == 'pinned' && steps.pin.outputs.version || 'latest' }}
 
       # Node 20 = the engines floor ("node": ">=20") — the Node-LTS smoke and
       # npm leg must pass on the OLDEST supported line, not just current.

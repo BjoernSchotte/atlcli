@@ -3,7 +3,10 @@ import { Glob } from "bun";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXPORT_NOTE_CODES } from "../packages/confluence/src/export-blocks.js";
+import {
+  EXPORT_NOTE_CODES,
+  RETIRED_EXPORT_NOTE_CODES,
+} from "../packages/confluence/src/export-blocks.js";
 
 /**
  * ExportNote.code registry enforcement (spec 009, "Stabilize
@@ -127,5 +130,49 @@ describe("ExportNote.code registry (spec 009)", () => {
         ? `Registry members no emission site produces (renamed call site? remove or re-wire):\n  ${dead.join("\n  ")}`
         : undefined,
     ).toEqual([]);
+  });
+
+  /**
+   * Vocabulary unification (spec 010). The registry checks above answer "is
+   * this code known?"; these answer "do two emitters that observe the SAME
+   * condition spell it the same way?" — the thing a `notesByCode` consumer
+   * actually depends on, and the thing a type-checked union cannot express.
+   */
+  it("no retired code is emitted anywhere again", () => {
+    // The alias table is the migration path, not a second live spelling. If a
+    // retired code reappears at an emission site, the divergence is back.
+    const retired = new Set<string>(Object.keys(RETIRED_EXPORT_NOTE_CODES));
+    const offenders = literals
+      .filter((site) => retired.has(site.code))
+      .map((site) => `${site.file}: "${site.code}" → use "${RETIRED_EXPORT_NOTE_CODES[site.code as keyof typeof RETIRED_EXPORT_NOTE_CODES]}"`);
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("both PDF hosts spell the unresolved-mention fact identically", () => {
+    // The CLI's PDF host and the extension's PDF host observe the very same
+    // condition — an account id that did not resolve to a display name — from
+    // the same `resolveExportMentions` result. They are separate processes with
+    // no shared call site, so nothing but this assertion keeps their spelling
+    // together. (Each side's own runtime behaviour is pinned separately: the CLI
+    // in `apps/cli/src/commands/engine-parity.test.ts`, the extension in
+    // `apps/extension/tests/pdf/run-export.test.ts`.)
+    const hosts = ["apps/cli/src/commands/export-pdf.ts", "apps/extension/utils/pdf/run-export.ts"];
+    const spellings = new Map<string, string[]>();
+    for (const host of hosts) {
+      const source = sources.get(host);
+      expect(source, `${host} must be scanned (path moved?)`).toBeDefined();
+      spellings.set(
+        host,
+        [...source!.matchAll(/code:\s*"([a-z0-9-]*mention-unresolved)"/g)].map((m) => m[1]!),
+      );
+    }
+    for (const [host, codes] of spellings) {
+      expect(codes.length, `${host} must emit an unresolved-mention note`).toBeGreaterThan(0);
+    }
+    const distinct = new Set([...spellings.values()].flat());
+    expect(
+      [...distinct],
+      `The two PDF hosts disagree on the unresolved-mention code: ${JSON.stringify(Object.fromEntries(spellings))}`,
+    ).toEqual(["mention-unresolved"]);
   });
 });

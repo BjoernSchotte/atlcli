@@ -167,6 +167,47 @@ export interface JiraIssuePort {
   ): Promise<JiraIssueRef[]>;
 }
 
+/**
+ * One row of a {@link ConfluenceContentPort.searchContent} result.
+ *
+ * Every field except `id`/`title` is optional because the *renderer* — not the
+ * port — decides what a missing value means: a Confluence-list column whose
+ * source field is absent renders empty AND is named in a note, which is how a
+ * mapping drift (the Jira round's `issuetype` vs `type`) stays visible instead
+ * of looking like empty data.
+ */
+export interface ConfluenceSearchHit {
+  id: string;
+  title: string;
+  /** Content type as CQL names it: `page`, `blogpost`, `attachment`, … */
+  type?: string;
+  /** Absolute URL of the content. */
+  url?: string;
+  spaceKey?: string;
+  /** The space's display NAME — what the UI's space chip shows. */
+  spaceName?: string;
+  /** Plain-text search excerpt (no highlight markers, no entities). */
+  excerpt?: string;
+  /** Display name of the content owner. Never an avatar URL — see the renderer. */
+  ownedBy?: string;
+  /** ISO timestamp of the last update. */
+  lastModified?: string;
+  labels?: string[];
+  /** Content status: `current`, `draft`, `archived`, … */
+  status?: string;
+}
+
+/** A page of {@link ConfluenceContentPort.searchContent} results. */
+export interface ConfluenceSearchHits {
+  hits: ConfluenceSearchHit[];
+  /**
+   * The server's total match count, when it reports one. A Confluence-list
+   * table is normally a SAMPLE (the live artifact matches 2 817 rows), so its
+   * truncation note names this number — "100 of 100+" would hide the scale.
+   */
+  totalSize?: number;
+}
+
 export interface ConfluenceContentPort {
   /** Fetch a page's storage by title (+ space). `undefined` = not found. */
   getPageStorage(
@@ -182,6 +223,47 @@ export interface ConfluenceContentPort {
     opts?: { limit?: number }
   ): Promise<{ id: string; title: string }[]>;
   searchCql(cql: string, opts?: { limit?: number }): Promise<{ id: string; title: string }[]>;
+  /**
+   * CQL search returning the per-row detail a Confluence-list datasource table
+   * renders — id, title, type, space, excerpt, owner, labels, status — plus the
+   * server's total match count.
+   *
+   * A THIRD search seam on purpose. {@link searchCql} returns `{ id, title }`
+   * only, and `TreeSource.searchPages` returns ids only; both are deliberately
+   * narrow (the tree walker's "filtered pages are never loaded" invariant rests
+   * on that narrowness), so widening either to serve a table would trade a
+   * load-bearing type for convenience.
+   *
+   * Optional so an existing {@link ConfluenceContentPort} implementation stays
+   * valid; the renderer degrades with a note when a host does not supply it.
+   */
+  searchContent?(
+    cql: string,
+    opts: {
+      /** Row cap. The renderer asks for cap+1 so truncation is measured. */
+      maximumResults: number;
+      /** Content statuses to include (`current`, `archived`, `draft`). */
+      contentStatuses?: string[];
+      signal?: AbortSignal;
+    }
+  ): Promise<ConfluenceSearchHits>;
+}
+
+/**
+ * Compose-scope facts a renderer needs to link to OTHER pages of the SAME
+ * export.
+ *
+ * Macro resolution runs AFTER `composeChapters` (both engines resolve macros
+ * inside `run-export`/`export`, on the already-composed tree), so a
+ * `{ kind: "page" }` link target a renderer emits is never rewritten by the
+ * composition pass and would serialize as plain text. Rather than adding a
+ * second link-resolution path, the host hands the renderer composition's OWN
+ * answer: the chapter anchor `composeChapters` assigned to a page id, or
+ * `undefined` when that page is outside the export scope.
+ */
+export interface MacroPageScope {
+  /** The in-document anchor for a page id, or `undefined` when out of scope. */
+  chapterAnchorFor(pageId: string): string | undefined;
 }
 
 export interface ExportViewPort {
@@ -230,6 +312,12 @@ export interface MacroExportContext {
   exportView?: ExportViewPort;
   attachments?: AttachmentLookupPort;
   externalAssets?: ExternalAssetFetcher;
+  /**
+   * Which of the pages a renderer links to are inside THIS document, and under
+   * which anchor. Absent for single-page exports (nothing else is in scope) and
+   * for hosts that do not compose chapters — a renderer then links absolutely.
+   */
+  pageScope?: MacroPageScope;
   /** Recursion guards, shared across include-style renderers. */
   depth: number;
   visited: Set<string>;

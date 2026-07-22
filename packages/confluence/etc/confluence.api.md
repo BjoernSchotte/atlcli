@@ -77,6 +77,9 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: ASSETS_DATASOURCE_ID
+export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -117,6 +120,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -145,6 +151,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -156,10 +167,17 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
+
+// export: CONFLUENCE_SEARCH_DATASOURCE_ID
+export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -169,11 +187,13 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
+    private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
     private request;
@@ -209,6 +229,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -413,6 +439,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -448,6 +480,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -494,6 +547,96 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: Datasource
+export interface Datasource {
+    id: string;
+    parameters: Record<string, unknown>;
+    views: DatasourceView[];
+}
+
+// export: DATASOURCE_DEFAULT_MAX_ROWS
+export declare const DATASOURCE_DEFAULT_MAX_ROWS = 100;
+
+// export: DATASOURCE_PROVIDERS
+export declare const DATASOURCE_PROVIDERS: readonly DatasourceProvider[];
+
+// export: DatasourceColumn
+export interface DatasourceColumn {
+    key: string;
+    width?: number;
+    isWrapped?: boolean;
+}
+
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
+// export: DatasourceDegradeCode
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
+
+// export: DatasourceMapContext
+export interface DatasourceMapContext {
+    href: string;
+    columns: string[];
+}
+
+// export: DatasourceMapResult
+export type DatasourceMapResult = {
+    params: MacroParameter[];
+} | {
+    degrade: DatasourceDegradation;
+};
+
+// export: DatasourceOutcome
+export type DatasourceOutcome = {
+    kind: "macro";
+    macroName: string;
+    params: MacroParameter[];
+    provider: DatasourceProvider;
+} | {
+    kind: "degrade";
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+    provider?: DatasourceProvider;
+};
+
+// export: DatasourceParseFailure
+export interface DatasourceParseFailure {
+    ok: false;
+    reason: "not-json" | "not-object" | "bad-id" | "bad-parameters" | "bad-views" | "unexpected-key";
+    detail: string;
+}
+
+// export: DatasourceParseResult
+export type DatasourceParseResult = {
+    ok: true;
+    datasource: Datasource;
+} | DatasourceParseFailure;
+
+// export: datasourceProvider
+export declare function datasourceProvider(id: string): DatasourceProvider | undefined;
+
+// export: DatasourceProvider
+export interface DatasourceProvider {
+    id: string;
+    label: string;
+    status: "supported" | "known-unsupported";
+    macroName?: string;
+    toParams?(ds: Datasource, ctx: DatasourceMapContext): DatasourceMapResult;
+}
+
+// export: DatasourceView
+export interface DatasourceView {
+    type: string;
+    properties?: {
+        columns?: DatasourceColumn[];
+    };
+}
+
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
@@ -512,6 +655,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "datasource-invalid",
+    "datasource-provider-unknown",
+    "datasource-provider-unsupported",
+    "datasource-filter-unsupported",
+    "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -577,6 +727,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "unexpected-error",
     "unsafe-link-skipped",
     "template-field-instruction-risk",
+    "template-foreign-placeholders",
+    "template-default-used",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -593,6 +745,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "homepage-fetch-failed",
     "homepage-unavailable",
     "no-content-placeholder",
+    "field-refresh-suppressed",
     "logo-skipped",
     "logo-embed-failed",
     "perf-timing",
@@ -604,16 +757,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -903,6 +1053,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -924,6 +1075,9 @@ export declare function isImageFile(filename: string): boolean;
 
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: JIRA_DATASOURCE_ID
+export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
@@ -1103,6 +1257,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseDatasourceAttribute
+export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -1117,6 +1274,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -1235,10 +1402,16 @@ export interface TableCell {
     content: ExportBlock[];
 }
 
+// export: tableColumns
+export declare function tableColumns(ds: Datasource): string[] | undefined;
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
 }
+
+// export: translateDatasourceLink
+export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
 // export: TreeChild
 export interface TreeChild {
@@ -1489,6 +1662,9 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: ASSETS_DATASOURCE_ID
+export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -1529,6 +1705,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -1557,6 +1736,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -1568,10 +1752,17 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
+
+// export: CONFLUENCE_SEARCH_DATASOURCE_ID
+export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -1581,11 +1772,13 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
+    private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
     private request;
@@ -1621,6 +1814,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -1825,6 +2024,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -1860,6 +2065,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -1906,6 +2132,96 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: Datasource
+export interface Datasource {
+    id: string;
+    parameters: Record<string, unknown>;
+    views: DatasourceView[];
+}
+
+// export: DATASOURCE_DEFAULT_MAX_ROWS
+export declare const DATASOURCE_DEFAULT_MAX_ROWS = 100;
+
+// export: DATASOURCE_PROVIDERS
+export declare const DATASOURCE_PROVIDERS: readonly DatasourceProvider[];
+
+// export: DatasourceColumn
+export interface DatasourceColumn {
+    key: string;
+    width?: number;
+    isWrapped?: boolean;
+}
+
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
+// export: DatasourceDegradeCode
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
+
+// export: DatasourceMapContext
+export interface DatasourceMapContext {
+    href: string;
+    columns: string[];
+}
+
+// export: DatasourceMapResult
+export type DatasourceMapResult = {
+    params: MacroParameter[];
+} | {
+    degrade: DatasourceDegradation;
+};
+
+// export: DatasourceOutcome
+export type DatasourceOutcome = {
+    kind: "macro";
+    macroName: string;
+    params: MacroParameter[];
+    provider: DatasourceProvider;
+} | {
+    kind: "degrade";
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+    provider?: DatasourceProvider;
+};
+
+// export: DatasourceParseFailure
+export interface DatasourceParseFailure {
+    ok: false;
+    reason: "not-json" | "not-object" | "bad-id" | "bad-parameters" | "bad-views" | "unexpected-key";
+    detail: string;
+}
+
+// export: DatasourceParseResult
+export type DatasourceParseResult = {
+    ok: true;
+    datasource: Datasource;
+} | DatasourceParseFailure;
+
+// export: datasourceProvider
+export declare function datasourceProvider(id: string): DatasourceProvider | undefined;
+
+// export: DatasourceProvider
+export interface DatasourceProvider {
+    id: string;
+    label: string;
+    status: "supported" | "known-unsupported";
+    macroName?: string;
+    toParams?(ds: Datasource, ctx: DatasourceMapContext): DatasourceMapResult;
+}
+
+// export: DatasourceView
+export interface DatasourceView {
+    type: string;
+    properties?: {
+        columns?: DatasourceColumn[];
+    };
+}
+
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
@@ -1924,6 +2240,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "datasource-invalid",
+    "datasource-provider-unknown",
+    "datasource-provider-unsupported",
+    "datasource-filter-unsupported",
+    "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -1989,6 +2312,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "unexpected-error",
     "unsafe-link-skipped",
     "template-field-instruction-risk",
+    "template-foreign-placeholders",
+    "template-default-used",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -2005,6 +2330,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "homepage-fetch-failed",
     "homepage-unavailable",
     "no-content-placeholder",
+    "field-refresh-suppressed",
     "logo-skipped",
     "logo-embed-failed",
     "perf-timing",
@@ -2016,16 +2342,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -2315,6 +2638,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -2336,6 +2660,9 @@ export declare function isImageFile(filename: string): boolean;
 
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: JIRA_DATASOURCE_ID
+export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
@@ -2515,6 +2842,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseDatasourceAttribute
+export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -2529,6 +2859,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -2647,10 +2987,16 @@ export interface TableCell {
     content: ExportBlock[];
 }
 
+// export: tableColumns
+export declare function tableColumns(ds: Datasource): string[] | undefined;
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
 }
+
+// export: translateDatasourceLink
+export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
 // export: TreeChild
 export interface TreeChild {
@@ -2901,6 +3247,9 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: ASSETS_DATASOURCE_ID
+export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -2941,6 +3290,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -2969,6 +3321,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -2980,10 +3337,17 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
+
+// export: CONFLUENCE_SEARCH_DATASOURCE_ID
+export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -2993,11 +3357,13 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
+    private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
     private request;
@@ -3033,6 +3399,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -3237,6 +3609,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -3272,6 +3650,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -3318,6 +3717,96 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: Datasource
+export interface Datasource {
+    id: string;
+    parameters: Record<string, unknown>;
+    views: DatasourceView[];
+}
+
+// export: DATASOURCE_DEFAULT_MAX_ROWS
+export declare const DATASOURCE_DEFAULT_MAX_ROWS = 100;
+
+// export: DATASOURCE_PROVIDERS
+export declare const DATASOURCE_PROVIDERS: readonly DatasourceProvider[];
+
+// export: DatasourceColumn
+export interface DatasourceColumn {
+    key: string;
+    width?: number;
+    isWrapped?: boolean;
+}
+
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
+// export: DatasourceDegradeCode
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
+
+// export: DatasourceMapContext
+export interface DatasourceMapContext {
+    href: string;
+    columns: string[];
+}
+
+// export: DatasourceMapResult
+export type DatasourceMapResult = {
+    params: MacroParameter[];
+} | {
+    degrade: DatasourceDegradation;
+};
+
+// export: DatasourceOutcome
+export type DatasourceOutcome = {
+    kind: "macro";
+    macroName: string;
+    params: MacroParameter[];
+    provider: DatasourceProvider;
+} | {
+    kind: "degrade";
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+    provider?: DatasourceProvider;
+};
+
+// export: DatasourceParseFailure
+export interface DatasourceParseFailure {
+    ok: false;
+    reason: "not-json" | "not-object" | "bad-id" | "bad-parameters" | "bad-views" | "unexpected-key";
+    detail: string;
+}
+
+// export: DatasourceParseResult
+export type DatasourceParseResult = {
+    ok: true;
+    datasource: Datasource;
+} | DatasourceParseFailure;
+
+// export: datasourceProvider
+export declare function datasourceProvider(id: string): DatasourceProvider | undefined;
+
+// export: DatasourceProvider
+export interface DatasourceProvider {
+    id: string;
+    label: string;
+    status: "supported" | "known-unsupported";
+    macroName?: string;
+    toParams?(ds: Datasource, ctx: DatasourceMapContext): DatasourceMapResult;
+}
+
+// export: DatasourceView
+export interface DatasourceView {
+    type: string;
+    properties?: {
+        columns?: DatasourceColumn[];
+    };
+}
+
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
@@ -3336,6 +3825,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "datasource-invalid",
+    "datasource-provider-unknown",
+    "datasource-provider-unsupported",
+    "datasource-filter-unsupported",
+    "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -3401,6 +3897,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "unexpected-error",
     "unsafe-link-skipped",
     "template-field-instruction-risk",
+    "template-foreign-placeholders",
+    "template-default-used",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -3417,6 +3915,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "homepage-fetch-failed",
     "homepage-unavailable",
     "no-content-placeholder",
+    "field-refresh-suppressed",
     "logo-skipped",
     "logo-embed-failed",
     "perf-timing",
@@ -3428,16 +3927,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -3727,6 +4223,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -3748,6 +4245,9 @@ export declare function isImageFile(filename: string): boolean;
 
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: JIRA_DATASOURCE_ID
+export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
@@ -3927,6 +4427,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseDatasourceAttribute
+export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -3941,6 +4444,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -4059,10 +4572,16 @@ export interface TableCell {
     content: ExportBlock[];
 }
 
+// export: tableColumns
+export declare function tableColumns(ds: Datasource): string[] | undefined;
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
 }
+
+// export: translateDatasourceLink
+export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
 // export: TreeChild
 export interface TreeChild {
@@ -4390,6 +4909,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -4480,11 +5002,13 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
+    private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
     private request;
@@ -4520,6 +5044,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -4724,6 +5254,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -4785,6 +5321,21 @@ export declare class ConfluencePoller {
     setInterval(ms: number): void;
     isRunning(): boolean;
 }
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -4989,6 +5540,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "datasource-invalid",
+    "datasource-provider-unknown",
+    "datasource-provider-unsupported",
+    "datasource-filter-unsupported",
+    "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -5054,6 +5612,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "unexpected-error",
     "unsafe-link-skipped",
     "template-field-instruction-risk",
+    "template-foreign-placeholders",
+    "template-default-used",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -5070,6 +5630,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "homepage-fetch-failed",
     "homepage-unavailable",
     "no-content-placeholder",
+    "field-refresh-suppressed",
     "logo-skipped",
     "logo-embed-failed",
     "perf-timing",
@@ -5081,16 +5642,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -5504,6 +6062,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -6088,6 +6647,16 @@ export declare function resolveRelativePath(fromFile: string, linkTarget: string
 
 // export: restoreFromBackup
 export declare function restoreFromBackup(atlcliDir: string): Promise<boolean>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: runMigrations
 export declare function runMigrations(db: Database): {
@@ -6765,6 +7334,9 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: ASSETS_DATASOURCE_ID
+export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -6805,6 +7377,9 @@ export interface BulkOperationResult {
 // export: CalloutKind
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
 
+// export: canonicalExportNoteCode
+export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -6833,6 +7408,11 @@ export type CompletenessMode = "strict" | "partial";
 // export: composeChapters
 export declare function composeChapters(nodes: readonly ExportNode[], opts?: ComposeOptions): ComposeResult;
 
+// export: composeConfluenceSearchCql
+export declare function composeConfluenceSearchCql(ds: Datasource): ConfluenceSearchQuery | {
+    degrade: DatasourceDegradation;
+};
+
 // export: ComposeOptions
 export interface ComposeOptions {
     chapterBreak?: "none" | "pageBreak";
@@ -6844,10 +7424,17 @@ export interface ComposeOptions {
 export interface ComposeResult {
     blocks: ExportBlock[];
     notes: ExportNote[];
+    chapterAnchorById: ReadonlyMap<string, string>;
 }
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LIST_MACRO
+export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
+
+// export: CONFLUENCE_SEARCH_DATASOURCE_ID
+export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-203602bff8ca";
 
 // export: ConfluenceClient
 export declare class ConfluenceClient {
@@ -6857,11 +7444,13 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private sessionRedirectPolicy;
     constructor(profile: Profile);
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
+    private authRedirectError;
     private assertNotAuthRedirect;
     private assertSessionJsonOk;
     private request;
@@ -6897,6 +7486,12 @@ export declare class ConfluenceClient {
         detail?: "minimal" | "standard" | "full";
         signal?: AbortSignal;
     }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
@@ -7101,6 +7696,12 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceDetailedSearchResults
+export type ConfluenceDetailedSearchResults = {
+    results: ConfluenceSearchDetail[];
+    totalSize?: number;
+};
+
 // export: ConfluenceFolder
 export type ConfluenceFolder = {
     id: string;
@@ -7136,6 +7737,27 @@ export type ConfluencePageDetails = ConfluencePage & {
     tinyUrl?: string;
     editorVersion?: "v2" | "v1" | null;
 };
+
+// export: ConfluenceSearchDetail
+export type ConfluenceSearchDetail = {
+    id: string;
+    title: string;
+    type?: string;
+    url?: string;
+    spaceKey?: string;
+    spaceName?: string;
+    excerpt?: string;
+    ownedBy?: string;
+    lastModified?: string;
+    labels?: string[];
+    status?: string;
+};
+
+// export: ConfluenceSearchQuery
+export interface ConfluenceSearchQuery {
+    cql: string;
+    contentStatuses?: string[];
+}
 
 // export: ConfluenceSearchResult
 export type ConfluenceSearchResult = {
@@ -7182,6 +7804,96 @@ export interface ConversionOptions {
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
 
+// export: Datasource
+export interface Datasource {
+    id: string;
+    parameters: Record<string, unknown>;
+    views: DatasourceView[];
+}
+
+// export: DATASOURCE_DEFAULT_MAX_ROWS
+export declare const DATASOURCE_DEFAULT_MAX_ROWS = 100;
+
+// export: DATASOURCE_PROVIDERS
+export declare const DATASOURCE_PROVIDERS: readonly DatasourceProvider[];
+
+// export: DatasourceColumn
+export interface DatasourceColumn {
+    key: string;
+    width?: number;
+    isWrapped?: boolean;
+}
+
+// export: DatasourceDegradation
+export interface DatasourceDegradation {
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+}
+
+// export: DatasourceDegradeCode
+export type DatasourceDegradeCode = Extract<ExportNoteCode, "datasource-invalid" | "datasource-provider-unknown" | "datasource-provider-unsupported" | "datasource-filter-unsupported" | "datasource-query-empty">;
+
+// export: DatasourceMapContext
+export interface DatasourceMapContext {
+    href: string;
+    columns: string[];
+}
+
+// export: DatasourceMapResult
+export type DatasourceMapResult = {
+    params: MacroParameter[];
+} | {
+    degrade: DatasourceDegradation;
+};
+
+// export: DatasourceOutcome
+export type DatasourceOutcome = {
+    kind: "macro";
+    macroName: string;
+    params: MacroParameter[];
+    provider: DatasourceProvider;
+} | {
+    kind: "degrade";
+    code: DatasourceDegradeCode;
+    level: "info" | "warning";
+    message: string;
+    provider?: DatasourceProvider;
+};
+
+// export: DatasourceParseFailure
+export interface DatasourceParseFailure {
+    ok: false;
+    reason: "not-json" | "not-object" | "bad-id" | "bad-parameters" | "bad-views" | "unexpected-key";
+    detail: string;
+}
+
+// export: DatasourceParseResult
+export type DatasourceParseResult = {
+    ok: true;
+    datasource: Datasource;
+} | DatasourceParseFailure;
+
+// export: datasourceProvider
+export declare function datasourceProvider(id: string): DatasourceProvider | undefined;
+
+// export: DatasourceProvider
+export interface DatasourceProvider {
+    id: string;
+    label: string;
+    status: "supported" | "known-unsupported";
+    macroName?: string;
+    toParams?(ds: Datasource, ctx: DatasourceMapContext): DatasourceMapResult;
+}
+
+// export: DatasourceView
+export interface DatasourceView {
+    type: string;
+    properties?: {
+        columns?: DatasourceColumn[];
+    };
+}
+
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
@@ -7200,6 +7912,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "datasource-invalid",
+    "datasource-provider-unknown",
+    "datasource-provider-unsupported",
+    "datasource-filter-unsupported",
+    "datasource-cross-site",
+    "datasource-query-empty",
+    "datasource-column-unresolved",
     "page-unreadable",
     "subtree-unreadable",
     "tree-cycle",
@@ -7265,6 +7984,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "unexpected-error",
     "unsafe-link-skipped",
     "template-field-instruction-risk",
+    "template-foreign-placeholders",
+    "template-default-used",
     "other",
     "date-format-unknown",
     "pageproperty-no-key",
@@ -7281,6 +8002,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "homepage-fetch-failed",
     "homepage-unavailable",
     "no-content-placeholder",
+    "field-refresh-suppressed",
     "logo-skipped",
     "logo-embed-failed",
     "perf-timing",
@@ -7292,16 +8014,13 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "diagram-unsupported",
     "diagram-render-failed",
     "table-shape-approximated",
-    "pdf-image-skipped",
     "pdf-image-alt-fallback",
-    "pdf-image-missing-alt",
     "pdf-language-missing",
     "pdf-diagram-unsupported",
     "pdf-diagram-failed",
     "pdf-link-unresolved",
     "pdf-table-cell-contrast-low",
     "pdf-unknown-block",
-    "pdf-mention-unresolved",
     "pdf-mention-resolution-failed",
     "browser-harness"
 ];
@@ -7591,6 +8310,7 @@ export type InlineNode = {
     text: string;
     marks?: InlineMark[];
     color?: string;
+    backgroundColor?: string;
 } | {
     type: "link";
     target: LinkTarget;
@@ -7612,6 +8332,9 @@ export declare function isImageFile(filename: string): boolean;
 
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: JIRA_DATASOURCE_ID
+export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
 // export: KNOWN_MACROS
 export declare const KNOWN_MACROS: string[];
@@ -7791,6 +8514,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseDatasourceAttribute
+export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
+
 // export: parsePageProperties
 export declare function parsePageProperties(storage: string): PagePropertiesMacro[];
 
@@ -7805,6 +8531,16 @@ export declare function replaceAttachmentPaths(markdown: string, pageFilename: s
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
+
+// export: RETIRED_EXPORT_NOTE_CODES
+export declare const RETIRED_EXPORT_NOTE_CODES: {
+    readonly "pdf-image-missing-alt": "image-missing-alt";
+    readonly "pdf-image-skipped": "image-embed-failed";
+    readonly "pdf-mention-unresolved": "mention-unresolved";
+};
+
+// export: RetiredExportNoteCode
+export type RetiredExportNoteCode = keyof typeof RETIRED_EXPORT_NOTE_CODES;
 
 // export: SAFE_LINK_SCHEMES
 export declare const SAFE_LINK_SCHEMES: readonly [
@@ -7923,10 +8659,16 @@ export interface TableCell {
     content: ExportBlock[];
 }
 
+// export: tableColumns
+export declare function tableColumns(ds: Datasource): string[] | undefined;
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
 }
+
+// export: translateDatasourceLink
+export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
 // export: TreeChild
 export interface TreeChild {

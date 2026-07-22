@@ -14,6 +14,7 @@ import {
   isOffscreenRequest,
   type ExtResponse,
   type OffscreenResponse,
+  type PdfCompileHints,
 } from "./messages.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
@@ -21,7 +22,10 @@ import { runWasmAdd } from "./wasm-smoke.js";
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
   runWasmAdd: (a: number, b: number, bytes?: Uint8Array) => Promise<number>;
-  runPdfCompile: (jobId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  runPdfCompile: (
+    jobId: string,
+    hints?: PdfCompileHints
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   runPdfCancel: (jobId: string) => Promise<boolean>;
 }
 
@@ -87,7 +91,7 @@ export function handleOffscreenMessage(
         .catch((err) => sendResponse({ kind: "offscreen:wasm-add-result", ok: false, error: toMessage(err) }));
       break;
     case "offscreen:pdf-compile":
-      deps.runPdfCompile(message.jobId)
+      deps.runPdfCompile(message.jobId, { job: message.job, pages: message.pages })
         .then((result) => sendResponse(result.ok
           ? { kind: "offscreen:pdf-compile-result", jobId: message.jobId, ok: true }
           : { kind: "offscreen:pdf-compile-result", jobId: message.jobId, ok: false, error: result.error }))

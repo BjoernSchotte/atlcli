@@ -39,7 +39,10 @@ export const EXPORT_EXIT = {
   SUCCESS: 0,
   /** Usage / config / local IO error. */
   USAGE: 1,
-  /** Completed, but a `warning`-severity issue exists and `--strict` was set. */
+  /**
+   * Completed, but a `warning`- or `error`-severity issue exists and `--strict`
+   * was set. `info`-severity issues NEVER trip this — see {@link noteToIssue}.
+   */
   STRICT_WARNINGS: 2,
   /** Authentication/authorization error (401/403). */
   AUTH: 3,
@@ -54,13 +57,29 @@ export const EXPORT_EXIT = {
 export type ExportExitCode = (typeof EXPORT_EXIT)[keyof typeof EXPORT_EXIT];
 
 /**
+ * How bad an {@link Issue} is. Three values, mirroring the two engine note
+ * levels (`info | warning`) plus the `error` reserved for classified throws:
+ *
+ * - `error`   — the export failed, or a compiler diagnostic says the artifact is
+ *               wrong. Only {@link classifyError}/{@link diagnosticToIssue} mint these.
+ * - `warning` — the export completed but something is not right in the output
+ *               (an image did not embed, a link did not resolve). Trips `--strict`.
+ * - `info`    — an observation about a correct export (timings, a label filter
+ *               doing exactly what was asked). Reported, never a build failure.
+ */
+export type IssueSeverity = "error" | "warning" | "info";
+
+/**
  * A single problem, reused across compose/fetch notes, PDF compiler
  * diagnostics, and asset warnings. `warnings`/`errors` in the report are
  * convenience views over `issues` filtered by severity — not a parallel shape.
+ * There is deliberately no `infos` view: informational issues are readable off
+ * `issues[]`/`notesByCode` and adding a fourth array would change the report's
+ * top-level field set for every consumer.
  */
 export interface Issue {
   code: string;
-  severity: "error" | "warning";
+  severity: IssueSeverity;
   phase: string;
   retryable: boolean;
   message?: string;
@@ -121,15 +140,42 @@ export type ExportOutcome =
   | { ok: false; report: ExportReport };
 
 /**
- * Project a compose/fetch {@link ExportNote} onto an {@link Issue}. The two-level
- * note model (`info | warning`) collapses to the report's `warning` severity:
- * any note means content was not rendered perfectly cleanly, so `--strict` CI
- * should see it (documented). Only classified thrown errors are `error`.
+ * The note-level → issue-severity mapping. Faithful and total: the engines'
+ * `ExportNote["level"]` vocabulary (`info | warning`) maps 1:1 onto the matching
+ * {@link IssueSeverity} members. `error` is unreachable from a note by design —
+ * a note is by definition non-fatal, so only {@link classifyError} (thrown
+ * errors) and {@link diagnosticToIssue} (compiler diagnostics) mint one.
+ *
+ * Typed as a `Record` over `ExportNote["level"]` on purpose: if an engine ever
+ * adds a third level, this stops compiling instead of silently defaulting.
+ */
+const NOTE_LEVEL_SEVERITY: Record<ExportNote["level"], IssueSeverity> = {
+  info: "info",
+  warning: "warning",
+};
+
+/**
+ * Project a compose/fetch {@link ExportNote} onto an {@link Issue}, HONOURING
+ * `note.level`.
+ *
+ * This used to hard-code `severity: "warning"` on the theory that "any note
+ * means content was not rendered perfectly cleanly". That was wrong, and it made
+ * `--strict` unusable: `packages/docx/src/export.ts` appends a `perf-timing`
+ * note (`level: "info"`) to EVERY ts DOCX export, so a completely clean export
+ * reported one warning and exited `2` under `--strict`, while the PDF path —
+ * which has no such note — exited `0`. Same input, same request, two exit codes.
+ *
+ * The flattening was never `perf-timing`-specific: every `level: "info"` note in
+ * the codebase was promoted, including `label-filtered` (a label filter doing
+ * exactly what `--label-exclude` asked for), `macro-rendered-via` (a macro that
+ * rendered SUCCESSFULLY) and `placeholder-substituted`. Those are observations
+ * about a correct export, not defects in it, so none of them fail a build any
+ * more. They remain fully visible in `issues[]` and `notesByCode`.
  */
 export function noteToIssue(note: ExportNote, phase = "compose", sourcePageId?: string): Issue {
   return {
     code: note.code,
-    severity: "warning",
+    severity: NOTE_LEVEL_SEVERITY[note.level],
     phase,
     retryable: false,
     ...(note.message ? { message: note.message } : {}),
@@ -326,7 +372,10 @@ export interface BuildReportInput {
   outputDetails: OutputDetail[];
   issues: Issue[];
   timings?: Record<string, number>;
-  /** Under `--strict`, a warning-severity issue trips exit code 2. */
+  /**
+   * Under `--strict`, a warning- OR error-severity issue trips exit code 2.
+   * Informational issues never do — that is the whole point of the severity.
+   */
   strict?: boolean;
   /** Set on the failure path; overrides the success/strict exit computation. */
   failureExitCode?: number;
@@ -340,8 +389,14 @@ export interface BuildReportInput {
 
 /**
  * Assemble the final {@link ExportReport}, deriving `warnings`/`errors` views and
- * the exit code. Success is `0`; `--strict` with any warning is `2`; a failure
- * uses the classified `failureExitCode`.
+ * the exit code. Success is `0`; `--strict` with any warning or error is `2`; a
+ * failure uses the classified `failureExitCode`.
+ *
+ * `--strict` counts warnings AND errors, never `info`. Errors are in because an
+ * error-severity issue can reach a SUCCESS report without a `failureExitCode` —
+ * a compiler diagnostic captured on a compile that nonetheless produced bytes
+ * (`pdfReportContributions`) — and `--strict` silently returning `0` for one
+ * would be the same class of bug in the other direction.
  */
 export function buildReport(input: BuildReportInput): ExportReport {
   const issues = input.issues;
@@ -351,7 +406,7 @@ export function buildReport(input: BuildReportInput): ExportReport {
   let exitCode: number;
   if (input.failureExitCode !== undefined) {
     exitCode = input.failureExitCode;
-  } else if (input.strict && warnings.length > 0) {
+  } else if (input.strict && warnings.length + errors.length > 0) {
     exitCode = EXPORT_EXIT.STRICT_WARNINGS;
   } else {
     exitCode = EXPORT_EXIT.SUCCESS;

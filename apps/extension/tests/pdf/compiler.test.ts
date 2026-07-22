@@ -1,7 +1,12 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { ExportBlock } from "@atlcli/confluence/browser";
+import {
+  composeChapters,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNode,
+} from "@atlcli/confluence/browser";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
 import { formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
 import {
@@ -13,6 +18,7 @@ import {
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
+import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
 
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
@@ -45,10 +51,73 @@ function sourceBundle(main: string): PdfSourceBundle {
   return { main, template: ATLCLI_TYPST_TEMPLATE, assets: [], sourceMap: [], notes: [] };
 }
 
+function chapterNodes(count: number): ExportNode[] {
+  return Array.from({ length: count }, (_, index) => ({
+    kind: "page" as const,
+    pageId: `chapter-${index + 1}`,
+    title: `Chapter ${index + 1}`,
+    depth: 0,
+    effectiveDepth: 0,
+    parentId: null,
+    position: index,
+    blocks: [
+      {
+        type: "heading" as const,
+        level: 2 as const,
+        content: [{ type: "text" as const, text: `Topic ${index + 1}` }],
+      },
+      {
+        type: "paragraph" as const,
+        content: [
+          {
+            type: "text" as const,
+            text: `This is deterministic source content for chapter ${index + 1}. `.repeat(8),
+          },
+        ],
+      },
+    ],
+    notes: [],
+    meta: { labels: [], spaceKey: "TEST" },
+  }));
+}
+
+async function chapterBundle(count: number, title: string): Promise<PdfSourceBundle> {
+  const composed = composeChapters(chapterNodes(count));
+  const prepared = await preparePdfDocument(composed.blocks, {
+    resolve: async () => {
+      throw new Error("no assets in fixture");
+    },
+  });
+  return serializePdfDocument(prepared, {
+    metadata: {
+      title,
+      language: "en",
+      exporter: "atlcli",
+      exportedAt: new Date("2026-07-22T00:00:00Z"),
+    },
+  });
+}
+
 function anonymousText(length: number, special: Record<number, string> = {}): string {
   const characters = Array<string>(length).fill("x");
   for (const [offset, value] of Object.entries(special)) characters[Number(offset)] = value;
   return characters.join("");
+}
+
+function pdfOperatorColorHex(value: unknown): string | null {
+  const candidate = Array.isArray(value) && value.length === 1 ? value[0] : value;
+  if (typeof candidate === "string") {
+    const match = candidate.match(/^#([0-9a-f]{6})$/i);
+    return match ? `#${match[1]!.toUpperCase()}` : null;
+  }
+  if (!Array.isArray(candidate) && !ArrayBuffer.isView(candidate)) return null;
+  const channels = Array.from(candidate as ArrayLike<number>);
+  if (channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel))) return null;
+  const multiplier = channels.every((channel) => channel >= 0 && channel <= 1) ? 255 : 1;
+  return `#${channels
+    .map((channel) => Math.round(channel * multiplier).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
 }
 
 const DENSE_TABLE_LINK =
@@ -336,6 +405,250 @@ This is a real PDF.
     expect(new TextDecoder().decode(result.pdf)).toContain("https://atlcli.sh/");
     expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true, hasOutline: true });
   }, 30_000);
+
+  it("emits table-of-contents links that resolve to the rendered heading pages", async () => {
+    const blocks: ExportBlock[] = [
+      { type: "heading", level: 1, content: [{ type: "text", text: "Chapter One" }] },
+      { type: "paragraph", content: [{ type: "text", text: "First chapter body." }] },
+      { type: "pageBreak" },
+      { type: "heading", level: 1, content: [{ type: "text", text: "Chapter Two" }] },
+      { type: "paragraph", content: [{ type: "text", text: "Second chapter body." }] },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Clickable contents",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-21T00:00:00Z"),
+      },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+
+    // Parse the actual compiled bytes. A source assertion on `outline(...)`
+    // cannot prove that the PDF contains link annotations or that their named
+    // destinations resolve to real pages.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(result.pdf!),
+    });
+    const document = await task.promise;
+    try {
+      const internal: Array<{ sourcePage: number; destination: string }> = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        for (const annotation of await page.getAnnotations({ intent: "display" })) {
+          if (annotation.subtype === "Link" && typeof annotation.dest === "string") {
+            internal.push({ sourcePage: pageNumber, destination: annotation.dest });
+          }
+        }
+      }
+
+      expect(internal.map((link) => link.destination)).toEqual(
+        expect.arrayContaining(["chapter-one", "chapter-two"])
+      );
+      const targets = await Promise.all(
+        internal
+          .filter((link) => link.destination.startsWith("chapter-"))
+          .map(async (link) => {
+            const destination = await document.getDestination(link.destination);
+            expect(destination).not.toBeNull();
+            const ref = destination![0];
+            const pageIndex = Number.isInteger(ref) ? (ref as number) : await document.getPageIndex(ref);
+            return { sourcePage: link.sourcePage, targetPage: pageIndex + 1 };
+          })
+      );
+      expect(targets).toHaveLength(2);
+      expect(new Set(targets.map((target) => target.targetPage)).size).toBe(2);
+      expect(targets.every((target) => target.targetPage > target.sourcePage)).toBe(true);
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("compiles Confluence ri:url links in table prose into external PDF annotations", async () => {
+    const visibleUrl =
+      "https://obi.atlassian.net/wiki/x/ImKFFg/a/long/path/that/wraps/in/a/narrow/table/cell";
+    const labelledUrl = "https://obi.atlassian.net/wiki/x/CACFFg";
+    const storage =
+      '<table><tbody><tr><td><p>Integration Platform Team: ' +
+      `<ac:link><ri:url ri:value="${visibleUrl}"/>` +
+      `<ac:plain-text-link-body><![CDATA[${visibleUrl}]]></ac:plain-text-link-body></ac:link></p>` +
+      '<p>Documentation: <ac:link>' +
+      `<ri:url ri:value="${labelledUrl}"/>` +
+      '<ac:link-body>Platform <strong>documentation</strong></ac:link-body></ac:link></p>' +
+      "</td></tr></tbody></table>";
+    const walked = storageToBlocks(storage, { exporter: "pdf" });
+    expect(walked.notes).toEqual([]);
+
+    const prepared = await preparePdfDocument(walked.blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Inline link regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toMatch(
+      /#text\(fill: rgb\("#[0-9A-F]{6}"\)\)\[#underline\[#dense-link\(/
+    );
+    expect(bundle.main).toContain(`[#underline[#link("${labelledUrl}")`);
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    // Verify actual compiled bytes rather than only checking for Typst
+    // `#link(...)` source: PDF.js must expose both URI annotations.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const external: string[] = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        for (const annotation of await page.getAnnotations({ intent: "display" })) {
+          if (annotation.subtype === "Link" && typeof annotation.url === "string") {
+            external.push(annotation.url);
+          }
+        }
+      }
+      expect(external).toEqual(expect.arrayContaining([visibleUrl, labelledUrl]));
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("compiles Confluence inline background colors into painted PDF highlights", async () => {
+    const storage =
+      '<p><span style="background-color: #12AB34;">Green highlight</span> ' +
+      '<span style="color: #403294; background-color: #FEDCBA"><strong>Warm highlight</strong></span></p>';
+    const walked = storageToBlocks(storage, { exporter: "pdf" });
+    expect(walked.notes).toEqual([]);
+
+    const prepared = await preparePdfDocument(walked.blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Inline background regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toContain('#highlight(fill: rgb("#12AB34"))');
+    expect(bundle.main).toContain('#highlight(fill: rgb("#FEDCBA"))');
+
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    // Inspect the actual page-paint operators. This catches a serializer that
+    // merely emits accepted Typst syntax but loses the requested fills before
+    // they reach the compiled PDF bytes.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const colors = new Set<string>();
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const operators = await page.getOperatorList();
+        for (let index = 0; index < operators.fnArray.length; index += 1) {
+          if (operators.fnArray[index] !== pdfjs.OPS.setFillRGBColor) continue;
+          const color = pdfOperatorColorHex(operators.argsArray[index]);
+          if (color) colors.add(color);
+        }
+      }
+      expect(colors).toContain("#12AB34");
+      expect(colors).toContain("#FEDCBA");
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
+  it("keeps highlighted heading colors out of the PDF table of contents", async () => {
+    const highlight = "#12AB34";
+    const title = "Highlighted navigation title";
+    const blocks: ExportBlock[] = [
+      {
+        type: "heading",
+        level: 1,
+        content: [{ type: "text", text: title, color: "#403294", backgroundColor: highlight }],
+      },
+      { type: "paragraph", content: [{ type: "text", text: "Body text." }] },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Clean contents regression",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-22T00:00:00Z"),
+      },
+    });
+    expect(bundle.main).toContain(
+      '#atlcli-outline-title.update("Highlighted navigation title")#heading(level: 1, outlined: true)[#highlight(fill: rgb("#12AB34"))'
+    );
+
+    const compiler = await createCompiler();
+    const result = await compiler.compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const occurrences: Array<{ pageNumber: number; colors: Set<string> }> = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        const textContent = await page.getTextContent();
+        const text = textContent.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ");
+        if (!text.includes(title)) continue;
+
+        const colors = new Set<string>();
+        const operators = await page.getOperatorList();
+        for (let index = 0; index < operators.fnArray.length; index += 1) {
+          if (operators.fnArray[index] !== pdfjs.OPS.setFillRGBColor) continue;
+          const color = pdfOperatorColorHex(operators.argsArray[index]);
+          if (color) colors.add(color);
+        }
+        occurrences.push({ pageNumber, colors });
+      }
+
+      expect(occurrences).toHaveLength(2);
+      const [contentsPage, documentPage] = occurrences;
+      expect(contentsPage!.pageNumber).toBeLessThan(documentPage!.pageNumber);
+      expect(contentsPage!.colors).not.toContain(highlight);
+      expect(contentsPage!.colors).not.toContain("#403294");
+      expect(documentPage!.colors).toContain(highlight);
+      expect(documentPage!.colors).toContain("#403294");
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
 
   it("returns structured diagnostics for invalid Typst", async () => {
     const compiler = await createCompiler();
@@ -795,4 +1108,50 @@ This is a real PDF.
     expect(second.diagnostics).toEqual([]);
     expect(second.pdf).toEqual(first.pdf);
   }, 30_000);
+
+  it("compiles a preview and the full export with one real warm compiler instance", async () => {
+    const compiler = await createCompiler();
+    const previewBundle = await chapterBundle(1, "Warm preview");
+    const exportBundle = await chapterBundle(6, "Warm full export");
+
+    const preview = await compiler.compile(previewBundle);
+    const exported = await compiler.compile(exportBundle);
+
+    expect(preview.diagnostics).toEqual([]);
+    expect(exported.diagnostics).toEqual([]);
+    expect(preview.pdf).toBeDefined();
+    expect(exported.pdf).toBeDefined();
+
+    const previewInspection = validatePdfOutput(preview.pdf!);
+    const exportInspection = validatePdfOutput(exported.pdf!);
+    expect(previewInspection.tagged).toBe(true);
+    expect(exportInspection.tagged).toBe(true);
+    expect(exportInspection.pageCount).toBeGreaterThan(previewInspection.pageCount);
+  }, 60_000);
+
+  it("compiles a real multi-chapter bundle within the production scaled timeout", async () => {
+    const chapterCount = 12;
+    const compiler = await createCompiler();
+    const bundle = await chapterBundle(chapterCount, "Scaled multi-chapter export");
+    const timeoutContract = new ChromeWorkerCompilerHost({
+      createWorker: () => {
+        throw new Error("timeout calculation must not create a worker");
+      },
+    });
+    const budgetMs = timeoutContract.timeoutForPages(chapterCount);
+
+    const startedAt = performance.now();
+    const result = await compiler.compile(bundle);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(elapsedMs).toBeLessThan(budgetMs);
+    const inspection = validatePdfOutput(result.pdf!);
+    expect(inspection).toMatchObject({
+      tagged: true,
+      hasOutline: true,
+    });
+    expect(inspection.pageCount).toBeGreaterThanOrEqual(chapterCount);
+  }, 90_000);
 });

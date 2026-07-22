@@ -10,6 +10,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ScanView } from "../../entrypoints/sidepanel/TemplateSection.js";
 import type { ScanResult } from "@atlcli/docx/scan";
+import { I18nProvider } from "../../utils/i18n/context.js";
 
 function makeScan(hasContentPlaceholder: boolean): ScanResult {
   return {
@@ -37,6 +38,34 @@ describe("ScanView — content insertion point (spec 004 finding)", () => {
     expect(html).toContain("content-insertion-point");
     expect(html).toContain("$scroll.content");
     expect(html).toContain("appended before the final section break");
+  });
+});
+
+describe("ScanView — honest Word preview story", () => {
+  it("explains in English that the scan is not a simulated Word rendering", () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider locale="en">
+        <ScanView scan={makeScan(true)} explainWordRendering />
+      </I18nProvider>
+    );
+    expect(html).toContain("docx-preview-explanation");
+    expect(html).toContain("Word renders the final document");
+    expect(html).toContain("which template fields will be filled");
+  });
+
+  it("ships the same explanation in German", () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider locale="de">
+        <ScanView scan={makeScan(true)} explainWordRendering />
+      </I18nProvider>
+    );
+    expect(html).toContain("Die endgültige Darstellung entsteht in Word");
+    expect(html).toContain("welche Vorlagenfelder befüllt werden");
+  });
+
+  it("does not repeat the explanation in compact scan-only contexts", () => {
+    const html = renderToStaticMarkup(<ScanView scan={makeScan(true)} />);
+    expect(html).not.toContain("docx-preview-explanation");
   });
 });
 

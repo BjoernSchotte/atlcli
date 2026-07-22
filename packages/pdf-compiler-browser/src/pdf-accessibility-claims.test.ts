@@ -16,7 +16,7 @@
  * When an author writes no alt text the exporter substitutes the filename, so
  * the file still carries a well-formed `/Alt` and a naive conformance checker
  * sees nothing wrong — while a screen reader announces "chart-final-v2.png".
- * That gap is why the `pdf-image-missing-alt` audit exists, and why the page
+ * That gap is why the `image-missing-alt` audit exists, and why the page
  * must not claim more than "alt-text pass-through".
  */
 import { beforeAll, describe, expect, it } from "bun:test";
@@ -235,7 +235,7 @@ describe("PDF accessibility claims (spec 011 — pins the reference page)", () =
   }, 180_000);
 
   it("LIMIT of that claim: a missing alt becomes a filename, not an absent /Alt", async () => {
-    // This is why `pdf-image-missing-alt` exists. The file looks conformant —
+    // This is why `image-missing-alt` exists. The file looks conformant —
     // there IS an /Alt, so a checker that only tests for its presence passes —
     // while a screen reader reads out a build artifact's filename. The page
     // must therefore promise "pass-through", never "accessible alt text".

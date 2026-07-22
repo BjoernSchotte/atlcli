@@ -41,11 +41,14 @@ export default defineConfig({
             { label: 'Templates', link: '/confluence/templates/' },
             { label: 'Macros', link: '/confluence/macros/' },
             { label: 'Scroll Compatibility Macros', link: '/confluence/scroll-macros/' },
+            { label: 'Dynamic Macros', link: '/confluence/dynamic-macros/' },
             { label: 'Attachments', link: '/confluence/attachments/' },
             { label: 'Webhooks', link: '/confluence/webhooks/' },
             { label: 'Validation', link: '/confluence/validation/' },
             { label: 'Audit', link: '/confluence/audit/' },
             { label: 'Export', link: '/confluence/export/' },
+            { label: 'Export Template Library', link: '/confluence/export-templates/' },
+            { label: 'Macro Compatibility', link: '/confluence/macro-compatibility/' },
             { label: 'Ignore Patterns', link: '/confluence/ignore/' },
             { label: 'File Format', link: '/confluence/file-format/' },
             { label: 'Storage Format', link: '/confluence/storage/' },
@@ -74,6 +77,14 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Browser Extension',
+          collapsed: false,
+          items: [
+            { label: 'Overview', link: '/extension/' },
+            { label: 'Exporting from the panel', link: '/extension/export/' },
+          ],
+        },
+        {
           label: 'Recipes',
           collapsed: true,
           items: [
@@ -81,6 +92,7 @@ export default defineConfig({
             { label: 'Team Docs Sync', link: '/recipes/team-docs/' },
             { label: 'Sprint Reporting', link: '/recipes/sprint-reporting/' },
             { label: 'CI/CD Docs', link: '/recipes/ci-cd-docs/' },
+            { label: 'Export Automation', link: '/recipes/export-automation/' },
             { label: 'Issue Triage', link: '/recipes/issue-triage/' },
           ],
         },

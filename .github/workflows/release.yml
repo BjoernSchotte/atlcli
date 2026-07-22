@@ -11,7 +11,7 @@ on:
         type: string
 
 env:
-  BUN_VERSION: "1.3.5"
+  BUN_VERSION: "1.3.14"
 
 jobs:
   # Build one binary per target platform, all cross-compiled from Ubuntu via bun

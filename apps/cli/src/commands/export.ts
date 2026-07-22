@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { assertCliAuthSupported } from "./session-guard.js";
 import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import {
@@ -51,6 +51,41 @@ import {
   noteToIssue,
   type ExportOutcome,
 } from "./export-report.js";
+
+/**
+ * Usage error for a python-engine export with no `--template`. Only the python
+ * engine can hit it: `--engine ts` falls back to the bundled default template
+ * (spec 010 W3-D), and docxtpl has no equivalent to fall back to.
+ */
+const TEMPLATE_REQUIRED_MESSAGE =
+  "--template is required for --engine python (only --engine ts has a bundled default template).";
+
+/**
+ * `--template`, or its documented short form `-t`.
+ *
+ * `-t` is advertised in `--help` (`--template, -t`), in
+ * `docs/confluence/export.md`'s option table, and in worked examples in both
+ * — and was read NOWHERE. The effect was
+ * silent on the engine we ship: `--engine ts -t corporate.docx` exported with
+ * the BUNDLED DEFAULT template and reported `template-default-used`, which
+ * reads as "you passed no template". On `--engine python` it failed with
+ * "--template is required" while the user was looking at the template they had
+ * just passed. `--output`/`-o` had honoured its alias all along, which is what
+ * made the gap invisible in review.
+ *
+ * Both readers go through this pair so the alias cannot drift back apart: the
+ * DOCX path needs the VALUE, the `--format pdf` guard needs only PRESENCE (it
+ * rejects `--template` outright, and rejecting it for the long spelling only
+ * would have let `-t` through into a PDF export that silently ignored it).
+ */
+function templateFlag(flags: Record<string, string | boolean | string[]>): string | undefined {
+  return getFlag(flags, "template") ?? getFlag(flags, "t");
+}
+
+/** Whether `--template` (or `-t`) was passed at all. See {@link templateFlag}. */
+function hasTemplateFlag(flags: Record<string, string | boolean | string[]>): boolean {
+  return hasFlag(flags, "template") || hasFlag(flags, "t");
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -137,7 +172,7 @@ export async function handleExport(
   });
   if (notice) process.stderr.write(`${notice}\n`);
 
-  const templatePath = getFlag(flags, "template");
+  const templatePath = templateFlag(flags);
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
   let embedImages = !hasFlag(flags, "no-images");
   if (hasFlag(flags, "embed-images")) {
@@ -147,7 +182,14 @@ export async function handleExport(
     embedImages = false;
   }
   const mergeChildren = !hasFlag(flags, "no-merge"); // merge is default
-  const noTocPrompt = hasFlag(flags, "no-toc-prompt");
+  // `--no-toc-prompt` was named when the dirty flag was thought of as a TOC
+  // feature. It governs `w:updateFields`, which covers caption numbering,
+  // cross-references and running heads too, so the honest spelling is
+  // `--no-field-update-prompt`. The old name keeps working — it is documented,
+  // it is in people's scripts, and a flag that silently stops being recognized
+  // is worse than a flag with two names.
+  const noFieldUpdatePrompt =
+    hasFlag(flags, "no-field-update-prompt") || hasFlag(flags, "no-toc-prompt");
   // Spec 003 C4 progressive disclosure: keep scroll-only/scroll-ignore bodies
   // for debugging ("why is section X missing?"). Engine option:
   // exportControls "passthrough". ts single-page only for now — the tree/space
@@ -169,8 +211,21 @@ export async function handleExport(
     fail(opts, 1, ERROR_CODES.USAGE, "--no-live-macros requires --engine ts.");
   }
 
-  if (!templatePath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--template is required.");
+  // `--template` is OPTIONAL on `--engine ts`: `@atlcli/export-node` ships a
+  // deterministic default template with correct `$scroll.title` /
+  // `$scroll.exportdate` / `$scroll.content` placeholders, so the zero-config
+  // path produces a document with nothing unfilled. Requiring the flag is what
+  // pushed first-time ts users toward grabbing whatever `.docx` was at hand —
+  // including docxtpl templates this engine cannot fill (see the
+  // `template-foreign-placeholders` note). `--engine python` keeps requiring it:
+  // docxtpl has no bundled default to fall back to.
+  if (!templatePath && engine !== "ts") {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      TEMPLATE_REQUIRED_MESSAGE
+    );
   }
 
   if (!outputPath) {
@@ -180,10 +235,19 @@ export async function handleExport(
   // Get Confluence client (needed for profile name in template resolution)
   const { client, profile } = await getClient(flags, opts);
 
-  // Resolve template path (with profile for hierarchical lookup)
-  const resolvedTemplatePath = await resolveTemplatePath(templatePath, profile.name);
-  if (!existsSync(resolvedTemplatePath)) {
-    fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${resolvedTemplatePath}`);
+  // Resolve template path (with profile for hierarchical lookup). Undefined
+  // means "use the bundled default" — only reachable on the ts engine.
+  let resolvedTemplatePath: string | undefined;
+  if (templatePath) {
+    resolvedTemplatePath = await resolveTemplatePath(templatePath, profile.name);
+    if (!existsSync(resolvedTemplatePath)) {
+      fail(opts, 1, ERROR_CODES.USAGE, `Template not found: ${resolvedTemplatePath}`);
+    }
+  } else if (!opts.json) {
+    // The report carries a `template-default-used` note, but the text-mode
+    // summary line shows only warning COUNTS — so say it here too. Never in
+    // `--json` mode: stderr is the progress JSONL channel there.
+    process.stderr.write("hint: no --template given; using the bundled default template.\n");
   }
 
   const baseUrl = getConfluenceBaseUrl(profile);
@@ -202,6 +266,7 @@ export async function handleExport(
       outputPath,
       embedImages,
       liveMacros: !noLiveMacros,
+      noFieldUpdatePrompt,
       strict: hasFlag(flags, "strict"),
       opts,
     });
@@ -238,6 +303,7 @@ export async function handleExport(
         embedImages,
         keepIgnored,
         liveMacros: !noLiveMacros,
+        noFieldUpdatePrompt,
         strict: hasFlag(flags, "strict"),
         opts,
       });
@@ -259,6 +325,19 @@ export async function handleExport(
       );
     }
     return;
+  }
+
+  // Every ts path has returned; only the python engine reaches here, and it has
+  // no bundled default. The usage check above already rejected a missing
+  // `--template` for this engine — this restates the invariant for the type
+  // system (and would fail honestly rather than crash if that check ever moved).
+  if (!templatePath || !resolvedTemplatePath) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      TEMPLATE_REQUIRED_MESSAGE
+    );
   }
 
   // Fetch page data (with metadata for export)
@@ -453,7 +532,8 @@ export async function handleExport(
     macroChildren: childrenMacro,
     macroContentByLabel: contentByLabelData,
     images,  // Embedded images keyed by filename
-    noTocPrompt,
+    // The python renderer's own key for this flag (docx_renderer.py).
+    noTocPrompt: noFieldUpdatePrompt,
   };
 
   // Resolve output path
@@ -478,8 +558,11 @@ export async function handleExport(
     },
   };
 
-  // Add note when --no-toc-prompt is used and document has TOC
-  if (noTocPrompt && result.hasToc) {
+  // Python engine only. `--no-field-update-prompt` / `--no-toc-prompt` reaches
+  // the renderer as `pageData.noTocPrompt`, which suppresses the dirty flag when
+  // a TOC is present (docx_renderer.py). The ts engine reports the equivalent
+  // fact through the engine's own `field-refresh-suppressed` note.
+  if (noFieldUpdatePrompt && result.hasToc) {
     response.note = "Document contains TOC. Update manually: right-click TOC → Update Field";
   }
 
@@ -514,7 +597,7 @@ async function handlePdfExport(
     }),
   });
 
-  if (hasFlag(flags, "template")) {
+  if (hasTemplateFlag(flags)) {
     return emitReportOutcome(
       usage("--template is DOCX-only; PDF templates arrive via a later release. Drop --template with --format pdf."),
       opts
@@ -1041,13 +1124,16 @@ interface TsEngineArgs {
   pagePromise: Promise<ConfluencePageDetails>;
   pageId: string;
   baseUrl: string;
-  resolvedTemplatePath: string;
+  /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
+  resolvedTemplatePath: string | undefined;
   outputPath: string;
   embedImages: boolean;
   /** `--keep-ignored`: run export-control macros in passthrough mode (spec 003). */
   keepIgnored?: boolean;
   /** spec 004: `false` under `--no-live-macros` suppresses port-backed macros. */
   liveMacros: boolean;
+  /** `--no-field-update-prompt` / `--no-toc-prompt`: never set `w:updateFields`. */
+  noFieldUpdatePrompt: boolean;
   strict: boolean;
   opts: OutputOptions;
 }
@@ -1081,7 +1167,13 @@ async function buildTsEngineMacroOptions(
   profile: Profile,
   client: ConfluenceClient,
   targetEngine: "docx" | "pdf",
-  live: boolean
+  live: boolean,
+  /**
+   * `composeChapters(...).chapterAnchorById` for a tree/space export — see
+   * `BuildMacroOptionsArgs.chapterAnchorById`. Absent on the single-page path,
+   * where nothing but the page itself is in scope.
+   */
+  chapterAnchorById?: ReadonlyMap<string, string>
 ) {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -1093,6 +1185,7 @@ async function buildTsEngineMacroOptions(
     jira: new JiraClient(profile),
     targetEngine,
     live,
+    ...(chapterAnchorById ? { chapterAnchorById } : {}),
   });
   // SSRF enforcement (spec 004): export_view-derived external image refs carry
   // trust:"export-view"; route them through the policy-checked external fetcher
@@ -1117,27 +1210,31 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     embedImages,
     keepIgnored,
     liveMacros,
+    noFieldUpdatePrompt,
     strict,
     opts,
   } = args;
   // Everything local (engine import + template bytes) loads WHILE the page
   // round-trip is in flight. The much larger rasterizer wasm/fonts are gated
   // on the page storage below.
-  const { readFile, stat } = await import("node:fs/promises");
+  // A path reads from disk; no path resolves to the bundled default template and
+  // carries the `template-default-used` note (spec 010 W3-D). Chained off the
+  // module import so it still runs concurrently with the engine imports and the
+  // page round-trip, exactly as the inline `readFile`/`stat` pair used to.
+  const internalsPromise = import("./export-internals.js");
+  const templatePromise = internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath));
   const [
     { runExport, fileOutputSink },
     { buildGetIncludedPage },
     { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
-    templateBytesRaw,
-    templateStat,
+    template,
   ] = await Promise.all([
     import("@atlcli/docx"),
     import("@atlcli/docx/internal"),
-    import("./export-internals.js"),
-    readFile(resolvedTemplatePath),
-    stat(resolvedTemplatePath),
+    internalsPromise,
+    templatePromise,
   ]);
-  const templateBytes = new Uint8Array(templateBytesRaw);
+  const templateBytes = template.bytes;
   const assetCache = createAssetByteCache(baseUrl);
 
   const cliNotes: string[] = [];
@@ -1234,7 +1331,17 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
   // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
   // only happens when an account-id-only mention is actually present.
-  const walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+  //
+  // `exportControls` MUST be threaded into this walk, not only into `runExport`
+  // below: the engine applies its own control policy only when it does the walk
+  // itself, and this pre-walk means it never does. Omitting it here silently
+  // dropped every `--keep-ignored` body (spec 003) from the moment this
+  // pre-walk was added — the engine-level option at :1354 was addressing a walk
+  // that no longer happened.
+  const walked = storageToBlocks(page.storage ?? "", {
+    exporter: "word",
+    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+  });
   const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
   const tsSourceNotes = [...walked.notes];
   if (mention.unresolved > 0) {
@@ -1252,12 +1359,12 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       details: page,
       blocks: mention.blocks,
       sourceNotes: tsSourceNotes,
-      template: {
-        name: basename(resolvedTemplatePath),
-        modificationDate: templateStat.mtime,
-      },
+      template: template.meta,
       embedImages,
       ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+      // Omitted (not `"auto"`) so the engine's own default stays the single
+      // definition of the default policy.
+      ...(noFieldUpdatePrompt ? { updateFields: "never" as const } : {}),
       deps: {
         getSpace: async (key: string) => (await spaceInfo(key)).space,
         getCurrentUser: currentUser,
@@ -1311,7 +1418,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
       report: buildReport({
         format: "docx",
         engine: "ts",
-        sourcePages: [{ id: page.id, title: page.title, notes: [] }],
+        // Per-page provenance for the one page in scope, projected from the
+        // engine's RECONCILED source notes (spec 010) — the same list the PDF
+        // path projects, so both formats describe this page identically. Never
+        // project the pre-export walk: its `macro-not-rendered` is provisional
+        // and contradicts the aggregate the moment a macro renders live.
+        sourcePages: [
+          {
+            id: page.id,
+            title: page.title,
+            notes: (report.sourceNotes ?? []).map((n) => noteToIssue(n, "compose", page.id)),
+          },
+        ],
         outputDetails: [
           {
             output: resolvedOutputPath,
@@ -1321,6 +1439,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
           },
         ],
         issues: [
+          ...template.notes.map((n) => noteToIssue(n, "prepare")),
           ...report.notes.map((n) => noteToIssue(n, "prepare")),
           ...cliNotes.map((message) => ({
             code: "cli-note",
@@ -1350,11 +1469,14 @@ interface TreeEngineArgs {
   profile: Profile;
   request: ParsedExportRequest;
   baseUrl: string;
-  resolvedTemplatePath: string;
+  /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
+  resolvedTemplatePath: string | undefined;
   outputPath: string;
   embedImages: boolean;
   /** spec 004: `false` under `--no-live-macros`. */
   liveMacros: boolean;
+  /** `--no-field-update-prompt` / `--no-toc-prompt`: never set `w:updateFields`. */
+  noFieldUpdatePrompt: boolean;
   strict: boolean;
   opts: OutputOptions;
 }
@@ -1446,6 +1568,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     outputPath,
     embedImages,
     liveMacros,
+    noFieldUpdatePrompt,
     strict,
     opts,
   } = args;
@@ -1513,16 +1636,16 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     // convention single-page export uses.
     const rootDetails = await client.getPageDetails(rootId, { signal: controller.signal });
 
-    // Load engine + template + optional rasterizer.
-    const { readFile, stat } = await import("node:fs/promises");
-    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, templateBytesRaw, templateStat] =
+    // Load engine + template + optional rasterizer. No `--template` resolves to
+    // the bundled default (spec 010 W3-D), with a `template-default-used` note.
+    const internalsPromise = import("./export-internals.js");
+    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, template] =
       await Promise.all([
         import("@atlcli/docx"),
-        import("./export-internals.js"),
-        readFile(resolvedTemplatePath),
-        stat(resolvedTemplatePath),
+        internalsPromise,
+        internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath)),
       ]);
-    const templateBytes = new Uint8Array(templateBytesRaw);
+    const templateBytes = template.bytes;
     const assetCache = createAssetByteCache(baseUrl);
 
     // Resolve @mentions across the WHOLE composed document with one deduped bulk
@@ -1560,7 +1683,13 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     }
 
     const resolvedOutputPath = resolve(outputPath);
-    const treeMacroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
+    const treeMacroSetup = await buildTsEngineMacroOptions(
+      profile,
+      client,
+      "docx",
+      liveMacros,
+      composed.chapterAnchorById
+    );
     const docxReport = await runExport(
       {
         details: rootDetails,
@@ -1569,11 +1698,11 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
         complete: treeResult.complete,
         signal: controller.signal,
         onProgress,
-        template: {
-          name: basename(resolvedTemplatePath),
-          modificationDate: templateStat.mtime,
-        },
+        template: template.meta,
         embedImages,
+        // Omitted (not `"auto"`) so the engine's own default stays the single
+        // definition of the default policy.
+        ...(noFieldUpdatePrompt ? { updateFields: "never" as const } : {}),
         deps: {
           getSpace: async (key: string) => (await client.getSpaceWithIcon(key)).space,
           getCurrentUser: () => client.getCurrentUser(),
@@ -1631,6 +1760,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
             },
           ],
           issues: [
+            ...template.notes.map((n) => noteToIssue(n, "prepare")),
             ...docxReport.notes.map((n) => noteToIssue(n, "prepare")),
             ...cliNotes.map((message) => ({
               code: "cli-note",
@@ -1773,20 +1903,35 @@ async function callExportSubprocess(
 }
 
 function exportHelp(): string {
-  return `atlcli wiki export <page> --template <name> --output <path>
+  return `atlcli wiki export <page> [--template <name>] --output <path>
 
-Export a Confluence page to DOCX using a Word template.
+Export a Confluence page to DOCX using a Word template (--engine ts falls back
+to a bundled default template when --template is omitted).
 
 Arguments:
   <page>              Page reference (ID, SPACE:Title, or URL)
 
 Options:
   --format <fmt>      Output format: "docx" (default) or "pdf"
-  --template, -t      Template name or path (DOCX only; required for DOCX)
+  --template, -t      Template name or path (DOCX only). Required with
+                      --engine python; OPTIONAL with --engine ts, which falls
+                      back to a bundled default template (page title, export
+                      date, page body) and reports which template it used.
+                      The ts engine fills $scroll.* placeholders only — a
+                      docxtpl/Jinja template ({{ … }}, {% … %}) exports with
+                      those left as literal text and a warning note.
   --output, -o        Output file path (required, or use --out-dir for PDF)
   --no-images         Do not embed images from page attachments (default embeds)
   --no-merge          Keep children as separate array (for loops in templates)
-  --no-toc-prompt     Disable TOC dirty flag (Word won't prompt to update fields)
+  --no-field-update-prompt
+                      Never ask Word to refresh fields on open. A table of
+                      contents, caption numbers and cross-references then show
+                      placeholder or stale text until refreshed by hand
+                      (select all, F9); the report says so. Without this flag
+                      the prompt appears only when the document actually has a
+                      field whose refresh changes something — a document whose
+                      only fields are hyperlinks never prompts.
+  --no-toc-prompt     Alias for --no-field-update-prompt (original spelling)
   --keep-ignored      Keep scroll-only/scroll-ignore content for debugging
                       (--engine ts, single page; export is marked in the report)
   --no-live-macros    Deterministic export: skip live (Jira/export_view/attachment)
@@ -1862,6 +2007,8 @@ Template Resolution:
   2. Project: .atlcli/templates/confluence/<name>.docx
   3. Profile: ~/.atlcli/profiles/<profile>/templates/confluence/<name>.docx
   4. Global: ~/.atlcli/templates/confluence/<name>.docx
+  With --engine ts and no --template at all: the bundled default template
+  (reported as the info note "template-default-used").
 
 Template Management:
   atlcli wiki export template list                    List available templates
@@ -1869,6 +2016,9 @@ Template Management:
   atlcli wiki export template delete <name> --confirm
 
 Examples:
+  # Zero-config: one page to DOCX with the bundled default template
+  atlcli wiki export 12345 --output page.docx --engine ts
+
   # Minimal: one page tree to a single DOCX
   atlcli wiki export 12345 --template corporate --output handbook.docx --engine ts --scope tree
 
