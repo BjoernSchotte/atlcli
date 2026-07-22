@@ -1525,7 +1525,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
 
 #### Merge ledger
 
-- [ ] **PR-A — Contract kernel and measurements** (`T7.1`)
+- [x] **PR-A — Contract kernel and measurements** (`T7.1`)
   - PR: [#79](https://github.com/BjoernSchotte/atlcli/pull/79)
   - Scope: baseline artifacts; `@atlcli/export-jobs`; schemas, reducer, leases,
     fencing, scheduling, retention, badge projection, in-memory adapters, package
@@ -1534,7 +1534,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     Retry/Run-again tests pass; 50-/500-page pre-change measurements are attached
     with their reproducible command, fixture, environment, and raw result.
 
-- [ ] **PR-B — Bounded spool and checkpointed source pipeline** (`T7.2`)
+- [x] **PR-B — Bounded spool and checkpointed source pipeline** (`T7.2`)
   - PR: [#80](https://github.com/BjoernSchotte/atlcli/pull/80)
   - Scope: structural spool/artifact ports, chunk semantics, discovery cursor,
     ordered page/block checkpoints, asset streaming, reservations, backpressure,
@@ -1543,7 +1543,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     slots exert backpressure; exact-owned buffer, quota, cancellation, checkpoint,
     staged-artifact crash, and orphan-cleanup tests pass.
 
-- [ ] **PR-C — PDF job executor** (`T7.2`)
+- [x] **PR-C — PDF job executor** (`T7.2`)
   - PR: [#81](https://github.com/BjoernSchotte/atlcli/pull/81)
   - Scope: `createPdfExportJobExecutor`, capture sink, ready-to-render manifest,
     Typst render reservation, validation/report staging, cancellation, and render
@@ -1552,7 +1552,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     harness; compiler loss resumes from `ready-to-render` at most once; no second
     user-visible compile job is introduced.
 
-- [ ] **PR-D — TypeScript DOCX job executor** (`T7.2`)
+- [x] **PR-D — TypeScript DOCX job executor** (`T7.2`)
   - PR: [#82](https://github.com/BjoernSchotte/atlcli/pull/82)
   - Scope: `createTypescriptDocxExportJobExecutor`, pinned template refs, capture
     sink, ordered PizZip/docxtemplater render, raster ports, reservation,
