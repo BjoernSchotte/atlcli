@@ -8,7 +8,9 @@
  */
 import React from "react";
 import type { PdfExportReport } from "@atlcli/pdf/browser";
+import { CircleCheck } from "lucide-react";
 import { useT } from "../../utils/i18n/context.js";
+import { ExportNoteGroups } from "./ExportNoteGroups.js";
 import { formatDuration } from "./format.js";
 import { MacroOutcomeSummary } from "./MacroOutcomeSummary.js";
 
@@ -17,15 +19,20 @@ export function PdfReportView({ report }: { report: PdfExportReport }): React.JS
   return (
     <div
       data-testid="pdf-report"
-      className="mt-2 rounded-md bg-success/15 p-2 text-xs"
+      className="mt-2 rounded-md border bg-card p-2.5 text-xs text-card-foreground"
     >
-      <strong>{report.filename}</strong>
-      <div>
-        {formatDuration(report.timings.totalMs)} ·{" "}
-        {t("pdf.report.summary", {
-          images: report.embeddedImages,
-          diagrams: report.renderedDiagrams,
-        })}
+      <div className="flex items-start gap-2">
+        <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
+        <div className="min-w-0">
+          <strong className="block truncate" title={report.filename}>{report.filename}</strong>
+          <div>
+            {formatDuration(report.timings.totalMs)} ·{" "}
+            {t("pdf.report.summary", {
+              images: report.embeddedImages,
+              diagrams: report.renderedDiagrams,
+            })}
+          </div>
+        </div>
       </div>
       <div aria-label={t("pdf.report.timingsLabel")} className="mt-0.5 text-muted-foreground">
         {t("pdf.report.timings", {
@@ -35,18 +42,7 @@ export function PdfReportView({ report }: { report: PdfExportReport }): React.JS
         })}
       </div>
       <MacroOutcomeSummary notes={report.notes} />
-      {report.notes.length > 0 && (
-        <details className="mt-1">
-          <summary className="cursor-pointer">
-            {t("pdf.report.notes", { count: report.notes.length })}
-          </summary>
-          <ul className="m-0 mt-1 list-disc pl-4">
-            {report.notes.map((note, index) => (
-              <li key={`${note.code}-${index}`}>{note.message}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <ExportNoteGroups notes={report.notes} />
     </div>
   );
 }

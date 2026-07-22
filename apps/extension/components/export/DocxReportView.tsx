@@ -13,29 +13,23 @@
  */
 import React from "react";
 import type { ExportReport } from "@atlcli/docx/browser";
+import { CircleCheck } from "lucide-react";
 import { useT } from "../../utils/i18n/context.js";
-import type { MessageKey } from "../../utils/i18n/messages.js";
-import { cn } from "../ui/utils.js";
+import { ExportNoteGroups } from "./ExportNoteGroups.js";
 import { MacroOutcomeSummary } from "./MacroOutcomeSummary.js";
-
-const NOTE_LEVELS = [
-  { level: "warning", labelKey: "docx.report.warnings", className: "text-warning" },
-  { level: "info", labelKey: "docx.report.notes", className: "text-muted-foreground" },
-] as const satisfies readonly { level: string; labelKey: MessageKey; className: string }[];
 
 export function ReportView({ report }: { report: ExportReport }): React.JSX.Element {
   const t = useT();
-  const groups = new Map<string, ExportReport["notes"]>();
-  for (const note of report.notes) {
-    const level = note.level === "warning" ? "warning" : "info";
-    const bucket = groups.get(level) ?? [];
-    bucket.push(note);
-    groups.set(level, bucket);
-  }
 
   return (
-    <div data-testid="export-report" className="mt-2.5 rounded-md bg-muted p-2 text-xs">
-      <strong>{t("docx.report.title")}</strong> — {report.filename}
+    <div data-testid="export-report" className="mt-2.5 rounded-md border bg-card p-2.5 text-xs text-card-foreground">
+      <div className="flex items-start gap-2">
+        <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
+        <div className="min-w-0">
+          <strong>{t("docx.report.title")}</strong>
+          <div className="truncate" title={report.filename}>{report.filename}</div>
+        </div>
+      </div>
       <ul className="m-0 mt-1.5 list-disc pl-4">
         <li>{t("docx.report.resolved", { count: report.resolvedCount })}</li>
         {report.unsupportedNames.length > 0 && (
@@ -65,23 +59,7 @@ export function ReportView({ report }: { report: ExportReport }): React.JSX.Elem
       </ul>
 
       <MacroOutcomeSummary notes={report.notes} />
-
-      {NOTE_LEVELS.map(({ level, labelKey, className }) => {
-        const notes = groups.get(level);
-        if (!notes || notes.length === 0) return null;
-        return (
-          <div key={level} data-testid={`report-notes-${level}`} className="mt-2">
-            <div className={cn("font-semibold", className)}>{t(labelKey, { count: notes.length })}</div>
-            <ul className="m-0 mt-0.5 list-disc pl-4">
-              {notes.map((note, index) => (
-                <li key={`${note.code}-${index}`} className={className}>
-                  {note.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+      <ExportNoteGroups notes={report.notes} />
     </div>
   );
 }
