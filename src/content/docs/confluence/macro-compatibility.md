@@ -1,6 +1,6 @@
 ---
 title: "Macro compatibility"
-description: "Which Confluence macros survive an export, what each engine does with them, and the note each degradation records"
+description: "Which Confluence macros survive DOCX and PDF export, and which note each degradation records"
 ---
 
 # Macro compatibility
@@ -8,14 +8,14 @@ description: "Which Confluence macros survive an export, what each engine does w
 One table to answer one question: **if this macro is on the page, what comes out
 of the export?**
 
-The answer depends on which engine renders the document, so every row below is
-split by engine. Where a macro degrades, the note code it records is named — a
+The answer depends on the output format, so every row below is split by format.
+Where a macro degrades, the note code it records is named — a
 missing section always has an explanation in the report, never silence.
 
 ## On this page
 
 - [Prerequisites](#prerequisites)
-- [The three render paths](#the-three-render-paths)
+- [The two render paths](#the-two-render-paths)
 - [Compatibility macros](#compatibility-macros)
 - [Structural macros](#structural-macros)
 - [Dynamic macros](#dynamic-macros)
@@ -29,49 +29,34 @@ missing section always has an explanation in the report, never silence.
 
 - An export route: `atlcli wiki export` or the
   [browser extension](/extension/export/).
-- For anything below marked *ts only*: `--engine ts` on a DOCX export. PDF has a
-  single engine and always takes the modern path.
+- DOCX uses the TypeScript engine; PDF uses the Typst/WASM engine.
 
-## The three render paths
+## The two render paths
 
 | Path | How to get it | Pipeline |
 |------|---------------|----------|
 | **PDF** | `--format pdf`, or **Export to PDF** in the panel | storage → `ExportBlock[]` → Typst |
-| **DOCX ts** | `--engine ts`, or **Export to Word** in the panel | storage → `ExportBlock[]` → OOXML |
-| **DOCX python** | `--engine python` (today's CLI default) | storage → Markdown → docxtpl |
+| **DOCX** | default CLI format, or **Export to Word** in the panel | storage → `ExportBlock[]` → OOXML |
 
-**PDF and DOCX ts share the storage walker.** They see the same blocks and the
-same macro resolution; they differ only in how a block is drawn. DOCX python is
-a separate pipeline that converts to Markdown first, and Markdown has no way to
-express most of what these macros mean.
-
-:::caution[`--engine python` does not implement macro semantics]
-On the python path every `scroll-*` macro — and every macro the storage walker
-would otherwise resolve — becomes a placeholder line such as
-`*[scroll-title macro]*`. **Content inside the macro body goes with it.** A table
-wrapped in `scroll-title` for its caption, or a paragraph kept for the Word
-export by `scroll-only`, is not in the output at all.
-
-This is the strongest single reason to prefer `--engine ts`, which is
-[scheduled to become the default](/confluence/export/#migration-ts-will-become-the-default-engine).
-:::
+**PDF and DOCX share the storage walker.** They see the same blocks and macro
+resolution; they differ only in how a block is drawn.
 
 ## Compatibility macros
 
 Macros that control what an export contains and how it is laid out. Full
 behaviour in [Scroll compatibility macros](/confluence/scroll-macros/).
 
-| Storage name | PDF | DOCX ts | DOCX python |
-|--------------|-----|---------|-------------|
-| `scroll-only` | Keeps or drops the body per the `exporter` parameter (`pdf` matches) | Same rule, `word` matches | Placeholder; **body lost** |
-| `scroll-ignore` | Drops the body (per `exporter`) | Same rule | Placeholder; **body lost** |
-| `scroll-only-inline` | Inline variant of the above | Inline variant | Placeholder |
-| `scroll-ignore-inline` | Inline variant of the above | Inline variant | Placeholder |
-| `scroll-pagebreak` | `#pagebreak(weak: true)` | `<w:br w:type="page"/>` | Placeholder; no break |
-| `scroll-landscape` | Block-scoped `#set page(flipped: true)` | Section sandwich using the template's own page size | Placeholder; no orientation change |
-| `scroll-portrait` | Flips back to portrait, even inside a landscape document | Section sandwich back to portrait | Placeholder; no orientation change |
-| `scroll-title` | `#figure(caption: …, kind: …)` with Typst counters | `Caption`-styled paragraph with a `SEQ` field, numbered in document order | Placeholder; **captioned content lost** |
-| any other `scroll-*` | Content kept, warning note | Content kept, warning note | Placeholder |
+| Storage name | PDF | DOCX |
+|--------------|-----|------|
+| `scroll-only` | Keeps or drops the body per the `exporter` parameter (`pdf` matches) | Same rule, `word` matches |
+| `scroll-ignore` | Drops the body (per `exporter`) | Same rule |
+| `scroll-only-inline` | Inline variant of the above | Inline variant |
+| `scroll-ignore-inline` | Inline variant of the above | Inline variant |
+| `scroll-pagebreak` | `#pagebreak(weak: true)` | `<w:br w:type="page"/>` |
+| `scroll-landscape` | Block-scoped `#set page(flipped: true)` | Section sandwich using the template's own page size |
+| `scroll-portrait` | Flips back to portrait, even inside a landscape document | Section sandwich back to portrait |
+| `scroll-title` | `#figure(caption: …, kind: …)` with Typst counters | `Caption`-styled paragraph with a `SEQ` field, numbered in document order |
+| any other `scroll-*` | Content kept, warning note | Content kept, warning note |
 
 Two engine differences are worth knowing rather than discovering:
 
@@ -90,16 +75,16 @@ Two engine differences are worth knowing rather than discovering:
 Converted directly by the storage walker. These never reach the macro resolver
 and never make a network call.
 
-| Storage name | PDF | DOCX ts | DOCX python |
-|--------------|-----|---------|-------------|
-| `info`, `note`, `warning`, `tip`, `panel` | Callout block | Callout block | Styled panel box |
-| `code`, `noformat` | Syntax-highlighted code block | Syntax-highlighted code block | Code block |
-| `expand` | Body rendered inline (a document cannot collapse) | Body rendered inline | Styled box with the title and body |
-| `status` | Status badge | Status badge | Coloured text |
-| `anchor` | Link target | Bookmark | No bookmark |
-| `multiexcerpt`, `multiexcerpt-macro` | Body rendered in place | Body rendered in place | Body rendered in place |
-| `toc` | Computed outline | Word `TOC` field | Word `TOC` field |
-| ```` ```mermaid ```` fences | Vector SVG; unsupported types degrade to source | Vector SVG with a PNG fallback; unsupported types degrade to source | Code block |
+| Storage name | PDF | DOCX |
+|--------------|-----|------|
+| `info`, `note`, `warning`, `tip`, `panel` | Callout block | Callout block |
+| `code`, `noformat` | Syntax-highlighted code block | Syntax-highlighted code block |
+| `expand` | Body rendered inline (a document cannot collapse) | Body rendered inline |
+| `status` | Status badge | Status badge |
+| `anchor` | Link target | Bookmark |
+| `multiexcerpt`, `multiexcerpt-macro` | Body rendered in place | Body rendered in place |
+| `toc` | Computed outline | Word `TOC` field |
+| ```` ```mermaid ```` fences | Vector SVG; unsupported types degrade to source | Vector SVG with a PNG fallback; unsupported types degrade to source |
 
 Mermaid support covers **flowchart, state, sequence, class, ER and XY chart**.
 Any other type, and any diagram that fails to render, becomes a readable source
@@ -111,24 +96,24 @@ Macros whose content lives somewhere other than the page. "Live" renderers make
 a request; "Pure" ones read only what has already been fetched. Full behaviour in
 [Exporting pages with dynamic macros](/confluence/dynamic-macros/).
 
-| Storage name | Kind | PDF | DOCX ts | DOCX python |
-|--------------|------|-----|---------|-------------|
-| `jira`, `jiraissues` | Live | Issue table | Issue table | Placeholder |
-| `data-datasource` links (issue tables, content lists) | Live | Themed table, 100-row cap | Themed table, 100-row cap | Link only |
-| `drawio`, `inc-drawio`, `drawio-sketch`, `gliffy` | Live | Preview image | Preview image | Placeholder |
-| `include` | Live | Included body | Included body | Placeholder |
-| `excerpt-include` | Live | Included excerpt | Included excerpt | Placeholder |
-| `excerpt` | Pure | Body in place | Body in place | Body in place |
-| `children` | Live | Child-page list | Child-page list | Expanded from a `:::children` fence |
-| `detailssummary` | Live | Report table | Report table | Placeholder |
-| `multiexcerpt-include-macro`, `multiexcerpt-include` | Live | Included body | Included body | Placeholder |
-| `scroll-tablelayout`, `scroll-tablelayout-macro` | Pure | Applied to the table | Applied to the table | Ignored |
-| anything else | Live | `export_view` fallback, then placeholder | `export_view` fallback, then placeholder | Placeholder |
+| Storage name | Kind | PDF | DOCX |
+|--------------|------|-----|------|
+| `jira`, `jiraissues` | Live | Issue table | Issue table |
+| `data-datasource` links (issue tables, content lists) | Live | Themed table, 100-row cap | Themed table, 100-row cap |
+| `drawio`, `inc-drawio`, `drawio-sketch`, `gliffy` | Live | Preview image | Preview image |
+| `include` | Live | Included body | Included body |
+| `excerpt-include` | Live | Included excerpt | Included excerpt |
+| `excerpt` | Pure | Body in place | Body in place |
+| `children` | Live | Child-page list | Child-page list |
+| `detailssummary` | Live | Report table | Report table |
+| `multiexcerpt-include-macro`, `multiexcerpt-include` | Live | Included body | Included body |
+| `scroll-tablelayout`, `scroll-tablelayout-macro` | Pure | Applied to the table | Applied to the table |
+| anything else | Live | `export_view` fallback, then placeholder | `export_view` fallback, then placeholder |
 
 **Turning the live renderers off** makes an export deterministic and free of
 additional Jira / `export_view` / attachment-lookup calls:
 
-- CLI: `--no-live-macros` (requires `--engine ts`).
+- CLI: `--no-live-macros`.
 - Panel: clear **Resolve dynamic macros (contacts Jira/Confluence)**.
 
 Pure renderers keep running either way, and neither switch is an offline mode —
@@ -158,7 +143,7 @@ CLI resolve identically. What differs is the surrounding controls:
 | Control | CLI | Panel |
 |---------|-----|-------|
 | Disable live renderers | `--no-live-macros` | **Resolve dynamic macros** toggle |
-| Keep `scroll-only` / `scroll-ignore` bodies for debugging | `--keep-ignored` (DOCX ts, single page) | Not available |
+| Keep `scroll-only` / `scroll-ignore` bodies for debugging | `--keep-ignored` (DOCX, single page) | Not available |
 | Read the note codes below | `--json` → `issues[]` / `notesByCode` | Report summary under the export button |
 
 `--keep-ignored` is a debugging aid: it keeps content the author marked for
@@ -198,8 +183,6 @@ atlcli wiki export 12345678 --format pdf -o out.pdf --json \
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Every macro is a `*[… macro]*` placeholder | Running `--engine python` | Add `--engine ts`, or export as PDF |
-| A captioned table vanished | `scroll-title` on the python path swallows its body | Use `--engine ts` or PDF |
 | Content is missing and you cannot see why | A `scroll-ignore`, or a `scroll-only` aimed at the other format | Check the report for `scroll-*-applied`; confirm with `--keep-ignored` |
 | A page break did nothing | It sits inside a table cell or callout | See `pagebreak-suppressed-in-container`; move it to body level |
 | An orientation region did not flip | Same container restriction | See `orientation-suppressed-in-container` |

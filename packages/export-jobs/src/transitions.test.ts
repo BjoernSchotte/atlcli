@@ -119,6 +119,28 @@ describe("state transitions", () => {
     }
   });
 
+  it("records a queued host preflight failure as interrupted without forging a lease", () => {
+    const current = snapshot("queued");
+    const result = transitionExportJob(current, {
+      expectedRevision: current.revision,
+      to: "interrupted",
+      at: 20,
+      error: {
+        code: "host.replay-start-failed",
+        message: "Profile is unavailable.",
+        category: "auth",
+        retryable: true,
+        occurredAt: 20,
+      },
+    });
+    expect(result).toMatchObject({
+      state: "interrupted",
+      finishedAt: 20,
+      error: { code: "host.replay-start-failed" },
+    });
+    expect(result.lease).toBeUndefined();
+  });
+
   it("requires executor lease fencing for terminal and waiting writes", () => {
     const running = claim();
     const error = {

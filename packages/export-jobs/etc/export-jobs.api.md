@@ -108,6 +108,7 @@ export declare function deriveExportJobReplayV1(args: {
     originRequest: ExportJobRequestV1;
     input: ExportJobReplayInputV1;
     existingDerived: readonly ExportJobSnapshotV1[];
+    existingDerivedRequests: readonly ExportJobRequestV1[];
 }): ExportJobReplayDerivationV1;
 
 // export: DocxExportJobRequestV1
@@ -122,6 +123,8 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
     options: {
         embedImages: boolean;
         resolveMacros: boolean;
+        keepIgnored?: boolean;
+        strict?: boolean;
         updateFields?: "auto" | "always" | "never";
         captionLang?: string;
     };
@@ -273,7 +276,9 @@ export interface ExportJobClaimV1 {
     ownerId: string;
     now: number;
     leaseDurationMs: number;
+    ids?: string[];
     formats?: ExportFormat[];
+    authRefs?: string[];
 }
 
 // export: ExportJobCreateV1
@@ -321,6 +326,24 @@ export interface ExportJobEventAppendV1 {
     expectedRevision: number;
     leaseEpoch?: number;
     event: ExportJobEventV1;
+}
+
+// export: ExportJobEventPageV1
+export interface ExportJobEventPageV1 {
+    events: ExportJobEventV1[];
+    nextAfterSeq: number;
+    hasMore: boolean;
+}
+
+// export: ExportJobEventQueryV1
+export interface ExportJobEventQueryV1 {
+    afterSeq?: number;
+    limit?: number;
+}
+
+// export: ExportJobEventReaderV1
+export interface ExportJobEventReaderV1 {
+    readEvents(jobId: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
 }
 
 // export: ExportJobEventV1
@@ -491,6 +514,7 @@ export interface ExportJobQueryV1 {
     states?: ExportJobState[];
     stages?: ExportJobStage[];
     includeDismissed?: boolean;
+    createdAfter?: number;
     createdBefore?: number;
     limit?: number;
 }
@@ -500,6 +524,15 @@ export interface ExportJobReclaimExpiredUpdateV1 extends ExportJobCasBaseV1 {
     kind: "reclaim-expired";
     now: number;
 }
+
+// export: ExportJobReplayConflict
+export declare class ExportJobReplayConflict extends Error {
+    readonly code: ExportJobReplayConflictCodeV1;
+    constructor(code: ExportJobReplayConflictCodeV1, message: string);
+}
+
+// export: ExportJobReplayConflictCodeV1
+export type ExportJobReplayConflictCodeV1 = "candidate-request-missing" | "action-payload-conflict";
 
 // export: ExportJobReplayDerivationV1
 export type ExportJobReplayDerivationV1 = {
@@ -522,6 +555,7 @@ export interface ExportJobReplayInputV1 {
     newJobId: string;
     newIdempotencyKey: string;
     createdAt: number;
+    outputOverride?: ExportJobRequestV1["output"];
 }
 
 // export: ExportJobReplayRelationV1
@@ -542,6 +576,8 @@ export interface ExportJobRequestBaseV1 {
     output: {
         policy: "collect" | "path" | "host";
         targetRef?: string;
+        targetKind?: "file" | "directory";
+        overwriteExisting?: boolean;
     };
 }
 
@@ -866,6 +902,7 @@ export interface ExportSourceV1 {
     labels?: LabelFilter;
     completenessMode?: CompletenessMode;
     maxPages?: number;
+    maxFolders?: number;
 }
 
 // export: ExportSpoolStore
@@ -942,7 +979,7 @@ export declare class InMemoryExportArtifactFinalizationJournal implements Export
 }
 
 // export: InMemoryExportJobStore
-export declare class InMemoryExportJobStore implements ExportJobStore {
+export declare class InMemoryExportJobStore implements ExportJobStore, ExportJobEventReaderV1 {
     #private;
     constructor(options?: InMemoryExportJobStoreOptions);
     create(input: ExportJobCreateV1): Promise<ExportJobSnapshotV1>;
@@ -959,6 +996,7 @@ export declare class InMemoryExportJobStore implements ExportJobStore {
     compareAndSet(update: ExportJobUpdateV1): Promise<ExportJobSnapshotV1>;
     appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
     listEvents(id: string, limit?: number): Promise<ExportJobEventV1[]>;
+    readEvents(id: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
     finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
     finalizeArtifactWithFaults(finalize: ExportJobFinalizeV1, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportJobSnapshotV1>;
     reconcilePreparedArtifactFinalization(jobId: string): Promise<ExportJobSnapshotV1 | undefined>;
@@ -1078,6 +1116,9 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     options: {
         resolveMacros: boolean;
         profile?: string;
+        strict?: boolean;
+        noCache?: boolean;
+        exportedAt?: number;
     };
 }
 

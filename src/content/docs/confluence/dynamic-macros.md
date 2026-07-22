@@ -199,7 +199,7 @@ For CI or compliance exports that must not issue extra network calls to Jira /
 `export_view` / attachment lookups, pass `--no-live-macros`:
 
 ```bash
-atlcli wiki export 12345 -t corporate.docx -o out.docx --engine ts --no-live-macros
+atlcli wiki export 12345 -t corporate.docx -o out.docx --no-live-macros
 ```
 
 - It suppresses **only** the Live renderers; Pure renderers (TOC,
@@ -207,8 +207,6 @@ atlcli wiki export 12345 -t corporate.docx -o out.docx --engine ts --no-live-mac
 - It is **not** an offline mode: the page body and its own attachments still
   fetch over the network. The guarantee is "no additional
   Jira/`export_view`/attachment-lookup calls".
-- It requires `--engine ts` and fails fast with a usage error on
-  `--engine python`.
 
 ## The export report
 

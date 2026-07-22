@@ -1423,17 +1423,17 @@ Exit: the second vertical slice is real before Chrome migration.
 
 ### Phase 2 / T7.3 — CLI journal, monitor, and activity commands
 
-- [ ] Add file-backed metadata, chunk spool, artifact, lock, and lease adapters
+- [x] Add file-backed metadata, chunk spool, artifact, lock, and lease adapters
       to `@atlcli/export-node`.
-- [ ] Remove any remaining ordinary-command Python DOCX default/fallback before
+- [x] Remove any remaining ordinary-command Python DOCX default/fallback before
       routing; add a regression test that an unqualified DOCX export selects the
       TypeScript executor.
-- [ ] Route ordinary DOCX and PDF exports through the job runtime while retaining
+- [x] Route ordinary DOCX and PDF exports through the job runtime while retaining
       stdout/exit/report contracts.
-- [ ] Add TTY, non-TTY, and JSONL monitor renderers.
-- [ ] Add `jobs list/show/watch/cancel/retry/rerun/clear`.
-- [ ] Reconcile stale process leases on every export/jobs command.
-- [ ] Keep detached execution explicitly unavailable.
+- [x] Add TTY, non-TTY, and JSONL monitor renderers.
+- [x] Add `jobs list/show/watch/cancel/retry/rerun/clear`.
+- [x] Reconcile stale process leases on every export/jobs command.
+- [x] Keep detached execution explicitly unavailable.
 
 Exit: two concurrent CLI processes observe one job and cannot double-render or
 double-commit it.
@@ -1925,7 +1925,23 @@ Capabilities and host-specific E2E are the guardrail.
 
 ---
 
-## 16. Unresolved questions
+## 16. Decisions and unresolved questions
+
+### Resolved for PR-E
+
+- **CLI history location and privacy:** version-1 state lives in
+  `~/.atlcli/export-jobs/v1`, with `ATLCLI_EXPORT_JOBS_DIR` as an explicit test
+  and managed-host override. Directories use mode `0700`, files use `0600`, and
+  logical refs are hashed before they become physical filenames. One global
+  catalog is intentional so `jobs list` can show activity across profiles and
+  sites; `siteOrigin`, profile labels, and opaque `authRef` values remain fields
+  on the request/snapshot rather than directory partitions. Metadata and events
+  never contain tokens, source bodies, signed URLs, template bytes, spool bytes,
+  artifact bytes, or full reports. Those bytes live in job-scoped private stores
+  and are reached only by opaque refs. Ephemeral CLI credentials are process-only
+  and therefore require fresh authentication before a later Retry/Run-again.
+
+### Still unresolved
 
 These require explicit decisions before their owning implementation phase:
 
@@ -1949,11 +1965,9 @@ These require explicit decisions before their owning implementation phase:
    for artifact bytes, 7 days for the full report, and 100 jobs/30 days for
    compact history acceptable defaults? Succeeded-undelivered bytes remain
    protected regardless of that decision.
-7. **CLI history location and privacy:** exact state-directory path, file
-    permissions, redaction, and multi-profile/site partitioning.
-8. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
+7. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
     of this plan's first release.
-9. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
+8. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
     including Typst/WASM, plus the durable background queue and Activity
     reattachment after leaving the UI, without ongoing Forge costs borne by us as
     the app developer? The browser-owned runner mechanism, lifecycle, pricing,

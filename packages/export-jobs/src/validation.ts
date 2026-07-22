@@ -11,6 +11,7 @@ const MAX_TEXT_LENGTH = 16_384;
 const MAX_REF_LENGTH = 4_096;
 const MAX_COLLECTION_SIZE = 10_000;
 const MAX_PAGES = 1_000_000;
+const MAX_FOLDERS = 1_000_000;
 const MAX_DEPTH = 10_000;
 const MAX_CODE_LENGTH = 256;
 const SHA256 = /^[a-f0-9]{64}$/i;
@@ -126,7 +127,16 @@ function validateSource(value: unknown, path: string): void {
   const source = record(value, path);
   onlyKeys(
     source,
-    ["kind", "siteOrigin", "locator", "scope", "labels", "completenessMode", "maxPages"],
+    [
+      "kind",
+      "siteOrigin",
+      "locator",
+      "scope",
+      "labels",
+      "completenessMode",
+      "maxPages",
+      "maxFolders",
+    ],
     path,
   );
   if (source.kind !== "confluence") fail(`${path}.kind`, "must be confluence");
@@ -189,6 +199,7 @@ function validateSource(value: unknown, path: string): void {
     choice(source.completenessMode, ["strict", "partial"] as const, `${path}.completenessMode`);
   }
   optionalInteger(source.maxPages, `${path}.maxPages`, { min: 1, max: MAX_PAGES });
+  optionalInteger(source.maxFolders, `${path}.maxFolders`, { min: 1, max: MAX_FOLDERS });
 }
 
 function finiteNumber(
@@ -290,9 +301,15 @@ function validateRequestBaseV1(request: Record<string, unknown>): void {
   validateSource(request.source, "request.source");
 
   const output = record(request.output, "request.output");
-  onlyKeys(output, ["policy", "targetRef"], "request.output");
+  onlyKeys(output, ["policy", "targetRef", "targetKind", "overwriteExisting"], "request.output");
   choice(output.policy, ["collect", "path", "host"] as const, "request.output.policy");
   optionalText(output.targetRef, "request.output.targetRef", MAX_REF_LENGTH);
+  if (output.targetKind !== undefined) {
+    choice(output.targetKind, ["file", "directory"] as const, "request.output.targetKind");
+  }
+  if (output.overwriteExisting !== undefined) {
+    boolean(output.overwriteExisting, "request.output.overwriteExisting");
+  }
 }
 
 function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
@@ -313,9 +330,16 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
   validateSettings(request.settings, "request.settings");
   const options = record(request.options, "request.options");
-  onlyKeys(options, ["resolveMacros", "profile"], "request.options");
+  onlyKeys(
+    options,
+    ["resolveMacros", "profile", "strict", "noCache", "exportedAt"],
+    "request.options",
+  );
   boolean(options.resolveMacros, "request.options.resolveMacros");
   optionalText(options.profile, "request.options.profile", MAX_REF_LENGTH);
+  if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
+  if (options.noCache !== undefined) boolean(options.noCache, "request.options.noCache");
+  optionalInteger(options.exportedAt, "request.options.exportedAt");
 }
 
 function validateDocxExportJobRequestV1(request: Record<string, unknown>): void {
@@ -338,9 +362,24 @@ function validateDocxExportJobRequestV1(request: Record<string, unknown>): void 
   sha256(template.sha256, "request.template.sha256");
   text(template.name, "request.template.name");
   const options = record(request.options, "request.options");
-  onlyKeys(options, ["embedImages", "resolveMacros", "updateFields", "captionLang"], "request.options");
+  onlyKeys(
+    options,
+    [
+      "embedImages",
+      "resolveMacros",
+      "keepIgnored",
+      "strict",
+      "updateFields",
+      "captionLang",
+    ],
+    "request.options",
+  );
   boolean(options.embedImages, "request.options.embedImages");
   boolean(options.resolveMacros, "request.options.resolveMacros");
+  if (options.keepIgnored !== undefined) {
+    boolean(options.keepIgnored, "request.options.keepIgnored");
+  }
+  if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
   if (options.updateFields !== undefined) {
     choice(options.updateFields, ["auto", "always", "never"] as const, "request.options.updateFields");
   }

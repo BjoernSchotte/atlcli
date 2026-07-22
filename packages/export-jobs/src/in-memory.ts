@@ -12,6 +12,8 @@ import type {
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
   ExportJobEventAppendV1,
+  ExportJobEventQueryV1,
+  ExportJobEventPageV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
   ExportJobTombstoneV1,
@@ -26,6 +28,7 @@ import type {
 } from "./spool.js";
 import type {
   ExportArtifactStore,
+  ExportJobEventReaderV1,
   ExportJobStore,
   ExportSpoolStore,
 } from "./ports.js";
@@ -172,6 +175,18 @@ function replayPayload(request: ExportJobRequestV1): string {
   return canonical(rest);
 }
 
+function replayPayloadWithoutOutput(request: ExportJobRequestV1): string {
+  const {
+    id: _id,
+    idempotencyKey: _idempotencyKey,
+    createdAt: _createdAt,
+    priority: _priority,
+    output: _output,
+    ...rest
+  } = request;
+  return canonical(rest);
+}
+
 function assertNonEmpty(value: string, label: string): void {
   if (value.length === 0) throw new Error(`${label} must not be empty.`);
 }
@@ -189,7 +204,7 @@ function assertFiniteTime(value: number, label: string): void {
  * cannot submit arbitrary partial snapshots, so every mutation retains the
  * lifecycle and fencing invariants enforced by the reducers.
  */
-export class InMemoryExportJobStore implements ExportJobStore {
+export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventReaderV1 {
   readonly #jobs = new Map<string, ExportJobSnapshotV1>();
   readonly #requests = new Map<string, ExportJobRequestV1>();
   readonly #idempotency = new Map<string, string>();
@@ -330,6 +345,7 @@ export class InMemoryExportJobStore implements ExportJobStore {
       .filter((job) => !query.states || query.states.includes(job.state))
       .filter((job) => !query.stages || (job.stage !== undefined && query.stages.includes(job.stage)))
       .filter((job) => query.includeDismissed === true || job.dismissedAt === undefined)
+      .filter((job) => query.createdAfter === undefined || job.createdAt > query.createdAfter)
       .filter((job) => query.createdBefore === undefined || job.createdAt < query.createdBefore)
       .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
       .slice(0, limit)
@@ -344,7 +360,9 @@ export class InMemoryExportJobStore implements ExportJobStore {
           (job.state === "waiting" &&
             job.waiting?.until !== undefined &&
             job.waiting.until <= observedAt)) &&
-        (!claim.formats || claim.formats.includes(job.format)),
+        (!claim.ids || claim.ids.includes(job.id)) &&
+        (!claim.formats || claim.formats.includes(job.format)) &&
+        (!claim.authRefs || claim.authRefs.includes(this.#requests.get(job.requestRef)?.authRef ?? "")),
     );
     const ordered = orderExportQueue(claimable);
     const first = ordered[0];
@@ -530,6 +548,28 @@ export class InMemoryExportJobStore implements ExportJobStore {
     this.#require(id);
     const bounded = boundedLimit(limit, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT);
     return (this.#events.get(id) ?? []).slice(-bounded).map(clone);
+  }
+
+  async readEvents(
+    id: string,
+    query: ExportJobEventQueryV1 = {},
+  ): Promise<ExportJobEventPageV1> {
+    this.#require(id);
+    const afterSeq = query.afterSeq ?? 0;
+    if (!Number.isSafeInteger(afterSeq) || afterSeq < 0) {
+      throw new RangeError("Event cursor must be a non-negative safe integer.");
+    }
+    if (query.limit !== undefined && (!Number.isSafeInteger(query.limit) || query.limit < 1)) {
+      throw new RangeError("Event page limit must be a positive safe integer.");
+    }
+    const limit = Math.min(query.limit ?? DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT);
+    const candidates = (this.#events.get(id) ?? []).filter((event) => event.seq > afterSeq);
+    const events = candidates.slice(0, limit).map(clone);
+    return {
+      events,
+      nextAfterSeq: events.at(-1)?.seq ?? afterSeq,
+      hasMore: candidates.length > events.length,
+    };
   }
 
   async finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1> {
@@ -821,7 +861,7 @@ export class InMemoryExportJobStore implements ExportJobStore {
       request.id === origin.id ||
       request.format !== origin.format ||
       request.renderer !== origin.renderer ||
-      replayPayload(request) !== replayPayload(originRequest) ||
+      replayPayloadWithoutOutput(request) !== replayPayloadWithoutOutput(originRequest) ||
       request.priority !== (derivedFrom.relation === "retry" ? "retry" : "interactive")
     ) {
       throw new InMemoryExportStoreConflict(
@@ -831,10 +871,16 @@ export class InMemoryExportJobStore implements ExportJobStore {
     }
     if (existingDerivedId) {
       const existing = this.#jobs.get(existingDerivedId);
-      if (!existing || canonical(existing.derivedFrom) !== canonical(derivedFrom)) {
+      const existingRequest = existing ? this.#requests.get(existing.requestRef) : undefined;
+      if (
+        !existing ||
+        !existingRequest ||
+        canonical(existing.derivedFrom) !== canonical(derivedFrom) ||
+        replayPayload(request) !== replayPayload(existingRequest)
+      ) {
         throw new InMemoryExportStoreConflict(
           "derivation-conflict",
-          "Stored derivation index does not match the replay relation.",
+          "Stored derivation index or output override does not match the replay action.",
         );
       }
     }

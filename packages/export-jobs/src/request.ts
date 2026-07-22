@@ -12,7 +12,18 @@ export interface ExportJobRequestBaseV1 {
   requestedFilename?: string;
   createdAt: number;
   priority: "interactive" | "retry";
-  output: { policy: "collect" | "path" | "host"; targetRef?: string };
+  output: {
+    policy: "collect" | "path" | "host";
+    targetRef?: string;
+    /** Path targets are files unless explicitly recorded as a directory. */
+    targetKind?: "file" | "directory";
+    /**
+     * Durable authorization to replace an existing delivery target. Omitted is
+     * fail-closed (`false`). CLI hosts map an explicit `--force` to `true` so a
+     * later Retry/Run-again cannot silently acquire broader write authority.
+     */
+    overwriteExisting?: boolean;
+  };
 }
 
 /** Version-1 TypeScript DOCX export request. */
@@ -23,6 +34,11 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
   options: {
     embedImages: boolean;
     resolveMacros: boolean;
+    /** Preserve scroll-only/scroll-ignore content in the rendered document. */
+    keepIgnored?: boolean;
+    /** Turn warning-level report issues into the host's strict failure outcome. */
+    strict?: boolean;
+    /** `--no-field-update-prompt` is represented exactly as `"never"`. */
     updateFields?: "auto" | "always" | "never";
     captionLang?: string;
   };
@@ -66,7 +82,16 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
   renderer: "pdf-typst";
   template: { id: string; manifestVersion: string };
   settings: PdfExportSettingsV1;
-  options: { resolveMacros: boolean; profile?: string };
+  options: {
+    resolveMacros: boolean;
+    profile?: string;
+    /** Turn warning-level report issues into the host's strict failure outcome. */
+    strict?: boolean;
+    /** Disable reuse or persistence of the host's downloaded-asset cache. */
+    noCache?: boolean;
+    /** Explicit reproducible export timestamp, as Unix epoch milliseconds. */
+    exportedAt?: number;
+  };
 }
 
 /** Closed version-1 export request union. */

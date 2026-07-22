@@ -298,7 +298,7 @@ atlcli wiki export <pageId> --format pdf --scope tree \
 | "That file isn't a valid .docx (not a zip)" / "That zip isn't a Word document" | The file is not a real `.docx` | Re-save it from Word as `.docx` (not `.doc`, not `.dotx`) |
 | "The stored template could not be read. Please upload it again." | The stored bytes no longer match their recorded digest | Re-upload the template |
 | The export fails naming several large images | The 50 MB per-export asset budget was exceeded; the message names the largest offenders | Narrow the scope, or remove/downscale the named attachments |
-| A Word export shows literal `{{ title }}` | A Jinja/docxtpl template was used; this engine fills `$scroll.*` only | Use a Scroll-style template — see [Rendering engines](/confluence/export/#rendering-engines) |
+| A Word export shows literal `{{ title }}` | A retired Jinja/docxtpl template was used; this engine fills `$scroll.*` only | Use a Scroll-style template — see [Rendering runtime](/confluence/export/#rendering-runtime) |
 | Compilation times out | A single compile is capped at 60 seconds | Narrow the scope; very large trees are better suited to the CLI |
 
 ## Related topics

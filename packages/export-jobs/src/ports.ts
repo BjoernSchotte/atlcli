@@ -13,6 +13,8 @@ import type {
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
   ExportJobEventAppendV1,
+  ExportJobEventPageV1,
+  ExportJobEventQueryV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
   ExportJobUpdateV1,
@@ -50,6 +52,11 @@ export interface ExportJobStore {
     tombstoneRef: string,
     at: number,
   ): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
+}
+
+/** Read-only, cursor-paginated durable event log used by monitors and activity detail. */
+export interface ExportJobEventReaderV1 {
+  readEvents(jobId: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
 }
 
 /** Host-owned chunked byte storage for source and checkpoint payloads. */

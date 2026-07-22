@@ -794,7 +794,9 @@ export function createTypescriptDocxExportJobExecutor(
           }
           await context.checkpoint(checkpoint.ref);
           resultKey = await buildResultRecoveryKey(request, checkpoint, context);
-          await progress(context, now, "compose", 1, 1, "DOCX render input is durable");
+          // Preparation may already have emitted `assets`; never regress the
+          // durable stage back to `compose` after the checkpoint is committed.
+          await progress(context, now, "render", 0, 1, "DOCX render input is durable");
         }
 
         await reservation.reconcile({

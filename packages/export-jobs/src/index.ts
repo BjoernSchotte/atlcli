@@ -73,6 +73,8 @@ export type {
   ExportJobCheckpointUpdateV1,
   ExportJobStatsUpdateV1,
   ExportJobEventAppendV1,
+  ExportJobEventQueryV1,
+  ExportJobEventPageV1,
   ExportJobClaimV1,
   ExportJobFinalizeV1,
   ExportJobDeleteQueryV1,
@@ -81,6 +83,7 @@ export type {
 } from "./store-contracts.js";
 export type {
   ExportJobStore,
+  ExportJobEventReaderV1,
   ExportSpoolStore,
   ExportJobSpool,
   ExportArtifactStore,
@@ -112,11 +115,12 @@ export type {
   ExportJobLeaseReclaimInputV1,
   ExportJobTerminalMetadataInputV1,
 } from "./transitions.js";
-export { deriveExportJobReplayV1 } from "./replay.js";
+export { ExportJobReplayConflict, deriveExportJobReplayV1 } from "./replay.js";
 export type {
   ExportJobReplayRelationV1,
   ExportJobReplayInputV1,
   ExportJobReplayDerivationV1,
+  ExportJobReplayConflictCodeV1,
 } from "./replay.js";
 export {
   DELIVERED_ARTIFACT_RETENTION_MS_V1,

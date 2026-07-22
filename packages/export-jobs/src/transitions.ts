@@ -112,7 +112,7 @@ const TERMINAL_STATES: ReadonlySet<ExportJobState> = new Set([
 ]);
 
 const DIRECT_TRANSITIONS: Readonly<Record<ExportJobState, ReadonlySet<ExportJobState>>> = {
-  queued: new Set(["cancelled"]),
+  queued: new Set(["cancelled", "interrupted"]),
   running: new Set(["waiting", "cancelling", "failed", "interrupted"]),
   waiting: new Set(["cancelled"]),
   cancelling: new Set(["cancelled"]),

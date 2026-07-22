@@ -25,8 +25,25 @@ export interface ExportJobQueryV1 {
   states?: ExportJobState[];
   stages?: ExportJobStage[];
   includeDismissed?: boolean;
+  createdAfter?: number;
   createdBefore?: number;
   limit?: number;
+}
+
+/** Exclusive event cursor plus a bounded page size for activity/monitor reads. */
+export interface ExportJobEventQueryV1 {
+  /** Return retained events whose sequence is strictly greater than this cursor. */
+  afterSeq?: number;
+  /** Positive page size. Hosts may clamp it to their documented maximum. */
+  limit?: number;
+}
+
+/** One ascending event page and the cursor to use for the next read. */
+export interface ExportJobEventPageV1 {
+  events: ExportJobEventV1[];
+  /** Last returned sequence, or the supplied cursor (zero when omitted). */
+  nextAfterSeq: number;
+  hasMore: boolean;
 }
 
 interface ExportJobCasBaseV1 {
@@ -107,7 +124,11 @@ export interface ExportJobClaimV1 {
   ownerId: string;
   now: number;
   leaseDurationMs: number;
+  /** Optional exact job allow-list for invocation-scoped runners. */
+  ids?: string[];
   formats?: ExportFormat[];
+  /** Host-resolvable credential references; prevents claiming work it cannot authenticate. */
+  authRefs?: string[];
 }
 
 /** Atomic artifact/report finalization request. */

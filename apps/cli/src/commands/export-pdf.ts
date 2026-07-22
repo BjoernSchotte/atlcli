@@ -37,9 +37,16 @@ import {
   type PdfAssetRef,
   type PdfAssetResolver,
   type PdfExportMetadata,
+  type PdfExportReport,
   type PdfOutputSink,
   type PdfResolvedAsset,
 } from "@atlcli/pdf";
+import type {
+  ExportJobDerivationV1,
+  PdfExportJobRequestV1,
+  ResourceEstimateV1,
+} from "@atlcli/export-jobs";
+import { createFileExportJobPersistence } from "@atlcli/export-node";
 import {
   buildReport,
   buildTreeExportReport,
@@ -68,6 +75,12 @@ import {
   filePdfOutputSink,
   sanitizePathComponent,
 } from "./export-pdf-sink.js";
+import {
+  createOrdinaryPdfExecutorV1,
+  readOrdinaryExportProjectionV1,
+  runOrdinaryExportJobV1,
+  writeOrdinaryExportProjectionV1,
+} from "./export-job-runtime.js";
 
 // Re-export the pure sink/path surface so existing callers keep importing from
 // this module (no API change). The implementations live in export-pdf-sink.ts —
@@ -200,7 +213,7 @@ function makePdfProgress(opts: OutputOptions): { report: ExportProgressCallback;
   return { report, clear: () => { if (!opts.json && dirty) process.stderr.write(`\r${" ".repeat(120)}\r`); } };
 }
 
-interface ResolvedScope {
+export interface ResolvedScope {
   metaPage: ConfluencePageDetails;
   blocks: ExportBlock[];
   sourceNotes: ExportNote[];
@@ -248,7 +261,7 @@ interface ResolvedScope {
  * unconditionally, which is exactly the "cannot be forgotten tomorrow" it was
  * written for.
  */
-async function buildPdfMacroOptions(
+export async function buildPdfMacroOptions(
   profile: Profile,
   client: ConfluenceClient,
   chapterAnchorById?: ReadonlyMap<string, string>
@@ -295,10 +308,11 @@ export interface ExportPdfArgs {
  * `composeChapters` orchestration and feeds the composed blocks straight into
  * the same `runPdfExport` call (artifact-cardinality contract: always one file).
  */
-async function resolveScope(
+export async function resolveScope(
   args: ExportPdfArgs,
   signal: AbortSignal,
-  onProgress: ExportProgressCallback
+  onProgress: ExportProgressCallback,
+  walk: { exporter?: "pdf" | "word"; keepIgnored?: boolean } = {},
 ): Promise<ResolvedScope> {
   const { client, request, profile } = args;
 
@@ -307,7 +321,8 @@ async function resolveScope(
     const page = await client.getPageDetails(pageId, { signal });
     const spaceKey = page.spaceKey ?? "UNKNOWN";
     const walked = storageToBlocks(page.storage, {
-      exporter: "pdf",
+      exporter: walk.exporter ?? "pdf",
+      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
       pageContext: { id: pageId, ...(page.version ? { version: page.version } : {}), spaceKey },
     });
     const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
@@ -537,5 +552,194 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
   } finally {
     process.removeListener("SIGINT", onSignal);
     process.removeListener("SIGTERM", onSignal);
+  }
+}
+
+/**
+ * Queue-backed ordinary PDF command. The unresolved request is persisted by
+ * {@link runOrdinaryExportJobV1} before `resolveScope` performs the first API
+ * read; rendering then runs exclusively through the PR-C executor.
+ */
+export async function exportPdfAsOrdinaryJob(
+  args: ExportPdfArgs,
+  jobRequest: PdfExportJobRequestV1,
+  derivedFrom?: ExportJobDerivationV1,
+): Promise<ExportOutcome> {
+  const startedAt = Date.now();
+  const persistence = createFileExportJobPersistence();
+  let resolvedOutputPath: string | undefined;
+  type CliProjection = Pick<ResolvedScope, "sourcePages" | "reconcilablePageId" | "scopeReport"> & {
+    outputPath: string;
+  };
+  let reportProjection: CliProjection | undefined;
+
+  const resolveForJob = async (
+    signal: AbortSignal,
+    onProgress: ExportProgressCallback,
+  ): Promise<ResolvedScope> => {
+    const value = await resolveScope(args, signal, onProgress);
+    resolvedOutputPath = args.outDir
+      ? derivePdfOutputPath(args.outDir, value.outNameKey, value.metaPage.title)
+      : resolve(args.outputPath!);
+    reportProjection = {
+      sourcePages: value.sourcePages,
+      outputPath: resolvedOutputPath,
+      ...(value.reconcilablePageId ? { reconcilablePageId: value.reconcilablePageId } : {}),
+      ...(value.scopeReport ? { scopeReport: value.scopeReport } : {}),
+    };
+    await writeOrdinaryExportProjectionV1(persistence, {
+      schema: "atlcli.cli-export-projection/1",
+      jobId: jobRequest.id,
+      format: "pdf",
+      value: reportProjection,
+    });
+    return value;
+  };
+
+  try {
+    // Compiler loading is local-only; runOrdinaryExportJobV1 persists before
+    // `resolveForJob` (the first Confluence read) is reachable.
+    const compiler = await getPdfCompiler();
+    const executor = createOrdinaryPdfExecutorV1(persistence, {
+      compiler,
+      async resolveInput(request, context) {
+        const value = await resolveForJob(context.signal, () => undefined);
+        const locale = normalizePdfLocale(undefined);
+        const metadata: PdfExportMetadata = {
+          title: value.metaPage.title,
+          space: value.metaPage.spaceKey ?? "UNKNOWN",
+          ...(value.metaPage.version !== undefined ? { version: value.metaPage.version } : {}),
+          ...(value.metaPage.createdBy?.displayName
+            ? { author: value.metaPage.createdBy.displayName }
+            : {}),
+          exporter: "atlcli",
+          language: locale.language,
+          ...(locale.region ? { region: locale.region } : {}),
+          exportedAt: request.options.exportedAt !== undefined
+            ? new Date(request.options.exportedAt)
+            : new Date(request.createdAt),
+        };
+        const macros = await buildPdfMacroOptions(
+          args.profile,
+          args.client,
+          value.chapterAnchorById,
+        );
+        return {
+          input: {
+            blocks: value.blocks,
+            sourceNotes: value.sourceNotes,
+            metadata,
+            filename: basename(resolvedOutputPath!),
+            complete: value.complete,
+            page: {
+              id: value.metaPage.id,
+              ...(value.metaPage.version !== undefined ? { version: value.metaPage.version } : {}),
+              ...(value.metaPage.spaceKey !== undefined ? { spaceKey: value.metaPage.spaceKey } : {}),
+            },
+          },
+          env: {
+            assets: cliPdfAssets(args.client, args.baseUrl, {
+              noCache: request.options.noCache === true,
+            }),
+            macros,
+          },
+        };
+      },
+      estimateRender(input): ResourceEstimateV1 {
+        const sourceBytes = new TextEncoder().encode(JSON.stringify(input.blocks)).byteLength;
+        return {
+          heapBytes: Math.max(256 * 1024 * 1024, sourceBytes * 8),
+          spoolBytes: Math.max(512 * 1024 * 1024, sourceBytes * 16),
+          outputBytes: 512 * 1024 * 1024,
+          rasterPixels: 128 * 1024 * 1024,
+          confidence: "unknown",
+        };
+      },
+    });
+
+    const execution = await runOrdinaryExportJobV1({
+      request: jobRequest,
+      ...(derivedFrom ? { derivedFrom } : {}),
+      executor,
+      persistence,
+      monitor: {
+        mode: args.opts.json ? "jsonl" : process.stderr.isTTY ? "tty" : "lines",
+        writer: process.stderr,
+      },
+    });
+    if (execution.snapshot.state !== "succeeded" || !execution.report) {
+      const error = execution.snapshot.error;
+      return {
+        ok: false,
+        report: buildReport({
+          format: "pdf",
+          sourcePages: [],
+          outputDetails: [],
+          issues: [{
+            code: error?.code ?? `job-${execution.snapshot.state}`,
+            severity: "error",
+            phase: error?.stage ?? "commit",
+            retryable: error?.retryable ?? false,
+            message: error?.message ?? `Export job ended as ${execution.snapshot.state}.`,
+          }],
+          timings: { totalMs: Date.now() - startedAt },
+          failureExitCode: execution.snapshot.state === "cancelled" ? 130 : 5,
+        }),
+      };
+    }
+
+    // Recovery can skip resolveInput when a ready/result checkpoint exists.
+    // The CLI projection is therefore durable too; never re-read Confluence
+    // merely to print the report after the artifact has already succeeded.
+    reportProjection ??= await readOrdinaryExportProjectionV1<CliProjection>(
+      persistence,
+      execution.snapshot.id,
+      "pdf",
+    );
+    if (!reportProjection) throw new Error("PDF job recovery has no durable CLI report projection.");
+    const report = execution.report as PdfExportReport;
+    const outputPath = reportProjection.outputPath;
+    const { outputDetail, issues } = pdfReportContributions(
+      report,
+      outputPath,
+      report.compilerDiagnostics ?? [],
+    );
+    const sourcePages: SourcePageEntry[] =
+      reportProjection.reconcilablePageId && report.sourceNotes
+        ? [{
+            ...reportProjection.sourcePages[0]!,
+            notes: report.sourceNotes.map((note) =>
+              noteToIssue(note, "compose", reportProjection!.reconcilablePageId!),
+            ),
+          }]
+        : reportProjection.sourcePages;
+    const common = {
+      format: "pdf" as const,
+      sourcePages,
+      outputDetails: [outputDetail],
+      issues,
+      timings: { ...report.timings, totalMs: Date.now() - startedAt },
+      complete: report.complete,
+      strict: args.strict,
+    };
+    return {
+      ok: true,
+      report: reportProjection.scopeReport
+        ? buildTreeExportReport({ ...common, scope: reportProjection.scopeReport })
+        : buildReport(common),
+    };
+  } catch (error) {
+    const classified = classifyError(error);
+    return {
+      ok: false,
+      report: buildReport({
+        format: "pdf",
+        sourcePages: [],
+        outputDetails: [],
+        issues: [classified.issue],
+        timings: { totalMs: Date.now() - startedAt },
+        failureExitCode: classified.exitCode,
+      }),
+    };
   }
 }

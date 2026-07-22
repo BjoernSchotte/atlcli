@@ -406,11 +406,15 @@ describe("createTypescriptDocxExportJobExecutor", () => {
       }),
     });
     const context = executionContext(order);
+    const progressStages: string[] = [];
+    context.context.updateProgress = async (progress) => { progressStages.push(progress.stage); };
     await createTypescriptDocxExportJobExecutor(setup.options).execute(await request(), context.context);
     expect(assetSignal).toBe(context.context.signal);
     expect(order.indexOf("reservation-acquire")).toBeLessThan(order.indexOf("asset-delegate"));
     expect(order.indexOf("asset-delegate")).toBeLessThan(order.indexOf("asset-reconcile"));
     expect(order.indexOf("asset-reconcile")).toBeLessThan(order.indexOf("ready-commit"));
+    expect(progressStages.indexOf("assets")).toBeGreaterThanOrEqual(0);
+    expect(progressStages.slice(progressStages.indexOf("assets") + 1)).not.toContain("compose");
   });
 
   it("reconciles raster pixels before allocation and passes the AbortSignal to the raster port", async () => {
