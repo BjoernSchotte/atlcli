@@ -203,6 +203,7 @@ const RAW_MANUSCRIPT_MANIFEST = {
     { family: "Source Sans 3", style: "normal", weight: 400 },
     { family: "Source Sans 3", style: "normal", weight: 600 },
     { family: "Source Code Pro", style: "normal", weight: 700 },
+    { family: "Noto Sans Symbols2", style: "normal", weight: 400 },
   ],
   design: MANUSCRIPT_DESIGN,
   bindings: [

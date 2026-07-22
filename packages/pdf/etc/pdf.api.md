@@ -379,7 +379,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;
@@ -1090,7 +1090,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;
@@ -1801,7 +1801,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;

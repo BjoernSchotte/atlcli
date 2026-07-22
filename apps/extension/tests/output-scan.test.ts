@@ -141,9 +141,11 @@ describe("PDF artifact inventory", () => {
     { path: "assets/SourceSerif4-Bold-abc.ttf", size: 100_000, sha256: "7cf4f4e1ad74f45058d5bc61716b82560442fbdcd9d3654d2dea96bf6c683d86" },
     { path: "assets/SourceCodePro-Regular-abc.ttf", size: 100_000, sha256: "74bd80d3e42a08517cd7e1108ba3d86f2da29ac0f3065be95e0357956ab9db37" },
     { path: "assets/SourceCodePro-Bold-abc.ttf", size: 100_000, sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f" },
+    { path: "assets/NotoSansSymbols2-Regular-abc.ttf", size: 100_000, sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6" },
     { path: "assets/LICENSE-Source-Sans-3-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-Source-Serif-4-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-Source-Code-Pro-abc.txt", size: 4_000 },
+    { path: "assets/LICENSE-Noto-Sans-Symbols-2-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-abc.", size: 11_000 },
   ];
 

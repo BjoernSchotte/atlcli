@@ -23,6 +23,7 @@ export interface AdfSourceCaseResult {
   pdfPageCount: number;
   docxHasInlineCode: boolean;
   docxHasEmoji: boolean;
+  docxHasCustomEmojiFallback: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
@@ -79,6 +80,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     pdfPageCount: inspection.pageCount,
     docxHasInlineCode: documentXml.includes('w:rFonts w:ascii="Consolas"'),
     docxHasEmoji: documentXml.includes("⚠️"),
+    docxHasCustomEmojiFallback: documentXml.includes(":custom_party:"),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasCardTitle:
       documentXml.includes("Local card title")

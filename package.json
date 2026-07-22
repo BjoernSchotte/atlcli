@@ -34,6 +34,8 @@
     "assert:conformance-cases": "bun run --cwd apps/browser-export-harness assert:cases",
     "check:parity": "bun run --cwd apps/browser-export-harness check:parity",
     "check:adf-pinned": "bun --conditions=development scripts/adf-drift.ts check-pinned",
+    "check:adf-rendered-goldens": "bun --conditions=development scripts/adf-rendered-goldens.ts",
+    "update:adf-rendered-goldens": "bun --conditions=development scripts/adf-rendered-goldens.ts --update",
     "bench:m1": "bun --conditions=development scripts/bench/run-m1-acceptance.ts",
     "bench:engine": "bun --conditions=development scripts/bench/run-bench.ts",
     "bench:e2e": "bun --conditions=development scripts/bench/run-e2e-bench.ts",

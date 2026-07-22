@@ -27,7 +27,7 @@ import { createAssetByteCache, tokenAssetFetcher, type AssetClient } from "./ass
 const require = createRequire(import.meta.url);
 
 /**
- * Load the vendored, CSP-patched typst wasm and the ten canonical fonts from
+ * Load the vendored, CSP-patched typst wasm and the eleven canonical fonts from
  * the INSTALLED packages (`@atlcli/pdf-compiler-browser/wasm`,
  * `@atlcli/pdf/fonts/*`) — plain `require.resolve`, so it works identically
  * under Node and Bun, from a workspace link or an installed tarball. (The

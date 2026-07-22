@@ -741,7 +741,7 @@ Tasks:
 - [x] Run paired ADF/Storage semantic differential tests for the feature zoo.
 - [x] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
 - [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
-- [ ] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
+- [x] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
 - [x] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
 - [x] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
 - [ ] Measure requests/page, wall time, peak memory, block count, note count, and artifact parity on page/tree/space fixtures.
@@ -760,6 +760,8 @@ Direct-coverage evidence recorded on 2026-07-22: an exhaustive compile-time fixt
 Differential evidence recorded on 2026-07-22: the paired ADF/Storage semantic feature zoo covers headings, inline bold/code/line-break/emoji semantics, blockquotes, bullet and ordered lists, task state, table spans/background, panels, status and rules. Both source adapters produce byte-for-byte equal neutral block trees with the expected ten-block shape. The only note difference is explicitly allowlisted to ADF's observable non-default ordered-list start, with page and block-path provenance.
 
 Observed-Cloud evidence recorded on 2026-07-22: the weekly optional job now accepts up to 16 retained feature-zoo pages through a secret-only list, aggregates their structural signatures, and fully validates each ADF document against both the committed schema pin and the package schema discovered in that run. Focused tests proved multi-page aggregation, independent current-schema constraint drift, bounded configuration, backwards-compatible skip behavior, and absence of raw content, page references, credentials, and tenant origin from reports. A sanitized live run created one marked temporary feature-zoo page, observed 11 node types and two mark types with `no-drift`, passed both schema validators, and deleted the page with zero cleanup failures. Full build, typecheck, docs, API/closure, browser-isomorphism, browser-output and offline pin gates passed; the complete repository suite passed with 4,838 tests, 13 intentional skips and zero failures across 307 files.
+
+Rendered-golden evidence recorded on 2026-07-22: one synthetic ADF feature zoo now renders through the production decoder and both real export engines, then through LibreOffice/Poppler rasterization. The reviewed references cover inline code, Unicode and unresolved custom emoji, a panel, table, flattened layout, local card link, expand, extension fallback/body, and media fallback/caption. A source hash prevents fixture changes from silently reusing old references; PNG hashes, required extracted text, page counts, normalized pixel difference, and content-bound overlap guard every rerender. The review exposed and fixed a real PDF missing-glyph defect by adding a pinned, checksummed OFL symbol fallback to every Typst text role and both curated template font contracts. The canonical DOCX renderer and all five reference pages were inspected with no clipping, overlap, tofu glyphs, or hidden fallback text. CLI, packed harness, and extension asset-parity gates proved that the font is present in every runtime, while the complete browser conformance run and an anonymized live ADF-primary DOCX/PDF create-export-cleanup run proved both engines end to end.
 
 Default-enable gates:
 
@@ -854,6 +856,8 @@ bun run test packages/confluence/src/client.test.ts
 bun run test packages/confluence/src/tree-fetch.test.ts
 bun run test scripts/adf-drift.test.ts
 bun scripts/adf-drift.ts check-pinned
+bun run test scripts/adf-rendered-goldens.test.ts
+bun run check:adf-rendered-goldens
 bun run test scripts/export-note-codes.test.ts
 bun run test scripts/api-report.test.ts
 ```

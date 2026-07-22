@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "17ffbec3520a55b3af29909879b6fa9afc7faf6a68f482046721576aeb7cfe94",
+  "features": [
+    "inline-code",
+    "unicode-emoji",
+    "custom-emoji-fallback",
+    "table",
+    "layout-degradation",
+    "smart-link",
+    "media-fallback",
+    "extension"
+  ],
+  "formats": {
+    "docx": {
+      "pages": [
+        {
+          "file": "docx-page-1.png",
+          "sha256": "64fab51ed572973f6666f1084ac4292f2fbedc45d915ee19002ef7ec3323bc4c"
+        }
+      ],
+      "requiredText": [
+        "INLINE_TOKEN",
+        "⚠",
+        ":custom_party:",
+        "Local card title",
+        "ADF panel body",
+        "Header",
+        "Cell",
+        "Flattened layout content",
+        "Expanded title",
+        "Expanded body",
+        "Extension body",
+        "Visible media fallback",
+        "Media caption"
+      ]
+    },
+    "pdf": {
+      "pages": [
+        {
+          "file": "pdf-page-1.png",
+          "sha256": "2bb067fc74dd5f6c5fe6668a923ac5c633cd9db65d7c6372ba3206775712e0e3"
+        },
+        {
+          "file": "pdf-page-2.png",
+          "sha256": "c30b81daa7a04a773e1a59d1682ec91a721cecea643e8169ed5df380c091961b"
+        },
+        {
+          "file": "pdf-page-3.png",
+          "sha256": "496bd2a83cb8b6ab6f1af7cfa9c30920ab4535959b2cb7d0930c8302572a8472"
+        },
+        {
+          "file": "pdf-page-4.png",
+          "sha256": "347f9d0861038f1698d36d53c967eaa8867f4d9c7f50d4e057e6a3e94c1eeaa4"
+        }
+      ],
+      "requiredText": [
+        "INLINE_TOKEN",
+        "⚠",
+        ":custom_party:",
+        "Local card title",
+        "ADF panel body",
+        "Header",
+        "Cell",
+        "Flattened layout content",
+        "Expanded title",
+        "Expanded body",
+        "Extension body",
+        "Visible media fallback",
+        "Media caption"
+      ]
+    }
+  }
+}

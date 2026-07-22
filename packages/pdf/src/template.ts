@@ -42,6 +42,7 @@ const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
 const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
+const SYMBOL_FALLBACK_FONT = "Noto Sans Symbols2";
 
 /**
  * Generate the pinned Typst template for a design. All presentation values come
@@ -69,6 +70,8 @@ export function createAtlcliTypstTemplate(
   const C = (key: string): string => need(colors, key, "color token");
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
+  const fontStack = (font: string): string =>
+    `(${typstString(font)}, ${typstString(SYMBOL_FALLBACK_FONT)})`;
   const roleOf = (key: string) => need(roles, key, "typography role");
   const rsize = (key: string): string => roleOf(key).size;
   const rweight = (key: string): string => {
@@ -162,7 +165,7 @@ export function createAtlcliTypstTemplate(
   let current = values.last()
   let pattern = if values.len() == 1 { "1." } else if values.len() == 2 { "a)" } else { "i." }
   text(
-    font: ${typstString(F("heading"))},
+    font: ${fontStack(F("heading"))},
     size: ${rsize("numbering")},
     weight: "${rweight("numbering")}",
     fill: rgb("${C("muted")}"),
@@ -184,7 +187,7 @@ export function createAtlcliTypstTemplate(
   place(center + horizon, rotate(
     wm.angle * 1deg,
     text(
-      font: ${typstString(F("heading"))},
+      font: ${fontStack(F("heading"))},
       weight: "bold",
       size: wm.size * 1pt,
       fill: rgb(wm.color)
@@ -237,7 +240,7 @@ export function createAtlcliTypstTemplate(
     date: meta.exported-at,
   )
   set text(
-    font: ${typstString(F("body"))},
+    font: ${fontStack(F("body"))},
     size: ${rsize("body")},
     fill: rgb("${C("ink")}"),
     lang: meta.at("language", default: "en"),
@@ -246,9 +249,9 @@ export function createAtlcliTypstTemplate(
   set par(leading: ${L("paragraphLeading")}, spacing: ${L("paragraphSpacing")}, justify: false)
   set list(
     marker: (
-      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
-      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
-      [#text(font: ${typstString(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_DASH}]],
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_BULLET}]],
+      [#text(font: ${fontStack(F("heading"))}, fill: rgb("${C("muted")}"))[${EDITORIAL_NESTED_BULLET}]],
     ),
     body-indent: ${L("listBodyIndent")},
     spacing: ${L("listSpacing")},
@@ -268,7 +271,7 @@ export function createAtlcliTypstTemplate(
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
-        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let header-text = settings.at("header-text", default: none)
         if header-text == none {
 ${headerResolution}
@@ -280,7 +283,7 @@ ${headerResolution}
     },
     footer: context {
       if counter(page).get().first() > 1 {
-        set text(font: ${typstString(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
+        set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let footer-text = settings.at("footer-text", default: none)
         if footer-text == none and org-name == none {
           align(center)[#counter(page).display("1")]
@@ -297,15 +300,15 @@ ${headerResolution}
   )
 
   show heading.where(level: 1): it => {
-    set text(font: ${typstString(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h1")}, weight: "${rweight("h1")}", fill: rgb("${C("ink")}"))
     block(above: ${L("h1Above")}, below: ${L("h1Below")}, sticky: true, it)
   }
   show heading.where(level: 2): it => {
-    set text(font: ${typstString(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h2")}, weight: "${rweight("h2")}", fill: rgb("${C("ink")}"))
     block(above: ${L("h2Above")}, below: ${L("h2Below")}, sticky: true, it)
   }
   show heading.where(level: 3): it => {
-    set text(font: ${typstString(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
     block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, it)
   }
   show raw.where(block: true): it => block(
@@ -313,10 +316,10 @@ ${headerResolution}
     inset: ${L("codeInset")},
     radius: ${L("codeRadius")},
     width: 100%,
-    text(font: ${typstString(F("mono"))}, size: ${rsize("code")}, it),
+    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
   )
   show table.cell: it => {
-    set text(font: ${typstString(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: true)
+    set text(font: ${fontStack(F("heading"))}, size: ${rsize("tableCell")}, hyphenate: true)
     set par(linebreaks: "optimized")
     it
   }
@@ -324,7 +327,7 @@ ${headerResolution}
   if cover-config.at("enabled", default: ${coverDefault}) {
     v(${L("coverTopPad")})
     block(width: ${RN("coverBlockWidth")}%)[
-      #set text(font: ${typstString(F("heading"))})
+      #set text(font: ${fontStack(F("heading"))})
       #if logo-path != none [
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
@@ -332,7 +335,7 @@ ${headerResolution}
       #v(${L("coverEyebrowGap")})
       #block(width: 100%)[
         #set par(leading: ${L("coverTitleLeading")})
-        #text(font: ${typstString(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
+        #text(font: ${fontStack(roleFont("coverTitle"))}, size: ${rsize("coverTitle")}, weight: "${rweight("coverTitle")}", fill: ink)[#meta.title]
       ]
       #v(${L("coverTitleGap")})
       #line(length: ${L("coverRuleLength")}, stroke: ${L("coverRuleStroke")} + indigo)
@@ -372,12 +375,12 @@ ${headerResolution}
   set page(fill: cover-paper)
   v(${L("closingTopPad")})
   block(width: ${RN("closingBlockWidth")}%)[
-    #set text(font: ${typstString(F("heading"))})
+    #set text(font: ${fontStack(F("heading"))})
     #text(size: ${rsize("closingEyebrow")}, weight: "${rweight("closingEyebrow")}", tracking: ${rtrack("closingEyebrow")}, fill: indigo)[#end-label]
     #v(${L("closingEyebrowGap")})
     #block(width: 100%)[
       #set par(leading: ${L("closingTitleLeading")})
-      #text(font: ${typstString(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
+      #text(font: ${fontStack(roleFont("closingTitle"))}, size: ${rsize("closingTitle")}, weight: "${rweight("closingTitle")}", fill: ink)[#meta.title]
     ]
     #v(${L("closingTitleGap")})
     #line(length: ${L("closingRuleLength")}, stroke: ${L("closingRuleStroke")} + indigo)
@@ -419,7 +422,7 @@ ${headerResolution}
     above: ${L("calloutAbove")},
     below: ${L("calloutBelow")},
   )[
-    #set text(font: ${typstString(F("heading"))})
+    #set text(font: ${fontStack(F("heading"))})
     #if title != none { text(weight: "semibold", fill: colors.last(), title); linebreak() }
     #body
   ]
@@ -429,7 +432,7 @@ ${headerResolution}
   fill: rgb(color).lighten(${RN("statusBadgeLighten")}%),
   inset: (x: inset-x, y: ${L("statusBadgeInsetY")}),
   radius: ${L("statusBadgeRadius")},
-  text(font: ${typstString(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
+  text(font: ${fontStack(F("mono"))}, size: ${rsize("statusBadge")}, weight: "${rweight("statusBadge")}", fill: rgb(color), label),
 )
 
 // Every table paragraph receives its real content width. Narrow cells switch
@@ -476,7 +479,7 @@ ${headerResolution}
       radius: ${L("denseBadgeRadius")},
     )[
       #set text(
-        font: ${typstString(F("mono"))},
+        font: ${fontStack(F("mono"))},
         size: ${rsize("statusBadge")},
         weight: "${rweight("statusBadge")}",
         fill: rgb(color),
@@ -493,7 +496,7 @@ ${headerResolution}
   column-gutter: ${L("taskGridGutter")},
   align: top,
   text(
-    font: ${typstString(F("heading"))},
+    font: ${fontStack(F("heading"))},
     size: ${rsize("taskMarker")},
     weight: "${rweight("taskMarker")}",
     fill: rgb(if checked { "${C("taskChecked")}" } else { "${C("taskUnchecked")}" }),

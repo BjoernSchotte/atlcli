@@ -62,9 +62,9 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#quote(block: true)");
     expect(bundle.main).toContain("#line(length: 100%");
     expect(bundle.sourceMap.length).toBeGreaterThanOrEqual(blocks.length);
-    expect(bundle.template).toContain('font: "Source Serif 4"');
-    expect(bundle.template).toContain('font: "Source Sans 3"');
-    expect(bundle.template).toContain('font: "Source Code Pro"');
+    expect(bundle.template).toContain('font: ("Source Serif 4", "Noto Sans Symbols2")');
+    expect(bundle.template).toContain('font: ("Source Sans 3", "Noto Sans Symbols2")');
+    expect(bundle.template).toContain('font: ("Source Code Pro", "Noto Sans Symbols2")');
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x2013)}]`);
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x2022)}]`);
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x25e6)}]`);
@@ -84,7 +84,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
     expect(bundle.template).toContain('let indigo = rgb(brand.at("accent", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
-    expect(bundle.template).toContain('text(font: "Source Serif 4", size: 31pt');
+    expect(bundle.template).toContain('text(font: ("Source Serif 4", "Noto Sans Symbols2"), size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
     // Labels are now resolved at runtime; this en export threads the English
     // end-label through settings.labels (asserted on bundle.main below).
