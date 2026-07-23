@@ -83,7 +83,7 @@ export interface ExtensionPdfExecutorStoreOptionsV1 extends IndexedDbExportByteS
   spoolLimits?: SpoolWriteLimitsV1;
 }
 
-const DEFAULT_SPOOL_LIMITS: SpoolWriteLimitsV1 = {
+export const EXTENSION_EXPORT_EXECUTOR_DEFAULT_SPOOL_LIMITS_V1: SpoolWriteLimitsV1 = {
   maxObjectBytes: 256 * 1024 * 1024,
   maxJobBytes: 384 * 1024 * 1024,
   maxTotalBytes: 512 * 1024 * 1024,
@@ -93,48 +93,48 @@ function checkpointKey(jobId: string, requestId: string, requestKey: string): st
   return `pdf:${jobId.length}:${jobId}:${requestId.length}:${requestId}:${requestKey.length}:${requestKey}`;
 }
 
-function clone<T>(value: T): T {
+export function cloneExecutorValue<T>(value: T): T {
   return structuredClone(value);
 }
 
-function throwIfAborted(signal: AbortSignal): void {
+export function throwIfExecutorAborted(signal: AbortSignal): void {
   if (signal.aborted) {
     throw signal.reason ?? new DOMException("The export was cancelled.", "AbortError");
   }
 }
 
-function canonical(value: unknown, ancestors = new Set<object>()): string {
+export function canonicalExecutorValue(value: unknown, ancestors = new Set<object>()): string {
   if (value === null || typeof value !== "object") {
     if (typeof value === "number" && !Number.isFinite(value)) {
-      throw new Error("Durable PDF metadata contains a non-finite number.");
+      throw new Error("Durable export metadata contains a non-finite number.");
     }
     return JSON.stringify(value);
   }
-  if (ancestors.has(value)) throw new Error("Durable PDF metadata contains a cycle.");
+  if (ancestors.has(value)) throw new Error("Durable export metadata contains a cycle.");
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      return `[${value.map((entry) => canonical(entry, ancestors)).join(",")}]`;
+      return `[${value.map((entry) => canonicalExecutorValue(entry, ancestors)).join(",")}]`;
     }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("Durable PDF metadata must contain only plain data objects.");
+      throw new Error("Durable export metadata must contain only plain data objects.");
     }
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, entry]) => entry !== undefined)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry, ancestors)}`)
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalExecutorValue(entry, ancestors)}`)
       .join(",")}}`;
   } finally {
     ancestors.delete(value);
   }
 }
 
-function same(left: unknown, right: unknown): boolean {
-  return canonical(left) === canonical(right);
+export function sameExecutorValue(left: unknown, right: unknown): boolean {
+  return canonicalExecutorValue(left) === canonicalExecutorValue(right);
 }
 
-function dehydrate(value: unknown, blobs: Uint8Array[], seen = new Set<object>()): unknown {
+export function dehydrateExecutorValue(value: unknown, blobs: Uint8Array[], seen = new Set<object>()): unknown {
   if (value instanceof Uint8Array) {
     const index = blobs.length;
     blobs.push(value);
@@ -142,44 +142,44 @@ function dehydrate(value: unknown, blobs: Uint8Array[], seen = new Set<object>()
   }
   if (value instanceof Date) return { __atlcliDate: value.toISOString() } satisfies DatePlaceholderV1;
   if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) throw new Error("Prepared PDF payload contains a cycle.");
+  if (seen.has(value)) throw new Error("Prepared export payload contains a cycle.");
   seen.add(value);
   try {
-    if (Array.isArray(value)) return value.map((entry) => dehydrate(entry, blobs, seen));
+    if (Array.isArray(value)) return value.map((entry) => dehydrateExecutorValue(entry, blobs, seen));
     if (value instanceof Map) {
       return {
         __atlcliMap: [...value].map(([key, entry]) => [
-          dehydrate(key, blobs, seen),
-          dehydrate(entry, blobs, seen),
+          dehydrateExecutorValue(key, blobs, seen),
+          dehydrateExecutorValue(entry, blobs, seen),
         ]),
       } satisfies MapPlaceholderV1;
     }
     if (value instanceof Set) {
-      return { __atlcliSet: [...value].map((entry) => dehydrate(entry, blobs, seen)) } satisfies SetPlaceholderV1;
+      return { __atlcliSet: [...value].map((entry) => dehydrateExecutorValue(entry, blobs, seen)) } satisfies SetPlaceholderV1;
     }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("Prepared PDF payload must contain plain data.");
+      throw new Error("Prepared export payload must contain plain data.");
     }
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .filter(([, entry]) => entry !== undefined)
-        .map(([key, entry]) => [key, dehydrate(entry, blobs, seen)]),
+        .map(([key, entry]) => [key, dehydrateExecutorValue(entry, blobs, seen)]),
     );
   } finally {
     seen.delete(value);
   }
 }
 
-function hydrate(value: unknown, blobs: Uint8Array[]): unknown {
+export function hydrateExecutorValue(value: unknown, blobs: Uint8Array[]): unknown {
   if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map((entry) => hydrate(entry, blobs));
+  if (Array.isArray(value)) return value.map((entry) => hydrateExecutorValue(entry, blobs));
   if (
     Object.keys(value).length === 1
     && Number.isSafeInteger((value as Partial<BytesPlaceholderV1>).__atlcliBytes)
   ) {
     const blob = blobs[(value as BytesPlaceholderV1).__atlcliBytes];
-    if (!blob) throw new Error("Prepared PDF payload references a missing blob.");
+    if (!blob) throw new Error("Prepared export payload references a missing blob.");
     return blob;
   }
   if (
@@ -193,21 +193,21 @@ function hydrate(value: unknown, blobs: Uint8Array[]): unknown {
     && Array.isArray((value as Partial<MapPlaceholderV1>).__atlcliMap)
   ) {
     return new Map((value as MapPlaceholderV1).__atlcliMap.map(
-      ([key, entry]) => [hydrate(key, blobs), hydrate(entry, blobs)],
+      ([key, entry]) => [hydrateExecutorValue(key, blobs), hydrateExecutorValue(entry, blobs)],
     ));
   }
   if (
     Object.keys(value).length === 1
     && Array.isArray((value as Partial<SetPlaceholderV1>).__atlcliSet)
   ) {
-    return new Set((value as SetPlaceholderV1).__atlcliSet.map((entry) => hydrate(entry, blobs)));
+    return new Set((value as SetPlaceholderV1).__atlcliSet.map((entry) => hydrateExecutorValue(entry, blobs)));
   }
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, hydrate(entry, blobs)]),
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, hydrateExecutorValue(entry, blobs)]),
   );
 }
 
-async function collect(
+export async function collectExecutorBytes(
   source: AsyncIterable<Uint8Array>,
   maxBytes: number,
   signal?: AbortSignal,
@@ -215,9 +215,9 @@ async function collect(
   const chunks: Uint8Array[] = [];
   let length = 0;
   for await (const chunk of source) {
-    if (signal) throwIfAborted(signal);
+    if (signal) throwIfExecutorAborted(signal);
     length += chunk.byteLength;
-    if (length > maxBytes) throw new RangeError("Durable PDF object exceeds its configured limit.");
+    if (length > maxBytes) throw new RangeError("Durable export object exceeds its configured limit.");
     chunks.push(chunk);
   }
   const result = new Uint8Array(length);
@@ -229,13 +229,13 @@ async function collect(
   return result;
 }
 
-function digest(bytes: Uint8Array): string {
+export function digestExecutorBytes(bytes: Uint8Array): string {
   const hasher = new IncrementalSha256();
   hasher.update(bytes);
   return hasher.digestHex();
 }
 
-function spoolSource(bytes: Uint8Array): AsyncIterable<Uint8Array> {
+export function executorSpoolSource(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   return (async function* () { yield bytes; })();
 }
 
@@ -256,7 +256,7 @@ function assertLiveLease(row: JobRowProjection | undefined, jobId: string, lease
   }
 }
 
-async function assertLiveLeaseInTransaction(
+export async function assertLiveExecutorLeaseInTransaction(
   transaction: IDBTransaction,
   jobId: string,
   leaseEpoch: number,
@@ -267,6 +267,20 @@ async function assertLiveLeaseInTransaction(
   ) as JobRowProjection | undefined;
   assertLiveLease(row, jobId, leaseEpoch, now);
 }
+
+// Keep the PDF store implementation concise while exposing the exact same
+// primitives to the DOCX store adapter.
+const DEFAULT_SPOOL_LIMITS = EXTENSION_EXPORT_EXECUTOR_DEFAULT_SPOOL_LIMITS_V1;
+const clone = cloneExecutorValue;
+const throwIfAborted = throwIfExecutorAborted;
+const canonical = canonicalExecutorValue;
+const same = sameExecutorValue;
+const dehydrate = dehydrateExecutorValue;
+const hydrate = hydrateExecutorValue;
+const collect = collectExecutorBytes;
+const digest = digestExecutorBytes;
+const spoolSource = executorSpoolSource;
+const assertLiveLeaseInTransaction = assertLiveExecutorLeaseInTransaction;
 
 function manifestRef(jobId: string, leaseEpoch: number, key: string): SpoolRefV1 {
   return { jobId, leaseEpoch, namespace: "ready-pdf", key: `${key}:manifest` };

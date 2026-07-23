@@ -8,6 +8,11 @@
  * load-bearing `true` return is unit-tested.
  */
 import { handleOffscreenMessage } from "../../utils/listeners.js";
+import type {
+  ExportJobExecutor,
+  ExportJobRequestV1,
+  ExportJobSnapshotV1,
+} from "@atlcli/export-jobs";
 import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
 import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
@@ -43,17 +48,39 @@ const pdfExecutor = createProductiveExtensionPdfExecutor({
   compilerHost: pdfHost,
   renderPool,
 });
+let docxExecutorPromise:
+  | Promise<ExportJobExecutor<ExportJobRequestV1>>
+  | undefined;
+
+function docxExecutor(): Promise<ExportJobExecutor<ExportJobRequestV1>> {
+  return docxExecutorPromise ??= import(
+    "../../utils/export-jobs/docx-executor.js"
+  ).then(({ createProductiveExtensionDocxExecutor }) =>
+    createProductiveExtensionDocxExecutor({
+      bytes: exportBytes,
+      renderPool,
+    })
+  );
+}
+
+async function executeClaimedExport(claimed: ExportJobSnapshotV1) {
+  const executor = claimed.format === "docx"
+    ? await docxExecutor()
+    : pdfExecutor;
+  return runClaimedExtensionExportJob({
+    claimed,
+    catalog: exportCatalog,
+    bytes: exportBytes,
+    executor,
+    // Both productive browser engines intentionally share this envelope.
+    spoolLimits: EXTENSION_PDF_SPOOL_LIMITS_V1,
+  });
+}
+
 const exportQueue = createExtensionExportQueueRunner({
   catalog: exportCatalog,
   bytes: exportBytes,
-  execute: (claimed) =>
-    runClaimedExtensionExportJob({
-      claimed,
-      catalog: exportCatalog,
-      bytes: exportBytes,
-      executor: pdfExecutor,
-      spoolLimits: EXTENSION_PDF_SPOOL_LIMITS_V1,
-    }),
+  execute: executeClaimedExport,
   onExecutionError: (error, jobId) =>
     console.error(`Common export job ${jobId} failed outside its executor`, error),
 });
