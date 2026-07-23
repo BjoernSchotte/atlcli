@@ -344,6 +344,7 @@ export function createExtensionPdfReadyToRenderStore(
         preparedByteLength: input.binding.byteLength,
         preparedSha256: input.binding.sha256,
         estimate: clone(input.estimate),
+        sourcePageCount: input.sourcePageCount,
         renderAttempts: 0,
       };
       await withExtensionExportTransaction(

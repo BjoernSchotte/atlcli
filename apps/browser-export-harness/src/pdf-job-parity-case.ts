@@ -122,6 +122,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
           preparedByteLength: input.binding.byteLength,
           preparedSha256: input.binding.sha256,
           estimate: input.estimate,
+          sourcePageCount: input.sourcePageCount,
           renderAttempts: 0,
         };
         return checkpoint;

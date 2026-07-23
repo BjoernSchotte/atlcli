@@ -1705,8 +1705,14 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     productive stage/progress events are implemented identically in the file and
     IndexedDB runtimes. Focused persistence/runtime coverage, workspace
     typecheck, all 16 production builds, and API report/closure guard 5/5 pass.
-  - [ ] Remaining PR-I increments: productive PDF/DOCX final statistics and
-    lifecycle/issue events, generic-browser Activity/queue proof,
+  - [x] Productive telemetry increment: PDF and DOCX persist source-page counts
+    through ready/result recovery, publish renderer-derived final counters and
+    bounded redacted issue codes, and record terminal state/artifact/failure/auth
+    lifecycle events in both hosts. Recovered jobs restore the same deterministic
+    counters without rerendering; real durations remain attempt-specific.
+    Focused matrix 63/63, typecheck, 16 production builds, API report/closure
+    guard 5/5, and packed MV3 Chromium 19/19 pass.
+  - [ ] Remaining PR-I increments: generic-browser Activity/queue proof,
     documentation/CHANGELOG, and the final non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/

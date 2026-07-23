@@ -643,6 +643,7 @@ export async function exportPdfAsOrdinaryJob(
             }),
             macros,
           },
+          telemetry: { sourcePageCount: value.sourcePages.length },
         };
       },
       estimateRender(input): ResourceEstimateV1 {

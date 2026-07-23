@@ -43,6 +43,7 @@ export type {
   ExportJobSnapshotV1,
 } from "./snapshot.js";
 export type { ExportJobEventDraftV1, ExportJobEventV1 } from "./event.js";
+export type { ExportJobResultTelemetryV1 } from "./telemetry.js";
 export type {
   SpoolRefV1,
   SpoolWriteLimitsV1,

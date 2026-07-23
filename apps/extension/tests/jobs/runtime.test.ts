@@ -146,6 +146,13 @@ describe("extension export execution runtime", () => {
         at: 20,
         progress: { stage: "commit", done: 1, total: 1, updatedAt: 20 },
       },
+      { kind: "state", seq: 5, at: 20, from: "running", to: "succeeded" },
+      {
+        kind: "artifact",
+        seq: 6,
+        at: 20,
+        artifact: finished.artifact!,
+      },
     ]);
     expect(await bytes.getStaged(finished.id, finished.leaseEpoch)).toBeUndefined();
     const collected: number[] = [];
@@ -178,6 +185,10 @@ describe("extension export execution runtime", () => {
       checkpointRef: "request:job-failure",
       error: { code: "executor.failed", message: "render exploded" },
     });
+    expect((await catalog.readEvents(failed.id)).events).toMatchObject([
+      { kind: "state", from: "running", to: "failed" },
+      { kind: "issue", level: "error", code: "executor.failed" },
+    ]);
   });
 
   it("pauses an expired Atlassian session at a replay-safe auth checkpoint", async () => {
@@ -237,6 +248,10 @@ describe("extension export execution runtime", () => {
     });
     expect(waiting.lease).toBeUndefined();
     expect(waiting.finishedAt).toBeUndefined();
+    expect((await catalog.readEvents(waiting.id)).events).toMatchObject([
+      { kind: "state", from: "running", to: "waiting" },
+      { kind: "issue", level: "error", code: "auth.session-expired" },
+    ]);
 
     expect(
       await catalog.claimNext({
@@ -350,6 +365,11 @@ describe("extension export execution runtime", () => {
           total: stages.length,
           detail: `cancel at ${stage}`,
         },
+      });
+      expect((await catalog.readEvents(cancelled.id)).events.at(-1)).toMatchObject({
+        kind: "state",
+        from: "cancelling",
+        to: "cancelled",
       });
       expect(await bytes.getStaged(cancelled.id, cancelled.leaseEpoch)).toBeUndefined();
     }

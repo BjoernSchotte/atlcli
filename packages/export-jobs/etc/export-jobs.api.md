@@ -617,6 +617,12 @@ export interface ExportJobRequestBaseV1 {
 // export: ExportJobRequestV1
 export type ExportJobRequestV1 = DocxExportJobRequestV1 | PdfExportJobRequestV1;
 
+// export: ExportJobResultTelemetryV1
+export interface ExportJobResultTelemetryV1 {
+    stats: ExportJobStatsV1;
+    issues: ExportJobEventDraftV1[];
+}
+
 // export: ExportJobRetentionInputV1
 export interface ExportJobRetentionInputV1 {
     expectedRevision: number;

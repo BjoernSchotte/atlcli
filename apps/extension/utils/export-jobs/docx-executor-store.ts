@@ -160,6 +160,7 @@ export function createExtensionDocxReadyToRenderStore(
         preparedSha256: input.binding.sha256,
         template: cloneExecutorValue(input.template),
         estimate: cloneExecutorValue(input.estimate),
+        sourcePageCount: input.sourcePageCount,
         renderAttempts: 0,
       };
       await withExtensionExportTransaction(

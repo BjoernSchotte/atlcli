@@ -1033,6 +1033,7 @@ async function exportDocxAsOrdinaryJob(
         };
 
         return {
+          jobTelemetry: { sourcePageCount: value.sourcePages.length },
           details: value.metaPage,
           blocks: value.blocks,
           sourceNotes: value.sourceNotes,

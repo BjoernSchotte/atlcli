@@ -151,6 +151,7 @@ async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer
           preparedSha256: input.binding.sha256,
           template: structuredClone(input.template),
           estimate: structuredClone(input.estimate),
+          sourcePageCount: input.sourcePageCount,
           renderAttempts: 0,
         };
         return checkpoint;

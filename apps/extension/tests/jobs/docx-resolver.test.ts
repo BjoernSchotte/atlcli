@@ -122,6 +122,7 @@ describe("extension DOCX durable input resolver", () => {
     });
     expect(live).toBe(false);
     expect(resolved).toMatchObject({
+      jobTelemetry: { sourcePageCount: 1 },
       details: { id: "42", title: "Guide", storage: "<p>Hello</p>" },
       blocks,
       complete: true,

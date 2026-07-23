@@ -2,6 +2,7 @@ import {
   bindExportJobArtifacts,
   bindExportJobSpool,
   type ExportJobExecutionContext,
+  type ExportJobEventDraftV1,
   type ExportJobExecutionResultV1,
   type ExportJobExecutor,
   type ExportJobRequestV1,
@@ -126,6 +127,19 @@ export interface RunClaimedFileExportJobOptionsV1 extends Omit<CreateFileExportE
   executor: ExportJobExecutor<ExportJobRequestV1>;
 }
 
+async function appendCommittedEvent(
+  jobs: FileExportJobStore,
+  snapshot: ExportJobSnapshotV1,
+  event: ExportJobEventDraftV1,
+): Promise<void> {
+  const prior = await jobs.readEvents(snapshot.id, { limit: 1_000 });
+  await jobs.appendEvent(snapshot.id, {
+    expectedRevision: snapshot.revision,
+    leaseEpoch: snapshot.leaseEpoch,
+    event: { ...event, seq: (prior.events.at(-1)?.seq ?? 0) + 1 },
+  });
+}
+
 /** Execute and fence-finalize exactly one claimed job. Errors become durable terminal state. */
 export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOptionsV1): Promise<ExportJobSnapshotV1> {
   const runtime = createFileExportExecutionContext(options); const now = options.now ?? Date.now;
@@ -134,11 +148,27 @@ export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOp
     if (request.format !== options.executor.format) throw new Error("Executor format does not match the claimed request.");
     const result: ExportJobExecutionResultV1 = await options.executor.execute(request, runtime.context);
     const current = await runtime.snapshot();
-    return await options.jobs.finalizeArtifact({ id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, stagedArtifact: result.stagedArtifact, reportRef: result.reportRef, reportSummary: result.reportSummary, finishedAt: now() });
+    const finishedAt = now();
+    const finalized = await options.jobs.finalizeArtifact({ id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, stagedArtifact: result.stagedArtifact, reportRef: result.reportRef, reportSummary: result.reportSummary, finishedAt });
+    await appendCommittedEvent(options.jobs, finalized, { kind: "state", at: finishedAt, from: "running", to: "succeeded" });
+    await appendCommittedEvent(options.jobs, finalized, { kind: "artifact", at: finishedAt, artifact: finalized.artifact! });
+    return finalized;
   } catch (error) {
     const current = await options.jobs.get(options.claimed.id); if (!current) throw error;
-    if (current.state === "cancelling") return options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "cancelled", at: now() });
-    if (current.state === "running") return options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "failed", at: now(), error: { code: "executor.failed", message: error instanceof Error ? error.message : String(error), category: "unknown", retryable: false, ...(current.stage ? { stage: current.stage } : {}), occurredAt: now() } });
+    if (current.state === "succeeded" || current.state === "failed" || current.state === "cancelled" || current.state === "interrupted") return current;
+    if (current.state === "cancelling") {
+      const at = now();
+      const cancelled = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "cancelled", at });
+      await appendCommittedEvent(options.jobs, cancelled, { kind: "state", at, from: "cancelling", to: "cancelled" });
+      return cancelled;
+    }
+    if (current.state === "running") {
+      const at = now();
+      const failed = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "failed", at, error: { code: "executor.failed", message: error instanceof Error ? error.message : String(error), category: "unknown", retryable: false, ...(current.stage ? { stage: current.stage } : {}), occurredAt: at } });
+      await appendCommittedEvent(options.jobs, failed, { kind: "state", at, from: "running", to: "failed" });
+      await appendCommittedEvent(options.jobs, failed, { kind: "issue", at, level: "error", code: "executor.failed" });
+      return failed;
+    }
     throw error;
   } finally { await runtime.stop(); }
 }

@@ -111,7 +111,7 @@ export function createFilePdfReadyToRenderStore(options: FileExecutorStoreOption
     load: ({ jobId, request }) => base.load("pdf", jobId, request.id, request.idempotencyKey),
     async commit(input) {
       const key = checkpointKey("pdf", input.jobId, input.request.id, input.request.idempotencyKey);
-      const checkpoint: PdfReadyToRenderCheckpointV1 = { schema: "atlcli.pdf-ready-to-render/1", ref: `node-ready:${key}`, jobId: input.jobId, requestId: input.request.id, requestKey: input.request.idempotencyKey, preparedRef: `node-prepared:${key}`, preparedByteLength: input.binding.byteLength, preparedSha256: input.binding.sha256, estimate: structuredClone(input.estimate), renderAttempts: 0 };
+      const checkpoint: PdfReadyToRenderCheckpointV1 = { schema: "atlcli.pdf-ready-to-render/1", ref: `node-ready:${key}`, jobId: input.jobId, requestId: input.request.id, requestKey: input.request.idempotencyKey, preparedRef: `node-prepared:${key}`, preparedByteLength: input.binding.byteLength, preparedSha256: input.binding.sha256, estimate: structuredClone(input.estimate), sourcePageCount: input.sourcePageCount, renderAttempts: 0 };
       return base.commit({ format: "pdf", jobId: input.jobId, leaseEpoch: input.leaseEpoch, requestId: input.request.id, requestKey: input.request.idempotencyKey, prepared: input.prepared, checkpoint, signal: input.signal });
     },
     materialize: (input) => base.materialize("pdf", input.checkpoint, input.signal),
@@ -125,7 +125,7 @@ export function createFileDocxReadyToRenderStore(options: FileExecutorStoreOptio
     load: ({ jobId, request }) => base.load("docx", jobId, request.id, request.idempotencyKey),
     async commit(input) {
       const key = checkpointKey("docx", input.jobId, input.request.id, input.request.idempotencyKey);
-      const checkpoint: DocxReadyToRenderCheckpointV1 = { schema: "atlcli.docx-ready-to-render/1", ref: `node-ready:${key}`, jobId: input.jobId, requestId: input.request.id, requestKey: input.request.idempotencyKey, preparedRef: `node-prepared:${key}`, preparedByteLength: input.binding.byteLength, preparedSha256: input.binding.sha256, template: structuredClone(input.template), estimate: structuredClone(input.estimate), renderAttempts: 0 };
+      const checkpoint: DocxReadyToRenderCheckpointV1 = { schema: "atlcli.docx-ready-to-render/1", ref: `node-ready:${key}`, jobId: input.jobId, requestId: input.request.id, requestKey: input.request.idempotencyKey, preparedRef: `node-prepared:${key}`, preparedByteLength: input.binding.byteLength, preparedSha256: input.binding.sha256, template: structuredClone(input.template), estimate: structuredClone(input.estimate), sourcePageCount: input.sourcePageCount, renderAttempts: 0 };
       return base.commit({ format: "docx", jobId: input.jobId, leaseEpoch: input.leaseEpoch, requestId: input.request.id, requestKey: input.request.idempotencyKey, prepared: input.prepared, checkpoint, signal: input.signal });
     },
     materialize: (input) => base.materialize("docx", input.checkpoint, input.signal),

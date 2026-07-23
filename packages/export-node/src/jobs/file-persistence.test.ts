@@ -13,6 +13,7 @@ import {
   prepareExportArtifactFinalizationIntent,
   type DocxExportJobRequestV1,
   type ExportJobExecutionContext,
+  type ExportJobExecutor,
   type ExportJobFinalizeV1,
   type PendingArtifactV1,
   type PdfExportJobRequestV1,
@@ -23,7 +24,10 @@ import type { DocxExportResultIntentV1 } from "@atlcli/export-wiring/jobs";
 import { createFileExportJobPersistence } from "./persistence.js";
 import { deliverFileExportArtifact } from "./delivery.js";
 import { readFileExportReport } from "./executor-stores.js";
-import { createFileExportExecutionContext } from "./runtime.js";
+import {
+  createFileExportExecutionContext,
+  runClaimedFileExportJob,
+} from "./runtime.js";
 import { FileExportLock } from "./file-lock.js";
 import { reconcileStaleExportJobs } from "./reconcile.js";
 import { sweepFileExportJobRetentionV1 } from "./retention.js";
@@ -405,6 +409,86 @@ describe("file export persistence", () => {
       },
     ]);
     await runtime.stop();
+  });
+
+  it("records terminal state, artifact, and failure issues in the file runtime", async () => {
+    const dir = await root();
+    const persistence = createFileExportJobPersistence({ rootDir: dir, now: () => 20 });
+    await persistence.jobs.create({ request: request("runtime-events") });
+    const claimed = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 10,
+      leaseDurationMs: 10_000,
+    }))!;
+    const executor: ExportJobExecutor<DocxExportJobRequestV1> = {
+      format: "docx",
+      async execute(_request, context) {
+        const stagedArtifact = await context.artifacts.stage({
+          mediaType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          filename: "runtime.docx",
+          byteLength: 3,
+          sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          bytes: bytes("abc"),
+        });
+        return {
+          stagedArtifact,
+          reportRef: "report:runtime-events",
+          reportSummary: {
+            issues: { info: 0, warning: 0, error: 0 },
+            topCodes: [],
+            completeness: "complete",
+          },
+        };
+      },
+    };
+
+    const finished = await runClaimedFileExportJob({
+      claimed,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      executor,
+      now: () => 20,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+
+    expect(finished.state).toBe("succeeded");
+    expect((await persistence.jobs.readEvents(finished.id)).events).toMatchObject([
+      { kind: "state", from: "running", to: "succeeded" },
+      { kind: "artifact", artifact: { filename: "runtime.docx", byteLength: 3 } },
+    ]);
+
+    await persistence.jobs.create({ request: request("runtime-failure") });
+    const failedClaim = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 21,
+      leaseDurationMs: 10_000,
+      ids: ["runtime-failure"],
+    }))!;
+    const failed = await runClaimedFileExportJob({
+      claimed: failedClaim,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      executor: {
+        format: "docx",
+        execute: async () => {
+          throw new Error("render failed");
+        },
+      },
+      now: () => 22,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    expect(failed.state).toBe("failed");
+    expect((await persistence.jobs.readEvents(failed.id)).events).toMatchObject([
+      { kind: "state", from: "running", to: "failed" },
+      { kind: "issue", level: "error", code: "executor.failed" },
+    ]);
   });
 
   it("returns ascending event pages after a cursor", async () => {

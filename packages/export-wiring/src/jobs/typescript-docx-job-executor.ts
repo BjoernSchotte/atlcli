@@ -5,6 +5,7 @@ import {
   type ExportJobExecutionContext,
   type ExportJobExecutionResultV1,
   type ExportJobExecutor,
+  type ExportJobResultTelemetryV1,
   type ExportReportSummaryV1,
   type PendingArtifactV1,
   type ResourceEstimateV1,
@@ -19,6 +20,9 @@ import {
   type SvgRasterizer,
 } from "@atlcli/docx";
 import type { ExportProgressCallback } from "@atlcli/confluence";
+import {
+  buildProductiveExportTelemetryV1,
+} from "./productive-telemetry.js";
 
 const DOCX_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
@@ -27,6 +31,11 @@ export type TypescriptDocxExportJobEngineInputV1 = Omit<
   ExportInput,
   "templateBytes" | "signal" | "onProgress"
 >;
+
+export type TypescriptDocxExportJobResolvedInputV1 =
+  TypescriptDocxExportJobEngineInputV1 & {
+    jobTelemetry?: { sourcePageCount: number };
+  };
 
 export interface DocxPinnedTemplateV1 {
   recordKey: string;
@@ -64,6 +73,8 @@ export interface DocxReadyToRenderCheckpointV1 {
   preparedSha256: string;
   template: DocxTemplateBindingV1;
   estimate: ResourceEstimateV1;
+  /** Productive source-page count for final statistics; absent only on legacy checkpoints. */
+  sourcePageCount?: number;
   renderAttempts: number;
 }
 
@@ -81,6 +92,7 @@ export interface DocxReadyToRenderStoreV1 {
     binding: DocxPreparedPayloadBindingV1;
     template: DocxTemplateBindingV1;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     signal: AbortSignal;
   }): Promise<DocxReadyToRenderCheckpointV1>;
   materialize(input: {
@@ -149,6 +161,8 @@ export interface DocxExportResultIntentV1 {
   reportRef: string;
   reportSha256: string;
   reportSummary: ExportReportSummaryV1;
+  /** Added productively in PR-I; absent only on legacy persisted result intents. */
+  telemetry?: ExportJobResultTelemetryV1;
 }
 
 export interface DocxRecoveredExportResultV1 {
@@ -183,7 +197,7 @@ export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
   resolveInput(
     request: DocxExportJobRequestV1,
     context: ExportJobExecutionContext,
-  ): Promise<TypescriptDocxExportJobEngineInputV1>;
+  ): Promise<TypescriptDocxExportJobResolvedInputV1>;
   estimateRender(
     input: TypescriptDocxExportJobEngineInputV1,
     request: DocxExportJobRequestV1,
@@ -293,6 +307,9 @@ function validateCheckpoint(
     throw new Error("DOCX prepared SHA-256 is invalid.");
   }
   nonNegativeSafeInteger(checkpoint.renderAttempts, "checkpoint.renderAttempts");
+  if (checkpoint.sourcePageCount !== undefined) {
+    nonNegativeSafeInteger(checkpoint.sourcePageCount, "checkpoint.sourcePageCount");
+  }
   validateTemplateBinding(checkpoint.template, request);
   validateEstimate(checkpoint.estimate);
 }
@@ -310,6 +327,7 @@ function sameCheckpointExceptAttempts(
     left.preparedRef === right.preparedRef &&
     left.preparedByteLength === right.preparedByteLength &&
     left.preparedSha256 === right.preparedSha256 &&
+    left.sourcePageCount === right.sourcePageCount &&
     sameTemplate(left.template, right.template) &&
     sameEstimate(left.estimate, right.estimate)
   );
@@ -510,6 +528,7 @@ function validateResultIntent(
     artifact: PendingArtifactV1;
     reportSha256: string;
     reportSummary: ExportReportSummaryV1;
+    telemetry: ExportJobResultTelemetryV1;
   },
 ): void {
   if (intent.schema !== "atlcli.docx-result-intent/1") {
@@ -534,10 +553,19 @@ function validateResultIntent(
       intent.artifact.byteLength !== expected.artifact.byteLength ||
       intent.artifact.sha256 !== expected.artifact.sha256 ||
       intent.reportSha256 !== expected.reportSha256 ||
-      !sameReportSummary(intent.reportSummary, expected.reportSummary))
+      !sameReportSummary(intent.reportSummary, expected.reportSummary) ||
+      canonical(intent.telemetry) !== canonical(expected.telemetry))
   ) {
     throw new Error("DOCX result intent does not match the validated artifact and report.");
   }
+}
+
+async function publishTelemetry(
+  context: ExportJobExecutionContext,
+  telemetry: ExportJobResultTelemetryV1,
+): Promise<void> {
+  await context.updateStats(telemetry.stats);
+  for (const issue of telemetry.issues) await context.appendEvent(issue);
 }
 
 function validateExecutionResult(
@@ -682,6 +710,7 @@ export function createTypescriptDocxExportJobExecutor(
       let resolvedInput: TypescriptDocxExportJobEngineInputV1 | undefined;
       let estimate: ResourceEstimateV1;
       let resultKey: DocxExportResultRecoveryKeyV1 | undefined;
+      let sourcePageCount = checkpoint?.sourcePageCount ?? 1;
       if (checkpoint) {
         validateCheckpoint(checkpoint, request, context);
         await context.checkpoint(checkpoint.ref);
@@ -691,11 +720,19 @@ export function createTypescriptDocxExportJobExecutor(
         throwIfAborted(context.signal);
         if (recovered) {
           validateResultIntent(recovered.intent, resultKey);
-          return validateExecutionResult(recovered.result, context, recovered.intent);
+          const result = validateExecutionResult(recovered.result, context, recovered.intent);
+          if (recovered.intent.telemetry) {
+            await publishTelemetry(context, recovered.intent.telemetry);
+          }
+          return result;
         }
       } else {
         await progress(context, now, "compose", 0, 1, "Resolving DOCX source input");
-        resolvedInput = await options.resolveInput(request, context);
+        const resolved = await options.resolveInput(request, context);
+        sourcePageCount = resolved.jobTelemetry?.sourcePageCount ?? 1;
+        nonNegativeSafeInteger(sourcePageCount, "telemetry.sourcePageCount");
+        const { jobTelemetry: _jobTelemetry, ...engineInput } = resolved;
+        resolvedInput = engineInput;
         throwIfAborted(context.signal);
         estimate = options.estimateRender(resolvedInput, request);
         validateEstimate(estimate);
@@ -782,6 +819,7 @@ export function createTypescriptDocxExportJobExecutor(
             binding,
             template,
             estimate,
+            sourcePageCount,
             signal: context.signal,
           });
           validateCheckpoint(checkpoint, request, context);
@@ -873,6 +911,35 @@ export function createTypescriptDocxExportJobExecutor(
         const artifactSha256 = await sha256Hex(outputBytes, context.signal);
         const summary = reportSummary(report);
         parseExportReportSummaryV1(summary);
+        const telemetry = buildProductiveExportTelemetryV1(
+          {
+            pageCount: checkpoint.sourcePageCount ?? 1,
+            preparedBytes: checkpoint.preparedByteLength,
+            outputBytes: outputBytes.byteLength,
+            renderAttempts: checkpoint.renderAttempts,
+            embeddedAssets: report.embeddedImages,
+            skippedAssets: report.skippedImages,
+            renderedDiagrams: report.renderedDiagrams,
+            reportSummary: summary,
+            notes: report.notes,
+            durationsMs: {
+              fetch: Math.round(
+                report.timings.includeFetchMs + report.timings.imageFetchMs,
+              ),
+              compose: Math.round(
+                Math.max(report.timings.resolveMs, report.timings.bodyMs),
+              ),
+              assets: Math.round(
+                report.timings.logoFetchMs
+                  + report.timings.imageFetchMs
+                  + report.timings.diagramRenderMs
+                  + report.timings.diagramRasterMs,
+              ),
+              render: Math.round(report.timings.renderMs),
+            },
+          },
+          now(),
+        );
         const reportSha256 = await sha256Hex(
           new TextEncoder().encode(canonical(report)),
           context.signal,
@@ -903,6 +970,7 @@ export function createTypescriptDocxExportJobExecutor(
           reportRef: `${resultKey.ref}:report`,
           reportSha256,
           reportSummary: summary,
+          telemetry,
         };
         try {
           const preparedIntent = await options.results.prepare({ intent, report }, context);
@@ -910,11 +978,13 @@ export function createTypescriptDocxExportJobExecutor(
             artifact,
             reportSha256,
             reportSummary: summary,
+            telemetry,
           });
           const result = await options.results.stage(
             { intent: preparedIntent, artifact },
             context,
           );
+          await publishTelemetry(context, telemetry);
           await progress(context, now, "commit", 1, 1, "DOCX artifact and report staged");
           return validateExecutionResult(result, context, preparedIntent);
         } finally {

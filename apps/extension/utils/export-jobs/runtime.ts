@@ -2,6 +2,7 @@ import {
   bindExportJobArtifacts,
   bindExportJobSpool,
   type ExportJobExecutionContext,
+  type ExportJobEventDraftV1,
   type ExportJobExecutionResultV1,
   type ExportJobExecutor,
   type ExportJobRequestV1,
@@ -218,6 +219,19 @@ export interface RunClaimedExtensionExportJobOptionsV1
   executor: ExportJobExecutor<ExportJobRequestV1>;
 }
 
+async function appendCommittedEvent(
+  catalog: IndexedDbExportJobCatalog,
+  snapshot: ExportJobSnapshotV1,
+  event: ExportJobEventDraftV1,
+): Promise<void> {
+  const prior = await catalog.readEvents(snapshot.id, { limit: 1_000 });
+  await catalog.appendEvent(snapshot.id, {
+    expectedRevision: snapshot.revision,
+    leaseEpoch: snapshot.leaseEpoch,
+    event: { ...event, seq: (prior.events.at(-1)?.seq ?? 0) + 1 },
+  });
+}
+
 /** Execute and fence-finalize one claimed extension job; no panel lifetime participates. */
 export async function runClaimedExtensionExportJob(
   options: RunClaimedExtensionExportJobOptionsV1,
@@ -232,32 +246,61 @@ export async function runClaimedExtensionExportJob(
     }
     const result: ExportJobExecutionResultV1 = await options.executor.execute(request, runtime.context);
     const current = await runtime.snapshot();
-    return options.catalog.finalizeArtifact({
+    const finishedAt = now();
+    const finalized = await options.catalog.finalizeArtifact({
       id: current.id,
       expectedRevision: current.revision,
       leaseEpoch: current.leaseEpoch,
       stagedArtifact: result.stagedArtifact,
       reportRef: result.reportRef,
       reportSummary: result.reportSummary,
-      finishedAt: now(),
+      finishedAt,
     });
+    await appendCommittedEvent(options.catalog, finalized, {
+      kind: "state",
+      at: finishedAt,
+      from: "running",
+      to: "succeeded",
+    });
+    await appendCommittedEvent(options.catalog, finalized, {
+      kind: "artifact",
+      at: finishedAt,
+      artifact: finalized.artifact!,
+    });
+    return finalized;
   } catch (error) {
     const current = await options.catalog.get(options.claimed.id);
     if (!current) throw error;
+    if (
+      current.state === "succeeded"
+      || current.state === "failed"
+      || current.state === "cancelled"
+      || current.state === "interrupted"
+    ) {
+      return current;
+    }
     if (current.state === "cancelling") {
-      return options.catalog.compareAndSet({
+      const at = now();
+      const cancelled = await options.catalog.compareAndSet({
         kind: "transition",
         id: current.id,
         expectedRevision: current.revision,
         leaseEpoch: current.leaseEpoch,
         to: "cancelled",
-        at: now(),
+        at,
       });
+      await appendCommittedEvent(options.catalog, cancelled, {
+        kind: "state",
+        at,
+        from: "cancelling",
+        to: "cancelled",
+      });
+      return cancelled;
     }
     if (current.state === "running") {
       const occurredAt = now();
       if (classifyAtlassianSessionError(error) === "not-logged-in") {
-        return options.catalog.compareAndSet({
+        const waiting = await options.catalog.compareAndSet({
           kind: "transition",
           id: current.id,
           expectedRevision: current.revision,
@@ -278,8 +321,21 @@ export async function runClaimedExtensionExportJob(
             occurredAt,
           },
         });
+        await appendCommittedEvent(options.catalog, waiting, {
+          kind: "state",
+          at: occurredAt,
+          from: "running",
+          to: "waiting",
+        });
+        await appendCommittedEvent(options.catalog, waiting, {
+          kind: "issue",
+          at: occurredAt,
+          level: "error",
+          code: "auth.session-expired",
+        });
+        return waiting;
       }
-      return options.catalog.compareAndSet({
+      const failed = await options.catalog.compareAndSet({
         kind: "transition",
         id: current.id,
         expectedRevision: current.revision,
@@ -295,6 +351,19 @@ export async function runClaimedExtensionExportJob(
           occurredAt,
         },
       });
+      await appendCommittedEvent(options.catalog, failed, {
+        kind: "state",
+        at: occurredAt,
+        from: "running",
+        to: "failed",
+      });
+      await appendCommittedEvent(options.catalog, failed, {
+        kind: "issue",
+        at: occurredAt,
+        level: "error",
+        code: "executor.failed",
+      });
+      return failed;
     }
     throw error;
   } finally {

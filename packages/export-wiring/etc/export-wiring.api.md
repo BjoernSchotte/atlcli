@@ -383,6 +383,9 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
     resolveInput(request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
         input: PdfExportJobEngineInputV1;
         env: Omit<PreparePdfExportEnv, "now">;
+        telemetry?: {
+            sourcePageCount: number;
+        };
     }>;
     readyToRender: PdfReadyToRenderStoreV1;
     estimateRender(input: PdfExportJobEngineInputV1, request: PdfExportJobRequestV1): ResourceEstimateV1;
@@ -397,7 +400,7 @@ export declare function createTypescriptDocxExportJobExecutor(options: CreateTyp
 
 // export: CreateTypescriptDocxExportJobExecutorOptionsV1
 export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
-    resolveInput(request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<TypescriptDocxExportJobEngineInputV1>;
+    resolveInput(request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<TypescriptDocxExportJobResolvedInputV1>;
     estimateRender(input: TypescriptDocxExportJobEngineInputV1, request: DocxExportJobRequestV1): ResourceEstimateV1;
     templates: DocxPinnedTemplatePortV1;
     readyToRender: DocxReadyToRenderStoreV1;
@@ -419,6 +422,7 @@ export interface DocxExportResultIntentV1 {
     reportRef: string;
     reportSha256: string;
     reportSummary: ExportReportSummaryV1;
+    telemetry?: ExportJobResultTelemetryV1;
 }
 
 // export: DocxExportResultRecoveryKeyV1
@@ -483,6 +487,7 @@ export interface DocxReadyToRenderCheckpointV1 {
     preparedSha256: string;
     template: DocxTemplateBindingV1;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     renderAttempts: number;
 }
 
@@ -501,6 +506,7 @@ export interface DocxReadyToRenderStoreV1 {
         binding: DocxPreparedPayloadBindingV1;
         template: DocxTemplateBindingV1;
         estimate: ResourceEstimateV1;
+        sourcePageCount?: number;
         signal: AbortSignal;
     }): Promise<DocxReadyToRenderCheckpointV1>;
     materialize(input: {
@@ -627,6 +633,7 @@ export interface PdfExportResultIntentV1 {
     reportRef: string;
     reportSha256: string;
     reportSummary: ExportReportSummaryV1;
+    telemetry?: ExportJobResultTelemetryV1;
 }
 
 // export: PdfExportResultRecoveryKeyV1
@@ -673,6 +680,7 @@ export interface PdfReadyToRenderCheckpointV1 {
     preparedByteLength: number;
     preparedSha256: string;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     renderAttempts: number;
 }
 
@@ -690,6 +698,7 @@ export interface PdfReadyToRenderStoreV1 {
         prepared: PreparedPdfExportV1;
         binding: PdfPreparedPayloadBindingV1;
         estimate: ResourceEstimateV1;
+        sourcePageCount?: number;
         signal: AbortSignal;
     }): Promise<PdfReadyToRenderCheckpointV1>;
     materialize(input: {
@@ -775,4 +784,11 @@ export interface StreamedExportAssetResultV1<Result> {
 
 // export: TypescriptDocxExportJobEngineInputV1
 export type TypescriptDocxExportJobEngineInputV1 = Omit<ExportInput, "templateBytes" | "signal" | "onProgress">;
+
+// export: TypescriptDocxExportJobResolvedInputV1
+export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngineInputV1 & {
+    jobTelemetry?: {
+        sourcePageCount: number;
+    };
+};
 ```

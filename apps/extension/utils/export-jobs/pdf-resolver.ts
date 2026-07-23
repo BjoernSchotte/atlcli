@@ -300,6 +300,7 @@ function defaults(
 export type ResolvedExtensionPdfJobInputV1 = {
   input: PdfExportJobEngineInputV1;
   env: Omit<PreparePdfExportEnv, "now">;
+  telemetry?: { sourcePageCount: number };
 };
 
 /**
@@ -420,6 +421,7 @@ export function createExtensionPdfJobInputResolver(
         }),
         macros,
       },
+      telemetry: { sourcePageCount: composition.pageCount },
     };
   };
 }

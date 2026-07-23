@@ -7,6 +7,8 @@ import {
 } from "@atlcli/pdf";
 import type {
   ExportJobExecutionContext,
+  ExportJobEventDraftV1,
+  ExportJobStatsV1,
   PdfExportJobRequestV1,
   PendingArtifactV1,
   ResourceEstimateV1,
@@ -104,6 +106,7 @@ class MemoryReadyStore implements PdfReadyToRenderStoreV1 {
       preparedByteLength: input.binding.byteLength,
       preparedSha256: input.binding.sha256,
       estimate: input.estimate,
+      sourcePageCount: input.sourcePageCount,
       renderAttempts: 0,
     };
     return this.record;
@@ -194,7 +197,7 @@ function executorOptions(input: {
     options: {
       async resolveInput() {
         if (input.resolveCalls) input.resolveCalls.count += 1;
-        return engineInput();
+        return { ...engineInput(), telemetry: { sourcePageCount: 3 } };
       },
       readyToRender: ready,
       estimateRender: () => estimate,
@@ -291,6 +294,10 @@ describe("createPdfExportJobExecutor", () => {
     const order: string[] = [];
     const fixture = executorOptions({ reports, order });
     const host = executionContext({ order });
+    const stats: ExportJobStatsV1[] = [];
+    const events: ExportJobEventDraftV1[] = [];
+    host.context.updateStats = async (value) => { stats.push(structuredClone(value)); };
+    host.context.appendEvent = async (event) => { events.push(structuredClone(event)); };
     const result = await createPdfExportJobExecutor(fixture.options).execute(request(), host.context);
 
     const jobBytes = host.artifactBytes();
@@ -306,6 +313,16 @@ describe("createPdfExportJobExecutor", () => {
     });
     expect(result.reportRef).toMatch(/^pdf-result:[a-f0-9]{64}:report$/);
     expect(result.stagedArtifact.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({
+      pages: { discovered: 3, fetched: 3, composed: 3, skipped: 0 },
+      storage: { outputBytes: validPdf.byteLength },
+      warnings: 0,
+      errors: 0,
+    });
+    expect(events).toMatchObject([
+      { kind: "issue", level: "info", code: "browser-harness" },
+    ]);
     const preparedReservation = `prepared-${fixture.ready.record!.preparedByteLength}`;
     expect(order[0]).toBe("reservation-acquire");
     expect(order.filter((entry) => entry.startsWith("prepared-"))).toEqual([
@@ -647,15 +664,22 @@ describe("createPdfExportJobExecutor", () => {
     expect(fixture.storedResult()).toBeDefined();
 
     order.length = 0;
+    const recoveryHost = executionContext({ leaseEpoch: 2, order });
+    const recoveredStats: ExportJobStatsV1[] = [];
+    recoveryHost.context.updateStats = async (value) => {
+      recoveredStats.push(structuredClone(value));
+    };
     const recovered = await createPdfExportJobExecutor(fixture.options).execute(
       request(),
-      executionContext({ leaseEpoch: 2, order }).context,
+      recoveryHost.context,
     );
     expect(recovered.stagedArtifact.leaseEpoch).toBe(2);
     expect(recovered.reportRef).toMatch(/^pdf-result:[a-f0-9]{64}:report$/);
     expect(compileCalls).toBe(1);
     expect(order).toEqual(["checkpoint-publish", "result-recover"]);
     expect(fixture.ready.attempts).toBe(1);
+    expect(recoveredStats).toHaveLength(1);
+    expect(recoveredStats[0]?.pages.composed).toBe(3);
   });
 
   it("rejects recovered metadata that is not bound to this request and checkpoint", async () => {

@@ -110,6 +110,7 @@ describe("extension PDF durable input resolver", () => {
       maxDepth: 2,
     });
     expect(live).toBe(false);
+    expect(resolved.telemetry).toEqual({ sourcePageCount: 1 });
     expect(resolved.input).toMatchObject({
       blocks: composition.blocks,
       complete: true,

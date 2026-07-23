@@ -106,7 +106,9 @@ async function installOffscreenFetchStub(
     const authFailures = new Set(${JSON.stringify(authPageIds)});
     const storageByPageId = ${JSON.stringify(storageByPageId)};
     const releases = Object.create(null);
+    const released = new Set();
     globalThis.__atlcliPackedFetchReleases = releases;
+    globalThis.__atlcliPackedFetchReleased = released;
     globalThis.fetch = async (input) => {
       const url = new URL(typeof input === "string" ? input : input.url);
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
@@ -118,7 +120,7 @@ async function installOffscreenFetchStub(
           headers: { "content-type": "application/json" }
         });
       }
-      if (held.has(pageId)) {
+      if (held.has(pageId) && !released.has(pageId)) {
         await new Promise((resolve) => { releases[pageId] = resolve; });
       }
       return new Response(JSON.stringify({
@@ -147,7 +149,12 @@ async function installOffscreenFetchStub(
 async function releaseOffscreenFetch(pageId: string): Promise<void> {
   if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
   await packedOffscreen.send("Runtime.evaluate", {
-    expression: `globalThis.__atlcliPackedFetchReleases?.[${JSON.stringify(pageId)}]?.()`,
+    expression: `(() => {
+      const pageId = ${JSON.stringify(pageId)};
+      const release = globalThis.__atlcliPackedFetchReleases?.[pageId];
+      if (release) release();
+      else globalThis.__atlcliPackedFetchReleased?.add(pageId);
+    })()`,
     returnByValue: true,
   });
 }
@@ -436,6 +443,15 @@ interface PackedJobRow {
     artifact?: { ref: string; filename: string; byteLength: number; sha256: string };
     reportRef?: string;
     reportSummary?: { completeness: string };
+    stats: {
+      pages: {
+        discovered: number;
+        fetched: number;
+        composed: number;
+        skipped: number;
+      };
+      storage: { outputBytes: number };
+    };
     finishedAt?: number;
     deliveredAt?: number;
     artifactReleasedAt?: number;
@@ -462,13 +478,20 @@ async function readJob(id: string): Promise<PackedJobRow> {
 
 async function waitForJobState(id: string, state: string, timeout = 30_000): Promise<PackedJobRow> {
   let row!: PackedJobRow;
-  await expect.poll(async () => {
-    row = await readJob(id);
-    if (row.snapshot.state === "failed" && state !== "failed") {
-      throw new Error(`Packed job ${id} failed: ${JSON.stringify(row.snapshot.error)}`);
-    }
-    return row.snapshot.state;
-  }, { timeout }).toBe(state);
+  try {
+    await expect.poll(async () => {
+      row = await readJob(id);
+      if (row.snapshot.state === "failed" && state !== "failed") {
+        throw new Error(`Packed job ${id} failed: ${JSON.stringify(row.snapshot.error)}`);
+      }
+      return row.snapshot.state;
+    }, { timeout }).toBe(state);
+  } catch (error) {
+    throw new Error(
+      `Packed job ${id} did not reach ${state}; last snapshot: ${JSON.stringify(row?.snapshot)}`,
+      { cause: error },
+    );
+  }
   return row;
 }
 
@@ -739,6 +762,10 @@ test("a real offscreen-document restart reconstructs expired checkpointed work",
     sha256: uninterrupted.snapshot.artifact!.sha256,
     byteLength: uninterrupted.snapshot.artifact!.byteLength,
     reportSummary: uninterrupted.snapshot.reportSummary,
+  });
+  expect(recovered.snapshot.stats).toMatchObject({
+    pages: { discovered: 1, fetched: 1, composed: 1 },
+    storage: { outputBytes: recovered.snapshot.artifact!.byteLength },
   });
 });
 
@@ -1089,7 +1116,7 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
   }, JOB_F)).resolves.toBe(true);
   await releaseOffscreenFetch(JOB_F);
 
-  const succeeded = await waitForJobState(JOB_F, "succeeded");
+  const succeeded = await waitForJobState(JOB_F, "succeeded", 45_000);
   expect(succeeded.snapshot).toMatchObject({
     state: "succeeded",
     format: "docx",
@@ -1284,6 +1311,10 @@ test("a packed offscreen DOCX recovery matches an uninterrupted control export",
     sha256: uninterrupted.snapshot.artifact!.sha256,
     byteLength: uninterrupted.snapshot.artifact!.byteLength,
     reportSummary: uninterrupted.snapshot.reportSummary,
+  });
+  expect(recovered.snapshot.stats).toMatchObject({
+    pages: { discovered: 1, fetched: 1, composed: 1 },
+    storage: { outputBytes: recovered.snapshot.artifact!.byteLength },
   });
 });
 

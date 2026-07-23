@@ -10,7 +10,7 @@ import type {
   ExportJobExecutionContext,
 } from "@atlcli/export-jobs";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
-import type { TypescriptDocxExportJobEngineInputV1 } from "@atlcli/export-wiring/jobs";
+import type { TypescriptDocxExportJobResolvedInputV1 } from "@atlcli/export-wiring/jobs";
 import type { AssetFetcher, SvgRasterizer } from "@atlcli/docx/browser";
 import type { ResolveDeps } from "@atlcli/docx/internal";
 import {
@@ -224,7 +224,7 @@ export function createExtensionDocxJobInputResolver(
 ): (
   request: DocxExportJobRequestV1,
   context: ExportJobExecutionContext,
-) => Promise<TypescriptDocxExportJobEngineInputV1> {
+) => Promise<TypescriptDocxExportJobResolvedInputV1> {
   const deps = { ...defaults(), ...overrides };
   return async (request, context) => {
     context.signal.throwIfAborted();
@@ -261,6 +261,7 @@ export function createExtensionDocxJobInputResolver(
     });
 
     return {
+      jobTelemetry: { sourcePageCount: contribution?.pageCount ?? 1 },
       details: root,
       ...(contribution
         ? {
