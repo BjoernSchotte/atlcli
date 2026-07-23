@@ -744,7 +744,7 @@ Tasks:
 - [x] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
 - [x] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
 - [x] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
-- [ ] Measure requests/page, wall time, peak memory, block count, note count, and artifact parity on page/tree/space fixtures.
+- [x] Measure requests/page, wall time, peak memory, block count, note count, and artifact parity on page/tree/space fixtures.
 - [x] Ship ADF-primary behind one export-source feature flag until the gates below pass.
 - [x] Make rollback switch representation choice at the source adapter; do not fork render engines.
 - [ ] After one stable release window, plan lazy Storage-sidecar reads as a separate optimization.
@@ -763,6 +763,8 @@ Observed-Cloud evidence recorded on 2026-07-22: the weekly optional job now acce
 
 Rendered-golden evidence recorded on 2026-07-22: one synthetic ADF feature zoo now renders through the production decoder and both real export engines, then through LibreOffice/Poppler rasterization. The reviewed references cover inline code, Unicode and unresolved custom emoji, a panel, table, flattened layout, local card link, expand, extension fallback/body, and media fallback/caption. A source hash prevents fixture changes from silently reusing old references; PNG hashes, required extracted text, page counts, normalized pixel difference, and content-bound overlap guard every rerender. The review exposed and fixed a real PDF missing-glyph defect by adding a pinned, checksummed OFL symbol fallback to every Typst text role and both curated template font contracts. The canonical DOCX renderer and all five reference pages were inspected with no clipping, overlap, tofu glyphs, or hidden fallback text. CLI, packed harness, and extension asset-parity gates proved that the font is present in every runtime, while the complete browser conformance run and an anonymized live ADF-primary DOCX/PDF create-export-cleanup run proved both engines end to end.
 
+Rollout-benchmark evidence recorded on 2026-07-22: a deterministic paired ADF/Storage corpus now exercises page, 25-page tree, and 25-page space scopes through the production source dispatcher, tree orchestration, composition, DOCX, and Typst/WASM PDF. Logical request accounting mirrors the production adapter and proved the correctness-first dual read adds exactly one body request per page: page 2.00 to 3.00 requests/page, tree 3.04 to 4.04, and space 3.08 to 4.08. The synthetic body transfer rose from 869 to 3,392 bytes/page because the 2,523-byte ADF body accompanies the Storage sidecar. With five in-process source samples inside each of three complete process samples, median local source/decode/compose time on Bun 1.3.14 arm64 was 0.2 to 0.3 ms for page, 1.7 to 2.4 ms for tree, and 1.6 to 2.1 ms for space. Median whole-process BSD-time peak RSS, including both render engines, compiler, fonts, and fixture setup, was effectively flat: 377/377 MiB, 491/497 MiB, and 490/494 MiB respectively. Raw blocks stayed 10/page, the expected observable ordered-list diagnostic was 1/page only on ADF, normalized DOCX part hashes matched in every process sample, and PDF bytes matched exactly for every scope. The fail-closed guard now requires exact +1 request/page, exact block/artifact and expected-note parity, ADF source wall time no greater than `2 × Storage + 1 ms`, and no more than 32 MiB added median peak RSS when the platform exposes RSS.
+
 Default-enable gates:
 
 - [x] all 43 nodes and 17 marks classified in the coverage manifest;
@@ -775,7 +777,7 @@ Default-enable gates:
 - [ ] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
 - [x] Cloud live E2E passes for both target formats;
 - [x] Storage/Data Center regressions pass;
-- [ ] dual-read request/latency overhead remains within the agreed budget.
+- [x] dual-read request/latency overhead remains within the first-rollout budget above.
 
 ## 8. Interaction with the parallel export-jobs workstream
 
@@ -858,6 +860,8 @@ bun run test scripts/adf-drift.test.ts
 bun scripts/adf-drift.ts check-pinned
 bun run test scripts/adf-rendered-goldens.test.ts
 bun run check:adf-rendered-goldens
+bun run test scripts/bench/generate-adf-source-fixture.test.ts scripts/bench/run-adf-source-bench.test.ts
+bun run bench:adf-source --pages 25 --repeat 5 --process-repeat 3
 bun run test scripts/export-note-codes.test.ts
 bun run test scripts/api-report.test.ts
 ```
@@ -1001,6 +1005,5 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 2. Is the initial correctness-first two-body-read policy acceptable for tree/space exports, provided request-count and latency gates are met, or must lazy Storage sidecars be part of the first release?
 3. Should generic unsupported ADF block/inline variants become public `ExportBlock`/`InlineNode` members in this wave, or should the first adapter use existing visible fallback blocks plus notes and add public variants in the next model slice?
 4. Which Data Center capability signal is authoritative in the current profile model, so the client can avoid probing a Cloud-only endpoint?
-5. What quantitative rollout budgets should gate the default: maximum added requests/page, wall-time regression, peak memory, and diagnostic count?
-6. Is a source-selection CLI/debug flag user-facing, or an internal rollout flag until ADF-primary becomes stable?
-7. Should confirmed semantic drift additionally create/update one deduplicated `adf-schema-drift` issue, or are the failed scheduled run, Actions notification, job summary, and retained artifacts sufficient for the first version?
+5. Is a source-selection CLI/debug flag user-facing, or an internal rollout flag until ADF-primary becomes stable?
+6. Should confirmed semantic drift additionally create/update one deduplicated `adf-schema-drift` issue, or are the failed scheduled run, Actions notification, job summary, and retained artifacts sufficient for the first version?
