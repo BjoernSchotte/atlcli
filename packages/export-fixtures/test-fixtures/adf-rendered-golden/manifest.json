@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "88235fa9c0af1d94c327c214e7b6af37b9981e4770ecd18986a0b64ce71bbd36",
+  "sourceSha256": "684d1534eccd395459702767aa39b5fbb8f909de58e1e8d4a83753aec274403d",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -32,6 +32,7 @@
     "media-single-layout-width-caption-border",
     "media-group",
     "media-inline-image-and-fallback-chip",
+    "media-data-consumer-provenance-nonvisual",
     "media-wrap-source-order",
     "extension"
   ],

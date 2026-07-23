@@ -762,6 +762,20 @@ function validateKnownMarkShape(
     }
     assertOptionalNumberAttribute(attrs, "width", path);
   }
+  if (type === "dataConsumer") {
+    const sources = attrs?.sources;
+    if (
+      !Array.isArray(sources) ||
+      sources.length === 0 ||
+      sources.some((source) => typeof source !== "string")
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF dataConsumer sources must be a non-empty array of strings.",
+        `${path}.attrs.sources`,
+      );
+    }
+  }
   if (type === "link") assertStringAttribute(attrs, "href", path);
   if (type === "border") {
     const size = attrs?.size;

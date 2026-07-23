@@ -317,14 +317,26 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
   }
 }
 
+function designColor(design: ResolvedPdfDesign, key: string): string {
+  return design.tokens.colors[key] ?? BUILTIN_PDF_DESIGN.tokens.colors[key]!;
+}
+
+function designLength(design: ResolvedPdfDesign, key: string): string {
+  return design.tokens.layout[key] ?? BUILTIN_PDF_DESIGN.tokens.layout[key]!;
+}
+
 function serializeSmartCardInline(
   card: SmartCardSemantics,
   labels: Map<string, string>,
+  design: ResolvedPdfDesign,
 ): string {
   const label = literalText(smartCardDisplayText(card));
   const content =
     card.appearance === "inline"
-      ? `#box(fill: rgb("E9F2FF"), inset: (x: 3pt, y: 1pt), radius: 2pt)[${label}]`
+      ? `#box(fill: rgb(${typstString(designColor(design, "smartCardInlineBackground"))}), ` +
+        `inset: (x: ${designLength(design, "smartCardInlineInsetX")}, ` +
+        `y: ${designLength(design, "smartCardInlineInsetY")}), ` +
+        `radius: ${designLength(design, "smartCardInlineRadius")})[${label}]`
       : label;
   const href = card.target ? resolveLink(card.target, labels) : null;
   if (!href) return content;
@@ -532,20 +544,14 @@ function denseStatusLabel(value: string): string {
 
 function statusColor(value: string | undefined, design: ResolvedPdfDesign): string {
   const semantic = value?.trim().toLowerCase();
-  // The Confluence status palette is per-template data (semanticPalettes.statuses).
-  const fallback: Readonly<Record<string, string>> = {
-    neutral: "#42526E",
-    grey: "#42526E",
-    gray: "#42526E",
-    purple: "#403294",
-    blue: "#0052CC",
-    red: "#DE350B",
-    yellow: "#FF991F",
-    green: "#00875A",
-  };
+  const authoredColor = safeColor(value, "");
   return (
-    (semantic && design.semanticPalettes.statuses[semantic]) ??
-    (semantic && fallback[semantic]) ??
+    authoredColor ||
+    (semantic && design.semanticPalettes.statuses[semantic]) ||
+    (semantic && BUILTIN_PDF_DESIGN.semanticPalettes.statuses[semantic]) ||
+    design.semanticPalettes.statuses.default ||
+    design.tokens.colors.neutral ||
+    BUILTIN_PDF_DESIGN.semanticPalettes.statuses.default ||
     safeColor(value)
   );
 }
@@ -726,7 +732,7 @@ function serializeInline(
           return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
         case "smartCard":
-          return serializeSmartCardInline(node.card, labels);
+          return serializeSmartCardInline(node.card, labels, context.design);
         case "media": {
           if (node.assetPath) {
             const dimensions = [
@@ -739,7 +745,9 @@ function serializeInline(
             const border = node.border
               ? `, stroke: ${node.border.size}pt + rgb(${typstString(node.border.color.slice(0, 7))})`
               : "";
-            const drawing = `#box(baseline: 0pt${border}, inset: 0pt)[${image}]`;
+            const drawing =
+              `#box(baseline: ${designLength(context.design, "inlineMediaBaseline")}${border}, ` +
+              `inset: ${designLength(context.design, "inlineMediaInset")})[${image}]`;
             if (!node.link) return drawing;
             const href = resolveLink(node.link.target, labels);
             return href
@@ -749,10 +757,13 @@ function serializeInline(
               : drawing;
           }
           const label = literalText(`[${inlineMediaDisplayText(node)}]`);
-          const color = node.border?.color.slice(0, 7) ?? "#DFE1E6";
+          const color = node.border?.color.slice(0, 7) ?? context.design.tokens.colors.hairline;
           const size = node.border?.size ?? 1;
           const chip =
-            `#box(stroke: ${size}pt + rgb(${typstString(color)}), inset: (x: 3pt, y: 1pt), radius: 2pt)` +
+            `#box(stroke: ${size}pt + rgb(${typstString(color)}), ` +
+            `inset: (x: ${designLength(context.design, "inlineMediaChipInsetX")}, ` +
+            `y: ${designLength(context.design, "inlineMediaChipInsetY")}), ` +
+            `radius: ${designLength(context.design, "inlineMediaChipRadius")})` +
             `[${label}]`;
           if (!node.link) return chip;
           const href = resolveLink(node.link.target, labels);
@@ -1065,7 +1076,7 @@ function serializeBlocks(
           ? `(${mediaTrack}, 1fr)`
           : `(1fr, ${mediaTrack})`;
       serialized.push(
-        `#grid(columns: ${columns}, column-gutter: 8pt, ${cells})`,
+        `#grid(columns: ${columns}, column-gutter: ${designLength(context.design, "mediaWrapColumnGutter")}, ${cells})`,
       );
       index += 1;
       continue;
@@ -1187,9 +1198,11 @@ function serializeBlock(
     case "smartCard": {
       const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
       value =
-        `#block(width: 100%, fill: rgb("F4F5F7"), stroke: rgb("B3BAC5"), ` +
-        `radius: 3pt, inset: 8pt)[#strong[${literalText(prefix)}]` +
-        `${serializeSmartCardInline(block.card, writer.labels)}]`;
+        `#block(width: 100%, fill: rgb(${typstString(designColor(writer.design, "smartCardBlockBackground"))}), ` +
+        `stroke: rgb(${typstString(designColor(writer.design, "smartCardBlockStroke"))}), ` +
+        `radius: ${designLength(writer.design, "smartCardBlockRadius")}, ` +
+        `inset: ${designLength(writer.design, "smartCardBlockInset")})[#strong[${literalText(prefix)}]` +
+        `${serializeSmartCardInline(block.card, writer.labels, writer.design)}]`;
       break;
     }
     case "codeBlock": {
@@ -1651,11 +1664,17 @@ function mediaFrame(
 ): string {
   let framed = value;
   if (block.border || block.mediaGroup) {
-    const color = block.border?.color.slice(0, 7) ?? "#DFE1E6";
-    const size = block.border?.size ?? 0.5;
+    const color = block.border?.color.slice(0, 7) ?? context.design.tokens.colors.hairline;
+    const size =
+      block.border?.size !== undefined
+        ? `${block.border.size}pt`
+        : designLength(context.design, "mediaFrameDefaultStroke");
     framed =
-      `#block(stroke: ${size}pt + rgb(${typstString(color)}), inset: 3pt` +
-      `${block.mediaGroup ? ', fill: rgb("#F7F8F9")' : ""})` +
+      `#block(stroke: ${size} + rgb(${typstString(color)}), ` +
+      `inset: ${designLength(context.design, "mediaFrameInset")}` +
+      `${block.mediaGroup
+        ? `, fill: rgb(${typstString(designColor(context.design, "mediaGroupBackground"))})`
+        : ""})` +
       `[${framed}]`;
   }
   const layout = block.mediaPresentation?.layout;

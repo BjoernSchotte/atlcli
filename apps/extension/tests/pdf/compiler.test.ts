@@ -827,7 +827,8 @@ This is a real PDF.
       expect(extractedCompact).toContain("REF-1234567890,TASK-9876543210");
       expect(extractedCompact).toContain("alphaomegaworkflow-beta");
       expect(extractedCompact).toContain("AlphabeticOverflowGuard");
-      expect(extractedCompact).toContain("synthetic:user-1234567890-abcdef");
+      expect(extractedCompact).toContain("@Unknownuser");
+      expect(extractedCompact).not.toContain("synthetic:user-1234567890-abcdef");
       expect(extractedCompact).toContain("READYFORRELEASE");
       expect(extractedCompact).toContain("WAITINGFORREVIEW");
       expect(extractedCompact).toContain("AlexandersonExampleton");

@@ -1406,6 +1406,23 @@ compiler assertion and intentional PDF digest were brought in sync with its
 scoped `raw.line` output. The opt-in registry-backed consumer/install matrix
 remains a remote-CI gate.
 
+Completed data-consumer follow-on evidence recorded on 2026-07-23: the pinned
+`dataConsumer` mark is now validated only as its exact non-empty ordered
+string-array contract and retained, without flattening mark boundaries, on the
+shared media identity consumed by CLI and browser hosts. The mark is permitted
+only on its schema-defined `media` and `mediaInline` placements. DOCX and PDF
+deliberately publish neither the product-internal binding nor its opaque source
+IDs; a bounded source-located degradation note explains that policy without
+echoing identifiers.
+
+Direct schema/decoder fixtures, composition-preserving model shapes, DOCX and
+PDF non-publication assertions, ADF browser direct/background parity, and the
+packed Chromium case cover the contract. Re-rendering the one-page DOCX and
+five-page PDF golden corpus produced zero mean pixel difference and
+content-bounds IoU 1, proving the newly retained non-visual provenance did not
+alter published content. The matrix now records 70 of 84 rows closed and 14
+open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and

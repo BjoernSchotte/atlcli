@@ -194,6 +194,17 @@ const MARK_FIXTURES = Object.fromEntries(PINNED_ADF_MARK_TYPES.map((type) => {
     type,
     type === "alignment" || type === "indentation" || type === "fontSize"
       ? block({ ...paragraph(`mark-${type}`), marks: [mark] })
+      : type === "dataConsumer"
+        ? inline({
+            type: "mediaInline",
+            attrs: {
+              type: "image",
+              id: "data-consumer-media",
+              collection: "content-1",
+              alt: "mark-dataConsumer",
+            },
+            marks: [mark],
+          })
       : type === "fragment"
         ? inline({
             type: "inlineExtension",
@@ -241,6 +252,15 @@ describe("direct ADF decoder fixtures", () => {
       }
       if (type === "fragment") {
         expect(JSON.stringify(result.blocks)).toContain('"fragments":[{"localId":"fragment-1","name":"node-fragment"}]');
+      }
+      if (type === "dataConsumer") {
+        expect(JSON.stringify(result.blocks)).toContain(
+          '"dataConsumers":[{"sources":["source-1"]}]',
+        );
+        expect(result.notes).toContainEqual(expect.objectContaining({
+          code: "adf-mark-degraded",
+          message: expect.stringContaining("non-visual provenance"),
+        }));
       }
       expect(result.notes.every((note) => note.source?.pageId === "fixture-page")).toBe(true);
     });

@@ -66,7 +66,8 @@ export function createAtlcliTypstTemplate(
     if (value === undefined) throw new Error(`PDF template design is missing ${kind} "${key}"`);
     return value;
   };
-  const L = (key: string): string => need(layout, key, "layout length");
+  const L = (key: string): string =>
+    layout[key] ?? need(BUILTIN_PDF_DESIGN.tokens.layout, key, "layout length");
   const C = (key: string): string => need(colors, key, "color token");
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
@@ -437,7 +438,7 @@ ${headerResolution}
     below: ${L("calloutBelow")},
   )[
     #set text(font: ${fontStack(F("heading"))})
-    #if icon != none { text(weight: "semibold", fill: foreground, icon); if title == none { linebreak() } else { h(0.55em) } }
+    #if icon != none { text(weight: "semibold", fill: foreground, icon); if title == none { linebreak() } else { h(${L("calloutIconGap")}) } }
     #if title != none { text(weight: "semibold", fill: foreground, title); linebreak() }
     #body
   ]

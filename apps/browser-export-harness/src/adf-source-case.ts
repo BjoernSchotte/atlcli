@@ -88,6 +88,7 @@ export interface AdfSourceCaseResult {
   neutralHasMentionSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
+  neutralHasDataConsumerProvenance: boolean;
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
@@ -504,6 +505,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     neutralHasAnnotationAndFragmentIdentity:
       JSON.stringify(pdfSource.blocks).includes('"id":"annotation-inline-code","annotationType":"inlineComment"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"table-fragment","name":"semantic-table"'),
+    neutralHasDataConsumerProvenance:
+      neutralJson.includes(
+        '"dataConsumers":[{"sources":["synthetic-consumer-primary","synthetic-consumer-secondary"]}]',
+      )
+      && !documentXml.includes("synthetic-consumer"),
     neutralHasTablePresentation:
       JSON.stringify(pdfSource.blocks).includes(
         '"presentation":{"layout":"align-end","width":480,"displayMode":"fixed","numberedColumn":true,"localId":"table-local"}',
@@ -546,7 +552,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralJson.includes('"mediaGroup":{"index":0,"size":2}')
       && neutralJson.includes('"mediaGroup":{"index":1,"size":2}')
       && neutralJson.includes(
-        '"type":"media","media":{"mediaType":"image","id":"inline-media-1","collection":"contentId-1","localId":"inline-media-local","dataJson":"{\\"source\\":\\"fixture\\"}","filename":"inline-media.png"',
+        '"type":"media","media":{"mediaType":"image","id":"inline-media-1","collection":"contentId-1","localId":"inline-media-local","dataConsumers":[{"sources":["synthetic-consumer-primary","synthetic-consumer-secondary"]}],"dataJson":"{\\"source\\":\\"fixture\\"}","filename":"inline-media.png"',
       ),
     neutralHasSmartCardSemantics:
       neutralJson.includes(
@@ -649,6 +655,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasDataConsumerProvenance) {
+    throw new Error("ADF-source data-consumer provenance was lost or published visibly.");
   }
   if (!result.neutralHasMediaLinkSemantics) {
     throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");

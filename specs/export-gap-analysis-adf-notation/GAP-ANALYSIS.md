@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **69 of 84 rows closed; 15 rows open.** This count
+Current matrix orientation: **70 of 84 rows closed; 14 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -169,6 +169,10 @@ Current closed foundations and feature slices:
   an authored no-wrap preference is retained and explicitly reported when a
   static page must wrap it. Storage code/noformat defaults plus
   `linenumbers`/`firstline` are normalized separately.
+- [x] Media `dataConsumer` marks retain every ordered mark boundary and exact
+  source array as non-visual provenance. Both targets omit opaque source IDs
+  from published content and the shared report states the bounded static
+  projection without echoing those identifiers.
 - [ ] **Open:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
@@ -370,7 +374,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
 | [ ] | `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Open | Open | **Open:** generalize the retained mark to code/expand/sync blocks and define the target-owned page/section widening policy. |
 | [x] | `border` | Exact pinned six/eight-digit color and size 1–3 are validated and retained on block/inline media. DOCX emits run/paragraph borders and PDF emits target-native strokes; alpha-bearing source colors retain their exact neutral value and use their portable RGB component for print. | Native | Native | Closed with invalid-shape, block, inline, group, DOCX, PDF, and packed-browser fixtures. |
-| [ ] | `dataConsumer` | The validator recognizes the pinned mark, but no neutral provenance model exists. | Open/Missing | Open/Missing | **Open:** preserve structured data provenance or explicitly report it as non-visual metadata. |
+| [x] | `dataConsumer` | The exact ordered mark boundaries and each non-empty source array are validated and retained on `media`/`mediaInline` identity. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema: DOCX/PDF intentionally render no consumer binding or opaque source ID, while the shared source-located report states that product-internal execution is unavailable. Composition, PDF preparation, packed-browser parity, and a no-pixel-drift rendered golden prove retention without publication. |
 | [ ] | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Open | Open | **Open:** define documented fragment semantics and a collision-safe bookmark/link projection instead of leaving identity non-visual. |
 
 Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26].
@@ -741,6 +745,7 @@ Accessed 2026-07-22 and 2026-07-23:
 41. [Typst `place` layout contract](https://typst.app/docs/reference/layout/place/)
 42. [ADF document structure and inline-node ordering](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 43. [Typst inline `box` layout and baseline contract](https://typst.app/docs/reference/layout/box/)
+44. [Atlassian editor data-consumer plugin](https://www.npmjs.com/package/%40atlaskit/editor-plugin-data-consumer)
 
 ## 15. Repository evidence index
 
@@ -784,6 +789,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E38] Complete pinned Smart Card semantics and static/live projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/datasource.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E39] Complete pinned block-media/group/single/border semantics and typed inline-media boundary:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/client.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/image.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E40] Native correlated `mediaInline` output and host parity:** `packages/docx/src/image.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/src/pdf-job-parity-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E41] Complete pinned `dataConsumer` provenance without identifier publication:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

@@ -504,10 +504,18 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
             height: 16,
             data: { source: "fixture" },
           },
-          marks: [{
-            type: "border",
-            attrs: { color: "#0052CC", size: 1 },
-          }],
+          marks: [
+            {
+              type: "dataConsumer",
+              attrs: {
+                sources: ["synthetic-consumer-primary", "synthetic-consumer-secondary"],
+              },
+            },
+            {
+              type: "border",
+              attrs: { color: "#0052CC", size: 1 },
+            },
+          ],
         },
       ],
     },

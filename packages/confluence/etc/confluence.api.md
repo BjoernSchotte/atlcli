@@ -18,7 +18,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
-    readonly dataConsumer: "visible-fallback";
+    readonly dataConsumer: "approximation";
     readonly em: "native";
     readonly fontSize: "native";
     readonly fragment: "approximation";
@@ -99,6 +99,11 @@ export interface AdfCoverageRow {
     docx: AdfCoverageLevel | "not-applicable";
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
 }
 
 // export: AdfDecoderMode
@@ -2287,6 +2292,7 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
     url?: string;
     dataJson?: string;
     filename?: string;
@@ -2375,7 +2381,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
-    readonly dataConsumer: "visible-fallback";
+    readonly dataConsumer: "approximation";
     readonly em: "native";
     readonly fontSize: "native";
     readonly fragment: "approximation";
@@ -2456,6 +2462,11 @@ export interface AdfCoverageRow {
     docx: AdfCoverageLevel | "not-applicable";
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
 }
 
 // export: AdfDecoderMode
@@ -4644,6 +4655,7 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
     url?: string;
     dataJson?: string;
     filename?: string;
@@ -4732,7 +4744,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
-    readonly dataConsumer: "visible-fallback";
+    readonly dataConsumer: "approximation";
     readonly em: "native";
     readonly fontSize: "native";
     readonly fragment: "approximation";
@@ -4813,6 +4825,11 @@ export interface AdfCoverageRow {
     docx: AdfCoverageLevel | "not-applicable";
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
 }
 
 // export: AdfDecoderMode
@@ -7001,6 +7018,7 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
     url?: string;
     dataJson?: string;
     filename?: string;
@@ -7088,6 +7106,11 @@ export declare function addFrontmatter(content: string, frontmatter: AtlcliFront
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
 }
 
 // export: AdfExtensionIdentity
@@ -9667,6 +9690,7 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
     url?: string;
     dataJson?: string;
     filename?: string;
@@ -9908,7 +9932,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
-    readonly dataConsumer: "visible-fallback";
+    readonly dataConsumer: "approximation";
     readonly em: "native";
     readonly fontSize: "native";
     readonly fragment: "approximation";
@@ -9989,6 +10013,11 @@ export interface AdfCoverageRow {
     docx: AdfCoverageLevel | "not-applicable";
     pdf: AdfCoverageLevel | "not-applicable";
     provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
 }
 
 // export: AdfDecoderMode
@@ -12177,6 +12206,7 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
     url?: string;
     dataJson?: string;
     filename?: string;

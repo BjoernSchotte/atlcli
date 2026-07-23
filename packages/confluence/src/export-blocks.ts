@@ -430,6 +430,8 @@ export interface UnresolvedMediaIdentity {
   collection?: string;
   occurrenceKey?: string;
   localId?: string;
+  /** Exact ordered `dataConsumer` marks retained as non-visual provenance. */
+  dataConsumers?: AdfDataConsumerProvenance[];
   /** Exact external-media URL from ADF, retained independently from live-link policy. */
   url?: string;
   /** Stable JSON serialization of the schema-permitted opaque `mediaInline.data` payload. */
@@ -567,6 +569,15 @@ export interface AdfFragmentIdentity {
   localId: string;
   /** Optional source name, including the schema-valid empty string. */
   name?: string;
+}
+
+/**
+ * One ADF `dataConsumer` mark retained on media without executing the
+ * product-internal consumer binding. Mark boundaries and source order remain
+ * exact; renderers deliberately keep these opaque identifiers non-visual.
+ */
+export interface AdfDataConsumerProvenance {
+  sources: string[];
 }
 
 /** Portable identity and fallback provenance for an ADF/Storage emoji node. */

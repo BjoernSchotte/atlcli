@@ -352,6 +352,7 @@ async function manifestFor(
       "media-single-layout-width-caption-border",
       "media-group",
       "media-inline-image-and-fallback-chip",
+      "media-data-consumer-provenance-nonvisual",
       "media-wrap-source-order",
       "extension",
     ],

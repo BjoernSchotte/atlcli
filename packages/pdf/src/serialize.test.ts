@@ -1107,7 +1107,7 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
 
     expect(bundle.main).toContain(
-      '#link("https://example.invalid/inline")[#box(fill: rgb("E9F2FF")',
+      '#link("https://example.invalid/inline")[#box(fill: rgb("#E9F2FF")',
     );
     expect(bundle.main).toContain(
       '#link("https://example.invalid/block")[#text("https://example.invalid/block")]',
@@ -1118,7 +1118,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain(
       '#link("https://example.invalid/embed")[#text("https://example.invalid/embed")]',
     );
-    expect(bundle.main.match(/stroke: rgb\\?\("B3BAC5"/gu)).toHaveLength(2);
+    expect(bundle.main.match(/stroke: rgb\\?\("#B3BAC5"/gu)).toHaveLength(2);
   });
 
   it("preserves arbitrary inline background colors as breakable Typst highlights", async () => {
@@ -1794,6 +1794,45 @@ describe("serialize — C3 captions", () => {
     expect(bundle.main).toContain('fill: rgb("#F7F8F9")');
     expect(bundle.main).toContain("[Attachment: runbook.pdf (application/pdf)]");
     expect(bundle.notes).toEqual([]);
+  });
+
+  it("preserves dataConsumer provenance through preparation without publishing source ids", async () => {
+    const base: ExportBlock = {
+      type: "mediaFallback",
+      label: "runbook.pdf",
+      media: { mediaType: "file", filename: "runbook.pdf" },
+    };
+    const withProvenance: ExportBlock = {
+      ...base,
+      media: {
+        ...base.media,
+        dataConsumers: [
+          { sources: ["consumer-source-a", ""] },
+          { sources: ["consumer-source-b"] },
+        ],
+      },
+    };
+    const plain = await preparePdfDocument([base], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const retained = await preparePdfDocument([withProvenance], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(retained.blocks[0]).toMatchObject({
+      type: "mediaFallback",
+      media: {
+        dataConsumers: [
+          { sources: ["consumer-source-a", ""] },
+          { sources: ["consumer-source-b"] },
+        ],
+      },
+    });
+
+    const plainBundle = serializePdfDocument(plain, { metadata });
+    const retainedBundle = serializePdfDocument(retained, { metadata });
+    expect(retainedBundle.main).toBe(plainBundle.main);
+    expect(retainedBundle.main).not.toContain("consumer-source");
+    expect(retainedBundle.notes).toEqual([]);
   });
 
   it("wraps ADF media output in its exact safe link", async () => {

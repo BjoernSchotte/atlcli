@@ -10,6 +10,7 @@ import { DEFAULT_ADF_PARSE_BUDGET } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
 import type {
   AdfAnnotationIdentity,
+  AdfDataConsumerProvenance,
   Caption,
   AdfExtensionIdentity,
   AdfFragmentIdentity,
@@ -1117,6 +1118,7 @@ function decodeMediaContainer(node: AdfNode, ctx: DecodeContext, path: string): 
 }
 
 function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
+  noteDataConsumerProvenance(node, ctx, path);
   const externalUrl =
     stringAttr(node, "type") === "external" ? optionalStringAttr(node, "url") : undefined;
   if (externalUrl !== undefined) {
@@ -1177,6 +1179,7 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
 }
 
 function decodeInlineMedia(node: AdfNode, ctx: DecodeContext, path: string): InlineNode {
+  noteDataConsumerProvenance(node, ctx, path);
   const id = stringAttr(node, "id");
   const resolved = id ? ctx.resolveMediaAttachment?.({
     id,
@@ -1244,6 +1247,7 @@ function mediaIdentity(
   node: AdfNode,
   resolved?: AdfResolvedMediaAttachment,
 ): UnresolvedMediaIdentity {
+  const dataConsumers = dataConsumerMarks(node.marks);
   return {
     ...(optionalStringAttr(node, "type") !== undefined
       ? { mediaType: optionalStringAttr(node, "type") }
@@ -1260,6 +1264,7 @@ function mediaIdentity(
     ...(optionalStringAttr(node, "localId") !== undefined
       ? { localId: optionalStringAttr(node, "localId") }
       : {}),
+    ...(dataConsumers.length > 0 ? { dataConsumers } : {}),
     ...(optionalStringAttr(node, "url") !== undefined
       ? { url: optionalStringAttr(node, "url") }
       : {}),
@@ -1551,8 +1556,40 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
   if (markType === "border") {
     return nodeType === "media" || nodeType === "mediaInline";
   }
+  if (markType === "dataConsumer") {
+    return nodeType === "media" || nodeType === "mediaInline";
+  }
   if (markType === "breakout") return nodeType === "layoutSection";
   return false;
+}
+
+function dataConsumerMarks(
+  marks: readonly AdfMark[] | undefined,
+): AdfDataConsumerProvenance[] {
+  const consumers: AdfDataConsumerProvenance[] = [];
+  for (const mark of marks ?? []) {
+    if (mark.type !== "dataConsumer") continue;
+    const sources = mark.attrs?.sources;
+    if (!Array.isArray(sources) || !sources.every((source) => typeof source === "string")) {
+      continue;
+    }
+    consumers.push({ sources: [...sources] });
+  }
+  return consumers;
+}
+
+function noteDataConsumerProvenance(
+  node: AdfNode,
+  ctx: DecodeContext,
+  path: string,
+): void {
+  if (dataConsumerMarks(node.marks).length === 0) return;
+  addMarkNote(
+    ctx,
+    path,
+    "dataConsumer",
+    "sources were retained as non-visual provenance; static output does not execute product-internal consumer bindings.",
+  );
 }
 
 function breakoutMark(marks: readonly AdfMark[] | undefined): LayoutBreakout | undefined {

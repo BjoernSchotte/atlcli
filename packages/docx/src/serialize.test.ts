@@ -1614,6 +1614,30 @@ describe("serializeBlocks — C3 captions", () => {
     expect(notes).toEqual([]);
   });
 
+  it("keeps dataConsumer provenance non-visual and never publishes source ids", async () => {
+    const base: ExportBlock = {
+      type: "mediaFallback",
+      label: "runbook.pdf",
+      media: { mediaType: "file", filename: "runbook.pdf" },
+    };
+    const withProvenance: ExportBlock = {
+      ...base,
+      media: {
+        ...base.media,
+        dataConsumers: [
+          { sources: ["consumer-source-a", ""] },
+          { sources: ["consumer-source-b"] },
+        ],
+      },
+    };
+    const plain = await serializeBlocks([base], { styleNames: noStyles });
+    const retained = await serializeBlocks([withProvenance], { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).not.toContain("consumer-source");
+    expect(retained.notes).toEqual([]);
+  });
+
   // -------------------------------------------------------------------------
   // Caption ordinals — the SEQ field's CACHED RESULT
   //

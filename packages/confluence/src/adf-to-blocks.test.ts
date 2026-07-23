@@ -1371,6 +1371,63 @@ describe("adfToBlocks", () => {
     ]);
   });
 
+  it("retains exact dataConsumer mark boundaries without publishing source ids", () => {
+    const consumers = [
+      { type: "dataConsumer", attrs: { sources: ["source-a", "", "source-a"] } },
+      { type: "dataConsumer", attrs: { sources: ["source-b"] } },
+    ];
+    const result = adfToBlocks(doc([
+      {
+        type: "media",
+        attrs: {
+          type: "file",
+          id: "block-media",
+          collection: "content-1",
+          alt: "Block media",
+        },
+        marks: consumers,
+      },
+      {
+        type: "paragraph",
+        content: [{
+          type: "mediaInline",
+          attrs: {
+            type: "image",
+            id: "inline-media",
+            collection: "content-1",
+            alt: "Inline media",
+          },
+          marks: consumers,
+        }],
+      },
+    ]), {
+      resolveMediaAttachment: (reference) => ({
+        filename: `${reference.id}.png`,
+        mediaType: "image/png",
+      }),
+    });
+
+    const expected = [
+      { sources: ["source-a", "", "source-a"] },
+      { sources: ["source-b"] },
+    ];
+    expect(result.blocks[0]).toMatchObject({
+      type: "image",
+      media: { dataConsumers: expected },
+    });
+    expect(result.blocks[1]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "media", media: { dataConsumers: expected } }],
+    });
+    expect(result.notes).toHaveLength(2);
+    expect(result.notes.every((note) =>
+      note.code === "adf-mark-degraded" &&
+      note.message.includes("non-visual provenance") &&
+      !note.message.includes("source-a") &&
+      !note.message.includes("source-b")
+    )).toBe(true);
+  });
+
   it("builds an exact fileId resolver without guessing from filename or content id", () => {
     const resolve = createAdfMediaAttachmentResolver([
       { fileId: "media-file-id", filename: "diagram.png", pageId: "page-2" },

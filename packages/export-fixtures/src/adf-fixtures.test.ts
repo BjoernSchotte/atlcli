@@ -266,6 +266,9 @@ describe("ADF browser conformance fixture", () => {
           id: "inline-media-1",
           collection: "contentId-1",
           localId: "inline-media-local",
+          dataConsumers: [{
+            sources: ["synthetic-consumer-primary", "synthetic-consumer-secondary"],
+          }],
           dataJson: '{"source":"fixture"}',
         },
         alt: "Inline media chip",
@@ -279,5 +282,10 @@ describe("ADF browser conformance fixture", () => {
     expect(pdf.notes.filter((note) => note.code === "expand-static")).toHaveLength(2);
     expect(pdf.notes.map((note) => note.code)).toContain("adf-node-degraded");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-mark-degraded");
+    expect(pdf.notes).toContainEqual(expect.objectContaining({
+      code: "adf-mark-degraded",
+      message: expect.stringContaining("non-visual provenance"),
+    }));
+    expect(pdf.notes.some((note) => note.message.includes("synthetic-consumer"))).toBe(false);
   });
 });

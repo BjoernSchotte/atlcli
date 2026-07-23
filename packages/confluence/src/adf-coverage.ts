@@ -141,7 +141,7 @@ export const ADF_MARK_DECODE_MODES = Object.freeze({
   border: "native",
   breakout: "visible-fallback",
   code: "native",
-  dataConsumer: "visible-fallback",
+  dataConsumer: "approximation",
   em: "native",
   fontSize: "native",
   fragment: "approximation",

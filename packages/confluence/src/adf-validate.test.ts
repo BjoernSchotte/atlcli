@@ -527,6 +527,22 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates the exact non-empty string-array dataConsumer contract", () => {
+    const markedInlineMedia = (sources: unknown) => doc([{
+      type: "paragraph",
+      content: [{
+        type: "mediaInline",
+        attrs: { type: "image", id: "media-1", collection: "content-1" },
+        marks: [{ type: "dataConsumer", attrs: { sources } }],
+      }],
+    }]);
+    expect(() => validateAdf(markedInlineMedia(["source-a", "", "source-a"]))).not.toThrow();
+    for (const sources of [undefined, "source-a", [], [1], ["source-a", null]]) {
+      expect(errorCode(() => validateAdf(markedInlineMedia(sources))))
+        .toBe("invalid-attributes");
+    }
+  });
+
   test("validates the pinned table, row, and cell attribute contracts", () => {
     const table = (tableAttrs: Record<string, unknown>, cellAttrs: Record<string, unknown> = {}) =>
       doc([{
