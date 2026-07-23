@@ -76,6 +76,33 @@ export interface CreateConfluenceDocxResolveInputOptionsV1 extends SharedSourceO
   };
 }
 
+/** Stable, content-free error suitable for a durable job summary. */
+export class ConfluenceInputPreparationError extends Error {
+  readonly code = "confluence-input-preparation-failed" as const;
+
+  constructor() {
+    super("The Confluence export input could not be prepared.");
+    this.name = "ConfluenceInputPreparationError";
+  }
+}
+
+async function prepareHostInputV1<T>(
+  signal: AbortSignal,
+  prepare: () => Promise<T> | T,
+): Promise<T> {
+  try {
+    const prepared = await prepare();
+    signal.throwIfAborted();
+    return prepared;
+  } catch (error) {
+    if (signal.aborted) throw signal.reason ?? error;
+    // Macro, attachment, identity and asset adapters may include source text,
+    // URLs or filenames in their original messages. Those details stay on the
+    // transient host side and never become the durable executor error.
+    throw new ConfluenceInputPreparationError();
+  }
+}
+
 function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequestV1>(
   options: SharedSourceOptionsV1,
   request: Request,
@@ -123,8 +150,10 @@ export function createConfluencePdfResolveInputV1(
       request.source,
       sourceOptions(options, request, context, "pdf"),
     );
-    const built = await options.build(resolved, request, context);
-    context.signal.throwIfAborted();
+    const built = await prepareHostInputV1(
+      context.signal,
+      () => options.build(resolved, request, context),
+    );
     return {
       input: {
         ...built.input,
@@ -158,8 +187,10 @@ export function createConfluenceDocxResolveInputV1(
       request.source,
       sourceOptions(options, request, context, "word"),
     );
-    const built = await options.build(resolved, request, context);
-    context.signal.throwIfAborted();
+    const built = await prepareHostInputV1(
+      context.signal,
+      () => options.build(resolved, request, context),
+    );
     return {
       ...built.input,
       details: {

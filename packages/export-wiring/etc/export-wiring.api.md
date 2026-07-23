@@ -62,6 +62,12 @@ export declare function classifyClientError(err: unknown, service: string): neve
 // export: confluenceContentPortFromClient
 export declare function confluenceContentPortFromClient(client: ConfluenceClient): ConfluenceContentPort;
 
+// export: ConfluenceInputPreparationError
+export declare class ConfluenceInputPreparationError extends Error {
+    readonly code: "confluence-input-preparation-failed";
+    constructor();
+}
+
 // export: ConfluenceSourceProgressV1
 export interface ConfluenceSourceProgressV1 {
     fetched: number;
@@ -487,6 +493,12 @@ export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Resul
 export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     committedCount: number;
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
+}
+
+// export: ConfluenceInputPreparationError
+export declare class ConfluenceInputPreparationError extends Error {
+    readonly code: "confluence-input-preparation-failed";
+    constructor();
 }
 
 // export: ConfluenceSourcePlanCheckpointOptionsV1

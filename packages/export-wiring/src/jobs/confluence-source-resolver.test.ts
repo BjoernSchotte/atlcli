@@ -472,6 +472,7 @@ describe("resolveConfluenceSourceV1", () => {
 
     expect(error).toBeInstanceOf(ConfluenceSourceVersionMismatchError);
     expect(pageReads).toBe(0);
+    expect(String((error as Error).message)).not.toContain("root");
     expect(String((error as Error).message)).not.toContain("must not be read");
   });
 

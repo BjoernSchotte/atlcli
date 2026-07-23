@@ -741,6 +741,8 @@ Packed ADF job-parity evidence recorded on 2026-07-23: the browser conformance c
 
 Cancellation and progress-privacy evidence recorded on 2026-07-23: both job adapters already pass one claimed-job `AbortSignal` into the shared source resolver; an integrated dual-read test now models ADF and Storage-sidecar requests inside the host port and proves one job cancellation aborts both outstanding branches before either renderer builder can run. DOCX preparation no longer forwards source-derived engine detail strings into durable progress, preventing attachment names and output filenames from escaping through that channel while retaining stage and aggregate count updates. The focused 38-test adapter/PDF/DOCX executor set passed, including cancellation, asset/raster signal propagation, recovery and sanitized-progress assertions. Runtime-owned macro/attachment/identity ports and durable error summaries remain part of the production host-integration gate.
 
+Host-preparation privacy evidence recorded on 2026-07-23: the PDF and TypeScript-DOCX resolver adapters now place their host-owned `build()` phase behind one content-free durable error boundary. Macro, attachment, identity and asset failures can no longer copy source text, URLs or filenames into the outer job error message; the original transient error is not attached as a durable cause. Version-drift errors likewise retain typed in-memory identity fields while their message no longer includes a page identifier. An integrated preparation test starts concurrent macro, attachment and identity branches from the claimed-job context and proves that the same cancellation signal stops all three. The focused 50-test resolver/adapter/executor set and the export-wiring production build passed; production routing and its final host-level error classifier remain separate.
+
 Current sequencing status (2026-07-23): WP8 is now in progress on this main-based branch without copying the moving background-runtime implementation. The shared source boundary is ready for that runtime to consume; durable extension host routing and its recovery/activity integration remain deliberately separate until their owning branch is synchronized.
 
 Exit:
@@ -786,7 +788,7 @@ Default-enable gates:
 - [x] no silent node/mark/attribute drops;
 - [x] no silent whole-page decoder fallback;
 - [x] macro and media correlation gates pass or remain visibly degraded;
-- [ ] direct and background report parity passes;
+- [x] direct and background report parity passes;
 - [ ] source bodies are absent from logs/job records/events;
 - [x] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
 - [x] Cloud live E2E passes for both target formats;
@@ -969,8 +971,8 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 - [x] Includes, Page Properties, excerpts, and live macro/export-view behavior retain their Storage sidecar path.
 - [x] Macro and media identity is correlation-proven or visibly degraded.
 - [ ] Background integration starts inside the durable job's `resolveInput()` and does not change request v1.
-- [ ] Ready-to-render recovery performs no source refetch.
-- [ ] Direct/background notes, completeness, report, and artifact parity gates pass.
+- [x] Ready-to-render recovery performs no source refetch.
+- [x] Direct/background notes, completeness, report, and artifact parity gates pass.
 - [x] Browser/package/API/closure/full-suite/live-E2E gates pass.
 - [x] Created E2E resources are deleted.
 - [x] Coverage and user documentation are updated with the source flag, fallback policy, and known limitations.

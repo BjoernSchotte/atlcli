@@ -6,6 +6,7 @@ import type {
   PdfExportJobRequestV1,
 } from "@atlcli/export-jobs";
 import {
+  ConfluenceInputPreparationError,
   createConfluenceDocxResolveInputV1,
   createConfluencePdfResolveInputV1,
 } from "./confluence-job-resolve-input.js";
@@ -310,6 +311,66 @@ describe("Confluence job resolveInput adapters", () => {
     });
     await expect(resolveInput(pdfRequest(), context(controller.signal))).rejects.toThrow();
     expect(builds).toBe(0);
+  });
+
+  it("replaces PDF and DOCX host-preparation failures with content-free durable errors", async () => {
+    const privateDetail = "SENTINEL_PRIVATE_PREPARATION_DETAIL";
+    const pdf = createConfluencePdfResolveInputV1({
+      port: { createTreeSource: () => source({ pages: 0 }) },
+      build() {
+        throw new Error(`attachment failed: ${privateDetail}`);
+      },
+    });
+    const docx = createConfluenceDocxResolveInputV1({
+      port: { createTreeSource: () => source({ pages: 0 }) },
+      build() {
+        throw new Error(`macro failed: ${privateDetail}`);
+      },
+    });
+
+    for (const pending of [
+      pdf(pdfRequest(), context()),
+      docx(docxRequest(), context()),
+    ]) {
+      const error = await pending.catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ConfluenceInputPreparationError);
+      expect((error as ConfluenceInputPreparationError).code)
+        .toBe("confluence-input-preparation-failed");
+      expect(String(error)).not.toContain(privateDetail);
+    }
+  });
+
+  it("aborts concurrent macro, attachment, and identity preparation through the job signal", async () => {
+    const controller = new AbortController();
+    const started: string[] = [];
+    const stopped: string[] = [];
+    const branch = (name: string, signal: AbortSignal): Promise<never> => {
+      started.push(name);
+      return new Promise<never>((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          stopped.push(name);
+          reject(signal.reason);
+        }, { once: true });
+      });
+    };
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: { createTreeSource: () => source({ pages: 0 }) },
+      async build(_resolved, _request, jobContext) {
+        await Promise.all([
+          branch("macro", jobContext.signal),
+          branch("attachment", jobContext.signal),
+          branch("identity", jobContext.signal),
+        ]);
+        throw new Error("unreachable");
+      },
+    });
+    const pending = resolveInput(pdfRequest(), context(controller.signal));
+
+    while (started.length < 3) await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort(new DOMException("cancelled", "AbortError"));
+
+    await expect(pending).rejects.toThrow("cancelled");
+    expect(stopped.sort()).toEqual(started.sort());
   });
 
   it("aborts both in-flight ADF and Storage sidecar reads through the job signal", async () => {

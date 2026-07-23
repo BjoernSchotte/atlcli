@@ -98,7 +98,7 @@ export class ConfluenceSourceVersionMismatchError extends Error {
     public readonly expectedVersion: number,
     public readonly observedVersion: number | undefined,
   ) {
-    super(`The pinned Confluence page version is no longer available for page ${pageId}.`);
+    super("A pinned Confluence page version is no longer available.");
     this.name = "ConfluenceSourceVersionMismatchError";
   }
 }
