@@ -1060,6 +1060,67 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.notes.some((note) => note.code === "pdf-link-unresolved")).toBe(false);
   });
 
+  it("renders inline, block, and embed Smart Cards as clickable static projections", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "paragraph",
+        content: [{
+          type: "smartCard",
+          card: {
+            appearance: "inline",
+            source: "data",
+            url: "https://example.invalid/inline",
+            target: { kind: "external", href: "https://example.invalid/inline" },
+            title: "Inline card",
+            data: { name: "Inline card", provider: { name: "Example" } },
+          },
+        }],
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "url",
+          url: "https://example.invalid/block",
+          target: { kind: "external", href: "https://example.invalid/block" },
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "embed",
+          source: "url",
+          url: "https://example.invalid/embed",
+          target: { kind: "external", href: "https://example.invalid/embed" },
+          layout: "full-width",
+          width: 80,
+          originalHeight: 720,
+          originalWidth: 1280,
+        },
+      },
+    ];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain(
+      '#link("https://example.invalid/inline")[#box(fill: rgb("E9F2FF")',
+    );
+    expect(bundle.main).toContain(
+      '#link("https://example.invalid/block")[#text("https://example.invalid/block")]',
+    );
+    expect(bundle.main).toContain(
+      'Embedded content: ',
+    );
+    expect(bundle.main).toContain(
+      '#link("https://example.invalid/embed")[#text("https://example.invalid/embed")]',
+    );
+    expect(bundle.main.match(/stroke: rgb\\?\("B3BAC5"/gu)).toHaveLength(2);
+  });
+
   it("preserves arbitrary inline background colors as breakable Typst highlights", async () => {
     const prepared = await preparePdfDocument(
       [

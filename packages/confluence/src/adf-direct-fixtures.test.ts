@@ -96,7 +96,10 @@ const NODE_FIXTURES = {
     }],
   }),
   doc: document([paragraph("node-doc")]),
-  embedCard: block({ type: "embedCard", attrs: { url: "https://example.invalid/node-embedCard" } }),
+  embedCard: block({
+    type: "embedCard",
+    attrs: { url: "https://example.invalid/node-embedCard", layout: "center" },
+  }),
   emoji: inline({ type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } }),
   expand: block({ type: "expand", attrs: { title: "node-expand" }, content: [paragraph("node-expand-body")] }),
   extension: block({ type: "extension", attrs: { extensionType: "synthetic", extensionKey: "node-extension", parameters: {} } }),

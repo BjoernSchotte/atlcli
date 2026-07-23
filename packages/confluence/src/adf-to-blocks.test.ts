@@ -9,6 +9,7 @@ import {
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
 } from "./adf-coverage.js";
+import { JIRA_DATASOURCE_ID } from "./datasource.js";
 import type { ExportBlock } from "./export-blocks.js";
 
 function doc(content: unknown[]): string {
@@ -623,6 +624,103 @@ describe("adfToBlocks", () => {
     expect(result.notes.map((note) => note.code)).toContain("unsafe-link-skipped");
   });
 
+  it("retains unsafe Smart Card source semantics without creating a clickable target", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{
+        type: "inlineCard",
+        attrs: {
+          data: { url: "java\tscript:alert(1)", name: "Unsafe card", opaque: { retained: true } },
+          localId: "unsafe-card",
+        },
+      }],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "smartCard",
+        card: {
+          appearance: "inline",
+          source: "data",
+          url: "java\tscript:alert(1)",
+          title: "Unsafe card",
+          localId: "unsafe-card",
+          data: {
+            url: "java\tscript:alert(1)",
+            name: "Unsafe card",
+            opaque: { retained: true },
+          },
+        },
+      }],
+    });
+    expect(result.notes.map((note) => note.code)).toContain("unsafe-link-skipped");
+  });
+
+  it("routes supported ADF datasource cards through the existing live macro chain", () => {
+    const result = adfToBlocks(doc([{
+      type: "blockCard",
+      attrs: {
+        datasource: {
+          id: JIRA_DATASOURCE_ID,
+          parameters: { cloudId: "cloud-1", jql: "project = EXAMPLE ORDER BY created DESC" },
+          views: [{
+            type: "table",
+            properties: { columns: [{ key: "key" }, { key: "summary" }] },
+          }],
+        },
+        url: "https://example.invalid/issues",
+        layout: "wide",
+        width: 75,
+        localId: "jira-card",
+      },
+    }]), {
+      pageContext: { id: "page-1", version: 2, spaceKey: "EXAMPLE" },
+    });
+
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "jira",
+      params: [
+        { name: "jqlquery", text: "project = EXAMPLE ORDER BY created DESC" },
+        { name: "columns", text: "key,summary" },
+        { name: "maximumissues", text: "100" },
+        { name: "datasourceid", text: JIRA_DATASOURCE_ID },
+        { name: "datasourcecloudid", text: "cloud-1" },
+        { name: "datasourceurl", text: "https://example.invalid/issues" },
+      ],
+      body: [{
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "datasource",
+          url: "https://example.invalid/issues",
+          target: { kind: "external", href: "https://example.invalid/issues" },
+          localId: "jira-card",
+          datasource: {
+            id: JIRA_DATASOURCE_ID,
+            parameters: {
+              cloudId: "cloud-1",
+              jql: "project = EXAMPLE ORDER BY created DESC",
+            },
+            views: [{
+              type: "table",
+              properties: { columns: [{ key: "key" }, { key: "summary" }] },
+            }],
+          },
+          layout: "wide",
+          width: 75,
+        },
+      }],
+      sourcePage: { id: "page-1", version: 2, spaceKey: "EXAMPLE" },
+    }]);
+    expect(result.notes).toContainEqual(expect.objectContaining({
+      code: "macro-not-rendered",
+      macroName: "jira",
+      source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0]" }),
+    }));
+  });
+
   it("maps emoji, dates, mentions, status, and cards without interpreting literal colon text", () => {
     const result = adfToBlocks(doc([
       {
@@ -658,11 +756,46 @@ describe("adfToBlocks", () => {
             attrs: { text: "Ready", color: "green", localId: "", style: "mixedCase" },
           },
           { type: "placeholder", attrs: { text: "editor-only", localId: "" } },
-          { type: "inlineCard", attrs: { url: "https://example.invalid/card" } },
-          { type: "inlineCard", attrs: { data: { url: "https://example.invalid/data-card", name: "Visible card title" } } },
+          { type: "inlineCard", attrs: { url: "https://example.invalid/card", localId: "" } },
+          {
+            type: "inlineCard",
+            attrs: {
+              data: {
+                url: "https://example.invalid/data-card",
+                name: "Visible card title",
+                provider: { name: "Example" },
+              },
+              localId: "inline-data",
+            },
+          },
         ],
       },
       { type: "blockCard", attrs: { url: "https://example.invalid/block" } },
+      {
+        type: "blockCard",
+        attrs: {
+          datasource: {
+            id: "provider-id",
+            parameters: { query: "type = page" },
+            views: [{ type: "table", properties: { columns: ["title"] } }],
+          },
+          url: "https://example.invalid/datasource",
+          layout: "wide",
+          width: 72,
+          localId: "datasource-card",
+        },
+      },
+      {
+        type: "embedCard",
+        attrs: {
+          url: "https://example.invalid/embed",
+          layout: "full-width",
+          width: 80,
+          originalHeight: 720,
+          originalWidth: 1280,
+          localId: "embed-card",
+        },
+      },
     ]));
 
     expect(result.blocks[0]).toMatchObject({ type: "paragraph", content: [
@@ -715,15 +848,77 @@ describe("adfToBlocks", () => {
       },
       { type: "status", text: "Ready", color: "green", localId: "", style: "mixedCase" },
       { type: "placeholder", text: "editor-only", localId: "" },
-      { type: "link", target: { kind: "external", href: "https://example.invalid/card" } },
       {
-        type: "link",
-        target: { kind: "external", href: "https://example.invalid/data-card" },
-        content: [{ type: "text", text: "Visible card title" }],
+        type: "smartCard",
+        card: {
+          appearance: "inline",
+          source: "url",
+          url: "https://example.invalid/card",
+          target: { kind: "external", href: "https://example.invalid/card" },
+          localId: "",
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "inline",
+          source: "data",
+          url: "https://example.invalid/data-card",
+          target: { kind: "external", href: "https://example.invalid/data-card" },
+          title: "Visible card title",
+          localId: "inline-data",
+          data: {
+            url: "https://example.invalid/data-card",
+            name: "Visible card title",
+            provider: { name: "Example" },
+          },
+        },
       },
     ] });
-    expect(result.blocks[1]).toMatchObject({ type: "paragraph", content: [{ type: "link" }] });
+    expect(result.blocks.slice(1)).toEqual([
+      {
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "url",
+          url: "https://example.invalid/block",
+          target: { kind: "external", href: "https://example.invalid/block" },
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "datasource",
+          url: "https://example.invalid/datasource",
+          target: { kind: "external", href: "https://example.invalid/datasource" },
+          localId: "datasource-card",
+          datasource: {
+            id: "provider-id",
+            parameters: { query: "type = page" },
+            views: [{ type: "table", properties: { columns: ["title"] } }],
+          },
+          layout: "wide",
+          width: 72,
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "embed",
+          source: "url",
+          url: "https://example.invalid/embed",
+          target: { kind: "external", href: "https://example.invalid/embed" },
+          localId: "embed-card",
+          layout: "full-width",
+          width: 80,
+          originalHeight: 720,
+          originalWidth: 1280,
+        },
+      },
+    ]);
     expect(result.notes.filter((note) => note.code === "emoji-text-fallback")).toHaveLength(2);
+    expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(0);
     expect(result.notes.every((note) => note.source?.blockPath)).toBe(true);
   });
 

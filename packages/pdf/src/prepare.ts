@@ -409,6 +409,7 @@ export async function preparePdfDocument(
           }
           case "heading":
           case "paragraph":
+          case "smartCard":
           case "mediaFallback":
           case "divider":
           case "pageBreak":

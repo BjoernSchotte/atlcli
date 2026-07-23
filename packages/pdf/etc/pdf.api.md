@@ -30,6 +30,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -209,6 +212,9 @@ export type InlineNode = {
     color: string;
     localId?: string;
     style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "placeholder";
     text: string;
@@ -805,6 +811,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -984,6 +993,9 @@ export type InlineNode = {
     color: string;
     localId?: string;
     style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "placeholder";
     text: string;
@@ -1580,6 +1592,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -1759,6 +1774,9 @@ export type InlineNode = {
     color: string;
     localId?: string;
     style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "placeholder";
     text: string;

@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **59 of 84 rows closed; 25 rows open.** This count
+Current matrix orientation: **63 of 84 rows closed; 21 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -144,6 +144,11 @@ Current closed foundations and feature slices:
 - [x] Pinned ADF layout sections/columns and documented Storage layout sections
   retain column ownership, proportions, vertical alignment, and available local
   identity through both static TypeScript targets.
+- [x] Inline, block, embed, and datasource Smart Cards retain every pinned ADF
+  attribute and opaque provider payload. Safe targets remain clickable,
+  composition rewrites in-scope page targets, both engines render deterministic
+  static card presentation, and supported datasource providers enter the
+  existing live macro-resolution chain with the same static card as fallback.
 - [x] Native ADF media captions retain inline content/local identity and remain
   attached to a numbered figure even when the media ID cannot be resolved.
   ADF `expand`/`nestedExpand` and Storage `expand` retain their recursive
@@ -290,17 +295,17 @@ Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30], [E34].
 
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
-| [ ] | `inlineCard` | ADF retains a safe URL and visible fallback; Storage may expose a normal hyperlink. | Open | Open | **Open:** retain resolved title/provider/icon metadata and define a deterministic inline-card projection. |
-| [ ] | `blockCard` | ADF retains a safe URL in a visible block fallback; datasource links remain a separate live-rendered path. | Open/Conditional | Open/Conditional | **Open:** model card appearance and stable title/URL fallback independently of datasource rendering. |
-| [ ] | `embedCard` | URL/body may survive through a visible link fallback or `export_view`; no typed embed presentation exists. | Open/Fallback | Open/Fallback | **Open:** define poster/thumbnail/title/URL representation and report unrenderable embeds. |
+| [x] | `inlineCard` | Typed Smart Card retains exact URL/data/local identity, derives a stable title only from the schema-opaque data payload, and creates a target only after the shared scheme gate. | Native static projection | Native static projection | Closed for the pinned schema: both targets render a clickable inline chip; unsafe URLs remain visible and non-clickable with a warning. Opaque provider metadata is retained without speculative interpretation or network execution. |
+| [x] | `blockCard` | Typed Smart Card retains every URL/data/datasource/layout/width/local attribute. Supported datasource providers enter the existing live macro chain; unknown/offline providers keep the complete static card. | Native static/live projection | Native static/live projection | Closed for the pinned schema and current provider registry. Static bordered cards are deterministic in both targets, and live datasource resolution reuses the existing bounded macro renderer/fallback/report path rather than forking behavior. |
+| [x] | `embedCard` | Typed Smart Card retains exact URL, layout, width, original dimensions, and local identity. | Native static projection | Native static projection | Closed for the pinned schema: both targets render a bordered, labeled, clickable embed placeholder. Poster/thumbnail/provider fetches are not pinned ADF attributes; opaque future attributes enter the drift lane instead of becoming an invented export contract. |
 
 Plain ADF link marks are uniform and clickable across text, page, attachment,
 and media placements. Composed in-scope page links become internal anchors;
 otherwise the exact safe source href remains the external fallback. Smart-card
-appearance and enrichment remain separate node-level contracts and must not be
-inferred solely from link survival.
+card semantics are now retained independently from link marks; provider-owned
+opaque data is preserved but never executed or fetched by the static renderer.
 
-Evidence: [E5], [E7], [E8], [E15], [E16].
+Evidence: [E5], [E7], [E8], [E15], [E16], [E38].
 
 ### 6.7 Media
 
@@ -356,7 +361,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `textColor` | Direct ADF and Storage span color become normalized static RGB. | Native | Native | Closed for static export; flattening theme tokens to authored print color is intentional. |
 | [x] | `backgroundColor` | Direct ADF and Storage span background become normalized static RGB. | Native | Native | Closed for schema-valid mark placement and static target color. |
 | [x] | `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
-| [x] | `link` | The exact safe href becomes a typed external/page/attachment/anchor target; optional `title`, `id`, `collection`, and `occurrenceKey` remain distinct provenance. Unsafe schemes keep visible content and a warning. | Native | Native | Closed for every pinned mark placement: text and media links are clickable in both targets, in-scope pages prefer collision-safe internal anchors, page/attachment/media fallbacks retain their exact safe href, DOCX uses `title` as a ScreenTip, and composition preserves the remaining ADF attributes. Smart-card nodes remain separate rows. |
+| [x] | `link` | The exact safe href becomes a typed external/page/attachment/anchor target; optional `title`, `id`, `collection`, and `occurrenceKey` remain distinct provenance. Unsafe schemes keep visible content and a warning. | Native | Native | Closed for every pinned mark placement: text and media links are clickable in both targets, in-scope pages prefer collision-safe internal anchors, page/attachment/media fallbacks retain their exact safe href, DOCX uses `title` as a ScreenTip, and composition preserves the remaining ADF attributes. Smart-card nodes are complete in their separate checked rows. |
 | [ ] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Open | Open | **Open:** fetch/correlate comment bodies and implement native Word-comment/PDF-note output under an explicit export policy. |
 | [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
@@ -383,7 +388,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `> ` | `blockquote` | Native static projection. | Closed with deterministic target-owned styling. |
 | [x] | Triple backticks + space | `codeBlock` | Native for the pinned ADF result. | Exact text/language, tri-state wrap intent, line-number policy, local/unique identity, long-line page safety, and empty/final lines are covered through validation, both engines, packed browser parity, and real render goldens. |
 | [x] | `--- ` | `rule` | Native. | Semantic and visual golden are complete. |
-| [ ] | `[title](URL)` | link mark or Smart Link transform | Plain link-mark output is complete, including safe external/page/attachment/media targets and unsafe-scheme degradation. | **Open:** Confluence may instead materialize inline/block/embed Smart Card nodes; their distinct static appearance and enrichment contracts remain open. |
+| [x] | `[title](URL)` | link mark or Smart Link transform | Plain link marks and inline/block/embed Smart Card outcomes are complete, including safe external/page/attachment/media/card targets and unsafe-scheme degradation. | Closed after Confluence materializes the editor input: exact link-mark provenance and all pinned Smart Card attributes survive, with deterministic clickable static output in both targets and datasource live-resolution reuse where supported. |
 | [x] | `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
 | [x] | `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
 | [ ] | `:` / emoji picker | `emoji` node or text | Partial/conditional. | **Partial — external asset contract:** Unicode/fallback is complete; Atlassian/site-custom assets and complete glyph coverage remain blocked. |
@@ -523,15 +528,16 @@ Required acceptance contract:
   both static targets. Line numbers and long-line wrapping are visually proven;
   a no-wrap request uses an explicit non-clipping page-bound policy rather than
   a silent approximation.
-- [ ] **Open — card/embed metadata.** Deterministic visible URL fallbacks
-  exist; native title/provider/poster metadata remains.
+- [x] **Cards and embeds.** Every pinned inline/block/embed attribute, opaque
+  data/datasource payload, safe target, local identity, layout, and authored
+  geometry survives. Both targets render deterministic static cards; supported
+  datasource providers additionally reuse the existing live macro chain.
 - [ ] **Open — media family.** Selected image/media paths exist; group,
   inline, file/video/audio, crop, and border coverage remains. Media link marks
   are complete.
 - [x] **Page/attachment/media hyperlinks.** Exact safe href fallbacks,
   in-scope internal anchors, pinned ADF provenance, DOCX ScreenTips, and both
-  targets' clickable text/image/fallback output are complete. Smart Cards stay
-  isolated in their own open rows.
+  targets' clickable text/image/fallback/card output are complete.
 
 ### P2 - Dynamic and advanced content
 
@@ -758,6 +764,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E35] Executable progress-register consistency guard:** `scripts/adf-gap-register.test.ts`
 - **[E36] Portable inline/code-block font embedding across DOCX hosts:** `packages/docx/src/font-embedding.ts`, `packages/docx/src/font-embedding.test.ts`, `packages/docx/src/node-code-font.ts`, `packages/docx/src/export.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/golden.test.ts`, `apps/cli/src/commands/export-code-font.ts`, `apps/cli/src/commands/export-code-font-build-modes.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E37] Complete pinned ADF link-mark semantics:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E38] Complete pinned Smart Card semantics and static/live projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/datasource.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 
@@ -768,7 +775,11 @@ Accessed 2026-07-22 and 2026-07-23:
    Storage remains the Data Center/compatibility adapter and a temporary,
    differentially tested sidecar for unresolved definitions.
 3. **Resolved for this migration:** short-name/text fallback with a typed warning is the portable floor; authorized asset retrieval waits for a documented Atlassian contract.
-4. For cards and embeds, is a stable title + URL representation sufficient for the first fidelity milestone, or are thumbnails/provider metadata required?
+4. **Resolved for the pinned Smart Card schema:** retain all opaque
+   provider-owned JSON, but render only documented stable title/URL/card
+   semantics. Thumbnails/provider execution are not invented when the pinned
+   node exposes no such contract; future observed attributes enter the weekly
+   drift lane.
 5. **Open:** annotation/fragment identities are
    preserved as metadata on retained source positions while underlying content
    remains visible; a consumed block export-control wrapper is explicitly

@@ -27,6 +27,8 @@ import type {
   LinkTarget,
   ListItem,
   MacroParameter,
+  SmartCardAppearance,
+  SmartCardSemantics,
   StorageToBlocksOptions,
   TableCell,
   TablePresentation,
@@ -38,6 +40,7 @@ import {
   parseAdfDateTimestamp,
   statusDisplayText,
 } from "./export-blocks.js";
+import { translateDatasourceLink } from "./datasource.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import type { BlocksResult } from "./page-body.js";
 
@@ -426,8 +429,9 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       return [decodeExtension(node, ctx, path)];
     }
     case "blockCard":
+      return decodeBlockCard(node, ctx, path);
     case "embedCard":
-      return [cardParagraph(node, ctx, path)];
+      return [{ type: "smartCard", card: decodeSmartCard(node, ctx, path) }];
     case "mediaSingle":
     case "mediaGroup":
       return decodeMediaContainer(node, ctx, path);
@@ -559,7 +563,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
           : {}),
       }];
     case "inlineCard":
-      return cardInline(node, ctx, path);
+      return [{ type: "smartCard", card: decodeSmartCard(node, ctx, path) }];
     case "inlineExtension": {
       const controlled = decodeInlineExportControl(node, ctx, path);
       if (controlled) return controlled.content;
@@ -806,15 +810,114 @@ function mediaLink(
   };
 }
 
-function cardInline(node: AdfNode, ctx: DecodeContext, path: string): InlineNode[] {
-  const href = cardUrl(node);
-  const label = cardTitle(node) ?? href ?? "[Smart link]";
-  addNodeNote(ctx, path, node.type, "appearance was approximated as a text link.");
-  return href ? wrapLink(href, [{ type: "text", text: label }], ctx, path) : [{ type: "text", text: label }];
+function decodeSmartCard(node: AdfNode, ctx: DecodeContext, path: string): SmartCardSemantics {
+  const appearance: SmartCardAppearance =
+    node.type === "inlineCard" ? "inline" : node.type === "embedCard" ? "embed" : "block";
+  const data = node.attrs?.data;
+  const datasource = node.attrs?.datasource;
+  const source =
+    datasource !== undefined ? "datasource" : data !== undefined ? "data" : "url";
+  const directUrl = optionalStringAttr(node, "url");
+  const dataUrl =
+    data !== null && data !== undefined && !Array.isArray(data) && typeof data === "object"
+      ? optionalJsonString(data.url)
+      : undefined;
+  const url = directUrl ?? dataUrl;
+  let target: LinkTarget | undefined;
+  if (url?.length) {
+    const verdict = sanitizeLinkHref(url);
+    if (verdict.safe) {
+      target = linkTarget(verdict.href);
+    } else {
+      ctx.notes.add({
+        level: "warning",
+        code: "unsafe-link-skipped",
+        message: unsafeLinkMessage(verdict, cardTitle(node) ?? "Smart link"),
+        source: sourceFor(ctx, path),
+      });
+    }
+  }
+  const layout = smartCardLayout(node.attrs?.layout);
+  return {
+    appearance,
+    source,
+    ...(url !== undefined ? { url } : {}),
+    ...(target ? { target } : {}),
+    ...(cardTitle(node) !== undefined ? { title: cardTitle(node) } : {}),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+    ...(data !== undefined ? { data } : {}),
+    ...(datasource !== undefined ? { datasource } : {}),
+    ...(layout ? { layout } : {}),
+    ...(numberAttr(node, "width") !== undefined ? { width: numberAttr(node, "width") } : {}),
+    ...(numberAttr(node, "originalHeight") !== undefined
+      ? { originalHeight: numberAttr(node, "originalHeight") }
+      : {}),
+    ...(numberAttr(node, "originalWidth") !== undefined
+      ? { originalWidth: numberAttr(node, "originalWidth") }
+      : {}),
+  };
 }
 
-function cardParagraph(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
-  return { type: "paragraph", content: cardInline(node, ctx, path) };
+function decodeBlockCard(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock[] {
+  const card = decodeSmartCard(node, ctx, path);
+  if (card.datasource === undefined) return [{ type: "smartCard", card }];
+
+  const outcome = translateDatasourceLink(stableJson(card.datasource), card.url ?? "");
+  if (outcome.kind === "degrade") {
+    ctx.notes.add({
+      level: outcome.level,
+      code: outcome.code,
+      message: outcome.message,
+      ...(outcome.provider
+        ? { macroName: outcome.provider.macroName ?? outcome.provider.id }
+        : {}),
+      source: sourceFor(ctx, path),
+    });
+    return [{ type: "smartCard", card }];
+  }
+
+  ctx.notes.add({
+    level: "info",
+    code: "macro-not-rendered",
+    message:
+      `An ADF datasource card was captured as a "${outcome.macroName}" macro; ` +
+      "it renders as a live table when dynamic macro resolution runs.",
+    macroName: outcome.macroName,
+    source: sourceFor(ctx, path),
+  });
+  return [{
+    type: "unknown",
+    macroName: outcome.macroName,
+    params: outcome.params,
+    body: [{ type: "smartCard", card }],
+    ...(ctx.pageContext
+      ? {
+          sourcePage: {
+            id: ctx.pageContext.id,
+            ...(ctx.pageContext.version !== undefined
+              ? { version: ctx.pageContext.version }
+              : {}),
+            ...(ctx.pageContext.spaceKey !== undefined
+              ? { spaceKey: ctx.pageContext.spaceKey }
+              : {}),
+          },
+        }
+      : {}),
+  }];
+}
+
+function smartCardLayout(value: AdfJsonValue | undefined): SmartCardSemantics["layout"] {
+  return value === "wide" ||
+    value === "full-width" ||
+    value === "center" ||
+    value === "wrap-right" ||
+    value === "wrap-left" ||
+    value === "align-end" ||
+    value === "align-start"
+    ? value
+    : undefined;
 }
 
 function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
@@ -1429,20 +1532,16 @@ function mediaLabel(node: AdfNode): string {
   return stringAttr(node, "alt") ?? `[Media: ${stringAttr(node, "id") ?? "unresolved"}]`;
 }
 
-function cardUrl(node: AdfNode): string | undefined {
-  const direct = stringAttr(node, "url");
-  if (direct) return direct;
+function cardTitle(node: AdfNode): string | undefined {
   const data = node.attrs?.data;
   if (!data || Array.isArray(data) || typeof data !== "object") return undefined;
-  return stringJson(data.url);
+  return optionalJsonString(data.name) ??
+    optionalJsonString(data.headline) ??
+    optionalJsonString(data.title);
 }
 
-function cardTitle(node: AdfNode): string | undefined {
-  const direct = stringAttr(node, "text");
-  if (direct) return direct;
-  const data = node.attrs?.data;
-  if (!data || Array.isArray(data) || typeof data !== "object") return undefined;
-  return stringJson(data.name) ?? stringJson(data.headline) ?? stringJson(data.title);
+function optionalJsonString(value: AdfJsonValue | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function markKey(mark: AdfMark): string {

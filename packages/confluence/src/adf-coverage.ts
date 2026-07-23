@@ -88,7 +88,7 @@ export interface AdfCoverageRow {
 
 /** Exhaustive implementation classification consumed by the ADF decoder. */
 export const ADF_NODE_DECODE_MODES = Object.freeze({
-  blockCard: "approximation",
+  blockCard: "native",
   blockTaskItem: "native",
   blockquote: "native",
   bodiedExtension: "approximation",
@@ -100,13 +100,13 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   decisionItem: "native",
   decisionList: "native",
   doc: "native",
-  embedCard: "approximation",
+  embedCard: "native",
   emoji: "approximation",
   expand: "approximation",
   extension: "approximation",
   hardBreak: "native",
   heading: "native",
-  inlineCard: "approximation",
+  inlineCard: "native",
   inlineExtension: "approximation",
   layoutColumn: "native",
   layoutSection: "native",

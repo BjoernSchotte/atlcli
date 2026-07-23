@@ -74,6 +74,23 @@ describe("serializeInline", () => {
     expect(xml).toContain("https://x.com");
   });
 
+  it("renders an inline Smart Card as a safe clickable chip", () => {
+    const xml = serializeInline([{
+      type: "smartCard",
+      card: {
+        appearance: "inline",
+        source: "data",
+        url: "https://example.invalid/card",
+        target: { kind: "external", href: "https://example.invalid/card" },
+        title: "Visible card",
+        data: { name: "Visible card", provider: { name: "Example" } },
+      },
+    }]);
+    expect(xml).toContain('HYPERLINK "https://example.invalid/card"');
+    expect(xml).toContain(">Visible card</w:t>");
+    expect(xml).toContain('w:fill="E9F2FF"');
+  });
+
   it("renders resolved and unresolved mentions without leaking account IDs", () => {
     const xml = serializeInline([
       { type: "mention", accountId: "private-user-id", displayName: "Jo" },
@@ -115,6 +132,41 @@ describe("serializeInline", () => {
     expect(xml).toContain("drei überlappende äpfel — café");
     // No surviving named-entity literals leak into the OOXML text run.
     expect(xml).not.toMatch(/&[a-zA-Z][a-zA-Z0-9]*;/);
+  });
+});
+
+describe("serializeBlocks — Smart Cards", () => {
+  it("renders block and embed cards as bordered clickable static projections", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "smartCard",
+        card: {
+          appearance: "block",
+          source: "url",
+          url: "https://example.invalid/block",
+          target: { kind: "external", href: "https://example.invalid/block" },
+        },
+      },
+      {
+        type: "smartCard",
+        card: {
+          appearance: "embed",
+          source: "url",
+          url: "https://example.invalid/embed",
+          target: { kind: "external", href: "https://example.invalid/embed" },
+          layout: "full-width",
+          width: 80,
+          originalHeight: 720,
+          originalWidth: 1280,
+        },
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain('HYPERLINK "https://example.invalid/block"');
+    expect(xml).toContain('HYPERLINK "https://example.invalid/embed"');
+    expect(xml).toContain(">Embedded content: </w:t>");
+    expect(xml.match(/<w:pBdr>/gu)).toHaveLength(2);
+    expect(xml.match(/w:fill="F4F5F7"/gu)).toHaveLength(2);
   });
 });
 

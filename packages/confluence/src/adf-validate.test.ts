@@ -249,6 +249,55 @@ describe("validateAdf", () => {
       .toBe("invalid-attributes");
   });
 
+  test("validates every pinned Smart Card variant including datasource and embed geometry", () => {
+    expect(() => validateAdf(doc([
+      { type: "inlineCard", attrs: { data: { name: "Resolved title" }, localId: "" } },
+      { type: "blockCard", attrs: { url: "https://example.invalid/block" } },
+      {
+        type: "blockCard",
+        attrs: {
+          datasource: {
+            id: "provider",
+            parameters: { query: "type = page" },
+            views: [{ type: "table", properties: { columns: ["title"] } }],
+          },
+          url: "https://example.invalid/datasource",
+          layout: "wide",
+          width: 70,
+        },
+      },
+      {
+        type: "embedCard",
+        attrs: {
+          url: "https://example.invalid/embed",
+          layout: "full-width",
+          width: 100,
+          originalHeight: 720,
+          originalWidth: 1280,
+        },
+      },
+    ]))).not.toThrow();
+
+    const invalidCards = [
+      { type: "inlineCard", attrs: { url: "https://example.invalid", data: {} } },
+      { type: "blockCard", attrs: { data: {}, layout: "wide" } },
+      {
+        type: "blockCard",
+        attrs: {
+          datasource: { id: "provider", parameters: {}, views: [] },
+        },
+      },
+      { type: "embedCard", attrs: { url: "https://example.invalid/embed" } },
+      {
+        type: "embedCard",
+        attrs: { url: "https://example.invalid/embed", layout: "center", width: 101 },
+      },
+    ];
+    for (const node of invalidCards) {
+      expect(errorCode(() => validateAdf(doc([node])))).toBe("invalid-attributes");
+    }
+  });
+
   test("requires task/decision identities and validates their exact state contracts", () => {
     expect(() => validateAdf(doc([{
       type: "taskList",

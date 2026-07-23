@@ -638,6 +638,41 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
     });
   });
 
+  test("rewrites inline and block Smart Card page targets through the chapter registry", () => {
+    const source = page("1", "Root", 0, null, "<p>body</p>");
+    const target = page("2", "Child", 1, "1", "<p>target</p>");
+    const card = {
+      appearance: "inline" as const,
+      source: "url" as const,
+      url: "https://wiki.example/pages/2/Child",
+      target: {
+        kind: "page" as const,
+        contentId: "2",
+        contentTitle: "Child",
+        href: "https://wiki.example/pages/2/Child",
+      },
+    };
+    source.blocks = [
+      { type: "paragraph", content: [{ type: "smartCard", card }] },
+      { type: "smartCard", card: { ...card, appearance: "block" } },
+    ];
+
+    const { blocks } = composeChapters([source, target], { chapterBreak: "none" });
+    const paragraph = blocks.find((block) => block.type === "paragraph");
+    const blockCard = blocks.find((block) => block.type === "smartCard");
+    expect(paragraph).toMatchObject({
+      type: "paragraph",
+      content: [{
+        type: "smartCard",
+        card: { target: { kind: "anchor", anchor: "page-2" } },
+      }],
+    });
+    expect(blockCard).toMatchObject({
+      type: "smartCard",
+      card: { target: { kind: "anchor", anchor: "page-2" } },
+    });
+  });
+
   test("caption links pass through the same rewrite, including unresolved media inside expands", () => {
     // Build all captionable block variants programmatically: each caption
     // carries a cross-page link to page 2.

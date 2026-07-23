@@ -26,10 +26,12 @@ import type {
   ExportNote,
   InlineNode,
   LinkTarget,
+  SmartCardSemantics,
 } from "./export-blocks.js";
 import {
   formatAdfDateTimestamp,
   mentionDisplayText,
+  smartCardDisplayText,
   statusDisplayText,
 } from "./export-blocks.js";
 import type {
@@ -338,6 +340,9 @@ function inlinePlainText(nodes: readonly InlineNode[]): string {
       case "status":
         out += statusDisplayText(node);
         break;
+      case "smartCard":
+        out += smartCardDisplayText(node.card);
+        break;
       case "placeholder":
         break;
       case "lineBreak":
@@ -400,6 +405,7 @@ function registerPageAnchors(
           for (const column of block.columns) walk(column.content);
           break;
         case "paragraph":
+        case "smartCard":
         case "codeBlock":
         case "image":
         case "mediaFallback":
@@ -501,6 +507,9 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
       case "lineBreak":
         out.push(node);
         break;
+      case "smartCard":
+        out.push({ ...node, card: rewriteSmartCard(node.card, ctx) });
+        break;
       case "link": {
         const content = transformInline(node.content, ctx);
         const rewritten = rewriteLink(node.target, content, ctx);
@@ -518,6 +527,21 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
     }
   }
   return out;
+}
+
+function rewriteSmartCard(card: SmartCardSemantics, ctx: EmitCtx): SmartCardSemantics {
+  if (!card.target) return card;
+  const content: InlineNode[] = [{ type: "text", text: smartCardDisplayText(card) }];
+  const rewritten = rewriteLink(card.target, content, ctx);
+  const rewrittenTarget =
+    rewritten.length === 1 && rewritten[0]?.type === "link"
+      ? rewritten[0].target
+      : undefined;
+  const { target: _sourceTarget, ...rest } = card;
+  return {
+    ...rest,
+    ...(rewrittenTarget ? { target: rewrittenTarget } : {}),
+  };
 }
 
 /** Rewrite a single link node; may unwrap it to page-only text (its content). */
@@ -657,6 +681,8 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
     }
     case "paragraph":
       return { ...block, content: transformInline(block.content, ctx) };
+    case "smartCard":
+      return { ...block, card: rewriteSmartCard(block.card, ctx) };
     case "callout":
       return {
         ...block,

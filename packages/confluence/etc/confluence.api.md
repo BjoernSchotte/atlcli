@@ -33,7 +33,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
-    readonly blockCard: "approximation";
+    readonly blockCard: "native";
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
@@ -45,13 +45,13 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
-    readonly embedCard: "approximation";
+    readonly embedCard: "native";
     readonly emoji: "approximation";
     readonly expand: "approximation";
     readonly extension: "approximation";
     readonly hardBreak: "native";
     readonly heading: "native";
-    readonly inlineCard: "approximation";
+    readonly inlineCard: "native";
     readonly inlineExtension: "approximation";
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
@@ -1079,6 +1079,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -1510,6 +1513,9 @@ export type InlineNode = {
     localId?: string;
     style?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "placeholder";
     text: string;
     localId?: string;
@@ -1913,6 +1919,28 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
 }
 
 // export: SmartLinkAppearance
@@ -2299,7 +2327,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
-    readonly blockCard: "approximation";
+    readonly blockCard: "native";
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
@@ -2311,13 +2339,13 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
-    readonly embedCard: "approximation";
+    readonly embedCard: "native";
     readonly emoji: "approximation";
     readonly expand: "approximation";
     readonly extension: "approximation";
     readonly hardBreak: "native";
     readonly heading: "native";
-    readonly inlineCard: "approximation";
+    readonly inlineCard: "native";
     readonly inlineExtension: "approximation";
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
@@ -3345,6 +3373,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -3776,6 +3807,9 @@ export type InlineNode = {
     localId?: string;
     style?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "placeholder";
     text: string;
     localId?: string;
@@ -4179,6 +4213,28 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
 }
 
 // export: SmartLinkAppearance
@@ -4565,7 +4621,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
-    readonly blockCard: "approximation";
+    readonly blockCard: "native";
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
@@ -4577,13 +4633,13 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
-    readonly embedCard: "approximation";
+    readonly embedCard: "native";
     readonly emoji: "approximation";
     readonly expand: "approximation";
     readonly extension: "approximation";
     readonly hardBreak: "native";
     readonly heading: "native";
-    readonly inlineCard: "approximation";
+    readonly inlineCard: "native";
     readonly inlineExtension: "approximation";
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
@@ -5611,6 +5667,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -6042,6 +6101,9 @@ export type InlineNode = {
     localId?: string;
     style?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "placeholder";
     text: string;
     localId?: string;
@@ -6445,6 +6507,28 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
 }
 
 // export: SmartLinkAppearance
@@ -7782,6 +7866,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -8260,6 +8347,9 @@ export type InlineNode = {
     color: string;
     localId?: string;
     style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "placeholder";
     text: string;
@@ -8947,6 +9037,28 @@ export interface SimilarityResult {
 // export: slugifyTitle
 export declare function slugifyTitle(title: string | undefined | null): string;
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -9565,7 +9677,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
-    readonly blockCard: "approximation";
+    readonly blockCard: "native";
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
@@ -9577,13 +9689,13 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
-    readonly embedCard: "approximation";
+    readonly embedCard: "native";
     readonly emoji: "approximation";
     readonly expand: "approximation";
     readonly extension: "approximation";
     readonly hardBreak: "native";
     readonly heading: "native";
-    readonly inlineCard: "approximation";
+    readonly inlineCard: "native";
     readonly inlineExtension: "approximation";
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
@@ -10611,6 +10723,9 @@ export type ExportBlock = {
     presentation?: BlockPresentation;
     localId?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "codeBlock";
     language?: string;
     code: string;
@@ -11042,6 +11157,9 @@ export type InlineNode = {
     localId?: string;
     style?: string;
 } | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
     type: "placeholder";
     text: string;
     localId?: string;
@@ -11445,6 +11563,28 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
 }
 
 // export: SmartLinkAppearance

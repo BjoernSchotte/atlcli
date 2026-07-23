@@ -184,6 +184,38 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       ],
     },
     {
+      type: "blockCard",
+      attrs: {
+        url: "https://example.invalid/adf-block-card",
+        localId: "block-card-local",
+      },
+    },
+    {
+      type: "blockCard",
+      attrs: {
+        datasource: {
+          id: "example-provider",
+          parameters: { query: "type = page" },
+          views: [{ type: "table", properties: { columns: ["title"] } }],
+        },
+        url: "https://example.invalid/adf-datasource-card",
+        layout: "wide",
+        width: 72,
+        localId: "datasource-card-local",
+      },
+    },
+    {
+      type: "embedCard",
+      attrs: {
+        url: "https://example.invalid/adf-embed-card",
+        layout: "full-width",
+        width: 80,
+        originalHeight: 720,
+        originalWidth: 1280,
+        localId: "embed-card-local",
+      },
+    },
+    {
       type: "paragraph",
       marks: [
         { type: "alignment", attrs: { align: "center" } },

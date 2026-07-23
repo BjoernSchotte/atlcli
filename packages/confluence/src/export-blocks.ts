@@ -28,6 +28,7 @@ import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
+import type { AdfJsonValue } from "./adf-types.js";
 import type { BlocksResult } from "./page-body.js";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,48 @@ export interface AdfLinkAttributes {
 export interface ExportLink {
   target: LinkTarget;
   adfAttributes?: AdfLinkAttributes;
+}
+
+/** The three display modes represented by ADF Smart Card node types. */
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+/**
+ * Target-neutral, lossless projection of a pinned ADF Smart Card node.
+ *
+ * `data` and `datasource` remain JSON because the pinned schema deliberately
+ * leaves these provider-owned payloads open. Static renderers use only the
+ * stable title/URL projection and never execute or fetch that opaque data.
+ * `target` exists only when the URL passed the shared link-safety gate.
+ */
+export interface SmartCardSemantics {
+  appearance: SmartCardAppearance;
+  source: "url" | "data" | "datasource";
+  url?: string;
+  target?: LinkTarget;
+  title?: string;
+  localId?: string;
+  data?: AdfJsonValue;
+  datasource?: AdfJsonValue;
+  layout?:
+    | "wide"
+    | "full-width"
+    | "center"
+    | "wrap-right"
+    | "wrap-left"
+    | "align-end"
+    | "align-start";
+  width?: number;
+  originalHeight?: number;
+  originalWidth?: number;
+}
+
+/** Deterministic visible label shared by both static export engines. */
+export function smartCardDisplayText(card: SmartCardSemantics): string {
+  const title = card.title?.trim();
+  if (title) return title;
+  const url = card.url?.trim();
+  if (url) return url;
+  return card.source === "datasource" ? "Datasource" : "Smart link";
 }
 
 /**
@@ -154,6 +197,7 @@ export type InlineNode =
    * string while the ADF validator enforces its narrower source contract.
    */
   | { type: "status"; text: string; color: string; localId?: string; style?: string }
+  | { type: "smartCard"; card: SmartCardSemantics }
   /**
    * Template instruction text. Confluence hides placeholders in published
    * view; exporters retain the identity but deliberately render no visible
@@ -493,6 +537,7 @@ export type ExportBlock =
       /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
       localId?: string;
     }
+  | { type: "smartCard"; card: SmartCardSemantics }
   | {
       type: "codeBlock";
       language?: string;

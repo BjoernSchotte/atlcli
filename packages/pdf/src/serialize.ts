@@ -5,6 +5,7 @@ import type {
   ExportNote,
   InlineNode,
   LinkTarget,
+  SmartCardSemantics,
   TablePresentation,
 } from "@atlcli/confluence";
 import {
@@ -13,6 +14,7 @@ import {
   formatAdfDateTimestamp,
   isSafeLinkScheme,
   mentionDisplayText,
+  smartCardDisplayText,
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
@@ -50,6 +52,8 @@ function inlinePlainText(nodes: InlineNode[]): string {
           return formatAdfDateTimestamp(node.timestamp);
         case "status":
           return statusDisplayText(node);
+        case "smartCard":
+          return smartCardDisplayText(node.card);
         case "placeholder":
           return "";
         case "lineBreak":
@@ -169,6 +173,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return block.alt ?? block.fallbackLabel;
         case "mediaFallback":
           return block.alt ?? block.label;
+        case "smartCard":
+          return smartCardDisplayText(block.card);
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
@@ -304,6 +310,22 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
       return exhaustive;
     }
   }
+}
+
+function serializeSmartCardInline(
+  card: SmartCardSemantics,
+  labels: Map<string, string>,
+): string {
+  const label = literalText(smartCardDisplayText(card));
+  const content =
+    card.appearance === "inline"
+      ? `#box(fill: rgb("E9F2FF"), inset: (x: 3pt, y: 1pt), radius: 2pt)[${label}]`
+      : label;
+  const href = card.target ? resolveLink(card.target, labels) : null;
+  if (!href) return content;
+  return href.startsWith("<")
+    ? `#link(${href})[${content}]`
+    : `#link(${typstString(href)})[${content}]`;
 }
 
 type TableDensity = "normal" | "dense";
@@ -690,6 +712,8 @@ function serializeInline(
           }
           return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
+        case "smartCard":
+          return serializeSmartCardInline(node.card, labels);
         case "placeholder":
           return "";
         case "link": {
@@ -1064,6 +1088,14 @@ function serializeBlock(
         writer.design,
       );
       break;
+    case "smartCard": {
+      const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
+      value =
+        `#block(width: 100%, fill: rgb("F4F5F7"), stroke: rgb("B3BAC5"), ` +
+        `radius: 3pt, inset: 8pt)[#strong[${literalText(prefix)}]` +
+        `${serializeSmartCardInline(block.card, writer.labels)}]`;
+      break;
+    }
     case "codeBlock": {
       if (block.wrap === false) {
         writer.notes.push({

@@ -19,6 +19,7 @@ import type {
   InlineNode,
   ExportNote,
   ListItem,
+  SmartCardSemantics,
   TableCell,
   TablePresentation,
   TableRow,
@@ -30,6 +31,7 @@ import {
   mentionDisplayText,
   readableTextColor,
   sanitizeAnchorId,
+  smartCardDisplayText,
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
@@ -297,6 +299,9 @@ export function serializeInline(
           color: "0747A6",
           fontSizeHalfPoints,
         });
+        break;
+      case "smartCard":
+        out += smartCardRuns(node.card, fontSizeHalfPoints);
         break;
       case "link": {
         const innerRuns = serializeInline(
@@ -569,6 +574,23 @@ async function serializeBlock(
       ), {
         extraPPr: blockPresentationPPr(block.presentation),
       });
+
+    case "smartCard": {
+      const cardBorder =
+        `<w:pBdr><w:top w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:left w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:bottom w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:right w:val="single" w:sz="8" w:color="B3BAC5"/></w:pBdr>`;
+      const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
+      return paragraph(
+        run(prefix, { bold: true, color: "42526E" }) + smartCardRuns(block.card),
+        {
+          extraPPr:
+            `${cardBorder}<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>` +
+            `<w:spacing w:before="80" w:after="80"/>`,
+        },
+      );
+    }
 
     case "codeBlock": {
       // A ```mermaid block takes the diagram path (spec 005a); every other
@@ -875,6 +897,18 @@ function linkRuns(link: ExportLink | undefined, innerRuns: string): string {
       ? link.target.href
       : undefined;
   return href ? hyperlinkField(href, innerRuns, tooltip) : innerRuns;
+}
+
+function smartCardRuns(card: SmartCardSemantics, fontSizeHalfPoints?: number): string {
+  const label = smartCardDisplayText(card);
+  const innerRuns = run(label, {
+    bold: card.appearance !== "inline",
+    color: card.target ? "0563C1" : "42526E",
+    underline: card.target !== undefined,
+    backgroundColor: card.appearance === "inline" ? "E9F2FF" : undefined,
+    fontSizeHalfPoints,
+  });
+  return linkRuns(card.target ? { target: card.target } : undefined, innerRuns);
 }
 
 function linkDrawingParagraph(xml: string, link: ExportLink | undefined): string {

@@ -286,7 +286,9 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 - Inline: `date`, `status`, and `placeholder` as typed semantic nodes;
   `emoji` and `mention` with deterministic visible fallbacks for unresolved
   external data.
-- Cards: `inlineCard`, `blockCard`, `embedCard` as safe clickable URL/title fallbacks until native card appearance is modeled.
+- Cards: `inlineCard`, `blockCard`, and `embedCard` now use a typed Smart Card
+  contract with complete pinned attributes, safe targets, deterministic static
+  rendering, and reuse of the existing datasource live-resolution chain.
 - Extensions: `extension`, `inlineExtension`, `bodiedExtension` projected into the existing macro-resolution contract when identity correlation is proven.
 - Media: `mediaSingle`, `mediaGroup`, and `media` only after Media-ID/attachment correlation is proven; otherwise visible fallback plus `adf-media-unresolved`.
 - Existing marks: `strong`, `em`, `underline`, `strike`, `code`, `subsup`, `textColor`, `backgroundColor`, and `link`.
@@ -1296,6 +1298,39 @@ plain content with the shared warning policy. Smart-card appearance/enrichment
 is deliberately not claimed by this mark-level slice and remains in the three
 separate card rows. The matrix now records 59 of 84 rows closed and 25 open.
 
+Completed Smart Card follow-on evidence recorded on 2026-07-23: `inlineCard`,
+`blockCard`, and `embedCard` now decode into a public target-neutral Smart Card
+contract rather than ordinary links or paragraphs. The bounded validator
+accepts and checks every pinned union variant, including strict datasource
+envelopes and embed layout/geometry. Exact URL, local identity, schema-opaque
+`data`/`datasource` JSON, layout, width, and original dimensions survive;
+visible titles are derived only from retained data fields already present in
+ADF. Safe targets use the shared scheme policy and composition registry, while
+unsafe URLs remain visible metadata without becoming clickable.
+
+DOCX renders inline cards as link chips and block/embed cards as bordered
+static panels; Typst/PDF provides the corresponding inline chip and bordered
+block projection. Supported datasource providers enter the existing bounded
+macro-resolution chain and retain the full static card as their offline,
+disabled, or failed-resolution body. Unknown providers stay as typed static
+cards with the existing datasource diagnostic. No renderer executes opaque
+provider data or invents thumbnail/icon fetches absent from the pinned schema.
+Direct validation/decoder/composition and both renderer suites cover all
+variants, and the packed browser fixture carries inline, block, datasource,
+and embed semantics through direct/background parity. The focused slice ran
+322 tests with zero failures, followed by full workspace/browser typecheck,
+the 16-package production build, all 20 browser-isomorphism entrypoints,
+extension/harness output integrity, the 15-case manifest, packed Chromium E2E,
+direct/background parity, public API/closure checks with zero reachable gaps,
+pack inspection, and real tarball/filesystem-link/plain-Node/Vite consumers.
+The reviewed render baseline contains one DOCX and five PDF pages; a second
+render reproduced it with zero mean pixel difference and content-bounds IoU 1.
+The retained anonymized two-page live tree also re-exported through the built
+CLI to DOCX and PDF with both source pages, no Storage fallback, a packaged
+DOCX code font, and a structurally valid multipage PDF. No live identifier is
+stored in the repository. The matrix now records 63 of 84 rows closed and 21
+open; the unrestricted suite remains the remote-CI gate.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
@@ -1306,7 +1341,7 @@ After this migration proves the source boundary, close the gap-analysis backlog 
    pinned table-attribute contract;
 5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
    layout columns and the static caption/disclosure contract are complete);
-6. full card/embed/media family;
+6. full media family;
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
 9. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
@@ -1318,7 +1353,9 @@ Resolved in the implementation:
 
 - CLI ADF-primary enablement is independent from the background host and is already guarded by its own live, browser, renderer, Storage-regression, and rollback gates.
 - The correctness-first ADF plus Storage-sidecar dual read is accepted for the first rollout under the measured request, wall-time, memory, diagnostic, and artifact budgets; lazy sidecars remain a post-stable-release optimization.
-- Unsupported ADF variants remain visible fallbacks plus bounded notes in this wave; no speculative public neutral-model variants were added.
+- Unsupported ADF variants remain visible fallbacks plus bounded notes. Public
+  neutral-model variants are added only for pinned, target-relevant semantics;
+  Smart Cards are the first completed example after the initial decoder wave.
 - The profile's explicit deployment type is authoritative for Data Center, which never probes the Cloud ADF endpoint.
 - `ATLCLI_EXPORT_SOURCE` is an operational host/deployment rollback variable, not a durable request-v1 field or renderer fork.
 

@@ -65,6 +65,7 @@ export interface AdfSourceCaseResult {
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
   neutralHasMediaLinkSemantics: boolean;
+  neutralHasSmartCardSemantics: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
@@ -72,6 +73,7 @@ export interface AdfSourceCaseResult {
   docxHasDateStatusPlaceholderSemantics: boolean;
   docxHasMentionPresentation: boolean;
   docxHasCardTitle: boolean;
+  docxHasSmartCardPresentation: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
   docxHasMediaLink: boolean;
@@ -374,6 +376,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     documentXml.match(/<w:color w:val="6B778C"\/>/gu)?.length ?? 0;
   const expectedCodeLines = ADF_CODE_BLOCK_SOURCE.split("\n").length;
   const codeParagraphTexts = numberedCodeParagraphTexts(documentXml);
+  const neutralJson = JSON.stringify(pdfSource.blocks);
 
   const result: AdfSourceCaseResult = {
     representation: decodedPdf.representation,
@@ -492,8 +495,21 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         '"caption":{"kind":"figure","content":[{"type":"text","text":"Media caption"}],"localId":"media-caption-local"}',
       ),
     neutralHasMediaLinkSemantics:
-      JSON.stringify(pdfSource.blocks).includes(
+      neutralJson.includes(
         '"link":{"target":{"kind":"external","href":"https://example.invalid/adf-media"},"adfAttributes":{"title":"Open media","id":"media-link-id","collection":"contentId-1","occurrenceKey":"media-link-occurrence"}}',
+      ),
+    neutralHasSmartCardSemantics:
+      neutralJson.includes(
+        '"type":"smartCard","card":{"appearance":"inline","source":"data","url":"https://example.invalid/adf-card","target":{"kind":"external","href":"https://example.invalid/adf-card"},"title":"Local card title","data":{"url":"https://example.invalid/adf-card","name":"Local card title"}}',
+      )
+      && neutralJson.includes(
+        '"appearance":"block","source":"url","url":"https://example.invalid/adf-block-card","target":{"kind":"external","href":"https://example.invalid/adf-block-card"},"localId":"block-card-local"',
+      )
+      && neutralJson.includes(
+        '"appearance":"block","source":"datasource","url":"https://example.invalid/adf-datasource-card","target":{"kind":"external","href":"https://example.invalid/adf-datasource-card"},"localId":"datasource-card-local","datasource":{"id":"example-provider","parameters":{"query":"type = page"},"views":[{"type":"table","properties":{"columns":["title"]}}]},"layout":"wide","width":72',
+      )
+      && neutralJson.includes(
+        '"appearance":"embed","source":"url","url":"https://example.invalid/adf-embed-card","target":{"kind":"external","href":"https://example.invalid/adf-embed-card"},"localId":"embed-card-local","layout":"full-width","width":80,"originalHeight":720,"originalWidth":1280',
       ),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasTablePresentation:
@@ -528,6 +544,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
         || relationships.includes("https://example.invalid/adf-card")),
+    docxHasSmartCardPresentation:
+      documentXml.includes('HYPERLINK "https://example.invalid/adf-block-card"')
+      && documentXml.includes('HYPERLINK "https://example.invalid/adf-datasource-card"')
+      && documentXml.includes('HYPERLINK "https://example.invalid/adf-embed-card"')
+      && documentXml.includes("Embedded content: ")
+      && documentXml.includes('w:fill="F4F5F7"'),
     docxHasExtensionBody: documentXml.includes("Extension body"),
     docxHasVisibleMediaFallback: documentXml.includes("Visible media fallback") && documentXml.includes("Media caption"),
     docxHasMediaLink:
@@ -569,6 +591,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasMediaLinkSemantics) {
     throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");
+  }
+  if (!result.neutralHasSmartCardSemantics) {
+    throw new Error("ADF-source Smart Card attributes were lost in the packed browser.");
   }
   if (!result.neutralHasBlockLocalIdentities) {
     throw new Error("ADF-source paragraph, heading, or list-item identity was lost in the packed browser.");

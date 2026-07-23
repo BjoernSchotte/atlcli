@@ -29,7 +29,7 @@ const captionInlineNodeTypes = new Set([
 ]);
 
 const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
-  blockCard: new Set(["localId", "url"]),
+  blockCard: new Set(["data", "datasource", "layout", "localId", "url", "width"]),
   blockTaskItem: new Set(["localId", "state"]),
   blockquote: new Set(["localId"]),
   bodiedExtension: new Set(["extensionKey", "extensionType", "layout", "localId", "parameters", "text"]),
@@ -123,6 +123,145 @@ function assertStringAttribute(
     `ADF attribute ${key} must be a string${required ? "" : " when present"}.`,
     `${path}.attrs.${key}`,
   );
+}
+
+const smartCardLayouts = new Set([
+  "wide",
+  "full-width",
+  "center",
+  "wrap-right",
+  "wrap-left",
+  "align-end",
+  "align-start",
+]);
+
+function assertSmartCardLayout(
+  attrs: Record<string, unknown> | undefined,
+  path: string,
+  required = false,
+): void {
+  const layout = attrs?.layout;
+  if ((!required && layout === undefined) || (typeof layout === "string" && smartCardLayouts.has(layout))) {
+    return;
+  }
+  throw new AdfValidationError(
+    "invalid-attributes",
+    `ADF Smart Card layout must be one of the pinned layouts${required ? "" : " when present"}.`,
+    `${path}.attrs.layout`,
+  );
+}
+
+function validateInlineCardAttributes(
+  attrs: Record<string, unknown> | undefined,
+  path: string,
+): void {
+  assertStringAttribute(attrs, "localId", path, false);
+  const hasUrl = attrs?.url !== undefined;
+  const hasData = attrs?.data !== undefined;
+  if (hasUrl === hasData) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF inlineCard requires exactly one of url or data.",
+      `${path}.attrs`,
+    );
+  }
+  if (hasUrl) assertStringAttribute(attrs, "url", path);
+}
+
+function validateDatasourcePayload(value: unknown, path: string): void {
+  if (!isPlainObject(value)) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF blockCard datasource must be an object.",
+      path,
+    );
+  }
+  const allowed = new Set(["id", "parameters", "views"]);
+  const extra = Object.keys(value).find((key) => !allowed.has(key));
+  if (extra) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      `ADF blockCard datasource contains unsupported key ${extra}.`,
+      `${path}.${extra}`,
+    );
+  }
+  if (typeof value.id !== "string" || value.parameters === undefined || !Array.isArray(value.views) || value.views.length === 0) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF blockCard datasource requires string id, parameters, and at least one view.",
+      path,
+    );
+  }
+  value.views.forEach((view, index) => {
+    if (!isPlainObject(view) || typeof view.type !== "string") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF datasource views require a string type.",
+        `${path}.views[${index}]`,
+      );
+    }
+    const extraViewKey = Object.keys(view).find((key) => key !== "type" && key !== "properties");
+    if (extraViewKey) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        `ADF datasource view contains unsupported key ${extraViewKey}.`,
+        `${path}.views[${index}].${extraViewKey}`,
+      );
+    }
+  });
+}
+
+function validateBlockCardAttributes(
+  attrs: Record<string, unknown> | undefined,
+  path: string,
+): void {
+  assertStringAttribute(attrs, "localId", path, false);
+  const hasDatasource = attrs?.datasource !== undefined;
+  const hasData = attrs?.data !== undefined;
+  const hasUrl = attrs?.url !== undefined;
+  const variantCount = Number(hasDatasource) + Number(hasData) + Number(hasUrl && !hasDatasource);
+  if (variantCount !== 1 || (hasDatasource && hasData) || (hasData && hasUrl)) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF blockCard must match exactly one url, data, or datasource variant.",
+      `${path}.attrs`,
+    );
+  }
+  if (hasDatasource) {
+    validateDatasourcePayload(attrs?.datasource, `${path}.attrs.datasource`);
+    assertStringAttribute(attrs, "url", path, false);
+    assertOptionalNumberAttribute(attrs, "width", path);
+    assertSmartCardLayout(attrs, path);
+    return;
+  }
+  if (attrs?.layout !== undefined || attrs?.width !== undefined) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF blockCard layout and width are valid only for datasource cards.",
+      `${path}.attrs`,
+    );
+  }
+  if (hasUrl) assertStringAttribute(attrs, "url", path);
+}
+
+function validateEmbedCardAttributes(
+  attrs: Record<string, unknown> | undefined,
+  path: string,
+): void {
+  assertStringAttribute(attrs, "url", path);
+  assertStringAttribute(attrs, "localId", path, false);
+  assertSmartCardLayout(attrs, path, true);
+  assertOptionalNumberAttribute(attrs, "width", path);
+  assertOptionalNumberAttribute(attrs, "originalHeight", path);
+  assertOptionalNumberAttribute(attrs, "originalWidth", path);
+  const width = attrs?.width;
+  if (typeof width === "number" && (width < 0 || width > 100)) {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF embedCard width must be from 0 through 100.",
+      `${path}.attrs.width`,
+    );
+  }
 }
 
 function assertOptionalNumberAttribute(
@@ -373,12 +512,9 @@ function validateKnownNodeShape(
     assertStringAttribute(attrs, "localId", path, false);
     assertStringAttribute(attrs, "style", path, false);
   }
-  if (type === "inlineCard" || type === "blockCard" || type === "embedCard") {
-    if (attrs?.url === undefined && attrs?.data === undefined) {
-      throw new AdfValidationError("invalid-attributes", "ADF card requires url or data.", `${path}.attrs`);
-    }
-    assertStringAttribute(attrs, "url", path, false);
-  }
+  if (type === "inlineCard") validateInlineCardAttributes(attrs, path);
+  if (type === "blockCard") validateBlockCardAttributes(attrs, path);
+  if (type === "embedCard") validateEmbedCardAttributes(attrs, path);
   if (type === "extension" || type === "inlineExtension" || type === "bodiedExtension") {
     assertStringAttribute(attrs, "extensionType", path);
     assertStringAttribute(attrs, "extensionKey", path);
