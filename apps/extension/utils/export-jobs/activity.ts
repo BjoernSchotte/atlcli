@@ -1,5 +1,9 @@
 import {
   isExportJobTerminal,
+  projectExportActivityRowV1,
+  projectExportActivityV1,
+  type ExportActivityActionsV1,
+  type ExportActivityQueueProjectionV1,
   type ExportJobSnapshotV1,
   type ExportJobStage,
   type ExportJobState,
@@ -8,16 +12,7 @@ import type { StoredPdfJobMeta } from "../pdf/job-store.js";
 import { siteOriginFromSourceIdentity } from "../jobs/model.js";
 import type { IndexedDbExportJobCatalog, LegacyPdfBridgeV1 } from "./catalog.js";
 
-export interface ExtensionExportActivityActionsV1 {
-  cancel: boolean;
-  retry: boolean;
-  rerun: boolean;
-  resume: boolean;
-  download: boolean;
-  acknowledge: boolean;
-  dismiss: boolean;
-  detail: boolean;
-}
+export type ExtensionExportActivityActionsV1 = ExportActivityActionsV1;
 
 export interface ExtensionExportActivityRowV1 {
   key: `common:${string}` | `legacy-pdf:${string}`;
@@ -39,6 +34,7 @@ export interface ExtensionExportActivityRowV1 {
   waiting?: ExportJobSnapshotV1["waiting"];
   progress?: ExportJobSnapshotV1["progress"];
   queue?: ExportJobSnapshotV1["queue"];
+  queueProjection?: ExportActivityQueueProjectionV1;
   attempt: number;
   recoveryCount: number;
   stats: ExportJobSnapshotV1["stats"] | null;
@@ -61,48 +57,7 @@ export interface ExtensionExportActivityDeps {
 export function commonExportActivityRow(
   snapshot: ExportJobSnapshotV1,
 ): ExtensionExportActivityRowV1 {
-  const terminal = isExportJobTerminal(snapshot.state);
-  return {
-    key: `common:${snapshot.id}`,
-    source: "common",
-    id: snapshot.id,
-    format: snapshot.format,
-    state: snapshot.state,
-    ...(snapshot.stage ? { stage: snapshot.stage } : {}),
-    displayName: snapshot.summary.displayName,
-    sourceLabel: snapshot.summary.sourceLabel,
-    siteOrigin: snapshot.summary.siteOrigin,
-    ...(snapshot.summary.profileLabel ? { profileLabel: snapshot.summary.profileLabel } : {}),
-    scopeKind: snapshot.summary.scopeKind,
-    createdAt: snapshot.createdAt,
-    ...(snapshot.startedAt === undefined ? {} : { startedAt: snapshot.startedAt }),
-    ...(snapshot.finishedAt === undefined ? {} : { finishedAt: snapshot.finishedAt }),
-    ...(snapshot.deliveredAt === undefined ? {} : { deliveredAt: snapshot.deliveredAt }),
-    ...(snapshot.acknowledgedAt === undefined ? {} : { acknowledgedAt: snapshot.acknowledgedAt }),
-    ...(snapshot.waiting ? { waiting: snapshot.waiting } : {}),
-    ...(snapshot.progress ? { progress: snapshot.progress } : {}),
-    queue: snapshot.queue,
-    attempt: snapshot.attempt,
-    recoveryCount: snapshot.recoveryCount,
-    stats: snapshot.stats,
-    ...(snapshot.reportSummary ? { reportSummary: snapshot.reportSummary } : {}),
-    ...(snapshot.reportRef ? { reportRef: snapshot.reportRef } : {}),
-    ...(snapshot.artifact ? { artifact: snapshot.artifact } : {}),
-    ...(snapshot.derivedFrom ? { derivedFrom: snapshot.derivedFrom } : {}),
-    bytes: snapshot.artifact?.byteLength ?? snapshot.stats.storage.outputBytes,
-    ...(snapshot.error ? { error: snapshot.error } : {}),
-    unread: terminal && snapshot.acknowledgedAt === undefined,
-    actions: {
-      cancel: ["queued", "running", "waiting", "cancelling"].includes(snapshot.state),
-      retry: ["failed", "interrupted", "cancelled"].includes(snapshot.state),
-      rerun: snapshot.state === "succeeded",
-      resume: snapshot.state === "waiting" && snapshot.waiting?.reason === "auth",
-      download: snapshot.state === "succeeded" && snapshot.artifact !== undefined,
-      acknowledge: terminal && snapshot.acknowledgedAt === undefined,
-      dismiss: terminal,
-      detail: terminal,
-    },
-  };
+  return projectExportActivityRowV1(snapshot);
 }
 
 function legacyState(status: StoredPdfJobMeta["status"]): ExportJobState {
@@ -181,9 +136,17 @@ function activityRank(row: ExtensionExportActivityRowV1): number {
   if (row.state === "running" || row.state === "cancelling") return 0;
   if (row.state === "waiting") return 1;
   if (row.state === "queued") return 2;
+  if (!row.unread) return 5;
   if (row.state === "succeeded" && row.unread) return 3;
   if (row.state === "failed" || row.state === "interrupted" || row.state === "cancelled") return 4;
   return 5;
+}
+
+function queuePosition(row: ExtensionExportActivityRowV1): number {
+  return row.queueProjection?.kind === "estimated" ||
+    row.queueProjection?.kind === "exact"
+    ? row.queueProjection.position
+    : Number.MAX_SAFE_INTEGER;
 }
 
 /**
@@ -205,7 +168,7 @@ export async function listExtensionExportActivity(
   const commonIds = new Set(common.map((snapshot) => snapshot.id));
 
   return [
-    ...common.map(commonExportActivityRow),
+    ...projectExportActivityV1(common),
     ...legacy
       .filter((meta) => (meta.kind ?? "export") === "export")
       .filter((meta) => meta.activityVisibility !== "private")
@@ -215,6 +178,9 @@ export async function listExtensionExportActivity(
   ].sort(
     (left, right) =>
       activityRank(left) - activityRank(right) ||
+      (left.state === "queued" && right.state === "queued"
+        ? queuePosition(left) - queuePosition(right)
+        : 0) ||
       right.createdAt - left.createdAt ||
       right.key.localeCompare(left.key),
   );

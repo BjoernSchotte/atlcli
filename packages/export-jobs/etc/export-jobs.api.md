@@ -88,6 +88,9 @@ export declare const COMPACT_HISTORY_MAX_JOBS_V1 = 100;
 // export: COMPACT_HISTORY_RETENTION_MS_V1
 export declare const COMPACT_HISTORY_RETENTION_MS_V1: number;
 
+// export: compareExportActivityRowsV1
+export declare function compareExportActivityRowsV1(left: ExportActivityRowV1, right: ExportActivityRowV1): number;
+
 // export: CompletenessMode
 export type CompletenessMode = "strict" | "partial";
 
@@ -158,6 +161,73 @@ export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
     "rasterBytes",
     "heavySlots"
 ];
+
+// export: ExportActivityActionsV1
+export interface ExportActivityActionsV1 {
+    cancel: boolean;
+    retry: boolean;
+    rerun: boolean;
+    resume: boolean;
+    download: boolean;
+    acknowledge: boolean;
+    dismiss: boolean;
+    detail: boolean;
+}
+
+// export: ExportActivityProjectionOptionsV1
+export interface ExportActivityProjectionOptionsV1 {
+    queuePositionKind?: "estimated" | "exact";
+    includeDismissed?: boolean;
+    siteOrigin?: string;
+    formats?: readonly ExportFormat[];
+    states?: readonly ExportJobState[];
+    createdAfter?: number;
+}
+
+// export: ExportActivityQueueProjectionV1
+export type ExportActivityQueueProjectionV1 = {
+    kind: "estimated" | "exact";
+    position: number;
+} | {
+    kind: "waiting";
+    reason: NonNullable<ExportJobSnapshotV1["waiting"]>["reason"];
+    until?: number;
+};
+
+// export: ExportActivityRowV1
+export interface ExportActivityRowV1 {
+    key: `common:${string}`;
+    source: "common";
+    id: string;
+    format: ExportFormat;
+    state: ExportJobState;
+    stage?: ExportJobSnapshotV1["stage"];
+    displayName: string;
+    sourceLabel: string;
+    siteOrigin: string;
+    profileLabel?: string;
+    scopeKind: string;
+    createdAt: number;
+    startedAt?: number;
+    finishedAt?: number;
+    deliveredAt?: number;
+    acknowledgedAt?: number;
+    waiting?: ExportJobSnapshotV1["waiting"];
+    progress?: ExportJobSnapshotV1["progress"];
+    queue?: ExportJobSnapshotV1["queue"];
+    queueProjection?: ExportActivityQueueProjectionV1;
+    attempt: number;
+    recoveryCount: number;
+    stats: ExportJobSnapshotV1["stats"];
+    reportSummary?: ExportJobSnapshotV1["reportSummary"];
+    reportRef?: string;
+    artifact?: ExportJobSnapshotV1["artifact"];
+    derivedFrom?: ExportJobSnapshotV1["derivedFrom"];
+    bytes: number;
+    error?: ExportJobSnapshotV1["error"];
+    unread: boolean;
+    actions: ExportActivityActionsV1;
+}
 
 // export: ExportArtifactFinalizationCommitter
 export interface ExportArtifactFinalizationCommitter {
@@ -1255,6 +1325,12 @@ export declare function planRetentionEviction(occupants: readonly RetentionOccup
 
 // export: prepareExportArtifactFinalizationIntent
 export declare function prepareExportArtifactFinalizationIntent(input: ExportJobFinalizeV1): ExportArtifactFinalizationIntentV1;
+
+// export: projectExportActivityRowV1
+export declare function projectExportActivityRowV1(snapshot: ExportJobSnapshotV1): ExportActivityRowV1;
+
+// export: projectExportActivityV1
+export declare function projectExportActivityV1(snapshots: readonly ExportJobSnapshotV1[], options?: ExportActivityProjectionOptionsV1): ExportActivityRowV1[];
 
 // export: projectExportBadge
 export declare function projectExportBadge(jobs: readonly BadgeJobV1[]): ExportBadgeProjectionV1;

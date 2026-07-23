@@ -335,7 +335,6 @@ function JobDetail({
 function JobRow({
   job,
   now,
-  queuePosition,
   onCancel,
   onDownload,
   onDismiss,
@@ -347,7 +346,6 @@ function JobRow({
 }: {
   job: ExportActivityJob;
   now: number;
-  queuePosition?: number;
   onCancel: (route: string) => void;
   onDownload: (route: string) => void;
   onDismiss: (route: string) => void;
@@ -391,9 +389,18 @@ function JobRow({
           data-testid="job-progress"
         />
       )}
-      {queuePosition !== undefined && (
-        <span className="text-xs text-muted-foreground">
-          {t("jobs.queue.estimated", { position: String(queuePosition) })}
+      {(job.queueProjection?.kind === "estimated" ||
+        job.queueProjection?.kind === "exact") && (
+        <span
+          className="text-xs text-muted-foreground"
+          data-testid="job-queue-position"
+        >
+          {t(
+            job.queueProjection.kind === "exact"
+              ? "jobs.queue.exact"
+              : "jobs.queue.estimated",
+            { position: String(job.queueProjection.position) },
+          )}
         </span>
       )}
       <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
@@ -526,7 +533,6 @@ export function JobsList({
 }: JobsListProps): React.JSX.Element | null {
   const t = useT();
   if (jobs.length === 0 && !error) return null;
-  let queuePosition = 0;
   return (
     <section className="flex flex-col gap-2" data-testid="jobs-list">
       <SectionHeading>{t("jobs.title")}</SectionHeading>
@@ -536,18 +542,14 @@ export function JobsList({
         </Alert>
       )}
       <ul className="m-0 flex list-none flex-col p-0">
-        {jobs.map((job) => {
-          if (job.state === "queued") queuePosition += 1;
-          return (
-            <JobRow
-              key={job.key}
-              job={job}
-              now={now}
-              {...(job.state === "queued" ? { queuePosition } : {})}
-              {...actions}
-            />
-          );
-        })}
+        {jobs.map((job) => (
+          <JobRow
+            key={job.key}
+            job={job}
+            now={now}
+            {...actions}
+          />
+        ))}
       </ul>
       <p className="m-0 text-xs text-muted-foreground" data-testid="jobs-durability">
         {t("jobs.durability")}

@@ -407,6 +407,9 @@ describe("the Jobs screen", () => {
     expect(find("job-row").getAttribute("data-job-id")).toBe(`common:${COMMON_JOB}`);
     expect(find("job-status").textContent).toBe("Queued");
     expect(find("job-scope").textContent).toBe("space");
+    expect(find("job-queue-position").textContent).toBe(
+      "Estimated queue position 1",
+    );
 
     await click("job-cancel");
     expect((await catalog.get(COMMON_JOB))?.state).toBe("cancelled");

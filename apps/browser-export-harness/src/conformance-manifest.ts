@@ -28,6 +28,14 @@ export interface ConformanceCaseMeta {
 
 export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
   {
+    id: "activity-monitor",
+    title: "Generic-browser Activity and queue monitor (013)",
+    folderTaskIds: ["013/T7.7"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "pdf-abort",
     title: "PDF abort",
     folderTaskIds: ["harness/pdf-abort"],
@@ -158,6 +166,7 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * entry.
  */
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
+  "activity-monitor",
   "pdf-abort",
   "docx",
   "docx-job-parity",

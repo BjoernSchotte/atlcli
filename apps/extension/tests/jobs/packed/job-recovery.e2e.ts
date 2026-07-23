@@ -941,6 +941,15 @@ test("packed Activity and toolbar project mixed PDF/DOCX states durably", async 
   await activity.getByTestId("nav-activity").click();
   await expect(activity.getByTestId("activity-screen")).toBeVisible();
   await expect(activity.getByTestId("job-row")).toHaveCount(12);
+  await expect(activity.getByTestId("job-queue-position")).toHaveCount(10);
+  expect(
+    await activity.getByTestId("job-queue-position").allTextContents(),
+  ).toEqual(
+    Array.from(
+      { length: 10 },
+      (_, index) => `Estimated queue position ${index + 1}`,
+    ),
+  );
   const activityText = await activity.getByTestId("activity-screen").innerText();
   expect(activityText).toContain("PDF");
   expect(activityText).toContain("DOCX");

@@ -1522,6 +1522,9 @@ API report guard 5/5, production extension build, packed Chromium 14/14.
 - [x] Add Retry, Run again, Resume after sign-in, Download/Reveal, Acknowledge,
       and Dismiss.
 - [x] Add active-count badge, durable completed/failed state, and bounded pulse.
+- [x] Project Activity rows and exact/estimated queue positions from the common
+      snapshots plus the same pure fair-admission policy; prove the projection
+      in both the Extension UI and a generic browser host.
 - [ ] Remove obsolete panel-owned DOCX run state and legacy PDF job reader after
       its retention plus one release.
 - [ ] Update extension, CLI, operations, troubleshooting, and architecture docs.
@@ -1542,6 +1545,17 @@ original artifact/report preservation, plus bounded parallel blocked-upgrade
 opens. Gates: affected unit/UI/catalog matrix 64/64, full typecheck, production
 extension build/output scan, packed Chromium 17/17. Documentation, CHANGELOG,
 the final non-cleanup audit, and deferred PR-J cleanup remain open.
+
+The shared browser-safe Activity projector now owns state ordering, actions,
+dismissal/filter semantics, named waiting blockers, and global queue positions.
+Positions are estimated by default and can be called exact only by a host that
+can fence that claim; filtering never renumbers a globally queued job. The
+Extension removed its render-order counter and consumes this projection. A
+fifteenth generic-browser conformance case runs the same PDF/DOCX monitor policy
+from production Vite output with no Chrome, WXT, Node, `Buffer`, or `process`
+runtime. Gates: focused Activity/UI 24/24, browser policy/output unit 50/50,
+generic-browser conformance 15/15 cases, root typecheck, API report/closure 5/5,
+production Extension build, and packed MV3 Chromium 19/19.
 
 ### PR delivery checklist and merge ledger
 
@@ -1712,8 +1726,16 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     counters without rerendering; real durations remain attempt-specific.
     Focused matrix 63/63, typecheck, 16 production builds, API report/closure
     guard 5/5, and packed MV3 Chromium 19/19 pass.
-  - [ ] Remaining PR-I increments: generic-browser Activity/queue proof,
-    documentation/CHANGELOG, and the final non-cleanup audit and gates.
+  - [x] Generic-browser Activity/queue increment: the public browser-safe
+    projector derives ordering, actions, waiting blockers, and global
+    exact/estimated positions from common snapshots and the shared fair queue
+    policy. The Extension consumes it instead of numbering rendered rows. Its
+    generic Vite/Chromium case proves PDF/DOCX filtering without renumbering and
+    rejects Chrome/WXT/Node globals. Focused Activity/UI 24/24, browser policy
+    unit 50/50, conformance 15/15 cases, root typecheck, API/closure 5/5,
+    production Extension build, and packed MV3 Chromium 19/19 pass.
+  - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
+    non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have

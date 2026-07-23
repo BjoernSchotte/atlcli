@@ -45,6 +45,17 @@ export type {
 export type { ExportJobEventDraftV1, ExportJobEventV1 } from "./event.js";
 export type { ExportJobResultTelemetryV1 } from "./telemetry.js";
 export type {
+  ExportActivityActionsV1,
+  ExportActivityQueueProjectionV1,
+  ExportActivityRowV1,
+  ExportActivityProjectionOptionsV1,
+} from "./activity.js";
+export {
+  projectExportActivityRowV1,
+  compareExportActivityRowsV1,
+  projectExportActivityV1,
+} from "./activity.js";
+export type {
   SpoolRefV1,
   SpoolWriteLimitsV1,
   SpoolObjectV1,
