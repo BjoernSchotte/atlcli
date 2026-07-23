@@ -1487,16 +1487,34 @@ fresh production build plus packed Chromium gate passed 12/12.
 
 ### Phase 5 / T7.6 — DOCX background parity
 
-- [ ] Add pinned template request/ref semantics.
-- [ ] Prove session fetch, dynamic imports, PizZip/docxtemplater, and canvas/SVG
+- [x] Add pinned template request/ref semantics.
+- [x] Prove session fetch, dynamic imports, PizZip/docxtemplater, and canvas/SVG
       rasterization in a real packed offscreen document.
-- [ ] Move full DOCX execution off the panel and into the common queue.
-- [ ] Add DOCX render reservation, timeout, cancellation, artifact/report commit,
+- [x] Move full DOCX execution off the panel and into the common queue.
+- [x] Add DOCX render reservation, timeout, cancellation, artifact/report commit,
       and recovery from `ready-to-render`.
-- [ ] Replace page-identity/panel-unmount abort with detach/observe behavior.
-- [ ] Prove output/report parity against uninterrupted direct execution.
+- [x] Replace page-identity/panel-unmount abort with detach/observe behavior.
+- [x] Prove output/report parity against uninterrupted direct execution.
 
 Exit: PDF and DOCX expose the same lifecycle actions and Activity semantics.
+
+Evidence (2026-07-23): submission persists only the pinned source/template
+identity and verifies the template SHA-256 before queue admission. The
+productive offscreen executor reconstructs Confluence input, runs the
+TypeScript DOCX engine, owns the common heavy-render reservation, and commits
+checkpoint, artifact, and report through IndexedDB. Provider tests prove page
+navigation and panel close detach without aborting. The cancellation matrix
+drives all eight observable stages (`discover` through `commit`) to a durable
+`cancelled` state with no staged artifact. A forced owner loss after the
+`ready-to-render` checkpoint is lease-reclaimed and produces the same artifact
+SHA-256, byte length, report summary, and semantic report as the uninterrupted
+control without resolving source/template twice; ZIP timestamps are pinned as
+metadata to the durable export date without copying archive payloads. Packed
+Chromium independently proves session fetch, dynamic chunks,
+PizZip/docxtemplater, canvas Mermaid rasterization, offscreen restart, and
+recovered-vs-control DOCX byte/report parity. Gates: affected DOCX/wiring/job
+matrix 670 passed with one optional LibreOffice smoke skipped, full typecheck,
+API report guard 5/5, production extension build, packed Chromium 14/14.
 
 ### Phase 6 / T7.7 — Unified Activity, badge, docs, and cleanup
 
@@ -1635,7 +1653,7 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     output/report parity. Gates: affected tests 99/99, typecheck, production
     extension build, packed Chromium 12/12.
 
-- [ ] **PR-H — DOCX extension background parity** (`T7.6`)
+- [x] **PR-H — DOCX extension background parity** (`T7.6`)
   - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: packed offscreen/worker execution, session fetch, dynamic chunks,
     PizZip/docxtemplater, canvas/SVG raster path, global heavy slot, retained
@@ -1644,6 +1662,19 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     the declared capability; cancellation works during every stage; template and
     raster behavior is proven in packed Chrome; recovered output/report matches
     uninterrupted TypeScript DOCX execution.
+  - Evidence (2026-07-23): pinned template/source requests, productive
+    offscreen TypeScript execution, retained artifact/report stores, global
+    render reservation, and detach/observe panel behavior are implemented.
+    Eight-stage durable cancellation is covered in the extension runtime.
+    Forced loss after `ready-to-render` matches the uninterrupted artifact SHA,
+    byte length, summary, and semantic report without re-resolving source or
+    template. ZIP timestamps are pinned by metadata to the durable export date,
+    so parity remains byte-stable across wall-clock boundaries without a second
+    archive payload copy. The production build and packed persistent-profile
+    Chromium test cover the real DOCX engine, Mermaid canvas rasterization,
+    offscreen loss, and a second recovered-vs-control parity comparison. Gates:
+    affected matrix 670 passed (one optional LibreOffice smoke skipped),
+    typecheck, API report guard 5/5, packed Chromium 14/14.
 
 - [ ] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
   - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)

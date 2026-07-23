@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
-import type { ExportJobExecutor, ExportJobRequestV1 } from "@atlcli/export-jobs";
+import type {
+  DocxExportJobRequestV1,
+  ExportJobExecutor,
+  ExportJobRequestV1,
+  ExportJobStage,
+} from "@atlcli/export-jobs";
 import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
@@ -18,6 +23,35 @@ function request(): PdfExportRequest {
       wordCount: 1,
       attachments: [],
     },
+  };
+}
+
+function durableDocxRequest(id: string): DocxExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "docx",
+    renderer: "docx-typescript",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://site.atlassian.net",
+      locator: { kind: "page-id", id: "42", version: 7 },
+      scope: { kind: "page" },
+    },
+    authRef: "session:https://site.atlassian.net",
+    displayName: "Guide",
+    requestedFilename: "Guide.docx",
+    createdAt: 10,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: {
+      recordKey: "template:guide",
+      sha256: "a".repeat(64),
+      name: "guide.docx",
+      uploadedAt: 1,
+    },
+    options: { embedImages: true, resolveMacros: true },
   };
 }
 
@@ -115,5 +149,98 @@ describe("extension export execution runtime", () => {
       checkpointRef: "request:job-failure",
       error: { code: "executor.failed", message: "render exploded" },
     });
+  });
+
+  it("durably cancels DOCX execution from every observable pipeline stage", async () => {
+    const stages: ExportJobStage[] = [
+      "discover",
+      "fetch",
+      "compose",
+      "resolve",
+      "assets",
+      "render",
+      "validate",
+      "commit",
+    ];
+
+    for (const [index, stage] of stages.entries()) {
+      const factory = new IDBFactory();
+      let now = 100 + index;
+      const catalog = new IndexedDbExportJobCatalog({
+        factory,
+        now: () => now,
+      });
+      const bytes = new IndexedDbExportByteStore({
+        factory,
+        now: () => now,
+      });
+      const durable = durableDocxRequest(`docx-cancel-${stage}`);
+      await catalog.create({ request: durable });
+      const claimed = await catalog.claimNext({
+        ownerId: "offscreen:docx-cancel",
+        now,
+        leaseDurationMs: 30_000,
+      });
+      if (!claimed) throw new Error(`Expected DOCX claim for ${stage}.`);
+
+      const controller = new AbortController();
+      let executorObservedAbort = false;
+      const executor: ExportJobExecutor<ExportJobRequestV1> = {
+        format: "docx",
+        async execute(_input, context): Promise<never> {
+          await context.updateProgress({
+            stage,
+            done: index,
+            total: stages.length,
+            detail: `cancel at ${stage}`,
+            updatedAt: now,
+          });
+          controller.abort(
+            new DOMException(`Cancelled during ${stage}.`, "AbortError"),
+          );
+          await new Promise<never>((_resolve, reject) => {
+            const observe = (): void => {
+              executorObservedAbort = true;
+              reject(context.signal.reason);
+            };
+            if (context.signal.aborted) observe();
+            else context.signal.addEventListener("abort", observe, { once: true });
+          });
+          throw new Error("Unreachable after DOCX cancellation.");
+        },
+      };
+
+      now += 1;
+      const cancelled = await runClaimedExtensionExportJob({
+        claimed,
+        catalog,
+        bytes,
+        executor,
+        signal: controller.signal,
+        now: () => now,
+        heartbeatIntervalMs: 60_000,
+        cancelPollMs: 60_000,
+        spoolLimits: {
+          maxObjectBytes: 1024,
+          maxJobBytes: 2048,
+          maxTotalBytes: 4096,
+        },
+      });
+
+      expect(executorObservedAbort).toBe(true);
+      expect(cancelled).toMatchObject({
+        id: durable.id,
+        format: "docx",
+        state: "cancelled",
+        stage,
+        progress: {
+          stage,
+          done: index,
+          total: stages.length,
+          detail: `cancel at ${stage}`,
+        },
+      });
+      expect(await bytes.getStaged(cancelled.id, cancelled.leaseEpoch)).toBeUndefined();
+    }
   });
 });

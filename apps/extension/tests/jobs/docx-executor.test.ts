@@ -18,12 +18,16 @@ import {
   EXTENSION_DOCX_MAX_OUTPUT_BYTES_V1,
   EXTENSION_DOCX_SPOOL_LIMITS_V1,
 } from "../../utils/export-jobs/docx-executor.js";
+import type { DocxReadyToRenderStoreV1 } from "@atlcli/export-wiring/jobs";
 import {
   createExtensionDocxReadyToRenderStore,
   readExtensionDocxExportReport,
 } from "../../utils/export-jobs/docx-executor-store.js";
 import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
-import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
+import {
+  createExtensionExportExecutionContext,
+  runClaimedExtensionExportJob,
+} from "../../utils/export-jobs/runtime.js";
 
 globalThis.IDBKeyRange = IDBKeyRange;
 
@@ -278,5 +282,227 @@ describe("productive extension DOCX executor", () => {
       leaseEpoch: first.leaseEpoch,
       signal: new AbortController().signal,
     })).rejects.toMatchObject({ code: "revision-conflict" });
+  });
+
+  it("recovers ready-to-render work with byte-identical output and report parity", async () => {
+    const factory = new IDBFactory();
+    let now = Date.parse("2026-07-23T00:00:00.000Z");
+    const templateBytes = buildDocx({
+      body: para("$scroll.title") + para("$scroll.content"),
+      date: new Date("2026-07-23T00:00:00.000Z"),
+    });
+    const templateSha256 = await sha256Hex(templateBytes);
+    const makeRequest = (id: string): DocxExportJobRequestV1 => ({
+      schema: "atlcli.export-job-request/1",
+      id,
+      idempotencyKey: `idem:${id}`,
+      format: "docx",
+      renderer: "docx-typescript",
+      source: {
+        kind: "confluence",
+        siteOrigin: "https://site.atlassian.net",
+        locator: { kind: "page-id", id: "42", version: 7 },
+        scope: { kind: "page" },
+      },
+      authRef: "session:https://site.atlassian.net",
+      displayName: "Parity guide",
+      requestedFilename: "Parity guide.docx",
+      createdAt: Date.parse("2026-07-23T00:00:00.000Z"),
+      priority: "interactive",
+      output: { policy: "collect" },
+      template: {
+        recordKey: "template:parity",
+        sha256: templateSha256,
+        name: "parity.docx",
+        uploadedAt: Date.parse("2026-07-20T00:00:00.000Z"),
+      },
+      options: {
+        embedImages: true,
+        resolveMacros: false,
+        updateFields: "auto",
+      },
+    });
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+      maxArtifactBytes: EXTENSION_DOCX_MAX_OUTPUT_BYTES_V1,
+      maxJobBytes: EXTENSION_DOCX_SPOOL_LIMITS_V1.maxJobBytes,
+      maxTotalBytes: EXTENSION_DOCX_SPOOL_LIMITS_V1.maxTotalBytes,
+    });
+    const ready = createExtensionDocxReadyToRenderStore({
+      factory,
+      now: () => now,
+      bytes,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+    const resolvedJobs: string[] = [];
+    const executorOptions = {
+      bytes,
+      renderPool: new BrowserRenderReservationPoolV1(),
+      now: () => now,
+      storageOptions: { factory },
+      resolveInput: async (request: DocxExportJobRequestV1) => {
+        resolvedJobs.push(request.id);
+        return {
+          details: {
+            id: "42",
+            title: "Parity guide",
+            version: 7,
+            spaceKey: "DOCS",
+            storage: "<p>Durable parity body.</p>",
+          },
+          template: {
+            name: "parity.docx",
+            modificationDate: new Date(request.template.uploadedAt!),
+          },
+          exportDate: new Date(request.createdAt),
+        };
+      },
+      templates: {
+        async resolve(input: {
+          recordKey: string;
+          expectedSha256: string;
+        }) {
+          expect(input).toMatchObject({
+            recordKey: "template:parity",
+            expectedSha256: templateSha256,
+          });
+          return {
+            recordKey: input.recordKey,
+            bytes: templateBytes.slice(),
+          };
+        },
+      },
+      readyToRender: ready,
+    } as const;
+
+    const controlRequest = makeRequest("docx-control");
+    await catalog.create({ request: controlRequest });
+    const controlClaim = await catalog.claimNext({
+      ownerId: "offscreen:control",
+      now,
+      leaseDurationMs: 10,
+      ids: [controlRequest.id],
+    });
+    if (!controlClaim) throw new Error("Expected control DOCX claim.");
+    const control = await runClaimedExtensionExportJob({
+      claimed: controlClaim,
+      catalog,
+      bytes,
+      executor: createProductiveExtensionDocxExecutor(executorOptions),
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+
+    const recoveryRequest = makeRequest("docx-recovery");
+    await catalog.create({ request: recoveryRequest });
+    const firstClaim = await catalog.claimNext({
+      ownerId: "offscreen:first",
+      now,
+      leaseDurationMs: 10,
+      ids: [recoveryRequest.id],
+    });
+    if (!firstClaim) throw new Error("Expected recovery DOCX claim.");
+    const crashReady: DocxReadyToRenderStoreV1 = {
+      ...ready,
+      async beginRenderAttempt() {
+        throw new Error("injected offscreen owner loss after ready-to-render");
+      },
+    };
+    const firstRuntime = createExtensionExportExecutionContext({
+      claimed: firstClaim,
+      catalog,
+      bytes,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+      leaseDurationMs: 10,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+    await expect(
+      createProductiveExtensionDocxExecutor({
+        ...executorOptions,
+        readyToRender: crashReady,
+      }).execute(recoveryRequest, firstRuntime.context),
+    ).rejects.toThrow("injected offscreen owner loss");
+    expect(await firstRuntime.snapshot()).toMatchObject({
+      state: "running",
+      stage: "render",
+      checkpointRef: expect.stringContaining("extension-ready:docx:"),
+    });
+    await firstRuntime.stop();
+
+    now += 11;
+    const recoveredClaim = await recoverAndClaimExtensionExportJob(catalog, {
+      ownerId: "offscreen:replacement",
+      now,
+      leaseDurationMs: 10,
+      ids: [recoveryRequest.id],
+    });
+    if (!recoveredClaim) throw new Error("Expected recovered DOCX claim.");
+    const recovered = await runClaimedExtensionExportJob({
+      claimed: recoveredClaim,
+      catalog,
+      bytes,
+      executor: createProductiveExtensionDocxExecutor(executorOptions),
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+
+    expect(recovered).toMatchObject({
+      state: "succeeded",
+      attempt: 2,
+      recoveryCount: 1,
+      leaseEpoch: 2,
+    });
+    expect(resolvedJobs).toEqual([controlRequest.id, recoveryRequest.id]);
+    expect({
+      sha256: recovered.artifact?.sha256,
+      byteLength: recovered.artifact?.byteLength,
+      reportSummary: recovered.reportSummary,
+    }).toEqual({
+      sha256: control.artifact?.sha256,
+      byteLength: control.artifact?.byteLength,
+      reportSummary: control.reportSummary,
+    });
+
+    const controlReport = await readExtensionDocxExportReport(control.reportRef!, {
+      factory,
+      bytes,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+    const recoveredReport = await readExtensionDocxExportReport(recovered.reportRef!, {
+      factory,
+      bytes,
+      spoolLimits: EXTENSION_DOCX_SPOOL_LIMITS_V1,
+    });
+    if (!controlReport || !recoveredReport) {
+      throw new Error("Expected both retained DOCX parity reports.");
+    }
+    const stableReport = (report: typeof controlReport) => {
+      const {
+        durationMs: _duration,
+        timings: _timings,
+        notes,
+        ...stable
+      } = report;
+      return {
+        ...stable,
+        // The engine deliberately reports wall-clock timing both structurally
+        // and as a human note. Recovery parity compares the semantic report.
+        notes: notes.filter((note) => note.code !== "perf-timing"),
+      };
+    };
+    const controlCanonical = stableReport(controlReport);
+    const recoveredCanonical = stableReport(recoveredReport);
+    expect(recoveredCanonical).toEqual(controlCanonical);
   });
 });

@@ -15,6 +15,8 @@ const LEGACY = "423e4567-e89b-42d3-a456-426614174000";
 const JOB_D = "723e4567-e89b-42d3-a456-426614174000";
 const JOB_E = "823e4567-e89b-42d3-a456-426614174000";
 const JOB_F = "923e4567-e89b-42d3-a456-426614174000";
+const JOB_G = "a23e4567-e89b-42d3-a456-426614174000";
+const JOB_H = "b23e4567-e89b-42d3-a456-426614174000";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -204,6 +206,29 @@ async function sendWake(ids?: string[]): Promise<{ kind: string; claimedJobId?: 
 
 async function ensureCatalog(): Promise<void> {
   await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
+}
+
+async function submitPackedDocx(
+  jobId: string,
+  templateBytes: Uint8Array,
+  sourcePageId = jobId,
+): Promise<string> {
+  return page.evaluate(async ({ id, sourceId, template }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        submitDocx(
+          jobId: string,
+          templateValues: number[],
+          sourcePageId?: string,
+        ): Promise<string>;
+      };
+    }).exportJobStoreProbe;
+    return probe.submitDocx(id, template, sourceId);
+  }, {
+    id: jobId,
+    sourceId: sourcePageId,
+    template: [...templateBytes],
+  });
 }
 
 async function seedJob(
@@ -712,14 +737,7 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     body: para("$scroll.title") + para("$scroll.content"),
     date: new Date("2026-07-23T00:00:00.000Z"),
   });
-  await expect(page.evaluate(async ({ jobId, template }) => {
-    const probe = (globalThis as unknown as {
-      exportJobStoreProbe: {
-        submitDocx(id: string, templateValues: number[]): Promise<string>;
-      };
-    }).exportJobStoreProbe;
-    return probe.submitDocx(jobId, template);
-  }, { jobId: JOB_F, template: [...templateBytes] })).resolves.toBe(JOB_F);
+  await expect(submitPackedDocx(JOB_F, templateBytes)).resolves.toBe(JOB_F);
 
   const succeeded = await waitForJobState(JOB_F, "succeeded");
   expect(succeeded.snapshot).toMatchObject({
@@ -760,6 +778,66 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     filename: `Packed page ${JOB_F}.docx`,
     complete: true,
     renderedDiagrams: 1,
+  });
+});
+
+test("a packed offscreen DOCX recovery matches an uninterrupted control export", async () => {
+  await ensureCatalog();
+  const sourcePageId = "packed-docx-parity-page";
+  const storage = "<p>Recovery must preserve these exact DOCX bytes.</p>";
+  const templateBytes = buildDocx({
+    body: para("$scroll.title") + para("$scroll.content"),
+    date: new Date("2026-07-23T00:00:00.000Z"),
+  });
+  await installOffscreenFetchStub([sourcePageId], {
+    [sourcePageId]: storage,
+  });
+  await expect(
+    submitPackedDocx(JOB_G, templateBytes, sourcePageId),
+  ).resolves.toBe(JOB_G);
+  await waitForJobState(JOB_G, "running");
+
+  const session = await context.newCDPSession(page);
+  const offscreen = (await getTargets(session)).find(
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  expect(offscreen).toBeDefined();
+  await session.send("Target.closeTarget", { targetId: offscreen!.targetId });
+  await waitForTargetGone(session, offscreen!.targetId);
+
+  await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
+  await waitForRestartedTarget(
+    session,
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  await installOffscreenFetchStub([], { [sourcePageId]: storage });
+  await checkpointAndExpire(JOB_G);
+  await expect(sendWake([JOB_G])).resolves.toMatchObject({
+    claimedJobId: JOB_G,
+  });
+  const recovered = await waitForJobState(JOB_G, "succeeded");
+  expect(recovered.snapshot).toMatchObject({
+    state: "succeeded",
+    format: "docx",
+    leaseEpoch: 2,
+    attempt: 2,
+    recoveryCount: 1,
+  });
+
+  await expect(
+    submitPackedDocx(JOB_H, templateBytes, sourcePageId),
+  ).resolves.toBe(JOB_H);
+  const uninterrupted = await waitForJobState(JOB_H, "succeeded");
+  expect(recovered.snapshot.artifact).toBeDefined();
+  expect(uninterrupted.snapshot.artifact).toBeDefined();
+  expect({
+    sha256: recovered.snapshot.artifact!.sha256,
+    byteLength: recovered.snapshot.artifact!.byteLength,
+    reportSummary: recovered.snapshot.reportSummary,
+  }).toEqual({
+    sha256: uninterrupted.snapshot.artifact!.sha256,
+    byteLength: uninterrupted.snapshot.artifact!.byteLength,
+    reportSummary: uninterrupted.snapshot.reportSummary,
   });
 });
 

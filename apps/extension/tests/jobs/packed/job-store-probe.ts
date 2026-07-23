@@ -212,7 +212,11 @@ const probe = {
     });
     return submitted.snapshot.id;
   },
-  async submitDocx(id: string, templateValues: number[]): Promise<string> {
+  async submitDocx(
+    id: string,
+    templateValues: number[],
+    sourcePageId = id,
+  ): Promise<string> {
     const templateBytes = Uint8Array.from(templateValues);
     const library = idbTemplateLibrary({
       siteOrigin: "https://site.atlassian.net",
@@ -225,10 +229,10 @@ const probe = {
     });
     const catalog = new IndexedDbExportJobCatalog();
     const submitted = await submitExtensionDocxExport({
-      pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${id}/Packed`,
+      pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${sourcePageId}/Packed`,
       page: {
         details: {
-          id,
+          id: sourcePageId,
           title: `Packed DOCX ${id}`,
           version: 1,
           spaceKey: "DOCS",
