@@ -119,6 +119,7 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
         recordKey: string;
         sha256: string;
         name: string;
+        uploadedAt?: number;
     };
     options: {
         embedImages: boolean;
