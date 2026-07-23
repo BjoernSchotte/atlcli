@@ -1234,6 +1234,15 @@ deterministic real-render check reproduced one DOCX and four PDF pages with
 zero pixel difference and content-bounds IoU 1. The matrix now records 56 of
 84 rows closed and 28 open; the unrestricted suite remains the remote-CI gate.
 
+Completed progress-register hardening recorded on 2026-07-23:
+`scripts/adf-gap-register.test.ts` discovers every table headed by `Done`,
+requires a checkbox on every data row, reconciles the declared closed/open
+orientation with the actual 84 rows, and permits an unchecked `Partial` row
+only when that row names an external contract or parallel dependency. This
+turns the review convention into an executable consistency guard. It does not
+change the separate weekly upstream-drift watch's intentionally non-blocking
+status.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract, complete emoji-font coverage, and a guaranteed DOCX mono font;

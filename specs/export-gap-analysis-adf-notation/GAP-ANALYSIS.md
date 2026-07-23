@@ -107,6 +107,9 @@ update both its matrix rows and the checklist below in the same commit:
 
 Current matrix orientation: **56 of 84 rows closed; 28 rows open.** This count
 must change in the same commit as any row checkbox.
+`scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
+these counters with every progress-table row, and rejects an unchecked
+`Partial` row unless it names an external or parallel dependency.
 
 Current closed foundations and feature slices:
 
@@ -724,6 +727,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E32] Complete pinned ADF code-block semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/highlight.ts`, `packages/docx/src/highlight.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E33] Complete pinned custom-panel semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/template.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E34] Complete pinned mention semantics and privacy-safe static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E35] Executable progress-register consistency guard:** `scripts/adf-gap-register.test.ts`
 
 ## 16. Review questions
 
