@@ -15,6 +15,7 @@
 import type {
   BlockPresentation,
   ExportBlock,
+  ExportLink,
   InlineNode,
   ExportNote,
   ListItem,
@@ -305,15 +306,29 @@ export function serializeInline(
           dateLocale,
         );
         const styled = linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale) || innerRuns;
-        if (node.target.kind === "external" && node.target.href) {
+        const sourceHref =
+          node.target.kind === "external" ||
+          node.target.kind === "page" ||
+          node.target.kind === "attachment"
+            ? node.target.href
+            : undefined;
+        if (sourceHref) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
-          out += hyperlinkField(node.target.href, linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale));
+          out += hyperlinkField(
+            sourceHref,
+            linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale),
+            node.adfAttributes?.title,
+          );
         } else if (node.target.kind === "anchor") {
           // Internal anchor link → a real in-document jump (spec 002). The
           // anchor is the sanitized destination id compose-document assigned;
           // re-sanitize defensively so a raw single-page anchor still matches
           // the bookmark name the anchor/heading emits.
-          out += internalHyperlink(sanitizeAnchorId(node.target.anchor), styled);
+          out += internalHyperlink(
+            sanitizeAnchorId(node.target.anchor),
+            styled,
+            node.adfAttributes?.title,
+          );
         } else {
           out += styled;
         }
@@ -679,7 +694,7 @@ async function serializeBlock(
       const outcome = await ctx.images.embed(block);
       if (outcome.ok) {
         if (outcome.notes) notes.push(...outcome.notes);
-        return outcome.xml + cap;
+        return linkDrawingParagraph(outcome.xml, block.link) + cap;
       }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
       // but keep a numbered fallback when a caption is present. The seam may name
@@ -828,18 +843,46 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
 /** The italic placeholder paragraph for an image that could not be embedded. */
 function imageUnavailablePara(block: ImageBlock): string {
   const label = block.alt ?? (block.source.kind === "attachment" ? block.source.filename : block.source.url);
-  return paragraph(run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }));
+  return paragraph(linkRuns(
+    block.link,
+    run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }),
+  ));
 }
 
 /** Visible non-fetching placeholder for an uncorrelated ADF media identity. */
 function mediaFallbackUnavailablePara(
   block: Extract<ExportBlock, { type: "mediaFallback" }>
 ): string {
-  return paragraph(
+  return paragraph(linkRuns(
+    block.link,
     run(`[Media unavailable: ${block.alt ?? block.label}]`, {
       italic: true,
       color: "97A0AF",
-    })
+    }),
+  ));
+}
+
+function linkRuns(link: ExportLink | undefined, innerRuns: string): string {
+  if (!link) return innerRuns;
+  const tooltip = link.adfAttributes?.title;
+  if (link.target.kind === "anchor") {
+    return internalHyperlink(sanitizeAnchorId(link.target.anchor), innerRuns, tooltip);
+  }
+  const href =
+    link.target.kind === "external" ||
+    link.target.kind === "page" ||
+    link.target.kind === "attachment"
+      ? link.target.href
+      : undefined;
+  return href ? hyperlinkField(href, innerRuns, tooltip) : innerRuns;
+}
+
+function linkDrawingParagraph(xml: string, link: ExportLink | undefined): string {
+  if (!link) return xml;
+  return xml.replace(
+    /(<w:p(?:\s[^>]*)?>)([\s\S]*?)(<\/w:p>)/u,
+    (_match, open: string, body: string, close: string) =>
+      `${open}${linkRuns(link, body)}${close}`,
   );
 }
 

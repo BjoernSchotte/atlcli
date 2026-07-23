@@ -296,9 +296,9 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
     case "anchor":
       return labels.get(target.anchor) ? `<${labels.get(target.anchor)}>` : null;
     case "page":
-      return null;
     case "attachment":
-      return null;
+      if (!target.href || !isSafeLinkScheme(target.href)) return null;
+      return /^(https?:|mailto:)/i.test(target.href) ? target.href : null;
     default: {
       const exhaustive: never = target;
       return exhaustive;
@@ -1467,6 +1467,26 @@ function serializeBlock(
     default: {
       const exhaustive: never = block;
       return exhaustive;
+    }
+  }
+  if ((block.type === "image" || block.type === "mediaFallback") && block.link) {
+    const href = resolveLink(block.link.target, writer.labels);
+    if (href) {
+      value = href.startsWith("<")
+        ? `#link(${href})[${value}]`
+        : `#link(${typstString(href)})[${value}]`;
+    } else {
+      const blocked =
+        block.link.target.kind === "external" &&
+        !isSafeLinkScheme(block.link.target.href);
+      writer.notes.push({
+        level: blocked ? "warning" : "info",
+        code: blocked ? UNSAFE_LINK_NOTE_CODE : "pdf-link-unresolved",
+        message: blocked
+          ? `A media link used a blocked scheme and was kept without a clickable target: ${blocksPlainText([block])}`
+          : `Media link target could not be represented in PDF: ${blocksPlainText([block])}`,
+        source: { blockPath: path },
+      });
     }
   }
   return writeMapped(block, writer, path, value, summary);

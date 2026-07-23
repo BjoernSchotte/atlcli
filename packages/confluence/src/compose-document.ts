@@ -504,7 +504,11 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
       case "link": {
         const content = transformInline(node.content, ctx);
         const rewritten = rewriteLink(node.target, content, ctx);
-        out.push(...rewritten);
+        out.push(...rewritten.map((item) =>
+          item.type === "link" && node.adfAttributes !== undefined
+            ? { ...item, adfAttributes: node.adfAttributes }
+            : item
+        ));
         break;
       }
       default: {
@@ -545,29 +549,33 @@ function rewriteLink(
       const resolution = resolvePageLink(target, ctx.page.meta.spaceKey, ctx.index);
       if (resolution.kind === "ambiguous") {
         ctx.notes.push({
-          level: "warning",
+          level: target.href ? "info" : "warning",
           code: "link-target-ambiguous",
-          message: `Link to page "${target.contentTitle}" is ambiguous (multiple in-scope pages share that title); rendered as plain text.`,
+          message: `Link to page "${target.contentTitle}" is ambiguous (multiple in-scope pages share that title); ${
+            target.href ? "the exact source URL was retained" : "rendered as plain text"
+          }.`,
         });
-        return content;
+        return target.href
+          ? [{ type: "link", target: { kind: "external", href: target.href }, content }]
+          : content;
       }
       if (resolution.kind === "out-of-scope") {
+        const href = target.href ?? ctx.options.resolveExternalUrl?.(
+          {
+            ...(target.contentId ? { contentId: target.contentId } : {}),
+            contentTitle: target.contentTitle,
+            ...(target.spaceKey ? { spaceKey: target.spaceKey } : {}),
+          },
+          target.anchor,
+        );
         ctx.notes.push({
           level: "info",
           code: "link-outside-scope",
           message: `Link to page "${target.contentTitle}" points outside the export scope; ${
-            ctx.options.resolveExternalUrl ? "linked to its absolute URL" : "rendered as plain text"
+            href ? "linked to its absolute URL" : "rendered as plain text"
           }.`,
         });
-        if (ctx.options.resolveExternalUrl) {
-          const href = ctx.options.resolveExternalUrl(
-            {
-              ...(target.contentId ? { contentId: target.contentId } : {}),
-              contentTitle: target.contentTitle,
-              ...(target.spaceKey ? { spaceKey: target.spaceKey } : {}),
-            },
-            target.anchor
-          );
+        if (href) {
           return [{ type: "link", target: { kind: "external", href }, content }];
         }
         return content;
@@ -596,6 +604,20 @@ function rewriteLink(
       return content;
     }
   }
+}
+
+function rewriteExportLink(
+  link: NonNullable<Extract<ExportBlock, { type: "image" }>["link"]>,
+  ctx: EmitCtx,
+): typeof link | undefined {
+  const rewritten = rewriteLink(link.target, [], ctx);
+  const node = rewritten.find((candidate) => candidate.type === "link");
+  return node?.type === "link"
+    ? {
+        target: node.target,
+        ...(link.adfAttributes !== undefined ? { adfAttributes: link.adfAttributes } : {}),
+      }
+    : undefined;
 }
 
 /**
@@ -696,10 +718,15 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;
     case "image":
-    case "mediaFallback":
-      return block.caption !== undefined
-        ? { ...block, caption: transformCaption(block.caption, ctx) }
-        : block;
+    case "mediaFallback": {
+      const { link: sourceLink, ...rest } = block;
+      const link = sourceLink ? rewriteExportLink(sourceLink, ctx) : undefined;
+      return {
+        ...rest,
+        ...(block.caption !== undefined ? { caption: transformCaption(block.caption, ctx) } : {}),
+        ...(link ? { link } : {}),
+      };
+    }
     case "divider":
     case "pageBreak":
     case "unknown":

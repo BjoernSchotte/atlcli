@@ -64,6 +64,7 @@ export interface AdfSourceCaseResult {
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
+  neutralHasMediaLinkSemantics: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
@@ -73,6 +74,7 @@ export interface AdfSourceCaseResult {
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
+  docxHasMediaLink: boolean;
   pdfJobArtifactAndReportParity: boolean;
   docxJobArtifactAndReportParity: boolean;
 }
@@ -489,6 +491,10 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && JSON.stringify(pdfSource.blocks).includes(
         '"caption":{"kind":"figure","content":[{"type":"text","text":"Media caption"}],"localId":"media-caption-local"}',
       ),
+    neutralHasMediaLinkSemantics:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"link":{"target":{"kind":"external","href":"https://example.invalid/adf-media"},"adfAttributes":{"title":"Open media","id":"media-link-id","collection":"contentId-1","occurrenceKey":"media-link-occurrence"}}',
+      ),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasTablePresentation:
       documentXml.includes('<w:tblW w:w="7200" w:type="dxa"/>')
@@ -524,6 +530,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         || relationships.includes("https://example.invalid/adf-card")),
     docxHasExtensionBody: documentXml.includes("Extension body"),
     docxHasVisibleMediaFallback: documentXml.includes("Visible media fallback") && documentXml.includes("Media caption"),
+    docxHasMediaLink:
+      documentXml.includes('HYPERLINK "https://example.invalid/adf-media"')
+      && documentXml.includes('\\o "Open media"'),
     pdfJobArtifactAndReportParity:
       pdfJobParity.byteIdentical && pdfJobParity.reportIdentical,
     docxJobArtifactAndReportParity:
@@ -557,6 +566,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasMediaLinkSemantics) {
+    throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");
   }
   if (!result.neutralHasBlockLocalIdentities) {
     throw new Error("ADF-source paragraph, heading, or list-item identity was lost in the packed browser.");

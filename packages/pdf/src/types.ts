@@ -1,6 +1,7 @@
 import type {
   Caption,
   ExportBlock,
+  ExportLink,
   ExportNote,
   InlineNode,
   LinkTarget,
@@ -88,7 +89,16 @@ export type PreparedPdfBlock =
         cells: Array<Omit<TableCell, "content"> & { content: PreparedPdfBlock[] }>;
       }>;
     }
-  | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string; caption?: Caption }
+  | {
+      type: "image";
+      assetPath?: string;
+      alt?: string;
+      width?: number;
+      height?: number;
+      fallbackLabel: string;
+      caption?: Caption;
+      link?: ExportLink;
+    }
   | { type: "blockquote"; content: PreparedPdfBlock[] }
   | Extract<ExportBlock, { type: "codeBlock" }>
   | {

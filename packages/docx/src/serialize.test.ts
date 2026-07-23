@@ -738,6 +738,37 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).not.toContain('" \\l "');
   });
 
+  it("keeps ADF page and attachment href fallbacks clickable with a safe title tooltip", () => {
+    const xml = serializeInline([
+      {
+        type: "link",
+        target: {
+          kind: "page",
+          contentTitle: "Remote page",
+          contentId: "123",
+          href: "https://example.invalid/wiki/pages/123/Remote",
+        },
+        adfAttributes: { title: 'Open "Remote"' },
+        content: [{ type: "text", text: "page" }],
+      },
+      {
+        type: "link",
+        target: {
+          kind: "attachment",
+          filename: "guide.pdf",
+          href: "https://example.invalid/wiki/download/attachments/123/guide.pdf",
+        },
+        content: [{ type: "text", text: "file" }],
+      },
+    ]);
+
+    expect(xml).toContain('HYPERLINK "https://example.invalid/wiki/pages/123/Remote"');
+    expect(xml).toContain(' \\o "Open \\"Remote\\"" ');
+    expect(xml).toContain(
+      'HYPERLINK "https://example.invalid/wiki/download/attachments/123/guide.pdf"',
+    );
+  });
+
   it("indents a blockquote paragraph that already has a pPr — e.g. a heading (#5)", async () => {
     const blocks: ExportBlock[] = [
       {
@@ -1027,6 +1058,41 @@ describe("serializeBlocks — new ExportBlock variants (spec 002 real renderings
     });
 
     expect(imagePrefetched).toEqual(["expand.png"]);
+  });
+
+  it("renders ADF media links around embedded drawings and visible fallbacks", async () => {
+    const link = {
+      target: { kind: "external" as const, href: "https://example.invalid/media" },
+      adfAttributes: { title: "Open media" },
+    };
+    const { xml } = await serializeBlocks([
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "linked.png" },
+        alt: "Linked image",
+        link,
+      },
+      {
+        type: "mediaFallback",
+        label: "unresolved",
+        media: { mediaType: "file", id: "media-1" },
+        link,
+      },
+    ], {
+      styleNames: noStyles,
+      images: {
+        prefetch: () => {},
+        embed: async () => ({
+          ok: true,
+          xml: "<w:p><w:r><w:drawing/></w:r></w:p>",
+        }),
+      },
+    });
+
+    expect(xml.match(/HYPERLINK "https:\/\/example\.invalid\/media"/gu)).toHaveLength(2);
+    expect(xml).toContain("<w:drawing/>");
+    expect(xml).toContain("[Media unavailable: unresolved]");
+    expect(xml).toContain(' \\o "Open media" ');
   });
 });
 

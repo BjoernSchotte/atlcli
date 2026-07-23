@@ -386,6 +386,16 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "mediaSingle",
+      marks: [{
+        type: "link",
+        attrs: {
+          href: "https://example.invalid/adf-media",
+          title: "Open media",
+          id: "media-link-id",
+          collection: "contentId-1",
+          occurrenceKey: "media-link-occurrence",
+        },
+      }],
       content: [
         { type: "media", attrs: { type: "file", id: "unresolved-media", alt: "Visible media fallback" } },
         {

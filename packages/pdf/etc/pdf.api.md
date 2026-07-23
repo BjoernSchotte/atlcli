@@ -80,6 +80,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -89,6 +90,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -186,11 +188,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -230,9 +231,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -581,6 +584,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     height?: number;
     fallbackLabel: string;
     caption?: Caption;
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];
@@ -851,6 +855,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -860,6 +865,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -957,11 +963,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -1001,9 +1006,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -1352,6 +1359,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     height?: number;
     fallbackLabel: string;
     caption?: Caption;
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];
@@ -1622,6 +1630,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -1631,6 +1640,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1728,11 +1738,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -1772,9 +1781,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -2123,6 +2134,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     height?: number;
     fallbackLabel: string;
     caption?: Caption;
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];

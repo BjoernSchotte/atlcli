@@ -141,6 +141,14 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
 };
 
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfMark
 export interface AdfMark {
     type: string;
@@ -1121,6 +1129,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -1130,6 +1139,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1183,6 +1193,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -1472,11 +1488,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -1575,9 +1590,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -2390,6 +2407,14 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
 };
 
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfMark
 export interface AdfMark {
     type: string;
@@ -3370,6 +3395,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -3379,6 +3405,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -3432,6 +3459,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -3721,11 +3754,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -3824,9 +3856,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -4639,6 +4673,14 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
 };
 
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfMark
 export interface AdfMark {
     type: string;
@@ -5619,6 +5661,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -5628,6 +5671,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -5681,6 +5725,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -5970,11 +6020,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -6073,9 +6122,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -6777,6 +6828,14 @@ export interface AdfExtensionIdentity {
 export interface AdfFragmentIdentity {
     localId: string;
     name?: string;
+}
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
 }
 
 // export: AtlcliConfig
@@ -7773,6 +7832,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -7782,6 +7842,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -7812,6 +7873,12 @@ export type ExportBlock = {
         spaceKey?: string;
     };
 };
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -8172,11 +8239,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -8356,9 +8422,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -9605,6 +9673,14 @@ export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
     [key: string]: AdfJsonValue;
 };
 
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
 // export: AdfMark
 export interface AdfMark {
     type: string;
@@ -10585,6 +10661,7 @@ export type ExportBlock = {
     height?: number;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "mediaFallback";
     label: string;
@@ -10594,6 +10671,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -10647,6 +10725,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -10936,11 +11020,10 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
-} | {
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
@@ -11039,9 +11122,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;

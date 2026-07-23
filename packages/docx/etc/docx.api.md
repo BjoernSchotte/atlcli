@@ -1385,7 +1385,7 @@ export declare function formatSimpleDate(date: Date, pattern: string): DateForma
 export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
 // export: hyperlinkField
-export declare function hyperlinkField(url: string, innerRuns: string): string;
+export declare function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string;
 
 // export: ImageBlock
 export type ImageBlock = Extract<ExportBlock, {
@@ -1503,7 +1503,7 @@ export declare function inspectNumberingPart(zip: PizZip): {
 };
 
 // export: internalHyperlink
-export declare function internalHyperlink(anchor: string, innerRuns: string): string;
+export declare function internalHyperlink(anchor: string, innerRuns: string, tooltip?: string): string;
 
 // export: isMissingAltText
 export declare function isMissingAltText(alt: string | undefined): boolean;

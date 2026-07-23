@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **58 of 84 rows closed; 26 rows open.** This count
+Current matrix orientation: **59 of 84 rows closed; 25 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -294,7 +294,11 @@ Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30], [E34].
 | [ ] | `blockCard` | ADF retains a safe URL in a visible block fallback; datasource links remain a separate live-rendered path. | Open/Conditional | Open/Conditional | **Open:** model card appearance and stable title/URL fallback independently of datasource rendering. |
 | [ ] | `embedCard` | URL/body may survive through a visible link fallback or `export_view`; no typed embed presentation exists. | Open/Fallback | Open/Fallback | **Open:** define poster/thumbnail/title/URL representation and report unrenderable embeds. |
 
-Link behavior is not uniform: external safe URLs are clickable; composed in-scope page links can become internal anchors; unresolved page/attachment links may be styled text rather than live links. Card semantics must not be inferred solely from link survival.
+Plain ADF link marks are uniform and clickable across text, page, attachment,
+and media placements. Composed in-scope page links become internal anchors;
+otherwise the exact safe source href remains the external fallback. Smart-card
+appearance and enrichment remain separate node-level contracts and must not be
+inferred solely from link survival.
 
 Evidence: [E5], [E7], [E8], [E15], [E16].
 
@@ -302,9 +306,9 @@ Evidence: [E5], [E7], [E8], [E15], [E16].
 
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
-| [ ] | `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, and any caption without attempting a fetch. | Open/Conditional | Open/Conditional | **Open:** add general file/link rendering, crop, link/border marks, and non-image media output. |
+| [ ] | `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, any caption, and clickable link marks without attempting a fetch. | Open/Conditional | Open/Conditional | **Open:** add general file rendering, crop, border marks, and non-image media output. Link marks are complete independently. |
 | [ ] | `mediaGroup` | Visible children survive, but grouping identity and presentation do not. | Open/Fallback | Open/Fallback | **Open:** preserve attachment/gallery grouping and define a static file-list/gallery representation. |
-| [ ] | `mediaSingle` | Image reference, alt, numeric width/height, and native caption association reach `ExportBlock`; caption inline content and local identity survive. | Open | Open | **Open:** retain container layout, percent/pixel width type and crop; make both renderers consume the complete geometry contract. |
+| [ ] | `mediaSingle` | Image reference, alt, numeric width/height, native caption association, and container link marks reach `ExportBlock`; caption inline content and local identity survive. | Open | Open | **Open:** retain container layout, percent/pixel width type and crop; make both renderers consume the complete geometry contract. |
 | [ ] | `mediaInline` | Inline image is either promoted to a block or replaced by alt text with a note. | Open/Fallback | Open/Fallback | **Open:** add a true inline-media model and baseline/alignment/size rules. |
 
 Image byte support, SVG rasterization, external-asset policy, and missing-alt reporting exist, but those operational strengths do not fill the missing ADF media semantics.
@@ -352,7 +356,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `textColor` | Direct ADF and Storage span color become normalized static RGB. | Native | Native | Closed for static export; flattening theme tokens to authored print color is intentional. |
 | [x] | `backgroundColor` | Direct ADF and Storage span background become normalized static RGB. | Native | Native | Closed for schema-valid mark placement and static target color. |
 | [x] | `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
-| [ ] | `link` | Safe URL and Confluence link targets become typed links with visible fallback text. | Open | Open | **Open:** make page/attachment/card links uniformly resolvable and clickable and retain collection/media attributes. |
+| [x] | `link` | The exact safe href becomes a typed external/page/attachment/anchor target; optional `title`, `id`, `collection`, and `occurrenceKey` remain distinct provenance. Unsafe schemes keep visible content and a warning. | Native | Native | Closed for every pinned mark placement: text and media links are clickable in both targets, in-scope pages prefer collision-safe internal anchors, page/attachment/media fallbacks retain their exact safe href, DOCX uses `title` as a ScreenTip, and composition preserves the remaining ADF attributes. Smart-card nodes remain separate rows. |
 | [ ] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Open | Open | **Open:** fetch/correlate comment bodies and implement native Word-comment/PDF-note output under an explicit export policy. |
 | [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
@@ -379,7 +383,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `> ` | `blockquote` | Native static projection. | Closed with deterministic target-owned styling. |
 | [x] | Triple backticks + space | `codeBlock` | Native for the pinned ADF result. | Exact text/language, tri-state wrap intent, line-number policy, local/unique identity, long-line page safety, and empty/final lines are covered through validation, both engines, packed browser parity, and real render goldens. |
 | [x] | `--- ` | `rule` | Native. | Semantic and visual golden are complete. |
-| [ ] | `[title](URL)` | link mark or Smart Link transform | Safe visible link subset; card appearance and some target resolution remain open. | **Open:** plain, inline-card, block-card, embed, unsafe URL, page, attachment, and media attributes. |
+| [ ] | `[title](URL)` | link mark or Smart Link transform | Plain link-mark output is complete, including safe external/page/attachment/media targets and unsafe-scheme degradation. | **Open:** Confluence may instead materialize inline/block/embed Smart Card nodes; their distinct static appearance and enrichment contracts remain open. |
 | [x] | `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
 | [x] | `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
 | [ ] | `:` / emoji picker | `emoji` node or text | Partial/conditional. | **Partial — external asset contract:** Unicode/fallback is complete; Atlassian/site-custom assets and complete glyph coverage remain blocked. |
@@ -522,9 +526,12 @@ Required acceptance contract:
 - [ ] **Open — card/embed metadata.** Deterministic visible URL fallbacks
   exist; native title/provider/poster metadata remains.
 - [ ] **Open — media family.** Selected image/media paths exist; group,
-  inline, file/video/audio, crop, border, and link coverage remains.
-- [ ] **Open — page/attachment hyperlinks.** Safe external and selected
-  composed links work; uniform page and attachment resolution remains.
+  inline, file/video/audio, crop, and border coverage remains. Media link marks
+  are complete.
+- [x] **Page/attachment/media hyperlinks.** Exact safe href fallbacks,
+  in-scope internal anchors, pinned ADF provenance, DOCX ScreenTips, and both
+  targets' clickable text/image/fallback output are complete. Smart Cards stay
+  isolated in their own open rows.
 
 ### P2 - Dynamic and advanced content
 
@@ -750,6 +757,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E34] Complete pinned mention semantics and privacy-safe static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E35] Executable progress-register consistency guard:** `scripts/adf-gap-register.test.ts`
 - **[E36] Portable inline/code-block font embedding across DOCX hosts:** `packages/docx/src/font-embedding.ts`, `packages/docx/src/font-embedding.test.ts`, `packages/docx/src/node-code-font.ts`, `packages/docx/src/export.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/golden.test.ts`, `apps/cli/src/commands/export-code-font.ts`, `apps/cli/src/commands/export-code-font-build-modes.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E37] Complete pinned ADF link-mark semantics:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

@@ -1284,6 +1284,18 @@ tarball gate, and real Bun/filesystem-link/plain-Node packed-consumer exports.
 The matrix now records 58 of 84 rows closed and 26 open; the unrestricted suite
 remains the remote-CI gate.
 
+Completed link-mark follow-on evidence recorded on 2026-07-23: the complete
+pinned ADF `link` attribute set (`href`, optional `title`, `id`, `collection`,
+and `occurrenceKey`) now survives the neutral model and composition. Safe page
+and attachment links retain their exact source href as the single-page or
+out-of-scope fallback while composed in-scope pages still prefer collision-safe
+internal anchors. Text, resolved images, unresolved media labels, inline media
+labels, and `mediaSingle` container links are clickable in both DOCX and PDF;
+DOCX additionally projects `title` as a ScreenTip. Unsafe schemes remain visible
+plain content with the shared warning policy. Smart-card appearance/enrichment
+is deliberately not claimed by this mark-level slice and remains in the three
+separate card rows. The matrix now records 59 of 84 rows closed and 25 open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and

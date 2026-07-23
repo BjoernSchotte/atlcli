@@ -277,12 +277,15 @@ export function isSafeHyperlinkUrl(url: string): boolean {
  * URLs failing {@link isSafeHyperlinkUrl} degrade to the plain inner runs —
  * the link text survives, the live field target does not.
  */
-export function hyperlinkField(url: string, innerRuns: string): string {
+export function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string {
   if (!isSafeHyperlinkUrl(url)) return innerRuns;
   const instr = esc(escapeFieldArgument(url));
+  const screenTip = tooltip !== undefined
+    ? ` \\o "${esc(escapeFieldArgument(tooltip))}"`
+    : "";
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}" </w:instrText></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}"${screenTip} </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
     innerRuns +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`
@@ -310,8 +313,13 @@ export function bookmarkEnd(id: number): string {
  * (spec 002 anchor rewrite). Previously internal links were only styled blue —
  * they now navigate.
  */
-export function internalHyperlink(anchor: string, innerRuns: string): string {
-  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1">${innerRuns}</w:hyperlink>`;
+export function internalHyperlink(
+  anchor: string,
+  innerRuns: string,
+  tooltip?: string,
+): string {
+  const screenTip = tooltip !== undefined ? ` w:tooltip="${esc(tooltip)}"` : "";
+  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1"${screenTip}>${innerRuns}</w:hyperlink>`;
 }
 
 /** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */

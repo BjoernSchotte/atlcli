@@ -1018,6 +1018,48 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).not.toContain("#underline[#link(<chapter>)");
   });
 
+  it("uses exact safe ADF href fallbacks for page and attachment links", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [
+        {
+          type: "link",
+          target: {
+            kind: "page",
+            contentTitle: "Remote page",
+            contentId: "123",
+            href: "https://example.invalid/wiki/pages/123/Remote",
+          },
+          content: [{ type: "text", text: "page" }],
+        },
+        { type: "text", text: " / " },
+        {
+          type: "link",
+          target: {
+            kind: "attachment",
+            filename: "guide.pdf",
+            href: "https://example.invalid/wiki/download/attachments/123/guide.pdf",
+          },
+          content: [{ type: "text", text: "file" }],
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain(
+      '#link("https://example.invalid/wiki/pages/123/Remote")[#text("page")]',
+    );
+    expect(bundle.main).toContain(
+      '#link("https://example.invalid/wiki/download/attachments/123/guide.pdf")[#text("file")]',
+    );
+    expect(bundle.notes.some((note) => note.code === "pdf-link-unresolved")).toBe(false);
+  });
+
   it("preserves arbitrary inline background colors as breakable Typst highlights", async () => {
     const prepared = await preparePdfDocument(
       [
@@ -1611,6 +1653,28 @@ describe("serialize — C3 captions", () => {
     expect(main).toContain("Media unavailable");
     expect(main).toContain("System overview");
     expect(main).toContain("kind: image");
+    expect(notes).toEqual([]);
+  });
+
+  it("wraps ADF media output in its exact safe link", async () => {
+    const { main, notes } = await toMain([{
+      type: "mediaFallback",
+      label: "media-1",
+      media: { mediaType: "file", id: "media-1" },
+      link: {
+        target: { kind: "external", href: "https://example.invalid/media" },
+        adfAttributes: {
+          title: "Open media",
+          id: "link-id",
+          collection: "content-id",
+          occurrenceKey: "occurrence-1",
+        },
+      },
+    }]);
+
+    expect(main).toContain(
+      '#link("https://example.invalid/media")[#par[#emph[',
+    );
     expect(notes).toEqual([]);
   });
 

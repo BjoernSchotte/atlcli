@@ -13,9 +13,11 @@ import type {
   Caption,
   AdfExtensionIdentity,
   AdfFragmentIdentity,
+  AdfLinkAttributes,
   BlockPresentation,
   EmojiSemantics,
   ExportBlock,
+  ExportLink,
   ExportNote,
   ExportNoteSource,
   InlineMark,
@@ -585,13 +587,16 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       }];
     }
     case "mediaInline":
-    case "media":
+    case "media": {
       addMediaNote(ctx, node, path);
-      return [{
+      const content: InlineNode[] = [{
         type: "text",
         text: mediaLabel(node),
         ...annotationFields(node.marks),
       }];
+      const link = mediaLink(node.marks, ctx, path, mediaLabel(node));
+      return link ? [{ type: "link", ...link, content }] : content;
+    }
     case "placeholder":
       return [{
         type: "placeholder",
@@ -619,7 +624,7 @@ function applyMarks(
   const inlineMarks = new Set<InlineMark>();
   let color: string | undefined;
   let backgroundColor: string | undefined;
-  let link: string | undefined;
+  let link: { href: string; attributes: AdfLinkAttributes } | undefined;
   const annotations: AdfAnnotationIdentity[] = [];
   for (const mark of sorted) {
     switch (mark.type) {
@@ -631,7 +636,16 @@ function applyMarks(
       case "subsup": inlineMarks.add(mark.attrs?.type === "sup" ? "superscript" : "subscript"); break;
       case "textColor": color = normalizeColor(mark.attrs?.color); break;
       case "backgroundColor": backgroundColor = normalizeColor(mark.attrs?.color); break;
-      case "link": link ??= stringJson(mark.attrs?.href); break;
+      case "link": {
+        const href = stringJson(mark.attrs?.href);
+        if (link === undefined && href !== undefined) {
+          link = {
+            href,
+            attributes: adfLinkAttributes(mark),
+          };
+        }
+        break;
+      }
       case "annotation": {
         const annotation = annotationMark(mark);
         if (annotation) annotations.push(annotation);
@@ -650,7 +664,7 @@ function applyMarks(
     ...(annotations.length > 0 ? { annotations } : {}),
   };
   if (!link) return [node];
-  return wrapLink(link, [node], ctx, path);
+  return wrapLink(link.href, [node], ctx, path, link.attributes);
 }
 
 /** True for an ADF textual emoji token such as `:awthanks:`. */
@@ -698,7 +712,13 @@ function decodeBlockPresentation(
     : undefined;
 }
 
-function wrapLink(href: string, content: InlineNode[], ctx: DecodeContext, path: string): InlineNode[] {
+function wrapLink(
+  href: string,
+  content: InlineNode[],
+  ctx: DecodeContext,
+  path: string,
+  adfAttributes?: AdfLinkAttributes,
+): InlineNode[] {
   const verdict = sanitizeLinkHref(href);
   if (!verdict.safe) {
     ctx.notes.add({
@@ -709,22 +729,81 @@ function wrapLink(href: string, content: InlineNode[], ctx: DecodeContext, path:
     });
     return content;
   }
-  return [{ type: "link", target: linkTarget(verdict.href), content }];
+  return [{
+    type: "link",
+    target: linkTarget(verdict.href),
+    content,
+    ...(adfAttributes && Object.keys(adfAttributes).length > 0 ? { adfAttributes } : {}),
+  }];
 }
 
 function linkTarget(href: string): LinkTarget {
   if (href.startsWith("#")) return { kind: "anchor", anchor: decodeURIComponentSafe(href.slice(1)) };
   const attachment = href.match(/\/download\/attachments\/[^/]+\/([^?#]+)/i);
-  if (attachment?.[1]) return { kind: "attachment", filename: decodeURIComponentSafe(attachment[1]) };
+  if (attachment?.[1]) {
+    return {
+      kind: "attachment",
+      filename: decodeURIComponentSafe(attachment[1]),
+      href,
+    };
+  }
   const page = href.match(/\/pages\/(\d+)(?:\/([^?#]+))?/i);
   if (page?.[1]) {
+    const hash = href.match(/#([^#]*)$/u)?.[1];
     return {
       kind: "page",
       contentId: page[1],
       contentTitle: page[2] ? decodeURIComponentSafe(page[2]).replace(/\+/g, " ") : page[1],
+      ...(hash !== undefined ? { anchor: decodeURIComponentSafe(hash) } : {}),
+      href,
     };
   }
   return { kind: "external", href };
+}
+
+function optionalMarkString(mark: AdfMark, name: string): string | undefined {
+  const value = mark.attrs?.[name];
+  return typeof value === "string" ? value : undefined;
+}
+
+function adfLinkAttributes(mark: AdfMark): AdfLinkAttributes {
+  const optional = (name: string): string | undefined => optionalMarkString(mark, name);
+  return {
+    ...(optional("title") !== undefined ? { title: optional("title") } : {}),
+    ...(optional("id") !== undefined ? { id: optional("id") } : {}),
+    ...(optional("collection") !== undefined ? { collection: optional("collection") } : {}),
+    ...(optional("occurrenceKey") !== undefined
+      ? { occurrenceKey: optional("occurrenceKey") }
+      : {}),
+  };
+}
+
+function mediaLink(
+  marks: readonly AdfMark[] | undefined,
+  ctx: DecodeContext,
+  path: string,
+  label: string,
+): ExportLink | undefined {
+  const mark = [...(marks ?? [])]
+    .sort((left, right) => markKey(left).localeCompare(markKey(right)))
+    .find((candidate) => candidate.type === "link");
+  const href = mark ? stringJson(mark.attrs?.href) : undefined;
+  if (!mark || href === undefined) return undefined;
+  const verdict = sanitizeLinkHref(href);
+  if (!verdict.safe) {
+    ctx.notes.add({
+      level: "warning",
+      code: "unsafe-link-skipped",
+      message: unsafeLinkMessage(verdict, label),
+      source: sourceFor(ctx, path),
+    });
+    return undefined;
+  }
+  const adfAttributes = adfLinkAttributes(mark);
+  return {
+    target: linkTarget(verdict.href),
+    ...(Object.keys(adfAttributes).length > 0 ? { adfAttributes } : {}),
+  };
 }
 
 function cardInline(node: AdfNode, ctx: DecodeContext, path: string): InlineNode[] {
@@ -878,7 +957,17 @@ function decodeMediaContainer(node: AdfNode, ctx: DecodeContext, path: string): 
   const content = node.content ?? [];
   const captionNode = content.find((child) => child.type === "caption");
   const media = content.filter((child) => child.type !== "caption");
-  const blocks = media.flatMap((child, index) => decodeBlockNode(child, ctx, `${path}.content[${index}]`));
+  let blocks = media.flatMap((child, index) =>
+    decodeBlockNode(child, ctx, `${path}.content[${index}]`)
+  );
+  const containerLink = mediaLink(node.marks, ctx, path, "media");
+  if (containerLink) {
+    blocks = blocks.map((block) =>
+      (block.type === "image" || block.type === "mediaFallback") && block.link === undefined
+        ? { ...block, link: containerLink }
+        : block
+    );
+  }
   if (captionNode && blocks.length > 0) {
     const caption = decodeCaption(captionNode, ctx, `${path}.caption`);
     const last = blocks[blocks.length - 1]!;
@@ -906,6 +995,7 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
   if (!resolved?.filename.trim()) return mediaFallbackBlock(node, ctx, path);
   const width = positiveDimension(node.attrs?.width);
   const height = positiveDimension(node.attrs?.height);
+  const link = mediaLink(node.marks, ctx, path, stringAttr(node, "alt") ?? "media");
   return {
     type: "image",
     source: {
@@ -917,6 +1007,7 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     ...annotationFields(node.marks),
+    ...(link ? { link } : {}),
   };
 }
 
@@ -924,6 +1015,7 @@ function mediaFallbackBlock(node: AdfNode, ctx: DecodeContext, path: string): Ex
   addMediaNote(ctx, node, path);
   const width = positiveDimension(node.attrs?.width);
   const height = positiveDimension(node.attrs?.height);
+  const link = mediaLink(node.marks, ctx, path, mediaLabel(node));
   return {
     type: "mediaFallback",
     label: mediaLabel(node),
@@ -950,6 +1042,7 @@ function mediaFallbackBlock(node: AdfNode, ctx: DecodeContext, path: string): Ex
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     ...annotationFields(node.marks),
+    ...(link ? { link } : {}),
   };
 }
 
@@ -1181,6 +1274,11 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
       nodeType === "bodiedExtension" ||
       nodeType === "inlineExtension" ||
       nodeType === "table";
+  }
+  if (markType === "link") {
+    return nodeType === "media" ||
+      nodeType === "mediaInline" ||
+      nodeType === "mediaSingle";
   }
   if (markType === "breakout") return nodeType === "layoutSection";
   return false;

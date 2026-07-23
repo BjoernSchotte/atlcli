@@ -323,6 +323,7 @@ export async function preparePdfDocument(
                 height: block.height,
                 fallbackLabel,
                 caption: block.caption,
+                ...(block.link ? { link: block.link } : {}),
               };
             } catch (error) {
               // A shared-budget breach is a FATAL scope-level error (same as
@@ -349,7 +350,13 @@ export async function preparePdfDocument(
                 code: "image-embed-failed",
                 message: `${fallbackLabel} was not embedded: ${error instanceof Error ? error.message : String(error)}`,
               });
-              return { type: "image", alt: block.alt, fallbackLabel, caption: block.caption };
+              return {
+                type: "image",
+                alt: block.alt,
+                fallbackLabel,
+                caption: block.caption,
+                ...(block.link ? { link: block.link } : {}),
+              };
             }
           }
           case "codeBlock": {

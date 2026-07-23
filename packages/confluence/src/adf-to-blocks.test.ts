@@ -564,23 +564,60 @@ describe("adfToBlocks", () => {
   });
 
   it("classifies safe external, anchor, page, attachment, and unsafe links centrally", () => {
-    const marked = (text: string, href: string) => ({ type: "text", text, marks: [{ type: "link", attrs: { href } }] });
+    const marked = (
+      text: string,
+      href: string,
+      attrs: Record<string, string> = {},
+    ) => ({ type: "text", text, marks: [{ type: "link", attrs: { href, ...attrs } }] });
     const result = adfToBlocks(doc([{
       type: "paragraph",
       content: [
-        marked("external", "https://example.invalid/path"),
+        marked("external", "https://example.invalid/path", {
+          title: "",
+          id: "media-id",
+          collection: "contentId-1",
+          occurrenceKey: "occurrence-1",
+        }),
         marked("anchor", "#Section%201"),
-        marked("page", "/wiki/spaces/TEST/pages/12345/Page+Title"),
+        marked("page", "/wiki/spaces/TEST/pages/12345/Page+Title#Section%202"),
         marked("attachment", "/wiki/download/attachments/12345/file%20name.pdf"),
         marked("unsafe", "java\tscript:alert(1)"),
       ],
     }]));
 
     expect((result.blocks[0] as { content: unknown[] }).content).toEqual([
-      { type: "link", target: { kind: "external", href: "https://example.invalid/path" }, content: [{ type: "text", text: "external" }] },
+      {
+        type: "link",
+        target: { kind: "external", href: "https://example.invalid/path" },
+        content: [{ type: "text", text: "external" }],
+        adfAttributes: {
+          title: "",
+          id: "media-id",
+          collection: "contentId-1",
+          occurrenceKey: "occurrence-1",
+        },
+      },
       { type: "link", target: { kind: "anchor", anchor: "Section 1" }, content: [{ type: "text", text: "anchor" }] },
-      { type: "link", target: { kind: "page", contentId: "12345", contentTitle: "Page Title" }, content: [{ type: "text", text: "page" }] },
-      { type: "link", target: { kind: "attachment", filename: "file name.pdf" }, content: [{ type: "text", text: "attachment" }] },
+      {
+        type: "link",
+        target: {
+          kind: "page",
+          contentId: "12345",
+          contentTitle: "Page Title",
+          anchor: "Section 2",
+          href: "/wiki/spaces/TEST/pages/12345/Page+Title#Section%202",
+        },
+        content: [{ type: "text", text: "page" }],
+      },
+      {
+        type: "link",
+        target: {
+          kind: "attachment",
+          filename: "file name.pdf",
+          href: "/wiki/download/attachments/12345/file%20name.pdf",
+        },
+        content: [{ type: "text", text: "attachment" }],
+      },
       { type: "text", text: "unsafe" },
     ]);
     expect(result.notes.map((note) => note.code)).toContain("unsafe-link-skipped");
@@ -704,6 +741,16 @@ describe("adfToBlocks", () => {
       },
       {
         type: "mediaSingle",
+        marks: [{
+          type: "link",
+          attrs: {
+            href: "https://example.invalid/media",
+            title: "Open media",
+            id: "link-id",
+            collection: "contentId-1",
+            occurrenceKey: "link-occurrence",
+          },
+        }],
         content: [
           { type: "media", attrs: { type: "file", id: "media-1", collection: "contentId-1", alt: "diagram.png" } },
           { type: "caption", attrs: { localId: "" }, content: [{ type: "text", text: "Caption" }] },
@@ -729,6 +776,15 @@ describe("adfToBlocks", () => {
       label: "diagram.png",
       media: { mediaType: "file", id: "media-1", collection: "contentId-1" },
       alt: "diagram.png",
+      link: {
+        target: { kind: "external", href: "https://example.invalid/media" },
+        adfAttributes: {
+          title: "Open media",
+          id: "link-id",
+          collection: "contentId-1",
+          occurrenceKey: "link-occurrence",
+        },
+      },
       caption: {
         kind: "figure",
         content: [{ type: "text", text: "Caption" }],
@@ -762,15 +818,22 @@ describe("adfToBlocks", () => {
     const result = adfToBlocks(doc([{
       type: "mediaSingle",
       content: [
-        { type: "media", attrs: {
-          type: "file",
-          id: "media-1",
-          collection: "collection-1",
-          occurrenceKey: "occurrence-1",
-          alt: "Architecture",
-          width: 640,
-          height: 480,
-        } },
+        {
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "media-1",
+            collection: "collection-1",
+            occurrenceKey: "occurrence-1",
+            alt: "Architecture",
+            width: 640,
+            height: 480,
+          },
+          marks: [{
+            type: "link",
+            attrs: { href: "https://example.invalid/architecture", title: "" },
+          }],
+        },
         { type: "caption", attrs: { localId: "caption-1" }, content: [{ type: "text", text: "Figure caption" }] },
       ],
     }]), {
@@ -788,6 +851,10 @@ describe("adfToBlocks", () => {
       alt: "Architecture",
       width: 640,
       height: 480,
+      link: {
+        target: { kind: "external", href: "https://example.invalid/architecture" },
+        adfAttributes: { title: "" },
+      },
       caption: {
         kind: "figure",
         content: [{ type: "text", text: "Figure caption" }],

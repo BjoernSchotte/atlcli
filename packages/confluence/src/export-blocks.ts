@@ -54,9 +54,39 @@ export type LinkTarget =
    * rewrite resolves by `contentId` first). Optional + backwards compatible:
    * hand-authored `ri:content-title`-only links leave it unset.
    */
-  | { kind: "page"; contentTitle: string; contentId?: string; spaceKey?: string; anchor?: string }
-  | { kind: "attachment"; filename: string }
+  | {
+      kind: "page";
+      contentTitle: string;
+      contentId?: string;
+      spaceKey?: string;
+      anchor?: string;
+      /**
+       * Exact safe source href. Composed exports prefer an in-document target;
+       * single-page/out-of-scope exports retain this as their clickable fallback.
+       */
+      href?: string;
+    }
+  | {
+      kind: "attachment";
+      filename: string;
+      /** Exact safe source href used when no host-specific attachment resolver runs. */
+      href?: string;
+    }
   | { kind: "anchor"; anchor: string };
+
+/** Exact optional provenance carried by the pinned ADF `link` mark. */
+export interface AdfLinkAttributes {
+  title?: string;
+  id?: string;
+  collection?: string;
+  occurrenceKey?: string;
+}
+
+/** A resolved-safe link plus its exact optional ADF provenance. */
+export interface ExportLink {
+  target: LinkTarget;
+  adfAttributes?: AdfLinkAttributes;
+}
 
 /**
  * A typed inline node. Serializers render these to runs/spans; the model never
@@ -89,7 +119,10 @@ export type InlineNode =
       /** ADF fragment identities retained without inventing bookmark semantics. */
       fragments?: AdfFragmentIdentity[];
     }
-  | { type: "link"; target: LinkTarget; content: InlineNode[] }
+  | ({
+      type: "link";
+      content: InlineNode[];
+    } & ExportLink)
   /**
    * A user or collection mention. The source identity and presentation
    * attributes remain metadata; renderers never expose `accountId` merely
@@ -542,6 +575,8 @@ export type ExportBlock =
       height?: number;
       caption?: Caption;
       annotations?: AdfAnnotationIdentity[];
+      /** Media or media-container link mark, retained for clickable output. */
+      link?: ExportLink;
     }
   | {
       /**
@@ -557,6 +592,8 @@ export type ExportBlock =
       width?: number;
       height?: number;
       annotations?: AdfAnnotationIdentity[];
+      /** Media or media-container link mark, retained for clickable fallback output. */
+      link?: ExportLink;
     }
   | { type: "blockquote"; content: ExportBlock[] }
   | { type: "divider" }

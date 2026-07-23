@@ -596,6 +596,48 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
     expect(targets.some((t) => t.kind === "external")).toBe(false);
   });
 
+  test("out-of-scope ADF page links retain their exact href and provenance without a callback", () => {
+    const source = page("1", "Root", 0, null, "<p>body</p>");
+    source.blocks = [{
+      type: "paragraph",
+      content: [{
+        type: "link",
+        target: {
+          kind: "page",
+          contentTitle: "Remote",
+          contentId: "999",
+          href: "https://wiki.example/pages/999/Remote",
+        },
+        adfAttributes: {
+          title: "Remote tooltip",
+          id: "media-id",
+          collection: "content-id",
+          occurrenceKey: "occurrence-1",
+        },
+        content: [{ type: "text", text: "remote" }],
+      }],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    const paragraph = blocks.find((block) => block.type === "paragraph");
+    expect(paragraph).toMatchObject({
+      type: "paragraph",
+      content: [{
+        type: "link",
+        target: {
+          kind: "external",
+          href: "https://wiki.example/pages/999/Remote",
+        },
+        adfAttributes: {
+          title: "Remote tooltip",
+          id: "media-id",
+          collection: "content-id",
+          occurrenceKey: "occurrence-1",
+        },
+      }],
+    });
+  });
+
   test("caption links pass through the same rewrite, including unresolved media inside expands", () => {
     // Build all captionable block variants programmatically: each caption
     // carries a cross-page link to page 2.
