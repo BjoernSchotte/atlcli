@@ -1012,6 +1012,12 @@ export interface ArchiveBudget {
 // export: assertArchiveBudget
 export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
 
+// export: assertBundledCodeFont
+export declare function assertBundledCodeFont(bytes: Uint8Array): Promise<void>;
+
+// export: assertEmbeddableSfnt
+export declare function assertEmbeddableSfnt(bytes: Uint8Array): void;
+
 // export: assertNoActiveContent
 export declare function assertNoActiveContent(zip: PizZip): void;
 
@@ -1078,6 +1084,18 @@ export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 // export: coalesceSectPrParagraphs
 export declare function coalesceSectPrParagraphs(xml: string): string;
 
+// export: CODE_FONT_FAMILY
+export declare const CODE_FONT_FAMILY = "JetBrains Mono";
+
+// export: CODE_FONT_FILE
+export declare const CODE_FONT_FILE = "JetBrainsMono-Regular.ttf";
+
+// export: CODE_FONT_KEY
+export declare const CODE_FONT_KEY = "{001B70DC-AA60-4AD5-90EC-18A0948E1EAE}";
+
+// export: CODE_FONT_SHA256
+export declare const CODE_FONT_SHA256 = "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
+
 // export: CODE_STYLE_ID
 export declare const CODE_STYLE_ID = "AtlcliCode";
 
@@ -1118,6 +1136,9 @@ export declare function collectStylerefFields(xml: string): string[];
 
 // export: columnWidthsDxa
 export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number, tableWidthDxa?: number): number[] | undefined;
+
+// export: configureBundledCodeFontLoader
+export declare function configureBundledCodeFontLoader(loader: BundledCodeFontLoader): void;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -1188,6 +1209,11 @@ export declare class DocxError extends Error {
 // export: DocxErrorKind
 export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
+// export: DocxFontEmbeddingError
+export declare class DocxFontEmbeddingError extends Error {
+    constructor(message: string);
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -1241,6 +1267,9 @@ export declare function ensureCodeStyle(zip: PizZip): void;
 
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureEmbeddedCodeFont
+export declare function ensureEmbeddedCodeFont(zip: PizZip, fontBytes: Uint8Array): void;
 
 // export: ensureListParagraphStyle
 export declare function ensureListParagraphStyle(zip: PizZip): void;
@@ -1494,6 +1523,9 @@ export declare const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
 // export: listParagraphStyleXml
 export declare function listParagraphStyleXml(): string;
 
+// export: loadBundledCodeFont
+export declare function loadBundledCodeFont(): Promise<Uint8Array>;
+
 // export: LogoArgs
 export interface LogoArgs {
     heightPx?: number;
@@ -1567,6 +1599,9 @@ export interface NumberingXml {
     abstractNums: string;
     nums: string;
 }
+
+// export: obfuscateFont
+export declare function obfuscateFont(bytes: Uint8Array, fontKey?: string): Uint8Array;
 
 // export: pageBreakParagraph
 export declare function pageBreakParagraph(): string;

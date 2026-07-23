@@ -3,6 +3,7 @@
   "sourceSha256": "60e8133ea6b4da8c4cda5d693ec74effe27ef7c25ad51d96ca6e9bd1ecc984d5",
   "features": [
     "inline-code",
+    "docx-embedded-code-font",
     "unicode-emoji",
     "custom-emoji-fallback",
     "localized-date-chip",
@@ -35,7 +36,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "8200131ebf0b9a1bdc0a16251309e70e24f38302734e3028a708b933706a8d3b"
+          "sha256": "e32e84185c1242b7b4b8785faa0d141811b1616ca7f1419add549ceda2b0320d"
         }
       ],
       "requiredText": [

@@ -1972,6 +1972,47 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       deps: { ...deps, getIncludedPage: resolver({ Imprint: codePage }).getIncludedPage },
     });
     expect(readPart(bytes, "word/styles.xml")).toContain('w:styleId="AtlcliCode"');
+    expect(readPart(bytes, "word/fontTable.xml")).toContain(
+      '<w:font w:name="JetBrains Mono">',
+    );
+    expect(readPart(bytes, "word/_rels/fontTable.xml.rels")).toContain(
+      "relationships/font",
+    );
+    expect(
+      new PizZip(bytes)
+        .file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
+        ?.asUint8Array().byteLength,
+    ).toBeGreaterThan(250_000);
+  });
+
+  it("embeds the code face for inline code without requiring a code-block style", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>before <code>INLINE_TOKEN</code> after</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(readPart(bytes, "word/document.xml")).toContain("INLINE_TOKEN");
+    expect(readPart(bytes, "word/document.xml")).toContain(
+      'w:rFonts w:ascii="JetBrains Mono"',
+    );
+    expect(readPart(bytes, "word/styles.xml")).not.toContain('w:styleId="AtlcliCode"');
+    expect(Object.keys(zip.files).filter((path) => path.endsWith(".odttf"))).toEqual([
+      "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf",
+    ]);
+  });
+
+  it("does not add font parts to a document with no code semantics", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>plain text only</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((path) => path.endsWith(".odttf"))).toBe(false);
+    expect(zip.file("word/fontTable.xml")).toBeNull();
   });
 
   it("enforces the unique-target budget deterministically (cache still serves repeats)", async () => {

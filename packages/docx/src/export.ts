@@ -106,6 +106,12 @@ import {
   type CaptionLang,
   type TableStyleSource,
 } from "./ooxml.js";
+import {
+  CODE_FONT_FAMILY,
+  assertBundledCodeFont,
+  ensureEmbeddedCodeFont,
+  loadBundledCodeFont,
+} from "./font-embedding.js";
 import { NumberingAllocator } from "./numbering.js";
 import {
   encodeXmlText,
@@ -700,12 +706,20 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   preprocessScrollText(zip, resolved.values);
 
   // 5. Synthesize the code/caption styles if the body OR any included page
-  //    referenced them; force TOC refresh. An included page can be the only
-  //    thing carrying a code macro or a captioned figure (spec 005 D1).
+  //    referenced them. An included page can be the only thing carrying a code
+  //    macro, inline code, or a captioned figure (spec 005 D1).
   const includeXml = [...includes.values()].join("");
   const styledXml = body.xml + includeXml;
   if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(zip);
   if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(zip);
+  if (styledXml.includes(`w:rFonts w:ascii="${CODE_FONT_FAMILY}"`)) {
+    throwIfAborted(input.signal);
+    const codeFontBytes = await loadBundledCodeFont();
+    throwIfAborted(input.signal);
+    await assertBundledCodeFont(codeFontBytes);
+    throwIfAborted(input.signal);
+    ensureEmbeddedCodeFont(zip, codeFontBytes);
+  }
   // Native list numbering (spec 006 G2): write word/numbering.xml (+ content
   // type + relationship) only when a list actually acquired an id, and
   // synthesize the fallback ListParagraph style if the body OR an included

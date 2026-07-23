@@ -16,7 +16,8 @@ browser and under Node/Bun; hosts inject template/asset/output seams via
   - `./scan` — template scanning (`scanTemplate`, `unzipDocx`).
   - `./fixtures` — programmatic minimal-docx builders (dev/test API).
   - `./internal` — **non-frozen** resolver/serializer/OOXML internals.
-  - `./fonts/*` — committed Inter/JetBrains Mono TTFs (rasterizer fonts).
+  - `./fonts/*` — committed OFL Inter/JetBrains Mono TTFs (diagram
+    rasterization and portable DOCX code-face embedding).
 - **Runtime:** Node ≥ 20, Bun, and browsers.
 - **Install:** filesystem link or packed tarball — no registry publish today.
   See the [package consumption guide](https://atlcli.sh/reference/package-consumption/).

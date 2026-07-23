@@ -1243,9 +1243,51 @@ turns the review convention into an executable consistency guard. It does not
 change the separate weekly upstream-drift watch's intentionally non-blocking
 status.
 
+Completed portable-code-font follow-on evidence recorded on 2026-07-23: ADF
+`code` marks and Storage `<code>` now render with the committed OFL JetBrains
+Mono face in every TypeScript DOCX host. The exporter validates the sfnt and its
+OS/2 embedding rights, verifies the exact committed face against a pinned
+SHA-256 digest, applies ECMA-376's deterministic first-32-byte obfuscation, and
+owns the font part, content type, font table, and relationship chain. The
+mutation is idempotent and occurs only when inline or block code is present;
+corrupt, restricted, bitmap-only, or substituted fonts fail before archive
+mutation. The Node package loader, browser `new URL` asset, bundled CLI bridge,
+and compiled single-binary bridge all supply the same committed bytes. PDF
+retains its already-bundled code face.
+
+The pinned source fixture combines code with annotation metadata and surrounding
+ordinary text, so the mark slice proves exact underscores, adjacency,
+source-highlight precedence, and coexistence without pretending that native
+comment rendering is complete. That remaining behavior stays isolated in the
+separate `annotation` row. The production browser bundle contains no Node
+builtin, direct and background DOCX jobs compare the complete decompressed
+archive including the font binary, and the packed Vite consumer requires the
+hashed font asset. A real LibreOffice conversion on a host without the system
+face carried JetBrains Mono into the resulting PDF as an embedded font; the
+reviewed one-page DOCX reference changed accordingly, and a deterministic
+rerender reproduced one DOCX and four PDF pages with zero pixel difference and
+content-bounds IoU 1.
+
+An anonymized live run created and intentionally retained one synthetic
+two-page conformance tree for reuse by later feature slices. ADF-primary CLI
+tree export preserved root and child inline-code tokens in DOCX and PDF without
+a Storage-fallback diagnostic; the DOCX contained the complete embedded font
+chain and the PDF used its embedded code face. No environment or content
+identifier is stored in the repository or this plan.
+
+The slice passed the focused engine/API/render/build-mode suites, the public API
+and closure guard with zero reachable-but-unexported gaps, full workspace and
+browser-harness typecheck, the production build, all browser-isomorphism
+entrypoints, extension/browser output integrity, the complete feature manifest
+and packed Chromium run, direct/background archive/report parity, the package
+tarball gate, and real Bun/filesystem-link/plain-Node packed-consumer exports.
+The matrix now records 58 of 84 rows closed and 26 open; the unrestricted suite
+remains the remote-CI gate.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
-1. custom-emoji assets after a documented Atlassian resolver contract, complete emoji-font coverage, and a guaranteed DOCX mono font;
+1. custom-emoji assets after a documented Atlassian resolver contract and
+   complete emoji-font coverage (portable DOCX mono-font embedding is complete);
 2. annotation comment-resource correlation/native target output and a documented fragment-to-bookmark policy (identity preservation is complete; alignment, indentation, and schema-defined small text are complete);
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
 4. page-bound wide-table pagination/overflow policies beyond the now-complete

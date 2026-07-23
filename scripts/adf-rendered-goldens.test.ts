@@ -9,7 +9,9 @@ import {
 } from "./adf-rendered-goldens.js";
 
 const tools = adfRenderedGoldenTools();
-const HAVE_RENDER_TOOLS = Boolean(tools.soffice && tools.pdftoppm && tools.pdftotext);
+const HAVE_RENDER_TOOLS = Boolean(
+  tools.soffice && tools.pdftoppm && tools.pdftotext && tools.pdffonts,
+);
 
 describe("ADF rendered goldens", () => {
   it("pins synthetic visual references for both export formats and every target feature", async () => {
@@ -17,6 +19,7 @@ describe("ADF rendered goldens", () => {
     expect(manifest.schemaVersion).toBe(1);
     expect(manifest.features).toEqual([
       "inline-code",
+      "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
       "localized-date-chip",
@@ -55,7 +58,12 @@ describe("ADF rendered goldens", () => {
 
   it.skipIf(!HAVE_RENDER_TOOLS)("re-renders DOCX and PDF within the reviewed visual budgets", async () => {
     const result = await checkAdfRenderedGoldens();
-    expect(result).toMatchObject({ updated: false, docxPages: 1, pdfPages: 4 });
+    expect(result).toMatchObject({
+      updated: false,
+      docxPages: 1,
+      pdfPages: 4,
+      docxCodeFontEmbedded: true,
+    });
     expect(result.maxMeanPixelDifference).toBeLessThanOrEqual(0.08);
     expect(result.minContentBoundsIou).toBeGreaterThanOrEqual(0.8);
   }, 60_000);

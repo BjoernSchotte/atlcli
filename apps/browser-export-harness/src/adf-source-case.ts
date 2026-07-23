@@ -45,6 +45,7 @@ export interface AdfSourceCaseResult {
   pdfTagged: boolean;
   pdfPageCount: number;
   docxHasInlineCode: boolean;
+  docxHasEmbeddedCodeFont: boolean;
   docxHasEmoji: boolean;
   docxHasCustomEmojiFallback: boolean;
   docxHasBlockAlignment: boolean;
@@ -228,6 +229,10 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
   const relationships = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
   const numberingXml = zip.file("word/numbering.xml")?.asText() ?? "";
+  const fontTableXml = zip.file("word/fontTable.xml")?.asText() ?? "";
+  const fontTableRels = zip.file("word/_rels/fontTable.xml.rels")?.asText() ?? "";
+  const embeddedCodeFont =
+    zip.file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf");
   const pdfRequest: PdfExportJobRequestV1 = {
     schema: "atlcli.export-job-request/1",
     id: "adf-pdf-job",
@@ -374,7 +379,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     sourceNoteCodes: pdfSource.sourceNotes.map((note) => note.code),
     pdfTagged: inspection.tagged,
     pdfPageCount: inspection.pageCount,
-    docxHasInlineCode: documentXml.includes('w:rFonts w:ascii="Consolas"'),
+    docxHasInlineCode: documentXml.includes('w:rFonts w:ascii="JetBrains Mono"'),
+    docxHasEmbeddedCodeFont:
+      (embeddedCodeFont?.asUint8Array().byteLength ?? 0) > 250_000
+      && fontTableXml.includes('<w:font w:name="JetBrains Mono">')
+      && fontTableXml.includes("<w:embedRegular")
+      && fontTableRels.includes("relationships/font")
+      && relationships.includes("relationships/fontTable"),
     docxHasEmoji: documentXml.includes("⚠️"),
     docxHasCustomEmojiFallback: documentXml.includes(":custom_party:"),
     docxHasBlockAlignment: documentXml.includes('<w:jc w:val="center"/>'),

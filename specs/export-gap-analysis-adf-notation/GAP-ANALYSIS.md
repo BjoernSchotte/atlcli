@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **56 of 84 rows closed; 28 rows open.** This count
+Current matrix orientation: **58 of 84 rows closed; 26 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -137,7 +137,8 @@ Current closed foundations and feature slices:
   identity, access scope, pinned user type, resolver behavior, and
   privacy-safe unresolved labels across both TypeScript targets.
 - [x] Inline-code background treatment and exact token preservation in both
-  targets.
+  targets, with a license-validated bundled JetBrains Mono face embedded into
+  every DOCX that contains inline or block code.
 - [x] Pinned-schema task lists, inline and block task items, nested tasks,
   decision lists/items, local identities, and exact states.
 - [x] Pinned ADF layout sections/columns and documented Storage layout sections
@@ -178,8 +179,6 @@ Current cross-cutting residuals:
   synchronization with the parallel job-host work.
 - [ ] **Open:** the real sanitized Confluence corpus covers selected live
   slices, not yet every supported editor feature.
-- [ ] **Open:** guaranteed DOCX monospace embedding remains technically
-  actionable in this project.
 - [ ] **Open — Storage compatibility only:** legacy code-macro `title` and
   `collapse` parameters still need a typed static projection. They are not
   attributes of the pinned ADF `codeBlock` node.
@@ -348,7 +347,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `em` | Direct ADF and `<em>`/`<i>` become `italic`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
 | [x] | `underline` | Direct ADF and `<u>` become `underline`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
 | [x] | `strike` | Direct ADF and `<s>`/`<del>`/`<strike>` become `strike`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
-| [ ] | `code` | Direct ADF and `<code>` become an exact inline-code run. | Open in DOCX | Native | **Open:** DOCX shading/text fidelity is complete, but the bundled mono font is named rather than guaranteed embedded. PDF uses the bundled mono font and themed chip. |
+| [x] | `code` | Direct ADF and `<code>` become an exact inline-code run. | Native | Native | Closed: exact text, adjacency, source-highlight precedence, code-plus-annotation retention, and separation from block code are fixture-pinned. DOCX embeds the bundled OFL JetBrains Mono face through the standard font-table relationship chain; PDF uses its bundled mono face and themed chip. |
 | [x] | `subsup` | The exact ADF `sub`/`sup` enum and Storage tags become separate sub/sup marks. | Native | Native | Closed with direct-ADF coverage and deterministic target projection. |
 | [x] | `textColor` | Direct ADF and Storage span color become normalized static RGB. | Native | Native | Closed for static export; flattening theme tokens to authored print color is intentional. |
 | [x] | `backgroundColor` | Direct ADF and Storage span background become normalized static RGB. | Native | Native | Closed for schema-valid mark placement and static target color. |
@@ -373,7 +372,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `**Bold**` | `strong` | Native after Confluence materializes it. | Direct ADF, Storage, and target fixtures are complete. |
 | [x] | `*Italic*` | `em` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
 | [x] | `~~Strike~~` | `strike` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
-| [ ] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | **Open:** guarantee the bundled DOCX mono font, then close adjacency/escaping/annotation combinations. |
+| [x] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets, with a portable embedded DOCX code face. | Closed after Confluence materializes the mark: exact token/underscore text, surrounding adjacency, source-highlight precedence, code-plus-annotation metadata retention, browser/job parity, and real rendering are pinned. Native comment output remains isolated to the separate `annotation` row. |
 | [x] | `# ` … `###### ` | `heading.level` | Levels, content, and local identity survive natively. | Closed; composed-export level rebasing remains explicit and retains source identity. |
 | [x] | `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
 | [x] | `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
@@ -394,23 +393,41 @@ Official Confluence documentation describes these input shortcuts. They are edit
 
 ## 9. Two high-signal visual gaps
 
-### 9.1 Inline code — visual gap closed, DOCX font embedding remains
+### 9.1 Inline code — complete static export contract
 
 The shared parser distinguishes inline code from code blocks and both targets now reproduce the visible inline-code treatment:
 
-- DOCX emits a monospace run with deterministic `w:shd` background. An explicit neutral-model background still overrides the default rather than creating nested fills.
+- DOCX emits a JetBrains Mono run with deterministic `w:shd` background. An
+  explicit neutral-model background still overrides the default rather than
+  creating nested fills. When any inline or block code is present, the exporter
+  license-validates the committed OFL face, verifies its pinned SHA-256 digest,
+  applies the ECMA-376 obfuscation transform, and adds the font part, font table,
+  content type, and relationship chain. Code-free documents do not acquire the
+  extra parts.
 - PDF applies a non-block `raw` rule with the resolved template's code background, bounded horizontal/vertical inset, radius, bundled mono font, and code size. Block raw retains its separate full-width rule.
-- Focused semantic tests pin underscores, exact token text, surrounding prose, default fill, and source-fill precedence.
-- The synthetic ADF feature-zoo references were regenerated through real DOCX/LibreOffice and Typst/PDF/Poppler rendering. All pages were visually inspected without clipping, overlap, missing glyphs, or broken wrapping.
+- Focused semantic tests pin underscores, exact token text, surrounding prose,
+  default fill, source-fill precedence, code-plus-annotation retention,
+  idempotent package mutation, corrupt/restricted font rejection, and the
+  absence of font parts from code-free documents.
+- Source, bundled CLI, compiled CLI, package, browser, and background-job paths
+  all use the same committed face. The browser archive comparison includes the
+  font binary and relationship parts, not only visible text.
+- The synthetic ADF feature-zoo references were regenerated through real
+  DOCX/LibreOffice and Typst/PDF/Poppler rendering. The render gate additionally
+  checks the DOCX-converted PDF with `pdffonts`; the non-system JetBrains Mono
+  face must be present and embedded. All pages were visually inspected without
+  clipping, overlap, missing glyphs, or broken wrapping.
 
 Required acceptance contract:
 
-- [ ] Embed or otherwise guarantee the DOCX mono font instead of relying on the recipient's host-font substitution.
+- [x] Embed the bundled DOCX mono font instead of relying on the recipient's host-font substitution.
 - [x] Use the bundled mono font in PDF.
 - [x] Apply a subtle target-appropriate background.
 - [x] Add predictable horizontal padding where the target format allows it.
 - [x] Preserve underscores, token-like identifiers, whitespace, punctuation, and adjacent line wrapping.
-- [ ] Close annotation export before claiming the pinned code+annotation combination.
+- [x] Preserve the pinned code-plus-annotation combination without letting one
+  mark erase the other; native comment rendering remains scoped to the separate
+  unchecked `annotation` row.
 - [x] Keep separate regression coverage for inline code and block code.
 
 ### 9.2 Emoji and emoticons
@@ -456,9 +473,10 @@ Required acceptance contract:
 
 ### P1 - Close user-visible core gaps
 
-- [ ] **Open — inline code.** Visual treatment, exact token preservation,
-  serializer tests, and rendered goldens are complete; guaranteed DOCX
-  monospace embedding and native comment output for code-plus-annotation remain.
+- [x] **Inline code.** Exact code-mark text, adjacency, highlight precedence,
+  annotation coexistence, target-specific chip treatment, portable DOCX font
+  embedding, PDF font use, browser/job parity, and real rendering are complete.
+  Native comment output remains independently tracked by `annotation`.
 - [ ] **Partial — external asset contract for emoji/custom emoji.** Identity, exact text, deterministic
   fallback, reporting, and both TS engines are complete; authorized custom
   assets and complete font/glyph coverage remain.
@@ -534,8 +552,9 @@ Required acceptance contract:
 
 ### Phase 1 - High-value inline fidelity
 
-- [ ] **Open:** inline code; DOCX font guarantee and annotation combination
-  remain.
+- [x] Inline code, including portable DOCX font embedding and retained
+  code-plus-annotation combinations; native comment output remains a separate
+  annotation gap.
 - [ ] **Partial — external asset contract:** emoji/custom emoji assets and
   complete glyph coverage remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
@@ -690,6 +709,8 @@ Accessed 2026-07-22 and 2026-07-23:
 30. [Confluence Code Block macro](https://confluence.atlassian.com/display/DOCM/Code%2BBlock%2BMacro)
 31. [Typst raw text/code and `raw.line`](https://typst.app/docs/reference/text/raw/)
 32. [ADF mention node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mention/)
+33. [ECMA-376 WordprocessingML embedded fonts](https://c-rex.net/samples/ooxml/e1/Part4/OOXML_P4_DOCX_Font_topic_ID0ERNCU.html)
+34. [Microsoft Open Specifications: embedded font part](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/1663dabc-5d98-463f-889e-bcd9b77c3d34)
 
 ## 15. Repository evidence index
 
@@ -728,6 +749,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E33] Complete pinned custom-panel semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/template.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E34] Complete pinned mention semantics and privacy-safe static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E35] Executable progress-register consistency guard:** `scripts/adf-gap-register.test.ts`
+- **[E36] Portable inline/code-block font embedding across DOCX hosts:** `packages/docx/src/font-embedding.ts`, `packages/docx/src/font-embedding.test.ts`, `packages/docx/src/node-code-font.ts`, `packages/docx/src/export.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/golden.test.ts`, `apps/cli/src/commands/export-code-font.ts`, `apps/cli/src/commands/export-code-font-build-modes.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

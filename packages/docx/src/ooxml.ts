@@ -13,6 +13,7 @@
  */
 import type { CaptionKind, ExportNote } from "@atlcli/confluence";
 import { isSafeLinkScheme, normalizeExportColor } from "@atlcli/confluence";
+import { CODE_FONT_FAMILY } from "./font-embedding.js";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
@@ -137,7 +138,7 @@ export function codeStyleXml(): string {
     `<w:name w:val="Atlcli Code"/>` +
     `<w:pPr><w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>` +
     `<w:spacing w:before="0" w:after="0"/></w:pPr>` +
-    `<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="18"/></w:rPr>` +
+    `<w:rPr><w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/><w:sz w:val="18"/></w:rPr>` +
     `</w:style>`
   );
 }
@@ -176,7 +177,11 @@ function runPropsXml(style: RunStyle): string {
   if (style.underline) parts.push('<w:u w:val="single"/>');
   if (style.subscript) parts.push('<w:vertAlign w:val="subscript"/>');
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
-  if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
+  if (style.code) {
+    parts.push(
+      `<w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/>`,
+    );
+  }
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
   const fontSize = fontSizeHalfPointsXml(style.fontSizeHalfPoints);
   if (fontSize) parts.push(fontSize);

@@ -13,7 +13,8 @@
  * apps/browser-export-harness/src/pdf-worker.ts, bundles the full compile
  * pipeline (runPdfExport + BrowserPdfCompiler + storageToBlocks) from the
  * installed packages, imports the background executor from the packed
- * `@atlcli/export-wiring/jobs` subpath, and exposes a hook on globalThis. After
+ * `@atlcli/export-wiring/jobs` subpath (which also carries the DOCX engine's
+ * package-relative JetBrains Mono face), and exposes a hook on globalThis. After
  * the build the driver asserts the `?url` imports resolved to real hashed files
  * in the build output (nothing falling through to a src/ path or workspace
  * symlink), then imports the PRODUCTION chunk under Bun (headless — a real
@@ -302,11 +303,22 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
       "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
     );
   }
-  if (ttfAssets.length !== hook.expectedFonts.length) {
+  const docxCodeFontAssets = ttfAssets.filter((asset) =>
+    /^JetBrainsMono-Regular-[A-Za-z0-9_-]+\.ttf$/u.test(asset),
+  );
+  if (docxCodeFontAssets.length !== 1) {
     throw new Error(
-      `expected ${hook.expectedFonts.length} hashed .ttf assets from PDF_RUNTIME_ASSETS, ` +
+      `expected one hashed JetBrains Mono DOCX code font, found: ${docxCodeFontAssets.join(", ")}`,
+    );
+  }
+  if (ttfAssets.length !== hook.expectedFonts.length + docxCodeFontAssets.length) {
+    throw new Error(
+      `expected ${hook.expectedFonts.length} PDF fonts plus one DOCX code font, ` +
       `found ${ttfAssets.length}: ${ttfAssets.join(", ")}`,
     );
+  }
+  if (!chunkSource.includes(docxCodeFontAssets[0]!)) {
+    throw new Error("the packed production chunk does not reference its emitted DOCX code font");
   }
 
   const resolveAsset = (url: string): string => {

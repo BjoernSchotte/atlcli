@@ -127,6 +127,7 @@ export function packAll(destDir: string): Map<string, string> {
 export const DOCX_SMOKE_MJS = `
 import { runExport } from "@atlcli/docx";
 import { buildDocx, para, readPart } from "@atlcli/docx/fixtures";
+import { unzipDocx } from "@atlcli/docx/scan";
 import { storageToBlocks } from "@atlcli/confluence";
 
 const resolved = import.meta.resolve("@atlcli/docx");
@@ -134,7 +135,7 @@ if (!resolved.includes("/dist/")) {
   throw new Error(\`@atlcli/docx resolved to \${resolved} — expected the built dist/ output\`);
 }
 
-const storage = "<h1>Smoke Heading</h1><p>Consumer smoke body.</p>";
+const storage = "<h1>Smoke Heading</h1><p>Consumer smoke body with <code>INLINE_SMOKE</code>.</p>";
 
 // The installed converter must produce a real block tree.
 const { blocks, notes } = storageToBlocks(storage);
@@ -185,8 +186,19 @@ const documentXml = readPart(outBytes, "word/document.xml");
 if (!documentXml.includes("Smoke Heading")) {
   throw new Error("word/document.xml does not contain the fixture heading");
 }
-if (!documentXml.includes("Consumer smoke body.")) {
+if (!documentXml.includes("Consumer smoke body with")) {
   throw new Error("word/document.xml does not contain the fixture paragraph");
+}
+if (!documentXml.includes('w:rFonts w:ascii="JetBrains Mono"')) {
+  throw new Error("word/document.xml does not select the portable code face");
+}
+const zip = unzipDocx(outBytes);
+const fontTable = zip.file("word/fontTable.xml")?.asText() ?? "";
+const embeddedCodeFont =
+  zip.file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
+    ?.asUint8Array();
+if (!fontTable.includes('w:name="JetBrains Mono"') || embeddedCodeFont?.byteLength !== 273900) {
+  throw new Error("the installed package did not embed its complete DOCX code font");
 }
 console.log("DOCX_SMOKE_OK", report.filename);
 `;

@@ -44,12 +44,20 @@
  * styles relationship, and ordered lists moved to renderer-compatible,
  * self-contained numbering definitions. The fixture metadata was anonymized
  * at the same time; it is synthetic test data only.
+ *
+ * The 2026-07-23 portable-code-font change is asserted as one explicit,
+ * tightly bounded delta from this historical capture: code runs use the
+ * bundled JetBrains Mono face and the package gains its font table,
+ * relationships, content types, and obfuscated font part. Normalizing exactly
+ * those owned additions lets this golden keep detecting every unrelated DOCX
+ * change without storing a 274 kB binary as JSON text.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import PizZip from "pizzip";
 import { exportDocx, type ExportResult } from "./export.js";
 import { buildDocx, headingStyle, para, runSplitPara, stylesXml } from "./fixtures.js";
+import { CODE_FONT_FAMILY, CODE_FONT_KEY } from "./font-embedding.js";
 import type { ConfluencePageDetails } from "@atlcli/confluence";
 
 interface Golden {
@@ -66,6 +74,36 @@ interface Golden {
 const golden: Golden = JSON.parse(
   readFileSync(new URL("./golden-extension-export.json", import.meta.url), "utf8")
 );
+
+const CODE_FONT_PART =
+  "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf";
+const CODE_FONT_OWNED_PARTS = [
+  "word/_rels/fontTable.xml.rels",
+  "word/fontTable.xml",
+  CODE_FONT_PART,
+] as const;
+
+function normalizePortableCodeFontDelta(name: string, value: string): string {
+  let normalized = value.replaceAll(CODE_FONT_FAMILY, "Consolas");
+  if (name === "[Content_Types].xml") {
+    normalized = normalized
+      .replace(
+        '<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>',
+        "",
+      )
+      .replace(
+        '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>',
+        "",
+      );
+  }
+  if (name === "word/_rels/document.xml.rels") {
+    normalized = normalized.replace(
+      '<Relationship Id="rIdAtlcliFontTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>',
+      "",
+    );
+  }
+  return normalized;
+}
 
 /** EXACTLY the capture script's input — do not "improve" without recapturing. */
 const STORAGE = `
@@ -128,10 +166,26 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   const names = Object.keys(zip.files)
     .filter((n) => !zip.files[n].dir)
     .sort();
-  expect(names).toEqual(Object.keys(golden.entries).sort());
-  for (const name of names) {
-    expect(zip.files[name].asText()).toBe(golden.entries[name]);
+  expect(names).toEqual(
+    [...Object.keys(golden.entries), ...CODE_FONT_OWNED_PARTS].sort(),
+  );
+  for (const name of Object.keys(golden.entries)) {
+    expect(normalizePortableCodeFontDelta(name, zip.files[name].asText())).toBe(
+      golden.entries[name],
+    );
   }
+
+  const fontTable = zip.files["word/fontTable.xml"].asText();
+  expect(fontTable).toContain(`<w:font w:name="${CODE_FONT_FAMILY}">`);
+  expect(fontTable).toContain(
+    `<w:embedRegular r:id="rIdAtlcliCodeFont" w:fontKey="${CODE_FONT_KEY}"/>`,
+  );
+  expect(zip.files["word/_rels/fontTable.xml.rels"].asText()).toContain(
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font"`,
+  );
+  const embeddedFont = zip.files[CODE_FONT_PART].asUint8Array();
+  expect(embeddedFont.byteLength).toBe(273_900);
+  expect([...embeddedFont.subarray(0, 4)]).not.toEqual([0x00, 0x01, 0x00, 0x00]);
 
   expect(report.resolvedCount).toBe(golden.report.resolvedCount);
   expect(report.unsupportedNames).toEqual(golden.report.unsupportedNames);

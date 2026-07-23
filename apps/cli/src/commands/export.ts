@@ -1256,15 +1256,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const templatePromise = internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath));
   const [
     { runExport, fileOutputSink },
-    { buildGetIncludedPage },
+    { buildGetIncludedPage, configureBundledCodeFontLoader },
     { createAssetByteCache, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     template,
+    { loadDocxCodeFont },
   ] = await Promise.all([
     import("@atlcli/docx"),
     import("@atlcli/docx/internal"),
     internalsPromise,
     templatePromise,
+    import("./export-code-font.js"),
   ]);
+  configureBundledCodeFontLoader(loadDocxCodeFont);
   const templateBytes = template.bytes;
   const assetCache = createAssetByteCache(baseUrl);
 
@@ -1677,12 +1680,21 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     // Load engine + template + optional rasterizer. No `--template` resolves to
     // the bundled default (spec 010 W3-D), with a `template-default-used` note.
     const internalsPromise = import("./export-internals.js");
-    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, template] =
+    const [
+      { runExport, fileOutputSink },
+      { configureBundledCodeFontLoader },
+      { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup },
+      template,
+      { loadDocxCodeFont },
+    ] =
       await Promise.all([
         import("@atlcli/docx"),
+        import("@atlcli/docx/internal"),
         internalsPromise,
         internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath)),
+        import("./export-code-font.js"),
       ]);
+    configureBundledCodeFontLoader(loadDocxCodeFont);
     const templateBytes = template.bytes;
     const assetCache = createAssetByteCache(baseUrl);
 

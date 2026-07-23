@@ -90,6 +90,7 @@ export interface AdfRenderedGoldenResult {
   updated: boolean;
   docxPages: number;
   pdfPages: number;
+  docxCodeFontEmbedded: boolean;
   maxMeanPixelDifference: number;
   minContentBoundsIou: number;
 }
@@ -115,11 +116,13 @@ export function adfRenderedGoldenTools(): {
   soffice?: string;
   pdftoppm?: string;
   pdftotext?: string;
+  pdffonts?: string;
 } {
   return {
     soffice: which("soffice") ?? which("libreoffice"),
     pdftoppm: which("pdftoppm"),
     pdftotext: which("pdftotext"),
+    pdffonts: which("pdffonts"),
   };
 }
 
@@ -144,8 +147,10 @@ async function renderCurrent(tempDir: string): Promise<{
   pdfText: string;
 }> {
   const tools = adfRenderedGoldenTools();
-  if (!tools.soffice || !tools.pdftoppm || !tools.pdftotext) {
-    throw new Error("ADF rendered-golden verification requires soffice, pdftoppm, and pdftotext.");
+  if (!tools.soffice || !tools.pdftoppm || !tools.pdftotext || !tools.pdffonts) {
+    throw new Error(
+      "ADF rendered-golden verification requires soffice, pdftoppm, pdftotext, and pdffonts.",
+    );
   }
   await Promise.all([
     ensurePdfFonts({ logger: () => {} }),
@@ -198,6 +203,15 @@ async function renderCurrent(tempDir: string): Promise<{
     docxPath,
   ], tempDir);
   const docxPdfPath = join(tempDir, "adf-rendered-docx.pdf");
+  const docxFonts = runTool(tools.pdffonts, [docxPdfPath], tempDir);
+  const embeddedCodeFont = docxFonts
+    .split(/\r?\n/gu)
+    .some((line) => /JetBrainsMono/iu.test(line) && /\byes\b/iu.test(line));
+  if (!embeddedCodeFont) {
+    throw new Error(
+      "DOCX rendered golden did not carry its embedded JetBrains Mono face into the converted PDF.",
+    );
+  }
   runTool(tools.pdftoppm, ["-png", "-r", "96", docxPdfPath, join(tempDir, "current-docx")], tempDir);
   runTool(tools.pdftoppm, ["-png", "-r", "96", pdfPath, join(tempDir, "current-pdf")], tempDir);
   const files = (await readdir(tempDir)).sort();
@@ -284,6 +298,7 @@ async function manifestFor(
     sourceSha256: sourceHash(),
     features: [
       "inline-code",
+      "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
       "localized-date-chip",
@@ -370,6 +385,7 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
         updated: true,
         docxPages: rendered.docxPages.length,
         pdfPages: rendered.pdfPages.length,
+        docxCodeFontEmbedded: true,
         maxMeanPixelDifference: 0,
         minContentBoundsIou: 1,
       };
@@ -419,6 +435,7 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
       updated: false,
       docxPages: rendered.docxPages.length,
       pdfPages: rendered.pdfPages.length,
+      docxCodeFontEmbedded: true,
       maxMeanPixelDifference: maxDifference,
       minContentBoundsIou: minIou,
     };

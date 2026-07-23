@@ -44,7 +44,7 @@ describe("serializeInline", () => {
       { type: "text", text: " after" },
     ]);
     expect(xml).toContain(
-      '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>'
+      '<w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/>'
     );
     expect(xml).toContain(
       '<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>'
@@ -173,7 +173,7 @@ describe("serializeBlocks — ADF block presentation", () => {
       '<w:pPr><w:ind w:start="1440"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>',
     );
     expect(xml).toContain(
-      '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+      '<w:rFonts w:ascii="JetBrains Mono" w:hAnsi="JetBrains Mono" w:cs="JetBrains Mono"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
     );
     expect(xml).toContain(
       '<w:color w:val="0747A6"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
@@ -442,7 +442,7 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     ];
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
-    expect(xml).toContain("Consolas");
+    expect(xml).toContain("JetBrains Mono");
     // At least one syntax color was applied.
     expect(/<w:color w:val="[0-9A-F]{6}"\/>/.test(xml)).toBe(true);
   });
