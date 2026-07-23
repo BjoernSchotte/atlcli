@@ -1424,7 +1424,7 @@ describe("adfToBlocks", () => {
     expect(result.notes.map((note) => note.code)).toEqual([
       "adf-node-degraded",
       "adf-mark-degraded",
-      "adf-node-degraded",
+      "macro-not-rendered",
       "adf-mark-degraded",
       "adf-mark-degraded",
       "adf-media-unresolved",
@@ -1536,7 +1536,7 @@ describe("adfToBlocks", () => {
         sourcePage: { id: "page-1", version: 3, spaceKey: "S" },
       }],
     });
-    expect(result.notes.map((note) => note.code)).toEqual(["adf-node-degraded", "adf-node-degraded"]);
+    expect(result.notes.map((note) => note.code)).toEqual(["macro-not-rendered", "adf-node-degraded"]);
   });
 
   it("keeps unresolved extension-body diagnostics on the block until fallback rendering", () => {
@@ -1548,7 +1548,7 @@ describe("adfToBlocks", () => {
         attrs: { type: "file", id: "unresolved", collection: "content-1" },
       }],
     }]));
-    expect(result.notes.map((note) => note.code)).toEqual(["adf-node-degraded"]);
+    expect(result.notes.map((note) => note.code)).toEqual(["macro-not-rendered"]);
     expect(result.blocks[0]).toMatchObject({
       type: "unknown",
       macroName: "body-notes",

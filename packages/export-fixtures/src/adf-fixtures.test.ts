@@ -40,6 +40,7 @@ describe("ADF browser conformance fixture", () => {
       "callout",
       "callout",
       "unknown",
+      "unknown",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
@@ -169,6 +170,24 @@ describe("ADF browser conformance fixture", () => {
           }],
         }]),
       }],
+    });
+    expect(pdf.blocks[28]).toEqual({
+      type: "unknown",
+      macroName: "static-extension",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "static-extension",
+        localId: "static-extension-private-local-id",
+      },
+      params: [{
+        name: "privatemode",
+        text: "static-extension-private-parameter",
+      }],
+      sourcePage: {
+        id: "adf-conformance-page",
+        version: 1,
+        spaceKey: "TEST",
+      },
     });
     expect(pdf.blocks[1]).toMatchObject({
       type: "paragraph",
@@ -340,10 +359,15 @@ describe("ADF browser conformance fixture", () => {
     expect(pdf.notes.map((note) => note.code)).toContain("adf-node-degraded");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-mark-degraded");
     expect(pdf.notes).toContainEqual(expect.objectContaining({
+      code: "macro-not-rendered",
+      macroName: "static-extension",
+    }));
+    expect(pdf.notes).toContainEqual(expect.objectContaining({
       code: "adf-mark-degraded",
       message: expect.stringContaining("non-visual provenance"),
     }));
     expect(pdf.notes.some((note) => note.message.includes("synthetic-consumer"))).toBe(false);
     expect(pdf.notes.some((note) => note.message.includes("synthetic-sync"))).toBe(false);
+    expect(JSON.stringify(pdf.notes)).not.toContain("static-extension-private");
   });
 });

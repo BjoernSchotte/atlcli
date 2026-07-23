@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "e06253fc6fba250d0a8f5bf8881d8d3a1216c6439e21dd459de2a8e364a51b9d",
+  "sourceSha256": "d6ddac479cd2a18439430b47298788f67de67659f0ffc745d4ff7a27310851dd",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -38,18 +38,18 @@
     "unsupported-adf-typed-fallback",
     "media-wrap-source-order",
     "synced-content-snapshot-and-reference",
-    "extension"
+    "extension-static-fallback"
   ],
   "formats": {
     "docx": {
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "4d482e8d4ea045374b1ba9e48b3ab5aa678fcd22d1e463547c541a92bb2e8543"
+          "sha256": "4706dee6c0a663b481241eaee1d04cf75ae3def1dd0320bfc574ab84510f4461"
         },
         {
           "file": "docx-page-2.png",
-          "sha256": "0fc6e415cdea27d35392fcadd097fe9d7c1125e0b869c0a77d68b139540bcbaa"
+          "sha256": "0cbcfc65eccffa61cfab460cb4357852cc7c67b923d1f0fe1710edbc165d7ee3"
         }
       ],
       "requiredText": [
@@ -88,6 +88,7 @@
         "Unsupported ADF block: unsupportedBlock",
         "Unsupported wrapper keeps ",
         "rich inline content",
+        "Extension: static-extension",
         "Mar 4, 2024",
         "READY",
         "Keep Case"
@@ -96,7 +97,9 @@
         "editor-only-secret",
         "1709510400000",
         "unsupported-block-private-provenance",
-        "unsupported-inline-private-provenance"
+        "unsupported-inline-private-provenance",
+        "static-extension-private-local-id",
+        "static-extension-private-parameter"
       ]
     },
     "pdf": {
@@ -111,11 +114,11 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "752cb0325cbcd385d3dba1d1f493a3af85a986d0a3b62c9772e855bcb580f362"
+          "sha256": "091f45d7567b06c9ff14586cac62165e8b0b74958469925d437abec0c14c16c4"
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "91d4734603d300d949b6103d5cf2def74af960cf1fb57337cceb1fe4ab91c7cd"
+          "sha256": "8cef2bc07d1fad5eb2b4971dbce5dd60b0eef93522ed488daf78406458cb160f"
         },
         {
           "file": "pdf-page-5.png",
@@ -158,6 +161,7 @@
         "Unsupported ADF block: unsupportedBlock",
         "Unsupported wrapper keeps ",
         "rich inline content",
+        "Extension: static-extension",
         "4 Mar 2024",
         "READY",
         "Keep Case"
@@ -166,7 +170,9 @@
         "editor-only-secret",
         "1709510400000",
         "unsupported-block-private-provenance",
-        "unsupported-inline-private-provenance"
+        "unsupported-inline-private-provenance",
+        "static-extension-private-local-id",
+        "static-extension-private-parameter"
       ]
     }
   }

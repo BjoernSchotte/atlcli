@@ -160,18 +160,29 @@ describe("confluenceContentPortFromClient", () => {
 });
 
 describe("exportViewPortFromClient", () => {
-  test("resolves one batched export_view fetch per page, matched by data-macro-id", async () => {
+  test("caches one batch per page and uses the versioned macro endpoint when absent", async () => {
     const pages: string[] = [];
+    const individual: Array<{ pageId: string; pageVersion: number; macroId: string }> = [];
     const fake = {
       async getExportViewMacros(pageId: string) {
         pages.push(pageId);
         return new Map([["m1", "<p>rendered</p>"]]);
       },
+      async getMacroBodyByMacroId(pageId: string, pageVersion: number, macroId: string) {
+        individual.push({ pageId, pageVersion, macroId });
+        return "<p>Forge export</p>";
+      },
     } as unknown as ConfluenceClient;
     const port = exportViewPortFromClient(fake);
     expect(await port.renderMacroHtml("7", "m1")).toBe("<p>rendered</p>");
+    expect(await port.renderMacroHtml("7", "forge-local-id", 3)).toBe("<p>Forge export</p>");
     expect(await port.renderMacroHtml("7", "missing")).toBeUndefined();
-    expect(pages).toEqual(["7", "7"]);
+    expect(pages).toEqual(["7"]);
+    expect(individual).toEqual([{
+      pageId: "7",
+      pageVersion: 3,
+      macroId: "forge-local-id",
+    }]);
   });
 });
 

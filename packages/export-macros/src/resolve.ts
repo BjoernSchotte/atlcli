@@ -254,9 +254,16 @@ function floor(
   message: string,
   skipNotes: ExportNote[]
 ): Resolution {
+  const alreadyHasTerminalOutcome = skipNotes.some(
+    (note) => note.code === code && note.macroName === block.macroName
+  );
   const notes: ExportNote[] = [
     ...skipNotes,
-    { level, code, message, macroName: block.macroName },
+    ...(
+      alreadyHasTerminalOutcome
+        ? []
+        : [{ level, code, message, macroName: block.macroName } satisfies ExportNote]
+    ),
   ];
   if (block.bodyNotes) notes.push(...block.bodyNotes);
   return { replacement: [block], notes };
@@ -427,11 +434,18 @@ function wrapPorts(
   if (ctx.exportView) {
     const ev = ctx.exportView;
     const wrappedEv: ExportViewPort = {
-      renderMacroHtml: (pageId, macroId) =>
+      renderMacroHtml: (pageId, macroId, pageVersion) =>
         guard(
           "exportView",
-          stableKey({ port: "exportView", method: "renderMacroHtml", siteId, pageId, macroId }),
-          () => ev.renderMacroHtml(pageId, macroId)
+          stableKey({
+            port: "exportView",
+            method: "renderMacroHtml",
+            siteId,
+            pageId,
+            macroId,
+            pageVersion,
+          }),
+          () => ev.renderMacroHtml(pageId, macroId, pageVersion)
         ) as ReturnType<ExportViewPort["renderMacroHtml"]>,
     };
     wrapped.exportView = wrappedEv;

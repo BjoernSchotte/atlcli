@@ -30,7 +30,11 @@ export interface MacroInstance {
   body?: ExportBlock[];
   plainBody?: string;
   macroId?: string;
-  /** ADF editor identity, retained separately and never used as a macro REST id. */
+  /**
+   * ADF editor identity retained separately from Storage identity. Confluence
+   * documents the ADF local ID as the macro REST ID for Forge macros; only the
+   * export-view port projects it into that request parameter.
+   */
   adfExtension?: AdfExtensionIdentity;
 }
 
@@ -275,7 +279,11 @@ export interface MacroPageScope {
 
 export interface ExportViewPort {
   /** Server-side render a macro to HTML via the `export_view` representation. */
-  renderMacroHtml(pageId: string, macroId: string): Promise<string | undefined>;
+  renderMacroHtml(
+    pageId: string,
+    macroId: string,
+    pageVersion?: number,
+  ): Promise<string | undefined>;
 }
 
 export interface AttachmentLookupPort {

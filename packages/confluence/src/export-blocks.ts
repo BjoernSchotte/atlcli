@@ -558,10 +558,11 @@ export interface MacroParameter {
 /**
  * Identity carried by an ADF extension node.
  *
- * `localId` identifies the editor extension instance. It is deliberately kept
- * separate from Storage's `ac:macro-id`: Atlassian documents different
- * purposes for those identifiers, and the macro-body REST API accepts only the
- * latter.
+ * `localId` identifies the editor extension instance. It remains separate from
+ * Storage's `ac:macro-id` in the neutral model. For Forge macros, however,
+ * Confluence's macro-body/export REST contract explicitly uses this ADF local
+ * ID as the macro ID; the live export-view resolver applies that documented
+ * projection at the port boundary.
  */
 export interface AdfExtensionIdentity {
   extensionType: string;
@@ -820,7 +821,10 @@ export type ExportBlock =
       plainBody?: string;
       /** The `ac:macro-id` attribute. */
       macroId?: string;
-      /** ADF editor-extension identity; never substituted for `macroId`. */
+      /**
+       * ADF editor-extension identity. It stays distinct from Storage
+       * `macroId`; the live Forge export port may use its documented `localId`.
+       */
       adfExtension?: AdfExtensionIdentity;
       /** ADF fragment identities retained without inventing bookmark semantics. */
       fragments?: AdfFragmentIdentity[];

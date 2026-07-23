@@ -663,7 +663,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('HYPERLINK "https://example.invalid/adf-embed-card"')
       && documentXml.includes("Embedded content: ")
       && documentXml.includes('w:fill="F4F5F7"'),
-    docxHasExtensionBody: documentXml.includes("Extension body"),
+    docxHasExtensionBody:
+      documentXml.includes("Extension body")
+      && documentXml.includes("Extension: static-extension")
+      && !documentXml.includes("static-extension-private-local-id")
+      && !documentXml.includes("static-extension-private-parameter"),
     docxHasVisibleMediaFallback: documentXml.includes("Visible media fallback") && documentXml.includes("Media caption"),
     docxHasMediaLink:
       documentXml.includes('HYPERLINK "https://example.invalid/adf-media"')

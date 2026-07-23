@@ -20,6 +20,9 @@ import {
   countTables,
   countUnknown,
   DOCX_TEMPLATE_BYTES,
+  hasMacroAdfExport,
+  MACRO_ADF_BLOCK_EXPORT_TEXT,
+  MACRO_ADF_BODIED_EXPORT_TEXT,
   MACRO_METADATA,
   resolveMacroFixtureBlocks,
 } from "@atlcli/export-fixtures";
@@ -35,10 +38,12 @@ export interface MacroCaseResult {
   compilerVersion: string;
   jiraTableCount: number;
   floorUnknownCount: number;
+  adfExportResolved: boolean;
   resolutionNoteCodes: string[];
   pageCount: number;
   tagged: boolean;
   docxHasTable: boolean;
+  docxHasAdfExport: boolean;
   reportNotes: ReportNoteProjection[];
   digests: Record<string, string>;
 }
@@ -50,9 +55,13 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
   // "rendered-via" (Jira) and a "degraded" (floor) note.
   const jiraTableCount = countTables(resolvedPdf.blocks);
   const floorUnknownCount = countUnknown(resolvedPdf.blocks);
+  const adfExportResolved = hasMacroAdfExport(resolvedPdf.blocks);
   const resolutionNoteCodes = resolvedPdf.notes.map((n) => n.code);
   if (jiraTableCount !== 1) throw new Error(`Expected exactly one Jira table, got ${jiraTableCount}.`);
   if (floorUnknownCount < 2) throw new Error(`Expected >=2 placeholder-floor macros, got ${floorUnknownCount}.`);
+  if (!adfExportResolved) {
+    throw new Error("The Forge ADF extension did not resolve through its documented local ID.");
+  }
   if (!resolutionNoteCodes.includes("macro-rendered-via")) {
     throw new Error("Missing macro-rendered-via note for the resolved Jira macro.");
   }
@@ -93,16 +102,22 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
   const zip = unzipDocx(output.single.bytes);
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
   const docxHasTable = documentXml.includes("<w:tbl");
+  const docxHasAdfExport =
+    documentXml.includes(MACRO_ADF_BLOCK_EXPORT_TEXT) &&
+    documentXml.includes(MACRO_ADF_BODIED_EXPORT_TEXT);
   if (!docxHasTable) throw new Error("DOCX did not render the Jira table.");
+  if (!docxHasAdfExport) throw new Error("DOCX did not render the platform-projected Forge ADF export.");
 
   return {
     compilerVersion: pdf.report.compilerVersion,
     jiraTableCount,
     floorUnknownCount,
+    adfExportResolved,
     resolutionNoteCodes,
     pageCount: inspection.pageCount,
     tagged: inspection.tagged,
     docxHasTable,
+    docxHasAdfExport,
     reportNotes: projectReportNotes(pdf.report.notes),
     digests: { "macros.pdf": await sha256Hex(pdf.bytes) },
   };

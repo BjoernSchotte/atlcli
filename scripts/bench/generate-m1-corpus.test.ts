@@ -22,7 +22,7 @@ import {
 } from "@atlcli/export-fixtures";
 
 /** Structural golden — a stable sha256 of the corpus node JSON. */
-const M1_CORPUS_DIGEST = "bbf961b1b9267dd53949649ff812705a4f356bcc76f470ceb2359352b72d176c";
+const M1_CORPUS_DIGEST = "e1f968deeb9c16f9d2acd404c54d39dd0f3f7ed0f439003e7c4133dde05be0b7";
 
 describe("M1 acceptance corpus", () => {
   it("is deterministic: same version → byte-identical JSON", async () => {
@@ -35,7 +35,7 @@ describe("M1 acceptance corpus", () => {
     const corpus = await buildM1Corpus();
     expect(corpus.version).toBe(M1_CORPUS_VERSION);
     expect(corpus.nodes.length).toBe(M1_CORPUS_PAGES);
-    expect(corpusBlockCount(corpus)).toBe(172);
+    expect(corpusBlockCount(corpus)).toBe(188);
     expect(labelledPageCount(corpus)).toBe(16);
   });
 

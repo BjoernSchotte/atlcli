@@ -257,13 +257,26 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
 }
 
 export function exportViewPortFromClient(client: ConfluenceClient): ExportViewPort {
+  const batches = new Map<string, Promise<Map<string, string>>>();
   return {
-    async renderMacroHtml(pageId, macroId) {
+    async renderMacroHtml(pageId, macroId, pageVersion) {
       try {
-        // Batch: one export_view fetch per page, matched by data-macro-id.
-        const macros = await client.getExportViewMacros(pageId);
-        return macros.get(macroId);
+        // Batch first: one export_view fetch per page, matched by data-macro-id.
+        let batch = batches.get(pageId);
+        if (!batch) {
+          batch = client.getExportViewMacros(pageId);
+          batches.set(pageId, batch);
+        }
+        const rendered = (await batch).get(macroId);
+        if (rendered !== undefined) return rendered;
+
+        // Forge ADF local IDs are valid macro REST IDs. Some platform exports
+        // do not expose a data-macro-id fragment, so use the documented
+        // versioned macro-body conversion instead of silently flooring them.
+        if (pageVersion === undefined) return undefined;
+        return await client.getMacroBodyByMacroId(pageId, pageVersion, macroId);
       } catch (err) {
+        batches.delete(pageId);
         classifyClientError(err, "exportView");
       }
     },

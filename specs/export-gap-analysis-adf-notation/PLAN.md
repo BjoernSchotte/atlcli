@@ -1505,6 +1505,41 @@ content-bounds IoU 1. The unrestricted workspace suite passed 5,027 tests with
 13 intentional skips and zero failures. The matrix now records 75 of 84 rows
 closed and 9 open.
 
+Completed block/bodied-extension follow-on evidence recorded on 2026-07-23:
+the implementation now applies Confluence's documented Forge identity mapping
+at the narrow live-export boundary: ADF `localId` stays distinct from Storage
+`macroId` in the neutral model, but the export-view port uses it as the Forge
+macro ID. The previous WP6 conservative non-use of `localId` is thereby
+superseded by current official REST documentation. Both direct `extension` and
+`bodiedExtension` fixtures resolve Confluence's platform-rendered
+`adfExport`/`export_view` result through the existing bounded HTML-to-block
+converter. Successful resolution replaces the source fallback and reconciles
+the pending diagnostic; missing, offline, unauthorized, or empty output keeps a
+typed note and an explicit `[Extension: key]` label, followed by the preserved
+rich/plain body where present. IDs and parameters remain non-visual.
+
+CLI and browser now implement the same two-stage platform path: one memoized
+page-level `export_view` batch first, then the documented versioned
+single-macro conversion when that batch has no matching fragment. The resolver
+passes the owning extension's source-page version through the shared port, so
+included/child-page extensions cannot accidentally use the root version. Tests
+pin both the exact CLI client delegation and the browser session adapter,
+including precedence of resolver provenance over the browser host's version
+lookup fallback. A failed single-macro conversion retains its detailed
+degradation note as the sole terminal outcome; the placeholder floor no longer
+duplicates that report entry.
+
+Focused decoder, resolver, fixture, DOCX, and PDF tests passed, along with full
+typecheck, production browser build/output/manifest gates, packed Chromium E2E,
+and exact CLI/browser artifact/report parity. Two DOCX and five PDF pages were
+visually reviewed without clipping, overlap, or missing content; a repeat
+render produced zero mean pixel difference and content-bounds IoU 1. The
+unrestricted workspace suite passed 5,034 tests with 13 intentional skips and
+zero failures across 317 files. The matrix now records 78 of 84 rows closed and
+6 open. Live paragraph-local
+`inlineExtension` replacement remains a separate open slice because its async
+result must not split the owning paragraph.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
@@ -1516,7 +1551,7 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 4. page-bound wide-table pagination/overflow policies beyond the now-complete
    pinned table-attribute contract;
 5. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
-6. advanced extensions and Forge `adfExport` ingestion policy;
+6. live inline-extension replacement without splitting paragraph ownership;
 7. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
 8. legacy Storage-only code-macro title/collapse static projection.
 

@@ -1711,6 +1711,30 @@ describe("serializeBlocks — C3 captions", () => {
     expect(notes).toEqual([]);
   });
 
+  it("renders a bounded ADF extension fallback with its rich body", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "forge-widget",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "forge-widget",
+        localId: "opaque-forge-local-id",
+      },
+      params: [{ name: "private-mode", text: "opaque-parameter-value" }],
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Extension: forge-widget");
+    expect(xml).toContain("Visible extension body");
+    expect(xml).not.toContain("opaque-forge-local-id");
+    expect(xml).not.toContain("opaque-parameter-value");
+    expect(xml).not.toContain("macro not rendered");
+    expect(notes).toEqual([]);
+  });
+
   it("renders synced-content projections without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

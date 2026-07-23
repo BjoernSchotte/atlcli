@@ -586,6 +586,15 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         ],
       }],
     },
+    {
+      type: "extension",
+      attrs: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "static-extension",
+        localId: "static-extension-private-local-id",
+        parameters: { privateMode: "static-extension-private-parameter" },
+      },
+    },
   ],
 });
 

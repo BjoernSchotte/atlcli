@@ -23,9 +23,17 @@ export function exportViewFallbackRenderer(deps: {
     macros: ["*"],
     requiresLivePort: true,
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
-      if (!ctx.exportView || !m.macroId) return { kind: "skip" };
+      // Storage macros use ac:macro-id. Forge ADF extensions use localId as the
+      // macro ID for Confluence's macro-body/export REST contract. Keep both
+      // identities distinct in the neutral model and project only here.
+      const macroId = m.macroId ?? m.adfExtension?.localId;
+      if (!ctx.exportView || !macroId) return { kind: "skip" };
       try {
-        const html = await ctx.exportView.renderMacroHtml(ctx.page.id, m.macroId);
+        const html = await ctx.exportView.renderMacroHtml(
+          ctx.page.id,
+          macroId,
+          ctx.page.version,
+        );
         if (!html) return { kind: "skip" };
         const { blocks, notes } = deps.htmlToExportBlocks(html);
         if (blocks.length === 0) return { kind: "skip", notes };

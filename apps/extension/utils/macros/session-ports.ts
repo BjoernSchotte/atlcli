@@ -396,7 +396,7 @@ export function sessionExportViewPort(
 ): ExportViewPort {
   const batches = new Map<string, Promise<Map<string, string>>>();
   return {
-    async renderMacroHtml(pageId, macroId) {
+    async renderMacroHtml(pageId, macroId, pageVersion) {
       preflight("exportView", deps.state, deps.signal);
       try {
         let batch = batches.get(pageId);
@@ -409,7 +409,7 @@ export function sessionExportViewPort(
         const rendered = (await batch).get(macroId);
         if (rendered !== undefined) return rendered;
 
-        const version = deps.versionOf?.(pageId);
+        const version = pageVersion ?? deps.versionOf?.(pageId);
         if (version === undefined) return undefined;
         return await client.getMacroBodyByMacroId(pageId, version, macroId, {
           ...(deps.signal ? { signal: deps.signal } : {}),

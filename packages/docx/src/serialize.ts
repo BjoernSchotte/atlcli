@@ -877,6 +877,8 @@ async function serializeBlock(
       // silently drops content ("never silently drop" is spec 004's invariant).
       const fallbackLabel = block.unsupportedAdf
         ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : block.adfExtension
+        ? `Extension: ${block.adfExtension.extensionKey}`
         : `${block.macroName} macro not rendered`;
       const placeholder = paragraph(
         run(`[${fallbackLabel}]`, { italic: true, color: "97A0AF" })

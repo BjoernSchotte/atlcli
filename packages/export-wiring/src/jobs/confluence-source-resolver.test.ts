@@ -442,7 +442,9 @@ describe("resolveConfluenceSourceV1", () => {
     expect(result.pageCount).toBe(2);
     expect(result.pages.map((page) => page.id)).toEqual(["root", "child"]);
     expect(result.chapterAnchorById?.has("child")).toBe(true);
-    expect(result.sourceNotes.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(result.sourceNotes.some((note) =>
+      note.code === "macro-not-rendered" && note.macroName === "widget"
+    )).toBe(true);
     expect(result.sourceSummary.representations).toEqual({ atlas_doc_format: 2, storage: 0 });
   });
 

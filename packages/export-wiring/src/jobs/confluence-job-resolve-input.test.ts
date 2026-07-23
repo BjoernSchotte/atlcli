@@ -174,7 +174,9 @@ describe("Confluence job resolveInput adapters", () => {
       type: "paragraph",
       content: [{ type: "text", text: "Shared", marks: ["code"] }],
     });
-    expect(result.input.sourceNotes?.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(result.input.sourceNotes?.some((note) =>
+      note.code === "macro-not-rendered" && note.macroName === "widget"
+    )).toBe(true);
     expect(progress).toEqual([{ fetched: 1, total: 1 }]);
     expect(JSON.stringify(result.input)).not.toContain("RAW-STORAGE");
   });
@@ -210,7 +212,9 @@ describe("Confluence job resolveInput adapters", () => {
       type: "paragraph",
       content: [{ type: "text", text: "Shared", marks: ["code"] }],
     });
-    expect(result.sourceNotes?.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(result.sourceNotes?.some((note) =>
+      note.code === "macro-not-rendered" && note.macroName === "widget"
+    )).toBe(true);
     expect(result.complete).toBe(true);
     expect(JSON.stringify(result)).not.toContain("RAW-STORAGE");
   });

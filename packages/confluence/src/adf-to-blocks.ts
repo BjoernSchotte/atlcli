@@ -182,6 +182,25 @@ function addNodeNote(
   );
 }
 
+function addExtensionResolutionNote(
+  ctx: DecodeContext,
+  path: string,
+  nodeType: string,
+  extensionKey: string,
+): void {
+  ctx.notes.add(
+    {
+      level: "warning",
+      code: "macro-not-rendered",
+      message:
+        `ADF ${nodeType} "${extensionKey}" retained its static fallback and awaits macro resolution.`,
+      macroName: extensionKey,
+      source: sourceFor(ctx, path),
+    },
+    `extension|${path}|${nodeType}|${extensionKey}`,
+  );
+}
+
 function addMarkNote(
   ctx: DecodeContext,
   path: string,
@@ -1007,7 +1026,6 @@ function smartCardLayout(value: AdfJsonValue | undefined): SmartCardSemantics["l
 }
 
 function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
-  addNodeNote(ctx, path, node.type, "was routed through the neutral unresolved-macro contract.");
   const params = extensionParams(node.attrs?.parameters);
   // Match the Storage adapter: unresolved macro-body diagnostics stay attached
   // to the block until a renderer chooses the fallback body. They are not
@@ -1018,6 +1036,7 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
   const bodyNotes = bodyCollector.finish(sourceFor(bodyCtx, `${path}.content`));
   const extensionType = stringAttr(node, "extensionType") ?? "unknown";
   const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+  addExtensionResolutionNote(ctx, path, node.type, extensionKey);
   const adfExtension: AdfExtensionIdentity = {
     extensionType,
     extensionKey,

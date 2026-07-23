@@ -1535,6 +1535,8 @@ function serializeBlock(
       // the preserved body/plainBody, instead of silently omitting content.
       const fallbackLabel = block.unsupportedAdf
         ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : block.adfExtension
+        ? `Extension: ${block.adfExtension.extensionKey}`
         : `${block.macroName} macro not rendered`;
       const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.placeholder)}))[${escapeTypstContent(
         `[${fallbackLabel}]`

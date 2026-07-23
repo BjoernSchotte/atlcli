@@ -90,10 +90,13 @@ describe("resolveMacroBlocks — fallback chain", () => {
     }]);
   });
 
-  test("never substitutes an ADF localId for the Storage macro-body id", async () => {
-    let calls = 0;
+  test("uses the documented Forge ADF localId as the export-view macro id", async () => {
+    const calls: Array<{ pageId: string; macroId: string; pageVersion?: number }> = [];
     const renderer = exportViewFallbackRenderer({
-      htmlToExportBlocks: () => ({ blocks: [], notes: [] }),
+      htmlToExportBlocks: () => ({
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "Forge export" }] }],
+        notes: [],
+      }),
     });
     const result = await renderer.render({
       name: "synthetic-extension",
@@ -104,16 +107,87 @@ describe("resolveMacroBlocks — fallback chain", () => {
         localId: "editor-instance-only",
       },
     }, ctx({
+      page: { id: "1", version: 7 },
       exportView: {
-        async renderMacroHtml() {
-          calls += 1;
-          return "<p>must not run</p>";
+        async renderMacroHtml(pageId, macroId, pageVersion) {
+          calls.push({ pageId, macroId, pageVersion });
+          return "<p>Forge export</p>";
         },
       },
     }));
 
-    expect(result).toEqual({ kind: "skip" });
-    expect(calls).toBe(0);
+    expect(result).toEqual({
+      kind: "blocks",
+      blocks: [{ type: "paragraph", content: [{ type: "text", text: "Forge export" }] }],
+      notes: [{
+        level: "info",
+        code: "macro-rendered-via",
+        message: 'The "synthetic-extension" macro was rendered via Confluence export_view.',
+        macroName: "synthetic-extension",
+      }],
+    });
+    expect(calls).toEqual([{
+      pageId: "1",
+      macroId: "editor-instance-only",
+      pageVersion: 7,
+    }]);
+  });
+
+  test("keeps a Storage macro id authoritative when both identity forms exist", async () => {
+    const ids: string[] = [];
+    const renderer = exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({ blocks: [], notes: [] }),
+    });
+    await renderer.render({
+      name: "migrated-extension",
+      params: [],
+      macroId: "storage-macro-id",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "migrated-extension",
+        localId: "forge-local-id",
+      },
+    }, ctx({
+      exportView: {
+        async renderMacroHtml(_pageId, macroId) {
+          ids.push(macroId);
+          return undefined;
+        },
+      },
+    }));
+
+    expect(ids).toEqual(["storage-macro-id"]);
+  });
+
+  test("does not duplicate a renderer's terminal degradation note at the placeholder floor", async () => {
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({ blocks: [], notes: [] }),
+    })]);
+    const input: StorageToBlocksResult = {
+      blocks: [unknownBlock("synthetic-extension", {
+        adfExtension: {
+          extensionType: "com.atlassian.confluence.macro.core",
+          extensionKey: "synthetic-extension",
+          localId: "missing-local-id",
+        },
+      })],
+      notes: [walkerNote("synthetic-extension", "macro-not-rendered")],
+    };
+    const out = await resolveMacroBlocks(input, registry, ctx({
+      page: { id: "1", version: 7 },
+      exportView: {
+        async renderMacroHtml() {
+          throw portError("not-found", "macro not found", { service: "exportView" });
+        },
+      },
+    }));
+
+    expect(out.blocks).toEqual(input.blocks);
+    expect(out.notes.filter((note) => note.code === "macro-degraded")).toHaveLength(1);
+    expect(out.notes.find((note) => note.code === "macro-degraded")?.message).toContain(
+      "macro not found"
+    );
+    expect(out.notes.some((note) => note.code === "macro-not-rendered")).toBe(false);
   });
 
   test("first matching renderer wins", async () => {

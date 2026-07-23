@@ -447,7 +447,9 @@ describe("createPdfExportJobExecutor", () => {
       createPdfExportJobExecutor(fixture.options).execute(request(), executionContext({ order }).context),
     ).rejects.toThrow("worker lost");
     expect(sourceReads).toBe(1);
-    expect(ready.prepared?.sourceNotes.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(ready.prepared?.sourceNotes.some((note) =>
+      note.code === "macro-not-rendered" && note.macroName === "widget"
+    )).toBe(true);
     expect(JSON.stringify(ready.prepared)).not.toContain("RAW-SIDECAR");
 
     await createPdfExportJobExecutor(fixture.options).execute(

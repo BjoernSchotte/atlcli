@@ -54,7 +54,7 @@ describe("ADF rendered goldens", () => {
       "unsupported-adf-typed-fallback",
       "media-wrap-source-order",
       "synced-content-snapshot-and-reference",
-      "extension",
+      "extension-static-fallback",
     ]);
     for (const format of ["docx", "pdf"] as const) {
       expect(manifest.formats[format].pages.length).toBeGreaterThan(0);

@@ -43,9 +43,13 @@ Storage remains a compatibility adapter, the Data Center source, and a
 version-matched sidecar for definitions that are not yet ADF-native. Durable
 background-host integration remains a separate, explicitly open work package;
 it must enter at the same source boundary and must not fork renderer behavior.
-Third-party `adfExport` ingestion also remains incomplete. See [E1], [E2],
-[E3], and [E4] for the original baseline evidence and `PLAN.md` for the
-implementation evidence ledger.
+Third-party block and bodied `adfExport` output is now consumed through
+Confluence's documented platform export: Forge ADF `localId` is projected to
+the macro export ID, Confluence invokes the app function, and the returned
+platform-rendered export view enters the shared block converter. Live inline
+extension output remains open because replacing a paragraph-local range
+without splitting that paragraph needs an inline async-resolution contract.
+See [E1], [E2], [E3], [E4], and [E46].
 
 Consequences:
 
@@ -105,7 +109,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **75 of 84 rows closed; 9 rows open.** This count
+Current matrix orientation: **78 of 84 rows closed; 6 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -351,17 +355,30 @@ Evidence: [E2], [E7], [E8], [E17], [E39], [E40].
 
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
-| [ ] | `extension` | ADF and Storage retain extension/macro identity, structured parameters, body where present, fragments, and source page context before the live renderer chain. | Open/Conditional | Open/Conditional | **Open:** define native/fallback projection for generic extension output and complete `adfExport` ingestion; registry or `export_view` resolution remains conditional. |
+| [x] | `extension` | ADF and Storage retain extension/macro identity, structured parameters, fragments, and source page context before the live renderer chain. Forge ADF `localId` stays distinct from Storage `macroId` and is projected only at the documented export-view port. | Native/Conditional | Native/Conditional | Closed for the public static-export contract: CLI and browser first share one cached platform export per page and then use the same versioned single-macro conversion when the batch omits a Forge extension. Live mode consumes Confluence's platform-rendered `adfExport`/`export_view` result; offline, permission, missing-output, and unknown-app outcomes retain an explicit `[Extension: key]` fallback plus a typed report note without exposing IDs or parameters. |
 | [ ] | `inlineExtension` | ADF retains inline placement, extension identity/parameters/fragments, and a visible label; export controls are consumed semantically. | Open/Fallback | Open/Fallback | **Open:** render a richer inline body/text fallback without splitting the paragraph and integrate third-party `adfExport`. |
-| [ ] | `bodiedExtension` | ADF/Storage identity, rich/plain body, structured parameters, fragments, and source context are retained before resolution. | Open/Conditional | Open/Conditional | **Open:** complete generic native/fallback presentation and third-party `adfExport` ingestion independent of live registry success. |
+| [x] | `bodiedExtension` | ADF/Storage identity, rich/plain body, structured parameters, fragments, and source context survive before resolution. Forge ADF `localId` and the owning source-page version reach the platform export port without being copied into Storage identity. | Native/Conditional | Native/Conditional | Closed for the public static-export contract: successful Confluence `adfExport` output replaces the source body in both targets; every unresolved/offline outcome shows the explicit extension label followed by the retained rich/plain body, with source-located diagnostics and no opaque identity/parameter publication. |
 | [x] | `syncBlock` | The reference-only node retains exact resource/local identity, projection kind, and optional breakout intent as non-visual provenance. Because the pinned contract carries no embedded body and no public resolver contract is documented, both targets render a deterministic unavailable-content callout without exposing opaque IDs. | Approximation | Approximation | Closed for every pinned attribute and its strongest safe static projection; executing Confluence-internal synchronization is outside the documented ADF export contract. |
 | [x] | `bodiedSyncBlock` | Exact resource/local identity, embedded snapshot blocks, projection kind, and optional breakout intent survive validation, decoding, composition, CLI/browser resolution, and both static targets. Synchronization is not executed; the embedded ADF body is the exported snapshot. | Approximation | Approximation | Closed for every pinned attribute and embedded child. Both targets visibly label the snapshot, preserve its rich body, keep opaque IDs non-visual, and report page-bounded breakout behavior. |
 
-The async registry currently covers TOC, Jira/JiraIssues, Confluence datasource lists, draw.io/Gliffy, multiexcerpt include, Scroll table layout, children, include/excerpt, page-properties report, and then an `export_view` catch-all. Every other macro falls to a visible placeholder with preserved body where available. This is good loss visibility, but it is not generic ADF extension support.
+The async registry covers TOC, Jira/JiraIssues, Confluence datasource lists,
+draw.io/Gliffy, multiexcerpt include, Scroll table layout, children,
+include/excerpt, page-properties report, and an `export_view` catch-all.
+Storage macros use `ac:macro-id`; Forge block/bodied ADF extensions use their
+documented `localId` only at that port. Both hosts cache the same page-level
+export representation and use the exact source-page version for the documented
+single-macro conversion fallback. Every unresolved macro retains a visible
+bounded fallback and preserved body where available.
 
-Forge macros may provide an `adfExport` function for `pdf`, `word`, or `other`. That output should ultimately be ingested as ADF, not only as flattened `export_view` HTML.
+Forge macros may provide an `adfExport` function for `pdf`, `word`, or `other`.
+The public contract documents Confluence invoking that function during export;
+it does not expose a direct external endpoint for calling the function or
+retrieving its raw returned ADF. Therefore the supported integration consumes
+Confluence's platform-rendered export representation and converts it to the
+same neutral model as other macro output. Raw app-function invocation is not
+invented by the exporter.
 
-Evidence: [E2], [E3], [E4], [E18], [E19], [E42].
+Evidence: [E2], [E3], [E4], [E18], [E19], [E42], [E46].
 
 ### 6.9 Schema/documentation drift watchlist
 
@@ -425,7 +442,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
 | [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
 | [x] | `!` | media picker | Block image/file/link/external media, static audio/video attachment cards, groups, inline images, authored dimensions/layout, alt text, captions, borders, and links are complete. | Closed for every pinned materialized media outcome: correlated block and inline images render as real target images; file/link/unresolved outcomes remain visible, typed, clickable where safe, and diagnostic. |
-| [ ] | `{` | macro autocomplete | `extension*` or legacy macro projection | **Open/conditional:** core, Forge `adfExport`, Connect/migrated, unknown, and offline behavior. |
+| [x] | `{` | macro autocomplete | `extension*` or legacy macro projection | Closed selection mapping: core renderers, Connect/Storage export views, Forge block/bodied `adfExport`, unknown apps, and offline fallbacks are explicit. Live paragraph-local replacement remains tracked only in the open `inlineExtension` row. |
 | [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
 | [x] | `/...` | Selected node/macro | Determined by the resulting typed ADF node, never by reparsing slash text. | Closed classification policy; the selected result remains tracked in its own checked row. |
 
@@ -572,9 +589,13 @@ Required acceptance contract:
 
 ### P2 - Dynamic and advanced content
 
-- [ ] **Open — ADF extensions.** Direct extension identities, parameters,
-  visible fallbacks, and export controls are decoded; Forge `adfExport`
-  ingestion before HTML fallback remains.
+- [x] **ADF block/bodied extensions.** Direct identity, parameters, body,
+  visible fallback, export controls, documented Forge-local-ID lookup, and
+  Confluence-rendered `adfExport` ingestion are complete across CLI/browser and
+  DOCX/PDF.
+- [ ] **Open — inline extension live output.** Paragraph-local identity,
+  parameters, fragments, visible text, and static output are retained; an
+  async rich replacement must preserve paragraph ownership.
 - [x] **Synced-content snapshot/reference policy.** Embedded snapshots and
   reference-only projections are complete for the pinned static contract.
 - [ ] **Open — annotation marks.** Exact source identities, validation,
@@ -630,8 +651,9 @@ Required acceptance contract:
 
 - [x] Full media family: pinned block media/group/single/inline, native
   correlated images, and static image/file/audio/video/link/external fallbacks.
-- [ ] **Open:** ADF-native extension forms are decoded; Forge `adfExport`
-  ingestion remains.
+- [x] ADF-native block/bodied extension forms, Forge `adfExport` platform
+  ingestion, and deterministic static fallbacks.
+- [ ] **Open:** live `inlineExtension` replacement without paragraph splitting.
 - [x] Synced content policy for both pinned reference-only and embedded forms.
 
 ### Phase 4 - Conformance and release gate
@@ -686,6 +708,10 @@ Closed gates:
   composition, both target markers, real render goldens, and packed browser
   parity.
 - [x] Generic inline-extension placement and visible fallback.
+- [x] Block/bodied extension identity, parameters, body, static privacy-safe
+  fallback, Forge-local-ID export-view resolution, platform-rendered
+  `adfExport` conversion, both targets, packed browser execution, and CLI
+  artifact/report parity.
 - [x] Annotation identity validation/retention and complete fragment provenance:
   fragment arrays retain exact source order, duplicates, and optional names
   through decoding, composition, PDF preparation, and packed-browser
@@ -759,6 +785,8 @@ Accessed 2026-07-22 and 2026-07-23:
 20. [Confluence Data Center storage format: page layouts](https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html)
 21. [Typst grid](https://typst.app/docs/reference/layout/grid/)
 22. [Microsoft: Working with WordprocessingML tables](https://learn.microsoft.com/en-us/office/open-xml/word/working-with-wordprocessingml-tables)
+23. [Confluence macro-body REST API and Forge local-ID mapping](https://developer.atlassian.com/cloud/confluence/rest/v1/api-group-content---macro-body/)
+24. [Forge rich-text bodied macros and HTML export coverage](https://developer.atlassian.com/platform/forge/using-rich-text-bodied-macros/)
 23. [ADF expand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/expand/)
 24. [ADF nestedExpand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/nestedExpand/)
 25. [Confluence: Display files and images](https://support.atlassian.com/confluence-cloud/docs/display-files-and-images/)
@@ -829,6 +857,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E43] Complete pinned breakout intent and page-bounded static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E44] Complete fragment provenance without invented navigation:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E45] Typed unsupported-ADF preservation and visible static fallback:** `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E46] Complete block/bodied extension static and platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/types.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-wiring/src/ports.ts`, `packages/export-wiring/src/ports.test.ts`, `apps/extension/utils/macros/session-ports.ts`, `apps/extension/tests/macros/session-ports.test.ts`, `apps/cli/src/commands/engine-parity.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

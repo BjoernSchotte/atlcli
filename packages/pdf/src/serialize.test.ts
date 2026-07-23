@@ -1935,6 +1935,33 @@ describe("serialize — C3 captions", () => {
     expect(bundle.notes).toEqual([]);
   });
 
+  it("renders a bounded ADF extension fallback with its rich body", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "unknown",
+      macroName: "forge-widget",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "forge-widget",
+        localId: "opaque-forge-local-id",
+      },
+      params: [{ name: "private-mode", text: "opaque-parameter-value" }],
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("Extension: forge-widget");
+    expect(bundle.main).toContain("Visible extension body");
+    expect(bundle.main).not.toContain("opaque-forge-local-id");
+    expect(bundle.main).not.toContain("opaque-parameter-value");
+    expect(bundle.main).not.toContain("macro not rendered");
+    expect(bundle.notes).toEqual([]);
+  });
+
   it("preserves synced-content provenance without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

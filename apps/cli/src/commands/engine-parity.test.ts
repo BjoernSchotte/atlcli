@@ -216,6 +216,15 @@ describe("macro-report parity across engines (spec 010)", () => {
           }
           return Response.json(MACRO_PAGE);
         }
+        if (
+          url.pathname ===
+          `/rest/api/content/${MACRO_PAGE_ID}/history/1/macro/id/${DEAD_MACRO_ID}`
+        ) {
+          return new Response(JSON.stringify({ message: "macro not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
         unmatched.push(`${url.pathname}?${url.searchParams}`);
         return new Response(JSON.stringify({ message: `stub: no route for ${url.pathname}` }), {
           status: 404,
