@@ -1448,8 +1448,9 @@ double-commit it.
 - [x] Dual-read legacy PDF rows in Activity for one retention/release window.
 - [x] Do not copy live large legacy blobs into the new store.
 - [x] Legacy in-flight PDF rows may finish under the legacy runtime.
-- [ ] Route new PDF and DOCX submissions to the common catalog in PR-G and PR-H
-      respectively; PR-F deliberately introduces no half-migrated submission path.
+- [x] Route new PDF submissions to the common catalog in PR-G.
+- [ ] Route new DOCX submissions to the common catalog in PR-H; PR-F
+      deliberately introduced no half-migrated submission path.
 - [x] A legacy compile subrecord used during transition is private/hidden and
       never produces a second Activity row.
 
@@ -1457,16 +1458,32 @@ Exit: Activity can project legacy PDF plus new common rows without schema loss.
 
 ### Phase 4 / T7.5 — Full-pipeline PDF background execution
 
-- [ ] Persist the outer PDF request before discovery.
-- [ ] Move source/macro/asset/preparation/validation/commit execution off the
+- [x] Persist the outer PDF request before discovery.
+- [x] Move source/macro/asset/preparation/validation/commit execution off the
       panel.
-- [ ] Split compiler transport from the current compile-only job wrapper so the
+- [x] Split compiler transport from the current compile-only job wrapper so the
       outer job id remains the sole user-visible job.
-- [ ] Reconstruct runnable jobs after offscreen loss using claims/checkpoints.
-- [ ] Prove panel close/navigation/restart during every stage.
-- [ ] Retain finished PDF bytes/report for Activity delivery.
+- [x] Reconstruct runnable jobs after offscreen loss using claims/checkpoints.
+- [x] Prove panel close/navigation/restart during every stage.
+- [x] Retain finished PDF bytes/report for Activity delivery.
 
 Exit: no PDF stage before artifact commit depends on panel lifetime.
+
+Evidence (2026-07-23): the lifecycle proof is deliberately layered. The catalog
+test checkpoints and recovers a PDF job at each of `discover`, `fetch`,
+`compose`, `resolve`, `assets`, `render`, `validate`, and `commit`, while
+fencing the old lease and preserving the durable request/checkpoint. UI tests
+prove page navigation and panel unmount detach the observer without cancelling
+the job, while explicit Cancel still requests durable cancellation. The packed
+MV3 Chromium test submits a real PDF, navigates the submitting extension
+surface away, changes the active tab, closes the surface, terminates the real
+service-worker target, and separately terminates/recreates the real offscreen
+target. The recovered PDF has the same SHA-256, byte length, and report summary
+as an uninterrupted control export. Because neither the panel nor service
+worker owns an executor, those lifecycle losses are stage-independent; the
+all-stage catalog recovery matrix covers the only stage-sensitive owner loss.
+The affected extension matrix passed 99/99, full typecheck passed, and the
+fresh production build plus packed Chromium gate passed 12/12.
 
 ### Phase 5 / T7.6 — DOCX background parity
 
@@ -1602,7 +1619,7 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     origin, so that result remains an annotated capability probe rather than a
     false native-quota claim.
 
-- [ ] **PR-G — Full-pipeline PDF extension background migration** (`T7.5`)
+- [x] **PR-G — Full-pipeline PDF extension background migration** (`T7.5`)
   - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: persist request before discovery; move PDF fetch/compose/resolve/assets/
     prepare/render/validate/finalize outside the panel; split compiler transport
@@ -1610,6 +1627,13 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
   - Acceptance: navigation, tab change, panel close, service-worker loss, and
     offscreen loss are tested at every stage; one outer Activity row remains
     truth; recovered output/report matches uninterrupted PDF execution.
+  - Evidence (2026-07-23): all eight durable stages are covered by the recovery/
+    fencing matrix; panel detach and explicit-cancel semantics are covered
+    through the real provider; packed Chromium covers navigation, tab change,
+    surface close, real service-worker loss, real offscreen loss, the private
+    compiler bridge's single Activity row, retained bytes/report, and recovered
+    output/report parity. Gates: affected tests 99/99, typecheck, production
+    extension build, packed Chromium 12/12.
 
 - [ ] **PR-H — DOCX extension background parity** (`T7.6`)
   - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)

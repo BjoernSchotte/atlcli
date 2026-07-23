@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
-import type { DocxExportJobRequestV1 } from "@atlcli/export-jobs";
+import type {
+  DocxExportJobRequestV1,
+  ExportJobStage,
+  PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
 import {
   EXTENSION_EXPORT_DB_NAME,
   EXTENSION_EXPORT_DB_VERSION,
@@ -41,6 +45,30 @@ function request(id: string): DocxExportJobRequestV1 {
     output: { policy: "collect" },
     template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" },
     options: { embedImages: true, resolveMacros: true },
+  };
+}
+
+function pdfRequest(id: string): PdfExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://site.atlassian.net",
+      locator: { kind: "page-id", id: "42" },
+      scope: { kind: "page" },
+    },
+    authRef: "extension-session:https://site.atlassian.net",
+    displayName: `Export ${id}`,
+    createdAt: 1,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: { id: "default", manifestVersion: "1" },
+    settings: {},
+    options: { resolveMacros: true, exportedAt: 1 },
   };
 }
 
@@ -165,6 +193,96 @@ describe("IndexedDbExportJobCatalog", () => {
       leaseEpoch: first.leaseEpoch,
       progress: { stage: "fetch", done: 1, total: 1, updatedAt: now },
     })).rejects.toMatchObject({ code: "revision-conflict" });
+  });
+
+  it("recovers durable PDF work from every pipeline stage after executor loss", async () => {
+    const stages: ExportJobStage[] = [
+      "discover",
+      "fetch",
+      "compose",
+      "resolve",
+      "assets",
+      "render",
+      "validate",
+      "commit",
+    ];
+
+    for (const [index, stage] of stages.entries()) {
+      const stageFactory = new IDBFactory();
+      let now = 100 + index;
+      const store = new IndexedDbExportJobCatalog({
+        factory: stageFactory,
+        now: () => now,
+      });
+      const durableRequest = pdfRequest(`pdf-${stage}`);
+      await store.create({ request: durableRequest });
+      const first = (await store.claimNext({
+        ownerId: "offscreen-a",
+        now,
+        leaseDurationMs: 10,
+      }))!;
+      const progressed = await store.compareAndSet({
+        kind: "progress",
+        id: first.id,
+        expectedRevision: first.revision,
+        leaseEpoch: first.leaseEpoch,
+        progress: {
+          stage,
+          done: index,
+          total: stages.length,
+          detail: `checkpoint at ${stage}`,
+          updatedAt: now,
+        },
+      });
+      const checkpointRef = `checkpoint:${first.id}:${stage}`;
+      const checkpointed = await store.compareAndSet({
+        kind: "checkpoint",
+        id: first.id,
+        expectedRevision: progressed.revision,
+        leaseEpoch: first.leaseEpoch,
+        at: now,
+        checkpointRef,
+      });
+      expect(checkpointed).toMatchObject({
+        stage,
+        progress: {
+          stage,
+          done: index,
+          total: stages.length,
+          detail: `checkpoint at ${stage}`,
+        },
+        checkpointRef,
+      });
+
+      now += 11;
+      const recovered = await recoverAndClaimExtensionExportJob(store, {
+        now,
+        ownerId: "offscreen-b",
+        leaseDurationMs: 10,
+      });
+
+      expect(recovered).toMatchObject({
+        id: first.id,
+        format: "pdf",
+        state: "running",
+        attempt: 2,
+        recoveryCount: 1,
+        leaseEpoch: 2,
+        checkpointRef,
+      });
+      expect(recovered?.stage).toBeUndefined();
+      expect(recovered?.progress).toBeUndefined();
+      expect(await store.getRequest(recovered!.requestRef)).toEqual(durableRequest);
+      await expect(store.compareAndSet({
+        kind: "heartbeat",
+        id: first.id,
+        expectedRevision: checkpointed.revision,
+        ownerId: "offscreen-a",
+        leaseEpoch: first.leaseEpoch,
+        now,
+        leaseDurationMs: 10,
+      })).rejects.toMatchObject({ code: "revision-conflict" });
+    }
   });
 
   it("replays from the durable request when the owner dies immediately after claim", async () => {
