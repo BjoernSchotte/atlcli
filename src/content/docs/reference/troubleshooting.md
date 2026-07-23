@@ -172,8 +172,12 @@ atlcli wiki export jobs watch <job-id>
 The ordinary CLI command is the runner; there is no detached daemon. If that
 process ended, a stale lease is reconciled the next time an export-jobs command
 opens the journal. Use `retry` for a resulting interrupted/failed job. If a
-recoverable checkpoint was returned to `queued` without an owner, cancel that
-row first and then retry it as an explicit foreground job.
+recoverable checkpoint was returned to `queued`, reclaim that same row and its
+checkpoint explicitly:
+
+```bash
+atlcli wiki export jobs resume <queued-job-id>
+```
 
 ### A job is waiting
 

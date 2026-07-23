@@ -259,6 +259,9 @@ atlcli wiki export jobs watch <job-id>
 # Request cancellation from another process
 atlcli wiki export jobs cancel <job-id>
 
+# Resume the same checkpointed row after its foreground process was lost
+atlcli wiki export jobs resume <queued-job-id>
+
 # Failed/cancelled jobs can be retried; successful jobs can be run again
 atlcli wiki export jobs retry <job-id> --output ./retry.docx
 atlcli wiki export jobs rerun <job-id> --output ./copy.pdf

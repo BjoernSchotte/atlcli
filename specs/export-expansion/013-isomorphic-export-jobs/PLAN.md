@@ -1279,6 +1279,7 @@ atlcli wiki export jobs list [--status ...] [--format ...] [--since ...] [--json
 atlcli wiki export jobs show <id> [--json]
 atlcli wiki export jobs watch <id> [--jsonl]
 atlcli wiki export jobs cancel <id>
+atlcli wiki export jobs resume <queued-id>
 atlcli wiki export jobs retry <id> [--output ...]
 atlcli wiki export jobs rerun <succeeded-id> [--output ...]
 atlcli wiki export jobs clear --before <duration> --confirm
@@ -1972,6 +1973,8 @@ After merge:
   and commits no partial output.
 - Process termination after every checkpoint is reconciled on the next command.
 - `jobs list/show/watch` observe a job owned by another process.
+- `jobs resume <queued-id>` reclaims the same recoverable checkpoint in a
+  foreground runner without deriving another history row.
 - Process B runs `jobs cancel` on a job owned by process A; A observes the
   durable request, aborts local work, exits with the established cancellation
   code, and commits no output.

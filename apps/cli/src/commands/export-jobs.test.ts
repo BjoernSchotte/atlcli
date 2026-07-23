@@ -263,6 +263,80 @@ describe("handleExportJobs", () => {
     expect(output.read()).toBe("");
   });
 
+  it("resumes the same queued job without creating a derived history row", async () => {
+    const store = persistence();
+    const queued = await store.jobs.create({
+      request: request("checkpointed", 1, {
+        policy: "path",
+        targetRef: "/exports/checkpointed.docx",
+      }),
+    });
+    const { dependencies, output } = deps(store);
+    const calls: Array<{
+      requestId: string;
+      snapshotId: string;
+      requestRef: string;
+    }> = [];
+
+    await handleExportJobs(["resume", "checkpointed"], {}, { json: false }, {
+      ...dependencies,
+      async executeReplay(resumeRequest, snapshot) {
+        calls.push({
+          requestId: resumeRequest.id,
+          snapshotId: snapshot.id,
+          requestRef: snapshot.requestRef,
+        });
+      },
+    });
+
+    expect(calls).toEqual([{
+      requestId: "checkpointed",
+      snapshotId: "checkpointed",
+      requestRef: queued.requestRef,
+    }]);
+    expect(await store.jobs.list({ includeDismissed: true })).toHaveLength(1);
+    expect(output.read()).toBe("");
+  });
+
+  it("rejects Resume for terminal jobs instead of silently deriving a new row", async () => {
+    const store = persistence();
+    await failJob(store, "failed");
+    const { dependencies } = deps(store);
+
+    await expect(
+      handleExportJobs(["resume", "failed"], {}, { json: false }, {
+        ...dependencies,
+        async executeReplay() {
+          throw new Error("must not execute");
+        },
+      }),
+    ).rejects.toThrow("Resume requires queued work");
+    expect(await store.jobs.get("derived-job")).toBeUndefined();
+  });
+
+  it("marks a queued Resume interrupted when foreground preflight cannot start", async () => {
+    const store = persistence();
+    await store.jobs.create({ request: request("checkpointed") });
+    const { dependencies } = deps(store);
+
+    await expect(
+      handleExportJobs(["resume", "checkpointed"], {}, { json: false }, {
+        ...dependencies,
+        async executeReplay() {
+          throw new Error("profile unavailable");
+        },
+      }),
+    ).rejects.toThrow("profile unavailable");
+    expect(await store.jobs.get("checkpointed")).toMatchObject({
+      state: "interrupted",
+      error: {
+        code: "host.replay-start-failed",
+        message: "profile unavailable",
+        retryable: true,
+      },
+    });
+  });
+
   it("executes an idempotently existing replay through the production hook exactly once", async () => {
     const store = persistence();
     await failJob(store, "failed");

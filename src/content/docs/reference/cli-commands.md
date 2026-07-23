@@ -332,14 +332,16 @@ atlcli wiki export jobs show <job-id>
 atlcli wiki export jobs watch <job-id>
 atlcli wiki export jobs watch <job-id> --jsonl
 atlcli wiki export jobs cancel <job-id>
+atlcli wiki export jobs resume <queued-id>
 atlcli wiki export jobs retry <failed-id> --output ./retry.docx
 atlcli wiki export jobs rerun <succeeded-id> --output ./copy.pdf
 atlcli wiki export jobs clear --before 30d --confirm
 ```
 
-`retry` accepts failed, interrupted, or cancelled jobs; `rerun` accepts
-successful jobs. Both create a linked new job and leave the source row
-unchanged. `list`, `show`, `cancel`, `retry`, `rerun`, and `clear` accept
+`resume` reclaims the same queued row and its durable checkpoints after a
+foreground runner was lost. `retry` accepts failed, interrupted, or cancelled
+jobs; `rerun` accepts successful jobs. Those two create a linked new job and
+leave the source row unchanged. `list`, `show`, `cancel`, `retry`, `rerun`, and `clear` accept
 `--json`; `watch` accepts `--jsonl`. Ordinary exports stay foreground and print
 progress while another process can monitor or cancel them. There is no
 `--detach` mode. See [DOCX and PDF Export](/confluence/export/) for export flags

@@ -154,6 +154,67 @@ describe("ordinary export job runtime", () => {
     expect(right.snapshot.deliveredAt).toBeDefined();
   });
 
+  it("reclaims and resumes the same checkpointed job after its foreground owner is lost", async () => {
+    const root = await fixtureRoot();
+    const outputPath = join(root, "resumed.pdf");
+    let now = 100;
+    const persistence = createFileExportJobPersistence({
+      rootDir: join(root, "state"),
+      now: () => now,
+    });
+    const durableRequest = request(outputPath);
+    await persistence.jobs.create({ request: durableRequest });
+    const firstClaim = await persistence.jobs.claimNext({
+      ids: [durableRequest.id],
+      ownerId: "lost-owner",
+      now,
+      leaseDurationMs: 10,
+    });
+    if (!firstClaim) throw new Error("Expected the first foreground owner to claim the job.");
+    await persistence.jobs.compareAndSet({
+      kind: "checkpoint",
+      id: firstClaim.id,
+      expectedRevision: firstClaim.revision,
+      leaseEpoch: firstClaim.leaseEpoch,
+      at: now,
+      checkpointRef: "source-checkpoint:page-12",
+    });
+    now = 111;
+
+    let recoveredCheckpoint: string | undefined;
+    const base = successfulExecutor({
+      root,
+      bytes: new Uint8Array([7, 7, 7]),
+      order: [],
+      executions: { count: 0 },
+    });
+    const executor: ExportJobExecutor<PdfExportJobRequestV1> = {
+      format: "pdf",
+      async execute(jobRequest, context) {
+        recoveredCheckpoint = context.checkpointRef;
+        return base.execute(jobRequest, context);
+      },
+    };
+    const result = await runOrdinaryExportJobV1({
+      request: durableRequest,
+      executor,
+      persistence,
+      ownerId: "resume-owner",
+      now: () => now,
+      pollIntervalMs: 0,
+    });
+
+    expect(result.snapshot).toMatchObject({
+      id: durableRequest.id,
+      state: "succeeded",
+      leaseEpoch: 2,
+      recoveryCount: 1,
+    });
+    expect(recoveredCheckpoint).toBe("source-checkpoint:page-12");
+    expect(await persistence.jobs.list({ includeDismissed: true })).toHaveLength(1);
+    expect(new Uint8Array(await readFile(outputPath))).toEqual(new Uint8Array([7, 7, 7]));
+  });
+
   it("claims only its own job and leaves older same-profile work queued", async () => {
     const root = await fixtureRoot();
     const persistence = createFileExportJobPersistence({ rootDir: join(root, "state") });

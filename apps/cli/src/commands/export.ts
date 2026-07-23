@@ -1913,6 +1913,7 @@ Background Activity:
   atlcli wiki export jobs show <id> [--json]
   atlcli wiki export jobs watch <id> [--jsonl]
   atlcli wiki export jobs cancel <id>
+  atlcli wiki export jobs resume <queued-id>
   atlcli wiki export jobs retry <id> [--output <path>] [--force]
   atlcli wiki export jobs rerun <id> [--output <path>] [--force]
   atlcli wiki export jobs clear --before <duration> --confirm

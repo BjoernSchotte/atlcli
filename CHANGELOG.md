@@ -15,7 +15,7 @@ All notable changes to atlcli will be documented in this file.
 - **extension:** Show active export counts on the toolbar badge (`9+` maximum),
   durable success/failure indicators, and an optional bounded completion pulse.
   Full DOCX and Typst/WASM PDF execution now continues outside the side panel.
-- **cli:** Add `wiki export jobs list|show|watch|cancel|retry|rerun|clear` while
+- **cli:** Add `wiki export jobs list|show|watch|cancel|resume|retry|rerun|clear` while
   keeping ordinary exports foreground and scriptable. There is intentionally no
   daemon or detached mode.
 

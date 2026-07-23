@@ -53,15 +53,15 @@ atlcli wiki export jobs list --status running,waiting --format pdf --since 12h
 atlcli wiki export jobs show <job-id>
 atlcli wiki export jobs watch <job-id>
 atlcli wiki export jobs cancel <job-id>
+atlcli wiki export jobs resume <queued-id>
 ```
 
 Use `--json` on list/show/actions and `--jsonl` on watch for automation. `show`
 acknowledges terminal work; `list` and `watch` do not. There is intentionally no
 CLI daemon and no `--detach` mode: if the exporting process exits, another
 command reconciles its stale lease to a safe queued checkpoint or to terminal
-`interrupted`. A queued checkpoint has no detached owner; if it is not reclaimed
-by a compatible foreground run, cancel it and use Retry to start an explicit
-new foreground job.
+`interrupted`. Use `jobs resume <queued-id>` to reclaim the same safe checkpoint
+in an explicit foreground runner. Resume does not create a new history row.
 
 Replay and cleanup:
 

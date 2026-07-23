@@ -150,6 +150,7 @@ Commands:
   show <id> [--json]
   watch <id> [--jsonl]
   cancel <id>
+  resume <queued-id>
   retry <failed-id> [--output <path>] [--force]
   rerun <succeeded-id> [--output <path>] [--force]
   clear --before <duration> --confirm [--json]
@@ -481,6 +482,45 @@ async function replayJob(
   return { request: derivation.request, snapshot };
 }
 
+async function resumableJob(
+  persistence: ExportJobPersistenceV1,
+  id: string | undefined,
+  failCommand: (message: string) => never,
+): Promise<{ request: ExportJobRequestV1; snapshot: ExportJobSnapshotV1 }> {
+  const snapshot = await requireJob(persistence.jobs, id, failCommand);
+  if (snapshot.state !== "queued") {
+    failCommand(`Cannot resume a ${snapshot.state} export job; Resume requires queued work.`);
+  }
+  const request = await persistence.jobs.getRequest(snapshot.requestRef);
+  if (!request) throw new Error(`Export job ${snapshot.id} has no retained request.`);
+  return { request, snapshot };
+}
+
+async function interruptUnstartedForegroundJob(
+  jobs: ExportJobStore,
+  id: string,
+  error: unknown,
+  now: () => number,
+): Promise<void> {
+  const current = await jobs.get(id);
+  if (current?.state !== "queued") return;
+  const interruptedAt = Math.max(now(), current.createdAt);
+  await jobs.compareAndSet({
+    kind: "transition",
+    id: current.id,
+    expectedRevision: current.revision,
+    to: "interrupted",
+    at: interruptedAt,
+    error: {
+      code: "host.replay-start-failed",
+      message: error instanceof Error ? error.message : String(error),
+      category: "unknown",
+      retryable: true,
+      occurredAt: interruptedAt,
+    },
+  });
+}
+
 async function clearJobs(
   persistence: ExportJobPersistenceV1,
   flags: Record<string, string | boolean | string[]>,
@@ -535,7 +575,16 @@ export async function handleExportJobs(
   if (hasFlag(flags, "jsonl") && subcommand !== "watch") {
     failCommand("--jsonl is supported only by jobs watch.");
   }
-  const commands = new Set(["list", "show", "watch", "cancel", "retry", "rerun", "clear"]);
+  const commands = new Set([
+    "list",
+    "show",
+    "watch",
+    "cancel",
+    "resume",
+    "retry",
+    "rerun",
+    "clear",
+  ]);
   if (!commands.has(subcommand)) failCommand(`Unknown export jobs command: ${subcommand}`);
 
   const createPersistence = dependencies.createPersistence ?? createDefaultExportJobPersistenceV1;
@@ -574,6 +623,25 @@ export async function handleExportJobs(
       else write(stdout, formatExportJobStatusLineV1(job));
       return;
     }
+    case "resume": {
+      const resumed = await resumableJob(persistence, args[1], failCommand);
+      const executeReplay = dependencies.executeReplay;
+      if (!executeReplay) {
+        return failCommand("This host has no foreground export runner for Resume.");
+      }
+      try {
+        await executeReplay(resumed.request, resumed.snapshot);
+      } catch (error) {
+        await interruptUnstartedForegroundJob(
+          persistence.jobs,
+          resumed.snapshot.id,
+          error,
+          now,
+        );
+        throw error;
+      }
+      return;
+    }
     case "retry":
     case "rerun": {
       const replay = await replayJob(
@@ -592,24 +660,12 @@ export async function handleExportJobs(
           // A replay is durable before host auth/template preflight. If that
           // preflight cannot even start the exact-id runner, do not leave a
           // permanently queued row that no daemon will ever claim.
-          const current = await persistence.jobs.get(replay.snapshot.id);
-          if (current?.state === "queued") {
-            const interruptedAt = Math.max(now(), current.createdAt);
-            await persistence.jobs.compareAndSet({
-              kind: "transition",
-              id: current.id,
-              expectedRevision: current.revision,
-              to: "interrupted",
-              at: interruptedAt,
-              error: {
-                code: "host.replay-start-failed",
-                message: error instanceof Error ? error.message : String(error),
-                category: "unknown",
-                retryable: true,
-                occurredAt: interruptedAt,
-              },
-            });
-          }
+          await interruptUnstartedForegroundJob(
+            persistence.jobs,
+            replay.snapshot.id,
+            error,
+            now,
+          );
           throw error;
         }
         return;
