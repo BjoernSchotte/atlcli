@@ -1,7 +1,8 @@
 # Export gap analysis: Confluence ADF notation to DOCX and PDF
 
-Status: implementation baseline
+Status: active implementation and progress register
 Analysis date: 2026-07-22
+Progress last reconciled: 2026-07-23
 Repository baseline: `75b7379` (`main` at implementation-branch start)
 Official schema baseline: `@atlaskit/adf-schema@56.1.13`, resolved from Atlassian's canonical ADF schema URL on 2026-07-22
 
@@ -19,30 +20,45 @@ An exporter should normally consume stored semantics. It must not reinterpret ar
 
 ## 2. Executive finding
 
-The current Cloud export is **Storage-XHTML-first, not ADF-first**:
+The implementation branch has replaced the original Cloud Storage-first
+baseline with an **ADF-primary, version-bound source path** for the TypeScript
+DOCX and Typst/PDF engines:
 
 ```text
-Confluence body.storage
-        |
-        v
-storageToBlocks() ---- optional live macro/export_view resolution
-        |
-        v
-ExportBlock[] + InlineNode[]
-        |                         |
-        v                         v
-DOCX/OOXML serializer        Typst/PDF serializer
+Confluence atlas_doc_format -- validateAdf() --+
+                                                |
+Storage sidecar -- only for unresolved macros --+--> pageBodyToBlocks()
+                                                     |
+                                                     v
+                                           ExportBlock[] + InlineNode[]
+                                               |                 |
+                                               v                 v
+                                      TypeScript DOCX       Typst/PDF
 ```
 
-`ConfluenceClient.getPage()` requests `body.storage`; DOCX and tree export then call `storageToBlocks()`. The parallel CLI job-runtime work keeps source resolution host-owned, but it still enters this Storage-first source path and is deliberately not part of this branch baseline. Third-party `adfExport` output reaches atlcli only indirectly after Confluence renders it to `export_view` HTML, which is parsed by a deliberately limited HTML-subset converter. See [E1], [E2], [E3], and [E4].
+The original baseline used `ConfluenceClient.getPage()` plus `body.storage`.
+Cloud export-specific reads now request ADF, validate the pinned contract, and
+decode through the representation-neutral `pageBodyToBlocks()` boundary.
+Storage remains a compatibility adapter, the Data Center source, and a
+version-matched sidecar for definitions that are not yet ADF-native. Durable
+background-host integration remains a separate, explicitly open work package;
+it must enter at the same source boundary and must not fork renderer behavior.
+Third-party `adfExport` ingestion also remains incomplete. See [E1], [E2],
+[E3], and [E4] for the original baseline evidence and `PLAN.md` for the
+implementation evidence ledger.
 
 Consequences:
 
-- Current coverage claims are conditional on Confluence's undocumented ADF-to-Storage projection.
-- A feature can be valid ADF yet be unobservable, flattened, or transformed before atlcli sees it.
-- `ExportBlock` cannot currently represent all 43 node types or all 17 marks in the pinned ADF schema.
-- DOCX and PDF share most parse/model gaps because both consume the same intermediate model.
-- Reaching a defensible 100% target requires a direct ADF decoder, a pinned-schema compatibility matrix, and a real Confluence fixture corpus. Serializer-only work cannot close this architecture gap.
+- Coverage is now measurable against all 43 nodes and 17 marks in the pinned
+  schema rather than being conditional on an undocumented ADF-to-Storage
+  projection.
+- Unsupported semantics are visible and diagnosed, but not every node,
+  attribute, or mark yet has a native neutral-model representation.
+- DOCX and PDF intentionally share parse/model semantics; target-specific gaps
+  begin only after the shared model boundary.
+- A defensible 100% target still requires the remaining matrix gaps plus a
+  broader sanitized, observed Confluence corpus. Schema coverage alone is not a
+  product-fidelity claim.
 
 ## 3. Scope and source policy
 
@@ -74,6 +90,44 @@ Consequences:
 
 “Native” is not equivalent to “pixel-identical to Confluence.” Visual parity requires a render/golden test in addition to semantic preservation.
 
+### 4.1 Progress tracking convention
+
+This document is the live gap register. Every completed work package must
+update both its matrix rows and the checklist below in the same commit:
+
+- `[x]` means the named gap is closed with the applicable semantic, target,
+  browser, report, and rendered evidence.
+- `[ ]` plus **Partial** means a proven subset is complete and the remaining
+  sub-gap is stated explicitly.
+- `[ ]` plus **Open** means no complete native contract exists yet.
+
+Current closed foundations and feature slices:
+
+- [x] Pinned ADF schema, bounded validator, exhaustive coverage manifest, and
+  non-blocking weekly upstream/observed-product drift watch.
+- [x] ADF-primary Cloud source selection for the TypeScript DOCX and Typst/PDF
+  CLI paths, with explicit Storage compatibility/sidecar behavior.
+- [x] Shared Node/Bun and browser decoding/rendering shapes with packed
+  conformance and direct/background artifact/report parity.
+- [x] Ordered-list authored starts and independent nested restarts.
+- [x] Paragraph/heading alignment and indentation, plus schema-defined small
+  paragraph text.
+- [x] Standard panel kinds including distinct success/error semantics and
+  palettes.
+- [x] Emoji identity, exact source text, deterministic short-name fallback, and
+  typed fallback reporting.
+- [x] Inline-code background treatment and exact token preservation in both
+  targets.
+
+Current cross-cutting residuals:
+
+- [ ] **Partial:** durable background-host source integration is deferred until
+  synchronization with the parallel job-host work.
+- [ ] **Partial:** the real sanitized Confluence corpus covers selected live
+  slices, not yet every supported editor feature.
+- [ ] **Partial:** guaranteed DOCX monospace embedding, complete emoji glyph
+  coverage, custom panels, and custom-emoji assets remain open.
+
 ## 5. Official baseline and documentation drift
 
 The official ADF structure page documents the root, block/inline distinction, a human-oriented node list, and a canonical JSON schema. It also states that schema members may not be valid in a given implementation. Confluence REST v2 officially exposes `atlas_doc_format` through the page `body-format` parameter, so an ADF-native read path is technically available.
@@ -101,12 +155,12 @@ The matrix covers every semantic node type in `@atlaskit/adf-schema@56.1.13`. �
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `doc` | No ADF root is parsed; Storage fragment becomes `ExportBlock[]`. | N/A | N/A | Add validated ADF document entry point with schema/version diagnostics. |
+| `doc` | Cloud ADF version 1 is bounded and validated before decoding; Storage remains a separate compatibility adapter. | N/A | N/A | Native source contract is complete; observed-product corpus breadth remains tracked separately. |
 | `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment, indentation, and the schema-defined `small` font size. | Native | Native | Local ID and other ADF attributes remain outside the model. |
 | `heading` | `<h1>`…`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native | Native | Composed exports may rebase levels; local ID remains outside the model. |
 | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Rendering still depends on target font glyph coverage. |
-| `hardBreak` | `<br>` becomes `lineBreak`. | Native | Native | Add direct ADF fixture; Storage path is covered. |
-| `rule` | `<hr>` becomes `divider`. | Native | Native | Add direct ADF fixture. |
+| `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
+| `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | `blockquote` | Structured body becomes `blockquote`. | Native/approx. | Native/approx. | Static styling is exporter-owned rather than an ADF fidelity issue. |
 | `codeBlock` | `<pre>` and `code`/`noformat` macros retain code; macro form may retain language. | Partial | Partial | ADF `wrap`, `hideLineNumbers`, and `uniqueId` are not modeled. Language is supported; code-block wrapping/line-number semantics are not. |
 
@@ -317,69 +371,102 @@ Required acceptance contract:
 
 ### P0 - Make coverage measurable
 
-1. **Add an ADF-native source adapter.** Introduce `adfToBlocks()` beside `storageToBlocks()`, validate `doc.version`, pin the official schema, and keep Storage as a separate compatibility adapter.
-2. **Extend the neutral model before serializers.** Every supported ADF node/mark needs a typed representation or an explicit `unsupported` representation carrying type, safe attributes, visible fallback, and source path.
-3. **Create a versioned coverage manifest.** One row per node/mark with parse, DOCX, PDF, fallback, warning, unit, golden, and live-fixture status. CI must fail when the pinned schema adds an unmapped type.
-4. **Build a real Confluence feature corpus.** Store sanitized ADF and Storage projections for editor-created examples. Record Confluence build/date and compare the two representations.
-5. **Never-silent diagnostics.** Unknown node, mark, attribute, extension, media kind, or schema version must be counted and source-located in the export report.
+- [x] **ADF-native source adapter.** `adfToBlocks()` and
+  `pageBodyToBlocks()` validate `doc.version` against the pinned schema while
+  keeping Storage as a separate compatibility adapter.
+- [ ] **Partial — extend the neutral model before serializers.** Supported
+  semantics use typed representations and every unsupported path has visible,
+  bounded diagnostics; native representations for the open matrix rows remain.
+- [x] **Versioned coverage manifest.** All pinned nodes and marks are
+  classified, and CI rejects unreviewed schema/coverage drift.
+- [ ] **Partial — real Confluence feature corpus.** Sanitized observed fixtures
+  exist for selected slices; broad editor-feature ADF/Storage pairs and build
+  provenance remain open.
+- [x] **Never-silent diagnostics.** Unknown nodes, marks, attributes,
+  extensions, media kinds, and contract failures are bounded and
+  source-located in export reports.
 
 ### P1 - Close user-visible core gaps
 
-6. **Completed except DOCX font embedding:** inline-code visual treatment and regression goldens.
-7. Emoji/custom-emoji semantics, asset fallback, and font/glyph coverage.
-8. **Completed:** paragraph/heading alignment and indentation plus schema-defined small paragraph text.
-9. Decisions and full task semantics.
-10. **Completed:** ordered-list start and nested restart behavior.
-11. Table layout/display mode/numbered column/vertical alignment/width.
-12. Layout columns and breakout/wide/full-width behavior.
-13. Native captions and nested expand title/static disclosure treatment.
-14. Card/embed metadata and deterministic URL/title/poster fallback.
-15. Media group, inline media, file/video/audio representation, crop, border, and link.
-16. Uniform page and attachment hyperlink resolution.
+- [ ] **Partial — inline code.** Visual treatment, exact token preservation,
+  serializer tests, and rendered goldens are complete; guaranteed DOCX
+  monospace embedding and the code-plus-annotation combination remain.
+- [ ] **Partial — emoji/custom emoji.** Identity, exact text, deterministic
+  fallback, reporting, and both TS engines are complete; authorized custom
+  assets and complete font/glyph coverage remain.
+- [x] **Alignment, indentation, and small text.** Paragraph/heading alignment
+  and indentation plus schema-defined small paragraph text are complete.
+- [ ] **Open — decisions and full task semantics.**
+- [x] **Ordered-list starts.** Authored starts and independent nested restarts
+  are complete.
+- [ ] **Open — table attributes.** Layout, display mode, numbered column,
+  vertical alignment, and width remain.
+- [ ] **Open — layout columns and breakout.**
+- [ ] **Partial — captions and nested expands.** Visible fallbacks exist;
+  native association, title, nesting, and static disclosure treatment remain.
+- [ ] **Partial — card/embed metadata.** Deterministic visible URL fallbacks
+  exist; native title/provider/poster metadata remains.
+- [ ] **Partial — media family.** Selected image/media paths exist; group,
+  inline, file/video/audio, crop, border, and link coverage remains.
+- [ ] **Partial — page/attachment hyperlinks.** Safe external and selected
+  composed links work; uniform page and attachment resolution remains.
 
 ### P2 - Dynamic and advanced content
 
-17. Decode `extension`, `inlineExtension`, and `bodiedExtension` directly from ADF; ingest Forge `adfExport` as ADF before any HTML fallback.
-18. Define sync-block snapshot/reference policy.
-19. Preserve annotation, fragment, data-consumer, and product-specific metadata with explicit static-export policy.
-20. Maintain a schema-drift lane for human-doc-only and observed product-specific node shapes.
+- [ ] **Partial — ADF extensions.** Direct extension identities, parameters,
+  visible fallbacks, and export controls are decoded; Forge `adfExport`
+  ingestion before HTML fallback remains.
+- [ ] **Open — sync-block snapshot/reference policy.**
+- [ ] **Open — annotation, fragment, data-consumer, and product metadata
+  policy.**
+- [x] **Schema-drift lane.** The pinned offline contract and non-blocking weekly
+  upstream plus observed-product watchguard are complete.
 
 ## 11. Suggested implementation sequence
 
 ### Phase 0 - Contract and corpus
 
-- Pin schema and add schema-diff CI.
-- Add `AdfDocument` validation and an unknown-node/mark preservation shape.
-- Create paired ADF/Storage fixtures from Confluence editor examples.
-- Generate the coverage manifest from the schema rather than maintaining an unaudited hand list.
+- [x] Pin schema and add schema-diff CI.
+- [x] Add bounded `AdfDocument` validation and visible unknown-node/mark
+  preservation with diagnostics.
+- [ ] Expand paired ADF/Storage fixtures to the full observed Confluence editor
+  corpus.
+- [x] Generate and gate the coverage manifest from the pinned schema.
 
 ### Phase 1 - High-value inline fidelity
 
-- Inline code.
-- Emoji/custom emoji.
-- **Completed:** alignment, indentation, and the schema-defined small paragraph font size.
-- Link/card identity and date semantics.
+- [ ] **Partial:** inline code; DOCX font guarantee and annotation combination
+  remain.
+- [ ] **Partial:** emoji/custom emoji; custom assets and complete glyph coverage
+  remain.
+- [x] Alignment, indentation, and the schema-defined small paragraph font size.
+- [ ] Link/card identity and date semantics.
 
 ### Phase 2 - Structural fidelity
 
-- Tasks, decisions, ordered-list start.
-- Table attributes.
-- Layouts/breakout.
-- Captions/nested expands.
+- [ ] Tasks and decisions.
+- [x] Ordered-list authored starts and nested restarts.
+- [ ] Table attributes.
+- [ ] Layouts/breakout.
+- [ ] Captions/nested expands.
 
 ### Phase 3 - Media and extensions
 
-- Full media family and static embed fallbacks.
-- ADF-native extension forms and Forge `adfExport` ingestion.
-- Synced content policy.
+- [ ] Full media family and static embed fallbacks.
+- [ ] **Partial:** ADF-native extension forms are decoded; Forge `adfExport`
+  ingestion remains.
+- [ ] Synced content policy.
 
 ### Phase 4 - Conformance and release gate
 
-- Cross-engine semantic parity fixtures.
-- DOCX OOXML assertions and rendered Word/LibreOffice goldens.
-- Typst source assertions and rasterized PDF visual goldens.
-- Browser-host and CLI-host parity.
-- Live Confluence feature-zoo E2E with resource cleanup.
+- [x] Cross-engine semantic parity fixtures and packed conformance registry.
+- [x] DOCX OOXML assertions and rendered Word/LibreOffice goldens for completed
+  feature slices.
+- [x] Typst source assertions and rasterized PDF visual goldens for completed
+  feature slices.
+- [x] Browser-host and CLI-host parity for the shared TS engine shapes.
+- [ ] **Partial:** live Confluence E2E with cleanup exists for selected slices;
+  the full feature-zoo corpus remains.
 
 ## 12. Definition of done per feature
 
@@ -404,22 +491,26 @@ A matrix row can be marked complete only when all applicable checks pass:
 
 Current tests already cover substantial Storage-to-model and serializer behavior, including basic marks/colors/line breaks, links/mentions, lists/tasks, tables, code blocks, captions, page breaks/orientation, and table layout. However, the suite is not an ADF conformance suite because it mostly begins with Storage XML or hand-built `ExportBlock` values.
 
-Focused missing gates include:
+Closed gates:
 
-- schema-derived enumeration asserting all 43 nodes and 17 marks are classified;
-- direct ADF-to-model fixtures;
-- emoji/emoticon walker and both-engine render tests;
-- date localization tests;
-- decision list/item tests;
-- ordered-list non-1 start tests;
-- generic inline/block/embed card tests;
-- layout width/column tests;
-- media group/inline/file/video/audio tests;
-- native ADF caption/nested-expand tests;
-- sync-block tests;
-- generic inline extension placement tests;
-- annotation/fragment/data-consumer preservation tests;
-- paired live Confluence ADF-versus-Storage projection fixtures.
+- [x] Schema-derived enumeration classifies all 43 nodes and 17 marks.
+- [x] Direct ADF-to-model fixtures cover every classified node and mark.
+- [x] Emoji/emoticon decoding, both-engine semantics, packed browser parity,
+  report parity, and deterministic render goldens.
+- [x] Ordered-list non-1 starts and nested restarts.
+- [x] Generic inline-extension placement and visible fallback.
+
+Focused missing gates:
+
+- [ ] Date localization and deterministic time-zone policy.
+- [ ] Decision list/item and full task metadata tests.
+- [ ] Generic inline/block/embed card metadata tests.
+- [ ] Layout width/column tests.
+- [ ] Media group/inline/file/video/audio completeness tests.
+- [ ] Native ADF caption/nested-expand tests.
+- [ ] Sync-block snapshot/reference tests.
+- [ ] Annotation/fragment/data-consumer preservation tests.
+- [ ] Broad paired live Confluence ADF-versus-Storage projection fixtures.
 
 At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
 

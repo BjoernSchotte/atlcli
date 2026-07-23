@@ -319,6 +319,13 @@ Exit criteria:
 
 ## 7. Implementation work packages
 
+Progress bookkeeping is part of every work package, not a later documentation
+cleanup. In the same commit that proves a slice, update the affected node/mark
+matrix rows, the prioritized checklist, the phase checklist, and the
+closed/missing-gate inventory in `GAP-ANALYSIS.md`. Mark `[x]` only when every
+applicable definition-of-done gate has evidence; otherwise keep `[ ]`, label
+the item **Partial** or **Open**, and state the exact residual gap.
+
 ### WP0 — Baseline and export-jobs workstream coordination
 
 Files:
