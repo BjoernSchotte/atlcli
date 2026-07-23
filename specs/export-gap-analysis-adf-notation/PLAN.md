@@ -329,8 +329,8 @@ Files:
 Tasks:
 
 - [x] Resolve the currently active export-jobs PR stack, but branch this work from `main` so the moving production-runtime branch cannot rewrite or block WP1–WP4; synchronize before CLI/background integration and before final API/closure or browser-harness snapshots.
-- [ ] Pin the exact ADF schema snapshot/hash used by fixtures and the coverage manifest.
-- [ ] Record the live-correlation results from section 6 without including unrelated page content.
+- [x] Pin the exact ADF schema snapshot/hash used by fixtures and the coverage manifest.
+- [x] Record the live-correlation results from section 6 without including unrelated page content.
 - [x] Confirm WP1–WP4 start on a main-based branch in parallel with production CLI routing; WP5–WP9 must re-resolve and synchronize the then-current runtime contracts before touching their integration seams.
 
 Exit:
@@ -729,6 +729,8 @@ Required job tests:
 - [ ] bounded page pipeline does not retain complete raw tree bodies;
 - [ ] packed browser consumer imports the ADF adapter without Node/Bun/dynamic-code leakage.
 
+Current sequencing status (2026-07-22): WP8 remains intentionally open until the evolving background-export branch is synchronized onto this source boundary. This main-based branch does not duplicate, amend, or guess that runtime's durable request, checkpoint, executor, or activity contracts. All ADF work upstream of `resolveInput()` and all direct CLI/browser renderer gates are complete; the unchecked tasks in this WP are the remaining integration contract.
+
 Exit:
 
 - The background host owns the complete source-to-artifact lifecycle, while the job executor and render engines remain ADF-agnostic.
@@ -774,7 +776,7 @@ Default-enable gates:
 - [x] macro and media correlation gates pass or remain visibly degraded;
 - [ ] direct and background report parity passes;
 - [ ] source bodies are absent from logs/job records/events;
-- [ ] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
+- [x] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
 - [x] Cloud live E2E passes for both target formats;
 - [x] Storage/Data Center regressions pass;
 - [x] dual-read request/latency overhead remains within the first-rollout budget above.
@@ -940,26 +942,26 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 
 ## 11. Definition of done for the first migration
 
-- [ ] Cloud export-specific reads request and validate ADF without leaking it to logs.
-- [ ] Data Center and legacy/Python paths remain Storage-based.
-- [ ] ADF and Storage version races fail visibly.
-- [ ] Runtime validator is bounded, iterative, isomorphic, and adversarially tested.
-- [ ] Pinned schema/coverage CI classifies all 43 nodes and 17 marks.
-- [ ] Weekly online schema/reference/REST drift watch runs independently of PR and release gates and produces JSON/Markdown evidence.
+- [x] Cloud export-specific reads request and validate ADF without leaking it to logs.
+- [x] Data Center and legacy/Python paths remain Storage-based.
+- [x] ADF and Storage version races fail visibly.
+- [x] Runtime validator is bounded, iterative, isomorphic, and adversarially tested.
+- [x] Pinned schema/coverage CI classifies all 43 nodes and 17 marks.
+- [x] Weekly online schema/reference/REST drift watch runs independently of PR and release gates and produces JSON/Markdown evidence.
 - [x] Optional weekly observed-Cloud inventory uses synthetic read-only fixtures and publishes no page content.
-- [ ] `adfToBlocks()` covers all semantics already representable by the neutral model.
-- [ ] Unsupported semantics preserve visible content or a visible placeholder and emit bounded notes.
-- [ ] `pageBodyToBlocks()` is the only representation dispatch used by new export hosts.
-- [ ] Tree/page/space orchestration accepts mixed representation sources without ordering changes.
-- [ ] CLI TypeScript DOCX and PDF are ADF-primary under the rollout flag.
-- [ ] Includes, Page Properties, excerpts, and live macro/export-view behavior retain their Storage sidecar path.
-- [ ] Macro and media identity is correlation-proven or visibly degraded.
+- [x] `adfToBlocks()` covers all semantics already representable by the neutral model.
+- [x] Unsupported semantics preserve visible content or a visible placeholder and emit bounded notes.
+- [x] `pageBodyToBlocks()` is the only representation dispatch used by new export hosts.
+- [x] Tree/page/space orchestration accepts mixed representation sources without ordering changes.
+- [x] CLI TypeScript DOCX and PDF are ADF-primary under the rollout flag.
+- [x] Includes, Page Properties, excerpts, and live macro/export-view behavior retain their Storage sidecar path.
+- [x] Macro and media identity is correlation-proven or visibly degraded.
 - [ ] Background integration starts inside the durable job's `resolveInput()` and does not change request v1.
 - [ ] Ready-to-render recovery performs no source refetch.
 - [ ] Direct/background notes, completeness, report, and artifact parity gates pass.
-- [ ] Browser/package/API/closure/full-suite/live-E2E gates pass.
-- [ ] Created E2E resources are deleted.
-- [ ] Coverage and user documentation are updated with the source flag, fallback policy, and known limitations.
+- [x] Browser/package/API/closure/full-suite/live-E2E gates pass.
+- [x] Created E2E resources are deleted.
+- [x] Coverage and user documentation are updated with the source flag, fallback policy, and known limitations.
 
 ## 12. Risks and mitigations
 
@@ -999,11 +1001,16 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
 9. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
 
-## 14. Unresolved questions for review
+## 14. Resolved rollout decisions and unresolved question
 
-1. Should the first production default enable ADF-primary for CLI before the extension background host, or must both switch in one release?
-2. Is the initial correctness-first two-body-read policy acceptable for tree/space exports, provided request-count and latency gates are met, or must lazy Storage sidecars be part of the first release?
-3. Should generic unsupported ADF block/inline variants become public `ExportBlock`/`InlineNode` members in this wave, or should the first adapter use existing visible fallback blocks plus notes and add public variants in the next model slice?
-4. Which Data Center capability signal is authoritative in the current profile model, so the client can avoid probing a Cloud-only endpoint?
-5. Is a source-selection CLI/debug flag user-facing, or an internal rollout flag until ADF-primary becomes stable?
-6. Should confirmed semantic drift additionally create/update one deduplicated `adf-schema-drift` issue, or are the failed scheduled run, Actions notification, job summary, and retained artifacts sufficient for the first version?
+Resolved in the implementation:
+
+- CLI ADF-primary enablement is independent from the background host and is already guarded by its own live, browser, renderer, Storage-regression, and rollback gates.
+- The correctness-first ADF plus Storage-sidecar dual read is accepted for the first rollout under the measured request, wall-time, memory, diagnostic, and artifact budgets; lazy sidecars remain a post-stable-release optimization.
+- Unsupported ADF variants remain visible fallbacks plus bounded notes in this wave; no speculative public neutral-model variants were added.
+- The profile's explicit deployment type is authoritative for Data Center, which never probes the Cloud ADF endpoint.
+- `ATLCLI_EXPORT_SOURCE` is an operational host/deployment rollback variable, not a durable request-v1 field or renderer fork.
+
+Still unresolved for review:
+
+1. Should confirmed semantic drift additionally create/update one deduplicated `adf-schema-drift` issue, or are the failed scheduled run, Actions notification, job summary, and retained artifacts sufficient for the first version?
