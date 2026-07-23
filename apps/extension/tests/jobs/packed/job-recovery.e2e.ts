@@ -11,6 +11,7 @@ const JOB_A = "123e4567-e89b-42d3-a456-426614174000";
 const JOB_B = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_C = "323e4567-e89b-42d3-a456-426614174000";
 const LEGACY = "423e4567-e89b-42d3-a456-426614174000";
+const JOB_D = "723e4567-e89b-42d3-a456-426614174000";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -290,6 +291,7 @@ interface PackedJobRow {
     artifact?: { ref: string; filename: string; byteLength: number };
     reportRef?: string;
     reportSummary?: { completeness: string };
+    deliveredAt?: number;
   };
 }
 
@@ -633,6 +635,36 @@ test("a private legacy compiler bridge produces one outer Activity row", async (
   }, { legacyId: LEGACY, outerId: JOB_A });
   await releaseOffscreenFetch(JOB_A);
   await waitForJobState(JOB_A, "succeeded");
+});
+
+test("a submitted PDF survives extension-surface navigation, tab change, and close", async () => {
+  await ensureCatalog();
+  await installOffscreenFetchStub([JOB_D]);
+  const submitter = await context.newPage();
+  await submitter.goto(`chrome-extension://${extensionId}/job-probe.html`);
+  await submitter.waitForFunction(() => "exportJobStoreProbe" in globalThis);
+  await submitter.bringToFront();
+  await expect(submitter.evaluate(async (jobId) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { submitPdf(id: string): Promise<string> };
+    }).exportJobStoreProbe;
+    return probe.submitPdf(jobId);
+  }, JOB_D)).resolves.toBe(JOB_D);
+  await waitForJobState(JOB_D, "running");
+
+  // The submitting extension surface navigates away, another tab becomes
+  // active, and the original surface closes. Only the offscreen owner remains.
+  await submitter.goto("about:blank");
+  await page.bringToFront();
+  await submitter.close();
+  await releaseOffscreenFetch(JOB_D);
+
+  const succeeded = await waitForJobState(JOB_D, "succeeded");
+  expect(succeeded.snapshot).toMatchObject({
+    state: "succeeded",
+    artifact: { filename: `Packed page ${JOB_D}.pdf` },
+  });
+  expect(succeeded.snapshot.deliveredAt).toBeUndefined();
 });
 
 test("the packed browser shares one FIFO heavy-render slot across PDF and DOCX", async () => {

@@ -8,6 +8,7 @@ import {
 import { BrowserRenderReservationPoolV1 } from "../../../utils/export-jobs/render-reservation.js";
 import { createExtensionExportQueueRunner } from "../../../utils/export-jobs/queue-runner.js";
 import { readExtensionPdfExportReport } from "../../../utils/export-jobs/executor-store.js";
+import { submitExtensionPdfExport } from "../../../utils/export-jobs/pdf-submit.js";
 import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
 import { deletePdfJob } from "../../../utils/pdf/job-store.js";
 
@@ -144,6 +145,42 @@ const probe = {
       byteLength: stored.length,
       ...(report ? { filename: report.filename, complete: report.complete } : {}),
     };
+  },
+  async submitPdf(id: string): Promise<string> {
+    const catalog = new IndexedDbExportJobCatalog();
+    const submitted = await submitExtensionPdfExport({
+      pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${id}/Packed`,
+      page: {
+        details: {
+          id,
+          title: `Packed page ${id}`,
+          version: 1,
+          spaceKey: "DOCS",
+          storage: "<p>Panel-owned source must not be retained</p>",
+        },
+        markdown: "Panel-owned source must not be retained",
+        wordCount: 6,
+        attachments: [],
+      },
+    }, {
+      catalog,
+      requestId: id,
+      wake: async (jobIds) => {
+        const response = await chrome.runtime.sendMessage({
+          kind: "jobs:wake",
+          jobIds,
+        }) as { kind?: string; claimedJobId?: string; error?: string } | undefined;
+        return response?.kind === "jobs:wake-result"
+          ? {
+              ...(response.claimedJobId
+                ? { claimedJobId: response.claimedJobId }
+                : {}),
+              ...(response.error ? { error: response.error } : {}),
+            }
+          : { error: "No background queue response." };
+      },
+    });
+    return submitted.snapshot.id;
   },
   async renderReservations(): Promise<{
     secondWaited: boolean;
