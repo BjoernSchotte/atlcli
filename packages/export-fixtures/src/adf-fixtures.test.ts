@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { ADF_CONFORMANCE_SOURCE, adfConformanceBlocks } from "./index.js";
+import {
+  ADF_CONFORMANCE_SOURCE,
+  STORAGE_CODE_COMPATIBILITY_SOURCE,
+  adfConformanceBlocks,
+  storageCodeCompatibilityBlocks,
+} from "./index.js";
 
 describe("ADF browser conformance fixture", () => {
   it("starts from ADF and decodes identically for both target renderers", () => {
@@ -420,5 +425,25 @@ describe("ADF browser conformance fixture", () => {
     expect(JSON.stringify(pdf.notes)).not.toContain("static-extension-private");
     expect(JSON.stringify(pdf.notes)).not.toContain("multi-frame-fragment");
     expect(JSON.stringify(pdf.notes)).not.toContain("multi-frame-consumer");
+  });
+});
+
+describe("Storage code compatibility fixture", () => {
+  it("decodes legacy title and collapse intent without losing the complete body", () => {
+    expect(STORAGE_CODE_COMPATIBILITY_SOURCE).toContain('ac:name="code"');
+
+    const result = storageCodeCompatibilityBlocks();
+
+    expect(result.blocks).toEqual([{
+      type: "codeBlock",
+      language: "typescript",
+      code: "const legacyStorage = true;\nexport { legacyStorage };",
+      title: "Legacy Storage code title",
+      initiallyCollapsed: true,
+      hideLineNumbers: false,
+      firstLineNumber: 12,
+      localId: "storage-code-local",
+    }]);
+    expect(result.notes).toEqual([]);
   });
 });

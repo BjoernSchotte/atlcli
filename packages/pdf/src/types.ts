@@ -150,6 +150,10 @@ export type PreparedPdfBlock =
       wrap?: boolean;
       hideLineNumbers?: boolean;
       firstLineNumber?: number;
+      /** Legacy Storage code-macro header retained when Mermaid becomes a diagram. */
+      title?: string;
+      /** Legacy Storage collapse intent retained for the static-projection report. */
+      initiallyCollapsed?: boolean;
       localId?: string;
       uniqueId?: string;
     }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "968e82ab3c870e8672292ab2abea0eeef0dcb46e68ca161caecad2f6edf52a32",
+  "sourceSha256": "006389b326cdac07bbdb955fcce175b3afb6229e4621eff5993c620399a6edcb",
   "features": [
     "inline-code",
     "annotation-native-docx-static-pdf",
@@ -40,7 +40,8 @@
     "media-wrap-source-order",
     "synced-content-snapshot-and-reference",
     "extension-static-fallback",
-    "stage0-multi-bodied-extension-frames"
+    "stage0-multi-bodied-extension-frames",
+    "storage-code-title-and-static-collapse"
   ],
   "formats": {
     "docx": {
@@ -51,7 +52,7 @@
         },
         {
           "file": "docx-page-2.png",
-          "sha256": "9346c7566dc77924ecee19c2e39d00d00c6f2b6b2e0a4ee21a0a63c514115349"
+          "sha256": "a95326ebd228d76699566df76a580dc4d9debf73469bb3b1e63af2ac1464e377"
         }
       ],
       "requiredText": [
@@ -96,6 +97,8 @@
         "Unsupported wrapper keeps ",
         "rich inline content",
         "Extension: static-extension",
+        "Legacy Storage code title",
+        "const legacyStorage = true;",
         "Mar 4, 2024",
         "READY",
         "Keep Case"
@@ -131,7 +134,7 @@
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "fc9132ed1a8077e3d02d81389e569cfc196d273534278fcf04ab1ac56dfe4610"
+          "sha256": "395fc06f4ab5078b3e4c44f6dc15bbdc393112f42745eec29ea210e285e36204"
         },
         {
           "file": "pdf-page-5.png",
@@ -184,6 +187,8 @@
         "Unsupported wrapper keeps ",
         "rich inline content",
         "Extension: static-extension",
+        "Legacy Storage code title",
+        "const legacyStorage = true;",
         "4 Mar 2024",
         "READY",
         "Keep Case",

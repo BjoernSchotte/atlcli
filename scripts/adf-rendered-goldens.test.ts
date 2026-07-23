@@ -57,6 +57,7 @@ describe("ADF rendered goldens", () => {
       "synced-content-snapshot-and-reference",
       "extension-static-fallback",
       "stage0-multi-bodied-extension-frames",
+      "storage-code-title-and-static-collapse",
     ]);
     for (const format of ["docx", "pdf"] as const) {
       expect(manifest.formats[format].pages.length).toBeGreaterThan(0);

@@ -2200,6 +2200,27 @@ describe("serialize — C3 captions", () => {
       source: { blockPath: "blocks[0]" },
     }));
   });
+
+  it("renders a legacy code title above the complete body and reports static expansion", async () => {
+    const { main, notes } = await toMain([{
+      type: "codeBlock",
+      language: "text",
+      code: "deploy();",
+      title: "Deployment [safe]",
+      initiallyCollapsed: true,
+      hideLineNumbers: true,
+    }]);
+
+    expect(main).toContain('fill: rgb("#F4F5F7")');
+    expect(main).toContain('#strong[#text("Deployment [safe]")]');
+    expect(main).toContain('raw("deploy();", lang: "text", block: true)');
+    expect(main.indexOf("Deployment")).toBeLessThan(main.indexOf("deploy();"));
+    expect(notes).toContainEqual(expect.objectContaining({
+      level: "info",
+      code: "code-collapse-static",
+      source: { blockPath: "blocks[0]" },
+    }));
+  });
 });
 
 describe("serialize — T1.6 table header repeat", () => {

@@ -36,6 +36,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -660,6 +662,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
     localId?: string;
     uniqueId?: string;
 } | {
@@ -891,6 +895,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -1515,6 +1521,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
     localId?: string;
     uniqueId?: string;
 } | {
@@ -1746,6 +1754,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -2370,6 +2380,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
     localId?: string;
     uniqueId?: string;
 } | {

@@ -705,6 +705,17 @@ export type ExportBlock =
       type: "codeBlock";
       language?: string;
       code: string;
+      /**
+       * Legacy Storage code-macro title. Static targets render it as the header
+       * row above the code body, independently from a numbered `caption`.
+       */
+      title?: string;
+      /**
+       * Authored legacy Storage `collapse` state. Static targets always retain
+       * the complete body and report when an initially collapsed block was
+       * rendered open.
+       */
+      initiallyCollapsed?: boolean;
       caption?: Caption;
       /**
        * Exact ADF wrapping preference. `undefined` retains the schema's
@@ -1159,6 +1170,10 @@ export const EXPORT_NOTE_CODES = [
   // safely instead of clipping; the exact source preference remains in the
   // neutral block for audit/reprocessing.
   "code-nowrap-page-bounded",
+  // CROSS-ENGINE static-page policy for the legacy Storage code macro:
+  // interactive initial collapse cannot survive in a static artifact, so both
+  // targets retain the full body and report that it was intentionally opened.
+  "code-collapse-static",
   // DOCX-ONLY, and correctly so: the export was configured with NO image
   // pipeline at all (`ExportEnv` without an asset fetcher), so every image
   // degrades at once — an export-configuration fact, level `info`. Distinct from
@@ -2586,6 +2601,8 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     const bodyEl = childByName(el, "ac:plain-text-body") ?? childByName(el, "ac:rich-text-body");
     const code = bodyEl ? elementText(bodyEl) : "";
     const language = macroName === "code" ? macroParam(el, "language") : undefined;
+    const title = macroName === "code" ? macroParam(el, "title") : undefined;
+    const collapse = macroName === "code" ? macroParam(el, "collapse") : undefined;
     const lineNumbers = macroName === "code" && macroParam(el, "linenumbers")?.toLowerCase() === "true";
     const firstLineNumber =
       lineNumbers ? parsePositiveInt(macroParam(el, "firstline")) ?? 1 : undefined;
@@ -2593,6 +2610,10 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       type: "codeBlock",
       language: language || undefined,
       code,
+      ...(title !== undefined ? { title } : {}),
+      ...(collapse !== undefined
+        ? { initiallyCollapsed: collapse.trim().toLowerCase() === "true" }
+        : {}),
       hideLineNumbers: !lineNumbers,
       ...(firstLineNumber !== undefined ? { firstLineNumber } : {}),
       ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),

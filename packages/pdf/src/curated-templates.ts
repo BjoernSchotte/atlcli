@@ -117,6 +117,7 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
       inlineCodeRadius: "2pt",
       codeInset: "10pt",
       codeRadius: "5pt",
+      codeTitleBelow: "0pt",
       calloutStroke: "3pt",
       calloutInsetX: "13pt",
       calloutInsetY: "10pt",

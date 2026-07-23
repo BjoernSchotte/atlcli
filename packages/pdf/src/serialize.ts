@@ -161,7 +161,7 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
         case "paragraph":
           return inlinePlainText(block.content);
         case "codeBlock":
-          return block.code;
+          return [block.title, block.code].filter(Boolean).join(" ");
         case "callout":
         case "expand":
         case "blockquote":
@@ -593,6 +593,19 @@ function statusColor(value: string | undefined, design: ResolvedPdfDesign): stri
     design.tokens.colors.neutral ||
     BUILTIN_PDF_DESIGN.semanticPalettes.statuses.default ||
     safeColor(value)
+  );
+}
+
+/** Legacy Storage code-macro title as a header row above code or diagram output. */
+function serializeCodeTitle(
+  title: string | undefined,
+  design: ResolvedPdfDesign,
+): string {
+  if (!title) return "";
+  return (
+    `#block(width: 100%, fill: rgb(${typstString(design.tokens.colors.codeBackground)}), ` +
+    `inset: ${design.tokens.layout.codeInset}, radius: ${design.tokens.layout.codeRadius}, ` +
+    `below: ${designLength(design, "codeTitleBelow")})[#strong[${literalText(title)}]]\n`
   );
 }
 
@@ -1310,6 +1323,15 @@ function serializeBlock(
       break;
     }
     case "codeBlock": {
+      if (block.initiallyCollapsed === true) {
+        writer.notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static PDF export rendered its complete source.",
+          source: { blockPath: path },
+        });
+      }
       if (block.wrap === false) {
         writer.notes.push({
           level: "info",
@@ -1334,19 +1356,30 @@ function serializeBlock(
       // Only CAPTIONED code becomes a figure — caption-less code keeps today's
       // rendering so C2's `figure.where(kind: raw)` outline never lists every
       // code block (spec 003 C3).
-      value = block.caption
+      const code = block.caption
         ? `#figure(${rawExpr}, ${captionFigureArgs(block.caption, writer)})`
         : `#${rawExpr}`;
+      value = serializeCodeTitle(block.title, writer.design) + code;
       break;
     }
     case "diagram": {
+      if (block.initiallyCollapsed === true) {
+        writer.notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static PDF export rendered its complete diagram.",
+          source: { blockPath: path },
+        });
+      }
       // Keep exported content in source order. `placement: auto` turns figures
       // into top/bottom floats, which can move a diagram before its heading or
       // collect multiple headings away from their diagrams in real documents.
       const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? "Diagram")})`;
-      value = block.caption
+      const diagram = block.caption
         ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
         : `#figure(${img})`;
+      value = serializeCodeTitle(block.title, writer.design) + diagram;
       break;
     }
     case "image":

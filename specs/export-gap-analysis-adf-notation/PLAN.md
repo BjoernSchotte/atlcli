@@ -1620,6 +1620,30 @@ The matrix now records 82 of 84 rows closed and 2 open. Both remaining rows
 share one external dependency: custom-emoji assets and complete emoji glyph
 coverage require a documented, authorized Atlassian resolver contract.
 
+Completed legacy Storage code-macro follow-on recorded on 2026-07-23:
+the compatibility decoder now retains the documented `title` and `collapse`
+parameters alongside language, line-number policy, first-line ordinal, macro
+identity, and the exact code body. These fields deliberately do not expand the
+pinned ADF `codeBlock` contract: they are typed Storage-only input semantics
+that converge on the shared neutral block before either renderer.
+
+TypeScript DOCX and Typst/PDF render a non-empty title as a header immediately
+above the complete code body. An authored `collapse=true` remains recorded but
+cannot remain interactive in a static artifact, so both targets keep the body
+visibly expanded and emit the same source-located
+`code-collapse-static` information note. Mermaid preparation preserves both
+fields when code becomes a diagram. Focused decoder, DOCX, PDF, fixture, note
+registry, and direct/background job-parity tests passed; LibreOffice and
+Typst/Poppler rendered goldens visibly prove the title/body order, first-line
+ordinal, complete body, and deterministic output in both formats. The Storage
+compatibility residual is now checked closed; the ADF matrix remains 82 of 84
+because this was not an additional pinned-schema row. Full typecheck, the
+16-task production build, all 20 browser-isomorphism entrypoints, output and
+manifest gates, the packed 15-case Chromium conformance run, exact CLI/browser
+artifact/report parity, the pinned-schema guard, API/closure guards, and the
+complete workspace suite passed. The suite recorded 5,062 tests passed, 13
+intentional skips, and zero failures across 317 files.
+
 ## 14. Resolved rollout decisions and unresolved question
 
 Resolved in the implementation:

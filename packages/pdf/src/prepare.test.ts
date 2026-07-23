@@ -189,6 +189,8 @@ describe("PDF asset preparation", () => {
         type: "codeBlock",
         code: "x=1",
         caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] },
+        title: "Deployment",
+        initiallyCollapsed: true,
         wrap: false,
         hideLineNumbers: false,
         firstLineNumber: 7,
@@ -211,6 +213,8 @@ describe("PDF asset preparation", () => {
     });
     expect(prepared.blocks[0]).toMatchObject({
       wrap: false,
+      title: "Deployment",
+      initiallyCollapsed: true,
       hideLineNumbers: false,
       firstLineNumber: 7,
       localId: "code-local",
@@ -223,6 +227,26 @@ describe("PDF asset preparation", () => {
     expect((prepared.blocks[2] as { caption?: unknown }).caption).toEqual({
       kind: "figure",
       content: [{ type: "text", text: "Figure 1" }],
+    });
+  });
+
+  it("retains legacy code title and collapse intent when Mermaid becomes a diagram", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "flowchart LR\nA --> B",
+      title: "System flow",
+      initiallyCollapsed: true,
+    }], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "diagram",
+      title: "System flow",
+      initiallyCollapsed: true,
     });
   });
 

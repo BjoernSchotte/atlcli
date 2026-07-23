@@ -87,6 +87,13 @@ test("every registered conformance case passes from nested production output", a
   expect(pdfJobParity.renderAttempts).toBe(1);
   expect(pdfJobParity.reservationReleased).toBe(true);
 
+  const blocks = JSON.parse(
+    (await page.getByTestId("blocks-result").textContent()) ?? "null",
+  );
+  expect(blocks.docxHasCodeTitle).toBe(true);
+  expect(blocks.pdfHasCodeCollapseProjection).toBe(true);
+  expect(blocks.docxHasCodeCollapseProjection).toBe(true);
+
   const adfSource = JSON.parse(
     (await page.getByTestId("adf-source-result").textContent()) ?? "null",
   );

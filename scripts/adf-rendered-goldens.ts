@@ -14,7 +14,9 @@ import {
   ADF_CONFORMANCE_SOURCE,
   ADF_INLINE_MEDIA_BYTES,
   ADF_INLINE_MEDIA_FILENAME,
+  STORAGE_CODE_COMPATIBILITY_SOURCE,
   adfConformanceBlocks,
+  storageCodeCompatibilityBlocks,
 } from "@atlcli/export-fixtures";
 import { runPdfExport } from "@atlcli/pdf";
 import sharp from "sharp";
@@ -70,6 +72,8 @@ const REQUIRED_TEXT = Object.freeze([
   "Unsupported wrapper keeps ",
   "rich inline content",
   "Extension: static-extension",
+  "Legacy Storage code title",
+  "const legacyStorage = true;",
 ]);
 const FORBIDDEN_TEXT = Object.freeze([
   "editor-only-secret",
@@ -161,7 +165,14 @@ function runTool(command: string, args: string[], cwd: string): string {
 function sourceHash(): string {
   const word = adfConformanceBlocks("word");
   const pdf = adfConformanceBlocks("pdf");
-  return sha256(JSON.stringify({ source: ADF_CONFORMANCE_SOURCE, word, pdf }));
+  const storage = storageCodeCompatibilityBlocks();
+  return sha256(JSON.stringify({
+    source: ADF_CONFORMANCE_SOURCE,
+    storageSource: STORAGE_CODE_COMPATIBILITY_SOURCE,
+    word,
+    pdf,
+    storage,
+  }));
 }
 
 async function renderCurrent(tempDir: string): Promise<{
@@ -182,6 +193,7 @@ async function renderCurrent(tempDir: string): Promise<{
   ]);
   const word = adfConformanceBlocks("word");
   const pdf = adfConformanceBlocks("pdf");
+  const storage = storageCodeCompatibilityBlocks();
   const docxPath = join(tempDir, "adf-rendered-docx.docx");
   const pdfName = "adf-rendered-pdf.pdf";
   const pdfPath = join(tempDir, pdfName);
@@ -194,8 +206,8 @@ async function renderCurrent(tempDir: string): Promise<{
   await runExport(
     {
       details: ADF_CONFORMANCE_DETAILS,
-      blocks: word.blocks,
-      sourceNotes: word.notes,
+      blocks: [...word.blocks, ...storage.blocks],
+      sourceNotes: [...word.notes, ...storage.notes],
       template: { name: "adf-rendered.docx", modificationDate: new Date("2026-07-22T08:00:00.000Z") },
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
     },
@@ -215,11 +227,11 @@ async function renderCurrent(tempDir: string): Promise<{
   );
   await runPdfExport(
     {
-      blocks: pdf.blocks,
+      blocks: [...pdf.blocks, ...storage.blocks],
       metadata: ADF_CONFORMANCE_METADATA,
       profile: "tagged",
       filename: pdfName,
-      sourceNotes: pdf.notes,
+      sourceNotes: [...pdf.notes, ...storage.notes],
     },
     nodePdfEnv(profile, {
       outDir: tempDir,
@@ -383,6 +395,7 @@ async function manifestFor(
       "synced-content-snapshot-and-reference",
       "extension-static-fallback",
       "stage0-multi-bodied-extension-frames",
+      "storage-code-title-and-static-collapse",
     ],
     formats: {
       docx: {
@@ -436,12 +449,22 @@ function assertOrderedListMarkers(format: string, actual: string): void {
   }
 }
 
+function assertStorageCodeTitleOrder(format: string, actual: string): void {
+  const title = actual.indexOf("Legacy Storage code title");
+  const body = actual.indexOf("const legacyStorage = true;");
+  if (title < 0 || body < 0 || title >= body) {
+    throw new Error(`${format} rendered golden did not keep the legacy code title above its body.`);
+  }
+}
+
 export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}): Promise<AdfRenderedGoldenResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "atlcli-adf-rendered-golden-"));
   try {
     const rendered = await renderCurrent(tempDir);
     assertOrderedListMarkers("DOCX", rendered.docxText);
     assertOrderedListMarkers("PDF", rendered.pdfText);
+    assertStorageCodeTitleOrder("DOCX", rendered.docxText);
+    assertStorageCodeTitleOrder("PDF", rendered.pdfText);
     await mkdir(ADF_RENDERED_GOLDEN_DIR, { recursive: true });
     if (options.update) {
       const manifest = await manifestFor(rendered.docxPages, rendered.pdfPages);

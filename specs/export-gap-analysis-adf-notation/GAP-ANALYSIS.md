@@ -106,6 +106,8 @@ Consequences:
 This document is the live gap register. Every completed work package must
 update both its matrix rows and the checklist below in the same commit:
 
+- Every gap-bearing feature table has a `Done` column; taxonomy/reference
+  tables that do not describe work items are the only exception.
 - `[x]` means the named gap is closed with the applicable semantic, target,
   browser, report, and rendered evidence.
 - `[ ]` plus **Open** means the complete native/static contract is technically
@@ -177,6 +179,10 @@ Current closed foundations and feature slices:
   an authored no-wrap preference is retained and explicitly reported when a
   static page must wrap it. Storage code/noformat defaults plus
   `linenumbers`/`firstline` are normalized separately.
+- [x] Legacy Storage code-macro `title` and `collapse` parameters survive in
+  the same neutral code-block contract. Both static targets render the title
+  as a header above the complete code body; authored collapsed state is
+  retained and reported while the static artifact remains visibly expanded.
 - [x] Media `dataConsumer` marks retain every ordered mark boundary and exact
   source array as non-visual provenance. Both targets omit opaque source IDs
   from published content and the shared report states the bounded static
@@ -219,9 +225,6 @@ Current cross-cutting residuals:
   synchronization with the parallel job-host work.
 - [ ] **Open:** the real sanitized Confluence corpus covers selected live
   slices, not yet every supported editor feature.
-- [ ] **Open — Storage compatibility only:** legacy code-macro `title` and
-  `collapse` parameters still need a typed static projection. They are not
-  attributes of the pinned ADF `codeBlock` node.
 - [ ] **Partial:** complete emoji glyph coverage and custom-emoji assets are
   blocked on a documented, authorized Atlassian asset-resolution contract.
 
@@ -272,7 +275,7 @@ Storage/export-view compatibility adapters.
 | [x] | `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | [x] | `blockquote` | Structured body becomes `blockquote`. | Native static projection | Native static projection | Closed; target-owned static styling is not ADF notation loss. |
-| [x] | `codeBlock` | Direct ADF retains exact code (including empty/final lines), optional language (including empty), tri-state `wrap`, normalized `hideLineNumbers`, `localId`, `uniqueId`, and root-only breakout intent. Storage `<pre>`/`code`/`noformat` retain their separate no-gutter default; `linenumbers`, `firstline`, language, and macro local identity survive where present. | Native with page-bound no-wrap/breakout policy | Native with page-bound no-wrap/breakout policy | Closed for the node's pinned content/attribute/mark contract. Both targets render syntax-highlighted code and authored line numbers; continuation lines align after the gutter. Requested no-wrap and breakout states remain in the neutral model and are explicitly reported when a bounded physical page must wrap or constrain them. Legacy Storage-only title/collapse remains a separate compatibility residual. |
+| [x] | `codeBlock` | Direct ADF retains exact code (including empty/final lines), optional language (including empty), tri-state `wrap`, normalized `hideLineNumbers`, `localId`, `uniqueId`, and root-only breakout intent. Storage `<pre>`/`code`/`noformat` retain their separate no-gutter default; code macros additionally retain `linenumbers`, `firstline`, language, macro local identity, `title`, and authored `collapse` intent where present. | Native with page-bound no-wrap/breakout policy | Native with page-bound no-wrap/breakout policy | Closed for the node's pinned content/attribute/mark contract and the documented legacy Storage compatibility parameters. Both targets render syntax-highlighted code and authored line numbers; continuation lines align after the gutter. A Storage title becomes a header above the complete body. Requested no-wrap/breakout states and authored collapse intent remain in the neutral model and are explicitly reported when a bounded static page must constrain or expand them. |
 
 Evidence: [E2], [E5], [E6], [E7], [E8].
 
@@ -591,7 +594,9 @@ Required acceptance contract:
 - [x] **Code blocks.** The full pinned ADF attribute/content contract reaches
   both static targets. Line numbers and long-line wrapping are visually proven;
   a no-wrap request uses an explicit non-clipping page-bound policy rather than
-  a silent approximation.
+  a silent approximation. Legacy Storage `title` and `collapse` additionally
+  produce a visible header and a complete, explicitly reported expanded static
+  projection in both targets.
 - [x] **Cards and embeds.** Every pinned inline/block/embed attribute, opaque
   data/datasource payload, safe target, local identity, layout, and authored
   geometry survives. Both targets render deterministic static cards; supported
@@ -657,7 +662,8 @@ Required acceptance contract:
 - [x] Nested bullet/numbered/task parity across ADF and Storage.
 - [x] Paragraph, heading, and ordinary list-item local identity preservation.
 - [x] Complete pinned ADF code-block content/attribute preservation and
-  page-bounded DOCX/PDF rendering.
+  page-bounded DOCX/PDF rendering, including the documented legacy Storage
+  title/collapse compatibility projection.
 - [x] Table attributes for static DOCX/PDF; page-bound wide-table layout remains
   a measured renderer policy rather than an ADF decoding gap.
 - [x] Layout columns for pinned ADF and documented Storage shapes.
@@ -818,7 +824,7 @@ Accessed 2026-07-22 and 2026-07-23:
 27. [ADF status node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/status/)
 28. [Confluence: Edit a template](https://support.atlassian.com/confluence-cloud/docs/edit-a-template/)
 29. [ADF codeBlock node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/codeBlock/)
-30. [Confluence Code Block macro](https://confluence.atlassian.com/display/DOCM/Code%2BBlock%2BMacro)
+30. [Confluence Cloud: Insert the Code Block macro](https://support.atlassian.com/confluence-cloud/docs/insert-the-code-block-macro/)
 31. [Typst raw text/code and `raw.line`](https://typst.app/docs/reference/text/raw/)
 32. [ADF mention node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mention/)
 33. [ECMA-376 WordprocessingML embedded fonts](https://c-rex.net/samples/ooxml/e1/Part4/OOXML_P4_DOCX_Font_topic_ID0ERNCU.html)
@@ -888,6 +894,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E47] Complete paragraph-local inline-extension platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`
 - **[E48] Complete ADF annotation sidecar and static-target contract:** `packages/confluence/src/client.ts`, `packages/confluence/src/comment-text.ts`, `packages/confluence/src/page-body.ts`, `packages/confluence/src/page-body-to-blocks.ts`, `packages/confluence/src/tree-fetch.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/pdf-compiler-browser/src/compiler.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
 - **[E49] Pinned Stage-0 multi-bodied extension contract and target parity:** `packages/confluence/test-fixtures/adf/upstream-stage0-extensions.json`, `packages/confluence/test-fixtures/adf/upstream-baseline.json`, `scripts/adf-drift.ts`, `scripts/adf-drift.test.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`
+- **[E50] Legacy Storage code-macro title/collapse compatibility:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/blocks-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

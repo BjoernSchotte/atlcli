@@ -490,6 +490,10 @@ export async function preparePdfDocument(
                 ...(block.firstLineNumber !== undefined
                   ? { firstLineNumber: block.firstLineNumber }
                   : {}),
+                ...(block.title !== undefined ? { title: block.title } : {}),
+                ...(block.initiallyCollapsed !== undefined
+                  ? { initiallyCollapsed: block.initiallyCollapsed }
+                  : {}),
                 ...(block.localId !== undefined ? { localId: block.localId } : {}),
                 ...(block.uniqueId !== undefined ? { uniqueId: block.uniqueId } : {}),
               };

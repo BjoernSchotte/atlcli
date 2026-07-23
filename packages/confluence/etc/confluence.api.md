@@ -1125,6 +1125,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "perf-timing",
     "code-highlight-skipped",
     "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -1163,6 +1164,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -3599,6 +3602,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "perf-timing",
     "code-highlight-skipped",
     "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -3637,6 +3641,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -6073,6 +6079,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "perf-timing",
     "code-highlight-skipped",
     "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -6111,6 +6118,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -8430,6 +8439,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "perf-timing",
     "code-highlight-skipped",
     "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -8468,6 +8478,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
@@ -11445,6 +11457,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "perf-timing",
     "code-highlight-skipped",
     "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -11483,6 +11496,8 @@ export type ExportBlock = {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
     hideLineNumbers?: boolean;

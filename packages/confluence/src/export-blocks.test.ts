@@ -648,6 +648,38 @@ describe("storageToBlocks — code blocks", () => {
       localId: "code-local",
     }]);
   });
+
+  test("retains the legacy title and explicit collapse state independently", () => {
+    const out = blocks(
+      '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="title">Deployment &amp; rollback</ac:parameter>' +
+        '<ac:parameter ac:name="collapse">TRUE</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[first]]></ac:plain-text-body>" +
+        "</ac:structured-macro>" +
+        '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="title"></ac:parameter>' +
+        '<ac:parameter ac:name="collapse">false</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[second]]></ac:plain-text-body>" +
+        "</ac:structured-macro>"
+    );
+
+    expect(out).toEqual([
+      {
+        type: "codeBlock",
+        code: "first",
+        title: "Deployment & rollback",
+        initiallyCollapsed: true,
+        hideLineNumbers: true,
+      },
+      {
+        type: "codeBlock",
+        code: "second",
+        title: "",
+        initiallyCollapsed: false,
+        hideLineNumbers: true,
+      },
+    ]);
+  });
 });
 
 describe("storageToBlocks — callouts", () => {

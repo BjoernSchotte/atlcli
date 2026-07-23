@@ -834,10 +834,19 @@ async function serializeBlock(
     }
 
     case "codeBlock": {
+      if (block.initiallyCollapsed === true) {
+        notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static DOCX export rendered its complete source.",
+        });
+      }
+      const titleXml = codeTitleParagraph(block.title);
       // A ```mermaid block takes the diagram path (spec 005a); every other
       // language is untouched by this branch.
       if ((block.language ?? "").trim().toLowerCase() === "mermaid") {
-        return serializeMermaid(block, ctx, notes);
+        return titleXml + await serializeMermaid(block, ctx, notes);
       }
       const { lines, skipped } = await highlightCode(block.code, block.language);
       if (skipped) {
@@ -868,7 +877,8 @@ async function serializeBlock(
         )
         .join("");
       // Caption below code (established convention).
-      return block.caption ? codeXml + await captionXml(block.caption, ctx, notes) : codeXml;
+      const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
+      return titleXml + codeXml + caption;
     }
 
     case "callout": {
@@ -1282,6 +1292,21 @@ async function serializeMermaid(
     });
   }
   return plainCodeParagraphs(block.code);
+}
+
+/** Legacy Storage code-macro title as a distinct header row above the body. */
+function codeTitleParagraph(title: string | undefined): string {
+  if (!title) return "";
+  return paragraph(
+    run(title, { bold: true, color: "172B4D" }),
+    {
+      extraPPr:
+        '<w:keepNext/>' +
+        '<w:spacing w:before="0" w:after="0"/>' +
+        '<w:shd w:val="clear" w:color="auto" w:fill="DFE1E6"/>' +
+        '<w:pBdr><w:bottom w:val="single" w:sz="4" w:color="B3BAC5"/></w:pBdr>',
+    },
+  );
 }
 
 /** The diagram fallback: source lines as uncolored monospace code paragraphs. */

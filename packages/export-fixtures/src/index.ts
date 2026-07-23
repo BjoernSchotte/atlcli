@@ -56,6 +56,8 @@ export const DOCX_DETAILS: ConfluencePageDetails = {
     `<p>This document was generated without an extension host.</p>` +
     `<ac:structured-macro ac:name="code">` +
     `<ac:parameter ac:name="language">mermaid</ac:parameter>` +
+    `<ac:parameter ac:name="title">Browser runtime flow</ac:parameter>` +
+    `<ac:parameter ac:name="collapse">true</ac:parameter>` +
     `<ac:plain-text-body><![CDATA[${MERMAID_SOURCE}]]></ac:plain-text-body>` +
     `</ac:structured-macro>`,
   created: "2026-07-17T08:00:00.000Z",
@@ -69,7 +71,7 @@ export const DOCX_EXPECTED = {
   filename: "Browser Harness DOCX.docx",
   resolvedCount: 1,
   renderedDiagrams: 1,
-  semanticNoteCodes: [] as string[],
+  semanticNoteCodes: ["code-collapse-static"] as string[],
 };
 
 // ---------------------------------------------------------------------------
@@ -93,6 +95,14 @@ export const PDF_BLOCKS: ExportBlock[] = [
       { content: [{ type: "paragraph", content: [{ type: "text", text: "WASM and fonts are local" }] }] },
       { content: [{ type: "paragraph", content: [{ type: "text", text: "The repeat is deterministic" }] }] },
     ],
+  },
+  {
+    type: "codeBlock",
+    language: "text",
+    code: "export const runtime = true;",
+    title: "Runtime contract",
+    initiallyCollapsed: true,
+    hideLineNumbers: true,
   },
 ];
 
@@ -118,6 +128,21 @@ export const ADF_CODE_BLOCK_SOURCE =
   "const second = first + 1;\n" +
   'const message = "This is a deliberately long Confluence code line that must remain fully visible in both bounded static export targets even when no-wrap was authored";\n' +
   "console.log(second, message);\n";
+
+/** Legacy Storage-only code-macro semantics that have no ADF node equivalent. */
+export const STORAGE_CODE_COMPATIBILITY_SOURCE =
+  '<ac:structured-macro ac:name="code" ac:local-id="storage-code-local">' +
+  '<ac:parameter ac:name="language">typescript</ac:parameter>' +
+  '<ac:parameter ac:name="title">Legacy Storage code title</ac:parameter>' +
+  '<ac:parameter ac:name="collapse">true</ac:parameter>' +
+  '<ac:parameter ac:name="linenumbers">true</ac:parameter>' +
+  '<ac:parameter ac:name="firstline">12</ac:parameter>' +
+  "<ac:plain-text-body><![CDATA[const legacyStorage = true;\nexport { legacyStorage };]]></ac:plain-text-body>" +
+  "</ac:structured-macro>";
+
+export function storageCodeCompatibilityBlocks(): StorageToBlocksResult {
+  return storageToBlocks(STORAGE_CODE_COMPATIBILITY_SOURCE);
+}
 
 /**
  * Real ADF input for the browser conformance harness. This deliberately starts
@@ -902,14 +927,14 @@ export const SCOPE_METADATA: PdfExportMetadata = {
  *   - `heading.explicitAnchor` (a named heading target),
  *   - a standalone `pageBreak` block,
  *   - a `table` with `columnWidths` AND a `table` `caption`,
- *   - a `codeBlock` with a `code` `caption`,
+ *   - a `codeBlock` with a legacy header/collapse contract and `code` caption,
  *   - a standalone `orientation` region (`landscape: true`) with content,
  *   - a standalone `anchor` block,
  *   - an enriched `unknown` block carrying `params` + a preserved `body`.
  *
- * Chosen so BOTH engines emit ZERO warning/info notes (no image asset fetch, no
- * container-suppressed break/orientation): the case asserts the note set is
- * empty and — for the PDF side — warm-repeat byte determinism.
+ * Chosen so BOTH engines emit zero warning notes. The one intentional info note
+ * records that a legacy initially-collapsed code block is expanded for static
+ * output; the PDF side also proves warm-repeat byte determinism.
  */
 export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
   {
@@ -944,6 +969,8 @@ export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
     type: "codeBlock",
     language: "typescript",
     code: "export const answer = 42;",
+    title: "Legacy code header",
+    initiallyCollapsed: true,
     caption: { kind: "code", content: [{ type: "text", text: "Listing one" }] },
   },
   {

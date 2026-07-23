@@ -552,6 +552,43 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(notes.map((note) => note.code)).toContain("code-nowrap-page-bounded");
   });
 
+  it("renders a legacy code title above the complete body and reports static expansion", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "codeBlock",
+      code: "deploy();",
+      title: "Deployment <safe>",
+      initiallyCollapsed: true,
+      hideLineNumbers: true,
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("<w:keepNext/>");
+    expect(xml).toContain('<w:shd w:val="clear" w:color="auto" w:fill="DFE1E6"/>');
+    expect(xml).toContain("Deployment &lt;safe&gt;");
+    expect(xml).toContain("deploy();");
+    expect(xml.indexOf("Deployment &lt;safe&gt;")).toBeLessThan(xml.indexOf("deploy();"));
+    expect(notes).toContainEqual(expect.objectContaining({
+      level: "info",
+      code: "code-collapse-static",
+    }));
+  });
+
+  it("keeps the legacy code title when Mermaid renders as a diagram", async () => {
+    const diagrams = diagramSeamOver(async () => ({
+      ok: true,
+      xml: "<w:p><w:r><w:t>DIAGRAM</w:t></w:r></w:p>",
+    }));
+    const { xml } = await serializeBlocks([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "flowchart LR\nA --> B",
+      title: "System flow",
+    }], { styleNames: noStyles, diagrams });
+
+    expect(xml).toContain("System flow");
+    expect(xml).toContain("DIAGRAM");
+    expect(xml.indexOf("System flow")).toBeLessThan(xml.indexOf("DIAGRAM"));
+  });
+
   it("keeps internal and Storage-default code blocks free of an invented gutter", async () => {
     const { xml } = await serializeBlocks(
       [{ type: "codeBlock", code: "plain", hideLineNumbers: true }],
