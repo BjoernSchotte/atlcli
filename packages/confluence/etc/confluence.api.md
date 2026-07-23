@@ -1230,6 +1230,49 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -1840,6 +1883,9 @@ export interface TreeFetchOptions {
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -3256,6 +3302,49 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -3866,6 +3955,9 @@ export interface TreeFetchOptions {
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -5282,6 +5374,49 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -5892,6 +6027,9 @@ export interface TreeFetchOptions {
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -9852,6 +9990,49 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
 
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -10462,6 +10643,9 @@ export interface TreeFetchOptions {
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress

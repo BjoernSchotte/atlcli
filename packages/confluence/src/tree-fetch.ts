@@ -13,6 +13,7 @@
  * body dispatcher and shared limiter/scope helpers.
  */
 import {
+  canonicalExportNoteCode,
   StorageParseError,
   type ExportBlock,
   type ExportNote,
@@ -34,6 +35,7 @@ import {
   normalizeLabelFilter,
   type ExportScope,
   type LabelFilter,
+  validateExportScope,
 } from "./export-scope.js";
 import { createInOrderLimiter } from "./in-order-limiter.js";
 import { escapeCqlValue } from "./client.js";
@@ -196,6 +198,62 @@ export interface TreeFetchOptions {
   onProgress?: (progress: TreeFetchProgress) => void;
   /** Common representation-neutral decoder options; page provenance is owned here. */
   bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+  /**
+   * A validated, body-free plan recovered from durable job storage. When
+   * present, discovery/label reads are skipped and only the pinned page bodies
+   * are fetched.
+   */
+  preparedPlan?: ExportTreePlanV1;
+  /**
+   * Called after discovery/filtering and before the first page body read. A
+   * background host can atomically persist the plan and publish its ref here.
+   */
+  onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /** Maximum serialized size accepted for a durable body-free plan. */
+  maxPlanBytes?: number;
+}
+
+export type ExportTreePlanNodeV1 =
+  | {
+      kind: "page";
+      pageId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+      observedVersion?: number;
+    }
+  | {
+      kind: "folder";
+      folderId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+    };
+
+/**
+ * Durable pre-body snapshot for one ordered tree export.
+ *
+ * It contains identifiers, titles, ordering metadata, version pins and
+ * bounded diagnostics, but never ADF, Storage, decoded blocks or attachments.
+ */
+export interface ExportTreePlanV1 {
+  schema: "atlcli.export-tree-plan/1";
+  scope: ExportScope;
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  };
+  rootId: string;
+  includeRoot: boolean;
+  nodes: readonly ExportTreePlanNodeV1[];
+  notes: readonly ExportNote[];
+  complete: boolean;
 }
 
 export interface TreeSourceSummary {
@@ -215,9 +273,20 @@ export interface FetchExportTreeResult {
   sourceSummary: TreeSourceSummary;
 }
 
+/** Raised before body IO when a recovered tree plan is corrupt or foreign. */
+export class ExportTreePlanError extends Error {
+  readonly code = "export-tree-plan-invalid" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportTreePlanError";
+  }
+}
+
 const DEFAULT_MAX_PAGES = 500;
 const DEFAULT_MAX_FOLDERS = 200;
 const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_MAX_PLAN_BYTES = 2 * 1024 * 1024;
 const CQL_ID_CHUNK = 100;
 
 // ---------------------------------------------------------------------------
@@ -516,6 +585,292 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
   return a.title.localeCompare(b.title);
 }
 
+function normalizedScopeKey(scope: ExportScope): string {
+  try {
+    validateExportScope(scope);
+    switch (scope.kind) {
+      case "page":
+        return JSON.stringify(["page", scope.pageId]);
+      case "tree":
+        if (scope.includeRoot !== undefined && typeof scope.includeRoot !== "boolean") {
+          throw new TypeError("invalid includeRoot");
+        }
+        return JSON.stringify([
+          "tree",
+          scope.rootPageId,
+          scope.includeRoot ?? true,
+          scope.maxDepth ?? null,
+        ]);
+      case "space":
+        return JSON.stringify(["space", scope.spaceKey]);
+    }
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan contains an invalid scope.");
+  }
+}
+
+function clonePlanScope(scope: ExportScope): ExportScope {
+  switch (scope.kind) {
+    case "page":
+      return { kind: "page", pageId: scope.pageId };
+    case "tree":
+      return {
+        kind: "tree",
+        rootPageId: scope.rootPageId,
+        ...(scope.includeRoot !== undefined ? { includeRoot: scope.includeRoot } : {}),
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
+    case "space":
+      return { kind: "space", spaceKey: scope.spaceKey };
+  }
+}
+
+function normalizedLabelKey(filter: LabelFilter | undefined): string {
+  const normalized = normalizeLabelFilter(filter);
+  return JSON.stringify({
+    include: [...(normalized?.include ?? [])].sort(),
+    exclude: [...(normalized?.exclude ?? [])].sort(),
+    excludeMode: normalized?.excludeMode ?? null,
+  });
+}
+
+function clonePlanLabels(filter: LabelFilter | undefined): LabelFilter | undefined {
+  const normalized = normalizeLabelFilter(filter);
+  if (!normalized) return undefined;
+  return {
+    ...(normalized.include ? { include: [...normalized.include].sort() } : {}),
+    ...(normalized.exclude ? { exclude: [...normalized.exclude].sort() } : {}),
+    ...(normalized.excludeMode ? { excludeMode: normalized.excludeMode } : {}),
+  };
+}
+
+function clonePlanNote(note: ExportNote): ExportNote {
+  return {
+    level: note.level,
+    code: note.code,
+    message: note.message,
+    ...(note.macroName !== undefined ? { macroName: note.macroName } : {}),
+    ...(note.source
+      ? {
+          source: {
+            ...(note.source.pageId !== undefined ? { pageId: note.source.pageId } : {}),
+            ...(note.source.pageTitle !== undefined ? { pageTitle: note.source.pageTitle } : {}),
+            ...(note.source.pageUrl !== undefined ? { pageUrl: note.source.pageUrl } : {}),
+            ...(note.source.blockPath !== undefined ? { blockPath: note.source.blockPath } : {}),
+            ...(note.source.assetName !== undefined ? { assetName: note.source.assetName } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function createTreePlan(
+  scope: ExportScope,
+  rootId: string,
+  includeRoot: boolean,
+  nodes: readonly ExportNode[],
+  notes: readonly ExportNote[],
+  complete: boolean,
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): ExportTreePlanV1 {
+  const labels = clonePlanLabels(policy.labels);
+  return {
+    schema: "atlcli.export-tree-plan/1",
+    scope: clonePlanScope(scope),
+    policy: {
+      ...(labels ? { labels } : {}),
+      completenessMode: policy.completenessMode,
+      maxPages: policy.maxPages,
+      maxFolders: policy.maxFolders,
+    },
+    rootId,
+    includeRoot,
+    nodes: nodes.map((node): ExportTreePlanNodeV1 =>
+      node.kind === "page"
+        ? {
+            kind: "page",
+            pageId: node.pageId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+            ...(node.meta.observedVersion !== undefined
+              ? { observedVersion: node.meta.observedVersion }
+              : {}),
+          }
+        : {
+            kind: "folder",
+            folderId: node.folderId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+          },
+    ),
+    notes: notes.map(clonePlanNote),
+    complete,
+  };
+}
+
+function assertPlanInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ExportTreePlanError(`${label} must be a non-negative safe integer.`);
+  }
+}
+
+function assertPlanByteBudget(plan: ExportTreePlanV1, maxPlanBytes: number): void {
+  if (!Number.isSafeInteger(maxPlanBytes) || maxPlanBytes < 1) {
+    throw new ExportTreePlanError("maxPlanBytes must be a positive safe integer.");
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(plan);
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan is not serializable.");
+  }
+  if (new TextEncoder().encode(serialized).byteLength > maxPlanBytes) {
+    throw new ExportTreePlanError("Export tree plan exceeds the durable byte budget.");
+  }
+}
+
+function restoreTreePlan(
+  plan: ExportTreePlanV1,
+  scope: ExportScope,
+  expected: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): { rootId: string; includeRoot: boolean; nodes: ExportNode[]; notes: ExportNote[]; complete: boolean } {
+  if (plan.schema !== "atlcli.export-tree-plan/1") {
+    throw new ExportTreePlanError("Unsupported export tree plan schema.");
+  }
+  if (normalizedScopeKey(plan.scope) !== normalizedScopeKey(scope)) {
+    throw new ExportTreePlanError("Recovered export tree plan does not match the requested scope.");
+  }
+  if (
+    !plan.policy ||
+    typeof plan.policy !== "object" ||
+    plan.policy.completenessMode !== expected.completenessMode ||
+    plan.policy.maxPages !== expected.maxPages ||
+    plan.policy.maxFolders !== expected.maxFolders ||
+    normalizedLabelKey(plan.policy.labels) !== normalizedLabelKey(expected.labels)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan policy does not match the request.");
+  }
+  if (typeof plan.rootId !== "string" || plan.rootId.trim().length === 0) {
+    throw new ExportTreePlanError("Recovered export tree plan has no root id.");
+  }
+  if (
+    (scope.kind === "page" && plan.rootId !== scope.pageId) ||
+    (scope.kind === "tree" && plan.rootId !== scope.rootPageId)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan root does not match the request.");
+  }
+  const expectedIncludeRoot = scope.kind === "tree" ? (scope.includeRoot ?? true) : true;
+  if (plan.includeRoot !== expectedIncludeRoot || typeof plan.complete !== "boolean") {
+    throw new ExportTreePlanError("Recovered export tree plan flags do not match the request.");
+  }
+  if (!Array.isArray(plan.nodes) || !Array.isArray(plan.notes)) {
+    throw new ExportTreePlanError("Recovered export tree plan collections are invalid.");
+  }
+
+  let pages = 0;
+  let folders = 0;
+  const seen = new Set<string>();
+  const nodes = plan.nodes.map((node): ExportNode => {
+    if (!node || typeof node !== "object") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid node.");
+    }
+    const id = node.kind === "page" ? node.pageId : node.kind === "folder" ? node.folderId : undefined;
+    if (typeof id !== "string" || id.trim().length === 0 || typeof node.title !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains invalid node identity.");
+    }
+    const key = `${node.kind}:${id}`;
+    if (seen.has(key)) throw new ExportTreePlanError("Recovered export tree plan contains duplicate nodes.");
+    seen.add(key);
+    assertPlanInteger(node.depth, "node.depth");
+    assertPlanInteger(node.effectiveDepth, "node.effectiveDepth");
+    if (node.parentId !== null && typeof node.parentId !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid parent id.");
+    }
+    if (node.position !== null) assertPlanInteger(node.position, "node.position");
+
+    if (node.kind === "page") {
+      pages += 1;
+      if (pages > expected.maxPages) {
+        throw new ExportTreePlanError("Recovered export tree plan exceeds the page limit.");
+      }
+      if (
+        node.observedVersion !== undefined &&
+        (!Number.isSafeInteger(node.observedVersion) || node.observedVersion < 1)
+      ) {
+        throw new ExportTreePlanError("Recovered export tree plan contains an invalid page version.");
+      }
+      return {
+        kind: "page",
+        pageId: node.pageId,
+        title: node.title,
+        depth: node.depth,
+        effectiveDepth: node.effectiveDepth,
+        parentId: node.parentId,
+        position: node.position,
+        blocks: [],
+        notes: [],
+        meta: {
+          labels: [],
+          ...(node.observedVersion !== undefined
+            ? { observedVersion: node.observedVersion }
+            : {}),
+        },
+      };
+    }
+
+    folders += 1;
+    if (folders > expected.maxFolders) {
+      throw new ExportTreePlanError("Recovered export tree plan exceeds the folder limit.");
+    }
+    return {
+      kind: "folder",
+      folderId: node.folderId,
+      title: node.title,
+      depth: node.depth,
+      effectiveDepth: node.effectiveDepth,
+      parentId: node.parentId,
+      position: node.position,
+    };
+  });
+
+  const notes = plan.notes.map((note) => {
+    const source = note?.source;
+    if (
+      !note ||
+      typeof note !== "object" ||
+      (note.level !== "info" && note.level !== "warning") ||
+      typeof note.code !== "string" ||
+      canonicalExportNoteCode(note.code) === undefined ||
+      typeof note.message !== "string" ||
+      (note.macroName !== undefined && typeof note.macroName !== "string") ||
+      (source !== undefined &&
+        (typeof source !== "object" || source === null ||
+          [source.pageId, source.pageTitle, source.pageUrl, source.blockPath, source.assetName]
+            .some((value) => value !== undefined && typeof value !== "string")))
+    ) {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid note.");
+    }
+    return clonePlanNote(note);
+  });
+  return { rootId: plan.rootId, includeRoot: plan.includeRoot, nodes, notes, complete: plan.complete };
+}
+
 /**
  * Fetch an ordered export tree for a scope.
  *
@@ -535,17 +890,35 @@ export async function fetchExportTree(
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
+  const maxPlanBytes = opts.maxPlanBytes ?? DEFAULT_MAX_PLAN_BYTES;
   const mode: CompletenessMode = opts.completenessMode ?? "strict";
   const filter = normalizeLabelFilter(opts.labels);
 
   const treeNotes: ExportNote[] = [];
   let complete = true;
+  if (opts.preparedPlan) assertPlanByteBudget(opts.preparedPlan, maxPlanBytes);
+  const recoveredPlan = opts.preparedPlan
+    ? restoreTreePlan(opts.preparedPlan, scope, {
+        ...(filter ? { labels: filter } : {}),
+        completenessMode: mode,
+        maxPages,
+        maxFolders,
+      })
+    : undefined;
+  if (recoveredPlan) {
+    treeNotes.push(...recoveredPlan.notes);
+    complete = recoveredPlan.complete;
+  }
 
   // Resolve the scope root + includeRoot.
   let rootId: string;
   let includeRoot = true;
   let maxDepth: number | undefined;
-  if (scope.kind === "page") {
+  if (recoveredPlan) {
+    rootId = recoveredPlan.rootId;
+    includeRoot = recoveredPlan.includeRoot;
+    maxDepth = scope.kind === "tree" ? scope.maxDepth : scope.kind === "page" ? 0 : undefined;
+  } else if (scope.kind === "page") {
     rootId = scope.pageId;
     // A page scope is exactly one page — never descend into children.
     maxDepth = 0;
@@ -560,7 +933,7 @@ export async function fetchExportTree(
   }
 
   // ---- Phase 1: ordering walk ----
-  const planned: ExportNode[] = [];
+  const planned: ExportNode[] = recoveredPlan?.nodes ?? [];
   const visited = new Set<string>();
   let pageCount = 0;
   let folderCount = 0;
@@ -691,9 +1064,9 @@ export async function fetchExportTree(
     }
   };
 
-  if (includeRoot) {
+  if (!recoveredPlan && includeRoot) {
     await walk({ id: rootId, kind: "page" }, 0, null, null, undefined, undefined);
-  } else {
+  } else if (!recoveredPlan) {
     // Root excluded by explicit request: discover the root's children as the
     // top-level nodes (each becomes its own level-1 chapter). Seed the root's
     // composite key into the cycle guard even though the root is never emitted —
@@ -756,7 +1129,12 @@ export async function fetchExportTree(
 
   // ---- Phase 2: label filter (before body fetch) ----
   let nodes: ExportNode[] = planned;
-  if (filter) {
+  if (!recoveredPlan && filter) {
+    if (opts.onPlanPrepared && !source.searchPages) {
+      throw new ExportTreePlanError(
+        "Durable tree planning requires metadata-only label lookup before body reads.",
+      );
+    }
     const labelsById = await resolveLabels(source, nodes, filter, context);
     // Root-bypass immunity applies only when the true root is actually in the
     // node list. With `includeRoot: false` the root was removed by explicit
@@ -767,6 +1145,18 @@ export async function fetchExportTree(
     });
     nodes = filtered.nodes;
     treeNotes.push(...filtered.notes);
+  }
+
+  if (!recoveredPlan && opts.onPlanPrepared) {
+    const plan = createTreePlan(scope, rootId, includeRoot, nodes, treeNotes, complete, {
+      ...(filter ? { labels: filter } : {}),
+      completenessMode: mode,
+      maxPages,
+      maxFolders,
+    });
+    assertPlanByteBudget(plan, maxPlanBytes);
+    await opts.onPlanPrepared(plan);
+    throwIfAborted(signal);
   }
 
   // ---- Phase 3: body fetch pool (page nodes only, in pre-order slots) ----
