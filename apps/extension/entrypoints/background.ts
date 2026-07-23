@@ -208,6 +208,19 @@ function sweepJobs(force = false): void {
   }).catch((error) => console.error("Export job retention sweep failed", error));
 }
 
+async function restoreCommonExportQueueAfterHostStart(): Promise<void> {
+  const candidates = await commonExportCatalog.list({
+    states: ["queued", "running", "cancelling", "waiting"],
+    limit: 1_000,
+  });
+  const hasRecoverableWork = candidates.some(
+    (job) =>
+      job.state !== "waiting" ||
+      job.waiting?.until !== undefined,
+  );
+  if (hasRecoverableWork) await ensureOffscreen();
+}
+
 /**
  * Effect wired into the pure router: ensure the offscreen document exists,
  * then round-trip the WASM computation through it. Rejects on failure so the
@@ -387,6 +400,9 @@ export default defineBackground({
   // compile died with the previous one.
   sweepJobs(true);
   refreshExportBadge();
+  void restoreCommonExportQueueAfterHostStart().catch((error) =>
+    console.error("Common export queue host recovery failed", error)
+  );
 
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).

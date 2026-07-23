@@ -20,7 +20,7 @@ export interface ExtensionExportQueueRunnerV1 {
   startup(): Promise<void>;
   wake(
     jobIds?: string[],
-    options?: { resumeWaiting?: boolean },
+    options?: { resumeWaiting?: boolean; scheduleRecovery?: boolean },
   ): Promise<string | undefined>;
   activeJobId(): string | undefined;
 }
@@ -41,6 +41,8 @@ export function createExtensionExportQueueRunner(
   let startup: Promise<void> | undefined;
   let claiming: Promise<string | undefined> | undefined;
   let active: { jobId: string; execution: Promise<void> } | undefined;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let keepRecoveryScheduled = false;
 
   const ensureStartup = (): Promise<void> => {
     startup ??= options.bytes.recoverIncompleteWrites()
@@ -63,18 +65,64 @@ export function createExtensionExportQueueRunner(
         if (active?.execution === execution) active = undefined;
         await options.onSettled?.(claimed.id);
         queueMicrotask(() => {
-          void wake().catch((error) => options.onExecutionError?.(error, claimed.id));
+          void wake(
+            undefined,
+            keepRecoveryScheduled ? { scheduleRecovery: true } : undefined,
+          ).catch((error) => options.onExecutionError?.(error, claimed.id));
         });
       });
     active = { jobId: claimed.id, execution };
   };
 
+  const clearRecoveryTimer = (): void => {
+    if (recoveryTimer === undefined) return;
+    clearTimeout(recoveryTimer);
+    recoveryTimer = undefined;
+  };
+
+  const scheduleNextRecoverableWake = async (
+    jobIds?: string[],
+  ): Promise<void> => {
+    const candidates = await options.catalog.list({
+      states: ["running", "cancelling", "waiting"],
+      limit: 1_000,
+    });
+    const eligibleAt = candidates
+      .filter((job) => !jobIds || jobIds.includes(job.id))
+      .flatMap((job) => {
+        if (
+          (job.state === "running" || job.state === "cancelling") &&
+          job.lease
+        ) {
+          return [job.lease.expiresAt];
+        }
+        if (job.state === "waiting" && job.waiting?.until !== undefined) {
+          return [job.waiting.until];
+        }
+        return [];
+      })
+      .sort((left, right) => left - right)[0];
+    if (eligibleAt === undefined) {
+      keepRecoveryScheduled = false;
+      return;
+    }
+    const delayMs = Math.max(1, Math.min(eligibleAt - now() + 1, 2_147_483_647));
+    clearRecoveryTimer();
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined;
+      void wake(jobIds, { scheduleRecovery: true }).catch((error) =>
+        options.onExecutionError?.(error, jobIds?.[0] ?? "queue-recovery")
+      );
+    }, delayMs);
+  };
+
   const claimAndStart = async (
     jobIds?: string[],
-    wakeOptions?: { resumeWaiting?: boolean },
+    wakeOptions?: { resumeWaiting?: boolean; scheduleRecovery?: boolean },
   ): Promise<string | undefined> => {
     await ensureStartup();
     if (active) return undefined;
+    clearRecoveryTimer();
     const claimed = await recoverAndClaimExtensionExportJob(options.catalog, {
       now: now(),
       ownerId,
@@ -84,15 +132,21 @@ export function createExtensionExportQueueRunner(
         ? { resumeWaitingIds: jobIds }
         : {}),
     });
-    if (!claimed) return undefined;
+    if (!claimed) {
+      if (wakeOptions?.scheduleRecovery) {
+        await scheduleNextRecoverableWake(jobIds);
+      }
+      return undefined;
+    }
     startExecution(claimed);
     return claimed.id;
   };
 
   const wake = (
     jobIds?: string[],
-    wakeOptions?: { resumeWaiting?: boolean },
+    wakeOptions?: { resumeWaiting?: boolean; scheduleRecovery?: boolean },
   ): Promise<string | undefined> => {
+    if (wakeOptions?.scheduleRecovery) keepRecoveryScheduled = true;
     if (active || claiming) return Promise.resolve(undefined);
     const operation = claimAndStart(jobIds, wakeOptions);
     claiming = operation;

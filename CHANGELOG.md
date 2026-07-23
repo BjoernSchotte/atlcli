@@ -8,10 +8,10 @@ All notable changes to atlcli will be documented in this file.
 
 - **export:** Run DOCX and PDF through one durable, bounded job queue in the CLI
   and Chrome extension. Exports are recorded before the first source read,
-  survive panel, service-worker, and offscreen-document loss, expose shared
-  Activity/history with statistics and bounded events, and support Cancel,
-  Retry, Run again, resume after sign-in, download, acknowledgement, dismissal,
-  and retention-safe cleanup.
+  survive panel, service-worker, offscreen-document, and full browser restarts,
+  expose shared Activity/history with statistics and bounded events, and
+  support Cancel, Retry, Run again, resume after sign-in, download,
+  acknowledgement, dismissal, and retention-safe cleanup.
 - **extension:** Show active export counts on the toolbar badge (`9+` maximum),
   durable success/failure indicators, and an optional bounded completion pulse.
   Full DOCX and Typst/WASM PDF execution now continues outside the side panel.

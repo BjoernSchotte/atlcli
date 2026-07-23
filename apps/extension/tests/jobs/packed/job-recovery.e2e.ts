@@ -1,5 +1,5 @@
 import { expect, test, chromium, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
-import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ const JOB_J = "d23e4567-e89b-42d3-a456-426614174000";
 const JOB_K = "e23e4567-e89b-42d3-a456-426614174000";
 const JOB_L = "f23e4567-e89b-42d3-a456-426614174000";
 const JOB_M = "013e4567-e89b-42d3-a456-426614174001";
+const JOB_N = "113e4567-e89b-42d3-a456-426614174001";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -29,6 +30,7 @@ let context: BrowserContext;
 let extensionId: string;
 let suiteRoot: string;
 let baseExtensionDir: string;
+let userDataDir: string;
 let page: Page;
 let packedOffscreen: ChildTargetSession | undefined;
 
@@ -267,6 +269,62 @@ async function createPackedPngBytes(): Promise<number[]> {
   });
 }
 
+async function launchPackedBrowser(): Promise<void> {
+  context = await chromium.launchPersistentContext(userDataDir, {
+    channel: "chromium",
+    headless: true,
+    args: [`--disable-extensions-except=${baseExtensionDir}`, `--load-extension=${baseExtensionDir}`],
+  });
+  let serviceWorker = context.serviceWorkers()[0];
+  serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
+  extensionId = new URL(serviceWorker.url()).host;
+  page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/job-probe.html`);
+  await page.waitForFunction(() => "exportJobStoreProbe" in globalThis);
+}
+
+function installBrowserRestartFetchStub(): void {
+  const scriptName = "packed-browser-restart-fetch-stub.js";
+  writeFileSync(
+    join(baseExtensionDir, scriptName),
+    `globalThis.fetch = async (input) => {
+      const url = new URL(typeof input === "string" ? input : input.url);
+      const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
+      if (!match) {
+        return new Response("{}", {
+          status: 404,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      const pageId = decodeURIComponent(match[1]);
+      return new Response(JSON.stringify({
+        id: pageId,
+        type: "page",
+        title: "Packed page " + pageId,
+        body: { storage: { value: "<p>Recovered after a full browser restart</p>" } },
+        version: { number: 1, when: "2026-07-23T00:00:00.000Z" },
+        space: { key: "DOCS" },
+        ancestors: [],
+        metadata: { labels: { results: [] }, properties: {} },
+        history: { createdDate: "2026-07-23T00:00:00.000Z" }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };`,
+  );
+  const offscreenPath = join(baseExtensionDir, "offscreen.html");
+  const html = readFileSync(offscreenPath, "utf8");
+  const moduleScript = '<script type="module"';
+  if (!html.includes(moduleScript)) {
+    throw new Error("Packed offscreen HTML has no module entrypoint.");
+  }
+  writeFileSync(
+    offscreenPath,
+    html.replace(
+      moduleScript,
+      `<script src="/${scriptName}"></script>\n    ${moduleScript}`,
+    ),
+  );
+}
+
 test.beforeAll(async () => {
   suiteRoot = mkdtempSync(join(tmpdir(), "atlcli-export-jobs-extension-"));
   baseExtensionDir = join(suiteRoot, "base-extension");
@@ -287,18 +345,8 @@ test.beforeAll(async () => {
     join(baseExtensionDir, "job-probe.html"),
     "<!doctype html><meta charset=utf-8><title>Export job probe</title><script type=module src=job-store-probe.js></script>",
   );
-  const userDataDir = join(suiteRoot, "profile");
-  context = await chromium.launchPersistentContext(userDataDir, {
-    channel: "chromium",
-    headless: true,
-    args: [`--disable-extensions-except=${baseExtensionDir}`, `--load-extension=${baseExtensionDir}`],
-  });
-  let serviceWorker = context.serviceWorkers()[0];
-  serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
-  extensionId = new URL(serviceWorker.url()).host;
-  page = await context.newPage();
-  await page.goto(`chrome-extension://${extensionId}/job-probe.html`);
-  await page.waitForFunction(() => "exportJobStoreProbe" in globalThis);
+  userDataDir = join(suiteRoot, "profile");
+  await launchPackedBrowser();
 });
 
 test.beforeEach(async () => {
@@ -1758,4 +1806,41 @@ test("capability-probes native extension quota without treating it as a gate", a
     expect(`${nativeQuota.name} ${nativeQuota.message}`).toMatch(/quota/i);
     expect(nativeQuota.counts).toEqual({ objects: 0, chunks: 0 });
   }
+});
+
+test("a full persistent-browser restart automatically reclaims checkpointed work", async () => {
+  const quotaSession = await context.newCDPSession(page);
+  await quotaSession.send("Storage.overrideQuotaForOrigin", {
+    origin: `chrome-extension://${extensionId}`,
+    quotaSize: 1024 * 1024 * 1024,
+  }).catch(() => undefined);
+  await quotaSession.detach();
+  await ensureCatalog();
+  await installOffscreenFetchStub([JOB_N]);
+  await expect(submitPackedPdf(JOB_N)).resolves.toBe(JOB_N);
+  await waitForJobState(JOB_N, "running");
+  const expired = await expireJobLease(JOB_N);
+  expect(expired.snapshot).toMatchObject({
+    state: "running",
+    leaseEpoch: 1,
+    recoveryCount: 0,
+  });
+
+  const originalExtensionId = extensionId;
+  await packedOffscreen?.close();
+  packedOffscreen = undefined;
+  await context.close();
+  installBrowserRestartFetchStub();
+  await launchPackedBrowser();
+
+  expect(extensionId).toBe(originalExtensionId);
+  const recovered = await waitForJobState(JOB_N, "succeeded", 45_000);
+  expect(recovered.snapshot).toMatchObject({
+    state: "succeeded",
+    leaseEpoch: 2,
+    attempt: 2,
+    recoveryCount: 1,
+    artifact: { filename: `Packed page ${JOB_N}.pdf` },
+    reportSummary: { completeness: "complete" },
+  });
 });

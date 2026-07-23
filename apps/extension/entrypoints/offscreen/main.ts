@@ -91,7 +91,7 @@ const exportQueue = createExtensionExportQueueRunner({
   },
 });
 void exportQueue.startup()
-  .then(() => exportQueue.wake())
+  .then(() => exportQueue.wake(undefined, { scheduleRecovery: true }))
   .catch((error) => console.error("Common export queue recovery failed", error));
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>

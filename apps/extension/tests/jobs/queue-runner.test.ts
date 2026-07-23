@@ -137,6 +137,108 @@ describe("createExtensionExportQueueRunner", () => {
     finish();
   });
 
+  it("retries an unexpired host-restart lease when it becomes recoverable", async () => {
+    const factory = new IDBFactory();
+    const now = Date.now;
+    const createdAt = now() - 1;
+    const catalog = new IndexedDbExportJobCatalog({ factory, now });
+    const bytes = new IndexedDbExportByteStore({ factory, now });
+    await catalog.create({ request: request("browser-restart", createdAt) });
+    const old = await catalog.claimNext({
+      ownerId: "offscreen:closed-browser",
+      now: now(),
+      leaseDurationMs: 100,
+    });
+    expect(old?.leaseEpoch).toBe(1);
+    const entered: number[] = [];
+    const runner = createExtensionExportQueueRunner({
+      catalog,
+      bytes,
+      ownerId: "offscreen:reopened-browser",
+      now,
+      leaseDurationMs: 100,
+      execute: async (claimed) => {
+        entered.push(claimed.leaseEpoch);
+        await new Promise<void>(() => undefined);
+      },
+    });
+
+    expect(
+      await runner.wake(undefined, { scheduleRecovery: true }),
+    ).toBeUndefined();
+    await waitUntil(
+      () => entered.length === 1,
+      "The queue did not retry the durable lease after browser restart.",
+    );
+    expect(entered).toEqual([2]);
+    expect(await catalog.get("browser-restart")).toMatchObject({
+      leaseEpoch: 2,
+      recoveryCount: 1,
+      lease: { ownerId: "offscreen:reopened-browser" },
+    });
+  });
+
+  it("keeps host-restart recovery armed after first draining a queued job", async () => {
+    const factory = new IDBFactory();
+    const now = Date.now;
+    const createdAt = now() - 10;
+    const catalog = new IndexedDbExportJobCatalog({ factory, now });
+    const bytes = new IndexedDbExportByteStore({ factory, now });
+    await catalog.create({ request: request("old-owner", createdAt) });
+    await catalog.claimNext({
+      ids: ["old-owner"],
+      ownerId: "offscreen:closed-browser",
+      now: now(),
+      leaseDurationMs: 100,
+    });
+    await catalog.create({ request: request("queued", createdAt + 1) });
+    const entered: string[] = [];
+    const runner = createExtensionExportQueueRunner({
+      catalog,
+      bytes,
+      ownerId: "offscreen:reopened-browser",
+      now,
+      leaseDurationMs: 100,
+      execute: async (claimed) => {
+        entered.push(claimed.id);
+        if (claimed.id === "old-owner") {
+          await new Promise<void>(() => undefined);
+          return;
+        }
+        const failedAt = now();
+        await catalog.compareAndSet({
+          kind: "transition",
+          id: claimed.id,
+          expectedRevision: claimed.revision,
+          leaseEpoch: claimed.leaseEpoch,
+          to: "failed",
+          at: failedAt,
+          error: {
+            code: "synthetic.complete",
+            message: "Synthetic terminal result.",
+            category: "unknown",
+            retryable: false,
+            occurredAt: failedAt,
+          },
+        });
+      },
+    });
+
+    expect(
+      await runner.wake(undefined, { scheduleRecovery: true }),
+    ).toBe("queued");
+    await waitUntil(
+      () => entered.includes("old-owner"),
+      "Recovery stopped after the immediately queued job settled.",
+    );
+    expect(entered).toEqual(["queued", "old-owner"]);
+    expect(await catalog.get("old-owner")).toMatchObject({
+      leaseEpoch: 2,
+      recoveryCount: 1,
+      lease: { ownerId: "offscreen:reopened-browser" },
+    });
+  });
+
   it("retries startup after a transient recovery failure", async () => {
     const factory = new IDBFactory();
     const catalog = new IndexedDbExportJobCatalog({ factory, now: () => 10 });

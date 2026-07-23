@@ -1431,7 +1431,7 @@ Exit: the second vertical slice is real before Chrome migration.
 - [x] Route ordinary DOCX and PDF exports through the job runtime while retaining
       stdout/exit/report contracts.
 - [x] Add TTY, non-TTY, and JSONL monitor renderers.
-- [x] Add `jobs list/show/watch/cancel/retry/rerun/clear`.
+- [x] Add `jobs list/show/watch/cancel/resume/retry/rerun/clear`.
 - [x] Reconcile stale process leases on every export/jobs command.
 - [x] Keep detached execution explicitly unavailable.
 
@@ -1528,8 +1528,8 @@ API report guard 5/5, production extension build, packed Chromium 14/14.
       in both the Extension UI and a generic browser host.
 - [ ] Remove obsolete panel-owned DOCX run state and legacy PDF job reader after
       its retention plus one release.
-- [ ] Update extension, CLI, operations, troubleshooting, and architecture docs.
-- [ ] Update CHANGELOG only when the feature is release-ready; never release from
+- [x] Update extension, CLI, operations, troubleshooting, and architecture docs.
+- [x] Update CHANGELOG only when the feature is release-ready; never release from
       this plan automatically.
 
 Progress evidence (2026-07-23): Activity reads common PDF/DOCX snapshots through
@@ -1543,9 +1543,13 @@ downloading it, or **Mark as read** does. Packed persistent-profile Chromium
 proves mixed PDF/DOCX rows, the full badge transition sequence, finite pulse and
 opt-out, acknowledgement persistence, retained Retry/Run-again requests and
 original artifact/report preservation, plus bounded parallel blocked-upgrade
-opens. Gates: affected unit/UI/catalog matrix 64/64, full typecheck, production
-extension build/output scan, packed Chromium 17/17. Documentation, CHANGELOG,
-the final non-cleanup audit, and deferred PR-J cleanup remain open.
+opens. A later completion-audit increment also closes and relaunches the entire
+persistent browser profile: the worker startup recreates the offscreen host,
+waits for any still-live lease to expire, then automatically reclaims the same
+checkpoint with a newer epoch. Gates: affected unit/UI/catalog matrix 64/64,
+full typecheck, production extension build/output scan, and the final packed
+Chromium lifecycle matrix 22/22. The final non-cleanup audit and deferred PR-J
+cleanup remain open.
 
 The shared browser-safe Activity projector now owns state ordering, actions,
 dismissal/filter semantics, named waiting blockers, and global queue positions.
@@ -1638,7 +1642,7 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
 - [x] **PR-E — CLI journal, queue, monitor, and commands** (`T7.3`)
   - PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: file journal/spool/artifact/locks, ordinary DOCX/PDF routing, TTY and
-    JSONL monitor, `list/show/watch/cancel/retry/rerun/clear`, output delivery,
+    JSONL monitor, `list/show/watch/cancel/resume/retry/rerun/clear`, output delivery,
     stale-process reconciliation, and removal of the Python default/fallback.
   - Acceptance: unresolved request is durable before the first API read; stdout,
     stderr, report, and exit contracts remain stable; two processes cannot
@@ -2154,33 +2158,41 @@ Capabilities and host-specific E2E are the guardrail.
 - **Proof:** common transition/planner validation, real file-journal cleanup,
   IndexedDB transaction abort, concurrent sweeps, restart recovery, and 501
   same-timestamp pagination pass in focused tests. The production-packed MV3
-  Chromium suite passes 19/19 and creates real PDF and TypeScript-DOCX artifacts
+  Chromium suite passes 22/22 and creates real PDF and TypeScript-DOCX artifacts
   before proving equal payload release, retained summaries, and the retained
   DOCX request pin.
+- **Chrome physical storage:** one central IndexedDB catalog owns metadata,
+  requests, checkpoints, results, events, and tombstones; a separate chunked
+  IndexedDB byte store is reached only through opaque refs. OPFS remains an
+  optional future optimization, not a correctness dependency.
+- **Browser restart promise:** Chrome-close pauses local execution. Worker
+  startup recreates the offscreen queue host only when durable runnable or
+  time-waiting work exists. The offscreen runner waits out an unexpired fenced
+  lease, then automatically reclaims the same checkpoint. Packed Chromium
+  closes and relaunches the whole persistent profile and proves epoch-2 recovery
+  without a UI action. Authentication waits still require explicit
+  **Resume after sign-in**.
+- **DOCX execution context:** version 1 uses the offscreen document for session
+  fetch, dynamic chunks, PizZip/docxtemplater, Typst/WASM coordination, and
+  SVG/canvas rasterization. The packed runtime, not a fake browser adapter,
+  proves those paths.
+- **Heavy-slot concurrency:** version 1 has one global FIFO heavy-render slot
+  shared by DOCX and PDF. The 50-/500-page measurements do not justify separate
+  format slots.
+- **Storage cap values:** both formats use fixed 128 MiB object, 256 MiB per-job,
+  512 MiB common-spool, and 64 MiB final-artifact product caps. Admission also
+  probes `navigator.storage.estimate()` where available; unavailable or
+  unenforceable browser-origin quota data is reported as such.
+- **CLI detached mode:** explicitly unavailable in version 1. Ordinary exports
+  are foreground runners; another process can observe/cancel them, and
+  `jobs resume <queued-id>` reclaims a recovered checkpoint without a daemon.
 
 ### Still unresolved
 
-These require explicit decisions before their owning implementation phase:
+This question belongs to the explicitly deferred future work, not to an
+unfinished CLI/Extension delivery slice:
 
-1. **Chrome physical storage:** one central database with metadata/request/
-   checkpoint/result stores, or a central catalog plus opaque engine artifact
-   databases? Preferred starting point: central metadata/catalog plus opaque refs;
-   decide after the transaction/quota/upgrade spike.
-2. **Browser restart promise:** should the extension automatically requeue stale
-   leased jobs on the next Chrome start, or mark them `interrupted` with a Retry
-   action? Automatic resume is preferred only if auth and packed-profile E2E are
-   reliable.
-3. **DOCX execution context:** can dynamic chunks, session-authenticated fetch,
-   PizZip/docxtemplater, and SVG/canvas rasterization run in a dedicated Worker,
-   or must v1 use the offscreen document? The packed spike decides.
-4. **Heavy-slot concurrency:** is one global DOCX/PDF render slot sufficient, or
-   can measured devices safely run independent format slots? Start with one.
-5. **Storage cap values:** retain today's 64/128 MiB physical caps, derive a cap
-   from `navigator.storage.estimate()`, or introduce a larger fixed product cap?
-   Do not decide without real quota/memory evidence.
-6. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
-   of this plan's first release.
-7. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
+1. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
     including Typst/WASM, plus the durable background queue and Activity
     reattachment after leaving the UI, without ongoing Forge costs borne by us as
     the app developer? The browser-owned runner mechanism, lifecycle, pricing,
