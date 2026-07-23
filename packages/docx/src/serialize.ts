@@ -872,7 +872,8 @@ async function serializeListItem(
 ): Promise<string> {
   const ilvl = Math.min(listLevel, MAX_ILVL);
   const numberingIlvl = ordered ? 0 : ilvl;
-  const isTask = item.checked !== undefined;
+  const semanticMarker = listItemMarker(item);
+  const hasSemanticMarker = semanticMarker !== undefined;
   const styleId = resolveListStyleId(ctx.styleNames, ordered, ilvl);
   const contIndent = `<w:ind w:left="${listIndent(ilvl)}"/>`;
   let out = "";
@@ -887,10 +888,11 @@ async function serializeListItem(
     const frag = await serializeBlock(block, ctx, notes, depth + 1);
     if (!firstPlaced) {
       firstPlaced = true;
-      if (isTask) {
-        // Task items keep the ☑/☐ glyph (Word has no checkbox numbering) but
-        // adopt the resolved list paragraph style + level indent.
-        const marker = run(`${item.checked ? "☑" : "☐"} `);
+      if (hasSemanticMarker) {
+        // Task/decision items keep their semantic glyph (Word has no checkbox
+        // or decision numbering) but adopt the resolved list paragraph style
+        // and level indent.
+        const marker = run(semanticMarker);
         out += placeMarker(applyFirstListProps(frag, styleId, undefined, contIndent), marker);
       } else {
         // Numbered/bulleted: real w:numPr, no literal marker, indent from
@@ -906,8 +908,8 @@ async function serializeListItem(
 
   if (!firstPlaced) {
     // An empty item still needs a marked line so numbering is not skipped.
-    if (isTask) {
-      out += paragraph(run(`${item.checked ? "☑" : "☐"} `), {
+    if (hasSemanticMarker) {
+      out += paragraph(run(semanticMarker), {
         styleId,
         extraPPr: contIndent,
       });
@@ -917,6 +919,20 @@ async function serializeListItem(
     }
   }
   return out;
+}
+
+function listItemMarker(item: ListItem): string | undefined {
+  if (item.kind === "decision") {
+    const state = item.state ?? "";
+    return state.toUpperCase() === "DECIDED"
+      ? "◆ "
+      : `◇ [${state}] `;
+  }
+  if (item.kind === "task" || item.checked !== undefined) {
+    const checked = item.checked ?? (item.state === "DONE");
+    return `${checked ? "☑" : "☐"} `;
+  }
+  return undefined;
 }
 
 /**

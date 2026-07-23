@@ -49,6 +49,7 @@ export interface AdfSourceCaseResult {
   docxHasBlockAlignment: boolean;
   docxHasBlockIndentation: boolean;
   docxHasSmallParagraphText: boolean;
+  docxHasTaskAndDecisionSemantics: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
@@ -323,6 +324,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasSmallParagraphText:
       documentXml.includes('<w:sz w:val="18"/>') &&
       documentXml.includes('<w:szCs w:val="18"/>'),
+    docxHasTaskAndDecisionSemantics:
+      documentXml.includes("☐")
+      && documentXml.includes("☑")
+      && documentXml.includes("◆")
+      && documentXml.includes("Nested task"),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasCardTitle:
       documentXml.includes("Local card title")

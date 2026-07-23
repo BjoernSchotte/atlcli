@@ -192,6 +192,40 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       }],
     },
     {
+      type: "taskList",
+      attrs: { localId: "tasks-root" },
+      content: [
+        {
+          type: "taskItem",
+          attrs: { localId: "task-open", state: "TODO" },
+          content: [{ type: "text", text: "Open task" }],
+        },
+        {
+          type: "blockTaskItem",
+          attrs: { localId: "task-done", state: "DONE" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Completed block task" }] }],
+        },
+        {
+          type: "taskList",
+          attrs: { localId: "tasks-nested" },
+          content: [{
+            type: "taskItem",
+            attrs: { localId: "task-nested", state: "TODO" },
+            content: [{ type: "text", text: "Nested task" }],
+          }],
+        },
+      ],
+    },
+    {
+      type: "decisionList",
+      attrs: { localId: "decisions-root" },
+      content: [{
+        type: "decisionItem",
+        attrs: { localId: "decision-ship", state: "DECIDED" },
+        content: [{ type: "text", text: "Ship the release" }],
+      }],
+    },
+    {
       type: "table",
       content: [{
         type: "tableRow",

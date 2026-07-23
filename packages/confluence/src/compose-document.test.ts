@@ -251,6 +251,45 @@ describe("composeChapters — chapter structure", () => {
     });
   });
 
+  test("preserves task/decision list identity, state, and ordered starts through composition", () => {
+    const source = page("semantic-lists", "Semantic lists", 0, null, "");
+    source.blocks = [
+      {
+        type: "list",
+        ordered: true,
+        start: 4,
+        items: [{ content: [{ type: "paragraph", content: [{ type: "text", text: "four" }] }] }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "decision",
+        localId: "decisions",
+        items: [{
+          kind: "decision",
+          state: "DECIDED",
+          localId: "decision-1",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "ship" }] }],
+        }],
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "list" && block.ordered)).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 4,
+    });
+    expect(blocks.find(
+      (block) => block.type === "list" && block.listKind === "decision",
+    )).toMatchObject({
+      type: "list",
+      listKind: "decision",
+      localId: "decisions",
+      items: [{ kind: "decision", state: "DECIDED", localId: "decision-1" }],
+    });
+  });
+
   test("clamp at level 6 emits heading-depth-clamped note", () => {
     const { blocks, notes } = composeChapters(fixtureTree(), { chapterBreak: "none" });
     // Guide(3): chapterLevel 3, offset 1 (min H2), shift 2 → H6 Deep → 8 → clamp 6.

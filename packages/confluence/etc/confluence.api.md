@@ -34,7 +34,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockCard: "approximation";
-    readonly blockTaskItem: "approximation";
+    readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
@@ -42,8 +42,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly caption: "approximation";
     readonly codeBlock: "native";
     readonly date: "approximation";
-    readonly decisionItem: "approximation";
-    readonly decisionList: "approximation";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
     readonly doc: "native";
     readonly embedCard: "approximation";
     readonly emoji: "approximation";
@@ -73,8 +73,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
     readonly tableRow: "native";
-    readonly taskItem: "approximation";
-    readonly taskList: "approximation";
+    readonly taskItem: "native";
+    readonly taskList: "native";
     readonly text: "native";
 }>;
 
@@ -1066,6 +1066,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -1496,6 +1498,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -2127,7 +2133,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockCard: "approximation";
-    readonly blockTaskItem: "approximation";
+    readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
@@ -2135,8 +2141,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly caption: "approximation";
     readonly codeBlock: "native";
     readonly date: "approximation";
-    readonly decisionItem: "approximation";
-    readonly decisionList: "approximation";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
     readonly doc: "native";
     readonly embedCard: "approximation";
     readonly emoji: "approximation";
@@ -2166,8 +2172,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
     readonly tableRow: "native";
-    readonly taskItem: "approximation";
-    readonly taskList: "approximation";
+    readonly taskItem: "native";
+    readonly taskList: "native";
     readonly text: "native";
 }>;
 
@@ -3159,6 +3165,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -3589,6 +3597,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -4220,7 +4232,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockCard: "approximation";
-    readonly blockTaskItem: "approximation";
+    readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
@@ -4228,8 +4240,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly caption: "approximation";
     readonly codeBlock: "native";
     readonly date: "approximation";
-    readonly decisionItem: "approximation";
-    readonly decisionList: "approximation";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
     readonly doc: "native";
     readonly embedCard: "approximation";
     readonly emoji: "approximation";
@@ -4259,8 +4271,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
     readonly tableRow: "native";
-    readonly taskItem: "approximation";
-    readonly taskList: "approximation";
+    readonly taskItem: "native";
+    readonly taskList: "native";
     readonly text: "native";
 }>;
 
@@ -5252,6 +5264,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -5682,6 +5696,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -7250,6 +7268,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -7828,6 +7848,10 @@ export interface LinkValidationResult {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -8877,7 +8901,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
 // export: ADF_NODE_DECODE_MODES
 export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockCard: "approximation";
-    readonly blockTaskItem: "approximation";
+    readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
@@ -8885,8 +8909,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly caption: "approximation";
     readonly codeBlock: "native";
     readonly date: "approximation";
-    readonly decisionItem: "approximation";
-    readonly decisionList: "approximation";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
     readonly doc: "native";
     readonly embedCard: "approximation";
     readonly emoji: "approximation";
@@ -8916,8 +8940,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
     readonly tableRow: "native";
-    readonly taskItem: "approximation";
-    readonly taskList: "approximation";
+    readonly taskItem: "native";
+    readonly taskList: "native";
     readonly text: "native";
 }>;
 
@@ -9909,6 +9933,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -10339,6 +10365,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 

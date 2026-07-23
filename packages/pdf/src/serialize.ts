@@ -769,6 +769,33 @@ interface Writer {
   design: ResolvedPdfDesign;
 }
 
+function serializeDecisionItem(
+  sourceState: string | undefined,
+  content: string,
+  writer: Writer,
+): string {
+  const state = sourceState ?? "";
+  const decided = state.toUpperCase() === "DECIDED";
+  const marker = decided ? "◆" : "◇";
+  const stateLabel = decided ? "" : `#text(${typstString(`[${state}] `)})`;
+  const role = writer.design.typography.roles.taskMarker!;
+  const fontRole = role.font ?? "heading";
+  const font = writer.design.typography.fonts[fontRole];
+  const weight = role.weight ? `, weight: ${typstString(role.weight)}` : "";
+  return `#grid(
+  columns: (${writer.design.tokens.layout.taskGridMarker}, 1fr),
+  column-gutter: ${writer.design.tokens.layout.taskGridGutter},
+  align: top,
+  text(
+    font: (${typstString(font)}, "Noto Sans Symbols2"),
+    size: ${role.size}${weight},
+    fill: rgb(${typstString(writer.design.tokens.colors.taskChecked)}),
+    ${typstString(marker)},
+  ),
+  [${stateLabel}${content}],
+)`;
+}
+
 function noteLowCellContrast(
   writer: Writer,
   background: string,
@@ -1009,7 +1036,10 @@ function serializeBlock(
       break;
     case "list": {
       const fn = block.ordered ? "enum" : "list";
-      const isTaskList = !block.ordered && block.items.some((item) => item.checked !== undefined);
+      const isSemanticList = !block.ordered && (
+        block.listKind !== undefined ||
+        block.items.some((item) => item.kind !== undefined || item.checked !== undefined)
+      );
       const items = block.items.map((item, index) => {
         const itemPath = `${path}.items[${index}].content`;
         const [first, ...rest] = item.content;
@@ -1026,11 +1056,17 @@ function serializeBlock(
         } else {
           content = serializeBlocks(item.content, writer, itemPath, context);
         }
-        if (!isTaskList) return `[${content}]`;
-        const checked = item.checked === true ? "true" : "false";
-        return `[#task-item(${checked})[${content}]]`;
+        if (!isSemanticList) return `[${content}]`;
+        if (item.kind === "decision") {
+          return `[${serializeDecisionItem(item.state, content, writer)}]`;
+        }
+        if (item.kind === "task" || item.checked !== undefined) {
+          const checked = (item.checked ?? (item.state === "DONE")) ? "true" : "false";
+          return `[#task-item(${checked})[${content}]]`;
+        }
+        return `[${content}]`;
       });
-      const options = isTaskList
+      const options = isSemanticList
         ? `marker: none, body-indent: ${writer.design.tokens.layout.taskListBodyIndent}, `
         : block.ordered && block.start !== undefined
           ? `start: ${block.start}, `

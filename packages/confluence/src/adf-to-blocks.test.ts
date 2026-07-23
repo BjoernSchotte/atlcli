@@ -78,10 +78,33 @@ describe("adfToBlocks", () => {
       },
       {
         type: "taskList",
+        attrs: { localId: "tasks-root" },
         content: [
-          { type: "taskItem", attrs: { state: "TODO" }, content: [{ type: "paragraph", content: [{ type: "text", text: "open" }] }] },
-          { type: "taskItem", attrs: { state: "DONE" }, content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }] },
+          { type: "taskItem", attrs: { localId: "task-open", state: "TODO" }, content: [{ type: "text", text: "open" }] },
+          {
+            type: "blockTaskItem",
+            attrs: { localId: "task-done", state: "DONE" },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }],
+          },
+          {
+            type: "taskList",
+            attrs: { localId: "tasks-nested" },
+            content: [{
+              type: "taskItem",
+              attrs: { localId: "task-nested", state: "TODO" },
+              content: [{ type: "text", text: "nested task" }],
+            }],
+          },
         ],
+      },
+      {
+        type: "decisionList",
+        attrs: { localId: "decisions-root" },
+        content: [{
+          type: "decisionItem",
+          attrs: { localId: "decision-1", state: "DECIDED" },
+          content: [{ type: "text", text: "ship it" }],
+        }],
       },
     ]));
 
@@ -97,10 +120,52 @@ describe("adfToBlocks", () => {
     expect(result.blocks[1]).toEqual({
       type: "list",
       ordered: false,
+      listKind: "task",
+      localId: "tasks-root",
       items: [
-        { checked: false, content: [{ type: "paragraph", content: [{ type: "text", text: "open" }] }] },
-        { checked: true, content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }] },
+        {
+          kind: "task",
+          state: "TODO",
+          localId: "task-open",
+          checked: false,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "open" }] }],
+        },
+        {
+          kind: "task",
+          state: "DONE",
+          localId: "task-done",
+          block: true,
+          checked: true,
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "done" }] },
+            {
+              type: "list",
+              ordered: false,
+              listKind: "task",
+              localId: "tasks-nested",
+              items: [{
+                kind: "task",
+                state: "TODO",
+                localId: "task-nested",
+                checked: false,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "nested task" }] }],
+              }],
+            },
+          ],
+        },
       ],
+    });
+    expect(result.blocks[2]).toEqual({
+      type: "list",
+      ordered: false,
+      listKind: "decision",
+      localId: "decisions-root",
+      items: [{
+        kind: "decision",
+        state: "DECIDED",
+        localId: "decision-1",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "ship it" }] }],
+      }],
     });
     expect(result.notes.map((note) => note.code)).not.toContain("adf-node-degraded");
   });

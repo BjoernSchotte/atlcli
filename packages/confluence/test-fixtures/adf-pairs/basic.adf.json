@@ -38,16 +38,17 @@
     },
     {
       "type": "taskList",
+      "attrs": { "localId": "tasks-root" },
       "content": [
         {
           "type": "taskItem",
-          "attrs": { "state": "DONE" },
-          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Done" }] }]
+          "attrs": { "localId": "task-done", "state": "DONE" },
+          "content": [{ "type": "text", "text": "Done" }]
         },
         {
           "type": "taskItem",
-          "attrs": { "state": "TODO" },
-          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Open" }] }]
+          "attrs": { "localId": "task-open", "state": "TODO" },
+          "content": [{ "type": "text", "text": "Open" }]
         }
       ]
     },

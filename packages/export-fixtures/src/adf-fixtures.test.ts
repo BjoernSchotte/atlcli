@@ -20,6 +20,8 @@ describe("ADF browser conformance fixture", () => {
       "callout",
       "callout",
       "list",
+      "list",
+      "list",
       "table",
       "paragraph",
       "callout",
@@ -35,6 +37,33 @@ describe("ADF browser conformance fixture", () => {
         { type: "paragraph" },
         { type: "list", ordered: true, start: 8 },
       ] }],
+    });
+    expect(pdf.blocks[8]).toMatchObject({
+      type: "list",
+      ordered: false,
+      listKind: "task",
+      localId: "tasks-root",
+      items: [
+        { kind: "task", state: "TODO", localId: "task-open", checked: false },
+        {
+          kind: "task",
+          state: "DONE",
+          localId: "task-done",
+          block: true,
+          checked: true,
+          content: [
+            { type: "paragraph" },
+            { type: "list", listKind: "task", localId: "tasks-nested" },
+          ],
+        },
+      ],
+    });
+    expect(pdf.blocks[9]).toMatchObject({
+      type: "list",
+      ordered: false,
+      listKind: "decision",
+      localId: "decisions-root",
+      items: [{ kind: "decision", state: "DECIDED", localId: "decision-ship" }],
     });
     expect(pdf.blocks[2]).toMatchObject({
       type: "paragraph",

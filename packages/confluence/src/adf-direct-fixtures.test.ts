@@ -27,7 +27,7 @@ const listItem = (value: string): AdfValue => ({ type: "listItem", content: [par
 const taskItem = (value: string): AdfValue => ({
   type: "taskItem",
   attrs: { state: "TODO", localId: `task-${value}` },
-  content: [paragraph(value)],
+  content: [text(value)],
 });
 const media = (value: string): AdfValue => ({
   type: "media",
@@ -51,7 +51,15 @@ const table = (cells: AdfValue[]): AdfValue => ({
  */
 const NODE_FIXTURES = {
   blockCard: block({ type: "blockCard", attrs: { url: "https://example.invalid/node-blockCard" } }),
-  blockTaskItem: block({ type: "blockTaskItem", attrs: { state: "TODO" }, content: [paragraph("node-blockTaskItem")] }),
+  blockTaskItem: block({
+    type: "taskList",
+    attrs: { localId: "tasks-block-item" },
+    content: [{
+      type: "blockTaskItem",
+      attrs: { state: "TODO", localId: "task-node-blockTaskItem" },
+      content: [paragraph("node-blockTaskItem")],
+    }],
+  }),
   blockquote: block({ type: "blockquote", content: [paragraph("node-blockquote")] }),
   bodiedExtension: block({
     type: "bodiedExtension",
@@ -68,11 +76,21 @@ const NODE_FIXTURES = {
   date: inline({ type: "date", attrs: { timestamp: "1704067200000" } }),
   decisionItem: block({
     type: "decisionList",
-    content: [{ type: "decisionItem", attrs: { state: "DECIDED" }, content: [paragraph("node-decisionItem")] }],
+    attrs: { localId: "decisions-item" },
+    content: [{
+      type: "decisionItem",
+      attrs: { state: "DECIDED", localId: "decision-item" },
+      content: [text("node-decisionItem")],
+    }],
   }),
   decisionList: block({
     type: "decisionList",
-    content: [{ type: "decisionItem", attrs: { state: "DECIDED" }, content: [paragraph("node-decisionList")] }],
+    attrs: { localId: "decisions-list" },
+    content: [{
+      type: "decisionItem",
+      attrs: { state: "DECIDED", localId: "decision-list" },
+      content: [text("node-decisionList")],
+    }],
   }),
   doc: document([paragraph("node-doc")]),
   embedCard: block({ type: "embedCard", attrs: { url: "https://example.invalid/node-embedCard" } }),
@@ -109,8 +127,16 @@ const NODE_FIXTURES = {
   tableCell: block(table([tableCell("tableCell", "node-tableCell")])),
   tableHeader: block(table([tableCell("tableHeader", "node-tableHeader")])),
   tableRow: block(table([tableCell("tableCell", "node-tableRow")])),
-  taskItem: block({ type: "taskList", content: [taskItem("node-taskItem")] }),
-  taskList: block({ type: "taskList", content: [taskItem("node-taskList")] }),
+  taskItem: block({
+    type: "taskList",
+    attrs: { localId: "tasks-item" },
+    content: [taskItem("node-taskItem")],
+  }),
+  taskList: block({
+    type: "taskList",
+    attrs: { localId: "tasks-list" },
+    content: [taskItem("node-taskList")],
+  }),
   text: block(paragraph([text("node-text")])),
 } satisfies Record<PinnedAdfNodeType, string>;
 

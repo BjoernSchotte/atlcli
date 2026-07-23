@@ -195,6 +195,24 @@ describe("serializeBlocks — native numbering (spec 006 G2)", () => {
     expect(xml).toContain('<w:pStyle w:val="ListParagraph"/>');
   });
 
+  it("decision items use distinct static markers and retain nonstandard state visibly", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "list",
+      ordered: false,
+      listKind: "decision",
+      items: [
+        { kind: "decision", state: "DECIDED", localId: "decision-1", content: [p("ship")] },
+        { kind: "decision", state: "PENDING", localId: "decision-2", content: [p("review")] },
+      ],
+    }];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain("◆ ");
+    expect(xml).toContain("◇ [PENDING] ");
+    expect(xml).not.toContain("☑");
+    expect(xml).not.toContain("☐");
+    expect(xml).not.toContain("<w:numPr>");
+  });
+
   // Full 9-level (ilvl 0-8) × {bullet, number} style-chain. The Scroll convention
   // is asymmetric AND capped at "…8": level 1 (ilvl 0) is suffixless, levels 2-8
   // (ilvl 1-7) carry suffix 2..8, and ilvl 8 (a 9th level Word allows but Scroll

@@ -110,11 +110,23 @@ export interface TableRow {
 }
 
 /**
- * A list item. `checked` is present only for task-list items (`true`/`false`);
- * a normal bullet/number item leaves it `undefined`.
+ * A list item. `checked` is the backwards-compatible task checkbox projection;
+ * typed task/decision identity and exact state live in the adjacent fields.
+ * A normal bullet/number item leaves all semantic fields undefined.
  */
 export interface ListItem {
   content: ExportBlock[];
+  /**
+   * Typed static semantics for ADF task/decision items. Ordinary list items
+   * omit this field; Storage task lists use `task`.
+   */
+  kind?: "task" | "decision";
+  /** Exact ADF state (`TODO`/`DONE` for tasks; product-defined for decisions). */
+  state?: string;
+  /** Stable editor identity when the source representation exposes it. */
+  localId?: string;
+  /** Distinguishes ADF `blockTaskItem` from its inline `taskItem` sibling. */
+  block?: boolean;
   checked?: boolean;
 }
 
@@ -263,6 +275,10 @@ export type ExportBlock =
       items: ListItem[];
       /** First visible ordinal for an ordered list. Omitted means the target default (1). */
       start?: number;
+      /** Distinguishes ADF/Storage task and ADF decision lists from ordinary lists. */
+      listKind?: "task" | "decision";
+      /** Stable ADF/Storage editor identity when the representation exposes it. */
+      localId?: string;
     }
   | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
   | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
@@ -1468,9 +1484,25 @@ function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
     const statusText = (statusEl ? elementText(statusEl) : "").trim().toLowerCase();
     const body = childByName(task, "ac:task-body");
     const content = body ? walkBlocks(body.children, ctx) : [];
-    items.push({ content, checked: statusText === "complete" });
+    const checked = statusText === "complete";
+    const localIdEl = childByName(task, "ac:task-id");
+    const localId = localIdEl ? elementText(localIdEl).trim() : "";
+    items.push({
+      content,
+      kind: "task",
+      state: checked ? "DONE" : "TODO",
+      ...(localId ? { localId } : {}),
+      checked,
+    });
   }
-  return { type: "list", ordered: false, items };
+  const localId = el.attrs["ac:local-id"]?.trim();
+  return {
+    type: "list",
+    ordered: false,
+    listKind: "task",
+    ...(localId ? { localId } : {}),
+    items,
+  };
 }
 
 // ---- Tables ---------------------------------------------------------------

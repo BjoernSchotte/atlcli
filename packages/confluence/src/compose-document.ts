@@ -627,11 +627,10 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       };
     case "list":
       return {
-        type: "list",
-        ordered: block.ordered,
+        ...block,
         items: block.items.map((item) => ({
+          ...item,
           content: item.content.map((b) => transformBlock(b, ctx)),
-          ...(item.checked !== undefined ? { checked: item.checked } : {}),
         })),
       };
     case "table":

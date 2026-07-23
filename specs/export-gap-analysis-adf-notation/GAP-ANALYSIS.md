@@ -67,6 +67,8 @@ Consequences:
 - The 43 semantic node types and 17 marks in the pinned official full ADF schema.
 - Confluence Cloud editor features explicitly documented by Atlassian.
 - Current Storage-XHTML, `export_view`, `ExportBlock`, DOCX, and Typst/PDF behavior.
+- Only the TypeScript DOCX and Typst/PDF engines, across CLI and isomorphic
+  browser hosts; the retired Python export engine is not an acceptance path.
 - Static export semantics, visual fidelity, fallback behavior, reporting, and test coverage.
 - Core and third-party macros/extensions where they intersect with exported page content.
 
@@ -118,6 +120,8 @@ Current closed foundations and feature slices:
   typed fallback reporting.
 - [x] Inline-code background treatment and exact token preservation in both
   targets.
+- [x] Pinned-schema task lists, inline and block task items, nested tasks,
+  decision lists/items, local identities, and exact states.
 
 Current cross-cutting residuals:
 
@@ -149,7 +153,9 @@ Neither alone is a complete Confluence export contract.
 
 ## 6. Complete ADF node matrix
 
-The matrix covers every semantic node type in `@atlaskit/adf-schema@56.1.13`. “Source” describes the current Storage/export-view path, not a direct ADF decoder.
+The matrix covers every semantic node type in
+`@atlaskit/adf-schema@56.1.13`. “Source” describes the current direct ADF path
+plus the distinct Storage/export-view compatibility adapters.
 
 ### 6.1 Root and basic content
 
@@ -173,11 +179,11 @@ Evidence: [E2], [E5], [E6], [E7], [E8].
 | `bulletList` | `<ul>` becomes `list { ordered: false }`. | Native | Native | Maximum nesting and resource budgets remain exporter constraints. |
 | `orderedList` | `<ol start>` and ADF `order` become `list { ordered: true, start? }`. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart and visual indent. |
 | `listItem` | Child blocks are recursively preserved. | Native | Native | Local IDs are not retained. |
-| `taskList` | `<ac:task-list>` becomes an unordered list with checked items. | Partial | Partial | List identity, nesting rules, attribution, and task metadata are not modeled. |
-| `taskItem` | Task status maps to a boolean `checked`. | Partial | Partial | Static checkbox only; local ID and assignment/due-date semantics are lost. |
-| `blockTaskItem` | No distinct model variant. | Missing | Missing | Preserve block task content/state and nesting as a typed task variant. |
-| `decisionList` | No model or dedicated Storage handler. | Missing/Fallback | Missing/Fallback | Text may survive transparent descent; decision grouping and marker do not. |
-| `decisionItem` | No model or dedicated Storage handler. | Missing/Fallback | Missing/Fallback | Preserve state, marker, content, and local ID as a static decision block. |
+| `taskList` | ADF and Storage become a typed task list with list identity where exposed; nested ADF task lists attach to their owning item. | Native | Native | Closed for the pinned schema; any future observed product-specific attributes enter the drift lane. |
+| `taskItem` | Required `localId`, exact `TODO`/`DONE` state, direct inline content, and checkbox projection are retained. | Native | Native | Closed with distinct open/done markers, composition, browser parity, and real render goldens. |
+| `blockTaskItem` | Required identity/state and one-or-more block children remain a distinct typed task item. | Native | Native | Closed with block-content and nested-list coverage. |
+| `decisionList` | Required list identity and decision grouping are retained directly from ADF. | Native | Native | Schema-only source contract; no equivalent Storage projection is claimed. |
+| `decisionItem` | Required local identity, exact product-defined string state, and direct inline content are retained. | Native | Native | `DECIDED` uses a filled decision marker; nonstandard states remain visibly labeled rather than being collapsed. |
 
 Evidence: [E2], [E5], [E7], [E8], [E9].
 
@@ -313,8 +319,8 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | Triple backticks + space | `codeBlock` | Partial. | Language, wrap, line numbers, long lines, empty/final newline. |
 | `--- ` | `rule` | Native. | Semantic and visual golden. |
 | `[title](URL)` | link mark or Smart Link transform | Link native/partial; card appearance lost. | Plain, inline-card, block-card, embed, unsafe URL, page, attachment. |
-| `[] ` | task item | Partial. | TODO/DONE, assignee, date, nested/block task. |
-| `<> ` | decision item | Missing. | Decision list/item marker, state, nested content. |
+| `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
+| `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
 | `:` / emoji picker | `emoji` node or text | Partial/conditional. | Unicode, Atlassian emoji, site custom emoji, missing asset, fallback text. |
 | `:)` auto-conversion | Emoji/editor transformation | Works only if Confluence materializes a glyph/fallback; exporter does no conversion. | Live editor fixture with shortcuts enabled/disabled. |
 | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Never reinterpret ordinary text in exporter. |
@@ -396,7 +402,9 @@ Required acceptance contract:
   assets and complete font/glyph coverage remain.
 - [x] **Alignment, indentation, and small text.** Paragraph/heading alignment
   and indentation plus schema-defined small paragraph text are complete.
-- [ ] **Open — decisions and full task semantics.**
+- [x] **Tasks and decisions.** Pinned-schema list/item identities, exact states,
+  inline/block content, nested tasks, static markers, composition, browser
+  parity, and both rendered targets are complete.
 - [x] **Ordered-list starts.** Authored starts and independent nested restarts
   are complete.
 - [ ] **Open — table attributes.** Layout, display mode, numbered column,
@@ -444,7 +452,7 @@ Required acceptance contract:
 
 ### Phase 2 - Structural fidelity
 
-- [ ] Tasks and decisions.
+- [x] Tasks and decisions.
 - [x] Ordered-list authored starts and nested restarts.
 - [ ] Table attributes.
 - [ ] Layouts/breakout.
@@ -489,7 +497,11 @@ A matrix row can be marked complete only when all applicable checks pass:
 
 ## 13. Test inventory and missing gates
 
-Current tests already cover substantial Storage-to-model and serializer behavior, including basic marks/colors/line breaks, links/mentions, lists/tasks, tables, code blocks, captions, page breaks/orientation, and table layout. However, the suite is not an ADF conformance suite because it mostly begins with Storage XML or hand-built `ExportBlock` values.
+Current tests cover the bounded ADF validator, one direct fixture for every
+pinned node/mark, paired ADF/Storage projections, shared-model composition,
+both serializers, real DOCX/PDF rendering, and packed browser conformance.
+Observed Confluence breadth and the open matrix rows—not absence of an ADF
+entry point—are now the limiting factors.
 
 Closed gates:
 
@@ -498,12 +510,14 @@ Closed gates:
 - [x] Emoji/emoticon decoding, both-engine semantics, packed browser parity,
   report parity, and deterministic render goldens.
 - [x] Ordered-list non-1 starts and nested restarts.
+- [x] Task/decision identity, exact state, inline/block content, nested tasks,
+  composition, both target markers, real render goldens, and packed browser
+  parity.
 - [x] Generic inline-extension placement and visible fallback.
 
 Focused missing gates:
 
 - [ ] Date localization and deterministic time-zone policy.
-- [ ] Decision list/item and full task metadata tests.
 - [ ] Generic inline/block/embed card metadata tests.
 - [ ] Layout width/column tests.
 - [ ] Media group/inline/file/video/audio completeness tests.
@@ -560,6 +574,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E21] PDF inline code vs block-code style:** `packages/pdf/src/serialize.ts:509-545`, `packages/pdf/src/template.ts:311-317`
 - **[E22] Colon-shaped Storage emoji fallback fixture:** `packages/confluence/src/markdown.test.ts:214-225`
 - **[E23] Shared emoji semantics, fallbacks, and parity:** `packages/confluence/src/export-blocks.ts:65-96`, `packages/confluence/src/export-blocks.ts:213-219`, `packages/confluence/src/export-blocks.ts:2266-2295`, `packages/confluence/src/adf-to-blocks.ts:394-418`, `packages/confluence/src/adf-to-blocks.test.ts:277-340`, `packages/confluence/src/export-blocks.test.ts:63-115`, `packages/export-fixtures/src/adf-fixtures.test.ts:49-65`, `apps/browser-export-harness/src/adf-source-case.ts:341-353`
+- **[E24] Native task/decision semantics and target proof:** `packages/confluence/src/export-blocks.ts:117-130`, `packages/confluence/src/export-blocks.ts:270-281`, `packages/confluence/src/export-blocks.ts:1480-1507`, `packages/confluence/src/adf-validate.ts:142-159`, `packages/confluence/src/adf-to-blocks.ts:296-311`, `packages/confluence/src/adf-to-blocks.ts:819-872`, `packages/confluence/src/compose-document.ts:628-638`, `packages/docx/src/serialize.ts:872-934`, `packages/pdf/src/serialize.ts:772-797`, `packages/pdf/src/serialize.ts:1039-1074`, `packages/export-fixtures/src/adf-fixtures.test.ts:38-68`, `apps/browser-export-harness/src/adf-source-case.ts:327-332`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 
@@ -568,5 +583,9 @@ Accessed 2026-07-22 and 2026-07-23:
 3. **Resolved for this migration:** short-name/text fallback with a typed warning is the portable floor; authorized asset retrieval waits for a documented Atlassian contract.
 4. For cards and embeds, is a stable title + URL representation sufficient for the first fidelity milestone, or are thumbnails/provider metadata required?
 5. Should annotations/comments be exported as Word comments/PDF notes, or only preserved as metadata while the underlying text remains visible?
-6. Which static representation is preferred for decisions, tasks, nested expands, synced blocks, audio, and video?
+6. **Resolved for tasks and decisions:** target-appropriate open/done task
+   markers and a distinct decision marker are the static floor; exact
+   identities/states remain in the neutral model and nonstandard decision
+   states are visibly labeled. Nested expands, synced blocks, audio, and video
+   remain open.
 7. Is visual parity measured against a curated atlcli design system, Confluence's standard export appearance, or configurable target templates? Semantic parity can be target-independent; pixel parity cannot.

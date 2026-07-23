@@ -19,6 +19,7 @@ import type {
   InlineMark,
   InlineNode,
   LinkTarget,
+  ListItem,
   MacroParameter,
   StorageToBlocksOptions,
   TableCell,
@@ -293,9 +294,17 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     case "listItem":
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
     case "taskList":
+      return [decodeTaskList(node, ctx, path)];
     case "decisionList":
-      if (node.type === "decisionList") addNodeNote(ctx, path, node.type, "was approximated as a static checklist.");
-      return [{ type: "list", ordered: false, items: decodeTaskItems(node, ctx, path) }];
+      return [{
+        type: "list",
+        ordered: false,
+        listKind: "decision",
+        ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+        items: (node.content ?? []).map((item, index) =>
+          decodeActionItem(item, "decision", ctx, `${path}.items[${index}]`)
+        ),
+      }];
     case "taskItem":
     case "blockTaskItem":
     case "decisionItem":
@@ -807,11 +816,54 @@ function decodeListItems(node: AdfNode, ctx: DecodeContext, path: string) {
   }));
 }
 
-function decodeTaskItems(node: AdfNode, ctx: DecodeContext, path: string) {
-  return (node.content ?? []).map((item, index) => ({
-    content: decodeBlockChildren(item.content, ctx, `${path}.items[${index}].content`),
-    checked: stringAttr(item, "state") === "DONE" || stringAttr(item, "state") === "DECIDED",
-  }));
+function decodeTaskList(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
+  const items: ListItem[] = [];
+  for (let index = 0; index < (node.content?.length ?? 0); index += 1) {
+    const item = node.content![index]!;
+    const itemPath = `${path}.items[${index}]`;
+    if (item.type === "taskList") {
+      const nested = decodeTaskList(item, ctx, itemPath);
+      const parent = items.at(-1);
+      if (parent) {
+        parent.content.push(nested);
+      } else {
+        addNodeNote(ctx, itemPath, item.type, "an orphan nested task list was preserved as an unmarked container.");
+        items.push({ content: [nested] });
+      }
+      continue;
+    }
+    items.push(decodeActionItem(item, "task", ctx, itemPath));
+  }
+  return {
+    type: "list",
+    ordered: false,
+    listKind: "task",
+    ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+    items,
+  };
+}
+
+function decodeActionItem(
+  node: AdfNode,
+  kind: "task" | "decision",
+  ctx: DecodeContext,
+  path: string,
+): ListItem {
+  const state = stringAttr(node, "state") ?? (kind === "task" ? "TODO" : "");
+  const isBlock = node.type === "blockTaskItem";
+  const contentPath = `${path}.content`;
+  const children = node.content ?? [];
+  const content = isBlock || children.some((child) => !INLINE_NODE_TYPES.has(child.type))
+    ? decodeBlockChildren(children, ctx, contentPath)
+    : [{ type: "paragraph" as const, content: decodeInlineChildren(children, ctx, contentPath) }];
+  return {
+    content,
+    kind,
+    state,
+    ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+    ...(isBlock ? { block: true } : {}),
+    ...(kind === "task" ? { checked: state === "DONE" } : {}),
+  };
 }
 
 function decodeCaption(node: AdfNode, ctx: DecodeContext, path: string): Caption {

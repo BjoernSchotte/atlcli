@@ -3,9 +3,9 @@
 <blockquote><p>Quoted</p></blockquote>
 <ul><li><p>Bullet</p></li></ul>
 <ol start="3"><li><p>Number</p></li></ol>
-<ac:task-list>
-  <ac:task><ac:task-status>complete</ac:task-status><ac:task-body>Done</ac:task-body></ac:task>
-  <ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>Open</ac:task-body></ac:task>
+<ac:task-list ac:local-id="tasks-root">
+  <ac:task><ac:task-id>task-done</ac:task-id><ac:task-status>complete</ac:task-status><ac:task-body>Done</ac:task-body></ac:task>
+  <ac:task><ac:task-id>task-open</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>Open</ac:task-body></ac:task>
 </ac:task-list>
 <table><tbody><tr><th bgcolor="#abc">Header</th><td colspan="2">Cell</td></tr></tbody></table>
 <ac:structured-macro ac:name="info"><ac:rich-text-body><p>Information</p></ac:rich-text-body></ac:structured-macro>

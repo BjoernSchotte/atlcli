@@ -38,6 +38,15 @@ describe("PDF preparation and serialization", () => {
       },
       { type: "callout", kind: "info", title: "Note", content: [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }] },
       { type: "list", ordered: false, items: [{ checked: true, content: [{ type: "paragraph", content: [{ type: "text", text: "Task" }] }] }] },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "decision",
+        items: [
+          { kind: "decision", state: "DECIDED", content: [{ type: "paragraph", content: [{ type: "text", text: "Ship" }] }] },
+          { kind: "decision", state: "PENDING", content: [{ type: "paragraph", content: [{ type: "text", text: "Review" }] }] },
+        ],
+      },
       { type: "table", rows: [{ cells: [{ header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }] }] }] },
       { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quoted" }] }] },
       { type: "divider" },
@@ -56,6 +65,11 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#list(marker: none, body-indent: 0pt,");
     expect(bundle.main).toContain("#task-item(true)[");
     expect(bundle.main).toContain('#text("Task")');
+    expect(bundle.main).toContain('"◆"');
+    expect(bundle.main).toContain('"◇"');
+    expect(bundle.main).toContain('#text("[PENDING] ")');
+    expect(bundle.main).toContain('#text("Ship")');
+    expect(bundle.main).toContain('#text("Review")');
     expect(bundle.main).not.toContain("\\[x\\]");
     expect(bundle.main).toContain("table.header(");
     expect(bundle.main).toContain("#block(width: 100%)[\n#table(columns: (1fr,)");

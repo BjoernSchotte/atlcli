@@ -42,6 +42,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -499,13 +501,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>["kind"];
     title?: string;
     content: PreparedPdfBlock[];
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "list";
-    ordered: boolean;
-    start?: number;
-    items: Array<{
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
 } | {
     type: "table";
@@ -758,6 +758,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -1215,13 +1217,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>["kind"];
     title?: string;
     content: PreparedPdfBlock[];
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "list";
-    ordered: boolean;
-    start?: number;
-    items: Array<{
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
 } | {
     type: "table";
@@ -1474,6 +1474,8 @@ export type ExportBlock = {
     ordered: boolean;
     items: ListItem[];
     start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
 } | {
     type: "table";
     rows: TableRow[];
@@ -1931,13 +1933,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>["kind"];
     title?: string;
     content: PreparedPdfBlock[];
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "list";
-    ordered: boolean;
-    start?: number;
-    items: Array<{
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
 } | {
     type: "table";

@@ -1,4 +1,4 @@
-import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget, ListItem } from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
 
 export interface PdfExportMetadata {
@@ -62,7 +62,9 @@ export type PreparedPdfBlock =
    */
   | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
   | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
-  | { type: "list"; ordered: boolean; start?: number; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
+  | Omit<Extract<ExportBlock, { type: "list" }>, "items"> & {
+      items: Array<Omit<ListItem, "content"> & { content: PreparedPdfBlock[] }>;
+    }
   | {
       type: "table";
       rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;

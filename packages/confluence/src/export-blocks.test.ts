@@ -349,8 +349,8 @@ describe("storageToBlocks — lists", () => {
 
   test("task list carries checked state", () => {
     const out = blocks(
-      "<ac:task-list>" +
-        "<ac:task><ac:task-status>complete</ac:task-status><ac:task-body>done</ac:task-body></ac:task>" +
+      '<ac:task-list ac:local-id="tasks-root">' +
+        "<ac:task><ac:task-id>task-done</ac:task-id><ac:task-status>complete</ac:task-status><ac:task-body>done</ac:task-body></ac:task>" +
         "<ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>todo</ac:task-body></ac:task>" +
         "</ac:task-list>"
     );
@@ -358,9 +358,22 @@ describe("storageToBlocks — lists", () => {
       {
         type: "list",
         ordered: false,
+        listKind: "task",
+        localId: "tasks-root",
         items: [
-          { content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }], checked: true },
-          { content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }], checked: false },
+          {
+            content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }],
+            kind: "task",
+            state: "DONE",
+            localId: "task-done",
+            checked: true,
+          },
+          {
+            content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }],
+            kind: "task",
+            state: "TODO",
+            checked: false,
+          },
         ],
       },
     ]);

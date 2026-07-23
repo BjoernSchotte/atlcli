@@ -89,7 +89,7 @@ export interface AdfCoverageRow {
 /** Exhaustive implementation classification consumed by the ADF decoder. */
 export const ADF_NODE_DECODE_MODES = Object.freeze({
   blockCard: "approximation",
-  blockTaskItem: "approximation",
+  blockTaskItem: "native",
   blockquote: "native",
   bodiedExtension: "approximation",
   bodiedSyncBlock: "visible-fallback",
@@ -97,8 +97,8 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   caption: "approximation",
   codeBlock: "native",
   date: "approximation",
-  decisionItem: "approximation",
-  decisionList: "approximation",
+  decisionItem: "native",
+  decisionList: "native",
   doc: "native",
   embedCard: "approximation",
   emoji: "approximation",
@@ -128,8 +128,8 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   tableCell: "approximation",
   tableHeader: "approximation",
   tableRow: "native",
-  taskItem: "approximation",
-  taskList: "approximation",
+  taskItem: "native",
+  taskList: "native",
   text: "native",
 } as const satisfies Record<PinnedAdfNodeType, AdfDecoderMode>);
 

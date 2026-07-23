@@ -54,6 +54,42 @@ describe("validateAdf", () => {
       .toBe("invalid-attributes");
   });
 
+  test("requires task/decision identities and validates their exact state contracts", () => {
+    expect(() => validateAdf(doc([{
+      type: "taskList",
+      attrs: { localId: "tasks" },
+      content: [{
+        type: "taskItem",
+        attrs: { localId: "task-1", state: "TODO" },
+        content: [{ type: "text", text: "open" }],
+      }],
+    }]))).not.toThrow();
+    expect(() => validateAdf(doc([{
+      type: "decisionList",
+      attrs: { localId: "decisions" },
+      content: [{
+        type: "decisionItem",
+        attrs: { localId: "decision-1", state: "PRODUCT_DEFINED" },
+        content: [{ type: "text", text: "retain exact state" }],
+      }],
+    }]))).not.toThrow();
+    expect(errorCode(() => validateAdf(doc([{
+      type: "taskList",
+      attrs: {},
+      content: [],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "decisionItem",
+      attrs: { localId: "decision-1" },
+      content: [],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "decisionItem",
+      attrs: { localId: "decision-1", state: 1 },
+      content: [],
+    }])))).toBe("invalid-attributes");
+  });
+
   test("accepts every pinned panel type and rejects unknown panel semantics", () => {
     for (const panelType of ["info", "note", "tip", "warning", "error", "success", "custom"]) {
       expect(() => validateAdf(doc([{

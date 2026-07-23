@@ -144,6 +144,18 @@ function validateKnownNodeShape(
       throw new AdfValidationError("invalid-attributes", "ADF task state must be TODO or DONE.", `${path}.attrs.state`);
     }
   }
+  if (
+    type === "taskList" ||
+    type === "taskItem" ||
+    type === "blockTaskItem" ||
+    type === "decisionList" ||
+    type === "decisionItem"
+  ) {
+    assertStringAttribute(attrs, "localId", path);
+  }
+  if (type === "decisionItem") {
+    assertStringAttribute(attrs, "state", path);
+  }
   if (type === "panel") {
     const panelType = attrs?.panelType;
     if (
