@@ -7,7 +7,7 @@ import {
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "@atlcli/pdf/browser";
 import type { PdfExportRequest } from "../ports/export.js";
 import { sanitizeDownloadName } from "../download.js";
-import { profileFromTabUrl } from "../profile.js";
+import { createExtensionConfluenceJobSource } from "./request-source.js";
 
 export interface CreateExtensionPdfJobRequestOptions {
   now?: () => number;
@@ -44,38 +44,7 @@ export function createExtensionPdfJobRequest(
   options: CreateExtensionPdfJobRequestOptions = {},
 ): PdfExportJobRequestV1 {
   request.signal?.throwIfAborted();
-  const profile = profileFromTabUrl(request.pageUrl);
-  if (!profile) throw new Error("The active page is not on an approved Atlassian host.");
-  const rootId = request.page.details.id;
-  if (!rootId) throw new Error("Background PDF export requires a Confluence page id.");
-
-  const selectedScope = request.scope ?? { kind: "page" as const, pageId: rootId };
-  const selectedPageId = selectedScope.kind === "tree" ? selectedScope.rootPageId : selectedScope.kind === "page" ? selectedScope.pageId : undefined;
-  const source = selectedScope.kind === "space"
-    ? {
-        kind: "confluence" as const,
-        siteOrigin: profile.baseUrl,
-        locator: { kind: "space-key" as const, spaceKey: selectedScope.spaceKey },
-        scope: { kind: "space" as const },
-      }
-    : {
-        kind: "confluence" as const,
-        siteOrigin: profile.baseUrl,
-        locator: {
-          kind: "page-id" as const,
-          id: selectedPageId!,
-          ...(request.page.details.version === undefined || selectedPageId !== rootId
-            ? {}
-            : { version: request.page.details.version }),
-        },
-        scope: selectedScope.kind === "tree"
-          ? {
-              kind: "tree" as const,
-              ...(selectedScope.includeRoot === undefined ? {} : { includeRoot: selectedScope.includeRoot }),
-              ...(selectedScope.maxDepth === undefined ? {} : { maxDepth: selectedScope.maxDepth }),
-            }
-          : { kind: "page" as const },
-      };
+  const source = createExtensionConfluenceJobSource(request);
   const id = options.requestId ?? (options.randomUUID ?? (() => crypto.randomUUID()))();
   const createdAt = (options.now ?? Date.now)();
   return parsePdfExportJobRequestV1({
@@ -84,11 +53,8 @@ export function createExtensionPdfJobRequest(
     idempotencyKey: `extension:${id}`,
     format: "pdf",
     renderer: "pdf-typst",
-    source: {
-      ...source,
-      ...(request.labels === undefined ? {} : { labels: structuredClone(request.labels) }),
-    },
-    authRef: `session:${profile.baseUrl}`,
+    source,
+    authRef: `session:${source.siteOrigin}`,
     displayName: request.page.details.title || "Confluence PDF export",
     requestedFilename: sanitizeDownloadName(request.page.details.title || "export", "pdf"),
     createdAt,

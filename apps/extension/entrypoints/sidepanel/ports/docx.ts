@@ -86,6 +86,8 @@ export function chromeDocxTemplateStore(site: SiteContext): DocxTemplateStore {
         name: entry.fileName,
         uploadedAt: Date.parse(entry.uploadedAt),
         bytes: toArrayBuffer(await lib.getBytes(entry)),
+        recordKey: entry.recordKey,
+        sha256: entry.sha256,
       };
     },
 
@@ -101,7 +103,13 @@ export function chromeDocxTemplateStore(site: SiteContext): DocxTemplateStore {
         ...(previous ? { templateId: previous.id } : {}),
       });
       await lib.setActiveTemplateId("docx", undefined, entry.id);
-      return { name: entry.fileName, uploadedAt: Date.parse(entry.uploadedAt), bytes };
+      return {
+        name: entry.fileName,
+        uploadedAt: Date.parse(entry.uploadedAt),
+        bytes,
+        recordKey: entry.recordKey,
+        sha256: entry.sha256,
+      };
     },
 
     async remove() {

@@ -106,6 +106,10 @@ export interface DocxTemplateRecord {
   name: string;
   uploadedAt: number;
   bytes: ArrayBuffer;
+  /** Physical library row pinned by durable background requests. */
+  recordKey?: string;
+  /** Integrity identity of the exact uploaded bytes. */
+  sha256?: string;
 }
 
 /**
