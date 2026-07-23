@@ -132,8 +132,15 @@ export function createExtensionExportExecutionContext(
   const context: ExportJobExecutionContext = {
     jobId: current.id,
     leaseEpoch: current.leaseEpoch,
+    ...(current.checkpointRef ? { checkpointRef: current.checkpointRef } : {}),
     signal: abort.signal,
     spool: bindExportJobSpool(options.bytes, current.id, current.leaseEpoch, options.spoolLimits),
+    readSpool(ref, readOptions) {
+      if (ref.jobId !== current.id || ref.leaseEpoch > current.leaseEpoch) {
+        throw new Error("Recovery spool ref is outside the claimed extension job or lease history.");
+      }
+      return options.bytes.read(ref, readOptions);
+    },
     artifacts: bindExportJobArtifacts(options.bytes, current.id, current.leaseEpoch),
     updateProgress(progress) {
       return serialize(async () => {
@@ -194,6 +201,7 @@ export function createExtensionExportExecutionContext(
           at: now(),
           checkpointRef,
         });
+        context.checkpointRef = checkpointRef;
       });
     },
   };

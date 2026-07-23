@@ -59,6 +59,9 @@ function context(progress: ExportJobProgressV1[] = []): ExportJobExecutionContex
     leaseEpoch: 1,
     signal: new AbortController().signal,
     spool: {} as ExportJobExecutionContext["spool"],
+    readSpool: async function* () {
+      throw new Error("No recovered source object was expected.");
+    },
     artifacts: {} as ExportJobExecutionContext["artifacts"],
     updateProgress: async (value) => {
       progress.push(value);
@@ -73,6 +76,7 @@ describe("extension DOCX durable input resolver", () => {
   it("reconstructs source, macro, asset, and raster seams without panel state", async () => {
     const progress: ExportJobProgressV1[] = [];
     let seenScope: unknown;
+    let sawBodyStore = false;
     let live: boolean | undefined;
     const assets = { fetch: async () => new Uint8Array() };
     const rasterizer = { rasterize: async () => new Uint8Array() };
@@ -94,6 +98,7 @@ describe("extension DOCX durable input resolver", () => {
       }),
       resolveScope: async (input) => {
         seenScope = input.scope;
+        sawBodyStore = input.bodyStore !== undefined;
         input.onProgress?.({ fetched: 1, total: 2, currentTitle: "Guide" });
         return {
           blocks,
@@ -121,6 +126,7 @@ describe("extension DOCX durable input resolver", () => {
       maxDepth: 2,
     });
     expect(live).toBe(false);
+    expect(sawBodyStore).toBe(true);
     expect(resolved).toMatchObject({
       jobTelemetry: { sourcePageCount: 1 },
       details: { id: "42", title: "Guide", storage: "<p>Hello</p>" },

@@ -62,6 +62,7 @@ import {
   runOrdinaryExportJobV1,
   writeOrdinaryExportProjectionV1,
 } from "./export-job-runtime.js";
+import { createExportTreeBodySpoolV1 } from "@atlcli/export-wiring/jobs";
 import {
   createAssetByteCache,
   tokenAssetFetcher,
@@ -994,6 +995,9 @@ async function exportDocxAsOrdinaryJob(
           context.signal,
           () => undefined,
           { exporter: "word", keepIgnored: request.options.keepIgnored === true },
+          args.request.scopeKind === "page"
+            ? undefined
+            : createExportTreeBodySpoolV1(context, request.idempotencyKey),
         );
         reportProjection = {
           sourcePages: value.sourcePages,

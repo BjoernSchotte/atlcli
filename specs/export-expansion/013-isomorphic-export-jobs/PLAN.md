@@ -1734,6 +1734,21 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     rejects Chrome/WXT/Node globals. Focused Activity/UI 24/24, browser policy
     unit 50/50, conformance 15/15 cases, root typecheck, API/closure 5/5,
     production Extension build, and packed MV3 Chromium 19/19 pass.
+  - [x] Completion-audit source-body hardening increment: productive CLI and
+    Extension tree/space jobs now run Confluence body normalization through a
+    four-fetch/eight-result sliding window, atomically checkpoint each ordered
+    normalized page slot to the host spool, release raw storage bodies before
+    final composition, and resume at the first uncommitted slot across lease or
+    offscreen loss. Manifest/page identity, request identity, job ownership,
+    lease history, order, gaps, cycles, corruption bounds, and changed discovery
+    fail closed. The same browser-safe adapter is used by PDF and DOCX. Evidence:
+    the focused source/runtime matrix passes 88/88; the 500-page slow-slot test
+    proves an eight-slot ceiling with four active fetches; file and IndexedDB
+    runtimes prove prior-epoch reads; API/closure guard passes 5/5; all 20
+    browser-safe package entrypoints build; the production generic-browser
+    harness passes all 16 conformance cases without Chrome/Node globals; and
+    packed MV3 Chromium passes 20/20, including a real Tree export that loses
+    its offscreen owner and refetches only the uncommitted children.
   - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
     non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse

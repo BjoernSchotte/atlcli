@@ -12,7 +12,10 @@ import type {
   PdfExportJobRequestV1,
 } from "@atlcli/export-jobs";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
-import type { PdfExportJobEngineInputV1 } from "@atlcli/export-wiring/jobs";
+import {
+  createExportTreeBodySpoolV1,
+  type PdfExportJobEngineInputV1,
+} from "@atlcli/export-wiring/jobs";
 import {
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   normalizePdfLocale,
@@ -335,6 +338,14 @@ export function createExtensionPdfJobInputResolver(
       exporter: "pdf",
       scope,
       ...(request.source.labels ? { labels: request.source.labels } : {}),
+      ...(scope.kind === "page"
+        ? {}
+        : {
+            bodyStore: createExportTreeBodySpoolV1(
+              context,
+              request.idempotencyKey,
+            ),
+          }),
       signal: context.signal,
       onProgress: (progress) => {
         void context.updateProgress({

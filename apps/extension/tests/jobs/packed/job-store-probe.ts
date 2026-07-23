@@ -617,7 +617,10 @@ const probe = {
     }));
     return { sweep, jobs };
   },
-  async submitPdf(id: string): Promise<string> {
+  async submitPdf(
+    id: string,
+    scopeKind: "page" | "tree" = "page",
+  ): Promise<string> {
     const catalog = new IndexedDbExportJobCatalog();
     const submitted = await submitExtensionPdfExport({
       pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${id}/Packed`,
@@ -633,6 +636,16 @@ const probe = {
         wordCount: 6,
         attachments: [],
       },
+      ...(scopeKind === "tree"
+        ? {
+            scope: {
+              kind: "tree" as const,
+              rootPageId: id,
+              includeRoot: true,
+              maxDepth: 1,
+            },
+          }
+        : {}),
     }, {
       catalog,
       requestId: id,

@@ -24,7 +24,6 @@ import {
   type ExportScope,
   type LabelFilter,
 } from "./export-scope.js";
-import { createInOrderLimiter } from "./in-order-limiter.js";
 import { escapeCqlValue } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -161,11 +160,71 @@ export interface TreeFetchProgress {
  */
 export type CompletenessMode = "strict" | "partial";
 
+/** Stable, lightweight identity for one body slot in the discovered manifest. */
+export interface ExportTreeBodyManifestEntryV1 {
+  ordinal: number;
+  key: string;
+  pageId: string;
+  title: string;
+}
+
+/** Serializable normalized result; raw storage XHTML is deliberately absent. */
+export type ExportTreeBodyResultV1 =
+  | {
+      ok: false;
+      pageId: string;
+      title: string;
+      failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{ id: string; title: string }>;
+        detail?: string;
+      };
+    }
+  | {
+      ok: true;
+      pageId: string;
+      title: string;
+      blocks: ExportBlock[];
+      notes: ExportNote[];
+      meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+      };
+    };
+
+/**
+ * Optional durable body sink used by queued exports. Direct callers omit it
+ * and retain the existing in-memory result API.
+ */
+export interface ExportTreeBodyStoreV1 {
+  /** Persist or authenticate the lightweight discovery manifest. */
+  prepare(
+    entries: readonly ExportTreeBodyManifestEntryV1[],
+    context: { signal: AbortSignal },
+  ): Promise<void>;
+  /** Return a previously committed normalized slot during recovery. */
+  load(
+    entry: ExportTreeBodyManifestEntryV1,
+    context: { signal: AbortSignal },
+  ): Promise<ExportTreeBodyResultV1 | undefined>;
+  /** Commit one normalized slot before it becomes visible to composition. */
+  commit(
+    entry: ExportTreeBodyManifestEntryV1,
+    result: ExportTreeBodyResultV1,
+    context: { signal: AbortSignal },
+  ): Promise<void>;
+}
+
 export interface TreeFetchOptions {
   labels?: LabelFilter;
   maxPages?: number;
   maxFolders?: number;
   concurrency?: number;
+  /** Processing plus ready slots; defaults to eight and must cover concurrency. */
+  maxResultSlots?: number;
+  /** Durable queued-export sink; omitted by legacy/direct callers. */
+  bodyStore?: ExportTreeBodyStoreV1;
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
@@ -181,6 +240,7 @@ export interface FetchExportTreeResult {
 const DEFAULT_MAX_PAGES = 500;
 const DEFAULT_MAX_FOLDERS = 200;
 const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_MAX_RESULT_SLOTS = 8;
 const CQL_ID_CHUNK = 100;
 
 // ---------------------------------------------------------------------------
@@ -485,8 +545,10 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
  * Phase 1 (sequential): pre-order DFS discovers every node, captures positions
  * and version snapshots, and enforces cycle/depth/count guards.
  * Phase 2 (pure): the label filter prunes + reparents *before* any body fetch.
- * Phase 3 (pooled): surviving page bodies are fetched through the shared
- * in-order-delivery pool and walked into blocks, with the completeness contract.
+ * Phase 3 (bounded): surviving page bodies are fetched through a deterministic
+ * sliding window and walked into blocks. Queued hosts may commit each normalized
+ * slot to a durable body store before composition; direct callers retain the
+ * same in-memory result contract.
  */
 export async function fetchExportTree(
   source: TreeSource,
@@ -498,8 +560,17 @@ export async function fetchExportTree(
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
+  const maxResultSlots = opts.maxResultSlots ?? DEFAULT_MAX_RESULT_SLOTS;
   const mode: CompletenessMode = opts.completenessMode ?? "strict";
   const filter = normalizeLabelFilter(opts.labels);
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
+    throw new RangeError("Tree fetch concurrency must be a positive safe integer.");
+  }
+  if (!Number.isSafeInteger(maxResultSlots) || maxResultSlots < concurrency) {
+    throw new RangeError(
+      "Tree fetch maxResultSlots must be a safe integer greater than or equal to concurrency.",
+    );
+  }
 
   const treeNotes: ExportNote[] = [];
   let complete = true;
@@ -732,63 +803,134 @@ export async function fetchExportTree(
     treeNotes.push(...filtered.notes);
   }
 
-  // ---- Phase 3: body fetch pool (page nodes only, in pre-order slots) ----
+  // ---- Phase 3: bounded body window (page nodes only, in pre-order slots) ----
   const pageNodes = nodes.filter((n): n is ExportPageNode => n.kind === "page");
   const total = pageNodes.length;
   let fetched = 0;
-  const limit = createInOrderLimiter(concurrency);
+  const manifestEntries: ExportTreeBodyManifestEntryV1[] = pageNodes.map(
+    (node, ordinal) => ({
+      ordinal,
+      pageId: node.pageId,
+      title: node.title,
+      key: JSON.stringify([
+        node.pageId,
+        node.title,
+        node.meta.observedVersion ?? null,
+        node.depth,
+        node.effectiveDepth,
+        node.parentId,
+        node.position,
+      ]),
+    }),
+  );
 
-  type BodyFailure = {
-    code: CompletenessCode;
-    affected: ReadonlyArray<{ id: string; title: string }>;
-    /**
-     * Why the page failed, when the bare {@link CompletenessCode} is too coarse
-     * to be actionable (spec 011). Appended to the partial-mode note so
-     * "page-unreadable" does not hide "this page is too big to parse".
-     */
-    detail?: string;
-  };
-  type BodyResult =
-    | { ok: false; node: ExportPageNode; failure: BodyFailure }
+  const bodyController = new AbortController();
+  const abortBodies = (): void => bodyController.abort(signal?.reason);
+  if (signal?.aborted) abortBodies();
+  else signal?.addEventListener("abort", abortBodies, { once: true });
+  const bodyContext: TreeFetchContext = { signal: bodyController.signal };
+
+  type BodyOutcome =
     | {
-        ok: true;
-        node: ExportPageNode;
-        page: TreeSourcePage;
-        blocks: ExportBlock[];
-        notes: ExportNote[];
-      };
+        ordinal: number;
+        result: ExportTreeBodyResultV1;
+        recovered: boolean;
+      }
+    | { ordinal: number; error: unknown };
 
-  const jobs = pageNodes.map((node) =>
-    limit<BodyResult>(async () => {
-      throwIfAborted(signal);
+  const applySuccess = (
+    node: ExportPageNode,
+    result: Extract<ExportTreeBodyResultV1, { ok: true }>,
+  ): void => {
+    if (result.pageId !== node.pageId || result.title !== node.title) {
+      throw new Error("Tree body result identity does not match its manifest slot.");
+    }
+    node.blocks = result.blocks;
+    node.notes = result.notes;
+    node.meta.version = result.meta.version;
+    node.meta.labels = result.meta.labels;
+    node.meta.spaceKey = result.meta.spaceKey;
+  };
+
+  const applyPartialFailure = (
+    node: ExportPageNode,
+    result: Extract<ExportTreeBodyResultV1, { ok: false }>,
+  ): void => {
+    node.placeholder = true;
+    node.blocks = [
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: `[Content unavailable: ${node.title} (${result.failure.code})]`,
+          },
+        ],
+      },
+    ];
+    treeNotes.push({
+      level: "warning",
+      code: result.failure.code,
+      message:
+        `${result.failure.affected.map((affected) => `${affected.title} (${affected.id})`).join(", ")} could not be exported ` +
+        `(${result.failure.code}${result.failure.detail ? `: ${result.failure.detail}` : ""}); a placeholder chapter was rendered.`,
+    });
+    partialComplete();
+  };
+
+  const processBody = async (ordinal: number): Promise<BodyOutcome> => {
+    const node = pageNodes[ordinal]!;
+    const entry = manifestEntries[ordinal]!;
+    try {
+      throwIfAborted(bodyController.signal);
+      const recovered = await opts.bodyStore?.load(entry, {
+        signal: bodyController.signal,
+      });
+      if (recovered) return { ordinal, result: recovered, recovered: true };
+
       let page: TreeSourcePage;
       try {
-        page = await source.getPage(node.pageId, context);
+        page = await source.getPage(node.pageId, bodyContext);
       } catch (error) {
-        throwIfAborted(signal);
+        throwIfAborted(bodyController.signal);
         const status = errorStatus(error);
         const affected = [{ id: node.pageId, title: node.title }];
-        if (isUnreadable(status)) {
-          return { ok: false, node, failure: { code: "page-unreadable", affected } };
-        }
-        if (isAmbiguous404(status)) {
-          return { ok: false, node, failure: { code: "page-ambiguous-404", affected } };
+        if (isUnreadable(status) || isAmbiguous404(status)) {
+          return {
+            ordinal,
+            recovered: false,
+            result: {
+              ok: false,
+              pageId: node.pageId,
+              title: node.title,
+              failure: {
+                code: isUnreadable(status)
+                  ? "page-unreadable"
+                  : "page-ambiguous-404",
+                affected,
+              },
+            },
+          };
         }
         throw error;
       }
 
-      // Version check: the body-fetch version must match the discovery snapshot.
       if (
         node.meta.observedVersion !== undefined &&
         page.version !== undefined &&
         page.version !== node.meta.observedVersion
       ) {
         return {
-          ok: false,
-          node,
-          failure: {
-            code: "page-version-changed",
-            affected: [{ id: node.pageId, title: node.title }],
+          ordinal,
+          recovered: false,
+          result: {
+            ok: false,
+            pageId: node.pageId,
+            title: node.title,
+            failure: {
+              code: "page-version-changed",
+              affected: [{ id: node.pageId, title: node.title }],
+            },
           },
         };
       }
@@ -803,98 +945,126 @@ export async function fetchExportTree(
           },
         });
       } catch (error) {
-        // A page whose storage blows the parse budget is UNREADABLE, not fatal
-        // to the run (spec 011). Left uncaught this rejected the job, and the
-        // rejection scan below re-throws it — so one pathological page aborted
-        // the entire tree export. Routing it through the existing completeness
-        // path means strict mode still aborts (the user asked for completeness)
-        // while partial mode renders a placeholder chapter and keeps going,
-        // which is exactly what the budget's own docs promise.
         if (!(error instanceof StorageParseError)) throw error;
-        throwIfAborted(signal);
+        throwIfAborted(bodyController.signal);
         return {
-          ok: false,
-          node,
-          failure: {
-            code: "page-unreadable",
-            affected: [{ id: node.pageId, title: node.title }],
-            detail: `storage exceeded the parse budget: ${error.kind}`,
+          ordinal,
+          recovered: false,
+          result: {
+            ok: false,
+            pageId: node.pageId,
+            title: node.title,
+            failure: {
+              code: "page-unreadable",
+              affected: [{ id: node.pageId, title: node.title }],
+              detail: `storage exceeded the parse budget: ${error.kind}`,
+            },
           },
         };
       }
-      return { ok: true, node, page, blocks: walked.blocks, notes: walked.notes };
-    })
-  );
-
-  const settled = await Promise.allSettled(jobs);
-  throwIfAborted(signal);
-
-  // Deterministic primary error = earliest pre-order slot that rejected.
-  for (const result of settled) {
-    if (result.status === "rejected") throw result.reason;
-  }
-
-  // Apply results in pre-order (slot order). A completeness failure aborts in
-  // strict mode (earliest slot first) or downgrades to a note in partial mode.
-  const strictFailures: Array<{
-    slot: number;
-    code: CompletenessCode;
-    affected: ReadonlyArray<{ id: string; title: string }>;
-    detail?: string;
-  }> = [];
-
-  settled.forEach((result, slot) => {
-    if (result.status !== "fulfilled") return;
-    const value = result.value;
-    if (!value.ok) {
-      strictFailures.push({
-        slot,
-        code: value.failure.code,
-        affected: value.failure.affected,
-        ...(value.failure.detail !== undefined ? { detail: value.failure.detail } : {}),
-      });
-      return;
-    }
-    fetched += 1;
-    opts.onProgress?.({ fetched, total, currentTitle: value.node.title });
-    value.node.blocks = value.blocks;
-    value.node.notes = value.notes;
-    value.node.meta.version = value.page.version;
-    value.node.meta.labels = value.page.labels ?? [];
-    value.node.meta.spaceKey = value.page.spaceKey;
-  });
-
-  if (strictFailures.length > 0) {
-    if (mode === "strict") {
-      const first = strictFailures[0]!;
-      throw new ExportCompletenessError(first.code, first.affected);
-    }
-    // partial: downgrade each to a note + placeholder chapter, complete = false.
-    for (const failure of strictFailures) {
-      const node = pageNodes.find((n) => n.pageId === failure.affected[0]?.id);
-      if (node) {
-        node.placeholder = true;
-        node.blocks = [
-          {
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: `[Content unavailable: ${node.title} (${failure.code})]`,
-              },
-            ],
+      return {
+        ordinal,
+        recovered: false,
+        result: {
+          ok: true,
+          pageId: node.pageId,
+          title: node.title,
+          blocks: walked.blocks,
+          notes: walked.notes,
+          meta: {
+            ...(page.version === undefined ? {} : { version: page.version }),
+            labels: page.labels ?? [],
+            ...(page.spaceKey === undefined ? {} : { spaceKey: page.spaceKey }),
           },
-        ];
-      }
-      treeNotes.push({
-        level: "warning",
-        code: failure.code,
-        message:
-          `${failure.affected.map((a) => `${a.title} (${a.id})`).join(", ")} could not be exported ` +
-          `(${failure.code}${failure.detail ? `: ${failure.detail}` : ""}); a placeholder chapter was rendered.`,
-      });
+        },
+      };
+    } catch (error) {
+      return { ordinal, error };
     }
-    partialComplete();
+  };
+
+  const active = new Map<number, Promise<BodyOutcome>>();
+  const ready = new Map<number, BodyOutcome>();
+  let nextStart = 0;
+  let nextCommit = 0;
+  const startBodies = (): void => {
+    while (
+      nextStart < total &&
+      active.size < concurrency &&
+      active.size + ready.size < maxResultSlots
+    ) {
+      const ordinal = nextStart;
+      nextStart += 1;
+      active.set(ordinal, processBody(ordinal));
+    }
+  };
+
+  try {
+    await opts.bodyStore?.prepare(manifestEntries, {
+      signal: bodyController.signal,
+    });
+    while (nextCommit < total) {
+      throwIfAborted(bodyController.signal);
+      startBodies();
+      const current = ready.get(nextCommit);
+      if (!current) {
+        if (active.size === 0) {
+          throw new Error("Tree body window made no progress.");
+        }
+        const settled = await Promise.race(active.values());
+        active.delete(settled.ordinal);
+        ready.set(settled.ordinal, settled);
+        continue;
+      }
+      if ("error" in current) throw current.error;
+
+      const node = pageNodes[nextCommit]!;
+      if (!current.result.ok && mode === "strict") {
+        throw new ExportCompletenessError(
+          current.result.failure.code,
+          current.result.failure.affected,
+        );
+      }
+      if (opts.bodyStore && !current.recovered) {
+        await opts.bodyStore.commit(
+          manifestEntries[nextCommit]!,
+          current.result,
+          { signal: bodyController.signal },
+        );
+      }
+      if (current.result.ok) {
+        fetched += 1;
+        opts.onProgress?.({
+          fetched,
+          total,
+          currentTitle: current.result.title,
+        });
+        if (!opts.bodyStore) applySuccess(node, current.result);
+      } else {
+        applyPartialFailure(node, current.result);
+      }
+      ready.delete(nextCommit);
+      nextCommit += 1;
+    }
+
+    if (opts.bodyStore) {
+      for (const [ordinal, entry] of manifestEntries.entries()) {
+        throwIfAborted(bodyController.signal);
+        const result = await opts.bodyStore.load(entry, {
+          signal: bodyController.signal,
+        });
+        if (!result) {
+          throw new Error(`Tree body store lost committed slot ${ordinal}.`);
+        }
+        if (result.ok) applySuccess(pageNodes[ordinal]!, result);
+      }
+    }
+  } catch (error) {
+    bodyController.abort(error);
+    await Promise.all(active.values());
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", abortBodies);
   }
 
   return { nodes, notes: treeNotes, complete };

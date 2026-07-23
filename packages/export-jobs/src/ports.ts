@@ -128,8 +128,19 @@ export interface ExportJobArtifacts {
 export interface ExportJobExecutionContext {
   jobId: string;
   leaseEpoch: number;
+  /** Durable checkpoint visible when this lease was claimed; updated after publication. */
+  checkpointRef?: string;
   signal: AbortSignal;
   spool: ExportJobSpool;
+  /**
+   * Read an owned spool object from a previous lease epoch during recovery.
+   * Hosts must reject refs for another job; executors receive no cross-job byte
+   * access and cannot write through this recovery-only surface.
+   */
+  readSpool?(
+    ref: SpoolRefV1,
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<Uint8Array>;
   artifacts: ExportJobArtifacts;
   updateProgress(progress: ExportJobProgressV1): Promise<void>;
   updateStats(stats: ExportJobStatsV1): Promise<void>;

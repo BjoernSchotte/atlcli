@@ -7,9 +7,15 @@ import {
   ExportJobRequestV1,
   ExportJobStage,
 } from "@atlcli/export-jobs";
-import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
+import {
+  IndexedDbExportJobCatalog,
+  recoverAndClaimExtensionExportJob,
+} from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
-import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
+import {
+  createExtensionExportExecutionContext,
+  runClaimedExtensionExportJob,
+} from "../../utils/export-jobs/runtime.js";
 import { createExtensionPdfJobRequest } from "../../utils/export-jobs/pdf-request.js";
 import type { PdfExportRequest } from "../../utils/ports/export.js";
 
@@ -57,6 +63,75 @@ function durableDocxRequest(id: string): DocxExportJobRequestV1 {
 }
 
 describe("extension export execution runtime", () => {
+  it("publishes checkpoint refs and reads their owned spool bytes after lease recovery", async () => {
+    const factory = new IDBFactory();
+    let now = 10;
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => now });
+    const bytes = new IndexedDbExportByteStore({ factory, now: () => now });
+    const durable = createExtensionPdfJobRequest(request(), {
+      requestId: "job-source-recovery",
+      now: () => now,
+    });
+    await catalog.create({ request: durable });
+    const firstClaim = await catalog.claimNext({
+      ids: [durable.id],
+      ownerId: "offscreen:first-source-owner",
+      now,
+      leaseDurationMs: 100,
+    });
+    if (!firstClaim) throw new Error("Expected the source recovery job to be claimed.");
+    const limits = {
+      maxObjectBytes: 1024,
+      maxJobBytes: 4096,
+      maxTotalBytes: 8192,
+    };
+    const first = createExtensionExportExecutionContext({
+      claimed: firstClaim,
+      catalog,
+      bytes,
+      spoolLimits: limits,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    const object = await first.context.spool.put(
+      { namespace: "source-pages", key: "page-0" },
+      (async function* () { yield new TextEncoder().encode("normalized page"); })(),
+    );
+    await first.context.checkpoint("source-checkpoint:page-0");
+    expect(first.context.checkpointRef).toBe("source-checkpoint:page-0");
+    await first.stop();
+
+    now = 111;
+    const secondClaim = await recoverAndClaimExtensionExportJob(catalog, {
+      ids: [durable.id],
+      ownerId: "offscreen:second-source-owner",
+      now,
+      leaseDurationMs: 100,
+    });
+    if (!secondClaim) throw new Error("Expected the expired source job to be reclaimed.");
+    expect(secondClaim).toMatchObject({
+      leaseEpoch: 2,
+      checkpointRef: "source-checkpoint:page-0",
+    });
+    const second = createExtensionExportExecutionContext({
+      claimed: secondClaim,
+      catalog,
+      bytes,
+      spoolLimits: limits,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    const recovered: number[] = [];
+    for await (const chunk of second.context.readSpool!(object.ref)) {
+      recovered.push(...chunk);
+    }
+    expect(new TextDecoder().decode(Uint8Array.from(recovered)))
+      .toBe("normalized page");
+    await second.stop();
+  });
+
   it("executes and atomically finalizes a claimed job without a panel owner", async () => {
     const factory = new IDBFactory();
     let now = 10;

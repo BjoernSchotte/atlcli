@@ -485,8 +485,12 @@ export type ExportJobEventV1 = {
 export interface ExportJobExecutionContext {
     jobId: string;
     leaseEpoch: number;
+    checkpointRef?: string;
     signal: AbortSignal;
     spool: ExportJobSpool;
+    readSpool?(ref: SpoolRefV1, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
     artifacts: ExportJobArtifacts;
     updateProgress(progress: ExportJobProgressV1): Promise<void>;
     updateStats(stats: ExportJobStatsV1): Promise<void>;

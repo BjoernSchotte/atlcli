@@ -20,6 +20,7 @@ import { runPdfJobParityCase } from "./pdf-job-parity-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
 import { runScopeCase } from "./scope-case.js";
+import { runSourceSpoolRecoveryCase } from "./source-spool-recovery-case.js";
 
 export interface ConformanceCase extends ConformanceCaseMeta {
   run: () => Promise<unknown>;
@@ -27,6 +28,7 @@ export interface ConformanceCase extends ConformanceCaseMeta {
 
 const RUNNERS: Record<string, () => Promise<unknown>> = {
   "activity-monitor": runActivityMonitorCase,
+  "source-spool-recovery": runSourceSpoolRecoveryCase,
   "pdf-abort": runPdfAbortCase,
   docx: runDocxCase,
   "docx-job-parity": runDocxJobParityCase,

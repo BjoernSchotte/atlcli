@@ -85,8 +85,16 @@ export function createFileExportExecutionContext(options: CreateFileExportExecut
   }
 
   const context: ExportJobExecutionContext = {
-    jobId: current.id, leaseEpoch: current.leaseEpoch, signal: abort.signal,
+    jobId: current.id, leaseEpoch: current.leaseEpoch,
+    ...(current.checkpointRef ? { checkpointRef: current.checkpointRef } : {}),
+    signal: abort.signal,
     spool: bindExportJobSpool(options.spool, current.id, current.leaseEpoch, options.spoolLimits),
+    readSpool(ref, readOptions) {
+      if (ref.jobId !== current.id || ref.leaseEpoch > current.leaseEpoch) {
+        throw new Error("Recovery spool ref is outside the claimed job or lease history.");
+      }
+      return options.spool.read(ref, readOptions);
+    },
     artifacts: bindExportJobArtifacts(options.artifacts, current.id, current.leaseEpoch),
     updateProgress(progress) { return serialize(async () => {
       const latest = await refresh(); abort.signal.throwIfAborted();
@@ -112,7 +120,11 @@ export function createFileExportExecutionContext(options: CreateFileExportExecut
       const latest = await refresh(); abort.signal.throwIfAborted();
       await appendEvent(latest, event);
     }); },
-    checkpoint(ref) { return serialize(async () => { const latest = await refresh(); abort.signal.throwIfAborted(); current = await options.jobs.compareAndSet({ kind: "checkpoint", id: latest.id, expectedRevision: latest.revision, leaseEpoch: latest.leaseEpoch, at: now(), checkpointRef: ref }); }); },
+    checkpoint(ref) { return serialize(async () => {
+      const latest = await refresh(); abort.signal.throwIfAborted();
+      current = await options.jobs.compareAndSet({ kind: "checkpoint", id: latest.id, expectedRevision: latest.revision, leaseEpoch: latest.leaseEpoch, at: now(), checkpointRef: ref });
+      context.checkpointRef = ref;
+    }); },
   };
   return {
     context,

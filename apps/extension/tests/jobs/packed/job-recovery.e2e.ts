@@ -20,6 +20,7 @@ const JOB_H = "b23e4567-e89b-42d3-a456-426614174000";
 const JOB_I = "c23e4567-e89b-42d3-a456-426614174000";
 const JOB_J = "d23e4567-e89b-42d3-a456-426614174000";
 const JOB_K = "e23e4567-e89b-42d3-a456-426614174000";
+const JOB_L = "f23e4567-e89b-42d3-a456-426614174000";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -89,6 +90,7 @@ async function installOffscreenFetchStub(
   holdPageIds: string[] = [],
   storageByPageId: Record<string, string> = {},
   authPageIds: string[] = [],
+  childrenByPageId: Record<string, string[]> = {},
 ): Promise<void> {
   await packedOffscreen?.close();
   const root = await context.newCDPSession(page);
@@ -105,12 +107,45 @@ async function installOffscreenFetchStub(
     const held = new Set(${JSON.stringify(holdPageIds)});
     const authFailures = new Set(${JSON.stringify(authPageIds)});
     const storageByPageId = ${JSON.stringify(storageByPageId)};
+    const childrenByPageId = ${JSON.stringify(childrenByPageId)};
     const releases = Object.create(null);
     const released = new Set();
+    const bodyFetches = Object.create(null);
     globalThis.__atlcliPackedFetchReleases = releases;
     globalThis.__atlcliPackedFetchReleased = released;
+    globalThis.__atlcliPackedBodyFetches = bodyFetches;
     globalThis.fetch = async (input) => {
       const url = new URL(typeof input === "string" ? input : input.url);
+      const directChildren = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)\\/direct-children$/);
+      if (directChildren) {
+        const parentId = decodeURIComponent(directChildren[1]);
+        const children = childrenByPageId[parentId] || [];
+        return new Response(JSON.stringify({
+          results: children.map((id) => ({
+            id,
+            type: "page",
+            title: "Packed page " + id,
+            _links: {}
+          })),
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      const positionedChildren = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)\\/child\\/page$/);
+      if (positionedChildren) {
+        const parentId = decodeURIComponent(positionedChildren[1]);
+        const children = childrenByPageId[parentId] || [];
+        return new Response(JSON.stringify({
+          results: children.map((id, position) => ({
+            id,
+            type: "page",
+            title: "Packed page " + id,
+            version: { number: 1 },
+            ancestors: [{ id: parentId, title: "Packed page " + parentId }],
+            extensions: { position }
+          })),
+          _links: {}
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
       const pageId = decodeURIComponent(match[1]);
@@ -122,6 +157,9 @@ async function installOffscreenFetchStub(
       }
       if (held.has(pageId) && !released.has(pageId)) {
         await new Promise((resolve) => { releases[pageId] = resolve; });
+      }
+      if ((url.searchParams.get("expand") || "").includes("body.storage")) {
+        bodyFetches[pageId] = (bodyFetches[pageId] || 0) + 1;
       }
       return new Response(JSON.stringify({
         id: pageId,
@@ -157,6 +195,22 @@ async function releaseOffscreenFetch(pageId: string): Promise<void> {
     })()`,
     returnByValue: true,
   });
+}
+
+async function readOffscreenBodyFetches(): Promise<Record<string, number>> {
+  if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
+  const result = await packedOffscreen.send<{
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  }>("Runtime.evaluate", {
+    expression:
+      "({ ...globalThis.__atlcliPackedBodyFetches })",
+    returnByValue: true,
+  });
+  if (result.exceptionDetails || !result.result?.value) {
+    throw new Error(`Could not read packed body fetch counts: ${JSON.stringify(result)}`);
+  }
+  return result.result.value as Record<string, number>;
 }
 
 test.beforeAll(async () => {
@@ -338,6 +392,17 @@ async function submitPackedPdf(jobId: string): Promise<string> {
       };
     }).exportJobStoreProbe;
     return probe.submitPdf(id);
+  }, jobId);
+}
+
+async function submitPackedTreePdf(jobId: string): Promise<string> {
+  return page.evaluate(async (id) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        submitPdf(exportJobId: string, scopeKind?: "page" | "tree"): Promise<string>;
+      };
+    }).exportJobStoreProbe;
+    return probe.submitPdf(id, "tree");
   }, jobId);
 }
 
@@ -525,6 +590,44 @@ async function checkpointAndExpire(id: string): Promise<PackedJobRow> {
       read.onerror = () => reject(read.error);
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(tx.error ?? new Error(`Job ${jobId} had no active lease.`));
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, id);
+  return readJob(id);
+}
+
+async function expireJobLease(id: string): Promise<PackedJobRow> {
+  await page.evaluate(async (jobId) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open("atlcli-export-jobs", 3);
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("jobs", "readwrite");
+      const store = tx.objectStore("jobs");
+      const read = store.get(jobId);
+      read.onsuccess = () => {
+        const row = read.result as PackedJobRow & Record<string, unknown>;
+        if (!row?.snapshot.lease) {
+          tx.abort();
+          return;
+        }
+        store.put({
+          ...row,
+          snapshot: {
+            ...row.snapshot,
+            revision: row.snapshot.revision + 1,
+            lease: { ...row.snapshot.lease, expiresAt: 1 },
+          },
+        });
+      };
+      read.onerror = () => reject(read.error);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(
+        tx.error ?? new Error(`Job ${jobId} had no active lease.`),
+      );
       tx.onerror = () => reject(tx.error);
     });
     db.close();
@@ -766,6 +869,63 @@ test("a real offscreen-document restart reconstructs expired checkpointed work",
   expect(recovered.snapshot.stats).toMatchObject({
     pages: { discovered: 1, fetched: 1, composed: 1 },
     storage: { outputBytes: recovered.snapshot.artifact!.byteLength },
+  });
+});
+
+test("a packed tree export resumes from its durable ordered page spool", async () => {
+  await ensureCatalog();
+  const childA = `${JOB_L}-a`;
+  const childB = `${JOB_L}-b`;
+  const children = { [JOB_L]: [childA, childB] };
+  await installOffscreenFetchStub([childA], {}, [], children);
+  await expect(submitPackedTreePdf(JOB_L)).resolves.toBe(JOB_L);
+
+  await expect.poll(async () => {
+    const row = await readJob(JOB_L);
+    if (row.snapshot.state === "failed") {
+      throw new Error(JSON.stringify(row.snapshot.error));
+    }
+    return row.snapshot.checkpointRef?.startsWith(
+      "atlcli.export-tree-spool/1:",
+    ) === true;
+  }, { timeout: 30_000 }).toBe(true);
+
+  const session = await context.newCDPSession(page);
+  const original = (await getTargets(session)).find(
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  expect(original).toBeDefined();
+  await session.send("Target.closeTarget", { targetId: original!.targetId });
+  await waitForTargetGone(session, original!.targetId);
+
+  await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
+  await waitForRestartedTarget(
+    session,
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  await installOffscreenFetchStub([], {}, [], children);
+  const expired = await expireJobLease(JOB_L);
+  expect(expired.snapshot.checkpointRef?.startsWith(
+    "atlcli.export-tree-spool/1:",
+  )).toBe(true);
+  await expect(sendWake([JOB_L])).resolves.toMatchObject({
+    claimedJobId: JOB_L,
+  });
+
+  const succeeded = await waitForJobState(JOB_L, "succeeded", 45_000);
+  expect(succeeded.snapshot).toMatchObject({
+    leaseEpoch: 2,
+    attempt: 2,
+    recoveryCount: 1,
+    reportSummary: { completeness: "complete" },
+    stats: {
+      pages: { discovered: 3, fetched: 3, composed: 3 },
+    },
+  });
+  expect(await readOffscreenBodyFetches()).toEqual({
+    [JOB_L]: 1,
+    [childA]: 1,
+    [childB]: 1,
   });
 });
 

@@ -10,7 +10,10 @@ import type {
   ExportJobExecutionContext,
 } from "@atlcli/export-jobs";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
-import type { TypescriptDocxExportJobResolvedInputV1 } from "@atlcli/export-wiring/jobs";
+import {
+  createExportTreeBodySpoolV1,
+  type TypescriptDocxExportJobResolvedInputV1,
+} from "@atlcli/export-wiring/jobs";
 import type { AssetFetcher, SvgRasterizer } from "@atlcli/docx/browser";
 import type { ResolveDeps } from "@atlcli/docx/internal";
 import {
@@ -232,11 +235,20 @@ export function createExtensionDocxJobInputResolver(
     const root = await deps.loadRoot(request, context.signal);
     context.signal.throwIfAborted();
     const sourceNotes: ExportNote[] = [];
+    const scope = requestScope(request, root);
     const contribution = await deps.resolveScope({
       root,
       pageUrl: siteOrigin,
-      scope: requestScope(request, root),
+      scope,
       ...(request.source.labels ? { labels: request.source.labels } : {}),
+      ...(scope.kind === "page"
+        ? {}
+        : {
+            bodyStore: createExportTreeBodySpoolV1(
+              context,
+              request.idempotencyKey,
+            ),
+          }),
       signal: context.signal,
       onProgress: (value) => {
         void context.updateProgress({

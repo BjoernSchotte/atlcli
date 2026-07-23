@@ -30,6 +30,7 @@ import {
   type ExportBlock,
   type ExportNote,
   type ExportProgressCallback,
+  type ExportTreeBodyStoreV1,
 } from "@atlcli/confluence";
 import {
   normalizePdfLocale,
@@ -68,6 +69,7 @@ import {
   defaultExternalAssetPolicy,
   trustRoutingPdfAssetResolver,
 } from "@atlcli/export-wiring";
+import { createExportTreeBodySpoolV1 } from "@atlcli/export-wiring/jobs";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
   PdfUsageError,
@@ -313,6 +315,7 @@ export async function resolveScope(
   signal: AbortSignal,
   onProgress: ExportProgressCallback,
   walk: { exporter?: "pdf" | "word"; keepIgnored?: boolean } = {},
+  bodyStore?: ExportTreeBodyStoreV1,
 ): Promise<ResolvedScope> {
   const { client, request, profile } = args;
 
@@ -366,6 +369,7 @@ export async function resolveScope(
     completenessMode: request.completenessMode,
     ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
     ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+    ...(bodyStore ? { bodyStore } : {}),
     signal,
     onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
   });
@@ -576,8 +580,9 @@ export async function exportPdfAsOrdinaryJob(
   const resolveForJob = async (
     signal: AbortSignal,
     onProgress: ExportProgressCallback,
+    bodyStore?: ExportTreeBodyStoreV1,
   ): Promise<ResolvedScope> => {
-    const value = await resolveScope(args, signal, onProgress);
+    const value = await resolveScope(args, signal, onProgress, {}, bodyStore);
     resolvedOutputPath = args.outDir
       ? derivePdfOutputPath(args.outDir, value.outNameKey, value.metaPage.title)
       : resolve(args.outputPath!);
@@ -603,7 +608,13 @@ export async function exportPdfAsOrdinaryJob(
     const executor = createOrdinaryPdfExecutorV1(persistence, {
       compiler,
       async resolveInput(request, context) {
-        const value = await resolveForJob(context.signal, () => undefined);
+        const value = await resolveForJob(
+          context.signal,
+          () => undefined,
+          args.request.scopeKind === "page"
+            ? undefined
+            : createExportTreeBodySpoolV1(context, request.idempotencyKey),
+        );
         const locale = normalizePdfLocale(undefined);
         const metadata: PdfExportMetadata = {
           title: value.metaPage.title,

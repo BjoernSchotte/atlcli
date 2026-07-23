@@ -375,6 +375,9 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
 }
 
+// export: createExportTreeBodySpoolV1
+export declare function createExportTreeBodySpoolV1(context: ExportJobExecutionContext, requestKey: string): ExportTreeBodyStoreV1;
+
 // export: createPdfExportJobExecutor
 export declare function createPdfExportJobExecutor(options: CreatePdfExportJobExecutorOptionsV1): ExportJobExecutor<PdfExportJobRequestV1>;
 

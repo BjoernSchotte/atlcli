@@ -43,6 +43,9 @@ function context(): ExportJobExecutionContext {
     leaseEpoch: 1,
     signal: new AbortController().signal,
     spool: {} as ExportJobExecutionContext["spool"],
+    readSpool: async function* () {
+      throw new Error("No recovered source object was expected.");
+    },
     artifacts: {} as ExportJobExecutionContext["artifacts"],
     updateProgress: async () => {},
     updateStats: async () => {},
@@ -66,6 +69,7 @@ describe("extension PDF durable input resolver", () => {
     const factory = new IDBFactory();
     const bytes = new IndexedDbExportByteStore({ factory });
     let seenScope: unknown;
+    let sawBodyStore = false;
     let live: boolean | undefined;
     const resolver = createExtensionPdfJobInputResolver({
       bytes,
@@ -82,6 +86,7 @@ describe("extension PDF durable input resolver", () => {
         }),
         resolveComposition: async (input) => {
           seenScope = input.scope;
+          sawBodyStore = input.bodyStore !== undefined;
           input.onProgress?.({ fetched: 1, total: 1, currentTitle: "Guide" });
           return composition;
         },
@@ -110,6 +115,7 @@ describe("extension PDF durable input resolver", () => {
       maxDepth: 2,
     });
     expect(live).toBe(false);
+    expect(sawBodyStore).toBe(true);
     expect(resolved.telemetry).toEqual({ sourcePageCount: 1 });
     expect(resolved.input).toMatchObject({
       blocks: composition.blocks,

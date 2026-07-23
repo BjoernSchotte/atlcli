@@ -944,6 +944,53 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -1434,6 +1481,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -2529,6 +2578,53 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -3019,6 +3115,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -4114,6 +4212,53 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -4604,6 +4749,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -8201,6 +8348,53 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
 // export: ExternalLinkTarget
 export interface ExternalLinkTarget {
     contentId?: string;
@@ -8691,6 +8885,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;

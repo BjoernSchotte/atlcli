@@ -120,6 +120,65 @@ describe("file export persistence", () => {
     expect(staged.ref).toContain(claimed.id);
   });
 
+  it("binds prior-epoch source reads into the recovered file execution context", async () => {
+    let now = 10;
+    const dir = await root();
+    const persistence = createFileExportJobPersistence({
+      rootDir: dir,
+      now: () => now,
+    });
+    await persistence.jobs.create({ request: request("source-recovery") });
+    const firstClaim = (await persistence.jobs.claimNext({
+      ids: ["source-recovery"],
+      ownerId: "first",
+      now,
+      leaseDurationMs: 10,
+    }))!;
+    const first = createFileExportExecutionContext({
+      claimed: firstClaim,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    const object = await first.context.spool.put(
+      { namespace: "source-pages", key: "page-0" },
+      bytes("normalized page"),
+    );
+    await first.context.checkpoint("source-checkpoint:page-0");
+    expect(first.context.checkpointRef).toBe("source-checkpoint:page-0");
+    await first.stop();
+
+    now = 21;
+    await reconcileStaleExportJobs(persistence.jobs, persistence, now);
+    const secondClaim = (await persistence.jobs.claimNext({
+      ids: ["source-recovery"],
+      ownerId: "second",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    expect(secondClaim).toMatchObject({
+      leaseEpoch: 2,
+      checkpointRef: "source-checkpoint:page-0",
+    });
+    const second = createFileExportExecutionContext({
+      claimed: secondClaim,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    expect(await all(second.context.readSpool!(object.ref)))
+      .toBe("normalized page");
+    await second.stop();
+  });
+
   it("stages invisibly, recovers finalization, and atomically delivers without clobber", async () => {
     let now = 10; const dir = await root(); const persistence = createFileExportJobPersistence({ rootDir: dir, now: () => now });
     await persistence.jobs.create({ request: request("job-artifact") }); const claimed = (await persistence.jobs.claimNext({ ownerId: "a", now, leaseDurationMs: 1_000 }))!;
