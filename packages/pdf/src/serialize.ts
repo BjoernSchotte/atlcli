@@ -12,6 +12,7 @@ import {
   isSafeLinkScheme,
   uniqueAnchorId,
 } from "@atlcli/confluence";
+import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -816,7 +817,9 @@ function applyBlockPresentation(
     presented = `#align(${presentation.alignment})[${presented}]`;
   }
   if (presentation.fontSize === "small") {
-    const smallTextSize = design.typography.roles.adfSmallText?.size ?? "9pt";
+    const smallTextSize =
+      design.typography.roles.adfSmallText?.size ??
+      BUILTIN_PDF_DESIGN.typography.roles.adfSmallText!.size;
     presented = `#text(size: ${smallTextSize})[${presented}]`;
   }
   if (presentation.indentation !== undefined) {
