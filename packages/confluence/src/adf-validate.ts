@@ -115,6 +115,20 @@ function assertStringAttribute(
   );
 }
 
+function assertOptionalNumberAttribute(
+  attrs: Record<string, unknown> | undefined,
+  key: string,
+  path: string,
+): void {
+  const value = attrs?.[key];
+  if (value === undefined || typeof value === "number") return;
+  throw new AdfValidationError(
+    "invalid-attributes",
+    `ADF attribute ${key} must be a number when present.`,
+    `${path}.attrs.${key}`,
+  );
+}
+
 function validateKnownNodeShape(
   type: string,
   node: Record<string, unknown>,
@@ -190,6 +204,76 @@ function validateKnownNodeShape(
   if (type === "extension" || type === "inlineExtension" || type === "bodiedExtension") {
     assertStringAttribute(attrs, "extensionType", path);
     assertStringAttribute(attrs, "extensionKey", path);
+  }
+  if (type === "table") {
+    const displayMode = attrs?.displayMode;
+    if (displayMode !== undefined && displayMode !== "default" && displayMode !== "fixed") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table displayMode must be default or fixed.",
+        `${path}.attrs.displayMode`,
+      );
+    }
+    const layout = attrs?.layout;
+    if (
+      layout !== undefined &&
+      layout !== "default" &&
+      layout !== "wide" &&
+      layout !== "full-width" &&
+      layout !== "center" &&
+      layout !== "align-start" &&
+      layout !== "align-end"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table layout is not part of the pinned schema.",
+        `${path}.attrs.layout`,
+      );
+    }
+    if (attrs?.isNumberColumnEnabled !== undefined && typeof attrs.isNumberColumnEnabled !== "boolean") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table isNumberColumnEnabled must be a boolean.",
+        `${path}.attrs.isNumberColumnEnabled`,
+      );
+    }
+    assertOptionalNumberAttribute(attrs, "width", path);
+    assertStringAttribute(attrs, "localId", path, false);
+    if (attrs?.localId === "") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table localId must be non-empty when present.",
+        `${path}.attrs.localId`,
+      );
+    }
+  }
+  if (type === "tableRow") {
+    assertStringAttribute(attrs, "localId", path, false);
+  }
+  if (type === "tableCell" || type === "tableHeader") {
+    assertOptionalNumberAttribute(attrs, "colspan", path);
+    assertOptionalNumberAttribute(attrs, "rowspan", path);
+    assertStringAttribute(attrs, "background", path, false);
+    assertStringAttribute(attrs, "localId", path, false);
+    const colwidth = attrs?.colwidth;
+    if (
+      colwidth !== undefined &&
+      (!Array.isArray(colwidth) || colwidth.some((width) => typeof width !== "number"))
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table-cell colwidth must be an array of numbers.",
+        `${path}.attrs.colwidth`,
+      );
+    }
+    const valign = attrs?.valign;
+    if (valign !== undefined && valign !== "top" && valign !== "middle" && valign !== "bottom") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF table-cell valign must be top, middle, or bottom.",
+        `${path}.attrs.valign`,
+      );
+    }
   }
 }
 

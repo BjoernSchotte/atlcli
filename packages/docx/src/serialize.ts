@@ -18,10 +18,13 @@ import type {
   InlineNode,
   ExportNote,
   ListItem,
+  TableCell,
+  TablePresentation,
   TableRow,
 } from "@atlcli/confluence";
 import {
   computeHeadingOffset,
+  materializeTable,
   readableTextColor,
   sanitizeAnchorId,
   uniqueAnchorId,
@@ -565,9 +568,11 @@ async function serializeBlock(
       return serializeList(block, ctx, notes, depth, 0);
 
     case "table": {
+      const materialized = materializeTable(block);
       const tableXml = await serializeTable(
-        block.rows,
-        block.columnWidths,
+        materialized.rows,
+        materialized.columnWidths,
+        block.presentation,
         { ...ctx, defaultTextColor: undefined },
         notes
       );
@@ -973,6 +978,7 @@ interface Carry {
   colspan: number;
   rowsRemaining: number;
   backgroundColor?: string;
+  verticalAlignment?: TableCell["verticalAlignment"];
 }
 
 /** Budget caps against malformed/pathological table geometry (spec 006 G3). */
@@ -987,6 +993,7 @@ interface CellDesc {
   body?: string;
   header?: boolean;
   backgroundColor?: string;
+  verticalAlignment?: TableCell["verticalAlignment"];
   vMerge?: "restart" | "continue";
 }
 
@@ -1001,6 +1008,7 @@ interface CellDesc {
 async function serializeTable(
   rows: TableRow[],
   columnWidths: number[] | undefined,
+  presentation: TablePresentation | undefined,
   ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
@@ -1044,6 +1052,7 @@ async function serializeTable(
           kind: "carry",
           vMerge: "continue",
           backgroundColor: active.backgroundColor,
+          verticalAlignment: active.verticalAlignment,
         });
         active.rowsRemaining -= 1;
         const span = active.colspan;
@@ -1074,11 +1083,17 @@ async function serializeTable(
         body: body || paragraph(run("")),
         header: cell.header,
         backgroundColor: cell.backgroundColor,
+        verticalAlignment: cell.verticalAlignment,
         vMerge: rowspan > 1 ? "restart" : undefined,
       });
       if (rowspan > 1) {
         for (let k = col; k < col + colspan; k++) {
-          carry[k] = { colspan, rowsRemaining: rowspan - 1, backgroundColor: cell.backgroundColor };
+          carry[k] = {
+            colspan,
+            rowsRemaining: rowspan - 1,
+            backgroundColor: cell.backgroundColor,
+            verticalAlignment: cell.verticalAlignment,
+          };
         }
       }
       col += colspan;
@@ -1100,7 +1115,8 @@ async function serializeTable(
 
   // Render phase: widths are now final. Derive the dxa width array; each cell
   // gets the sum of its spanned columns so the fixed layout is not repaired.
-  const widthsDxa = columnWidthsDxa(columnWidths, gridCols);
+  const widthDxa = tableWidthDxa(presentation);
+  const widthsDxa = columnWidthsDxa(columnWidths, gridCols, widthDxa);
   const templateStyle = ctx.tableStyle?.source === "template" && ctx.tableStyle.styleId;
   const spanWidth = (colStart: number, colspan: number): number | undefined => {
     if (!widthsDxa) return undefined;
@@ -1115,6 +1131,7 @@ async function serializeTable(
       // Template style mode suppresses inline header/background shading.
       header: templateStyle ? false : d.header,
       backgroundColor: templateStyle ? undefined : d.backgroundColor,
+      verticalAlignment: d.verticalAlignment,
       ...(spanWidth(d.colStart, d.colspan) !== undefined ? { widthDxa: spanWidth(d.colStart, d.colspan) } : {}),
     });
 
@@ -1127,8 +1144,12 @@ async function serializeTable(
     rowsXml += `<w:tr>${cells}</w:tr>`;
   }
 
+  const alignment = tableAlignment(presentation);
   return dataTable(gridCols, rowsXml, {
     ...(widthsDxa ? { widthsDxa } : {}),
+    widthDxa,
+    ...(alignment ? { alignment } : {}),
+    ...(presentation?.displayMode === "fixed" ? { fixedLayout: true } : {}),
     ...(ctx.tableStyle ? { tableStyle: ctx.tableStyle } : {}),
   });
 }
@@ -1146,18 +1167,46 @@ async function serializeTable(
  */
 export function columnWidthsDxa(
   columnWidths: number[] | undefined,
-  gridCols: number
+  gridCols: number,
+  tableWidthDxa = 9000,
 ): number[] | undefined {
+  if (!Number.isSafeInteger(tableWidthDxa) || tableWidthDxa < 1) return undefined;
   if (!columnWidths || columnWidths.length !== gridCols) return undefined;
   if (!columnWidths.every((w) => Number.isFinite(w) && w > 0)) return undefined;
   const spread = Math.max(...columnWidths) / Math.min(...columnWidths);
   if (spread <= 1.05) return undefined;
   const total = columnWidths.reduce((s, w) => s + w, 0);
-  const dxa = columnWidths.map((w) => Math.max(1, Math.round((w / total) * 9000)));
+  const dxa = columnWidths.map((w) => Math.max(1, Math.round((w / total) * tableWidthDxa)));
   const sum = dxa.reduce((s, w) => s + w, 0);
-  dxa[dxa.length - 1] += 9000 - sum; // absorb the rounding remainder
+  dxa[dxa.length - 1] += tableWidthDxa - sum; // absorb the rounding remainder
   if (dxa[dxa.length - 1] < 1) dxa[dxa.length - 1] = 1;
   return dxa;
+}
+
+function tableWidthDxa(presentation: TablePresentation | undefined): number {
+  const authoredPixels = presentation?.width;
+  if (authoredPixels !== undefined && Number.isFinite(authoredPixels) && authoredPixels > 0) {
+    return Math.max(1, Math.min(9000, Math.round(authoredPixels * 15)));
+  }
+  return 9000;
+}
+
+function tableAlignment(
+  presentation: TablePresentation | undefined,
+): "start" | "center" | "end" | undefined {
+  switch (presentation?.layout) {
+    case "align-start":
+      return "start";
+    case "align-end":
+      return "end";
+    case "default":
+    case "wide":
+    case "full-width":
+    case "center":
+      return "center";
+    default:
+      return undefined;
+  }
 }
 
 /** True if any carried rowspan still occupies a column at or beyond `col`. */

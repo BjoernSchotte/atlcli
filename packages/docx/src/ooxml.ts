@@ -552,6 +552,12 @@ export interface TableStyleSource {
 export interface DataTableOptions {
   /** Per-column `w:gridCol` widths in dxa (spec 006 G3). Absent → even split. */
   widthsDxa?: number[];
+  /** Total portable table width in dxa. Defaults to the historical 9000. */
+  widthDxa?: number;
+  /** Logical source alignment retained for bidirectional Word documents. */
+  alignment?: "start" | "center" | "end";
+  /** Preserve an explicit fixed-column display mode without authored tracks. */
+  fixedLayout?: boolean;
   /** Table style source (spec 006 G3b). Defaults to `"confluence"`. */
   tableStyle?: TableStyleSource;
 }
@@ -559,30 +565,38 @@ export interface DataTableOptions {
 /**
  * Build a data table from row/cell OOXML. With `widthsDxa` (spec 006 G3) the
  * `w:tblGrid` carries real per-column widths and a `w:tblLayout w:type="fixed"`
- * so Word does not re-autofit; without it the grid is an even 9000-dxa split
- * (pre-006 behavior). The table style is either the built-in confluence grid or
+ * so Word does not re-autofit; an explicit fixed display mode does the same
+ * without authored tracks. Otherwise the grid is an even split of `widthDxa`
+ * (9000 by default). The table style is either the built-in confluence grid or
  * a template style (spec 006 G3b).
  */
 export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOptions = {}): string {
   const cols = Math.max(1, gridCols);
   const widths = opts.widthsDxa;
-  const even = Math.floor(9000 / cols);
+  const widthDxa =
+    Number.isSafeInteger(opts.widthDxa) && (opts.widthDxa ?? 0) > 0
+      ? opts.widthDxa!
+      : 9000;
+  const even = Math.max(1, Math.floor(widthDxa / cols));
   const grid = Array.from({ length: cols }, (_, i) => `<w:gridCol w:w="${widths?.[i] ?? even}"/>`).join("");
-  const fixedLayout = widths ? `<w:tblLayout w:type="fixed"/>` : "";
+  const fixedLayout = widths || opts.fixedLayout ? `<w:tblLayout w:type="fixed"/>` : "";
+  const alignment = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : "";
   const style = opts.tableStyle ?? { source: "confluence" as const };
   let tblPrInner: string;
   if (style.source === "template" && style.styleId) {
     // Template style controls borders/shading; emit only the style ref + look.
     tblPrInner =
       `<w:tblStyle w:val="${esc(style.styleId)}"/>` +
-      `<w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       fixedLayout +
       `<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>`;
   } else {
     // Schema order matters (CT_TblPrBase, ECMA-376 §17.4.60): tblBorders (seq 11)
     // MUST precede tblLayout (seq 13), so fixedLayout goes AFTER tblBorders here.
     tblPrInner =
-      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       `<w:tblBorders>` +
       `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
       `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
@@ -613,6 +627,7 @@ export function tableCell(
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
   } = {}
 ): string {
   const props: string[] = [];
@@ -622,6 +637,10 @@ export function tableCell(
   if (opts.vMerge) props.push(`<w:vMerge w:val="${opts.vMerge}"/>`);
   const fill = normalizeExportColor(opts.backgroundColor)?.slice(1) ?? (opts.header ? "F4F5F7" : undefined);
   if (fill) props.push(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
+  if (opts.verticalAlignment) {
+    const value = opts.verticalAlignment === "middle" ? "center" : opts.verticalAlignment;
+    props.push(`<w:vAlign w:val="${value}"/>`);
+  }
   const body = paragraphsXml || "<w:p/>";
   return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${body}</w:tc>`;
 }

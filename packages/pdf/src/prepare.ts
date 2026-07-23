@@ -5,6 +5,7 @@ import {
   AssetBudget,
   AssetBudgetExceededError,
   createInOrderLimiter,
+  materializeTable,
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
@@ -216,11 +217,13 @@ export async function preparePdfDocument(
                 }))
               ),
             };
-          case "table":
+          case "table": {
+            const materialized = materializeTable(block);
             return {
               ...block,
               rows: await Promise.all(
-                block.rows.map(async (row, rowIndex) => ({
+                materialized.rows.map(async (row, rowIndex) => ({
+                  ...row,
                   cells: await Promise.all(
                     row.cells.map(async (cell, cellIndex) => ({
                       ...cell,
@@ -232,7 +235,11 @@ export async function preparePdfDocument(
                   ),
                 }))
               ),
+              ...(materialized.columnWidths !== undefined
+                ? { columnWidths: materialized.columnWidths }
+                : {}),
             };
+          }
           case "image": {
             const fallbackLabel =
               block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image");

@@ -25,6 +25,7 @@ import type {
   MacroParameter,
   StorageToBlocksOptions,
   TableCell,
+  TablePresentation,
   TableRow,
 } from "./export-blocks.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
@@ -820,23 +821,46 @@ function addMediaNote(ctx: DecodeContext, node: AdfNode, path: string): void {
 }
 
 function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
+  const sourceWidth = numberAttr(node, "width");
+  if (sourceWidth !== undefined && sourceWidth <= 0) {
+    addNodeNote(
+      ctx,
+      path,
+      node.type,
+      "has a non-positive width; the source value was retained and exporters use their portable default width.",
+    );
+  }
   const rowNodes = (node.content ?? []).filter((child) => child.type === "tableRow");
   const rows: TableRow[] = rowNodes.map((row, rowIndex) => ({
     cells: (row.content ?? [])
       .filter((cell) => cell.type === "tableCell" || cell.type === "tableHeader")
       .map((cell, cellIndex) => decodeCell(cell, ctx, `${path}.rows[${rowIndex}].cells[${cellIndex}]`)),
+    ...(optionalStringAttr(row, "localId") !== undefined
+      ? { localId: optionalStringAttr(row, "localId") }
+      : {}),
   }));
   const firstRow = rowNodes[0]?.content ?? [];
   const widths = firstRow.flatMap((cell) => numberArrayAttr(cell, "colwidth"));
   const hasWidths = widths.length > 0 && widths.every((width) => width > 0);
-  if (node.attrs?.layout !== undefined || node.attrs?.width !== undefined || node.attrs?.displayMode !== undefined) {
-    addNodeNote(ctx, path, node.type, "layout-only attributes were approximated by the neutral table model.");
-  }
+  const presentation: TablePresentation = {
+    ...(node.attrs?.layout !== undefined ? { layout: node.attrs.layout as TablePresentation["layout"] } : {}),
+    ...(sourceWidth !== undefined ? { width: sourceWidth } : {}),
+    ...(node.attrs?.displayMode !== undefined
+      ? { displayMode: node.attrs.displayMode as TablePresentation["displayMode"] }
+      : {}),
+    ...(node.attrs?.isNumberColumnEnabled !== undefined
+      ? { numberedColumn: node.attrs.isNumberColumnEnabled as boolean }
+      : {}),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+  };
   const fragments = fragmentMarks(node.marks);
   return {
     type: "table",
     rows,
     ...(hasWidths ? { columnWidths: widths } : {}),
+    ...(Object.keys(presentation).length > 0 ? { presentation } : {}),
     ...(fragments.length > 0 ? { fragments } : {}),
   };
 }
@@ -845,12 +869,19 @@ function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell 
   const colspan = numberInRange(node.attrs?.colspan, 1, 1_000, 1);
   const rowspan = numberInRange(node.attrs?.rowspan, 1, 1_000, 1);
   const backgroundColor = normalizeColor(node.attrs?.background);
-  if (node.attrs?.valign !== undefined) addNodeNote(ctx, path, node.type, "vertical alignment was dropped.");
+  const columnWidths = numberArrayAttr(node, "colwidth");
+  const hasColumnWidths = Array.isArray(node.attrs?.colwidth);
+  const verticalAlignment = node.attrs?.valign as TableCell["verticalAlignment"];
   return {
     header: node.type === "tableHeader",
     colspan,
     rowspan,
     ...(backgroundColor ? { backgroundColor } : {}),
+    ...(hasColumnWidths ? { columnWidths } : {}),
+    ...(verticalAlignment !== undefined ? { verticalAlignment } : {}),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
     content: decodeBlockChildren(node.content, ctx, `${path}.content`),
   };
 }
@@ -1014,6 +1045,11 @@ function decodeInlineDescendants(
 
 function stringAttr(node: AdfNode, key: string): string | undefined {
   return stringJson(node.attrs?.[key]);
+}
+
+function optionalStringAttr(node: AdfNode, key: string): string | undefined {
+  const value = node.attrs?.[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 function stringJson(value: AdfJsonValue | undefined): string | undefined {

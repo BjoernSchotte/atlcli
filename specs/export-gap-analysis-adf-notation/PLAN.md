@@ -539,7 +539,8 @@ Required semantic cases:
 - [x] H1–H6, mixed/nested lists, task state, and non-1 ordered-list approximation note;
 - [x] paragraph/heading logical alignment and bounded indentation through composition and both renderers;
 - [x] schema-defined small paragraph text through validation, composition, and both renderers;
-- [x] tables including spans, background, widths, and dropped ADF-only attributes;
+- [x] tables including spans, background, exact per-cell width vectors, pinned
+  presentation/identity attributes, numbered rows, and vertical alignment;
 - [x] safe/unsafe external, page, attachment, anchor, and card links;
 - [x] Unicode emoji, missing text, custom emoji, and literal colon text;
 - [x] user/team/unresolved mentions;
@@ -1038,12 +1039,35 @@ Completed follow-on evidence recorded on 2026-07-23: nested list ownership is no
 
 Completed partial follow-on evidence recorded on 2026-07-23: the bounded validator now enforces the pinned annotation and fragment attribute contracts, including exact `inlineComment`, schema-valid empty annotation IDs, non-empty fragment local IDs, and exact optional fragment names (including an empty string). The neutral model retains annotation identities on text and resolved/unresolved media, and fragment identities on inline/block/bodied extensions and tables. Decoder, direct-schema, composition, target-neutral fixture, production-browser, and direct/background source-resolution gates prove that these identities survive the TypeScript pipeline while both renderers deliberately leave visible output unchanged. Applying a block export-control deliberately consumes its marked extension wrapper; that exceptional residual now emits a degradation note instead of silently attaching the fragment to an arbitrary child, while inline export-controls retain it on their visible text. This closes silent identity loss only: native Word comments/PDF notes require separately fetched inline-comment resources and a product policy, while fragment-to-bookmark rendering remains gated on documented semantics and collision/link behavior.
 
+Completed table-attribute follow-on evidence recorded on 2026-07-23: the
+bounded validator now enforces the complete pinned `table`, `tableRow`,
+`tableHeader`, and `tableCell` attribute shapes. The neutral table contract
+retains exact optional source identity, layout, authored pixel width, display
+mode, explicit numbered-column state, per-cell `colwidth` vectors (including
+zero/unfixed tracks), and vertical alignment. Storage tables retain the
+equivalent local identity, layout, and cell vertical alignment when those
+attributes are present. One shared materializer gives DOCX and PDF identical
+1-based visible row numbering. DOCX emits bounded dxa width, logical
+justification, fixed layout, and `w:vAlign`; Typst/PDF emits bounded point width,
+logical alignment, and per-cell vertical alignment. Focused validation,
+decoder, Storage, composition, DOCX, PDF, and fixture tests pass. The packed
+browser fixture carries the same attributes through direct and background
+source resolution, and the real LibreOffice/Typst render baseline visibly
+shows the narrow numbered column and right-aligned table. Oversized
+`wide`/`full-width` geometry remains bounded by the physical output page, and
+responsive screen shrinking has no dynamic meaning in a static artifact; both
+are explicit renderer policies rather than silent notation loss. A
+schema-valid non-positive width remains in the neutral model but emits a
+source-located degradation note before both renderers select their safe
+portable fallback.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract, complete emoji-font coverage, and a guaranteed DOCX mono font;
 2. annotation comment-resource correlation/native target output and a documented fragment-to-bookmark policy (identity preservation is complete; alignment, indentation, and schema-defined small text are complete);
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
-4. table layout/display/number-column/vertical-alignment attributes;
+4. page-bound wide-table pagination/overflow policies beyond the now-complete
+   pinned table-attribute contract;
 5. layout columns, breakout, captions, and nested expands;
 6. full card/embed/media family;
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;

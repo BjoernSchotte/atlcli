@@ -52,7 +52,9 @@ export interface AdfSourceCaseResult {
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
+  neutralHasTablePresentation: boolean;
   docxHasTable: boolean;
+  docxHasTablePresentation: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
@@ -343,7 +345,21 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     neutralHasAnnotationAndFragmentIdentity:
       JSON.stringify(pdfSource.blocks).includes('"id":"annotation-inline-code","annotationType":"inlineComment"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"table-fragment","name":"semantic-table"'),
+    neutralHasTablePresentation:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"presentation":{"layout":"align-end","width":480,"displayMode":"fixed","numberedColumn":true,"localId":"table-local"}',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"columnWidths":[240],"verticalAlignment":"middle","localId":"table-header-local"',
+      ),
     docxHasTable: documentXml.includes("<w:tbl"),
+    docxHasTablePresentation:
+      documentXml.includes('<w:tblW w:w="7200" w:type="dxa"/>')
+      && documentXml.includes('<w:jc w:val="end"/>')
+      && documentXml.includes('<w:tblLayout w:type="fixed"/>')
+      && documentXml.includes('<w:vAlign w:val="center"/>')
+      && documentXml.includes('<w:vAlign w:val="bottom"/>')
+      && documentXml.includes(">1</w:t>"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
@@ -374,6 +390,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasTablePresentation) {
+    throw new Error("ADF-source table presentation was lost in the packed browser.");
   }
   return result;
 }

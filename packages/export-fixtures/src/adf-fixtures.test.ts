@@ -112,6 +112,28 @@ describe("ADF browser conformance fixture", () => {
     });
     expect(pdf.blocks[11]).toMatchObject({
       type: "table",
+      presentation: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        numberedColumn: true,
+        localId: "table-local",
+      },
+      rows: [{
+        localId: "table-row-local",
+        cells: [
+          {
+            localId: "table-header-local",
+            columnWidths: [240],
+            verticalAlignment: "middle",
+          },
+          {
+            localId: "table-cell-local",
+            columnWidths: [360],
+            verticalAlignment: "bottom",
+          },
+        ],
+      }],
       fragments: [{ localId: "table-fragment", name: "semantic-table" }],
     });
     expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");

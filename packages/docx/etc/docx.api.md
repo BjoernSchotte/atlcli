@@ -1114,7 +1114,7 @@ export declare function collectSeqSequenceNames(xml: string): string[];
 export declare function collectStylerefFields(xml: string): string[];
 
 // export: columnWidthsDxa
-export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number): number[] | undefined;
+export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number, tableWidthDxa?: number): number[] | undefined;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -1129,6 +1129,9 @@ export declare function dataTable(gridCols: number, rowsXml: string, opts?: Data
 // export: DataTableOptions
 export interface DataTableOptions {
     widthsDxa?: number[];
+    widthDxa?: number;
+    alignment?: "start" | "center" | "end";
+    fixedLayout?: boolean;
     tableStyle?: TableStyleSource;
 }
 
@@ -1820,6 +1823,7 @@ export declare function tableCell(paragraphsXml: string, opts?: {
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
 }): string;
 
 // export: TableStyleSource

@@ -9,6 +9,7 @@ import {
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
 } from "./adf-coverage.js";
+import type { ExportBlock } from "./export-blocks.js";
 
 function doc(content: unknown[]): string {
   return JSON.stringify({ version: 1, type: "doc", content });
@@ -273,21 +274,35 @@ describe("adfToBlocks", () => {
     });
   });
 
-  it("preserves table spans, backgrounds, widths, and reports ADF-only geometry", () => {
+  it("preserves complete pinned table presentation, cell geometry, and identities", () => {
     const result = adfToBlocks(doc([{
       type: "table",
-      attrs: { layout: "wide", width: 900, displayMode: "fixed" },
+      attrs: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        isNumberColumnEnabled: true,
+        localId: "table-local",
+      },
       content: [{
         type: "tableRow",
+        attrs: { localId: "" },
         content: [
           {
             type: "tableHeader",
-            attrs: { colspan: 2, rowspan: 1, background: "#abc", colwidth: [200, 300], valign: "middle" },
+            attrs: {
+              colspan: 2,
+              rowspan: 1,
+              background: "#abc",
+              colwidth: [200, 0],
+              valign: "middle",
+              localId: "",
+            },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
           },
           {
             type: "tableCell",
-            attrs: { colspan: 1, rowspan: 2, colwidth: [400] },
+            attrs: { colspan: 1, rowspan: 2, colwidth: [400], valign: "bottom", localId: "cell-local" },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
           },
         ],
@@ -296,24 +311,65 @@ describe("adfToBlocks", () => {
 
     expect(result.blocks).toEqual([{
       type: "table",
-      columnWidths: [200, 300, 400],
+      presentation: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        numberedColumn: true,
+        localId: "table-local",
+      },
       rows: [{ cells: [
         {
           header: true,
           colspan: 2,
           rowspan: 1,
           backgroundColor: "#AABBCC",
+          columnWidths: [200, 0],
+          verticalAlignment: "middle",
+          localId: "",
           content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
         },
         {
           header: false,
           colspan: 1,
           rowspan: 2,
+          columnWidths: [400],
+          verticalAlignment: "bottom",
+          localId: "cell-local",
           content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
         },
-      ] }],
+      ], localId: "" }],
     }]);
-    expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(2);
+    expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(0);
+
+    const emptyVector = adfToBlocks(doc([{
+      type: "table",
+      content: [{
+        type: "tableRow",
+        content: [{
+          type: "tableCell",
+          attrs: { colwidth: [] },
+          content: [{ type: "paragraph", content: [] }],
+        }],
+      }],
+    }]));
+    expect((emptyVector.blocks[0] as Extract<ExportBlock, { type: "table" }>)
+      .rows[0].cells[0].columnWidths).toEqual([]);
+
+    const nonPositiveWidth = adfToBlocks(doc([{
+      type: "table",
+      attrs: { width: 0 },
+      content: [],
+    }]));
+    expect(nonPositiveWidth.blocks[0]).toMatchObject({
+      type: "table",
+      presentation: { width: 0 },
+    });
+    expect(nonPositiveWidth.notes).toContainEqual(expect.objectContaining({
+      code: "adf-node-degraded",
+      message: expect.stringContaining("non-positive width"),
+      source: expect.objectContaining({ blockPath: "blocks[0]" }),
+    }));
   });
 
   it("classifies safe external, anchor, page, attachment, and unsafe links centrally", () => {

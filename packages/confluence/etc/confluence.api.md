@@ -1084,6 +1084,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -1559,6 +1560,17 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
 
@@ -1887,16 +1899,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -3200,6 +3234,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -3675,6 +3710,17 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
 
@@ -4003,16 +4049,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -5316,6 +5384,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -5791,6 +5860,17 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
 
@@ -6119,16 +6199,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -7337,6 +7439,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -7980,6 +8083,17 @@ export interface MarkdownLinkWithResolution extends MarkdownLink {
 
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
+
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
 
 // export: MergeResult
 export interface MergeResult {
@@ -8710,13 +8824,35 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
+}
+
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
 }
 
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: threeWayMerge
 export declare function threeWayMerge(base: string, local: string, remote: string): MergeResult;
@@ -10019,6 +10155,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -10494,6 +10631,17 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
 
@@ -10822,16 +10970,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;

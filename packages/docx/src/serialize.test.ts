@@ -421,6 +421,65 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain('<w:vMerge w:val="continue"/>');
   });
 
+  it("renders ADF table width, alignment, fixed mode, numbered rows, and vertical cell alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      presentation: {
+        width: 480,
+        layout: "align-end",
+        displayMode: "fixed",
+        numberedColumn: true,
+      },
+      columnWidths: [200, 280],
+      rows: [
+        {
+          cells: [
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "middle",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Name" }] }],
+            },
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "bottom",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }],
+            },
+          ],
+        },
+        {
+          cells: [
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Ada" }] }],
+            },
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "42" }] }],
+            },
+          ],
+        },
+      ],
+    }];
+
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="7200" w:type="dxa"/>');
+    expect(xml).toContain('<w:jc w:val="end"/>');
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    expect(xml).toContain('<w:gridCol w:w="655"/>');
+    expect(xml).toContain('<w:vAlign w:val="center"/>');
+    expect(xml).toContain('<w:vAlign w:val="bottom"/>');
+    expect(xml).toContain(">1</w:t>");
+    expect(xml).toContain(">2</w:t>");
+  });
+
   it("preserves source cell backgrounds, readable text, and shading across rowspans", async () => {
     const blocks: ExportBlock[] = [
       {
@@ -1319,6 +1378,7 @@ describe("resolveCaptionLang", () => {
 describe("columnWidthsDxa (spec 006 G3)", () => {
   it("scales ratios [100, 300] to gridCol 2250/6750 (PDF-parity numbers)", () => {
     expect(columnWidthsDxa([100, 300], 2)).toEqual([2250, 6750]);
+    expect(columnWidthsDxa([100, 300], 2, 7200)).toEqual([1800, 5400]);
   });
 
   it("even-splits (undefined) on a length mismatch", () => {
@@ -1477,5 +1537,12 @@ describe("dataTable — tblPr schema child order (spec 006 G3)", () => {
     expect(iStyle).toBeLessThan(iW);
     expect(iW).toBeLessThan(iLayout);
     expect(iLayout).toBeLessThan(iLook);
+  });
+
+  it("keeps every fallback grid track positive for a schema-valid sub-pixel authored width", () => {
+    const xml = dataTable(2, row, { widthDxa: 1 });
+    expect(xml).toContain('<w:tblW w:w="1" w:type="dxa"/>');
+    expect(xml.match(/<w:gridCol w:w="1"\/>/g)).toHaveLength(2);
+    expect(xml).not.toContain('<w:gridCol w:w="0"/>');
   });
 });

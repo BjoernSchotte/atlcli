@@ -199,14 +199,17 @@ Evidence: [E2], [E5], [E7], [E8], [E9].
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `table` | Rows, `colgroup` widths, and cell data become a typed table. | Partial | Partial | ADF `layout`, `displayMode`, `width`, and `isNumberColumnEnabled` are not modeled. |
-| `tableRow` | Row order and cells are preserved. | Native | Native | Local ID is omitted. |
-| `tableHeader` | `<th>` becomes `header: true`. | Native | Native | Cell vertical alignment and source column semantics are omitted. |
-| `tableCell` | Content, `colspan`, `rowspan`, background, and column widths are preserved. | Partial | Partial | ADF `valign`, full `colwidth`, and metadata are incomplete; each engine applies its own geometry clamps. |
+| `table` | Rows, widths, exact pinned presentation attributes, editor identity, and fragment identity become a typed table. An enabled numbered column is materialized once through a shared renderer helper. | Partial | Partial | Authored positive pixel width and logical alignment are native within the physical page; non-positive schema-valid widths produce a degradation note and portable fallback, while oversized `wide`/`full-width` tables remain page-bounded. `displayMode` is retained and `fixed` maps to Word fixed layout; responsive screen shrinking has no dynamic meaning in a static artifact. |
+| `tableRow` | Row order, cells, and exact optional local ID (including empty) are preserved. | Native | Native | Closed for the pinned schema. |
+| `tableHeader` | ADF `tableHeader` / Storage `<th>`, identity, per-cell `colwidth`, background, spans, and vertical alignment are preserved. | Native | Native | Portable geometry still uses the exporters' bounded table-shape limits. |
+| `tableCell` | Content, identity, `colspan`, `rowspan`, background, exact `colwidth` vector (including zero/unfixed tracks), and `valign` are preserved. | Native | Native | Pathological/non-portable geometry is safely clamped and reported rather than allowed to exhaust a renderer. |
 
-The current table model is materially stronger than a Markdown intermediary, but it is not yet an ADF-complete table contract. Wide-table behavior and static pagination are document-layout concerns and should be measured separately from node parsing.
+The pinned table attribute contract is now complete through validation, neutral
+model, composition, packed browser execution, and both TypeScript renderers.
+Wide-table pagination and target page bounds remain document-layout concerns,
+not silent ADF notation loss.
 
-Evidence: [E10], [E11], [E12].
+Evidence: [E10], [E11], [E12], [E27].
 
 ### 6.4 Layouts and containers
 
@@ -418,8 +421,11 @@ Required acceptance contract:
 - [x] **Nested list parity.** Bullet, numbered, and task children remain attached
   to their owning item in direct ADF and `body.storage`; DOCX, PDF, composition,
   browser execution, and real render artifacts preserve the hierarchy.
-- [ ] **Open — table attributes.** Layout, display mode, numbered column,
-  vertical alignment, and width remain.
+- [x] **Closed for static DOCX/PDF — table attributes.** Pinned layout, pixel
+  width, display mode, numbered column, row/cell identity, exact per-cell
+  column vectors, and vertical alignment survive the shared model. Both targets
+  render the portable visible semantics; responsive viewport scaling is
+  retained metadata but is not applicable to a static artifact.
 - [ ] **Open — layout columns and breakout.**
 - [ ] **Partial — captions and nested expands.** Visible fallbacks exist;
   native association, title, nesting, and static disclosure treatment remain.
@@ -470,7 +476,8 @@ Required acceptance contract:
 - [x] Tasks and decisions.
 - [x] Ordered-list authored starts and nested restarts.
 - [x] Nested bullet/numbered/task parity across ADF and Storage.
-- [ ] Table attributes.
+- [x] Table attributes for static DOCX/PDF; page-bound wide-table layout remains
+  a measured renderer policy rather than an ADF decoding gap.
 - [ ] Layouts/breakout.
 - [ ] Captions/nested expands.
 
@@ -571,6 +578,9 @@ Accessed 2026-07-22 and 2026-07-23:
 14. [Confluence export Word/PDF/HTML/XML](https://support.atlassian.com/confluence-cloud/docs/export-content-to-word-pdf-html-and-xml/)
 15. [Atlassian Design System typography scale](https://atlassian.design/foundations/typography/)
 16. [ADF panel node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/panel/)
+17. [ADF table node and attribute semantics](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/table/)
+18. [Typst table and cell alignment](https://typst.app/docs/reference/model/table/)
+19. [Typst alignment model](https://typst.app/docs/reference/layout/alignment/)
 
 ## 15. Repository evidence index
 
@@ -600,6 +610,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E24] Native task/decision semantics and target proof:** `packages/confluence/src/export-blocks.ts:117-130`, `packages/confluence/src/export-blocks.ts:270-281`, `packages/confluence/src/export-blocks.ts:1480-1507`, `packages/confluence/src/adf-validate.ts:142-159`, `packages/confluence/src/adf-to-blocks.ts:296-311`, `packages/confluence/src/adf-to-blocks.ts:819-872`, `packages/confluence/src/compose-document.ts:628-638`, `packages/docx/src/serialize.ts:872-934`, `packages/pdf/src/serialize.ts:772-797`, `packages/pdf/src/serialize.ts:1039-1074`, `packages/export-fixtures/src/adf-fixtures.test.ts:38-68`, `apps/browser-export-harness/src/adf-source-case.ts:327-332`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E25] Nested list parity across both source representations and targets:** `packages/confluence/src/export-blocks.ts:1460-1510`, `packages/confluence/src/adf-to-blocks.ts:270-311`, `packages/confluence/src/adf-to-blocks.ts:819-850`, `packages/confluence/src/page-body.test.ts:18-83`, `packages/confluence/src/compose-document.test.ts:254-350`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/numbering.test.ts:190-230`, `packages/pdf/src/serialize.test.ts:129-230`, `packages/pdf/src/serialize.ts:860-870`, `packages/pdf/src/serialize.ts:1037-1074`, `packages/export-fixtures/src/index.ts:177-231`, `apps/browser-export-harness/src/adf-source-case.ts:320-343`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E26] Annotation/fragment identity preservation:** `packages/confluence/src/export-blocks.ts:235-248`, `packages/confluence/src/adf-validate.ts:225-247`, `packages/confluence/src/adf-to-blocks.ts:396-535`, `packages/confluence/src/adf-to-blocks.ts:965-999`, `packages/confluence/src/adf-validate.test.ts:139-172`, `packages/confluence/src/adf-to-blocks.test.ts:486-638`, `packages/confluence/src/adf-direct-fixtures.test.ts:143-218`, `packages/confluence/src/compose-document.test.ts:537-580`, `packages/export-fixtures/src/index.ts:128-263`, `packages/export-fixtures/src/adf-fixtures.test.ts:80-114`, `apps/browser-export-harness/src/adf-source-case.ts:315-377`, `apps/browser-export-harness/tests/exports.e2e.ts:90-95`
+- **[E27] Complete pinned table-attribute preservation and static rendering:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

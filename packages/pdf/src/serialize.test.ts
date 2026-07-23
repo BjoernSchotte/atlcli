@@ -3,6 +3,7 @@ import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
 import { composeChapters } from "@atlcli/confluence";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
+import type { PreparedPdfBlock } from "./types.js";
 
 const metadata = {
   title: "PDF # Guide",
@@ -311,6 +312,71 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
     expect(bundle.main).toContain("columns: (0.25fr, 0.75fr,)");
     expect(bundle.main).toContain("columns: (1fr, 1fr,)");
+  });
+
+  it("renders ADF table width, alignment, numbered rows, and vertical cell alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "table",
+      presentation: {
+        width: 480,
+        layout: "align-end",
+        displayMode: "fixed",
+        numberedColumn: true,
+      },
+      columnWidths: [200, 280],
+      rows: [
+        {
+          cells: [
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "middle",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Name" }] }],
+            },
+            {
+              header: true,
+              colspan: 1,
+              rowspan: 1,
+              verticalAlignment: "bottom",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }],
+            },
+          ],
+        },
+        {
+          cells: [
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Ada" }] }],
+            },
+            {
+              header: false,
+              colspan: 1,
+              rowspan: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: "42" }] }],
+            },
+          ],
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const table = prepared.blocks[0] as Extract<PreparedPdfBlock, { type: "table" }>;
+    expect(table.rows.map((row) => row.cells[0].content)).toEqual([
+      [{ type: "paragraph", content: [{ type: "text", text: "1" }] }],
+      [{ type: "paragraph", content: [{ type: "text", text: "2" }] }],
+    ]);
+
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("columns: (0.090909fr, 0.378788fr, 0.530303fr,)");
+    expect(bundle.main).toContain("align: horizon");
+    expect(bundle.main).toContain("align: bottom");
+    expect(bundle.main).toContain("align(end, block(width: 360pt)");
+    expect(bundle.main).toContain('#text("1")');
+    expect(bundle.main).toContain('#text("2")');
   });
 
   it("lays out merged cells on an explicit grid and keeps body section rows out of the repeated header", async () => {

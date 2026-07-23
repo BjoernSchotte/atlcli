@@ -6,6 +6,7 @@ import {
   StorageParseError,
   canonicalExportNoteCode,
   macroParamText,
+  materializeTable,
   normalizeCaptionKind,
   parseXml,
   storageToBlocks,
@@ -414,6 +415,88 @@ describe("storageToBlocks — tables", () => {
       "#AABBCC",
       undefined,
     ]);
+  });
+
+  test("preserves Storage table identity and vertical alignment", () => {
+    const table = blocks(
+      '<table data-layout="align-start" ac:local-id="table-id"><tbody>' +
+        '<tr ac:local-id=""><td ac:local-id="cell-id" style="vertical-align: middle"><p>Middle</p></td>' +
+        '<td valign="bottom"><p>Bottom</p></td></tr>' +
+        "</tbody></table>",
+    )[0] as Extract<ExportBlock, { type: "table" }>;
+
+    expect(table.presentation).toEqual({ layout: "align-start", localId: "table-id" });
+    expect(table.rows[0].localId).toBe("");
+    expect(table.rows[0].cells[0]).toMatchObject({
+      localId: "cell-id",
+      verticalAlignment: "middle",
+    });
+    expect(table.rows[0].cells[1].verticalAlignment).toBe("bottom");
+  });
+
+  test("materializes the implicit ADF numbered column identically for all renderers", () => {
+    const table: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      presentation: { numberedColumn: true, width: 480 },
+      rows: [
+        {
+          localId: "row-1",
+          cells: [{
+            header: true,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
+          }],
+        },
+        {
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }],
+          }],
+        },
+      ],
+    };
+
+    const materialized = materializeTable(table);
+    expect(materialized.rows.map((row) => row.cells[0].content)).toEqual([
+      [{ type: "paragraph", content: [{ type: "text", text: "1" }] }],
+      [{ type: "paragraph", content: [{ type: "text", text: "2" }] }],
+    ]);
+    expect(materialized.rows[0].localId).toBe("row-1");
+    expect(materialized.columnWidths).toEqual([48, 432]);
+    expect(table.rows[0].cells).toHaveLength(1);
+  });
+
+  test("bounds numbered-column width derivation before either renderer allocates tracks", () => {
+    const table: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      presentation: { numberedColumn: true },
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: Number.MAX_SAFE_INTEGER,
+          rowspan: 1,
+          content: [],
+        }],
+      }],
+    };
+    expect(materializeTable(table).columnWidths).toHaveLength(201);
+
+    const oversizedAuthoredTracks = {
+      ...table,
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          content: [],
+        }],
+      }],
+      columnWidths: Array.from({ length: 10_000 }, () => 1),
+    } satisfies Extract<ExportBlock, { type: "table" }>;
+    expect(materializeTable(oversizedAuthoredTracks).columnWidths).toHaveLength(2);
   });
 
   test("modern Cloud markup: <colgroup> + ac:local-id + <p local-id> wrappers (regression)", () => {

@@ -48,6 +48,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -512,19 +513,14 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "rows"> & {
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;
@@ -769,6 +765,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -1233,19 +1230,14 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "rows"> & {
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;
@@ -1490,6 +1482,7 @@ export type ExportBlock = {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
     fragments?: AdfFragmentIdentity[];
 } | {
@@ -1954,19 +1947,14 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     items: Array<Omit<ListItem, "content"> & {
         content: PreparedPdfBlock[];
     }>;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "rows"> & {
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;

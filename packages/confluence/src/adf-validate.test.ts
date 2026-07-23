@@ -168,6 +168,61 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates the pinned table, row, and cell attribute contracts", () => {
+    const table = (tableAttrs: Record<string, unknown>, cellAttrs: Record<string, unknown> = {}) =>
+      doc([{
+        type: "table",
+        attrs: tableAttrs,
+        content: [{
+          type: "tableRow",
+          attrs: { localId: "" },
+          content: [{
+            type: "tableCell",
+            attrs: cellAttrs,
+            content: [{ type: "paragraph", content: [] }],
+          }],
+        }],
+      }]);
+
+    expect(() => validateAdf(table(
+      {
+        displayMode: "fixed",
+        isNumberColumnEnabled: false,
+        layout: "align-end",
+        localId: "table-1",
+        width: 480.5,
+      },
+      {
+        colspan: 1,
+        rowspan: 1,
+        colwidth: [120, 0],
+        background: "#ffffff",
+        localId: "",
+        valign: "middle",
+      },
+    ))).not.toThrow();
+
+    for (const attrs of [
+      { displayMode: "responsive" },
+      { isNumberColumnEnabled: "true" },
+      { layout: "wrap-left" },
+      { localId: "" },
+      { width: "480" },
+    ]) {
+      expect(errorCode(() => validateAdf(table(attrs)))).toBe("invalid-attributes");
+    }
+    for (const attrs of [
+      { colspan: "1" },
+      { rowspan: true },
+      { colwidth: [120, "auto"] },
+      { background: 1 },
+      { localId: 1 },
+      { valign: "center" },
+    ]) {
+      expect(errorCode(() => validateAdf(table({}, attrs)))).toBe("invalid-attributes");
+    }
+  });
+
   test("checks UTF-8 input bytes before parsing", () => {
     const raw = JSON.stringify(doc([{ type: "text", text: "🙂" }]));
     expect(errorCode(() => validateAdf(raw, { budget: { maxInputBytes: raw.length } })))

@@ -548,7 +548,25 @@ describe("composeChapters — retained ADF mark identities", () => {
       },
       {
         type: "table",
-        rows: [],
+        presentation: {
+          layout: "align-end",
+          width: 480,
+          displayMode: "fixed",
+          numberedColumn: true,
+          localId: "table-local",
+        },
+        rows: [{
+          localId: "",
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            columnWidths: [480],
+            verticalAlignment: "bottom",
+            localId: "cell-local",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+          }],
+        }],
         fragments: [{ localId: "table-fragment", name: "" }],
       },
       {
@@ -569,7 +587,25 @@ describe("composeChapters — retained ADF mark identities", () => {
     });
     expect(blocks).toContainEqual({
       type: "table",
-      rows: [],
+      presentation: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        numberedColumn: true,
+        localId: "table-local",
+      },
+      rows: [{
+        localId: "",
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          columnWidths: [480],
+          verticalAlignment: "bottom",
+          localId: "cell-local",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+        }],
+      }],
       fragments: [{ localId: "table-fragment", name: "" }],
     });
     expect(blocks).toContainEqual({

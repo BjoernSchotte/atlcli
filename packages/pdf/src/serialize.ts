@@ -5,6 +5,7 @@ import type {
   ExportNote,
   InlineNode,
   LinkTarget,
+  TablePresentation,
 } from "@atlcli/confluence";
 import {
   UNSAFE_LINK_NOTE_CODE,
@@ -242,6 +243,31 @@ function tableColumns(
     return `${Number(ratio.toFixed(6))}fr`;
   });
   return `(${tracks.join(", ")},)`;
+}
+
+function tableWidthPt(
+  presentation: TablePresentation | undefined,
+  availableWidthPt: number,
+): number | undefined {
+  const width = presentation?.width;
+  if (width === undefined || !Number.isFinite(width) || width <= 0) return undefined;
+  return Math.max(0.75, Math.min(availableWidthPt, width * 0.75));
+}
+
+function tableAlignment(presentation: TablePresentation | undefined): "start" | "center" | "end" | undefined {
+  switch (presentation?.layout) {
+    case "align-start":
+      return "start";
+    case "align-end":
+      return "end";
+    case "default":
+    case "wide":
+    case "full-width":
+    case "center":
+      return "center";
+    default:
+      return presentation?.width !== undefined ? "center" : undefined;
+  }
 }
 
 function resolveLink(target: LinkTarget, labels: Map<string, string>): string | null {
@@ -1127,6 +1153,9 @@ function serializeBlock(
             cell.colspan > 1 ? `colspan: ${cell.colspan}` : "",
             cell.rowspan > 1 ? `rowspan: ${cell.rowspan}` : "",
             backgroundColor ? `fill: rgb(${typstString(backgroundColor)})` : "",
+            cell.verticalAlignment
+              ? `align: ${cell.verticalAlignment === "middle" ? "horizon" : cell.verticalAlignment}`
+              : "",
           ].filter(Boolean);
           const content = serializeBlocks(
             cell.content,
@@ -1176,7 +1205,14 @@ function serializeBlock(
       // Figure arguments are CODE context: the body must be the bare
       // `block(...)` call — a leading `#` there is a Typst syntax error. The
       // `[...]` content argument re-enters markup, so the inner `#table` stays valid.
-      const tableBlockExpr = `block(width: 100%)[\n${tableBody}\n]`;
+      const authoredWidthPt = tableWidthPt(
+        block.presentation,
+        context.layoutWidthPt ?? PORTRAIT_TEXT_WIDTH_PT,
+      );
+      const width = authoredWidthPt !== undefined ? `${Number(authoredWidthPt.toFixed(3))}pt` : "100%";
+      const blockExpr = `block(width: ${width})[\n${tableBody}\n]`;
+      const alignment = tableAlignment(block.presentation);
+      const tableBlockExpr = alignment ? `align(${alignment}, ${blockExpr})` : blockExpr;
       value = block.caption
         ? `#figure(${tableBlockExpr}, ${captionFigureArgs(block.caption, writer)})`
         : `#${tableBlockExpr}`;

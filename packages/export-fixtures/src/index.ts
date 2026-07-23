@@ -253,21 +253,42 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "table",
+      attrs: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        isNumberColumnEnabled: true,
+        localId: "table-local",
+      },
       marks: [{
         type: "fragment",
         attrs: { localId: "table-fragment", name: "semantic-table" },
       }],
       content: [{
         type: "tableRow",
+        attrs: { localId: "table-row-local" },
         content: [
           {
             type: "tableHeader",
-            attrs: { colspan: 1, rowspan: 1, background: "#AABBCC", colwidth: [240] },
+            attrs: {
+              colspan: 1,
+              rowspan: 1,
+              background: "#AABBCC",
+              colwidth: [240],
+              valign: "middle",
+              localId: "table-header-local",
+            },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
           },
           {
             type: "tableCell",
-            attrs: { colspan: 1, rowspan: 1, colwidth: [360] },
+            attrs: {
+              colspan: 1,
+              rowspan: 1,
+              colwidth: [360],
+              valign: "bottom",
+              localId: "table-cell-local",
+            },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
           },
         ],

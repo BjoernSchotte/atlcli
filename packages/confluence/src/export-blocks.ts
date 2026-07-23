@@ -99,6 +99,34 @@ export type InlineNode =
   | { type: "status"; text: string; color: string }
   | { type: "lineBreak" };
 
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
+
+export type TableLayout =
+  | "default"
+  | "wide"
+  | "full-width"
+  | "center"
+  | "align-start"
+  | "align-end";
+
+export type TableDisplayMode = "default" | "fixed";
+
+/**
+ * Source table presentation retained independently from portable row/cell
+ * geometry. Optional members distinguish an omitted ADF attribute from its
+ * explicit default value.
+ */
+export interface TablePresentation {
+  layout?: TableLayout;
+  /** Authored ADF table width in CSS pixels. */
+  width?: number;
+  displayMode?: TableDisplayMode;
+  /** ADF's implicit first column that visibly numbers every source row. */
+  numberedColumn?: boolean;
+  /** Stable ADF editor identity. */
+  localId?: string;
+}
+
 /** A table cell. Confluence `<th>` → `header: true`. colspan/rowspan default to 1. */
 export interface TableCell {
   header: boolean;
@@ -106,11 +134,19 @@ export interface TableCell {
   rowspan: number;
   /** Canonical source background color (`#RRGGBB`), when Confluence supplied one. */
   backgroundColor?: string;
+  /** Exact ADF per-cell `colwidth` vector, including zero/unfixed tracks. */
+  columnWidths?: number[];
+  /** Portable ADF/Storage vertical cell alignment. */
+  verticalAlignment?: TableVerticalAlignment;
+  /** Stable ADF/Storage editor identity, including an explicitly empty value. */
+  localId?: string;
   content: ExportBlock[];
 }
 
 export interface TableRow {
   cells: TableCell[];
+  /** Stable ADF/Storage editor identity, including an explicitly empty value. */
+  localId?: string;
 }
 
 /**
@@ -309,6 +345,7 @@ export type ExportBlock =
       type: "table";
       rows: TableRow[];
       columnWidths?: number[];
+      presentation?: TablePresentation;
       caption?: Caption;
       fragments?: AdfFragmentIdentity[];
     }
@@ -367,6 +404,86 @@ export type ExportBlock =
        * export. Backwards compatible (optional).
        */
       sourcePage?: { id: string; version?: number; spaceKey?: string } };
+
+export interface MaterializedTable {
+  rows: TableRow[];
+  columnWidths?: number[];
+}
+
+const MAX_MATERIALIZED_TABLE_COLUMNS = 200;
+
+/**
+ * Materialize ADF's implicit numbered column once for every renderer.
+ *
+ * The source rows deliberately stay unchanged in the neutral model. This
+ * helper gives DOCX and PDF the same visible 1-based row numbering and the
+ * same narrow leading track without making the implicit cells look authored.
+ */
+export function materializeTable(
+  table: Extract<ExportBlock, { type: "table" }>,
+): MaterializedTable {
+  if (table.presentation?.numberedColumn !== true) {
+    return {
+      rows: table.rows,
+      ...(table.columnWidths !== undefined ? { columnWidths: table.columnWidths } : {}),
+    };
+  }
+
+  const rows = table.rows.map((row, index): TableRow => ({
+    ...row,
+    cells: [{
+      header: true,
+      colspan: 1,
+      rowspan: 1,
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: String(index + 1) }],
+      }],
+    }, ...row.cells],
+  }));
+
+  const sourceWidths = table.columnWidths;
+  if (
+    sourceWidths !== undefined &&
+    sourceWidths.length > 0 &&
+    sourceWidths.length <= MAX_MATERIALIZED_TABLE_COLUMNS &&
+    sourceWidths.every((width) => Number.isFinite(width) && width > 0)
+  ) {
+    return { rows, columnWidths: [48, ...sourceWidths] };
+  }
+
+  const sourceColumnCount = table.rows.reduce(
+    (maximum, row) => Math.max(
+      maximum,
+      row.cells.reduce((count, cell) => {
+        if (count >= MAX_MATERIALIZED_TABLE_COLUMNS) return count;
+        const span = Number.isSafeInteger(cell.colspan) && cell.colspan > 0
+          ? Math.min(cell.colspan, MAX_MATERIALIZED_TABLE_COLUMNS)
+          : 1;
+        return Math.min(MAX_MATERIALIZED_TABLE_COLUMNS, count + span);
+      }, 0),
+    ),
+    0,
+  );
+  if (sourceColumnCount === 0) return { rows };
+
+  const legacyWidth = table.presentation?.layout === "wide"
+    ? 960
+    : table.presentation?.layout === "full-width"
+      ? 1800
+      : 760;
+  const tableWidth =
+    table.presentation?.width !== undefined &&
+    Number.isFinite(table.presentation.width) &&
+    table.presentation.width > 0
+    ? table.presentation.width
+    : legacyWidth;
+  const sourceTrack = Math.max(48, (tableWidth - 48) / sourceColumnCount);
+  return {
+    rows,
+    columnWidths: [48, ...Array.from({ length: sourceColumnCount }, () => sourceTrack)],
+  };
+}
 
 /**
  * Provenance of an {@link ExportNote} — where in a (possibly multi-page) export
@@ -1653,6 +1770,28 @@ function tableCellBackground(cell: XmlElement): string | undefined {
   );
 }
 
+function tableCellVerticalAlignment(cell: XmlElement): TableVerticalAlignment | undefined {
+  const styleAlignment = (cell.attrs.style ?? "")
+    .match(/(?:^|;)\s*vertical-align\s*:\s*([^;]+)/i)?.[1]
+    ?.trim()
+    .toLowerCase();
+  const value = (cell.attrs.valign ?? styleAlignment)?.trim().toLowerCase();
+  if (value === "top" || value === "middle" || value === "bottom") return value;
+  return undefined;
+}
+
+function tableLayout(value: string | undefined): TableLayout | undefined {
+  if (
+    value === "default" ||
+    value === "wide" ||
+    value === "full-width" ||
+    value === "center" ||
+    value === "align-start" ||
+    value === "align-end"
+  ) return value;
+  return undefined;
+}
+
 function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const rows: TableRow[] = [];
   const rowEls: XmlElement[] = [];
@@ -1672,18 +1811,35 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
       if (cell.type !== "element") continue;
       if (cell.name !== "td" && cell.name !== "th") continue;
       const backgroundColor = tableCellBackground(cell);
+      const verticalAlignment = tableCellVerticalAlignment(cell);
       cells.push({
         header: cell.name === "th",
         colspan: parsePositiveInt(cell.attrs.colspan) ?? 1,
         rowspan: parsePositiveInt(cell.attrs.rowspan) ?? 1,
         ...(backgroundColor ? { backgroundColor } : {}),
+        ...(verticalAlignment ? { verticalAlignment } : {}),
+        ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
         content: walkBlocks(cell.children, ctx),
       });
     }
-    rows.push({ cells });
+    rows.push({
+      cells,
+      ...(tr.attrs["ac:local-id"] !== undefined ? { localId: tr.attrs["ac:local-id"] } : {}),
+    });
   }
   const columnWidths = tableColumnWidths(el);
-  return { type: "table", rows, ...(columnWidths ? { columnWidths } : {}) };
+  const layout = tableLayout(el.attrs["data-layout"]);
+  const localId = el.attrs["ac:local-id"];
+  const presentation: TablePresentation = {
+    ...(layout !== undefined ? { layout } : {}),
+    ...(localId !== undefined ? { localId } : {}),
+  };
+  return {
+    type: "table",
+    rows,
+    ...(columnWidths ? { columnWidths } : {}),
+    ...(Object.keys(presentation).length > 0 ? { presentation } : {}),
+  };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
