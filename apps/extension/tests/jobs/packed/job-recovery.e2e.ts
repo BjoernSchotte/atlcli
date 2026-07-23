@@ -458,6 +458,26 @@ test("a private legacy compiler bridge produces one outer Activity row", async (
   ]);
 });
 
+test("the packed browser shares one FIFO heavy-render slot across PDF and DOCX", async () => {
+  const result = await page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        renderReservations(): Promise<{
+          secondWaited: boolean;
+          activeAfterHandoff: number;
+          activeAfterRelease: number;
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.renderReservations();
+  });
+  expect(result).toEqual({
+    secondWaited: true,
+    activeAfterHandoff: 1,
+    activeAfterRelease: 0,
+  });
+});
+
 test("source aborts and adapter quota limits leave no half object", async () => {
   await ensureCatalog();
   const invoke = (id: string, size: number, fail: boolean, totalLimit?: number) => page.evaluate(

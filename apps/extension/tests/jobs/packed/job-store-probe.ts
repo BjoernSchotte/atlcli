@@ -5,6 +5,7 @@ import {
   openExtensionExportDb,
   IndexedDbExportJobCatalog,
 } from "../../../utils/export-jobs/catalog.js";
+import { BrowserRenderReservationPoolV1 } from "../../../utils/export-jobs/render-reservation.js";
 import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
 
 async function* bytes(size: number, failAfterFirst = false): AsyncIterable<Uint8Array> {
@@ -117,6 +118,53 @@ const probe = {
   },
   async activityKeys(): Promise<string[]> {
     return (await chromeDurableJobsStore().list()).map((row) => row.id);
+  },
+  async renderReservations(): Promise<{
+    secondWaited: boolean;
+    activeAfterHandoff: number;
+    activeAfterRelease: number;
+  }> {
+    const pool = new BrowserRenderReservationPoolV1({
+      inFlightBytes: 100,
+      persistedSpoolBytes: 100,
+      outputBytes: 100,
+      rasterBytes: 100,
+      heavySlots: 1,
+    });
+    const estimate = {
+      heapBytes: 20,
+      spoolBytes: 10,
+      outputBytes: 10,
+      rasterPixels: 5,
+      confidence: "estimated" as const,
+    };
+    const first = await pool.pdf.acquire({
+      jobId: "packed-pdf",
+      leaseEpoch: 1,
+      estimate,
+      signal: new AbortController().signal,
+    });
+    let secondEntered = false;
+    const second = pool.docx.acquire({
+      jobId: "packed-docx",
+      leaseEpoch: 1,
+      estimate,
+      signal: new AbortController().signal,
+    }).then((reservation) => {
+      secondEntered = true;
+      return reservation;
+    });
+    await Promise.resolve();
+    const secondWaited = !secondEntered;
+    first.release();
+    const handedOff = await second;
+    const activeAfterHandoff = pool.snapshot.activeReservations;
+    handedOff.release();
+    return {
+      secondWaited,
+      activeAfterHandoff,
+      activeAfterRelease: pool.snapshot.activeReservations,
+    };
   },
 };
 
