@@ -138,6 +138,7 @@ export interface DocxExportRequest extends ExportScopeRequest {
   pageUrl: string;
   template: DocxTemplateRecord;
   signal?: AbortSignal;
+  onPhase?: (phase: ExportPhase) => void;
 }
 
 /**

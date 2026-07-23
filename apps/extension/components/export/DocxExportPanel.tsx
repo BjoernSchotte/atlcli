@@ -118,7 +118,14 @@ export function DocxExportPanel({
       const scan = await port.scan(new Uint8Array(buffer));
       port.warm?.();
       const stored = await store.put({ name: file.name, bytes: buffer });
-      setTemplate({ name: stored.name, uploadedAt: stored.uploadedAt, scan, bytes: stored.bytes });
+      setTemplate({
+        name: stored.name,
+        uploadedAt: stored.uploadedAt,
+        scan,
+        bytes: stored.bytes,
+        ...(stored.recordKey ? { recordKey: stored.recordKey } : {}),
+        ...(stored.sha256 ? { sha256: stored.sha256 } : {}),
+      });
     } catch (error) {
       setDocxError(
         isDocxRejection(error)
@@ -206,6 +213,12 @@ export function DocxExportPanel({
                           name: template.name,
                           uploadedAt: template.uploadedAt,
                           bytes: template.bytes,
+                          ...(template.recordKey
+                            ? { recordKey: template.recordKey }
+                            : {}),
+                          ...(template.sha256
+                            ? { sha256: template.sha256 }
+                            : {}),
                         },
                         ...scopeRequest,
                       })

@@ -15,13 +15,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import React from "react";
 import { Window } from "happy-dom";
+import type { ExportReport } from "@atlcli/docx/browser";
 import type { PdfExportReport } from "@atlcli/pdf/browser";
 import {
   ExportRunsProvider,
   useExportRuns,
   type ExportRuns,
 } from "../../components/app/export-runs.js";
-import type { PdfExportPort, PdfExportRequest } from "../../utils/ports/index.js";
+import type {
+  DocxExportPort,
+  DocxExportRequest,
+  PdfExportPort,
+  PdfExportRequest,
+} from "../../utils/ports/index.js";
 import type { LoadedPage } from "../../utils/read-path.js";
 
 const DOM_GLOBALS = [
@@ -147,6 +153,53 @@ function longRunningPort(): Harness {
   return harness;
 }
 
+interface DocxHarness {
+  port: DocxExportPort;
+  signal(): AbortSignal | undefined;
+  finish(): void;
+  started: number;
+}
+
+function longRunningDocxPort(): DocxHarness {
+  let signal: AbortSignal | undefined;
+  let finish: (() => void) | undefined;
+  const harness: DocxHarness = {
+    port: {
+      async scan() {
+        throw new Error("Unexpected template scan in run lifecycle test.");
+      },
+      run(request: DocxExportRequest): Promise<ExportReport> {
+        harness.started += 1;
+        signal = request.signal;
+        return new Promise<ExportReport>((resolve) => {
+          finish = () => resolve({ notes: [] } as unknown as ExportReport);
+        });
+      },
+    },
+    signal: () => signal,
+    finish: () => finish?.(),
+    started: 0,
+  };
+  return harness;
+}
+
+function docxRequest(): Omit<
+  DocxExportRequest,
+  "signal" | "onPhase" | "onProgress"
+> {
+  return {
+    page: page(),
+    pageUrl: "https://site/a",
+    template: {
+      name: "template.docx",
+      uploadedAt: 1,
+      bytes: new ArrayBuffer(1),
+      recordKey: "template:one",
+      sha256: "a".repeat(64),
+    },
+  };
+}
+
 let runs: ExportRuns | null = null;
 
 function Probe(): null {
@@ -256,5 +309,49 @@ describe("a page change while an export runs", () => {
     await flush();
     expect(second.started).toBe(1);
     expect(first.signal()?.aborted).toBe(false);
+  });
+
+  it("does not abort a durable DOCX job when the page identity changes", async () => {
+    const harness = longRunningDocxPort();
+    await renderWithIdentity("https://site/a|1|1");
+
+    const { act } = await import("react");
+    await act(async () => {
+      runs!.startDocx(harness.port, docxRequest());
+    });
+    await flush();
+    expect(harness.started).toBe(1);
+    expect(runs!.docx.running).toBe(true);
+
+    await renderWithIdentity("https://site/b|2|1");
+    await flush();
+
+    expect(runs!.docx.running).toBe(false);
+    expect(harness.signal()?.aborted).toBe(false);
+
+    await act(async () => {
+      harness.finish();
+    });
+    await flush();
+  });
+
+  it("does not abort a durable DOCX job when the panel closes", async () => {
+    const harness = longRunningDocxPort();
+    await renderWithIdentity("https://site/a|1|1");
+
+    const { act } = await import("react");
+    await act(async () => {
+      runs!.startDocx(harness.port, docxRequest());
+    });
+    await flush();
+
+    const current = root!;
+    await act(async () => {
+      current.unmount();
+    });
+    root = null;
+
+    expect(harness.signal()?.aborted).toBe(false);
+    harness.finish();
   });
 });

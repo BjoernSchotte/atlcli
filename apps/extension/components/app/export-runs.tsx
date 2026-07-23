@@ -11,9 +11,9 @@
  * Phase 0 deliberately kept `PdfSection.tsx:30-37`'s "a page change aborts the
  * export" behaviour verbatim, because half of the fix without durable records
  * would have shipped a running export nobody could observe or cancel. T5.6
- * built the other half, so it lands here: **an identity change stops watching a
- * PDF export, it never aborts one.** See the effect below for why the DOCX path
- * still aborts.
+ * built the other half, so it lands here: **an identity change stops watching
+ * an export, it never aborts one.** Both PDF and DOCX are durable background
+ * jobs now; Activity remains their owner and observer after the panel detaches.
  */
 import React, {
   createContext,
@@ -57,7 +57,10 @@ const IDLE_DOCX: DocxRun = { running: false, error: null, report: null, progress
 
 /** What a caller supplies; the provider owns `signal` and the callbacks. */
 export type StartPdfRequest = Omit<PdfExportRequest, "signal" | "onPhase" | "onProgress">;
-export type StartDocxRequest = Omit<DocxExportRequest, "signal" | "onProgress">;
+export type StartDocxRequest = Omit<
+  DocxExportRequest,
+  "signal" | "onPhase" | "onProgress"
+>;
 
 export interface ExportRuns {
   pdf: PdfRun;
@@ -93,7 +96,7 @@ export function ExportRunsProvider({
   identityRef.current = identity;
 
   useEffect(() => {
-    // A page change STOPS WATCHING the PDF export; it never aborts one
+    // A page change STOPS WATCHING an export; it never aborts one
     // (spec 010 T5.6, Architecture point 3 defect (a)). Aborting here was
     // CONFCLOUD-83694 reproduced in our own panel: navigating to another
     // Confluence page killed a running export by design. It looked harmless
@@ -102,31 +105,17 @@ export function ExportRunsProvider({
     // navigation on its own, so this was our decision and not a platform limit.
     // The job keeps running, its durable record keeps being updated, and the
     // Jobs screen is where it is observed and cancelled from. Abort stays bound
-    // to the explicit Cancel button.
+    // to an explicit cancellation action.
     if (pdfRun.current && pdfRun.current.identity !== identity) {
       pdfRun.current = null;
       setPdf(IDLE_PDF);
     }
-    // DOCX has no durable job record — its export lives entirely in this
-    // panel's memory, so detaching from it would orphan work nobody could
-    // observe or stop. It keeps today's abort until it has a record of its own.
+    // DOCX now has the same durable outer record and offscreen ownership.
     if (docxRun.current && docxRun.current.identity !== identity) {
-      docxRun.current.controller.abort();
       docxRun.current = null;
       setDocx(IDLE_DOCX);
     }
   }, [identity]);
-
-  // Unmount (panel closed): same asymmetry. A PDF export is durable — the
-  // offscreen worker keeps compiling and `completePdfJob` still writes the
-  // result to `atlcli-pdf`, so the next time the panel opens the Jobs screen
-  // offers the download. A DOCX export is not, so it is torn down.
-  useEffect(
-    () => () => {
-      docxRun.current?.controller.abort();
-    },
-    []
-  );
 
   const startPdf = useCallback<ExportRuns["startPdf"]>(
     (port, request) => {
