@@ -220,6 +220,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
       },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       checkpointRef = ref;

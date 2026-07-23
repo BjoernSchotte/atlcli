@@ -160,6 +160,7 @@ function executionContext(options: {
       async getStaged() { return undefined; },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       expect(ref).toBe("render/job-1/manifest.json");

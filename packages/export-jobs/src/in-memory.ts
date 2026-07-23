@@ -5,7 +5,7 @@ import type {
 } from "./artifact.js";
 import type { ExportJobEventV1 } from "./event.js";
 import type { ExportJobRequestV1 } from "./request.js";
-import type { ExportJobStatsV1 } from "./statistics.js";
+import { createEmptyExportJobStatsV1 } from "./statistics.js";
 import type {
   ExportJobClaimV1,
   ExportJobCreateV1,
@@ -137,30 +137,6 @@ function locatorLabel(request: ExportJobRequestV1): string {
     case "space-key":
       return request.source.locator.spaceKey;
   }
-}
-
-function emptyStats(): ExportJobStatsV1 {
-  return {
-    pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
-    assets: {
-      discovered: 0,
-      fetched: 0,
-      embedded: 0,
-      skipped: 0,
-      deduplicated: 0,
-      logicalBytes: 0,
-      physicalBytes: 0,
-    },
-    diagrams: { discovered: 0, rendered: 0, rasterized: 0, failed: 0 },
-    macros: { discovered: 0, rendered: 0, approximated: 0, unresolved: 0 },
-    retries: { total: 0, rateLimited: 0, network: 0, worker: 0 },
-    storage: { spoolBytes: 0, spoolPeakBytes: null, outputBytes: 0 },
-    memory: { heapPeakBytes: null, rendererPeakBytes: null },
-    metricSupport: {},
-    durationsMs: {},
-    warnings: 0,
-    errors: 0,
-  };
 }
 
 function derivationKey(input: NonNullable<ExportJobCreateV1["derivedFrom"]>): string {
@@ -313,7 +289,7 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
       attempt: 0,
       recoveryCount: 0,
       leaseEpoch: 0,
-      stats: emptyStats(),
+      stats: createEmptyExportJobStatsV1(),
       createdAt: request.createdAt,
       ...(input.derivedFrom ? { derivedFrom: clone(input.derivedFrom) } : {}),
     };

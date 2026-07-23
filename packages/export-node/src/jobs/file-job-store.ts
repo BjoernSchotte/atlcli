@@ -4,6 +4,7 @@ import { join, resolve, sep } from "node:path";
 import {
   claimExportJob,
   checkpointExportJob,
+  createEmptyExportJobStatsV1,
   finalizeExportJobArtifact,
   heartbeatExportJob,
   isExportJobTerminal,
@@ -37,7 +38,6 @@ import {
   type ExportJobTombstoneV1,
   type ExportJobUpdateV1,
   type ExportJobClaimV1,
-  type ExportJobStatsV1,
 } from "@atlcli/export-jobs";
 import { ensurePrivateDirectory, writeDurableAtomic } from "./atomic-fs.js";
 import { FileExportLock } from "./file-lock.js";
@@ -89,18 +89,6 @@ function emptyCatalog(): FileExportCatalogV1 {
     sequence: 0,
     jobs: {}, requests: {}, idempotency: {}, derivations: {}, events: {}, nextEventSeq: {},
     tombstones: {}, transitions: {}, lastClaimedGroup: {}, finalizations: {}, executorCheckpoints: {}, executorResults: {},
-  };
-}
-
-function emptyStats(): ExportJobStatsV1 {
-  return {
-    pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
-    assets: { discovered: 0, fetched: 0, embedded: 0, skipped: 0, deduplicated: 0, logicalBytes: 0, physicalBytes: 0 },
-    diagrams: { discovered: 0, rendered: 0, rasterized: 0, failed: 0 },
-    macros: { discovered: 0, rendered: 0, approximated: 0, unresolved: 0 },
-    retries: { total: 0, rateLimited: 0, network: 0, worker: 0 },
-    storage: { spoolBytes: 0, spoolPeakBytes: null, outputBytes: 0 },
-    memory: { heapPeakBytes: null, rendererPeakBytes: null }, metricSupport: {}, durationsMs: {}, warnings: 0, errors: 0,
   };
 }
 
@@ -186,7 +174,8 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         format: request.format, renderer: request.renderer,
         summary: { displayName: request.displayName, sourceLabel: locatorLabel(request), siteOrigin: request.source.siteOrigin, scopeKind: request.source.scope.kind },
         queue: { priority: request.priority, enqueuedAt: request.createdAt, groupKey: request.source.siteOrigin },
-        state: "queued", attempt: 0, recoveryCount: 0, leaseEpoch: 0, stats: emptyStats(), createdAt: request.createdAt,
+        state: "queued", attempt: 0, recoveryCount: 0, leaseEpoch: 0,
+        stats: createEmptyExportJobStatsV1(), createdAt: request.createdAt,
         ...(input.derivedFrom ? { derivedFrom: clone(input.derivedFrom) } : {}),
       };
       parseExportJobSnapshotV1(snapshot);

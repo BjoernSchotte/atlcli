@@ -169,6 +169,7 @@ function executionContext(order: string[] = [], signal = new AbortController().s
       async getStaged() { return undefined; },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint() { order.push("checkpoint-publish"); },
   };

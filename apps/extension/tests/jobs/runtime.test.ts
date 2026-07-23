@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
-import type {
-  DocxExportJobRequestV1,
+import {
+  createEmptyExportJobStatsV1,
+  type DocxExportJobRequestV1,
   ExportJobExecutor,
   ExportJobRequestV1,
   ExportJobStage,
@@ -76,6 +77,10 @@ describe("extension export execution runtime", () => {
       format: "pdf",
       async execute(_input, context) {
         await context.updateProgress({ stage: "render", done: 0, total: 1, updatedAt: 20 });
+        await context.updateStats({
+          ...createEmptyExportJobStatsV1(),
+          pages: { discovered: 1, fetched: 1, composed: 1, skipped: 0 },
+        });
         const artifact = await context.artifacts.stage({
           mediaType: "application/pdf",
           filename: "Guide.pdf",
@@ -117,7 +122,31 @@ describe("extension export execution runtime", () => {
       state: "succeeded",
       reportRef: "report:job-runtime",
       artifact: { filename: "Guide.pdf", byteLength: 3 },
+      stats: {
+        pages: { discovered: 1, fetched: 1, composed: 1, skipped: 0 },
+        metricSupport: {
+          "storage.spoolPeakBytes": "unavailable",
+          "memory.heapPeakBytes": "unavailable",
+          "memory.rendererPeakBytes": "unavailable",
+        },
+      },
     });
+    expect((await catalog.readEvents(finished.id)).events).toEqual([
+      { kind: "stage", seq: 1, at: 20, stage: "render" },
+      {
+        kind: "progress",
+        seq: 2,
+        at: 20,
+        progress: { stage: "render", done: 0, total: 1, updatedAt: 20 },
+      },
+      { kind: "stage", seq: 3, at: 20, stage: "commit" },
+      {
+        kind: "progress",
+        seq: 4,
+        at: 20,
+        progress: { stage: "commit", done: 1, total: 1, updatedAt: 20 },
+      },
+    ]);
     expect(await bytes.getStaged(finished.id, finished.leaseEpoch)).toBeUndefined();
     const collected: number[] = [];
     for await (const chunk of bytes.read(finished.artifact!.ref)) collected.push(...chunk);

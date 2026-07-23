@@ -1,5 +1,6 @@
 import {
   claimExportJob,
+  createEmptyExportJobStatsV1,
   finalizeExportJobArtifact,
   isExportJobTerminal,
   orderExportQueue,
@@ -31,7 +32,6 @@ import {
   type ExportJobStore,
   type ExportJobTombstoneV1,
   type ExportJobUpdateV1,
-  type ExportJobStatsV1,
 } from "@atlcli/export-jobs";
 
 export const EXTENSION_EXPORT_DB_NAME = "atlcli-export-jobs";
@@ -257,30 +257,6 @@ function locatorLabel(request: ExportJobRequestV1): string {
   }
 }
 
-function emptyStats(): ExportJobStatsV1 {
-  return {
-    pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
-    assets: {
-      discovered: 0,
-      fetched: 0,
-      embedded: 0,
-      skipped: 0,
-      deduplicated: 0,
-      logicalBytes: 0,
-      physicalBytes: 0,
-    },
-    diagrams: { discovered: 0, rendered: 0, rasterized: 0, failed: 0 },
-    macros: { discovered: 0, rendered: 0, approximated: 0, unresolved: 0 },
-    retries: { total: 0, rateLimited: 0, network: 0, worker: 0 },
-    storage: { spoolBytes: 0, spoolPeakBytes: null, outputBytes: 0 },
-    memory: { heapPeakBytes: null, rendererPeakBytes: null },
-    metricSupport: {},
-    durationsMs: {},
-    warnings: 0,
-    errors: 0,
-  };
-}
-
 function initialSnapshot(
   request: ExportJobRequestV1,
   derivedFrom?: ExportJobDerivationV1,
@@ -311,7 +287,7 @@ function initialSnapshot(
     // offscreen context may disappear immediately after claiming the job,
     // before an engine publishes a more specific checkpoint.
     checkpointRef: requestRef(request),
-    stats: emptyStats(),
+    stats: createEmptyExportJobStatsV1(),
     createdAt: request.createdAt,
     ...(derivedFrom ? { derivedFrom } : {}),
   });

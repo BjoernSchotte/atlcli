@@ -45,6 +45,7 @@ function context(): ExportJobExecutionContext {
     spool: {} as ExportJobExecutionContext["spool"],
     artifacts: {} as ExportJobExecutionContext["artifacts"],
     updateProgress: async () => {},
+    updateStats: async () => {},
     appendEvent: async () => {},
     checkpoint: async () => {},
   };

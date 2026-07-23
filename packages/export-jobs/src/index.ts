@@ -25,6 +25,10 @@ export type {
   ExportJobMetricV1,
   ExportJobStatsV1,
 } from "./statistics.js";
+export {
+  EXPORT_JOB_METRICS_V1,
+  createEmptyExportJobStatsV1,
+} from "./statistics.js";
 export type {
   ExportIssueSourceV1,
   ExportJobErrorCategoryV1,
@@ -38,7 +42,7 @@ export type {
   ExportJobDerivationV1,
   ExportJobSnapshotV1,
 } from "./snapshot.js";
-export type { ExportJobEventV1 } from "./event.js";
+export type { ExportJobEventDraftV1, ExportJobEventV1 } from "./event.js";
 export type {
   SpoolRefV1,
   SpoolWriteLimitsV1,

@@ -14,6 +14,12 @@ export type ExportJobMetricV1 =
   | "memory.heapPeakBytes"
   | "memory.rendererPeakBytes";
 
+export const EXPORT_JOB_METRICS_V1 = [
+  "storage.spoolPeakBytes",
+  "memory.heapPeakBytes",
+  "memory.rendererPeakBytes",
+] as const satisfies readonly ExportJobMetricV1[];
+
 /** Monotonic version-1 counters and measurements for one export job. */
 export interface ExportJobStatsV1 {
   pages: { discovered: number; fetched: number; composed: number; skipped: number };
@@ -35,4 +41,33 @@ export interface ExportJobStatsV1 {
   durationsMs: Partial<Record<ExportJobStage | "queue", number>>;
   warnings: number;
   errors: number;
+}
+
+/** Canonical initial projection; unsupported host metrics are never presented as measured zero. */
+export function createEmptyExportJobStatsV1(): ExportJobStatsV1 {
+  return {
+    pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
+    assets: {
+      discovered: 0,
+      fetched: 0,
+      embedded: 0,
+      skipped: 0,
+      deduplicated: 0,
+      logicalBytes: 0,
+      physicalBytes: 0,
+    },
+    diagrams: { discovered: 0, rendered: 0, rasterized: 0, failed: 0 },
+    macros: { discovered: 0, rendered: 0, approximated: 0, unresolved: 0 },
+    retries: { total: 0, rateLimited: 0, network: 0, worker: 0 },
+    storage: { spoolBytes: 0, spoolPeakBytes: null, outputBytes: 0 },
+    memory: { heapPeakBytes: null, rendererPeakBytes: null },
+    metricSupport: {
+      "storage.spoolPeakBytes": "unavailable",
+      "memory.heapPeakBytes": "unavailable",
+      "memory.rendererPeakBytes": "unavailable",
+    },
+    durationsMs: {},
+    warnings: 0,
+    errors: 0,
+  };
 }

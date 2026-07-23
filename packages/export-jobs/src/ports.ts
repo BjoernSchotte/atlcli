@@ -3,8 +3,9 @@ import type {
   PendingArtifactV1,
   StagedArtifactV1,
 } from "./artifact.js";
-import type { ExportJobEventV1 } from "./event.js";
+import type { ExportJobEventDraftV1 } from "./event.js";
 import type { ExportJobRequestV1 } from "./request.js";
+import type { ExportJobStatsV1 } from "./statistics.js";
 import type { ExportFormat } from "./source.js";
 import type { ExportJobProgressV1, ExportJobSnapshotV1 } from "./snapshot.js";
 import type {
@@ -131,7 +132,8 @@ export interface ExportJobExecutionContext {
   spool: ExportJobSpool;
   artifacts: ExportJobArtifacts;
   updateProgress(progress: ExportJobProgressV1): Promise<void>;
-  appendEvent(event: ExportJobEventV1): Promise<void>;
+  updateStats(stats: ExportJobStatsV1): Promise<void>;
+  appendEvent(event: ExportJobEventDraftV1): Promise<void>;
   checkpoint(ref: string): Promise<void>;
 }
 

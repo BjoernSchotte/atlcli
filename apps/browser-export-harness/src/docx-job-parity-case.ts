@@ -239,6 +239,7 @@ async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer
       },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       checkpointRef = ref;

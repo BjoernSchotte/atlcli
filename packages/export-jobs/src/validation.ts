@@ -544,6 +544,29 @@ function validateStats(value: unknown, path: string): void {
     );
     choice(kind, ["measured", "derived", "unavailable"] as const, `${path}.metricSupport.${metric}`);
   }
+  const measurements = {
+    "storage.spoolPeakBytes": storage.spoolPeakBytes,
+    "memory.heapPeakBytes": memory.heapPeakBytes,
+    "memory.rendererPeakBytes": memory.rendererPeakBytes,
+  } as const;
+  for (const [metric, measurement] of Object.entries(measurements)) {
+    const kind = support[metric];
+    // Missing support remains accepted for persisted v1 rows written before
+    // telemetry became productive. All newly created rows set it explicitly.
+    if (kind === undefined) continue;
+    if (kind === "unavailable" && measurement !== null) {
+      fail(
+        `${path}.metricSupport.${metric}`,
+        "unavailable metrics must retain a null measurement",
+      );
+    }
+    if ((kind === "measured" || kind === "derived") && measurement === null) {
+      fail(
+        `${path}.metricSupport.${metric}`,
+        `${kind} metrics require a numeric measurement`,
+      );
+    }
+  }
   const durations = record(stats.durationsMs, `${path}.durationsMs`);
   for (const [stage, duration] of Object.entries(durations)) {
     choice(stage, [...STAGES, "queue"] as const, `${path}.durationsMs key`);

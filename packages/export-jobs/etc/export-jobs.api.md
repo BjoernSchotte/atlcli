@@ -102,6 +102,9 @@ export declare function consumeBoundedByteStreamV1(source: AsyncIterable<Uint8Ar
 // export: copyExactOwnedBytesV1
 export declare function copyExactOwnedBytesV1(chunk: Uint8Array): Uint8Array;
 
+// export: createEmptyExportJobStatsV1
+export declare function createEmptyExportJobStatsV1(): ExportJobStatsV1;
+
 // export: decideResourceAdmission
 export declare function decideResourceAdmission(estimate: ResourceEstimateV1, available: ResourceCapacityV1, options: ResourceAdmissionOptionsV1): ResourceAdmissionDecisionV1;
 
@@ -139,6 +142,13 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
 
 // export: EvictionReasonV1
 export type EvictionReasonV1 = "expired-temp" | "regenerable-preview" | "released-terminal-artifact" | "terminal-diagnostic-grace-elapsed";
+
+// export: EXPORT_JOB_METRICS_V1
+export declare const EXPORT_JOB_METRICS_V1: readonly [
+    "storage.spoolPeakBytes",
+    "memory.heapPeakBytes",
+    "memory.rendererPeakBytes"
+];
 
 // export: EXPORT_RESOURCE_NAMES_V1
 export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
@@ -337,6 +347,9 @@ export interface ExportJobEventAppendV1 {
     event: ExportJobEventV1;
 }
 
+// export: ExportJobEventDraftV1
+export type ExportJobEventDraftV1 = ExportJobEventV1 extends infer Event ? Event extends ExportJobEventV1 ? Omit<Event, "seq"> : never : never;
+
 // export: ExportJobEventPageV1
 export interface ExportJobEventPageV1 {
     events: ExportJobEventV1[];
@@ -406,7 +419,8 @@ export interface ExportJobExecutionContext {
     spool: ExportJobSpool;
     artifacts: ExportJobArtifacts;
     updateProgress(progress: ExportJobProgressV1): Promise<void>;
-    appendEvent(event: ExportJobEventV1): Promise<void>;
+    updateStats(stats: ExportJobStatsV1): Promise<void>;
+    appendEvent(event: ExportJobEventDraftV1): Promise<void>;
     checkpoint(ref: string): Promise<void>;
 }
 

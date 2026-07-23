@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import {
   bindExportJobArtifacts,
   bindExportJobSpool,
+  createEmptyExportJobStatsV1,
   DELIVERED_ARTIFACT_RETENTION_MS_V1,
   FULL_REPORT_RETENTION_MS_V1,
   prepareExportArtifactFinalizationIntent,
@@ -170,7 +171,7 @@ describe("file export persistence", () => {
   it("keeps report refs logical and resolves report bytes through the store", async () => {
     const dir = await root(); const p = createFileExportJobPersistence({ rootDir: dir }); await p.jobs.create({ request: request("result-job") }); const claimed = (await p.jobs.claimNext({ ownerId: "a", now: 1, leaseDurationMs: 100_000 }))!;
     const context: ExportJobExecutionContext = { jobId: claimed.id, leaseEpoch: claimed.leaseEpoch, signal: new AbortController().signal,
-      spool: bindExportJobSpool(p.spool, claimed.id, claimed.leaseEpoch, p.spoolLimits), artifacts: bindExportJobArtifacts(p.artifacts, claimed.id, claimed.leaseEpoch), updateProgress: async () => {}, appendEvent: async () => {}, checkpoint: async () => {} };
+      spool: bindExportJobSpool(p.spool, claimed.id, claimed.leaseEpoch, p.spoolLimits), artifacts: bindExportJobArtifacts(p.artifacts, claimed.id, claimed.leaseEpoch), updateProgress: async () => {}, updateStats: async () => {}, appendEvent: async () => {}, checkpoint: async () => {} };
     const intent: DocxExportResultIntentV1 = { schema: "atlcli.docx-result-intent/1", key: { schema: "atlcli.docx-result-key/1", ref: `docx-result:${"a".repeat(64)}`, jobId: claimed.id, requestId: claimed.id, requestKey: `idem:${claimed.id}`, requestSha256: "b".repeat(64), checkpointRef: "ready", preparedByteLength: 1, preparedSha256: "c".repeat(64), template: { recordKey: "default", byteLength: 1, sha256: "0".repeat(64) }, estimate: { heapBytes: 1, spoolBytes: 1, outputBytes: 3, rasterPixels: 0, confidence: "estimated" } },
       artifact: { mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename: "x.docx", byteLength: 3, sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }, reportRef: "logical:report:1", reportSha256: "d".repeat(64), reportSummary: { issues: { info: 0, warning: 0, error: 0 }, topCodes: [], completeness: "complete" } };
     await p.docxResults.prepare({ intent, report: { schema: "report/1", notes: [] } as never }, context);
@@ -191,6 +192,7 @@ describe("file export persistence", () => {
       spool: bindExportJobSpool(p.spool, claimed.id, claimed.leaseEpoch, p.spoolLimits),
       artifacts: bindExportJobArtifacts(p.artifacts, claimed.id, claimed.leaseEpoch),
       updateProgress: async () => {},
+      updateStats: async () => {},
       appendEvent: async () => {},
       checkpoint: async () => {},
     };
@@ -346,6 +348,62 @@ describe("file export persistence", () => {
     const latest = (await controller.jobs.get(claimed.id))!; await controller.jobs.compareAndSet({ kind: "transition", id: latest.id, expectedRevision: latest.revision, to: "cancelling", at: Date.now() });
     await new Promise((resolve) => setTimeout(resolve, 40)); expect(runtime.context.signal.aborted).toBe(true);
     const after = (await import("node:fs/promises")).readdir(join(dir, "journal")).then((values) => values.length); expect((await after) - (await before)).toBeLessThanOrEqual(2);
+    await runtime.stop();
+  });
+
+  it("persists execution-context statistics and bounded stage/progress events", async () => {
+    const dir = await root();
+    let now = 10;
+    const persistence = createFileExportJobPersistence({
+      rootDir: dir,
+      now: () => now,
+    });
+    await persistence.jobs.create({ request: request("runtime-telemetry") });
+    const claimed = (await persistence.jobs.claimNext({
+      ownerId: "telemetry-owner",
+      now,
+      leaseDurationMs: 10_000,
+    }))!;
+    const runtime = createFileExportExecutionContext({
+      claimed,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+
+    now = 20;
+    await runtime.context.updateProgress({
+      stage: "fetch",
+      done: 1,
+      total: 2,
+      updatedAt: now,
+    });
+    await runtime.context.updateStats({
+      ...createEmptyExportJobStatsV1(),
+      pages: { discovered: 2, fetched: 1, composed: 0, skipped: 0 },
+    });
+
+    expect((await runtime.snapshot()).stats).toMatchObject({
+      pages: { discovered: 2, fetched: 1, composed: 0, skipped: 0 },
+      metricSupport: {
+        "storage.spoolPeakBytes": "unavailable",
+        "memory.heapPeakBytes": "unavailable",
+        "memory.rendererPeakBytes": "unavailable",
+      },
+    });
+    expect((await persistence.jobs.readEvents(claimed.id)).events).toEqual([
+      { kind: "stage", seq: 1, at: 20, stage: "fetch" },
+      {
+        kind: "progress",
+        seq: 2,
+        at: 20,
+        progress: { stage: "fetch", done: 1, total: 2, updatedAt: 20 },
+      },
+    ]);
     await runtime.stop();
   });
 

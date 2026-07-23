@@ -110,6 +110,18 @@ export function createExtensionExportExecutionContext(
     }
     abort.abort(new DOMException("Export job cancellation was requested.", "AbortError"));
   });
+  const appendEvent = async (
+    snapshot: ExportJobSnapshotV1,
+    event: Parameters<ExportJobExecutionContext["appendEvent"]>[0],
+  ): Promise<void> => {
+    const prior = await options.catalog.readEvents(snapshot.id, { limit: 1_000 });
+    const seq = (prior.events.at(-1)?.seq ?? 0) + 1;
+    await options.catalog.appendEvent(snapshot.id, {
+      expectedRevision: snapshot.revision,
+      leaseEpoch: snapshot.leaseEpoch,
+      event: { ...event, seq },
+    });
+  };
   const onExternalAbort = (): void => {
     void requestCancellation().catch((error) => { backgroundError = error; abort.abort(error); });
   };
@@ -126,6 +138,7 @@ export function createExtensionExportExecutionContext(
       return serialize(async () => {
         const latest = await refresh();
         abort.signal.throwIfAborted();
+        const previousStage = latest.stage;
         current = await options.catalog.compareAndSet({
           kind: "progress",
           id: latest.id,
@@ -133,19 +146,39 @@ export function createExtensionExportExecutionContext(
           leaseEpoch: latest.leaseEpoch,
           progress,
         });
+        if (previousStage !== progress.stage) {
+          await appendEvent(current, {
+            kind: "stage",
+            at: progress.updatedAt,
+            stage: progress.stage,
+          });
+        }
+        await appendEvent(current, {
+          kind: "progress",
+          at: progress.updatedAt,
+          progress,
+        });
+      });
+    },
+    updateStats(stats) {
+      return serialize(async () => {
+        const latest = await refresh();
+        abort.signal.throwIfAborted();
+        current = await options.catalog.compareAndSet({
+          kind: "stats",
+          id: latest.id,
+          expectedRevision: latest.revision,
+          leaseEpoch: latest.leaseEpoch,
+          at: now(),
+          stats,
+        });
       });
     },
     appendEvent(event) {
       return serialize(async () => {
         const latest = await refresh();
         abort.signal.throwIfAborted();
-        const prior = await options.catalog.readEvents(latest.id, { limit: 1_000 });
-        const seq = (prior.events.at(-1)?.seq ?? 0) + 1;
-        await options.catalog.appendEvent(latest.id, {
-          expectedRevision: latest.revision,
-          leaseEpoch: latest.leaseEpoch,
-          event: { ...event, seq } as typeof event,
-        });
+        await appendEvent(latest, event);
       });
     },
     checkpoint(checkpointRef) {

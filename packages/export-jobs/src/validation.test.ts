@@ -6,6 +6,7 @@ import type {
   PdfExportJobRequestV1,
 } from "./request.js";
 import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
+import { createEmptyExportJobStatsV1 } from "./statistics.js";
 import {
   ExportJobValidationError,
   parseDocxExportJobRequestV1,
@@ -350,6 +351,45 @@ describe("parseExportJobSnapshotV1", () => {
     expect(() =>
       parseExportJobSnapshotV1(changed(snapshot(), (copy) => (copy.unknown = true))),
     ).toThrow("snapshot.unknown");
+  });
+
+  it("creates explicit unavailable support markers for host-dependent metrics", () => {
+    expect(createEmptyExportJobStatsV1()).toMatchObject({
+      storage: { spoolPeakBytes: null },
+      memory: { heapPeakBytes: null, rendererPeakBytes: null },
+      metricSupport: {
+        "storage.spoolPeakBytes": "unavailable",
+        "memory.heapPeakBytes": "unavailable",
+        "memory.rendererPeakBytes": "unavailable",
+      },
+    });
+  });
+
+  it("keeps metric support and nullable metric values consistent", () => {
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot(), (copy) => {
+          copy.stats.storage.spoolPeakBytes = 1;
+          copy.stats.metricSupport["storage.spoolPeakBytes"] = "unavailable";
+        }),
+      ),
+    ).toThrow("unavailable metrics must retain a null measurement");
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot(), (copy) => {
+          copy.stats.memory.heapPeakBytes = null;
+          copy.stats.metricSupport["memory.heapPeakBytes"] = "measured";
+        }),
+      ),
+    ).toThrow("measured metrics require a numeric measurement");
+  });
+
+  it("accepts legacy metric support maps without inventing measurements", () => {
+    const legacy = changed(snapshot(), (copy) => {
+      copy.stats.metricSupport = {};
+    });
+
+    expect(parseExportJobSnapshotV1(legacy).stats.metricSupport).toEqual({});
   });
 
   it("rejects non-plain record values", () => {

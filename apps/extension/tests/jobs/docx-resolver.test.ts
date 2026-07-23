@@ -63,6 +63,7 @@ function context(progress: ExportJobProgressV1[] = []): ExportJobExecutionContex
     updateProgress: async (value) => {
       progress.push(value);
     },
+    updateStats: async () => {},
     appendEvent: async () => {},
     checkpoint: async () => {},
   };
