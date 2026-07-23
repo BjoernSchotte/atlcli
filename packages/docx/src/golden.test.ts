@@ -38,6 +38,12 @@
  * the final section. The intended diff is limited to the `r` namespace plus
  * `headerReference`/`footerReference`; without those references Word consumers
  * are allowed to ignore the otherwise orphaned story parts.
+ *
+ * Recaptured 2026-07-23 after three intentional fidelity fixes: inline code
+ * gained its background shading, generated fixtures gained their required
+ * styles relationship, and ordered lists moved to renderer-compatible,
+ * self-contained numbering definitions. The fixture metadata was anonymized
+ * at the same time; it is synthetic test data only.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -78,27 +84,27 @@ export function f(): number { return x; }]]></ac:plain-text-body></ac:structured
 `;
 
 export const GOLDEN_DETAILS: ConfluencePageDetails = {
-  id: "1117356071",
-  title: "DOCX Feature Zoo / Golden",
-  url: "https://mayflower.atlassian.net/wiki/spaces/DOCSY/pages/1117356071",
+  id: "fixture-page-1",
+  title: "DOCX Feature Zoo",
+  url: "https://example.invalid/wiki/spaces/TEST/pages/fixture-page-1",
   version: 7,
-  spaceKey: "DOCSY",
+  spaceKey: "TEST",
   storage: STORAGE,
-  tinyUrl: "https://mayflower.atlassian.net/wiki/x/AbC",
+  tinyUrl: "https://example.invalid/wiki/x/fixture",
   created: "2026-01-02T10:00:00.000Z",
   modified: "2026-06-30T12:30:00.000Z",
-  createdBy: { displayName: "Alice Author" },
-  modifiedBy: { displayName: "Mel Modifier" },
+  createdBy: { displayName: "Fixture Author" },
+  modifiedBy: { displayName: "Fixture Modifier" },
   labels: ["architecture", "golden"],
 };
 
-export const GOLDEN_TEMPLATE_META = { name: "mayflower.docx", modificationDate: new Date(2026, 6, 14) };
+export const GOLDEN_TEMPLATE_META = { name: "fixture.docx", modificationDate: new Date(2026, 6, 14) };
 export const GOLDEN_EXPORT_DATE = new Date(2026, 6, 14, 9, 5);
 
 export const GOLDEN_DEPS = {
-  getSpace: async () => ({ id: "s", key: "DOCSY", name: "Docs Space", type: "global" as const }),
-  getCurrentUser: async () => ({ accountId: "u", displayName: "Björn Schotte" }),
-  getPageOwner: async () => ({ accountId: "u-9", displayName: "Olga Owner" }),
+  getSpace: async () => ({ id: "fixture-space", key: "TEST", name: "Fixture Space", type: "global" as const }),
+  getCurrentUser: async () => ({ accountId: "fixture-user", displayName: "Fixture Exporter" }),
+  getPageOwner: async () => ({ accountId: "fixture-owner", displayName: "Fixture Owner" }),
 };
 
 export function goldenTemplateBytes(): Uint8Array {

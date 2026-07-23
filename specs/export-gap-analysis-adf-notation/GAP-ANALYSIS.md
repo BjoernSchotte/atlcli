@@ -117,7 +117,7 @@ Evidence: [E2], [E5], [E6], [E7], [E8].
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
 | `bulletList` | `<ul>` becomes `list { ordered: false }`. | Native | Native | Maximum nesting and resource budgets remain exporter constraints. |
-| `orderedList` | `<ol>` becomes `list { ordered: true }`. | Partial | Partial | ADF `order` / HTML `start` is not captured; every list effectively starts at 1. |
+| `orderedList` | `<ol start>` and ADF `order` become `list { ordered: true, start? }`. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart and visual indent. |
 | `listItem` | Child blocks are recursively preserved. | Native | Native | Local IDs are not retained. |
 | `taskList` | `<ac:task-list>` becomes an unordered list with checked items. | Partial | Partial | List identity, nesting rules, attribution, and task metadata are not modeled. |
 | `taskItem` | Task status maps to a boolean `checked`. | Partial | Partial | Static checkbox only; local ID and assignment/due-date semantics are lost. |
@@ -253,7 +253,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | `~~Strike~~` | `strike` | Native after materialization. | ADF + live Storage fixture. |
 | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | Preserve underscores/spaces exactly; assert gray background, mono font, adjacency, escaping, links/annotations. |
 | `# ` … `###### ` | `heading.level` | Native after materialization. | H1-H6 corpus plus composed-export level policy. |
-| `1. ` | `orderedList` | Partial. | Preserve non-1 start/order and nested restart semantics. |
+| `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | Keep ADF/Storage differential, DOCX numbering-part, PDF source, and packed-browser parity gates. |
 | `* ` | `bulletList` | Native. | Mixed nested ordered/unordered corpus. |
 | `> ` | `blockquote` | Native/approx. | Static styling golden. |
 | Triple backticks + space | `codeBlock` | Partial. | Language, wrap, line numbers, long lines, empty/final newline. |
@@ -328,7 +328,7 @@ Required acceptance contract:
 7. Emoji/custom-emoji semantics, asset fallback, and font/glyph coverage.
 8. Paragraph/heading alignment, indentation, and font size.
 9. Decisions and full task semantics.
-10. Ordered-list start and nested restart behavior.
+10. **Completed:** ordered-list start and nested restart behavior.
 11. Table layout/display mode/numbered column/vertical alignment/width.
 12. Layout columns and breakout/wide/full-width behavior.
 13. Native captions and nested expand title/static disclosure treatment.

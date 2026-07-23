@@ -32,6 +32,8 @@ const REQUIRED_TEXT = Object.freeze([
   ":custom_party:",
   "Local card title",
   "ADF panel body",
+  "Third item",
+  "Eighth nested item",
   "Header",
   "Cell",
   "Flattened layout content",
@@ -265,6 +267,8 @@ async function manifestFor(
       "inline-code",
       "unicode-emoji",
       "custom-emoji-fallback",
+      "ordered-list-start",
+      "nested-list-restart",
       "table",
       "layout-degradation",
       "smart-link",
@@ -284,10 +288,24 @@ function assertRequiredText(format: string, actual: string, required: string[]):
   }
 }
 
+function assertOrderedListMarkers(format: string, actual: string): void {
+  for (const [ordinal, text] of [
+    [3, "Third item"],
+    [8, "Eighth nested item"],
+  ] as const) {
+    const markerAndText = new RegExp(`(?:^|\\n)\\s*${ordinal}\\.\\s+${text}(?:\\s|$)`);
+    if (!markerAndText.test(actual)) {
+      throw new Error(`${format} rendered golden is missing ordered-list marker ${ordinal}.`);
+    }
+  }
+}
+
 export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}): Promise<AdfRenderedGoldenResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "atlcli-adf-rendered-golden-"));
   try {
     const rendered = await renderCurrent(tempDir);
+    assertOrderedListMarkers("DOCX", rendered.docxText);
+    assertOrderedListMarkers("PDF", rendered.pdfText);
     await mkdir(ADF_RENDERED_GOLDEN_DIR, { recursive: true });
     if (options.update) {
       const manifest = await manifestFor(rendered.docxPages, rendered.pdfPages);

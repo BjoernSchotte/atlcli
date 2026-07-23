@@ -63,7 +63,7 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
-  it("maps mixed lists and task state and reports a non-1 ordered-list approximation", () => {
+  it("maps mixed lists, authored starts, and task state without degradation", () => {
     const result = adfToBlocks(doc([
       {
         type: "orderedList",
@@ -88,6 +88,7 @@ describe("adfToBlocks", () => {
     expect(result.blocks[0]).toMatchObject({
       type: "list",
       ordered: true,
+      start: 3,
       items: [{ content: [
         { type: "paragraph", content: [{ type: "text", text: "first" }] },
         { type: "list", ordered: false },
@@ -101,7 +102,20 @@ describe("adfToBlocks", () => {
         { checked: true, content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }] },
       ],
     });
-    expect(result.notes.map((note) => note.code)).toContain("adf-node-degraded");
+    expect(result.notes.map((note) => note.code)).not.toContain("adf-node-degraded");
+  });
+
+  it("preserves a zero start and bounds starts above the portable target maximum", () => {
+    const result = adfToBlocks(doc([
+      { type: "orderedList", attrs: { order: 0 }, content: [] },
+      { type: "orderedList", attrs: { order: 2_147_483_648 }, content: [] },
+    ]));
+    expect(result.blocks).toEqual([
+      { type: "list", ordered: true, start: 0, items: [] },
+      { type: "list", ordered: true, start: 2_147_483_647, items: [] },
+    ]);
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes[0]).toMatchObject({ code: "adf-node-degraded" });
   });
 
   it("maps every authored heading level H1 through H6", () => {

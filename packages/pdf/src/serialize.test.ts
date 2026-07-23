@@ -95,6 +95,44 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('exported-label: "July 16, 2026"');
   });
 
+  it("preserves independent ordered-list starts at every nesting level", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "list",
+        ordered: true,
+        start: 3,
+        items: [{
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "outer" }] },
+            {
+              type: "list",
+              ordered: true,
+              start: 8,
+              items: [{ content: [{ type: "paragraph", content: [{ type: "text", text: "inner" }] }] }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "list",
+        ordered: true,
+        start: 0,
+        items: [{ content: [{ type: "paragraph", content: [{ type: "text", text: "zero" }] }] }],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }),
+      { metadata },
+    );
+    expect(bundle.main).toContain("#enum(start: 3,");
+    expect(bundle.main).toContain("#enum(start: 8,");
+    expect(bundle.main).toContain("#enum(start: 0,");
+  });
+
   it("localizes the editorial cover and integrity-page export date", () => {
     const bundle = serializePdfDocument(
       { blocks: [], assets: [], notes: [] },

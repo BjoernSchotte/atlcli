@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "17ffbec3520a55b3af29909879b6fa9afc7faf6a68f482046721576aeb7cfe94",
+  "sourceSha256": "4bb72c1e142fedf90a208778fbfddea632ce3209971acef742b728ac44d0da29",
   "features": [
     "inline-code",
     "unicode-emoji",
     "custom-emoji-fallback",
+    "ordered-list-start",
+    "nested-list-restart",
     "table",
     "layout-degradation",
     "smart-link",
@@ -16,7 +18,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "be496a459d5d7486084766bcb9e45dcd112bbc7853f0efef3d48e8b2c5592676"
+          "sha256": "d0a48b913293d0b9d96a01b7f0e908d2bb1ef80d26d0898af5309e85bf4628ca"
         }
       ],
       "requiredText": [
@@ -25,6 +27,8 @@
         ":custom_party:",
         "Local card title",
         "ADF panel body",
+        "Third item",
+        "Eighth nested item",
         "Header",
         "Cell",
         "Flattened layout content",
@@ -47,7 +51,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "eacae2cde3a3e34feef4913c176cebb4d668605fb017dee1ad17479090fa3347"
+          "sha256": "c6223dec6aa643a97217855fd1fc3f0ad95f29672fa1018ca4908d3d2aec9021"
         },
         {
           "file": "pdf-page-4.png",
@@ -60,6 +64,8 @@
         ":custom_party:",
         "Local card title",
         "ADF panel body",
+        "Third item",
+        "Eighth nested item",
         "Header",
         "Cell",
         "Flattened layout content",

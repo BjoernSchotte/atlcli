@@ -39,6 +39,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -498,6 +499,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "list";
     ordered: boolean;
+    start?: number;
     items: Array<{
         content: PreparedPdfBlock[];
         checked?: boolean;
@@ -750,6 +752,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -1209,6 +1212,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "list";
     ordered: boolean;
+    start?: number;
     items: Array<{
         content: PreparedPdfBlock[];
         checked?: boolean;
@@ -1461,6 +1465,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -1920,6 +1925,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "list";
     ordered: boolean;
+    start?: number;
     items: Array<{
         content: PreparedPdfBlock[];
         checked?: boolean;

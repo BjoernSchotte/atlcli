@@ -273,11 +273,13 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     case "bulletList":
       return [{ type: "list", ordered: false, items: decodeListItems(node, ctx, path) }];
     case "orderedList": {
-      const order = numberAttr(node, "order");
-      if (order !== undefined && order !== 1) {
-        addNodeNote(ctx, path, node.type, `starts at ${order}; the neutral list model renders it from 1.`);
-      }
-      return [{ type: "list", ordered: true, items: decodeListItems(node, ctx, path) }];
+      const order = orderedListStart(node, ctx, path);
+      return [{
+        type: "list",
+        ordered: true,
+        items: decodeListItems(node, ctx, path),
+        ...(order !== 1 ? { start: order } : {}),
+      }];
     }
     case "listItem":
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
@@ -790,6 +792,21 @@ function numberArrayAttr(node: AdfNode, key: string): number[] {
 
 function numberInRange(value: AdfJsonValue | undefined, min: number, max: number, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
+function orderedListStart(node: AdfNode, ctx: DecodeContext, path: string): number {
+  const raw = node.attrs?.order;
+  if (raw === undefined) return 1;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+    addNodeNote(ctx, path, node.type, "has an invalid ordered-list start; the target default was used.");
+    return 1;
+  }
+  const maxPortableStart = 2_147_483_647;
+  if (raw > maxPortableStart) {
+    addNodeNote(ctx, path, node.type, `starts above ${maxPortableStart}; the portable target maximum was used.`);
+    return maxPortableStart;
+  }
+  return raw;
 }
 
 function positiveDimension(value: AdfJsonValue | undefined): number | undefined {

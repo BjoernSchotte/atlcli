@@ -117,7 +117,7 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   mediaSingle: "visible-fallback",
   mention: "native",
   nestedExpand: "approximation",
-  orderedList: "approximation",
+  orderedList: "native",
   panel: "approximation",
   paragraph: "native",
   placeholder: "visible-fallback",

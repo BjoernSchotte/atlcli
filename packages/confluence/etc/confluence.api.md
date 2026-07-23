@@ -62,7 +62,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly mediaSingle: "visible-fallback";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
-    readonly orderedList: "approximation";
+    readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
     readonly placeholder: "visible-fallback";
@@ -1047,6 +1047,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -2135,7 +2136,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly mediaSingle: "visible-fallback";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
-    readonly orderedList: "approximation";
+    readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
     readonly placeholder: "visible-fallback";
@@ -3120,6 +3121,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -4208,7 +4210,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly mediaSingle: "visible-fallback";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
-    readonly orderedList: "approximation";
+    readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
     readonly placeholder: "visible-fallback";
@@ -5193,6 +5195,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -7171,6 +7174,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];
@@ -8825,7 +8829,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly mediaSingle: "visible-fallback";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
-    readonly orderedList: "approximation";
+    readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
     readonly placeholder: "visible-fallback";
@@ -9810,6 +9814,7 @@ export type ExportBlock = {
     type: "list";
     ordered: boolean;
     items: ListItem[];
+    start?: number;
 } | {
     type: "table";
     rows: TableRow[];

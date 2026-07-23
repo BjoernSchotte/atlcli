@@ -148,22 +148,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -446,22 +447,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -748,22 +750,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -1526,22 +1529,23 @@ export declare function normalizeColor(color: string): string;
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -2001,22 +2005,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase

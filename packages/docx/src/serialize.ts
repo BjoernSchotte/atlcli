@@ -787,14 +787,16 @@ function listIndent(ilvl: number): number {
 
 /**
  * Serialize one list NODE. `listLevel` is the SEMANTIC nesting depth (drives
- * `w:ilvl` and one `numId` acquisition per node); `depth` is the generic
- * container depth threaded to child blocks for their own recursion limits.
+ * bullet `w:ilvl`, ordered-list definition indent/format, and one `numId`
+ * acquisition per node); `depth` is the generic container depth threaded to
+ * child blocks for their own recursion limits.
  *
- * `ctx.numbering.acquire(list.ordered)` runs once per node, lazily (only when a
+ * `ctx.numbering.acquire(list.ordered, list.start, listLevel)` runs once per node, lazily (only when a
  * non-task item actually needs a `numId`) — so a nested `<ol>` inside a `<ul>`,
  * or a second logically-separate `<ol>` at the same position, each gets its own
- * type-correct `numId`. Bullets share one instance; every ordered node
- * restarts at 1 via its own instance.
+ * type-correct `numId`. Bullets share one multilevel instance; every ordered
+ * node restarts at its authored value through a self-contained single-level
+ * definition and therefore references `w:ilvl=0`.
  */
 async function serializeList(
   list: Extract<ExportBlock, { type: "list" }>,
@@ -811,7 +813,8 @@ async function serializeList(
     });
   }
   let numId: number | undefined;
-  const acquire = (): number => (numId ??= ctx.numbering.acquire(list.ordered));
+  const acquire = (): number =>
+    (numId ??= ctx.numbering.acquire(list.ordered, list.start ?? 1, Math.min(listLevel, MAX_ILVL)));
   let out = "";
   for (const item of list.items) {
     out += await serializeListItem(item, list.ordered, listLevel, depth, acquire, ctx, notes);
@@ -829,6 +832,7 @@ async function serializeListItem(
   notes: ExportNote[]
 ): Promise<string> {
   const ilvl = Math.min(listLevel, MAX_ILVL);
+  const numberingIlvl = ordered ? 0 : ilvl;
   const isTask = item.checked !== undefined;
   const styleId = resolveListStyleId(ctx.styleNames, ordered, ilvl);
   const contIndent = `<w:ind w:left="${listIndent(ilvl)}"/>`;
@@ -852,7 +856,7 @@ async function serializeListItem(
       } else {
         // Numbered/bulleted: real w:numPr, no literal marker, indent from
         // the numbering definition.
-        const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+        const numPr = `<w:numPr><w:ilvl w:val="${numberingIlvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
         out += applyFirstListProps(frag, styleId, numPr, undefined);
       }
     } else {
@@ -869,7 +873,7 @@ async function serializeListItem(
         extraPPr: contIndent,
       });
     } else {
-      const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+      const numPr = `<w:numPr><w:ilvl w:val="${numberingIlvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
       out += paragraph(run(""), { styleId, extraPPr: numPr });
     }
   }

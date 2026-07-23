@@ -17,6 +17,12 @@ const list = (ordered: boolean, ...items: ExportBlock[][]): ExportBlock => ({
   ordered,
   items: items.map((content) => ({ content })),
 });
+const orderedFrom = (start: number, ...items: ExportBlock[][]): ExportBlock => ({
+  type: "list",
+  ordered: true,
+  start,
+  items: items.map((content) => ({ content })),
+});
 const p = (text: string): ExportBlock => ({ type: "paragraph", content: [{ type: "text", text }] });
 
 const numIdsOf = (xml: string) => [...xml.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
@@ -40,19 +46,44 @@ describe("NumberingAllocator", () => {
     expect(a.acquire(true)).toBe(11);
   });
 
-  it("emits one bullet + one decimal abstractNum, and a num per ordered node with a startOverride", () => {
+  it("emits one bullet abstract plus one self-contained abstract/num per ordered node", () => {
     const a = new NumberingAllocator({ abstractNumId: 0, numId: 0 });
     a.acquire(false);
     a.acquire(true);
     a.acquire(true);
     const { abstractNums, nums } = a.toXml();
-    expect((abstractNums.match(/<w:abstractNum\b/g) ?? []).length).toBe(2);
+    expect((abstractNums.match(/<w:abstractNum\b/g) ?? []).length).toBe(3);
     expect(abstractNums).toContain('<w:numFmt w:val="bullet"/>');
     expect(abstractNums).toContain('<w:numFmt w:val="decimal"/>');
-    // Nine levels per abstractNum.
-    expect((abstractNums.match(/<w:lvl w:ilvl=/g) ?? []).length).toBe(18);
-    // Two ordered num instances, both restart at 1.
-    expect((nums.match(/<w:startOverride w:val="1"\/>/g) ?? []).length).toBe(2);
+    // Nine shared bullet levels plus one level for each ordered node.
+    expect((abstractNums.match(/<w:lvl w:ilvl=/g) ?? []).length).toBe(11);
+    expect((abstractNums.match(/<w:multiLevelType w:val="singleLevel"\/>/g) ?? []).length).toBe(2);
+    expect((abstractNums.match(/<w:start w:val="1"\/>/g) ?? []).length).toBe(11);
+    expect(nums).not.toContain("<w:lvlOverride");
+    expect((nums.match(/<w:num w:numId=/g) ?? []).length).toBe(3);
+  });
+
+  it("binds each ordered start and visual nesting to its own single-level definition", () => {
+    const a = new NumberingAllocator({ abstractNumId: 0, numId: 0 });
+    a.acquire(true, 4, 0);
+    a.acquire(true, 7, 2);
+    const { abstractNums, nums } = a.toXml();
+    expect(abstractNums).toContain(
+      '<w:start w:val="4"/><w:numFmt w:val="decimal"/><w:pStyle w:val="ListParagraph"/><w:lvlText w:val="%1."/>',
+    );
+    expect(abstractNums).toContain(
+      '<w:start w:val="7"/><w:numFmt w:val="decimal"/><w:pStyle w:val="ListParagraph"/><w:lvlText w:val="%1."/>',
+    );
+    expect(abstractNums).toContain('<w:ind w:left="720" w:hanging="360"/>');
+    expect(abstractNums).toContain('<w:ind w:left="2160" w:hanging="360"/>');
+    expect(nums).toContain('<w:num w:numId="1"><w:abstractNumId w:val="2"/></w:num>');
+    expect(nums).toContain('<w:num w:numId="2"><w:abstractNumId w:val="3"/></w:num>');
+  });
+
+  it("preserves the schema-defined zero start in native numbering", () => {
+    const a = new NumberingAllocator({ abstractNumId: 0, numId: 0 });
+    a.acquire(true, 0, 0);
+    expect(a.toXml().abstractNums).toContain('<w:start w:val="0"/><w:numFmt w:val="decimal"/>');
   });
 
   it("stops allocating at the 2047-instance cap and flips capExceeded (reuse, not invalid file)", () => {
@@ -79,12 +110,18 @@ describe("serializeBlocks — native numbering (spec 006 G2)", () => {
   it.each([
     ["<ul><ol>", false, true],
     ["<ol><ul>", true, false],
-  ] as const)("mixed nesting %s gives the nested node its own type-correct numId + ilvl 1", async (_l, outer, inner) => {
+  ] as const)("mixed nesting %s gives the nested node its own type-correct numId", async (_l, outer, inner) => {
     const blocks = [list(outer, [p("top"), list(inner, [p("child")])])];
-    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    const numbering = new NumberingAllocator({ abstractNumId: 0, numId: 0 });
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles, numbering });
     const ids = numIdsOf(xml);
     expect(new Set(ids).size).toBe(2); // parent + nested are distinct
-    expect(ilvlsOf(xml)).toEqual(expect.arrayContaining(["0", "1"]));
+    if (inner) {
+      expect(ilvlsOf(xml)).toEqual(["0", "0"]);
+      expect(numbering.toXml().abstractNums).toContain('<w:ind w:left="1440" w:hanging="360"/>');
+    } else {
+      expect(ilvlsOf(xml)).toEqual(expect.arrayContaining(["0", "1"]));
+    }
   });
 
   it("two logically separate nested <ol>s at the same depth each restart with a distinct numId", async () => {
@@ -96,6 +133,25 @@ describe("serializeBlocks — native numbering (spec 006 G2)", () => {
     const ids = numIdsOf(xml);
     const nested = ids.filter((id) => id !== ids[0]);
     expect(new Set(nested).size).toBe(2);
+  });
+
+  it("preserves independent top-level and nested ordered-list starts", async () => {
+    const numbering = new NumberingAllocator({ abstractNumId: 0, numId: 0 });
+    await serializeBlocks(
+      [orderedFrom(3, [p("outer"), orderedFrom(8, [p("inner")])])],
+      { styleNames: noStyles, numbering },
+    );
+    const { abstractNums, nums } = numbering.toXml();
+    expect(abstractNums).toContain(
+      '<w:start w:val="3"/><w:numFmt w:val="decimal"/><w:pStyle w:val="ListParagraph"/><w:lvlText w:val="%1."/>',
+    );
+    expect(abstractNums).toContain(
+      '<w:start w:val="8"/><w:numFmt w:val="decimal"/><w:pStyle w:val="ListParagraph"/><w:lvlText w:val="%1."/>',
+    );
+    expect(abstractNums).toContain('<w:ind w:left="720" w:hanging="360"/>');
+    expect(abstractNums).toContain('<w:ind w:left="1440" w:hanging="360"/>');
+    expect(nums).toContain('<w:num w:numId="1"><w:abstractNumId w:val="2"/></w:num>');
+    expect(nums).toContain('<w:num w:numId="2"><w:abstractNumId w:val="3"/></w:num>');
   });
 
   it("a list first inside a callout starts at ilvl 0 (unaffected by container depth)", async () => {

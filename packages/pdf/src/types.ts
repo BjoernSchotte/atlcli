@@ -62,7 +62,7 @@ export type PreparedPdfBlock =
    */
   | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
   | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
-  | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
+  | { type: "list"; ordered: boolean; start?: number; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
   | {
       type: "table";
       rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;

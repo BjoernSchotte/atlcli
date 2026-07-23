@@ -82,8 +82,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function positiveInteger(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) > 0;
+function nonnegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
 }
 
 function mergeBudget(overrides?: Partial<AdfParseBudget>): AdfParseBudget {
@@ -136,8 +136,8 @@ function validateKnownNodeShape(
       throw new AdfValidationError("invalid-attributes", "ADF heading level must be 1..6.", `${path}.attrs.level`);
     }
   }
-  if (type === "orderedList" && attrs?.order !== undefined && !positiveInteger(attrs.order)) {
-    throw new AdfValidationError("invalid-attributes", "ADF ordered-list order must be positive.", `${path}.attrs.order`);
+  if (type === "orderedList" && attrs?.order !== undefined && !nonnegativeInteger(attrs.order)) {
+    throw new AdfValidationError("invalid-attributes", "ADF ordered-list order must be non-negative.", `${path}.attrs.order`);
   }
   if (type === "taskItem" || type === "blockTaskItem") {
     if (attrs?.state !== "TODO" && attrs?.state !== "DONE") {

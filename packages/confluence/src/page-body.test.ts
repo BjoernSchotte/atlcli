@@ -47,20 +47,12 @@ describe("pageBodyToBlocks", () => {
     expect(JSON.stringify(adf.blocks)).toContain('"checked":false');
     expect(JSON.stringify(adf.blocks)).toContain('"backgroundColor":"#AABBCC"');
     expect(JSON.stringify(adf.blocks)).toContain('"type":"status"');
-
-    const intentionalDifferences = [{
-      gap: "orderedList.order",
-      gapAnalysisRow: "Complete ADF node matrix / Lists, tasks, and decisions / orderedList",
-      adfCode: "adf-node-degraded" as const,
-      reason: "Both adapters render from 1; only direct ADF observes and reports the authored non-1 start.",
-    }];
-    expect(adf.notes.map((note) => note.code)).toEqual(intentionalDifferences.map((entry) => entry.adfCode));
-    expect(adf.notes[0]?.source).toMatchObject({
-      pageId: "page-7",
-      pageTitle: "Synthetic pair",
-      pageUrl: "https://example.invalid/page",
-      blockPath: "blocks[4]",
+    expect(adf.blocks.find((block) => block.type === "list" && block.ordered)).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 3,
     });
+    expect(adf.notes).toEqual([]);
     expect(storage.notes).toEqual([]);
   });
 

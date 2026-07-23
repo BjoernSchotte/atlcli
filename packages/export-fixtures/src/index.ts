@@ -151,6 +151,24 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],
     },
     {
+      type: "orderedList",
+      attrs: { order: 3 },
+      content: [{
+        type: "listItem",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Third item" }] },
+          {
+            type: "orderedList",
+            attrs: { order: 8 },
+            content: [{
+              type: "listItem",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Eighth nested item" }] }],
+            }],
+          },
+        ],
+      }],
+    },
+    {
       type: "table",
       content: [{
         type: "tableRow",

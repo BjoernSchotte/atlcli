@@ -25,6 +25,14 @@ describe("buildDocx date pinning", () => {
 });
 
 describe("buildDocx story relationships", () => {
+  it("attaches the styles part consumed by every generated document", () => {
+    const bytes = buildDocx({ body: para("body") });
+    const relationships = readPart(bytes, "word/_rels/document.xml.rels");
+    expect(relationships).toContain('Id="rIdStyles"');
+    expect(relationships).toContain("relationships/styles");
+    expect(relationships).toContain('Target="styles.xml"');
+  });
+
   it("attaches header and footer parts to the document section", () => {
     const bytes = buildDocx({
       body: para("body"),

@@ -46,6 +46,14 @@ describe("validateAdf", () => {
     expect(errorCode(() => validateAdf(doc([{ type: "text", text: "x", marks: [{ type: "subsup", attrs: { type: "sideways" } }] }])))).toBe("invalid-attributes");
   });
 
+  test("accepts the schema-defined zero ordered-list start and rejects negative or fractional starts", () => {
+    expect(() => validateAdf(doc([{ type: "orderedList", attrs: { order: 0 }, content: [] }]))).not.toThrow();
+    expect(errorCode(() => validateAdf(doc([{ type: "orderedList", attrs: { order: -1 }, content: [] }]))))
+      .toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{ type: "orderedList", attrs: { order: 1.5 }, content: [] }]))))
+      .toBe("invalid-attributes");
+  });
+
   test("checks UTF-8 input bytes before parsing", () => {
     const raw = JSON.stringify(doc([{ type: "text", text: "🙂" }]));
     expect(errorCode(() => validateAdf(raw, { budget: { maxInputBytes: raw.length } })))

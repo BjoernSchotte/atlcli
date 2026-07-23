@@ -1005,6 +1005,8 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 
 Completed follow-on evidence recorded on 2026-07-23: inline code now has deterministic DOCX run shading and a theme-colored PDF inline chip with bounded inset/radius. Exact synthetic underscore tokens remain unchanged, explicit DOCX source shading wins over the default, and block-code styling remains separate. Focused DOCX/PDF semantic tests passed. The ADF feature zoo was regenerated through the real DOCX/LibreOffice and Typst/PDF/Poppler stacks; one DOCX page and all four PDF pages were visually inspected without clipping, overlap, broken wrapping or missing glyphs. PDF uses the bundled mono font; embedding or otherwise guaranteeing the DOCX mono font remains an explicit residual gap.
 
+Completed follow-on evidence recorded on 2026-07-23: ordered-list starts now survive both ADF `order` and Storage `<ol start>` in the shared neutral model. DOCX allocates a self-contained single-level numbering definition per ordered-list node, with its authored start and nesting indent; PDF emits the native Typst `enum(start:)` contract. Focused tests cover top-level and nested non-default starts, ADF/Storage differential equality, and default restart behavior. The rendered-golden gate extracts both outputs and requires the visible `3.` and nested `8.` markers, preventing a structurally valid but visually missing-number regression.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. emoji/custom-emoji assets and a guaranteed DOCX mono font;

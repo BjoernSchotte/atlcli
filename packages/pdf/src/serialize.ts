@@ -993,7 +993,11 @@ function serializeBlock(
         const checked = item.checked === true ? "true" : "false";
         return `[#task-item(${checked})[${content}]]`;
       });
-      const options = isTaskList ? `marker: none, body-indent: ${writer.design.tokens.layout.taskListBodyIndent}, ` : "";
+      const options = isTaskList
+        ? `marker: none, body-indent: ${writer.design.tokens.layout.taskListBodyIndent}, `
+        : block.ordered && block.start !== undefined
+          ? `start: ${block.start}, `
+          : "";
       value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
       break;
     }

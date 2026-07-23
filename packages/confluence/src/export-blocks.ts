@@ -224,7 +224,13 @@ export type ExportBlock =
   | { type: "paragraph"; content: InlineNode[] }
   | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
-  | { type: "list"; ordered: boolean; items: ListItem[] }
+  | {
+      type: "list";
+      ordered: boolean;
+      items: ListItem[];
+      /** First visible ordinal for an ordered list. Omitted means the target default (1). */
+      start?: number;
+    }
   | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
   | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
   | { type: "blockquote"; content: ExportBlock[] }
@@ -1410,7 +1416,14 @@ function walkList(el: XmlElement, ctx: WalkCtx): ExportBlock {
   for (const li of childrenByName(el, "li")) {
     items.push({ content: walkBlocks(li.children, ctx) });
   }
-  return { type: "list", ordered, items };
+  const rawStart = ordered ? el.attrs.start?.trim() : undefined;
+  const parsedStart = rawStart !== undefined && /^\d+$/u.test(rawStart)
+    ? Number.parseInt(rawStart, 10)
+    : undefined;
+  const start = parsedStart !== undefined && Number.isSafeInteger(parsedStart) && parsedStart <= 2_147_483_647
+    ? parsedStart
+    : undefined;
+  return { type: "list", ordered, items, ...(start !== undefined && start !== 1 ? { start } : {}) };
 }
 
 function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {

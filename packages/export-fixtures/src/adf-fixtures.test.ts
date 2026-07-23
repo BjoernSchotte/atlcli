@@ -15,6 +15,7 @@ describe("ADF browser conformance fixture", () => {
       "heading",
       "paragraph",
       "callout",
+      "list",
       "table",
       "paragraph",
       "callout",
@@ -22,6 +23,15 @@ describe("ADF browser conformance fixture", () => {
       "paragraph",
       "paragraph",
     ]);
+    expect(pdf.blocks[3]).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 3,
+      items: [{ content: [
+        { type: "paragraph" },
+        { type: "list", ordered: true, start: 8 },
+      ] }],
+    });
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
   });
 });

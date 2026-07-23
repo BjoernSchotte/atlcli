@@ -270,6 +270,15 @@ describe("storageToBlocks — lists", () => {
     expect((blocks("<ol><li>a</li></ol>")[0] as { ordered: boolean }).ordered).toBe(true);
   });
 
+  test("ordered lists retain a non-default authored start", () => {
+    expect(blocks('<ol start="0"><li>a</li></ol>')[0]).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 0,
+    });
+    expect(blocks('<ol start="-1"><li>a</li></ol>')[0]).not.toHaveProperty("start");
+  });
+
   test("nested list nests inside the item", () => {
     const out = blocks("<ul><li>top<ul><li>child</li></ul></li></ul>");
     const item = (out[0] as { items: { content: ExportBlock[] }[] }).items[0];
