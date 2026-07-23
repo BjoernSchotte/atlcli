@@ -24,8 +24,7 @@ describe("ordinary CLI job source wiring", () => {
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");
-    expect(ordinary).toContain('stage: "compose"');
-    expect(ordinary).not.toContain('stage: "fetch"');
+    expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");
     expect(ordinary).not.toContain("resolveScope(args");
   });
@@ -47,8 +46,7 @@ describe("ordinary CLI job source wiring", () => {
     expect(ordinary).toContain("createConfluenceSourcePlanSpoolV1(context)");
     expect(ordinary).toContain("createExportTreeBodySpoolV1(context, request.idempotencyKey)");
     expect(ordinary).toContain("resolved.chapterAnchorById,\n          context.signal,");
-    expect(ordinary).toContain('stage: "compose"');
-    expect(ordinary).not.toContain('stage: "fetch"');
+    expect(ordinary).toContain('stage: "fetch"');
     expect(ordinary).toContain("resolveInput,");
     expect(ordinary).not.toContain("pdfModule.resolveScope(");
     expect(replay).toContain("exportSourcePolicyFromFlag(");

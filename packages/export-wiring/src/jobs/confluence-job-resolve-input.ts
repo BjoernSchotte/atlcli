@@ -21,7 +21,7 @@ import type { ConfluenceSourcePlanStoreV1 } from "./confluence-source-plan-check
 
 type SharedSourceOptionsV1 = Pick<
   ResolveConfluenceSourceOptionsV1,
-  "bodyOptions" | "resolveExternalUrl"
+  "bodyOptions" | "resolveExternalUrl" | "classifyError"
 > & {
   port: ConfluenceSourceResolverPortV1;
   onProgress?: (
@@ -131,6 +131,7 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
     signal: context.signal,
     ...(options.bodyOptions ? { bodyOptions: options.bodyOptions } : {}),
     ...(options.resolveExternalUrl ? { resolveExternalUrl: options.resolveExternalUrl } : {}),
+    ...(options.classifyError ? { classifyError: options.classifyError } : {}),
     ...(options.createBodyStore
       ? { bodyStore: options.createBodyStore(request, context) }
       : {}),
@@ -142,6 +143,9 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
             requestKey: request.idempotencyKey,
             sourcePolicyKey: sourcePlan.sourcePolicyKey,
             leaseEpoch: context.leaseEpoch,
+            ...(context.checkpointRef
+              ? { recoveryHeadRef: context.checkpointRef }
+              : {}),
             store: sourcePlan.store,
             publishCheckpointRef: (ref: string) => context.checkpoint(ref),
           },

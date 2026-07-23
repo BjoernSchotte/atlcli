@@ -68,6 +68,9 @@ export declare class ConfluenceInputPreparationError extends Error {
     constructor();
 }
 
+// export: ConfluenceSourceFailureKindV1
+export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+
 // export: ConfluenceSourceProgressV1
 export interface ConfluenceSourceProgressV1 {
     fetched: number;
@@ -83,7 +86,8 @@ export interface ConfluenceSourceReadContextV1 {
 // export: ConfluenceSourceResolutionError
 export declare class ConfluenceSourceResolutionError extends Error {
     readonly code: "confluence-source-resolution-failed";
-    constructor();
+    readonly sourceFailureKind: ConfluenceSourceFailureKindV1;
+    constructor(sourceFailureKind?: ConfluenceSourceFailureKindV1);
 }
 
 // export: confluenceSourceResolverPortFromClientV1
@@ -351,6 +355,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
     bodyStore?: ExportTreeBodyStoreV1;
@@ -514,10 +519,14 @@ export declare class ConfluenceInputPreparationError extends Error {
     constructor();
 }
 
+// export: ConfluenceSourceFailureKindV1
+export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+
 // export: ConfluenceSourcePlanCheckpointOptionsV1
 export interface ConfluenceSourcePlanCheckpointOptionsV1 extends ConfluenceSourcePlanIdentityV1 {
     leaseEpoch: number;
     store: ConfluenceSourcePlanStoreV1;
+    recoveryHeadRef?: string;
     publishCheckpointRef(ref: string, context: {
         signal: AbortSignal;
     }): Promise<void>;
@@ -568,7 +577,8 @@ export interface ConfluenceSourceReadContextV1 {
 // export: ConfluenceSourceResolutionError
 export declare class ConfluenceSourceResolutionError extends Error {
     readonly code: "confluence-source-resolution-failed";
-    constructor();
+    readonly sourceFailureKind: ConfluenceSourceFailureKindV1;
+    constructor(sourceFailureKind?: ConfluenceSourceFailureKindV1);
 }
 
 // export: confluenceSourceResolverPortFromClientV1
@@ -1029,6 +1039,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
     bodyStore?: ExportTreeBodyStoreV1;

@@ -795,7 +795,7 @@ Executor-adapter evidence recorded on 2026-07-23: format-specific factories now 
 
 Pre-body tree-plan evidence recorded on 2026-07-23: `fetchExportTree()` now exposes a validated, browser-safe `atlcli.export-tree-plan/1` snapshot after traversal and label filtering but before its first ADF/Storage body read. The bounded plan contains only scope, ordering, identifiers/titles, version pins and diagnostics; it rejects foreign scopes/roots, policy mismatches, invalid nodes/notes, count-limit violations and a configurable serialized-byte budget before body IO. A recovered plan skips homepage, child, page-version and label discovery, fetches only its planned bodies and fails through the existing completeness contract when a body no longer matches its pin. Durable planning refuses the legacy body-reading label fallback when no metadata-only label port exists, so the pre-body checkpoint boundary cannot be bypassed. Focused plan/tree/API tests, full typecheck, production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed; the complete repository suite passed with 4,863 tests, 15 intentional skips and zero failures. An anonymized read-only live plan/recovery comparison produced semantically equal ADF-primary nodes, a body-free plan and zero discovery calls on recovery. The production hosts now persist and recover this plan through the claimed job's fenced spool.
 
-Persisted source-plan evidence recorded on 2026-07-23: the shared PDF and TypeScript-DOCX `resolveInput()` adapters now bind a host-owned source-plan store to the claimed job ID, request idempotency key, representation-policy identity and fenced lease epoch. A fresh lease atomically commits and publishes the opaque body-free plan ref before its first page body read; a later lease validates the stored identity, scope, policy, root and plan limits before republishing the same ref and reading only the version-pinned bodies. Recovery no longer repeats content-key, homepage, child, label or page-version discovery, including when the durable locator omitted an explicit version. Cancellation after store commit stops before publication or body IO, and malformed/foreign checkpoints fail through the sanitized source boundary. Executor-level loss-before-ready tests pass for both formats and prove a single discovery snapshot, no prepared checkpoint on the failed attempt, no raw ADF/Storage in the source plan, and successful second-lease rendering from the original pins. The focused 54-test recovery set, full typecheck, 16-task production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed. An anonymized read-only live run produced equal PDF/DOCX blocks and notes, equal fresh/recovered results, complete outputs, body-free checkpoints and zero recovery discovery reads. Production job creation/claim ordering and extension activity routing are now covered by the integrated host evidence below.
+Persisted source-plan evidence recorded on 2026-07-23: the shared PDF and TypeScript-DOCX `resolveInput()` adapters now bind a host-owned source-plan store to the claimed job ID, request idempotency key, representation-policy identity and fenced lease epoch. A fresh lease atomically commits and publishes the opaque body-free plan ref before its first page body read; a later lease validates the stored identity, scope, policy, root and plan limits before reading only the version-pinned bodies. Recovery republishes the plan ref only when it is still the durable head; a later tree-body or asset head is preserved so the cursor never moves backwards. Recovery no longer repeats content-key, homepage, child, label or page-version discovery, including when the durable locator omitted an explicit version. Cancellation after store commit stops before publication or body IO, and malformed/foreign checkpoints fail through the sanitized source boundary. Executor-level loss-before-ready tests pass for both formats and prove a single discovery snapshot, no prepared checkpoint on the failed attempt, no raw ADF/Storage in the source plan, and successful second-lease rendering from the original pins. The focused 54-test recovery set, full typecheck, 16-task production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed. An anonymized read-only live run produced equal PDF/DOCX blocks and notes, equal fresh/recovered results, complete outputs, body-free checkpoints and zero recovery discovery reads. Production job creation/claim ordering and extension activity routing are now covered by the integrated host evidence below.
 
 Packed ADF job-parity evidence recorded on 2026-07-23: the browser conformance case now starts with the committed raw ADF fixture, resolves it once through the shared direct source boundary and independently through each format-specific job adapter, and fails unless blocks, degradation notes, completeness, root/page metadata and aggregate source diagnostics are identical. The resulting direct and background PDF bytes and stable report projection are exact matches; the DOCX comparison requires the same decompressed part set, byte-identical part content and the same stable report projection while explicitly allowing this unresolved-media fixture to remain media-free. The reusable PDF/DOCX parity harnesses retain their stronger real-media default for their existing fixtures. Browser-harness typecheck, 74 focused unit tests, production build/output policy, the 15-case manifest guard and the complete packed Chromium conformance run passed without foreign requests or console/page errors.
 
@@ -822,7 +822,7 @@ that a submitted PDF completes after the submitting extension surface
 navigates away, another tab becomes active, and the surface closes.
 
 Final merge validation recorded on 2026-07-23: source progress now remains
-inside the executor's monotonic `compose` stage and the shared resolver awaits
+inside the executor's monotonic `fetch` stage and the shared resolver awaits
 every durable progress write before host preparation or a later checkpoint can
 advance. A dedicated delayed-write regression proves that ordering instead of
 relying on host timing. The focused resolver/CLI/extension slice passed all 35
@@ -831,6 +831,24 @@ zero reachable gaps, and the complete repository suite passed with 5,279
 tests, 15 intentional skips, and zero failures across 350 files. The packed
 Chromium navigation/tab-change/surface-close proof also passed again against
 the merged production background runtime.
+
+Post-merge recovery hardening recorded on 2026-07-23: the executor's initial
+source-resolution update and every host aggregate update share the `fetch`
+stage, while renderer preparation begins later in `compose`; no stage-local
+counter can therefore decrease when a recovered tree completes. Sanitized
+source failures now retain only a closed, content-free authentication
+classification, allowing the runtime to enter its explicit resumable
+`waiting` state without persisting the underlying client message or cause.
+Source-plan recovery preserves a newer tree-body or asset checkpoint head
+instead of republishing an older plan ref, so committed normalized pages and
+assets are not fetched again. Sixty-six focused resolver, executor, CLI, and
+extension tests; the 15-test API/closure and spool-recovery gate; full
+typecheck; the 16-task production build; and all 22 packed Chromium recovery
+cases pass. The packed cases include ordered tree continuation without a root
+refetch, asset continuation without a committed-byte refetch, explicit
+authentication resume, and automatic reclaim after a complete persistent
+browser restart. The complete repository suite remains at 5,279 passing,
+15 intentional skips, and zero failures across 350 files.
 
 Current sequencing status (2026-07-23): the former background-runtime
 dependency is integrated. WP8 is closed; the remaining open coverage rows are

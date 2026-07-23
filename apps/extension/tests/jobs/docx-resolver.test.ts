@@ -239,7 +239,7 @@ describe("extension DOCX durable input resolver", () => {
       captionLang: "de-DE",
     });
     expect(progress).toEqual([{
-      stage: "compose",
+      stage: "fetch",
       done: 1,
       total: 2,
       detail: "Guide",

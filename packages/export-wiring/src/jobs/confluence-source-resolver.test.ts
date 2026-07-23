@@ -243,6 +243,7 @@ describe("resolveConfluenceSourceV1", () => {
         requestKey: "request",
         sourcePolicyKey: "adf-primary:v1",
         leaseEpoch: 2,
+        recoveryHeadRef: "asset-checkpoint:latest",
         store,
         async publishCheckpointRef(ref) {
           expect(ref).toBe("source-plan:checkpoint");
@@ -256,7 +257,6 @@ describe("resolveConfluenceSourceV1", () => {
     ]);
     expect(recoveryCalls).toEqual([
       "createTreeSource",
-      "publish:2",
       "getPage",
     ]);
     expect(store.persisted?.checkpoint.committedLeaseEpoch).toBe(1);
@@ -388,8 +388,11 @@ describe("resolveConfluenceSourceV1", () => {
         },
       }),
       signal: new AbortController().signal,
+      classifyError: () => "authentication",
     }).catch((caught: unknown) => caught);
     expect(failure).toBeInstanceOf(ConfluenceSourceResolutionError);
+    expect((failure as ConfluenceSourceResolutionError).sourceFailureKind)
+      .toBe("authentication");
     expect(JSON.stringify(failure)).not.toContain("CONFIDENTIAL");
     expect(String(failure)).not.toContain("CONFIDENTIAL");
   });

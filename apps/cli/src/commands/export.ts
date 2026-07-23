@@ -1052,7 +1052,7 @@ async function exportDocxAsOrdinaryJob(
         createExportTreeBodySpoolV1(context, request.idempotencyKey),
       onProgress: (_request, context, progress) => {
         return context.updateProgress({
-          stage: "compose",
+          stage: "fetch",
           done: progress.fetched,
           total: progress.total,
           updatedAt: Date.now(),

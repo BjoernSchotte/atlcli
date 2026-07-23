@@ -237,7 +237,7 @@ describe("extension PDF durable input resolver", () => {
       "2023-11-14T22:13:20.000Z",
     );
     expect(progress).toEqual([{
-      stage: "compose",
+      stage: "fetch",
       done: 1,
       total: 1,
       detail: "Guide",

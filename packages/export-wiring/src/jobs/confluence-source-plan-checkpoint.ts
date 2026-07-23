@@ -51,6 +51,11 @@ export interface ConfluenceSourcePlanCheckpointOptionsV1
   extends ConfluenceSourcePlanIdentityV1 {
   leaseEpoch: number;
   store: ConfluenceSourcePlanStoreV1;
+  /**
+   * Latest durable checkpoint at claim time. If it points past the source
+   * plan, recovery must not move the job cursor backwards to the plan ref.
+   */
+  recoveryHeadRef?: string;
   /** Fence and publish the opaque ref before any source body read. */
   publishCheckpointRef(
     ref: string,
@@ -85,6 +90,7 @@ export function validateConfluenceSourcePlanCheckpointOptionsV1(
     !nonEmpty(options.requestKey) ||
     !nonEmpty(options.sourcePolicyKey) ||
     !positiveVersion(options.leaseEpoch) ||
+    (options.recoveryHeadRef !== undefined && !nonEmpty(options.recoveryHeadRef)) ||
     !options.store ||
     typeof options.store.load !== "function" ||
     typeof options.store.commit !== "function" ||

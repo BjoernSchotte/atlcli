@@ -96,12 +96,16 @@ export interface ResolveConfluenceSourceOptionsV1 {
   resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
   /** Job-safe aggregate progress; page titles and body data are excluded. */
   onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+  /** Classify a host error without retaining its message or original cause. */
+  classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
   bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
   /** Optional durable pre-body plan owned by the claimed export-job host. */
   sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
   /** Optional durable normalized-body spool owned by the claimed job host. */
   bodyStore?: ExportTreeBodyStoreV1;
 }
+
+export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
 
 export interface ConfluenceSourceProgressV1 {
   fetched: number;
@@ -154,10 +158,12 @@ export class ConfluenceSourceVersionMismatchError extends Error {
 /** Stable, body-free boundary error suitable for durable job summaries. */
 export class ConfluenceSourceResolutionError extends Error {
   readonly code = "confluence-source-resolution-failed" as const;
+  readonly sourceFailureKind: ConfluenceSourceFailureKindV1;
 
-  constructor() {
+  constructor(sourceFailureKind: ConfluenceSourceFailureKindV1 = "unknown") {
     super("The Confluence export source could not be resolved.");
     this.name = "ConfluenceSourceResolutionError";
+    this.sourceFailureKind = sourceFailureKind;
   }
 }
 
@@ -385,10 +391,16 @@ async function resolveConfluenceSourceUnsafeV1(
       ? {
           preparedPlan: persistedPlan.checkpoint.plan,
           onPlanRecovered: async () => {
-            await options.sourcePlanCheckpoint!.publishCheckpointRef(
-              persistedPlan!.ref,
-              { signal: options.signal },
-            );
+            const checkpointOptions = options.sourcePlanCheckpoint!;
+            if (
+              checkpointOptions.recoveryHeadRef === undefined
+              || checkpointOptions.recoveryHeadRef === persistedPlan!.ref
+            ) {
+              await checkpointOptions.publishCheckpointRef(
+                persistedPlan!.ref,
+                { signal: options.signal },
+              );
+            }
             throwIfAborted(options.signal);
           },
         }
@@ -518,6 +530,8 @@ export async function resolveConfluenceSourceV1(
     // The underlying error remains intentionally outside this durable-facing
     // value. Client/parser messages can contain titles, URLs, or source
     // fragments and must not become a persisted job error summary.
-    throw new ConfluenceSourceResolutionError();
+    throw new ConfluenceSourceResolutionError(
+      options.classifyError?.(error) ?? "unknown",
+    );
   }
 }

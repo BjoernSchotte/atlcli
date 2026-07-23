@@ -38,6 +38,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "../macros/session-ports.js";
 import { profileFromTabUrl } from "../profile.js";
+import { classifyAtlassianSessionError } from "../session-error.js";
 
 export interface ExtensionDocxJobResolverDepsV1 {
   loadRoot(
@@ -258,6 +259,10 @@ function createDefaultExtensionDocxJobInputResolver(
     const client = new ConfluenceClient(profile);
     return createConfluenceDocxResolveInputV1({
       port: sourcePort ?? confluenceSourceResolverPortFromClientV1(client),
+      classifyError: (error) =>
+        classifyAtlassianSessionError(error) === "not-logged-in"
+          ? "authentication"
+          : "unknown",
       ...(request.options.keepIgnored
         ? { bodyOptions: { exportControls: "passthrough" as const } }
         : {}),
@@ -272,7 +277,7 @@ function createDefaultExtensionDocxJobInputResolver(
         ),
       onProgress: (_sourceRequest, sourceContext, progress) => {
         return sourceContext.updateProgress({
-          stage: "compose",
+          stage: "fetch",
           done: progress.fetched,
           total: progress.total,
           updatedAt: Date.now(),
@@ -419,7 +424,7 @@ export function createExtensionDocxJobInputResolver(
       signal: context.signal,
       onProgress: (value) => {
         void context.updateProgress({
-          stage: "compose",
+          stage: "fetch",
           done: value.fetched,
           total: value.total,
           ...(value.currentTitle ? { detail: value.currentTitle } : {}),

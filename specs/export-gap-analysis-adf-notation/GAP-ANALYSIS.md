@@ -227,9 +227,15 @@ Current cross-cutting residuals:
   page checkpoints support fenced recovery; packed Chromium proves that
   extension-surface navigation and closure do not abort the background job.
   Final merge validation additionally proves monotonic, awaited durable source
-  progress; full typecheck, production build, API/closure guards, 5,279
-  repository tests, and the packed navigation proof pass against the merged
-  runtime.
+  progress with source work isolated in `fetch`; content-free authentication
+  classification reaches the explicit resumable wait state; and recovery
+  preserves a newer tree/asset checkpoint head instead of moving the cursor
+  backwards to the source plan. Full typecheck, the 16-task production build,
+  API/closure guards, 5,279 repository tests, and all 22 packed Chromium
+  recovery cases pass against the merged runtime. The packed cases prove
+  ordered tree continuation without refetching the committed root, asset
+  continuation without refetching committed bytes, explicit authentication
+  resume, and automatic reclaim after a complete persistent-browser restart.
 - [ ] **Open:** the real sanitized Confluence corpus covers selected live
   slices, not yet every supported editor feature.
 - [ ] **Partial:** complete emoji glyph coverage and custom-emoji assets are

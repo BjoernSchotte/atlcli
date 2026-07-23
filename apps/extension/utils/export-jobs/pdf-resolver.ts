@@ -42,6 +42,7 @@ import {
 import { sanitizeDownloadName } from "../download.js";
 import { profileFromTabUrl } from "../profile.js";
 import { extensionPdfAssets } from "../pdf/run-export.js";
+import { classifyAtlassianSessionError } from "../session-error.js";
 import { IndexedDbExportByteStore } from "./chunk-store.js";
 import { extensionPdfLogoSpoolRef } from "./pdf-submit.js";
 
@@ -326,6 +327,10 @@ function createDefaultExtensionPdfJobInputResolver(
     const client = new ConfluenceClient(profile);
     return createConfluencePdfResolveInputV1({
       port: sourcePort ?? confluenceSourceResolverPortFromClientV1(client),
+      classifyError: (error) =>
+        classifyAtlassianSessionError(error) === "not-logged-in"
+          ? "authentication"
+          : "unknown",
       createSourcePlan: (_sourceRequest, sourceContext) => ({
         store: createConfluenceSourcePlanSpoolV1(sourceContext),
         sourcePolicyKey: "adf-primary:cloud:v1",
@@ -337,7 +342,7 @@ function createDefaultExtensionPdfJobInputResolver(
         ),
       onProgress: (_sourceRequest, sourceContext, progress) => {
         return sourceContext.updateProgress({
-          stage: "compose",
+          stage: "fetch",
           done: progress.fetched,
           total: progress.total,
           updatedAt: Date.now(),
@@ -488,7 +493,7 @@ export function createExtensionPdfJobInputResolver(
       signal: context.signal,
       onProgress: (progress) => {
         void context.updateProgress({
-          stage: "compose",
+          stage: "fetch",
           done: progress.fetched,
           total: progress.total,
           ...(progress.currentTitle ? { detail: progress.currentTitle } : {}),
