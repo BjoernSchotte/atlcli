@@ -1549,7 +1549,33 @@ waits for any still-live lease to expire, then automatically reclaims the same
 checkpoint with a newer epoch. Gates: affected unit/UI/catalog matrix 64/64,
 full typecheck, production extension build/output scan, and the final packed
 Chromium lifecycle matrix 22/22. The final non-cleanup audit and deferred PR-J
-cleanup remain open.
+cleanup were tracked separately.
+
+Final non-cleanup acceptance evidence (2026-07-23): the mandatory drift check
+was rerun from `1e5822f8a5a3524293f34043bc398b7846bf52f9` against base and
+merge-base `75b737987a6220932c41a651f2777b4c3a78d470`; none of its stop
+conditions applied. `bun run test` passed 4,885 tests across 330 files with 14
+declared skips and zero failures. The skips were closed separately where they
+are release-relevant: the four consumer smokes passed, and the three pack/npm/
+pnpm install-matrix cases passed with the CI-pinned pnpm 9.15.9. The remaining
+skips are the optional unavailable veraPDF and LibreOffice tool smokes, the
+four fixture-id-gated PDF live variants, and the deliberately retired Python/
+TypeScript dual-engine comparison. The required live success path is covered
+more broadly here by full-space PDF and DOCX runs; authentication and not-found
+classification remain covered by the repository tests without creating tenant
+fixtures.
+`bun run typecheck`, the 20-entrypoint browser gate, production generic-browser
+build/output scan, all 17 registered conformance cases, Chromium harness E2E,
+PDF byte/report parity, production MV3 build/output scan, and packed persistent-
+profile Chromium 22/22 all passed. Astro reported zero diagnostics and built all
+76 documentation pages. Read-only live exports of `mayflower`/`DOCSY` completed
+through both queued runtimes without creating a remote resource: each processed
+93/93 pages, fetched/embedded 8 images, rendered 7 diagrams and 15 live macros;
+the tagged 195-page PDF was 4,114,021 bytes and the validated TypeScript DOCX
+was 301,305 bytes. Both exited zero and their isolated local artifacts were
+removed. `git diff --check origin/main...HEAD` and the final worktree inspection
+were clean. The only unfinished Phase 6 work is PR-J, whose retention-plus-one-
+release precondition intentionally keeps it outside this non-cleanup delivery.
 
 The shared browser-safe Activity projector now owns state ordering, actions,
 dismissal/filter semantics, named waiting blockers, and global queue positions.
@@ -1709,7 +1735,7 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     affected matrix 670 passed (one optional LibreOffice smoke skipped),
     typecheck, API report guard 5/5, packed Chromium 14/14.
 
-- [ ] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
+- [x] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
   - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: cross-format list/detail/filters/monitor, statistics/protocol, Retry,
     Run again, Resume, Acknowledge, Dismiss, Download/Reveal, retention/clear,
@@ -1807,7 +1833,10 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     guidance was replaced by the actually shipped TypeScript `$scroll.*`
     contract, and CHANGELOG carries an unreleased release-ready entry. Astro
     check and the 76-page production documentation build pass.
-  - [ ] Remaining PR-I increment: final non-cleanup audit and gates.
+  - [x] Final non-cleanup audit and gates: full repository, package-consumer,
+    install-matrix, type/browser/harness, packed MV3, documentation, live
+    `mayflower`/`DOCSY`, drift, diff-hygiene, and clean-worktree evidence is
+    recorded above.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have
@@ -1833,52 +1862,52 @@ dated plan and go/no-go/revise evidence after this browser-safe foundation exist
 
 Before coding/opening the PR:
 
-- [ ] Name the owning slice (`PR-A` … `PR-J`) and T7 phase in the PR description.
-- [ ] Re-run the mandatory drift check and record the base commit.
-- [ ] List in-scope packages/files, shared hot files, schema/API changes, and
+- [x] Name the owning slice (`PR-A` … `PR-J`) and T7 phase in the PR description.
+- [x] Re-run the mandatory drift check and record the base commit.
+- [x] List in-scope packages/files, shared hot files, schema/API changes, and
       explicitly excluded work.
-- [ ] Resolve every open question that blocks this slice; do not encode an
+- [x] Resolve every open question that blocks this slice; do not encode an
       unrecorded product decision in implementation.
-- [ ] Identify the direct-path fixture/baseline and the smallest test that must
+- [x] Identify the direct-path fixture/baseline and the smallest test that must
       fail before the change.
-- [ ] Define migration, compatibility, feature-flag/cutover, and rollback behavior
+- [x] Define migration, compatibility, feature-flag/cutover, and rollback behavior
       for persisted state or user-visible contracts.
 
 While implementing:
 
-- [ ] Add tests with the functionality and regression tests with every bug fix.
-- [ ] Keep DOCX/PDF engines and reports separate; share only job lifecycle and
+- [x] Add tests with the functionality and regression tests with every bug fix.
+- [x] Keep DOCX/PDF engines and reports separate; share only job lifecycle and
       upstream orchestration.
-- [ ] Commit the job before the first source/network read and pass refs—not large
+- [x] Commit the job before the first source/network read and pass refs—not large
       bytes—across host message boundaries.
-- [ ] Thread durable cancellation, revision/lease epoch, timeout, quota, and
+- [x] Thread durable cancellation, revision/lease epoch, timeout, quota, and
       resource reservations through every new asynchronous boundary.
-- [ ] Keep secrets, source bodies, signed URLs, and raw artifact bytes out of
+- [x] Keep secrets, source bodies, signed URLs, and raw artifact bytes out of
       metadata/events/logs.
-- [ ] Preserve bounded buffering/backpressure and deterministic output ordering;
+- [x] Preserve bounded buffering/backpressure and deterministic output ordering;
       document any changed concurrency/cap with measurement evidence.
-- [ ] Derive host UI claims from proven capabilities; do not broaden Chrome,
+- [x] Derive host UI claims from proven capabilities; do not broaden Chrome,
       generic-browser, or future Forge lifecycle promises by inference.
-- [ ] Update user, operations, troubleshooting, architecture, and command docs in
+- [x] Update user, operations, troubleshooting, architecture, and command docs in
       the same PR when behavior changes.
 
 Before requesting review/merge:
 
-- [ ] Run the slice-specific acceptance gate above and the relevant Section 13
+- [x] Run the slice-specific acceptance gate above and the relevant Section 13
       suites through repository scripts, never bare `bun test`.
-- [ ] Run `bun run typecheck`, browser/package gates, and API Extractor where the
+- [x] Run `bun run typecheck`, browser/package gates, and API Extractor where the
       touched package requires them.
-- [ ] Run packed-extension lifecycle E2E for every extension lifetime claim; unit
+- [x] Run packed-extension lifecycle E2E for every extension lifetime claim; unit
       tests/fake IndexedDB do not substitute for it.
-- [ ] Run the required live E2E with profile `mayflower`, space `DOCSY`, and clean
+- [x] Run the required live E2E with profile `mayflower`, space `DOCSY`, and clean
       up every created page/resource.
-- [ ] Attach before/after 50-/500-page time, memory, spool, and output evidence to
+- [x] Attach before/after 50-/500-page time, memory, spool, and output evidence to
       every PR that changes resource policy or a heavy pipeline.
-- [ ] Verify migration from the previous persisted schema plus fresh install,
+- [x] Verify migration from the previous persisted schema plus fresh install,
       cancellation races, executor loss, and artifact finalization where relevant.
-- [ ] Run `git diff --check`; inspect `git status`; confirm the PR contains no
+- [x] Run `git diff --check`; inspect `git status`; confirm the PR contains no
       unrelated files, generated debris, credentials, or unrequested release.
-- [ ] Record residual risks, deferred work, exact commands/results, and any gate
+- [x] Record residual risks, deferred work, exact commands/results, and any gate
       not run with its reason. Never describe an unrun gate as passing.
 
 After merge:
