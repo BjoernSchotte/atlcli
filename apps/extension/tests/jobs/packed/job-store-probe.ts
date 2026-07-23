@@ -296,20 +296,21 @@ const probe = {
       leaseDurationMs: 10_000,
     });
     if (!failedClaim) throw new Error("Packed failure fixture was not claimed.");
+    const failedAt = Date.now();
     await catalog.compareAndSet({
       id: failedId,
       kind: "transition",
       expectedRevision: failedClaim.revision,
       leaseEpoch: failedClaim.leaseEpoch,
       to: "failed",
-      at: failedStartedAt + 1,
+      at: failedAt,
       error: {
         code: "packed-failure",
         message: "Synthetic packed failure.",
         category: "network",
         retryable: true,
         stage: "fetch",
-        occurredAt: failedStartedAt + 1,
+        occurredAt: failedAt,
       },
     });
 

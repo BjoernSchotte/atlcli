@@ -180,9 +180,22 @@ test.beforeEach(async () => {
     async function deleteDatabase(name: string): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         const request = indexedDB.deleteDatabase(name);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-        request.onblocked = () => reject(new Error(`IndexedDB cleanup for ${name} was blocked.`));
+        const timeout = setTimeout(
+          () => reject(new Error(`IndexedDB cleanup for ${name} stayed blocked.`)),
+          5_000,
+        );
+        request.onsuccess = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        request.onerror = () => {
+          clearTimeout(timeout);
+          reject(request.error);
+        };
+        // A just-finished offscreen transaction may keep its connection alive
+        // for one more task. Deletion remains pending and completes after that
+        // connection closes; fail only when the bounded timeout above expires.
+        request.onblocked = () => undefined;
       });
     }
     await deleteDatabase("atlcli-export-jobs");
