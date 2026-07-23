@@ -43,6 +43,7 @@ describe("ADF rendered goldens", () => {
       "layout-column-proportions",
       "layout-column-vertical-alignment",
       "layout-breakout-page-bound",
+      "root-code-expand-breakout-page-bound",
       "smart-link",
       "media-fallback",
       "media-single-layout-width-caption-border",

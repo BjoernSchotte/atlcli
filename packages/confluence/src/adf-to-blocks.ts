@@ -321,6 +321,7 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       const language = optionalStringAttr(node, "language");
       const localId = optionalStringAttr(node, "localId");
       const uniqueId = optionalStringAttr(node, "uniqueId");
+      const breakout = decodeBreakoutIntent(node, ctx, path);
       return [{
         type: "codeBlock",
         code: descendantText(node),
@@ -332,6 +333,7 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         hideLineNumbers: node.attrs?.hideLineNumbers === true,
         ...(localId !== undefined ? { localId } : {}),
         ...(uniqueId !== undefined ? { uniqueId } : {}),
+        ...(breakout ? { breakout } : {}),
       }];
     }
     case "rule":
@@ -415,6 +417,9 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     }
     case "expand":
     case "nestedExpand": {
+      const breakout = node.type === "expand"
+        ? decodeBreakoutIntent(node, ctx, path)
+        : undefined;
       ctx.notes.add({
         level: "info",
         code: "expand-static",
@@ -430,6 +435,7 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         ...(optionalStringAttr(node, "localId") !== undefined
           ? { localId: optionalStringAttr(node, "localId") }
           : {}),
+        ...(breakout ? { breakout } : {}),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
     }
@@ -1390,17 +1396,7 @@ function decodeLayoutSection(node: AdfNode, ctx: DecodeContext, path: string): E
       "contains a zero-width column; source widths were retained and exporters enforce a visible minimum track.",
     );
   }
-  const breakout = breakoutMark(node.marks);
-  if (breakout) {
-    addMarkNote(
-      ctx,
-      path,
-      "breakout",
-      breakout.width !== undefined && breakout.width <= 0
-        ? "has a non-positive width; the source value was retained and exporters use page-bounded width."
-        : `retains ${breakout.mode} intent but is bounded to the physical output page.`,
-    );
-  }
+  const breakout = decodeBreakoutIntent(node, ctx, path);
   return {
     type: "layout",
     columns,
@@ -1417,17 +1413,7 @@ function decodeSyncedContent(
   path: string,
 ): ExportBlock {
   const embedded = node.type === "bodiedSyncBlock";
-  const breakout = breakoutMark(node.marks);
-  if (breakout) {
-    addMarkNote(
-      ctx,
-      path,
-      "breakout",
-      breakout.width !== undefined && breakout.width <= 0
-        ? "has a non-positive width; the source value was retained and exporters use page-bounded width."
-        : `retains ${breakout.mode} intent but is bounded to the physical output page.`,
-    );
-  }
+  const breakout = decodeBreakoutIntent(node, ctx, path);
   addNodeNote(
     ctx,
     path,
@@ -1606,6 +1592,8 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
   }
   if (markType === "breakout") {
     return nodeType === "layoutSection" ||
+      nodeType === "codeBlock" ||
+      nodeType === "expand" ||
       nodeType === "syncBlock" ||
       nodeType === "bodiedSyncBlock";
   }
@@ -1650,6 +1638,24 @@ function breakoutMark(marks: readonly AdfMark[] | undefined): LayoutBreakout | u
     mode,
     ...(typeof width === "number" && Number.isFinite(width) ? { width } : {}),
   };
+}
+
+function decodeBreakoutIntent(
+  node: AdfNode,
+  ctx: DecodeContext,
+  path: string,
+): LayoutBreakout | undefined {
+  const breakout = breakoutMark(node.marks);
+  if (!breakout) return undefined;
+  addMarkNote(
+    ctx,
+    path,
+    "breakout",
+    breakout.width !== undefined && breakout.width <= 0
+      ? "has a non-positive width; the source value was retained and exporters use page-bounded width."
+      : `retains ${breakout.mode} intent but is bounded to the physical output page.`,
+  );
+  return breakout;
 }
 
 function annotationMark(mark: AdfMark): AdfAnnotationIdentity | undefined {

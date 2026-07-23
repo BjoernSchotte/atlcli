@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **72 of 84 rows closed; 12 rows open.** This count
+Current matrix orientation: **73 of 84 rows closed; 11 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -179,9 +179,12 @@ Current closed foundations and feature slices:
   unavailable-content projection. Both TypeScript targets keep the opaque IDs
   non-visual, and composition plus direct/background browser parity preserve
   the neutral contract.
-- [ ] **Open:** `breakout` intent is retained on ADF layout sections and
-  explicitly reported as page-bounded; breakout on other schema-valid block
-  types and true wide/full-width section geometry remain open.
+- [x] Every pinned `breakout` placement—root code blocks, root expands, layout
+  sections, `syncBlock`, and `bodiedSyncBlock`—retains exact `wide` or
+  `full-width` intent plus optional numeric width through composition and both
+  TypeScript hosts. DOCX/PDF deliberately keep the content inside the physical
+  page and emit a source-located `adf-mark-degraded` fact; this is the complete
+  static-artifact projection, not an unchecked partial.
 - [ ] **Open:** annotation and fragment identities are validated and retained
   through the neutral model, composition, and packed-browser source resolution;
   native comments/PDF notes, separately fetched comment bodies, and a documented
@@ -236,7 +239,7 @@ plus the distinct Storage/export-view compatibility adapters.
 | [x] | `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | [x] | `blockquote` | Structured body becomes `blockquote`. | Native static projection | Native static projection | Closed; target-owned static styling is not ADF notation loss. |
-| [x] | `codeBlock` | Direct ADF retains exact code (including empty/final lines), optional language (including empty), tri-state `wrap`, normalized `hideLineNumbers`, `localId`, and `uniqueId`. Storage `<pre>`/`code`/`noformat` retain their separate no-gutter default; `linenumbers`, `firstline`, language, and macro local identity survive where present. | Native with page-bound no-wrap policy | Native with page-bound no-wrap policy | Closed for the node's pinned content/attribute contract. Both targets render syntax-highlighted code and authored line numbers; continuation lines align after the gutter. A requested no-wrap state remains in the neutral model and emits `code-nowrap-page-bounded` when bounded pages wrap instead of clipping. The separately classified root `breakout` mark and legacy Storage-only title/collapse remain explicit open rows/residuals. |
+| [x] | `codeBlock` | Direct ADF retains exact code (including empty/final lines), optional language (including empty), tri-state `wrap`, normalized `hideLineNumbers`, `localId`, `uniqueId`, and root-only breakout intent. Storage `<pre>`/`code`/`noformat` retain their separate no-gutter default; `linenumbers`, `firstline`, language, and macro local identity survive where present. | Native with page-bound no-wrap/breakout policy | Native with page-bound no-wrap/breakout policy | Closed for the node's pinned content/attribute/mark contract. Both targets render syntax-highlighted code and authored line numbers; continuation lines align after the gutter. Requested no-wrap and breakout states remain in the neutral model and are explicitly reported when a bounded physical page must wrap or constrain them. Legacy Storage-only title/collapse remains a separate compatibility residual. |
 
 Evidence: [E2], [E5], [E6], [E7], [E8].
 
@@ -278,7 +281,7 @@ Evidence: [E10], [E11], [E12], [E27].
 | [x] | `layoutSection` | ADF becomes a typed layout with exact optional local identity and retained breakout intent. Storage `ac:layout-section` maps the documented `single`, `two_*`, and `three_*` arrangements to explicit portable tracks; missing/mismatched geometry uses equal tracks with a source-located note. | Native for pinned columns | Native for pinned columns | DOCX uses a borderless fixed OOXML table and PDF uses a semantic-free Typst grid. The pinned ADF schema and documented Storage shapes are closed; Cloud editor layouts beyond the pinned schema remain in the drift/observed-product lane. |
 | [x] | `layoutColumn` | Required ADF percentage width, optional exact local identity, top/middle/bottom alignment, and recursively nested content survive. Storage cells inherit the section's documented proportions. | Native | Native | Schema-valid zero-width tracks remain visible through a bounded minimum and are reported. Nested headings/anchors, mentions, macros, assets, lists/tasks, and export controls traverse the column rather than being flattened or skipped. |
 | [x] | `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. Custom panels additionally retain exact optional local identity, emoji short name, custom-emoji identity, visible icon text, and a canonical portable color (including normalized short hex); non-portable source colors remain exact. | Native bounded projection | Native bounded projection | Closed for the pinned schema. Both targets use the authored portable color as an accent with a contrast-safe tinted background and prefer visible icon text over a short name. A non-portable color or ID-only custom emoji remains visible with source metadata plus a typed degradation note rather than silently claiming native rendering. |
-| [x] | `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; Storage additionally retains macro identity. | Native static projection | Native static projection | Closed for static export: both targets render the full body visibly open and report that interaction/collapsed state is inapplicable. Storage and ADF are differentially tested. |
+| [x] | `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; root ADF expands additionally retain schema-valid breakout intent, while Storage retains macro identity. | Native static projection | Native static projection | Closed for static export: both targets render the full body visibly open and report that interaction/collapsed state is inapplicable. Root breakout intent remains exact and is explicitly page-bounded. Storage and ADF are differentially tested. |
 | [x] | `nestedExpand` | A distinct nested disclosure survives with title, local identity, body ownership, and nesting context. Storage expands inside table cells or another expand use the same neutral shape. | Native static projection | Native static projection | Closed for the pinned static-export contract; the editor's interactive toggle is intentionally not claimed. |
 | [x] | `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; media layout/group semantics are covered by their own checked rows. |
 
@@ -378,12 +381,12 @@ This covers all 17 marks in the pinned schema.
 | [ ] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Open | Open | **Open:** fetch/correlate comment bodies and implement native Word-comment/PDF-note output under an explicit export policy. |
 | [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
-| [ ] | `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Open | Open | **Open:** generalize the retained mark to code/expand/sync blocks and define the target-owned page/section widening policy. |
+| [x] | `breakout` | Exact `wide`/`full-width` mode and optional numeric width are validated and retained on every pinned placement: root `codeBlock`, root `expand`, `layoutSection`, `syncBlock`, and `bodiedSyncBlock`. | Approximation | Approximation | Closed for the pinned schema and static targets. The intent survives decoding, composition, CLI/browser direct and background paths, DOCX/PDF preparation, and the conformance fixture. A fixed page cannot reproduce an editor viewport wider than itself, so both renderers preserve ordinary page-bounded visible output and emit a source-located `adf-mark-degraded` fact instead of silently dropping or falsely claiming viewport geometry. |
 | [x] | `border` | Exact pinned six/eight-digit color and size 1–3 are validated and retained on block/inline media. DOCX emits run/paragraph borders and PDF emits target-native strokes; alpha-bearing source colors retain their exact neutral value and use their portable RGB component for print. | Native | Native | Closed with invalid-shape, block, inline, group, DOCX, PDF, and packed-browser fixtures. |
 | [x] | `dataConsumer` | The exact ordered mark boundaries and each non-empty source array are validated and retained on `media`/`mediaInline` identity. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema: DOCX/PDF intentionally render no consumer binding or opaque source ID, while the shared source-located report states that product-internal execution is unavailable. Composition, PDF preparation, packed-browser parity, and a no-pixel-drift rendered golden prove retention without publication. |
 | [ ] | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Open | Open | **Open:** define documented fragment semantics and a collision-safe bookmark/link projection instead of leaving identity non-visual. |
 
-Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26].
+Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26], [E43].
 
 ## 8. Editor notation mapping
 
@@ -521,9 +524,9 @@ Required acceptance contract:
   alignment, identity, and content ownership plus documented Storage layout
   shapes survive composition, macro/mention/asset traversal, browser execution,
   and both renderers.
-- [ ] **Open — breakout.** Layout-section intent survives and is explicitly
-  page-bounded; non-layout placements and actual wide/full-width page geometry
-  remain open.
+- [x] **Breakout static projection.** Every pinned placement retains exact
+  mode/width intent. Both physical-page targets render the complete content
+  within page bounds and report the unavailable editor-viewport widening.
 - [x] **Captions and nested expands for static DOCX/PDF.** Native ADF caption
   association/local identity and numbering are complete. ADF and
   `body.storage` disclosures retain title, identity, recursive ownership, and
@@ -602,7 +605,8 @@ Required acceptance contract:
 - [x] Table attributes for static DOCX/PDF; page-bound wide-table layout remains
   a measured renderer policy rather than an ADF decoding gap.
 - [x] Layout columns for pinned ADF and documented Storage shapes.
-- [ ] Breakout beyond page-bounded layout-section intent.
+- [x] Breakout on every pinned placement with exact retained intent and an
+  explicit page-bounded DOCX/PDF projection.
 - [x] Captions and nested expands for the pinned static-export contract.
 
 ### Phase 3 - Media and extensions
@@ -611,7 +615,7 @@ Required acceptance contract:
   correlated images, and static image/file/audio/video/link/external fallbacks.
 - [ ] **Open:** ADF-native extension forms are decoded; Forge `adfExport`
   ingestion remains.
-- [ ] Synced content policy.
+- [x] Synced content policy for both pinned reference-only and embedded forms.
 
 ### Phase 4 - Conformance and release gate
 
@@ -782,7 +786,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E25] Nested list parity across both source representations and targets:** `packages/confluence/src/export-blocks.ts:1460-1510`, `packages/confluence/src/adf-to-blocks.ts:270-311`, `packages/confluence/src/adf-to-blocks.ts:819-850`, `packages/confluence/src/page-body.test.ts:18-83`, `packages/confluence/src/compose-document.test.ts:254-350`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/numbering.test.ts:190-230`, `packages/pdf/src/serialize.test.ts:129-230`, `packages/pdf/src/serialize.ts:860-870`, `packages/pdf/src/serialize.ts:1037-1074`, `packages/export-fixtures/src/index.ts:177-231`, `apps/browser-export-harness/src/adf-source-case.ts:320-343`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E26] Annotation/fragment identity preservation:** `packages/confluence/src/export-blocks.ts:235-248`, `packages/confluence/src/adf-validate.ts:225-247`, `packages/confluence/src/adf-to-blocks.ts:396-535`, `packages/confluence/src/adf-to-blocks.ts:965-999`, `packages/confluence/src/adf-validate.test.ts:139-172`, `packages/confluence/src/adf-to-blocks.test.ts:486-638`, `packages/confluence/src/adf-direct-fixtures.test.ts:143-218`, `packages/confluence/src/compose-document.test.ts:537-580`, `packages/export-fixtures/src/index.ts:128-263`, `packages/export-fixtures/src/adf-fixtures.test.ts:80-114`, `apps/browser-export-harness/src/adf-source-case.ts:315-377`, `apps/browser-export-harness/tests/exports.e2e.ts:90-95`
 - **[E27] Complete pinned table-attribute preservation and static rendering:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
-- **[E28] Native layout columns and explicit breakout residual:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E28] Native layout columns and page-bounded layout breakout:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E29] Native captions and recursive static disclosures across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E30] Native date/status/placeholder semantics across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E31] Paragraph/heading/ordinary-list-item local identity preservation:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
@@ -797,6 +801,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E40] Native correlated `mediaInline` output and host parity:** `packages/docx/src/image.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/src/pdf-job-parity-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E41] Complete pinned `dataConsumer` provenance without identifier publication:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E42] Complete pinned synced-content identity and safe static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E43] Complete pinned breakout intent and page-bounded static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 
@@ -822,6 +827,7 @@ Accessed 2026-07-22 and 2026-07-23:
 6. **Resolved for tasks and decisions:** target-appropriate open/done task
    markers and a distinct decision marker are the static floor; exact
    identities/states remain in the neutral model and nonstandard decision
-   states are visibly labeled. Nested expands are resolved for the pinned
-   static-export contract; synced blocks, audio, and video remain open.
+   states are visibly labeled. Nested expands and both pinned synced-block
+   forms are resolved for the static-export contract; audio and video use
+   their checked typed static media projections.
 7. Is visual parity measured against a curated atlcli design system, Confluence's standard export appearance, or configurable target templates? Semantic parity can be target-independent; pixel parity cannot.

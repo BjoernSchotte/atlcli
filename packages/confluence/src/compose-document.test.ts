@@ -809,6 +809,33 @@ describe("composeChapters — retained ADF mark identities", () => {
     });
   });
 
+  test("preserves root code and expand breakout intent through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push(
+      {
+        type: "codeBlock",
+        code: "const wide = true;",
+        breakout: { mode: "wide", width: 880 },
+      },
+      {
+        type: "expand",
+        nested: false,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Details" }] }],
+        breakout: { mode: "full-width", width: 1024 },
+      },
+    );
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "codeBlock")).toMatchObject({
+      type: "codeBlock",
+      breakout: { mode: "wide", width: 880 },
+    });
+    expect(blocks.find((block) => block.type === "expand")).toMatchObject({
+      type: "expand",
+      breakout: { mode: "full-width", width: 1024 },
+    });
+  });
+
   test("preserves annotation and fragment metadata while rewriting document structure", () => {
     const source = page("1", "Source", 0, null, "<p>body</p>");
     source.blocks.push(

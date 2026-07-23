@@ -670,6 +670,8 @@ export type ExportBlock =
       localId?: string;
       /** Stable ADF code-block identity, retained independently of `localId`. */
       uniqueId?: string;
+      /** Root-level ADF wide/full-width intent, bounded by static page geometry. */
+      breakout?: LayoutBreakout;
     }
   | {
       type: "callout";
@@ -703,6 +705,8 @@ export type ExportBlock =
       localId?: string;
       /** Storage macro identity; deliberately distinct from ADF `localId`. */
       macroId?: string;
+      /** Root-level ADF wide/full-width intent, bounded by static page geometry. */
+      breakout?: LayoutBreakout;
     }
   | {
       type: "list";

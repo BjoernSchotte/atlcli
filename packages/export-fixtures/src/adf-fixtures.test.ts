@@ -115,6 +115,7 @@ describe("ADF browser conformance fixture", () => {
       hideLineNumbers: false,
       localId: "code-local",
       uniqueId: "code-unique",
+      breakout: { mode: "wide", width: 880 },
     });
     expect(pdf.blocks[25]).toMatchObject({
       type: "callout",
@@ -225,6 +226,7 @@ describe("ADF browser conformance fixture", () => {
       nested: false,
       title: "Expanded title",
       localId: "expand-local",
+      breakout: { mode: "full-width", width: 1024 },
       content: [
         {
           type: "paragraph",

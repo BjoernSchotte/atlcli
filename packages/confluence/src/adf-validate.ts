@@ -516,6 +516,19 @@ function validateKnownNodeShape(
           `${path}.marks`,
         );
       }
+    } else if (Array.isArray(node.marks) && node.marks.length > 0) {
+      const hasOnlyRootBreakout =
+        node.marks.length === 1 &&
+        isPlainObject(node.marks[0]) &&
+        node.marks[0].type === "breakout";
+      const isTopLevel = /^\$\.content\[\d+\]$/u.test(path);
+      if (!hasOnlyRootBreakout || !isTopLevel) {
+        throw new AdfValidationError(
+          "invalid-node",
+          "ADF expand nodes accept one breakout mark only at the document root.",
+          `${path}.marks`,
+        );
+      }
     }
   }
   if (type === "date") {

@@ -90,6 +90,8 @@ export interface AdfSourceCaseResult {
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasDataConsumerProvenance: boolean;
   neutralHasSyncedContentSemantics: boolean;
+  neutralHasBreakoutSemantics: boolean;
+  reportHasAllBreakoutProjectionFacts: boolean;
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
@@ -413,6 +415,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const neutralCustomPanel = pdfSource.blocks.find(
     (block) => block.type === "callout" && block.localId === "custom-panel-local",
   );
+  const neutralExpand = pdfSource.blocks.find(
+    (block) => block.type === "expand" && !block.nested,
+  );
   const codeGutterParagraphs =
     documentXml.match(/<w:ind w:start="480" w:hanging="480"\/>/gu)?.length ?? 0;
   const codeGutterRuns =
@@ -520,6 +525,19 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         '"syncedContent":{"resourceId":"synthetic-sync-reference-resource","localId":"synthetic-sync-reference-local","projection":"unresolved-reference","breakout":{"mode":"full-width"}}',
       )
       && !documentXml.includes("synthetic-sync"),
+    neutralHasBreakoutSemantics:
+      neutralExpand?.type === "expand"
+      && neutralExpand.breakout?.mode === "full-width"
+      && neutralExpand.breakout.width === 1024
+      && neutralCodeBlock?.type === "codeBlock"
+      && neutralCodeBlock.breakout?.mode === "wide"
+      && neutralCodeBlock.breakout.width === 880,
+    reportHasAllBreakoutProjectionFacts:
+      pdfSource.sourceNotes.filter(
+        (note) =>
+          note.code === "adf-mark-degraded"
+          && note.message.startsWith("ADF mark breakout "),
+      ).length === 5,
     neutralHasTablePresentation:
       JSON.stringify(pdfSource.blocks).includes(
         '"presentation":{"layout":"align-end","width":480,"displayMode":"fixed","numberedColumn":true,"localId":"table-local"}',
@@ -676,6 +694,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasSyncedContentSemantics) {
     throw new Error("ADF-source synced-content identity, projection, or privacy was lost.");
+  }
+  if (!result.neutralHasBreakoutSemantics) {
+    throw new Error("ADF-source root code or expand breakout intent was lost.");
+  }
+  if (!result.reportHasAllBreakoutProjectionFacts) {
+    throw new Error("ADF-source breakout projection facts were lost in the packed browser.");
   }
   if (!result.neutralHasMediaLinkSemantics) {
     throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");

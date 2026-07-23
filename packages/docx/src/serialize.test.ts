@@ -1687,6 +1687,37 @@ describe("serializeBlocks — C3 captions", () => {
     expect(retained.notes).toEqual([]);
   });
 
+  it("keeps root code and expand breakout intent non-visual and page-bounded", async () => {
+    const baseCode: Extract<ExportBlock, { type: "codeBlock" }> = {
+      type: "codeBlock",
+      code: "const wide = true;",
+      hideLineNumbers: false,
+    };
+    const baseExpand: Extract<ExportBlock, { type: "expand" }> = {
+      type: "expand",
+      nested: false,
+      title: "Wide details",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Expanded body" }],
+      }],
+    };
+    const base: ExportBlock[] = [baseCode, baseExpand];
+    const withBreakout: ExportBlock[] = [
+      { ...baseCode, breakout: { mode: "wide", width: 880 } },
+      { ...baseExpand, breakout: { mode: "full-width", width: 1024 } },
+    ];
+    const plain = await serializeBlocks(base, { styleNames: noStyles });
+    const retained = await serializeBlocks(withBreakout, { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).toContain("const wide = true;");
+    expect(retained.xml).toContain("Wide details");
+    expect(retained.xml).toContain("Expanded body");
+    expect(retained.xml).not.toContain("1024");
+    expect(retained.notes).toEqual([]);
+  });
+
   // -------------------------------------------------------------------------
   // Caption ordinals — the SEQ field's CACHED RESULT
   //

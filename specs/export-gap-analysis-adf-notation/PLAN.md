@@ -309,9 +309,9 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including sync content, breakout beyond layout
-sections, and data-consumer
-semantics—must retain a coverage-manifest status and deterministic fallback.
+The remaining schema rows—including annotations/fragments, generic extension
+output, unsupported wrappers, and externally resolved custom emoji—must retain
+a coverage-manifest status and deterministic fallback.
 Decisions, block tasks, layouts, native captions, block-media geometry and
 grouping, media borders, annotations/fragments, alignment, indentation, and the
 schema-defined small paragraph font size now have the completed contracts
@@ -1120,8 +1120,8 @@ widths receive an explicit source note and a positive minimum track in both
 targets. The browser ADF fixture proves direct/background block, report, and
 artifact parity. Real render goldens replace the old flattened-layout reference
 with visible 30/70 columns in both formats. `wide`/`full-width` remains an
-explicit page-bounded approximation, and breakout on other schema-valid block
-types remains open.
+explicit page-bounded approximation; the later breakout follow-on closes every
+other pinned placement under the same static-artifact policy.
 
 Completed caption/disclosure follow-on evidence recorded on 2026-07-23: the
 pinned validator now enforces the actual direct-inline ADF `caption` shape and
@@ -1445,6 +1445,22 @@ with zero mean pixel difference and content-bounds IoU 1. The unrestricted
 workspace suite then passed with 5,016 tests, 13 intentional skips, and zero
 failures. The matrix now records 72 of 84 rows closed and 12 open.
 
+Completed breakout follow-on evidence recorded on 2026-07-23: the validator and
+decoder now cover every placement admitted by the pinned schema—root
+`codeBlock`, root `expand`, `layoutSection`, `syncBlock`, and
+`bodiedSyncBlock`—with exact `wide`/`full-width` mode and optional numeric
+width. The neutral blocks retain that intent through composition and identical
+CLI/browser direct/background shapes. DOCX and PDF keep all visible content
+inside their physical page instead of pretending to reproduce a wider editor
+viewport, and a source-located `adf-mark-degraded` fact makes that target-owned
+constraint explicit. Focused validator/decoder/composition/renderer tests,
+typecheck, build, API/closure checks, browser gates, packed Chromium E2E, and
+repeat-rendered goldens prove the complete static projection. Both reviewed
+DOCX pages and all five reviewed PDF pages reproduced with zero mean pixel
+difference and content-bounds IoU 1. The unrestricted workspace suite passed
+5,020 tests with 13 intentional skips and zero failures. The matrix now records
+73 of 84 rows closed and 11 open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
@@ -1453,12 +1469,10 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
 4. page-bound wide-table pagination/overflow policies beyond the now-complete
    pinned table-attribute contract;
-5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
-   layout columns and the static caption/disclosure contract are complete);
-6. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
-7. advanced extensions and Forge `adfExport` ingestion policy;
-8. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
-9. legacy Storage-only code-macro title/collapse static projection.
+5. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
+6. advanced extensions and Forge `adfExport` ingestion policy;
+7. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
+8. legacy Storage-only code-macro title/collapse static projection.
 
 ## 14. Resolved rollout decisions and unresolved question
 

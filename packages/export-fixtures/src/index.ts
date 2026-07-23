@@ -395,6 +395,7 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     {
       type: "expand",
       attrs: { title: "Expanded title", localId: "expand-local" },
+      marks: [{ type: "breakout", attrs: { mode: "full-width", width: 1024 } }],
       content: [
         { type: "paragraph", content: [{ type: "text", text: "Expanded body" }] },
         {
@@ -528,6 +529,7 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         localId: "code-local",
         uniqueId: "code-unique",
       },
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 880 } }],
       content: [{
         type: "text",
         text: ADF_CODE_BLOCK_SOURCE,

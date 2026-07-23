@@ -42,6 +42,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -60,6 +61,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -890,6 +892,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -908,6 +911,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -1738,6 +1742,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -1756,6 +1761,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;

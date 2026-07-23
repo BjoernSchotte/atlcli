@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "c8ddf76b19f7f7dd15e2472fc612b777cd7e540a2841487804368b01f4ec4302",
+  "sourceSha256": "7f43593942a9d38c030d840d6a085a66a68b76cc2ea9027c30169b82c516ef45",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -27,6 +27,7 @@
     "layout-column-proportions",
     "layout-column-vertical-alignment",
     "layout-breakout-page-bound",
+    "root-code-expand-breakout-page-bound",
     "smart-link",
     "media-fallback",
     "media-single-layout-width-caption-border",

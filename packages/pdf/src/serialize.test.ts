@@ -1891,6 +1891,44 @@ describe("serialize — C3 captions", () => {
     expect(retainedBundle.notes).toEqual([]);
   });
 
+  it("preserves root code and expand breakout intent without changing page-bounded output", async () => {
+    const baseCode: Extract<ExportBlock, { type: "codeBlock" }> = {
+      type: "codeBlock",
+      code: "const wide = true;",
+      hideLineNumbers: false,
+    };
+    const baseExpand: Extract<ExportBlock, { type: "expand" }> = {
+      type: "expand",
+      nested: false,
+      title: "Wide details",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Expanded body" }],
+      }],
+    };
+    const base: ExportBlock[] = [baseCode, baseExpand];
+    const withBreakout: ExportBlock[] = [
+      { ...baseCode, breakout: { mode: "wide", width: 880 } },
+      { ...baseExpand, breakout: { mode: "full-width", width: 1024 } },
+    ];
+    const plain = await preparePdfDocument(base, {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const retained = await preparePdfDocument(withBreakout, {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(retained.blocks).toMatchObject(withBreakout);
+
+    const plainBundle = serializePdfDocument(plain, { metadata });
+    const retainedBundle = serializePdfDocument(retained, { metadata });
+    expect(retainedBundle.main).toBe(plainBundle.main);
+    expect(retainedBundle.main).toContain("const wide = true;");
+    expect(retainedBundle.main).toContain("Wide details");
+    expect(retainedBundle.main).toContain("Expanded body");
+    expect(retainedBundle.main).not.toContain("1024");
+    expect(retainedBundle.notes).toEqual([]);
+  });
+
   it("wraps ADF media output in its exact safe link", async () => {
     const { main, notes } = await toMain([{
       type: "mediaFallback",

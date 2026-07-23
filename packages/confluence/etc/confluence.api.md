@@ -16,7 +16,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "native";
-    readonly breakout: "visible-fallback";
+    readonly breakout: "approximation";
     readonly code: "native";
     readonly dataConsumer: "approximation";
     readonly em: "native";
@@ -1102,6 +1102,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -1120,6 +1121,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -2388,7 +2390,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "native";
-    readonly breakout: "visible-fallback";
+    readonly breakout: "approximation";
     readonly code: "native";
     readonly dataConsumer: "approximation";
     readonly em: "native";
@@ -3474,6 +3476,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -3492,6 +3495,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -4760,7 +4764,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "native";
-    readonly breakout: "visible-fallback";
+    readonly breakout: "approximation";
     readonly code: "native";
     readonly dataConsumer: "approximation";
     readonly em: "native";
@@ -5846,6 +5850,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -5864,6 +5869,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -8117,6 +8123,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -8135,6 +8142,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
@@ -9966,7 +9974,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "native";
-    readonly breakout: "visible-fallback";
+    readonly breakout: "approximation";
     readonly code: "native";
     readonly dataConsumer: "approximation";
     readonly em: "native";
@@ -11052,6 +11060,7 @@ export type ExportBlock = {
     firstLineNumber?: number;
     localId?: string;
     uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -11070,6 +11079,7 @@ export type ExportBlock = {
     title?: string;
     localId?: string;
     macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;

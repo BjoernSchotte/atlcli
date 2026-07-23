@@ -267,6 +267,41 @@ describe("adfToBlocks", () => {
     ]);
   });
 
+  it("retains root code and expand breakout intent with page-bounded reporting", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "codeBlock",
+        marks: [{ type: "breakout", attrs: { mode: "wide", width: 880 } }],
+        content: [{ type: "text", text: "const wide = true;" }],
+      },
+      {
+        type: "expand",
+        marks: [{ type: "breakout", attrs: { mode: "full-width", width: 1024 } }],
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Wide details" }] }],
+      },
+    ]));
+
+    expect(result.blocks).toEqual([
+      {
+        type: "codeBlock",
+        code: "const wide = true;",
+        hideLineNumbers: false,
+        breakout: { mode: "wide", width: 880 },
+      },
+      {
+        type: "expand",
+        nested: false,
+        breakout: { mode: "full-width", width: 1024 },
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Wide details" }],
+        }],
+      },
+    ]);
+    expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toHaveLength(2);
+    expect(result.notes.filter((note) => note.code === "expand-static")).toHaveLength(1);
+  });
+
   it("preserves a zero start and bounds starts above the portable target maximum", () => {
     const result = adfToBlocks(doc([
       { type: "orderedList", attrs: { order: 0 }, content: [] },

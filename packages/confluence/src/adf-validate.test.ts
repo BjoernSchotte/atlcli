@@ -208,6 +208,7 @@ describe("validateAdf", () => {
     }, {
       type: "expand",
       attrs: { title: "", localId: "expand-1" },
+      marks: [{ type: "breakout", attrs: { mode: "full-width", width: 1024 } }],
       content: [{
         type: "nestedExpand",
         attrs: { title: "Nested", localId: "" },
@@ -228,6 +229,19 @@ describe("validateAdf", () => {
     expect(errorCode(() => validateAdf(doc([{
       type: "expand",
       content: [],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "expand",
+      marks: [{ type: "strong" }],
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "blockquote",
+      content: [{
+        type: "expand",
+        marks: [{ type: "breakout", attrs: { mode: "wide" } }],
+        content: [{ type: "paragraph", content: [] }],
+      }],
     }])))).toBe("invalid-node");
     expect(errorCode(() => validateAdf(doc([{
       type: "nestedExpand",

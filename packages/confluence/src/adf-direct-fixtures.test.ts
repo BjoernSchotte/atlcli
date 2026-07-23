@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  ADF_MARK_DECODE_MODES,
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
   type PinnedAdfMarkType,
@@ -84,7 +83,12 @@ const NODE_FIXTURES = {
       { type: "caption", attrs: { localId: "node-caption-local" }, content: [text("node-caption")] },
     ],
   }),
-  codeBlock: block({ type: "codeBlock", attrs: { language: "text" }, content: [text("node-codeBlock")] }),
+  codeBlock: block({
+    type: "codeBlock",
+    attrs: { language: "text" },
+    marks: [{ type: "breakout", attrs: { mode: "wide", width: 880 } }],
+    content: [text("node-codeBlock")],
+  }),
   date: inline({ type: "date", attrs: { timestamp: "1704067200000" } }),
   decisionItem: block({
     type: "decisionList",
@@ -110,7 +114,12 @@ const NODE_FIXTURES = {
     attrs: { url: "https://example.invalid/node-embedCard", layout: "center" },
   }),
   emoji: inline({ type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } }),
-  expand: block({ type: "expand", attrs: { title: "node-expand" }, content: [paragraph("node-expand-body")] }),
+  expand: block({
+    type: "expand",
+    attrs: { title: "node-expand" },
+    marks: [{ type: "breakout", attrs: { mode: "full-width", width: 1024 } }],
+    content: [paragraph("node-expand-body")],
+  }),
   extension: block({ type: "extension", attrs: { extensionType: "synthetic", extensionKey: "node-extension", parameters: {} } }),
   hardBreak: block(paragraph([text("node-hardBreak-a"), { type: "hardBreak" }, text("node-hardBreak-b")])),
   heading: block({ type: "heading", attrs: { level: 2 }, content: [text("node-heading")] }),
@@ -249,9 +258,6 @@ describe("direct ADF decoder fixtures", () => {
         pageContext: { id: "fixture-page", title: "Direct decoder fixture" },
       });
       expect(JSON.stringify(result.blocks)).toContain(`mark-${type}`);
-      if (ADF_MARK_DECODE_MODES[type] === "visible-fallback") {
-        expect(result.notes.some((note) => note.code === "adf-mark-degraded"), `${type} fallback was silent`).toBe(true);
-      }
       if (type === "annotation") {
         expect(JSON.stringify(result.blocks)).toContain('"annotations":[{"id":"annotation-1","annotationType":"inlineComment"}]');
       }
