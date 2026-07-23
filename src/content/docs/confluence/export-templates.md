@@ -221,7 +221,7 @@ override reverts that space to the house style.
 | A space override is ignored | The page is not in that space, or the entry is scoped to another site | Confirm the page's space key in the panel's page summary |
 | A template's settings form is greyed out with an explanation | It is a Word template; the Word engine has no settings input | Configure the design in the template itself |
 | "Template exceeds the 20 MB limit" (panel) | Over the upload cap | Usually an embedded image — slim the template |
-| Jinja placeholders survive into the document | A docxtpl template ran through `--engine ts` | See [Jinja placeholders appear in the exported document](/confluence/export/#jinja-placeholders-appear-in-the-exported-document) |
+| Jinja placeholders survive into the document | A retired docxtpl/Jinja template was supplied to the TypeScript engine | See [Jinja placeholders appear in the exported document](/confluence/export/#jinja-placeholders-appear-in-the-exported-document) |
 
 ## Related topics
 

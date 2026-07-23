@@ -2,6 +2,36 @@
 
 All notable changes to atlcli will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **export:** Run DOCX and PDF through one durable, bounded job queue in the CLI
+  and Chrome extension. Exports are recorded before the first source read,
+  survive panel, service-worker, and offscreen-document loss, expose shared
+  Activity/history with statistics and bounded events, and support Cancel,
+  Retry, Run again, resume after sign-in, download, acknowledgement, dismissal,
+  and retention-safe cleanup.
+- **extension:** Show active export counts on the toolbar badge (`9+` maximum),
+  durable success/failure indicators, and an optional bounded completion pulse.
+  Full DOCX and Typst/WASM PDF execution now continues outside the side panel.
+- **cli:** Add `wiki export jobs list|show|watch|cancel|retry|rerun|clear` while
+  keeping ordinary exports foreground and scriptable. There is intentionally no
+  daemon or detached mode.
+
+### Changed
+
+- **export:** Use the TypeScript DOCX engine exclusively. The deprecated Python
+  exporter is no longer selected or used by ordinary exports.
+- **export:** Buffer large tree/space exports through bounded, restartable
+  source and content-addressed asset checkpoints. One global heavy-render slot
+  prevents DOCX and PDF memory peaks from overlapping.
+
+### Documentation
+
+- Document export-job lifecycle, monitoring, recovery, retention, storage
+  limits, privacy boundaries, and browser/CLI operational procedures.
+
 ## [0.17.2] - 2026-07-10
 
 ### Bug Fixes
@@ -493,4 +523,3 @@ A big thank you to everyone who helped shape this release 🙏
 
 - Add plugin-git for git integration([71b7a24](https://github.com/bjoernschotte/atlcli/commit/71b7a244cab8e1fb9e92b6e0962fd52c53e22cf2))
 ## [0.1.0] - 2026-01-10
-

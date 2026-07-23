@@ -80,13 +80,13 @@ each host has wired up:
 | Capability | Panel | CLI |
 |-----------|-------|-----|
 | PDF export | Yes | `--format pdf` |
-| Word export | Yes | `--engine ts` (or `python`) |
+| Word export | Yes | TypeScript engine (default; `--engine ts` is optional) |
 | Page / tree / space scope | Yes | `--scope page\|tree\|space` |
 | Label include/exclude filters | Yes | `--label-include` / `--label-exclude` |
 | Dynamic macro resolution on/off | Yes (a toggle) | `--no-live-macros` |
 | **PDF document settings** (page size, cover, header/footer, accent colour, logo, watermark) | **Yes** | **No** — not exposed as flags yet |
 | **PDF preview before download** | **Yes** | **No** — there is nothing to preview in a headless run |
-| **Background exports you can leave and come back to** | **Yes** | Not applicable — the process is the job |
+| **Background exports you can leave and come back to** | **Yes** | Foreground process with a durable journal; no detached daemon |
 | Two-level (global + per-space) template library | Yes | No — the CLI resolves templates by [file path precedence](/confluence/export/#template-resolution) |
 | Machine-readable report + classified exit codes | No | `--json` / `--report json` |
 | `--keep-ignored` debugging passthrough | No | Yes |
@@ -113,8 +113,10 @@ Nowhere. This is the point of the extension, so it is worth stating precisely:
   it.
 - **External images are not fetched.** An image hosted outside your Atlassian
   site is exported as a readable fallback with a note, not silently downloaded.
-- Bytes in flight (a queued export, a cached preview) live in your browser's
-  IndexedDB and are cleared after 24 hours.
+- Bytes in flight live in your browser's IndexedDB. Succeeded artifacts that
+  have not been downloaded remain protected. After download or dismissal,
+  artifact bytes are retained for at least 24 hours; full reports for 7 days;
+  compact history is bounded to the newest 100 jobs younger than 30 days.
 
 ## Limits
 
@@ -122,12 +124,18 @@ Nowhere. This is the point of the extension, so it is worth stating precisely:
 |------|-------|
 | Word template upload | 20 MB, `.docx` only |
 | Embedded assets | 25 MB per file, 50 MB per export |
-| One export job's bytes | 64 MiB |
-| All stored jobs and cached previews together | 128 MiB |
-| Job/preview retention | 24 hours |
+| One persisted spool object | 128 MiB |
+| One job's persisted spool | 256 MiB |
+| All common job spool data | 512 MiB |
+| Final DOCX/PDF artifact | 64 MiB |
+| Artifact/report/history retention | 24 hours after delivery/dismissal / 7 days / newest 100 younger than 30 days |
 | Compiler timeout | 60 seconds per compile |
 | Tree/space preview | First 5 chapters (see [Preview](/extension/export/#preview)) |
 | Datasource tables | 100 rows |
+
+Chrome's origin quota can be lower than a product cap. The runner checks
+available storage and waits or fails with a named quota reason instead of
+starting a render it cannot safely persist.
 
 ## Troubleshooting
 
@@ -150,3 +158,5 @@ Nowhere. This is the point of the extension, so it is worth stating precisely:
   in each engine
 - [PDF Export Engine](/reference/pdf-engine/) — the compiler, assets, and
   verification
+- [Export Jobs & Operations](/reference/export-jobs/) — lifecycle, recovery,
+  retention, and diagnostics

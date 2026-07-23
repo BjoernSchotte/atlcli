@@ -283,6 +283,12 @@ location. Requests and activity contain opaque auth references and operational m
 never tokens or source bodies. Jobs created with process-only ephemeral credentials cannot
 be replayed later without submitting a new authenticated export.
 
+`show` acknowledges a terminal job; `list` and `watch` do not. Artifacts remain protected
+until delivery and are then retained for at least 24 hours. Full reports/events remain for
+7 days, while compact history is bounded to the newest 100 jobs younger than 30 days.
+See [Export Jobs & Operations](/reference/export-jobs/) for lifecycle states, retention,
+storage layout, recovery, and incident diagnostics.
+
 ## Page Reference Formats
 
 | Format | Example | Description |
@@ -723,52 +729,39 @@ running heads, not only tables of contents.
 
 ## Template Variables
 
-Templates use Jinja2 syntax. Available variables:
+DOCX templates use Scroll Word Exporter placeholders. Jinja/docxtpl syntax is
+retired and remains literal text; see
+[Jinja placeholders appear in the exported document](#jinja-placeholders-appear-in-the-exported-document).
 
 ### Page Content
 
 | Variable | Description |
 |----------|-------------|
-| `{{ title }}` | Page title |
-| `{{ content }}` | Page content (as Word subdocument) |
-| `{{ pageId }}` | Confluence page ID |
-| `{{ pageUrl }}` | Full page URL |
-| `{{ tinyUrl }}` | Short page URL |
+| `$scroll.title` | Page title |
+| `$scroll.content` | Page content insertion point |
+| `$scroll.version` | Confluence page version |
+| `$scroll.pageid` | Confluence page ID |
+| `$scroll.pageurl` | Full page URL |
+| `$scroll.tinyurl` | Short page URL |
+| `$scroll.pagelabels` | Page labels |
+| `$scroll.pagelabels.capitalised` | Capitalized page labels |
 
-### Author Information
-
-| Variable | Description |
-|----------|-------------|
-| `{{ author }}` | Creator's display name |
-| `{{ authorEmail }}` | Creator's email |
-| `{{ modifier }}` | Last modifier's display name |
-| `{{ modifierEmail }}` | Last modifier's email |
-
-### Dates
+### People, Dates, Space, and Template
 
 | Variable | Description |
 |----------|-------------|
-| `{{ created }}` | Creation date (ISO format) |
-| `{{ modified }}` | Last modified date (ISO format) |
-| `{{ exportDate }}` | Export timestamp |
+| `$scroll.creator` / `.fullName` / `.email` | Creator identity |
+| `$scroll.modifier` / `.fullName` / `.email` | Last modifier identity |
+| `$scroll.pageowner.fullName` | Current page owner |
+| `$scroll.exporter` / `.fullName` / `.email` | Exporting user |
+| `$scroll.creationdate`, `$scroll.modificationdate`, `$scroll.exportdate` | Dates; optional `.(...)` format argument |
+| `$scroll.space.key`, `$scroll.space.name`, `$scroll.space.url` | Space identity |
+| `$scroll.template.name`, `$scroll.template.modificationdate` | Template identity |
+| `$scroll.spacelogo`, `$scroll.globallogo` | Space-logo image; optional `.(height,width)` in pixels |
+| `$scroll.includepage.(Title\|SPACE:Title\|pageId)` | Included page body |
 
-Use the `date` filter for formatting: `{{ modified | date('YYYY-MM-DD') }}`
-
-### Space Information
-
-| Variable | Description |
-|----------|-------------|
-| `{{ spaceKey }}` | Space key (e.g., "DOCS") |
-| `{{ spaceName }}` | Space name |
-| `{{ spaceUrl }}` | Space URL |
-
-### Collections
-
-| Variable | Description |
-|----------|-------------|
-| `{{ labels }}` | List of page labels |
-| `{{ attachments }}` | List of attachments |
-| `{{ children }}` | Child pages (with `--include-children --no-merge`) |
+Cloud has no Data Center username value. The `.name` variants for people are
+therefore empty with a report note; use `.fullName` or `.email`.
 
 ## Examples
 
@@ -781,11 +774,8 @@ atlcli wiki export 12345678 --template basic --output ./page.docx
 ### Export with Children
 
 ```bash
-# Merge children into single document
-atlcli wiki export 12345 -t book -o book.docx --include-children
-
-# Keep children separate for template loops
-atlcli wiki export 12345 -t book -o book.docx --include-children --no-merge
+# One document whose chapters follow the page tree
+atlcli wiki export 12345 -t book -o book.docx --scope tree
 ```
 
 ### Export without Images

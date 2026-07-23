@@ -61,6 +61,12 @@ still starts; only the automatic Chrome launch is skipped.
 5. Open an eligible Confluence page. Upload/select a DOCX template for Word export, or run the
    built-in PDF export.
 
+Both formats create a durable Activity row before the first source read. After
+submission, navigate to another tab/page or close the side panel: the
+background/offscreen runner continues. **Activity** shows progress, statistics,
+bounded events, Retry/Run again, resume after sign-in, and download. The toolbar
+badge shows the active count and unread success/failure state.
+
 **After each rebuild:** click the **reload** (↻) icon on the atlcli card in
 `chrome://extensions`. During active `dev` sessions WXT reloads automatically, so
 this manual step is only needed for `build` (production) artifacts.

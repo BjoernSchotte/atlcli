@@ -113,6 +113,7 @@ export default defineConfig({
             { label: 'CLI Commands', link: '/reference/cli-commands/' },
             { label: 'DOCX Export Engine', link: '/reference/docx-engine/' },
             { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
+            { label: 'Export Jobs & Operations', link: '/reference/export-jobs/' },
             { label: 'Public Export API (v1)', link: '/reference/export-api/' },
             { label: 'Consuming the Packages', link: '/reference/package-consumption/' },
             { label: 'Export Asset Contract', link: '/reference/asset-contract/' },

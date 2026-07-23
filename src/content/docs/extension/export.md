@@ -234,26 +234,41 @@ A tree or space export takes minutes. You do not have to sit with it.
 
 **Activity** lists running and finished exports with their status — *Queued*,
 *Compiling…*, *Page 12/57*, *Ready*, *Failed*, *Cancelled* — and how long ago
-each one ran. From there you can cancel a running export, download a finished
-one, or dismiss it.
+each one ran. Filters cover the current/all sites, PDF/DOCX, status, and time
+range. Open a detail to see stages, counters, report issues, and the bounded
+operational protocol. From there you can cancel, download, retry, run a
+successful export again, resume an authentication-blocked job after signing in,
+mark it as read, or dismiss terminal history.
 
 What "background" means here, precisely:
 
-> Exports keep running while you browse and survive closing this panel — but not
-> closing the browser.
+> Exports keep running while Chrome is open, even when you browse elsewhere or
+> close the panel. If Chrome quits, work pauses; its durable queue and
+> checkpoints are resumed on the next browser start.
 
 That covers navigating to another page, closing the side panel, and Chrome
-restarting the extension's service worker. It does **not** cover quitting Chrome:
-there is no server side to this extension, and nothing in the panel implies
-there is one.
+restarting the extension's service worker or offscreen document. It does **not**
+mean that code runs while Chrome itself is closed: there is no server side. If
+the browser session expired in the meantime, Activity shows **Resume after
+sign-in** instead of discarding the job.
 
-Finished exports and cached previews are cleared after **24 hours**, and they
-share one 128 MiB storage budget (64 MiB for any single job). When the budget is
-tight, cached previews are dropped before finished exports, and a finished export
-you have not collected yet is never dropped to admit a new job.
+Every export gets an Activity row. The toolbar badge shows the number of
+unfinished jobs, capped at `9+`. With no active job it shows `✓` for unread
+success or `!` for unread failure; opening Activity alone does not clear it.
+Viewing the detail, downloading, or **Mark as read** acknowledges the result.
+The short completion/failure colour pulse is optional under Activity; the static
+badge and persisted row remain the source of truth.
 
-Most exports are a single page that finishes in seconds and is never listed at
-all — an empty **Activity** section is the normal case, not a fault.
+**Retry** is available for failed, interrupted, or cancelled jobs. **Run again**
+is available for successful jobs. Both create a linked new row and preserve the
+original history; neither rewrites the old job.
+
+Succeeded artifacts that have not been downloaded remain protected. Once
+downloaded or dismissed, artifact bytes are retained for at least 24 hours.
+Full reports/events remain for 7 days. Compact history is the intersection of
+the newest 100 jobs and jobs younger than 30 days. See
+[Export Jobs & Operations](/reference/export-jobs/) for the storage budgets and
+cleanup contract.
 
 ## Examples
 
@@ -289,7 +304,9 @@ atlcli wiki export <pageId> --format pdf --scope tree \
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | **My change isn't in the preview** | The preview renders the last **published** version, not the open editor draft | Publish the page, then refresh the preview |
-| **My export disappeared** | Either the browser was closed (background exports do not survive that), or the job passed the 24-hour retention window | Re-run it. For long exports, leave Chrome running |
+| **My export stopped when Chrome closed** | The queue is local; no code runs while Chrome is fully closed | Start Chrome again. The job resumes from its last durable checkpoint; sign in and choose **Resume after sign-in** if Activity reports an authentication wait |
+| The toolbar still shows `✓` or `!` | Opening Activity does not acknowledge terminal work | Open the job detail, download it, or choose **Mark as read** |
+| **Retry** or **Run again** created another row | Replay is append-only by design | Inspect the linked new row; the original remains immutable history |
 | The middle zoom button does nothing | It is **Fit width**, not full screen, and it is disabled while the page already fits | Zoom in or out first; for a bigger view use **Open large preview** |
 | The preview stops after a few chapters | A tree/space preview is capped at the first 5 chapters by design | Nothing to fix — **Download** compiles the whole document |
 | **Download** is unavailable on a preview | A truncated preview's bytes are a prefix, not the document | Use **Export to PDF**, which compiles all of it |
@@ -310,4 +327,6 @@ atlcli wiki export <pageId> --format pdf --scope tree \
 - [Macro compatibility](/confluence/macro-compatibility/)
 - [PDF Template Settings](/reference/pdf-template-settings/) — the full settings
   reference
+- [Export Jobs & Operations](/reference/export-jobs/) — queue lifecycle,
+  retention, recovery, and diagnostics
 - [Labels](/confluence/labels/) — managing the labels the filters read

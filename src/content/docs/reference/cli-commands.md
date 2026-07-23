@@ -316,6 +316,36 @@ atlcli wiki docs template export <name> -o <file>
 atlcli wiki docs template import --file <path>
 ```
 
+### DOCX and PDF Export
+
+```bash
+# Foreground export through the durable job runtime
+atlcli wiki export <page-id> --output ./page.docx
+atlcli wiki export <page-id> --format pdf --output ./page.pdf
+atlcli wiki export <page-id> --scope tree --output ./handbook.docx
+atlcli wiki export --scope space --space DOCS --format pdf --out-dir ./dist
+
+# Inspect and manage activity across DOCX and PDF
+atlcli wiki export jobs list
+atlcli wiki export jobs list --status running,waiting --format pdf --since 12h
+atlcli wiki export jobs show <job-id>
+atlcli wiki export jobs watch <job-id>
+atlcli wiki export jobs watch <job-id> --jsonl
+atlcli wiki export jobs cancel <job-id>
+atlcli wiki export jobs retry <failed-id> --output ./retry.docx
+atlcli wiki export jobs rerun <succeeded-id> --output ./copy.pdf
+atlcli wiki export jobs clear --before 30d --confirm
+```
+
+`retry` accepts failed, interrupted, or cancelled jobs; `rerun` accepts
+successful jobs. Both create a linked new job and leave the source row
+unchanged. `list`, `show`, `cancel`, `retry`, `rerun`, and `clear` accept
+`--json`; `watch` accepts `--jsonl`. Ordinary exports stay foreground and print
+progress while another process can monitor or cancel them. There is no
+`--detach` mode. See [DOCX and PDF Export](/confluence/export/) for export flags
+and [Export Jobs & Operations](/reference/export-jobs/) for recovery and
+retention.
+
 ## Jira
 
 ### Issues

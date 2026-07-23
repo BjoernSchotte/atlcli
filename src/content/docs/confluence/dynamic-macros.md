@@ -7,7 +7,7 @@ description: "How atlcli renders Jira tables, draw.io diagrams, includes, TOCs a
 
 Many Confluence pages embed **dynamic macros** — a live Jira issue table, a
 draw.io diagram, a Page Properties Report, a `{children}` list, a re-used
-excerpt. When you export with `--engine ts`, atlcli resolves these to real,
+excerpt. When you export, atlcli resolves these to real,
 themed content instead of collapsing them into a gray placeholder.
 
 ## On this page
@@ -22,9 +22,9 @@ themed content instead of collapsing them into a gray placeholder.
 
 ## Prerequisites
 
-- **Engine:** for DOCX, dynamic-macro resolution runs only on the TypeScript
-  engine (`--engine ts`); the default `python` engine renders placeholders.
-  `--format pdf` always resolves macros (PDF has a single built-in engine).
+- **Engine:** DOCX uses the TypeScript engine (`--engine ts` is an optional
+  compatibility spelling); PDF uses its single Typst/WASM engine. The retired
+  Python exporter is not a fallback.
 - An auth profile with access to the space (and, for Jira macros, the linked
   Jira site).
 
@@ -226,7 +226,7 @@ Every macro the resolver touches produces exactly one terminal note:
 | Diagram shows a placeholder | No preview attachment on the page (previews are only written on save) | Open and re-save the diagram in Confluence, then re-export |
 | "preview may be outdated" note | The diagram preview is older than the page's last edit | Re-save the diagram to regenerate its preview |
 | A third-party macro is a placeholder | The app declares no `export_view`/ADF export | Placeholder + note is the honest floor |
-| Macros not resolved at all | Running the `python` engine | Add `--engine ts` |
+| Macros not resolved at all | `--no-live-macros` was selected, or the live-resolution deadline was exhausted | Re-enable live macros, or inspect the report's `macro-skipped-by-config` / timeout note |
 | A Jira table exports as a bare URL, `datasource-cross-site` note | The table points at a different Jira site than the export profile | Export with a profile on that site, or accept the link |
 | A Jira table exports as a bare URL, `datasource-filter-unsupported` note | The table is built on a saved filter, not JQL | Rebuild the table with an explicit JQL query |
 | A Jira table exports as a bare URL, `datasource-provider-unknown` note | Atlassian introduced a datasource provider newer than this release | Report the provider id printed in the note |

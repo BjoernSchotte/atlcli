@@ -1793,8 +1793,16 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     unavailable rather than inferred. The benchmark corpus is synthetic and
     performs no tenant request; packed persistent-profile Chromium independently
     proves the production offscreen/service-worker lifecycle.
-  - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
-    non-cleanup audit and gates.
+  - [x] Documentation/release-note increment: the CLI export guide and command
+    reference, Extension install/export walkthroughs, shared troubleshooting,
+    package READMEs, and a new Export Jobs & Operations reference now document
+    the common lifecycle, host differences, Activity/badge actions, Retry/Run
+    again, browser pause/recovery semantics, buffering/caps, retention, privacy,
+    incident procedure, and future-Forge non-claim. Stale Python-default/Jinja
+    guidance was replaced by the actually shipped TypeScript `$scroll.*`
+    contract, and CHANGELOG carries an unreleased release-ready entry. Astro
+    check and the 76-page production documentation build pass.
+  - [ ] Remaining PR-I increment: final non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have
