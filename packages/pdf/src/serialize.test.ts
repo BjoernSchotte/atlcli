@@ -137,7 +137,7 @@ describe("PDF preparation and serialization", () => {
     const blocks: ExportBlock[] = [
       {
         type: "paragraph",
-        presentation: { alignment: "center", indentation: 2 },
+        presentation: { alignment: "center", indentation: 2, fontSize: "small" },
         content: [{ type: "text", text: "Centered" }],
       },
       {
@@ -157,7 +157,7 @@ describe("PDF preparation and serialization", () => {
     );
 
     expect(bundle.main).toContain(
-      '#block(inset: (left: 1.5em * 2))[#align(center)[#par[#text("Centered")]]]',
+      '#block(inset: (left: 1.5em * 2))[#text(size: 9pt)[#align(center)[#par[#text("Centered")]]]]',
     );
     expect(bundle.main).toContain(
       "#block(inset: (left: 1.5em * 6))[#align(end)[#atlcli-outline-title.update",

@@ -56,6 +56,7 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
     },
     roles: {
       body: { font: "body", size: "10.5pt" },
+      adfSmallText: { font: "body", size: "9pt" },
       h1: { font: "heading", size: "22pt", weight: "bold" },
       h2: { font: "heading", size: "16pt", weight: "semibold" },
       h3: { font: "heading", size: "12.5pt", weight: "semibold" },

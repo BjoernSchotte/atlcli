@@ -48,6 +48,7 @@ export interface AdfSourceCaseResult {
   docxHasCustomEmojiFallback: boolean;
   docxHasBlockAlignment: boolean;
   docxHasBlockIndentation: boolean;
+  docxHasSmallParagraphText: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
@@ -319,6 +320,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasCustomEmojiFallback: documentXml.includes(":custom_party:"),
     docxHasBlockAlignment: documentXml.includes('<w:jc w:val="center"/>'),
     docxHasBlockIndentation: documentXml.includes('<w:ind w:start="1440"/>'),
+    docxHasSmallParagraphText:
+      documentXml.includes('<w:sz w:val="18"/>') &&
+      documentXml.includes('<w:szCs w:val="18"/>'),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasCardTitle:
       documentXml.includes("Local card title")

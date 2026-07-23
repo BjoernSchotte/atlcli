@@ -1746,6 +1746,7 @@ export interface RunStyle {
     superscript?: boolean;
     color?: string;
     backgroundColor?: string;
+    fontSizeHalfPoints?: number;
 }
 
 // export: ScanHit
@@ -1797,7 +1798,7 @@ export interface SerializeContext {
 }
 
 // export: serializeInline
-export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string;
+export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string, fontSizeHalfPoints?: number): string;
 
 // export: SerializeResult
 export interface SerializeResult {
@@ -1807,7 +1808,7 @@ export interface SerializeResult {
 }
 
 // export: statusBadgeRun
-export declare function statusBadgeRun(text: string, color: string): string;
+export declare function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string;
 
 // export: synthesizeA4SectPr
 export declare function synthesizeA4SectPr(): string;

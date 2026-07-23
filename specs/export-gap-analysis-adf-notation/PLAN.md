@@ -288,7 +288,7 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including decisions, block tasks, layouts, native captions, advanced media, sync content, placeholders, annotation, breakout, border, data-consumer, fragment, and font-size semantics—must receive a coverage-manifest status and deterministic fallback. Native fidelity work remains in the prioritized backlog in the gap analysis; alignment and indentation are now native.
+The remaining schema rows—including decisions, block tasks, layouts, native captions, advanced media, sync content, placeholders, annotation, breakout, border, data-consumer, and fragment semantics—must receive a coverage-manifest status and deterministic fallback. Native fidelity work remains in the prioritized backlog in the gap analysis; alignment, indentation, and the schema-defined small paragraph font size are now native.
 
 The ADF adapter must never infer semantics from raw text. Literal `:warning:`, backticks, `[]`, `<>`, and slash-command text remain literal unless Confluence stored a typed ADF node or mark.
 
@@ -530,6 +530,7 @@ Required semantic cases:
 - [x] nested marks, code identifiers, whitespace, punctuation, and final newline;
 - [x] H1–H6, mixed/nested lists, task state, and non-1 ordered-list approximation note;
 - [x] paragraph/heading logical alignment and bounded indentation through composition and both renderers;
+- [x] schema-defined small paragraph text through validation, composition, and both renderers;
 - [x] tables including spans, background, widths, and dropped ADF-only attributes;
 - [x] safe/unsafe external, page, attachment, anchor, and card links;
 - [x] Unicode emoji, missing text, custom emoji, and literal colon text;
@@ -546,6 +547,8 @@ Exit:
 Evidence recorded on 2026-07-22: `adfToBlocks()` decodes the pinned schema-valid feature fixture and has an exhaustive implementation mode for all 43 nodes and 17 marks. Focused tests cover native mappings, visible fallbacks, marks, source paths, Storage-compatible export controls, links, tables, emoji, mentions, extensions, correlated/unresolved media, deterministic ordering, and diagnostic caps. The complete repository suite passed with 4,740 tests, 13 intentional skips, and zero failures; public API/closure guards, pinned-coverage guard, existing Storage walker/composition/mention regressions, full typecheck, browser-isomorphism, and the full build passed as well. An anonymized live create/read/decode/cleanup probe confirmed ADF-primary input, literal colon-text preservation, inline-code marks, and complete cleanup; the live creation route did not materialize a standalone emoji node, so that node remains proven by the pinned schema-valid fixture rather than the live probe.
 
 Block-presentation follow-on evidence recorded on 2026-07-23: ADF `alignment` (`center`/`end`) and `indentation` (levels 1–6) now enter a target-neutral `BlockPresentation` on paragraphs and headings. The runtime validator enforces the pinned schema values, composition preserves the presentation while rebasing headings and links, DOCX emits logical paragraph justification plus bounded `w:start`, and PDF emits design-token-driven Typst alignment/inset. Focused decoder/composition/serializer tests and the packed fixture cover both targets; the real DOCX/LibreOffice and Typst/PDF render goldens visibly prove centering and indentation.
+
+Font-size follow-on evidence recorded on 2026-07-23: the pinned ADF schema exposes only the paragraph mark `fontSize: "small"`, so the neutral model preserves that bounded semantic rather than accepting arbitrary measures. Validation rejects every other value. DOCX applies explicit 9 pt sizing to the actual paragraph runs so template inheritance cannot erase it; PDF uses the template's bounded `adfSmallText` typography role with a 9 pt compatibility fallback. Shared browser fixtures, target serializers, and real LibreOffice/Typst render goldens visibly distinguish the small paragraph from normal body text.
 
 ### WP4 — Common dispatcher and differential fixtures
 
@@ -1012,10 +1015,12 @@ Completed follow-on evidence recorded on 2026-07-23: ordered-list starts now sur
 
 Completed follow-on evidence recorded on 2026-07-23: ADF block `alignment` (`center`/`end`) and `indentation` (levels 1–6) now survive validation, decoding, tree composition, DOCX, and PDF through the shared `BlockPresentation` contract. DOCX uses logical paragraph justification and bounded start indentation; PDF uses Typst alignment and a template-design indentation step. The shared ADF browser fixture asserts the neutral shape and DOCX OOXML, while real LibreOffice and Typst/Poppler goldens visibly prove centered and indented paragraphs. Both mark rows are pinned as native.
 
+Completed follow-on evidence recorded on 2026-07-23: ADF paragraph `fontSize: "small"` now survives validation, decoding, composition, DOCX, and PDF through the shared `BlockPresentation` contract. Arbitrary size values fail validation. DOCX writes explicit 18-half-point run sizes; PDF resolves the template-owned `adfSmallText` role with a bounded 9 pt fallback. The packed source fixture and real render goldens prove visibly smaller text in both formats, and the mark row is pinned as native.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. emoji/custom-emoji assets and a guaranteed DOCX mono font;
-2. paragraph font size, annotation, and fragment marks (alignment and indentation are complete);
+2. annotation and fragment marks (alignment, indentation, and schema-defined small text are complete);
 3. decisions, block tasks, ordered-list starts, and richer task metadata;
 4. table layout/display/number-column/vertical-alignment attributes;
 5. layout columns, breakout, captions, and nested expands;

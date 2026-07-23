@@ -123,7 +123,7 @@ const MARK_ATTRS: Record<PinnedAdfMarkType, Record<string, unknown> | undefined>
   code: undefined,
   dataConsumer: { sources: ["source-1"] },
   em: undefined,
-  fontSize: { size: "large" },
+  fontSize: { fontSize: "small" },
   fragment: { localId: "fragment-1", name: "node-fragment" },
   indentation: { level: 1 },
   link: { href: "https://example.invalid/mark-link" },
@@ -139,7 +139,7 @@ const MARK_FIXTURES = Object.fromEntries(PINNED_ADF_MARK_TYPES.map((type) => {
   const mark = { type, ...(attrs ? { attrs } : {}) };
   return [
     type,
-    type === "alignment" || type === "indentation"
+    type === "alignment" || type === "indentation" || type === "fontSize"
       ? block({ ...paragraph(`mark-${type}`), marks: [mark] })
       : block(paragraph([text(`mark-${type}`, [mark])])),
   ];

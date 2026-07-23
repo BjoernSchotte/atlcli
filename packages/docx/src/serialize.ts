@@ -223,6 +223,8 @@ export interface SerializeResult {
 const INDENT_STEP = 360;
 /** Half an inch per authored ADF indentation level. */
 const ADF_BLOCK_INDENT_STEP = 720;
+/** Atlassian Body Small is 12 px, which maps to 9 pt / 18 OOXML half-points. */
+const ADF_SMALL_TEXT_HALF_POINTS = 18;
 /** Neutral background used when ADF/Storage code marks carry no explicit fill. */
 const INLINE_CODE_BACKGROUND = "F4F5F7";
 
@@ -232,7 +234,8 @@ const INLINE_CODE_BACKGROUND = "F4F5F7";
 
 function styleFromInline(
   node: Extract<InlineNode, { type: "text" }>,
-  defaultTextColor?: string
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
 ): RunStyle {
   const marks = node.marks ?? [];
   const code = marks.includes("code");
@@ -246,34 +249,44 @@ function styleFromInline(
     superscript: marks.includes("superscript"),
     color: node.color ?? defaultTextColor,
     backgroundColor: node.backgroundColor ?? (code ? INLINE_CODE_BACKGROUND : undefined),
+    fontSizeHalfPoints,
   };
 }
 
 /** Serialize inline nodes to run XML. */
-export function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string {
+export function serializeInline(
+  nodes: InlineNode[],
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
+): string {
   let out = "";
   for (const node of nodes) {
     switch (node.type) {
       case "text":
-        out += run(node.text, styleFromInline(node, defaultTextColor));
+        out += run(node.text, styleFromInline(node, defaultTextColor, fontSizeHalfPoints));
         break;
       case "lineBreak":
         out += lineBreakRun();
         break;
       case "status":
-        out += statusBadgeRun(node.text || node.color, node.color);
+        out += statusBadgeRun(node.text || node.color, node.color, fontSizeHalfPoints);
         break;
       case "mention":
-        out += run(`@${node.displayName ?? node.accountId}`, { color: "0747A6" });
+        out += run(`@${node.displayName ?? node.accountId}`, {
+          color: "0747A6",
+          fontSizeHalfPoints,
+        });
         break;
       case "link": {
         const innerRuns = serializeInline(
-          node.content.length ? node.content : [{ type: "text", text: "" }]
+          node.content.length ? node.content : [{ type: "text", text: "" }],
+          defaultTextColor,
+          fontSizeHalfPoints,
         );
-        const styled = linkStyledRuns(node.content) || innerRuns;
+        const styled = linkStyledRuns(node.content, fontSizeHalfPoints) || innerRuns;
         if (node.target.kind === "external" && node.target.href) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
-          out += hyperlinkField(node.target.href, linkStyledRuns(node.content));
+          out += hyperlinkField(node.target.href, linkStyledRuns(node.content, fontSizeHalfPoints));
         } else if (node.target.kind === "anchor") {
           // Internal anchor link → a real in-document jump (spec 002). The
           // anchor is the sanitized destination id compose-document assigned;
@@ -291,13 +304,17 @@ export function serializeInline(nodes: InlineNode[], defaultTextColor?: string):
 }
 
 /** Render link content as underlined blue runs (Word Hyperlink look). */
-function linkStyledRuns(nodes: InlineNode[]): string {
+function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number): string {
   let out = "";
   for (const node of nodes) {
     if (node.type === "text") {
-      out += run(node.text, { ...styleFromInline(node), color: "0563C1", underline: true });
+      out += run(node.text, {
+        ...styleFromInline(node, undefined, fontSizeHalfPoints),
+        color: "0563C1",
+        underline: true,
+      });
     } else {
-      out += serializeInline([node]);
+      out += serializeInline([node], undefined, fontSizeHalfPoints);
     }
   }
   return out;
@@ -504,7 +521,11 @@ async function serializeBlock(
     }
 
     case "paragraph":
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      return paragraph(serializeInline(
+        block.content,
+        ctx.defaultTextColor,
+        block.presentation?.fontSize === "small" ? ADF_SMALL_TEXT_HALF_POINTS : undefined,
+      ), {
         extraPPr: blockPresentationPPr(block.presentation),
       });
 

@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "56c317618f60484a95615fe098398766eab603c2eb6a422562a472a5a367bf78",
+  "sourceSha256": "6983c1912d077cdbc3d0b7cc9a8870562013267c35bcfae72fd138f2648df077",
   "features": [
     "inline-code",
     "unicode-emoji",
     "custom-emoji-fallback",
     "block-alignment",
     "block-indentation",
+    "paragraph-font-size",
     "ordered-list-start",
     "nested-list-restart",
     "table",
@@ -20,7 +21,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "9fb9c7f2b05a321f6a086d2154440a774cdb55a9ed5c06d59bd72a7db59470d1"
+          "sha256": "17b1f00a16b1193a61466af268aea601820279a3254b7fbd9477ec5679be2622"
         }
       ],
       "requiredText": [
@@ -55,7 +56,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "43d820184c9c6bc3f342f294f530e86de71a89f1176b86fa6cf36dff88729a22"
+          "sha256": "b6b31cdc97ff9698940bd9e909f02ad0290b5a71f54571ca144ab63f5f76360b"
         },
         {
           "file": "pdf-page-4.png",

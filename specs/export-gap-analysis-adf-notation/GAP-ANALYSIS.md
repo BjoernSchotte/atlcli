@@ -102,7 +102,7 @@ The matrix covers every semantic node type in `@atlaskit/adf-schema@56.1.13`. â€
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
 | `doc` | No ADF root is parsed; Storage fragment becomes `ExportBlock[]`. | N/A | N/A | Add validated ADF document entry point with schema/version diagnostics. |
-| `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment and indentation. | Native | Native | Font size, local ID, and other ADF attributes remain outside the model. |
+| `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment, indentation, and the schema-defined `small` font size. | Native | Native | Local ID and other ADF attributes remain outside the model. |
 | `heading` | `<h1>`â€¦`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native | Native | Composed exports may rebase levels; local ID remains outside the model. |
 | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Rendering still depends on target font glyph coverage. |
 | `hardBreak` | `<br>` becomes `lineBreak`. | Native | Native | Add direct ADF fixture; Storage path is covered. |
@@ -230,7 +230,7 @@ This covers all 17 marks in the pinned schema.
 | `subsup` | `<sub>`/`<sup>` -> separate sub/sup marks. | Native | Native | Preserve ADF enum exactly and test combinations. |
 | `textColor` | Span CSS color -> normalized RGB. | Native | Native | Theme-token mapping is intentionally flattened to static print color; add contrast policy. |
 | `backgroundColor` | Span CSS background -> normalized RGB. | Native | Native | ADF disallows some combinations such as code; validate rather than synthesize invalid combinations. |
-| `fontSize` | No `InlineMark` variant or source mapping. | Missing | Missing | Add a bounded, theme-aware size model and prevent pathological sizes. |
+| `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
 | `link` | HTML/Confluence link -> typed target. | Partial | Partial | Page/attachment/card links are not uniformly resolvable/clickable; collection/media attributes are lost. |
 | `annotation` | Not modeled. | Missing | Missing | Preserve annotation identity separately from comment-export policy; underlying text must remain. |
 | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
@@ -326,7 +326,7 @@ Required acceptance contract:
 
 6. **Completed except DOCX font embedding:** inline-code visual treatment and regression goldens.
 7. Emoji/custom-emoji semantics, asset fallback, and font/glyph coverage.
-8. **Completed for alignment and indentation; font size remains.**
+8. **Completed:** paragraph/heading alignment and indentation plus schema-defined small paragraph text.
 9. Decisions and full task semantics.
 10. **Completed:** ordered-list start and nested restart behavior.
 11. Table layout/display mode/numbered column/vertical alignment/width.
@@ -356,7 +356,7 @@ Required acceptance contract:
 
 - Inline code.
 - Emoji/custom emoji.
-- Font size (alignment and indentation are complete).
+- **Completed:** alignment, indentation, and the schema-defined small paragraph font size.
 - Link/card identity and date semantics.
 
 ### Phase 2 - Structural fidelity
@@ -414,7 +414,6 @@ Focused missing gates include:
 - generic inline/block/embed card tests;
 - layout width/column tests;
 - media group/inline/file/video/audio tests;
-- font-size tests;
 - native ADF caption/nested-expand tests;
 - sync-block tests;
 - generic inline extension placement tests;
@@ -425,7 +424,7 @@ At the initial documentation-only analysis baseline, workspace dependencies were
 
 ## 14. Official sources
 
-Accessed 2026-07-22:
+Accessed 2026-07-22 and 2026-07-23:
 
 1. [Atlassian Document Format structure](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 2. [Canonical ADF JSON schema](https://go.atlassian.com/adf-json-schema) -> pinned for this analysis to [`@atlaskit/adf-schema@56.1.13`](https://unpkg.com/@atlaskit/adf-schema@56.1.13/dist/json-schema/v1/full.json)
@@ -441,6 +440,7 @@ Accessed 2026-07-22:
 12. [Forge macro manifest and `adfExport`](https://developer.atlassian.com/platform/forge/manifest-reference/modules/macro/)
 13. [Forge ADF renderer](https://developer.atlassian.com/platform/forge/ui-kit/components/adf-renderer/)
 14. [Confluence export Word/PDF/HTML/XML](https://support.atlassian.com/confluence-cloud/docs/export-content-to-word-pdf-html-and-xml/)
+15. [Atlassian Design System typography scale](https://atlassian.design/foundations/typography/)
 
 ## 15. Repository evidence index
 

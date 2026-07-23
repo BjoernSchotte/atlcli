@@ -122,8 +122,18 @@ describe("serializeBlocks — ADF block presentation", () => {
     const { xml } = await serializeBlocks([
       {
         type: "paragraph",
-        presentation: { alignment: "center", indentation: 2 },
-        content: [{ type: "text", text: "Centered" }],
+        presentation: { alignment: "center", indentation: 2, fontSize: "small" },
+        content: [
+          { type: "text", text: "Centered" },
+          { type: "text", text: "TOKEN", marks: ["code"] },
+          { type: "mention", accountId: "account-1", displayName: "Jo" },
+          { type: "status", text: "Ready", color: "green" },
+          {
+            type: "link",
+            target: { kind: "external", href: "https://example.invalid/docs" },
+            content: [{ type: "text", text: "Docs" }],
+          },
+        ],
       },
       {
         type: "heading",
@@ -134,11 +144,34 @@ describe("serializeBlocks — ADF block presentation", () => {
     ], { styleNames: noStyles });
 
     expect(xml).toContain(
-      '<w:pPr><w:ind w:start="1440"/><w:jc w:val="center"/></w:pPr>',
+      '<w:pPr><w:ind w:start="1440"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>',
+    );
+    expect(xml).toContain(
+      '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(xml).toContain(
+      '<w:color w:val="0747A6"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(xml).toContain(
+      '<w:b/><w:sz w:val="18"/><w:szCs w:val="18"/><w:shd',
+    );
+    expect(xml).toContain(
+      '<w:u w:val="single"/><w:color w:val="0563C1"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
     );
     expect(xml).toContain(
       '<w:pStyle w:val="Heading1"/><w:ind w:start="4320"/><w:jc w:val="end"/><w:outlineLvl w:val="0"/>',
     );
+  });
+
+  it("bounds explicit run sizes and never emits non-finite OOXML values", () => {
+    expect(serializeInline([{ type: "text", text: "small" }], undefined, 18.4)).toContain(
+      '<w:sz w:val="18"/><w:szCs w:val="18"/>',
+    );
+    expect(serializeInline([{ type: "text", text: "bounded" }], undefined, 99_999)).toContain(
+      '<w:sz w:val="3276"/><w:szCs w:val="3276"/>',
+    );
+    expect(serializeInline([{ type: "text", text: "finite" }], undefined, Number.NaN))
+      .not.toContain("<w:sz");
   });
 });
 

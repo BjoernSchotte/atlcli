@@ -158,6 +158,14 @@ export interface RunStyle {
   color?: string;
   /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
   backgroundColor?: string;
+  /** Explicit OOXML half-point size, used for bounded source typography semantics. */
+  fontSizeHalfPoints?: number;
+}
+
+function fontSizeHalfPointsXml(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "";
+  const size = Math.max(1, Math.min(3276, Math.round(value)));
+  return `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`;
 }
 
 function runPropsXml(style: RunStyle): string {
@@ -170,6 +178,8 @@ function runPropsXml(style: RunStyle): string {
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
   if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
+  const fontSize = fontSizeHalfPointsXml(style.fontSizeHalfPoints);
+  if (fontSize) parts.push(fontSize);
   if (style.backgroundColor) {
     parts.push(
       `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(style.backgroundColor)}"/>`
@@ -615,7 +625,7 @@ export function tableCell(
 }
 
 /** Status badge as a shaded, colored inline run inside its own paragraph. */
-export function statusBadgeRun(text: string, color: string): string {
+export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string {
   const fillByColor: Record<string, string> = {
     grey: "DFE1E6",
     gray: "DFE1E6",
@@ -626,8 +636,9 @@ export function statusBadgeRun(text: string, color: string): string {
     purple: "EAE6FF",
   };
   const fill = fillByColor[color.toLowerCase()] ?? "DFE1E6";
+  const fontSize = fontSizeHalfPointsXml(fontSizeHalfPoints);
   return (
-    `<w:r><w:rPr><w:b/><w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
+    `<w:r><w:rPr><w:b/>${fontSize}<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
     `<w:t xml:space="preserve"> ${esc(text)} </w:t></w:r>`
   );
 }

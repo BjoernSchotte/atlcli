@@ -134,6 +134,7 @@ describe("adfToBlocks", () => {
         marks: [
           { type: "alignment", attrs: { align: "center" } },
           { type: "indentation", attrs: { level: 2 } },
+          { type: "fontSize", attrs: { fontSize: "small" } },
         ],
         content: [{ type: "text", text: "Centered and indented" }],
       },
@@ -152,7 +153,7 @@ describe("adfToBlocks", () => {
       {
         type: "paragraph",
         content: [{ type: "text", text: "Centered and indented" }],
-        presentation: { alignment: "center", indentation: 2 },
+        presentation: { alignment: "center", indentation: 2, fontSize: "small" },
       },
       {
         type: "heading",

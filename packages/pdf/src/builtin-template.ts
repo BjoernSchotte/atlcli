@@ -47,6 +47,7 @@ const DESIGN: WikiPdfTemplateDesignV1 = {
     },
     roles: {
       body: { font: "body", size: "10pt" },
+      adfSmallText: { font: "body", size: "9pt" },
       h1: { font: "heading", size: "18pt", weight: "semibold" },
       h2: { font: "heading", size: "14pt", weight: "semibold" },
       h3: { font: "heading", size: "11.5pt", weight: "semibold" },

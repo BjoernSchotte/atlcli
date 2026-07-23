@@ -185,6 +185,13 @@ function validateKnownMarkShape(
       );
     }
   }
+  if (type === "fontSize" && attrs?.fontSize !== "small") {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      'ADF fontSize must be "small".',
+      `${path}.attrs.fontSize`,
+    );
+  }
   if (type === "link") assertStringAttribute(attrs, "href", path);
   if (type === "textColor" || type === "backgroundColor") {
     assertStringAttribute(attrs, "color", path);

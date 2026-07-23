@@ -271,6 +271,7 @@ async function manifestFor(
       "custom-emoji-fallback",
       "block-alignment",
       "block-indentation",
+      "paragraph-font-size",
       "ordered-list-start",
       "nested-list-restart",
       "table",

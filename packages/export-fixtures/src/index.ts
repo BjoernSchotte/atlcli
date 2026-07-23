@@ -147,7 +147,10 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "paragraph",
-      marks: [{ type: "alignment", attrs: { align: "center" } }],
+      marks: [
+        { type: "alignment", attrs: { align: "center" } },
+        { type: "fontSize", attrs: { fontSize: "small" } },
+      ],
       content: [{ type: "text", text: "Centered paragraph" }],
     },
     {

@@ -815,6 +815,10 @@ function applyBlockPresentation(
   if (presentation.alignment !== undefined) {
     presented = `#align(${presentation.alignment})[${presented}]`;
   }
+  if (presentation.fontSize === "small") {
+    const smallTextSize = design.typography.roles.adfSmallText?.size ?? "9pt";
+    presented = `#text(size: ${smallTextSize})[${presented}]`;
+  }
   if (presentation.indentation !== undefined) {
     const level = Math.max(1, Math.min(6, presentation.indentation));
     presented =

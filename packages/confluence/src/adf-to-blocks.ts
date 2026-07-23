@@ -244,7 +244,7 @@ function decodeBlockChildren(
 function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock[] {
   const presentation =
     node.type === "paragraph" || node.type === "heading"
-      ? decodeBlockPresentation(node.marks, ctx, path)
+      ? decodeBlockPresentation(node.marks, node.type, ctx, path)
       : undefined;
   if (node.type !== "paragraph" && node.type !== "heading") {
     noteUnhandledNodeMarks(node, ctx, path);
@@ -478,6 +478,7 @@ function applyMarks(
 
 function decodeBlockPresentation(
   marks: readonly AdfMark[] | undefined,
+  nodeType: "paragraph" | "heading",
   ctx: DecodeContext,
   path: string,
 ): BlockPresentation | undefined {
@@ -498,9 +499,19 @@ function decodeBlockPresentation(
       }
       continue;
     }
+    if (mark.type === "fontSize") {
+      if (nodeType === "paragraph" && mark.attrs?.fontSize === "small") {
+        presentation.fontSize ??= "small";
+      } else {
+        addMarkNote(ctx, path, mark.type);
+      }
+      continue;
+    }
     addMarkNote(ctx, path, mark.type);
   }
-  return presentation.alignment !== undefined || presentation.indentation !== undefined
+  return presentation.alignment !== undefined ||
+    presentation.indentation !== undefined ||
+    presentation.fontSize !== undefined
     ? presentation
     : undefined;
 }

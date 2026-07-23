@@ -36,7 +36,7 @@ describe("ADF browser conformance fixture", () => {
     });
     expect(pdf.blocks[2]).toMatchObject({
       type: "paragraph",
-      presentation: { alignment: "center" },
+      presentation: { alignment: "center", fontSize: "small" },
     });
     expect(pdf.blocks[3]).toMatchObject({
       type: "paragraph",

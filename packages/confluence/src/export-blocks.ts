@@ -119,6 +119,8 @@ export interface ListItem {
 export interface BlockPresentation {
   alignment?: "center" | "end";
   indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** ADF's bounded paragraph font-size semantic; the pinned schema currently exposes only `small`. */
+  fontSize?: "small";
 }
 
 /** Where an image's bytes come from. */

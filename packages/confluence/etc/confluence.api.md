@@ -20,7 +20,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
-    readonly fontSize: "visible-fallback";
+    readonly fontSize: "native";
     readonly fragment: "visible-fallback";
     readonly indentation: "native";
     readonly link: "native";
@@ -313,6 +313,7 @@ export interface BaseComment {
 export interface BlockPresentation {
     alignment?: "center" | "end";
     indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
 }
 
 // export: BlocksResult
@@ -2102,7 +2103,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
-    readonly fontSize: "visible-fallback";
+    readonly fontSize: "native";
     readonly fragment: "visible-fallback";
     readonly indentation: "native";
     readonly link: "native";
@@ -2395,6 +2396,7 @@ export interface BaseComment {
 export interface BlockPresentation {
     alignment?: "center" | "end";
     indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
 }
 
 // export: BlocksResult
@@ -4184,7 +4186,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
-    readonly fontSize: "visible-fallback";
+    readonly fontSize: "native";
     readonly fragment: "visible-fallback";
     readonly indentation: "native";
     readonly link: "native";
@@ -4477,6 +4479,7 @@ export interface BaseComment {
 export interface BlockPresentation {
     alignment?: "center" | "end";
     indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
 }
 
 // export: BlocksResult
@@ -6376,6 +6379,7 @@ export interface BaseComment {
 export interface BlockPresentation {
     alignment?: "center" | "end";
     indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
 }
 
 // export: BrokenLinkSummary
@@ -8819,7 +8823,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
-    readonly fontSize: "visible-fallback";
+    readonly fontSize: "native";
     readonly fragment: "visible-fallback";
     readonly indentation: "native";
     readonly link: "native";
@@ -9112,6 +9116,7 @@ export interface BaseComment {
 export interface BlockPresentation {
     alignment?: "center" | "end";
     indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
 }
 
 // export: BlocksResult

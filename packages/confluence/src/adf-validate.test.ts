@@ -63,6 +63,7 @@ describe("validateAdf", () => {
     expect(() => validateAdf(paragraph([
       { type: "alignment", attrs: { align: "center" } },
       { type: "indentation", attrs: { level: 6 } },
+      { type: "fontSize", attrs: { fontSize: "small" } },
     ]))).not.toThrow();
     expect(errorCode(() => validateAdf(paragraph([
       { type: "alignment", attrs: { align: "justify" } },
@@ -70,6 +71,11 @@ describe("validateAdf", () => {
     for (const level of [0, 7, 1.5]) {
       expect(errorCode(() => validateAdf(paragraph([
         { type: "indentation", attrs: { level } },
+      ])))).toBe("invalid-attributes");
+    }
+    for (const fontSize of ["large", 12, undefined]) {
+      expect(errorCode(() => validateAdf(paragraph([
+        { type: "fontSize", attrs: { fontSize } },
       ])))).toBe("invalid-attributes");
     }
   });
